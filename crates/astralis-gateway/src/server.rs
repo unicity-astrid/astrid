@@ -218,7 +218,9 @@ impl DaemonServer {
                         .unwrap_or("https://api.openai.com/v1/chat/completions"),
                     Some(&provider_config.api_key),
                     &provider_config.model,
-                );
+                )
+                .with_max_tokens(provider_config.max_tokens)
+                .with_temperature(provider_config.temperature);
                 if let Some(ctx) = provider_config.context_window {
                     p = p.with_max_context(ctx);
                 }
