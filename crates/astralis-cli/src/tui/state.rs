@@ -1,5 +1,6 @@
 //! TUI state machine — stripped to Nexus view only.
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 // ─── Slash Command Palette ──────────────────────────────────────
@@ -77,6 +78,8 @@ pub(crate) enum UiState {
     Error { message: String },
     /// Interrupted by user.
     Interrupted,
+    /// Copy mode — keyboard-driven block selection for clean text copying.
+    CopyMode,
 }
 
 // ─── Messages ────────────────────────────────────────────────────
@@ -231,6 +234,11 @@ pub(crate) struct App {
 
     // ── Actions ──
     pub pending_actions: Vec<PendingAction>,
+
+    // ── Copy mode ──
+    pub copy_cursor: usize,
+    pub copy_selected: HashSet<usize>,
+    pub copy_notice: Option<(String, Instant)>,
 }
 
 impl App {
@@ -266,6 +274,10 @@ impl App {
             stream_buffer: String::new(),
 
             pending_actions: Vec::new(),
+
+            copy_cursor: 0,
+            copy_selected: HashSet::new(),
+            copy_notice: None,
         }
     }
 
@@ -372,5 +384,94 @@ impl App {
         if self.pending_approvals.is_empty() {
             self.state = UiState::Idle;
         }
+    }
+
+    // ── Copy Mode ───────────────────────────────────────────────
+
+    /// Enter copy mode, positioning the cursor on the last entry.
+    pub(crate) fn enter_copy_mode(&mut self) {
+        if self.nexus_stream.is_empty() {
+            return;
+        }
+        self.copy_cursor = self.nexus_stream.len() - 1;
+        self.copy_selected.clear();
+        self.state = UiState::CopyMode;
+        self.scroll_offset = 0;
+    }
+
+    /// Exit copy mode, clearing selections.
+    pub(crate) fn exit_copy_mode(&mut self) {
+        self.copy_selected.clear();
+        self.state = UiState::Idle;
+    }
+
+    /// Toggle the current cursor entry in/out of the selected set.
+    pub(crate) fn toggle_copy_selection(&mut self) {
+        if !self.copy_selected.remove(&self.copy_cursor) {
+            self.copy_selected.insert(self.copy_cursor);
+        }
+    }
+
+    /// Select all nexus entries.
+    pub(crate) fn select_all_copy(&mut self) {
+        for i in 0..self.nexus_stream.len() {
+            self.copy_selected.insert(i);
+        }
+    }
+
+    /// Gather clean text from selected entries (or cursor entry if none toggled).
+    pub(crate) fn collect_copy_text(&self) -> String {
+        let indices: Vec<usize> = if self.copy_selected.is_empty() {
+            vec![self.copy_cursor]
+        } else {
+            let mut v: Vec<usize> = self.copy_selected.iter().copied().collect();
+            v.sort_unstable();
+            v
+        };
+
+        let mut parts = Vec::new();
+        for idx in indices {
+            if let Some(entry) = self.nexus_stream.get(idx) {
+                match entry {
+                    NexusEntry::Message(msg) => {
+                        if let Some(MessageKind::ToolResult(tool_idx)) = &msg.kind {
+                            if let Some(tool) = self.completed_tools.get(*tool_idx) {
+                                let header = if tool.display_arg.is_empty() {
+                                    tool.name.clone()
+                                } else {
+                                    format!("{}({})", tool.name, tool.display_arg)
+                                };
+                                if let Some(ref output) = tool.output {
+                                    parts.push(format!("{header}\n{output}"));
+                                } else {
+                                    parts.push(header);
+                                }
+                            }
+                        } else {
+                            match msg.role {
+                                MessageRole::User => {
+                                    parts.push(format!("> {}", msg.content));
+                                },
+                                MessageRole::Assistant | MessageRole::System => {
+                                    parts.push(msg.content.clone());
+                                },
+                            }
+                        }
+                    },
+                }
+            }
+        }
+
+        parts.join("\n\n")
+    }
+
+    /// Copy selected text to system clipboard. Returns Ok(()) or an error message.
+    pub(crate) fn copy_to_clipboard(&mut self) -> Result<(), String> {
+        let text = self.collect_copy_text();
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
+        clipboard
+            .set_text(text)
+            .map_err(|e| format!("Clipboard error: {e}"))
     }
 }

@@ -10,10 +10,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, BorderType, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Wrap,
-    },
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
 
 // ─── Public Helpers ──────────────────────────────────────────────
@@ -388,12 +385,16 @@ pub(crate) fn render_frame(frame: &mut Frame, app: &App) {
 
 #[allow(clippy::too_many_lines)]
 fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let in_copy_mode = app.state == UiState::CopyMode;
     let mut lines: Vec<Line> = Vec::new();
+    // Track which nexus entry index each line belongs to (None for spacing/running tools)
+    let mut line_entry_idx: Vec<Option<usize>> = Vec::new();
 
     // Render messages from the nexus stream
-    for entry in &app.nexus_stream {
+    for (entry_idx, entry) in app.nexus_stream.iter().enumerate() {
         match entry {
             NexusEntry::Message(msg) => {
+                let before = lines.len();
                 if let Some(MessageKind::ToolResult(idx)) = &msg.kind {
                     render_inline_tool(&mut lines, app, *idx, theme);
                 } else {
@@ -482,8 +483,13 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         },
                     }
                 }
+                // Tag all lines added for this entry
+                let added = lines.len() - before;
+                line_entry_idx.extend(std::iter::repeat_n(Some(entry_idx), added));
+
                 if msg.spacing {
                     lines.push(Line::from(""));
+                    line_entry_idx.push(None);
                 }
             },
         }
@@ -510,6 +516,27 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(theme.muted),
             ),
         ]));
+        line_entry_idx.push(None);
+    }
+
+    // Apply copy-mode background highlighting
+    if in_copy_mode {
+        for (i, line) in lines.iter_mut().enumerate() {
+            if let Some(Some(entry_idx)) = line_entry_idx.get(i) {
+                let bg = if *entry_idx == app.copy_cursor {
+                    Some(Color::Indexed(17)) // dark blue
+                } else if app.copy_selected.contains(entry_idx) {
+                    Some(Color::DarkGray)
+                } else {
+                    None
+                };
+                if let Some(bg_color) = bg {
+                    for span in &mut line.spans {
+                        span.style = span.style.bg(bg_color);
+                    }
+                }
+            }
+        }
     }
 
     // Use Paragraph's built-in scroll so wrapped lines are accounted for.
@@ -525,15 +552,6 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     #[allow(clippy::cast_possible_truncation)]
     let paragraph = paragraph.scroll((scroll_y as u16, 0));
     frame.render_widget(paragraph, area);
-
-    // Scrollbar
-    if total_rows > visible_height {
-        let scrollbar_position = max_scroll.saturating_sub(effective_scroll);
-        let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scrollbar_position);
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .style(Style::default().fg(theme.border));
-        frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
-    }
 }
 
 // ─── Activity Bar ────────────────────────────────────────────────
@@ -620,7 +638,57 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 ),
             ]
         },
+        UiState::CopyMode => {
+            vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    "COPY ",
+                    Style::default()
+                        .fg(theme.warning)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "[Space]",
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" Select  ", Style::default().fg(theme.muted)),
+                Span::styled(
+                    "[Enter]",
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" Copy  ", Style::default().fg(theme.muted)),
+                Span::styled(
+                    "[Ctrl+A]",
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" All  ", Style::default().fg(theme.muted)),
+                Span::styled(
+                    "[Esc]",
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" Cancel", Style::default().fg(theme.muted)),
+            ]
+        },
         UiState::Idle | UiState::AwaitingApproval | UiState::Error { .. } => {
+            // Show copy notice for a few seconds
+            if let Some((notice, at)) = &app.copy_notice {
+                let since = at.elapsed();
+                if since.as_secs() < 3 {
+                    let color = if since.as_secs() < 2 {
+                        theme.success
+                    } else {
+                        theme.muted
+                    };
+                    return frame.render_widget(
+                        Paragraph::new(Line::from(vec![
+                            Span::styled("  ", Style::default()),
+                            Span::styled(notice, Style::default().fg(color)),
+                        ])),
+                        area,
+                    );
+                }
+            }
+
             if let Some((past_verb, duration)) = &app.last_completed
                 && let Some(completed_at) = app.last_completed_at
             {

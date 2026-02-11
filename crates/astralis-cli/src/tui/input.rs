@@ -14,6 +14,7 @@ pub(crate) fn handle_input(app: &mut App) -> io::Result<()> {
                 handle_interruptible_input(app, key);
             },
             UiState::Interrupted => handle_interrupted_input(app, key),
+            UiState::CopyMode => handle_copy_input(app, key),
             UiState::Error { .. } => handle_error_input(app, key),
         }
     }
@@ -101,6 +102,12 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                     app.palette_scroll_offset = app.palette_selected;
                 }
             }
+        },
+
+        // ── Copy mode ────────────────────────────────────────────
+        // Ctrl+Shift+C enters copy mode (capital C = Shift held)
+        (KeyCode::Char('C'), m) if m.contains(KeyModifiers::CONTROL) => {
+            app.enter_copy_mode();
         },
 
         // ── Text editing ────────────────────────────────────────
@@ -254,6 +261,56 @@ fn handle_interrupted_input(app: &mut App, key: KeyEvent) {
         },
     }
     app.quit_pending = false;
+}
+
+fn handle_copy_input(app: &mut App, key: KeyEvent) {
+    match (key.code, key.modifiers) {
+        // Navigate up
+        (KeyCode::Up, _) => {
+            if app.copy_cursor > 0 {
+                app.copy_cursor -= 1;
+            }
+        },
+        // Navigate down
+        (KeyCode::Down, _) => {
+            if app.copy_cursor + 1 < app.nexus_stream.len() {
+                app.copy_cursor += 1;
+            }
+        },
+        // Jump up by 5
+        (KeyCode::PageUp, _) => {
+            app.copy_cursor = app.copy_cursor.saturating_sub(5);
+        },
+        // Jump down by 5
+        (KeyCode::PageDown, _) => {
+            app.copy_cursor = (app.copy_cursor + 5).min(app.nexus_stream.len().saturating_sub(1));
+        },
+        // Toggle selection on current entry
+        (KeyCode::Char(' '), _) => {
+            app.toggle_copy_selection();
+        },
+        // Select all
+        (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+            app.select_all_copy();
+        },
+        // Copy and exit
+        (KeyCode::Enter, _) => {
+            match app.copy_to_clipboard() {
+                Ok(()) => {
+                    app.copy_notice = Some(("Copied!".to_string(), std::time::Instant::now()));
+                },
+                Err(e) => {
+                    app.copy_notice = Some((e, std::time::Instant::now()));
+                },
+            }
+            app.exit_copy_mode();
+        },
+        // Cancel / quit copy mode
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+            app.exit_copy_mode();
+        },
+        _ => {},
+    }
 }
 
 fn handle_error_input(app: &mut App, key: KeyEvent) {

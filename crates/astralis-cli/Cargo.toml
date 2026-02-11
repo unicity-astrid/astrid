@@ -67,6 +67,7 @@ tracing = { workspace = true }
 # TUI
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+arboard = { workspace = true }
 
 # Web browser
 webbrowser = "1.0"

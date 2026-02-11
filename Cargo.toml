@@ -130,6 +130,7 @@ syntect = { version = "5", default-features = false, features = ["default-fancy"
 # TUI
 ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
 crossterm = "0.28"
+arboard = "3"
 
 # Database (persistent stores - Phase 2+)
 # SurrealDB: full query engine (graph, document, SurrealQL) for system stores
