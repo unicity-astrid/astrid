@@ -1,8 +1,8 @@
 # Astralis
 
-**Production-grade secure agent runtime SDK in Rust.**
+**Production-grade secure agent runtime in Rust.**
 
-Astralis provides a modular, security-first runtime for AI agents. Frontends (CLI, Discord, Web, etc.) plug into the core via a `Frontend` trait — one runtime, single source of truth, with shared budget, capabilities, memory, and audit across all frontends.
+Astralis is a modular, security-first runtime for AI agents. A thin CLI client (`astralis`) connects to a background daemon (`astralisd`) that hosts the agent runtime, manages sessions, and enforces security. Additional frontends (Discord, Web, etc.) can plug in via the `Frontend` trait — one runtime, single source of truth, with shared budget, capabilities, memory, and audit across all frontends.
 
 ## Key Features
 
@@ -38,7 +38,7 @@ The CLI (`astralis`) is a thin stateless client. All state and execution live in
 │  State: ~/.astralis/ (sessions, audit, capabilities, keys)     │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    ASTRALIS CORE SDK                     │  │
+│  │                    ASTRALIS CORE                         │  │
 │  │                                                          │  │
 │  │  AgentRuntime ── Agentic loop, context summarization     │  │
 │  │  Security Layer ── Capability tokens (ed25519 signed)    │  │
