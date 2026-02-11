@@ -44,7 +44,7 @@ members = [
     # Optional Integrations
     # "crates/astralis-unicity",  # After research
 ]
-exclude = ["tools/rustdoc-mcp"]
+exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp"]
 
 [workspace.package]
 version = "0.1.0"

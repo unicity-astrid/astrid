@@ -44,8 +44,7 @@ fn init_terminal() -> io::Result<(Term, bool)> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
 
-    let keyboard_enhanced =
-        matches!(supports_keyboard_enhancement(), Ok(true));
+    let keyboard_enhanced = matches!(supports_keyboard_enhancement(), Ok(true));
 
     if keyboard_enhanced {
         execute!(
