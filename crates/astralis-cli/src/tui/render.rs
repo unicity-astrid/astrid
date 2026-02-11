@@ -906,14 +906,8 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
         &app.pending_approvals[app.selected_approval.min(app.pending_approvals.len() - 1)];
     let area = frame.area();
     let width = (area.width * 60 / 100).clamp(40, 60);
-    // 2 (tool + risk) + 1 (blank) + 1 (description) + 1 (blank)
-    // + details count + 1 (blank) + 1 (hotkeys) + 2 (borders)
-    #[allow(clippy::cast_possible_truncation)]
-    let content_lines = 9 + approval.details.len() as u16;
-    let height = content_lines.clamp(10, area.height.saturating_sub(4));
-    let x = (area.width.saturating_sub(width)) / 2;
-    let y = (area.height.saturating_sub(height)) / 2;
-    let overlay_area = Rect::new(x, y, width, height);
+    // Inner width after borders (left + right = 2 chars)
+    let inner_width = width.saturating_sub(2) as usize;
 
     let risk_color = match approval.risk_level {
         RiskLevel::Low => theme.success,
@@ -980,6 +974,25 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
         ),
         Span::raw(" Deny"),
     ]));
+
+    // Calculate dynamic height based on content, accounting for word wrapping
+    let mut content_height: u16 = 0;
+    for line in &lines {
+        let line_len: usize = line.spans.iter().map(|s| s.content.len()).sum();
+        if inner_width > 0 && line_len > inner_width {
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                content_height += line_len.div_ceil(inner_width) as u16;
+            }
+        } else {
+            content_height += 1;
+        }
+    }
+    // Total height = content lines + 2 (top + bottom border)
+    let height = (content_height + 2).clamp(8, area.height.saturating_sub(4));
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let overlay_area = Rect::new(x, y, width, height);
 
     let block = Block::default()
         .title(" Approval Required ")
