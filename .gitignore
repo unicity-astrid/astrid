@@ -18,6 +18,10 @@ secrets.toml
 *.pem
 *.key
 
+# Tools
+/tools
+
 # AI
 .claude
 .astralis
+.mcp.json
