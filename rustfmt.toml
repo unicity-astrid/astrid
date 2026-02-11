@@ -1,0 +1,18 @@
+# Astralis rustfmt configuration
+# See: https://rust-lang.github.io/rustfmt/
+
+edition = "2024"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+
+# Imports (stable options only)
+reorder_imports = true
+
+# Match arms
+match_block_trailing_comma = true
+
+# Misc
+use_field_init_shorthand = true
+use_try_shorthand = true

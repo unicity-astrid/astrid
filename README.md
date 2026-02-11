@@ -1,0 +1,320 @@
+# Astralis
+
+**Production-grade secure agent runtime SDK in Rust.**
+
+Astralis provides a modular, security-first runtime for AI agents. Frontends (CLI, Discord, Web, etc.) plug into the core via a `Frontend` trait — one runtime, single source of truth, with shared budget, capabilities, memory, and audit across all frontends.
+
+## Key Features
+
+- **Cryptography over prompts** — Authorization uses ed25519 signatures and capability tokens, not LLM instructions
+- **MCP 2025-11-25 spec** — Full client implementation via `rmcp` v0.14: sampling, roots, elicitation, URL elicitation, tasks
+- **Defense in depth** — Input classification, capability validation, MCP permissions, sandbox, approval gates, audit logging
+- **Two sandbox model** — WASM (inescapable, for untrusted code) + operational workspace (escapable with approval, for trusted actions)
+- **Human-in-the-loop** — MCP elicitation for user input, URL elicitation for OAuth/payments, approval with Allow Once/Session/Workspace/Always/Deny
+- **Chain-linked audit** — Cryptographically signed, immutable audit trail for every action
+- **Modular by design** — Core works standalone; crypto and unicity features are opt-in
+
+## Architecture
+
+The CLI (`astralis`) is a thin stateless client. All state and execution live in the gateway daemon (`astralisd`), which hosts the `AgentRuntime` and manages sessions, MCP servers, security, and audit. The CLI auto-starts the daemon if it isn't running.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     FRONTEND CLIENTS                           │
+│    CLI (astralis)  │  Discord  │  Web  │  Telegram  │  ...     │
+│                    └───────────┴───────┴────────────┘          │
+│              Thin clients — stateless, replaceable             │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │  WebSocket + JSON-RPC 2.0
+                           │  (jsonrpsee, ws://127.0.0.1:{port})
+┌──────────────────────────▼─────────────────────────────────────┐
+│               GATEWAY DAEMON (astralisd)                       │
+│                                                                │
+│  DaemonServer ── Session lifecycle, event streaming,           │
+│                  approval/elicitation relay, MCP server        │
+│                  health checks, auto-restart, cleanup          │
+│                                                                │
+│  Modes: ephemeral (auto-shutdown) or persistent                │
+│  State: ~/.astralis/ (sessions, audit, capabilities, keys)     │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                    ASTRALIS CORE SDK                     │  │
+│  │                                                          │  │
+│  │  AgentRuntime ── Agentic loop, context summarization     │  │
+│  │  Security Layer ── Capability tokens (ed25519 signed)    │  │
+│  │  MCP Client ───── rmcp (official Rust SDK)               │  │
+│  │  Audit Log ────── Chain-linked, cryptographically signed │  │
+│  │  Sandbox ──────── Landlock (Linux) / sandbox-exec (macOS)│  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                           │                                    │
+│  ┌────────────────────────▼─────────────────────────────────┐  │
+│  │  Orchestrator (external MCP server)                      │  │
+│  │  Handles server discovery and proxying                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+The daemon exposes an `astralis.*` JSON-RPC API for session management, agent execution, approval/elicitation responses, MCP server control, budget monitoring, and audit queries. Frontends subscribe to a streaming event channel for LLM text chunks, tool call progress, and approval/elicitation requests.
+
+### Frontend Trait
+
+All frontends implement the `Frontend` trait to handle human-in-the-loop interactions:
+
+```rust
+#[async_trait]
+pub trait Frontend: Send + Sync {
+    /// MCP elicitation — server requests structured user input
+    async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse>;
+
+    /// URL elicitation — OAuth flows, payments (LLM never sees sensitive data)
+    async fn elicit_url(&self, request: UrlElicitationRequest) -> SecurityResult<()>;
+
+    /// Approval for sensitive operations (Allow Once/Session/Workspace/Always/Deny)
+    async fn request_approval(&self, request: ApprovalRequest) -> SecurityResult<ApprovalDecision>;
+
+    /// Status and error display
+    fn show_status(&self, message: &str);
+    fn show_error(&self, error: &str);
+
+    /// Receive user messages and commands
+    async fn receive_input(&self) -> Option<UserInput>;
+}
+```
+
+### MCP Client Features
+
+All client-side features from the [November 2025 MCP specification](https://modelcontextprotocol.io/specification/2025-11-25):
+
+| Direction | Feature | Description |
+|-----------|---------|-------------|
+| Client → Server | **Sampling** | Server-initiated LLM calls |
+| Client → Server | **Roots** | Filesystem/URI boundary queries |
+| Client → Server | **Elicitation** | Structured user input requests |
+| Client → Server | **URL Elicitation** | OAuth flows, credential collection |
+| Server → Client | **Resources** | Context and data |
+| Server → Client | **Prompts** | Templated messages |
+| Server → Client | **Tools** | Functions to execute (security-checked) |
+| Server → Client | **Tasks** | Long-running operations |
+
+### Execution Model
+
+Astralis distinguishes between trusted and untrusted code execution:
+
+- **Native execution** (trusted, admin-configured servers): Binary hash verified before launch, OS-sandboxed (Landlock/sandbox-exec) as defense-in-depth, full native performance.
+- **WASM execution** (untrusted, agent-fetched code): Must be WASM — runs in Wasmtime with WASI capabilities explicitly granted via elicitation. Memory-safe, no raw syscalls, deterministic, cross-platform.
+
+WASM cannot exceed granted capabilities — enforced by the Wasmtime runtime, not by hoping a sandbox holds.
+
+## Security Model
+
+Every action passes through a multi-step security check using **intersection semantics** — both policy AND capability must allow an action:
+
+```
+Tool Call Request
+      │
+      ▼
+┌───────────────────┐
+│ 1. Policy Check   │  Hard boundaries (admin controls)
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ 2. Capability     │  Does user/agent have a grant?
+│    Check          │  If missing → check if approval needed
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ 3. Budget Check   │  Is there remaining budget?
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ 4. Risk Assessment│  High-risk → elicit user approval
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ 5. Execute + Audit│  Run tool, log to chain-linked audit
+└───────────────────┘
+```
+
+### Input Classification
+
+Every message is wrapped in a `TaggedMessage` with full attribution — message ID, user ID, frontend origin, context, content, and optional cryptographic signature. This determines trust level:
+
+- **Signed user input** — Verified user with platform identity (UUID), can trigger actions
+- **Capability-authorized** — Pre-authorized via ed25519-signed token, scoped execution
+- **Untrusted** — Tool results, external data — never executed directly
+
+### Approval Flow
+
+When an action requires user consent:
+
+1. `AgentRuntime` in the daemon calls `SecureMcpClient::check_authorization`
+2. Security interceptor runs the 5-step check
+3. If approval needed, daemon pushes an `ApprovalNeeded` event to the subscribed frontend client
+4. The frontend (e.g. CLI) prompts the user and sends the decision back via `astralis.approvalResponse` RPC
+5. User sees risk level and chooses: **Allow Once**, **Allow Session**, **Allow Workspace**, **Allow Always**, or **Deny**
+6. "Allow Always" creates a persistent `CapabilityToken` (ed25519 signed, audit-linked, scoped TTL)
+7. If user is unavailable, request is queued in `DeferredResolutionStore` for later resolution
+
+## Getting Started
+
+### Prerequisites
+
+- Rust 1.93+ (edition 2024)
+- An Anthropic API key (for the LLM provider)
+
+### Build
+
+```bash
+cargo build --workspace
+```
+
+### Run the CLI
+
+The workspace produces two binaries: `astralis` (CLI client) and `astralisd` (gateway daemon). The CLI auto-starts the daemon in ephemeral mode if it isn't already running.
+
+```bash
+cargo run -p astralis-cli --bin astralis -- chat
+```
+
+### Run Tests
+
+```bash
+cargo test --workspace
+```
+
+### Lint
+
+```bash
+cargo clippy --workspace -- -D warnings
+cargo fmt --all -- --check
+```
+
+## Project Structure
+
+```
+crates/
+├── astralis-core            # Foundation types, traits, errors
+├── astralis-crypto           # ed25519 signing, blake3 hashing
+├── astralis-capabilities     # Capability tokens, validation, storage
+├── astralis-audit            # Immutable chain-linked audit logging
+├── astralis-mcp              # MCP client wrapper with security integration
+├── astralis-approval         # Security interceptor, approval manager, budget tracking
+├── astralis-storage          # Two-tier persistence (KvStore + SurrealDB)
+├── astralis-config           # Unified TOML config with layered loading
+├── astralis-events           # Event bus (46 event variants across 12 categories)
+├── astralis-hooks            # Hook system (shell/WASM handlers)
+├── astralis-llm              # LLM provider trait, Claude integration, streaming
+├── astralis-workspace        # Operational workspace boundaries
+├── astralis-tools            # Built-in coding tools (read, write, edit, bash)
+├── astralis-runtime          # AgentRuntime — orchestrates LLM + MCP + audit
+├── astralis-gateway          # Gateway daemon — hosts runtime, manages sessions + MCP servers
+├── astralis-cli              # Thin CLI client — connects to daemon via JSON-RPC
+├── astralis-cli-mockup       # Ratatui-based TUI prototype
+├── astralis-telemetry        # Tracing and metrics
+├── astralis-test             # Test utilities
+└── astralis-prelude          # Common re-exports
+```
+
+### Crate Dependency Graph
+
+```
+                    astralis-core
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+    astralis-crypto  astralis-audit  astralis-workspace
+          │              │
+          └──────┬───────┘
+                 ▼
+         astralis-capabilities
+                 │
+                 ▼
+           astralis-mcp
+                 │
+                 ▼
+         astralis-approval
+                 │
+                 ▼
+         astralis-runtime
+                 │
+                 ▼
+         astralis-gateway (daemon — hosts runtime)
+                 │
+    ┌────────────┼────────────┐
+    ▼            ▼            ▼
+astralis-cli  (discord)  (other frontends)
+  (thin client via JSON-RPC)
+```
+
+## Configuration
+
+Astralis uses a layered TOML configuration system with 17 config sections (model, runtime, security, budget, rate limits, servers, audit, keys, workspace, git, hooks, logging, gateway, timeouts, sessions, subagents, retry):
+
+```
+embedded defaults → system config → user config → workspace config
+```
+
+Workspace configs can only **tighten** restrictions, never loosen them. Environment variables (`ASTRALIS_*`, `ANTHROPIC_*`) are applied after the merge as fallbacks, not overrides.
+
+```bash
+# Show resolved configuration
+cargo run -p astralis-cli -- config show
+
+# Validate configuration
+cargo run -p astralis-cli -- config validate
+
+# Show config file search paths
+cargo run -p astralis-cli -- config paths
+```
+
+## Feature Flags
+
+| Feature | Description |
+|---------|-------------|
+| `default` | MCP client, elicitation, capability tokens, audit |
+| `crypto` | Registry signatures, state attestation, verifiable WASM |
+| `unicity` | ZK aggregator, on-chain state, agent economy |
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 ASTRALIS CORE (always available)                │
+│  MCP (rmcp) │ Elicitation │ Capability Tokens │ Audit │ Crypto  │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+┌───────────────────────┐             ┌───────────────────────┐
+│  feature = "crypto"   │             │  feature = "unicity"  │
+│                       │             │                       │
+│ Registry signatures   │             │ ZK aggregator         │
+│ State attestation     │             │ On-chain commits      │
+│ Verifiable execution  │             │ Programmable escrow   │
+│ Payment hooks         │             │ Agent economy         │
+└───────────────────────┘             └───────────────────────┘
+```
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Rust (`#![deny(unsafe_code)]`) |
+| MCP | `rmcp` v0.14 (2025-11-25 spec) |
+| Crypto | ed25519-dalek, blake3 |
+| Storage | SurrealDB (SurrealKV backend) |
+| IPC | jsonrpsee (JSON-RPC 2.0 + WebSocket) |
+| Async | Tokio |
+| CLI | clap, dialoguer, syntect |
+| Sandbox | Landlock (Linux), sandbox-exec (macOS) |
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT License ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

@@ -1,0 +1,30 @@
+# Astralis clippy configuration
+# See: https://doc.rust-lang.org/clippy/lint_configuration.html
+
+# MSRV for lint suggestions
+msrv = "1.93"
+
+# Complexity thresholds
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 7
+too-many-lines-threshold = 100
+type-complexity-threshold = 250
+
+# Allow certain patterns common in our codebase
+allowed-duplicate-crates = []
+doc-valid-idents = [
+    "Astralis",
+    "MCP",
+    "WASM",
+    "WASI",
+    "OAuth",
+    "GitHub",
+    "macOS",
+    "WebAssembly",
+]
+
+# Disallowed methods (security)
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "Use safe configuration instead" },
+    { path = "std::env::remove_var", reason = "Use safe configuration instead" },
+]

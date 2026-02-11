@@ -1,0 +1,40 @@
+[package]
+name = "astralis-approval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Approval system for Astralis secure agent runtime - types, allowances, and security policy"
+
+[dependencies]
+# Internal
+astralis-core = { workspace = true }
+astralis-audit = { workspace = true }
+astralis-capabilities = { workspace = true }
+astralis-crypto = { workspace = true }
+astralis-storage = { workspace = true }
+
+# Async
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+
+# Serialization
+serde = { workspace = true }
+
+# Time & IDs
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Glob matching (for AllowancePattern::FilePattern)
+globset = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[lints]
+workspace = true

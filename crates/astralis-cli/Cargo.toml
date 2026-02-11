@@ -1,0 +1,78 @@
+[package]
+name = "astralis-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for Astralis secure agent runtime"
+
+[[bin]]
+name = "astralis"
+path = "src/main.rs"
+
+[[bin]]
+name = "astralisd"
+path = "src/daemon_main.rs"
+
+[dependencies]
+# Internal
+astralis-config = { workspace = true }
+astralis-core = { workspace = true }
+astralis-crypto = { workspace = true }
+astralis-capabilities = { workspace = true }
+astralis-audit = { workspace = true }
+astralis-mcp = { workspace = true }
+astralis-llm = { workspace = true }
+astralis-runtime = { workspace = true }
+astralis-gateway = { workspace = true }
+astralis-hooks = { workspace = true }
+astralis-telemetry = { workspace = true }
+astralis-approval = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+dialoguer = { workspace = true }
+indicatif = { workspace = true }
+colored = { workspace = true }
+rustyline = { workspace = true }
+syntect = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# JSON-RPC client (connects to daemon)
+jsonrpsee = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Time & IDs
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Encoding
+hex = { workspace = true }
+
+# Tracing
+tracing = { workspace = true }
+
+# TUI
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
+# Web browser
+webbrowser = "1.0"
+
+# Directories
+directories = { workspace = true }
+
+[lints]
+workspace = true

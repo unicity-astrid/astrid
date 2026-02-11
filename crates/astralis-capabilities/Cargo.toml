@@ -1,0 +1,38 @@
+[package]
+name = "astralis-capabilities"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Capability token system for Astralis secure agent runtime"
+
+[dependencies]
+# Internal
+astralis-core = { workspace = true }
+astralis-crypto = { workspace = true }
+astralis-storage = { workspace = true, features = ["kv"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Time & IDs
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["rt"] }
+
+# Glob matching
+globset = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile = "3"
+
+[lints]
+workspace = true

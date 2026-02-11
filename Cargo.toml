@@ -1,0 +1,170 @@
+[workspace]
+resolver = "2"
+members = [
+    # Core SDK
+    "crates/astralis-audit",
+    "crates/astralis-capabilities",
+    "crates/astralis-core",
+    "crates/astralis-crypto",
+    "crates/astralis-events",
+    "crates/astralis-hooks",
+    "crates/astralis-llm",
+    "crates/astralis-mcp",
+    "crates/astralis-runtime",
+    "crates/astralis-telemetry",
+    "crates/astralis-test",
+    "crates/astralis-workspace",
+    "crates/astralis-tools",
+    "crates/astralis-prelude",
+
+    # Configuration
+    "crates/astralis-config",
+
+    # Phase 2
+    "crates/astralis-approval",
+    "crates/astralis-storage",
+
+    # Deferred to later phases
+    # "crates/astralis-sandbox",   # Phase 3
+    # "crates/astralis-skills",    # Phase 4
+    # "crates/astralis-memory",    # Phase 11
+
+    # Integration tests
+    "crates/astralis-integration-tests",
+
+    # Gateway
+    "crates/astralis-gateway",
+
+    # Frontends
+    "crates/astralis-cli",
+    "crates/astralis-cli-mockup",  # UI/UX prototype (not part of SDK)
+    # "crates/astralis-discord",  # Phase 7
+    # "crates/astralis-web",      # Phase 7
+
+    # Optional Integrations
+    # "crates/astralis-unicity",  # After research
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/astralis/astralis"
+rust-version = "1.93"
+
+[workspace.dependencies]
+# Internal crates - Core SDK (Phase 1)
+astralis-core = { path = "crates/astralis-core" }
+astralis-crypto = { path = "crates/astralis-crypto" }
+astralis-capabilities = { path = "crates/astralis-capabilities" }
+astralis-events = { path = "crates/astralis-events" }
+astralis-hooks = { path = "crates/astralis-hooks" }
+astralis-mcp = { path = "crates/astralis-mcp" }
+astralis-audit = { path = "crates/astralis-audit" }
+astralis-llm = { path = "crates/astralis-llm" }
+astralis-runtime = { path = "crates/astralis-runtime" }
+astralis-telemetry = { path = "crates/astralis-telemetry" }
+astralis-test = { path = "crates/astralis-test" }
+astralis-workspace = { path = "crates/astralis-workspace" }
+astralis-tools = { path = "crates/astralis-tools" }
+astralis-prelude = { path = "crates/astralis-prelude" }
+astralis-gateway = { path = "crates/astralis-gateway" }
+
+# Internal crates - Configuration
+astralis-config = { path = "crates/astralis-config" }
+
+# Internal crates - Phase 2
+astralis-approval = { path = "crates/astralis-approval" }
+astralis-storage = { path = "crates/astralis-storage" }
+
+# Internal crates - Deferred phases
+# astralis-sandbox = { path = "crates/astralis-sandbox" }   # Phase 3
+# astralis-skills = { path = "crates/astralis-skills" }     # Phase 4
+# astralis-memory = { path = "crates/astralis-memory" }     # Phase 11
+
+# MCP - Official Rust SDK (2025-11-25 spec)
+# https://github.com/modelcontextprotocol/rust-sdk
+rmcp = { version = "0.14", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
+
+# Binary lookup
+which = "7"
+
+# JSON-RPC over WebSocket (daemon ↔ CLI IPC)
+jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
+
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Cryptography
+ed25519-dalek = { version = "2.1", features = ["rand_core", "zeroize", "serde"] }
+blake3 = "1.5"
+rand = "0.8"
+zeroize = { version = "1.8", features = ["derive"] }
+
+# Sandboxing (Linux)
+landlock = "0.4"
+nix = { version = "0.29", features = ["process", "signal", "user", "fs", "resource"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+colored = "2.1"
+dialoguer = "0.11"
+indicatif = "0.17"
+rustyline = { version = "15", features = ["derive"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+
+# TUI
+ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
+crossterm = "0.28"
+
+# Database (persistent stores - Phase 2+)
+# SurrealDB: full query engine (graph, document, SurrealQL) for system stores
+surrealdb = { version = "3.0.0-beta.3", default-features = false, features = ["kv-surrealkv", "kv-mem"] }
+# SurrealKV: raw embedded KV for WASM guest storage (Phase 3)
+surrealkv = "0.18"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Glob matching
+globset = "0.4"
+
+# Regex
+regex = "1.10"
+
+# Async utilities
+async-trait = "0.1"
+futures = "0.3"
+tokio-util = "0.7"
+
+# Encoding
+base64 = "0.22"
+hex = "0.4"
+
+# Directory utilities
+directories = "5.0"
+walkdir = "2.5"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"

@@ -1,0 +1,25 @@
+[package]
+name = "astralis-prelude"
+description = "Unified prelude for the Astralis secure agent runtime SDK"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+astralis-core.workspace = true
+astralis-crypto.workspace = true
+astralis-capabilities.workspace = true
+astralis-audit.workspace = true
+astralis-mcp.workspace = true
+astralis-runtime.workspace = true
+astralis-llm.workspace = true
+astralis-events.workspace = true
+astralis-hooks.workspace = true
+astralis-workspace.workspace = true
+astralis-telemetry.workspace = true
+astralis-gateway.workspace = true
+
+[lints]
+workspace = true
