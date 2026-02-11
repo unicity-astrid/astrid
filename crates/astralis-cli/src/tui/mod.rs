@@ -16,8 +16,12 @@ use astralis_core::{
 };
 use astralis_gateway::rpc::{DaemonEvent, SessionInfo};
 use crossterm::{
+    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+        supports_keyboard_enhancement,
+    },
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 
@@ -31,18 +35,44 @@ use state::{
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
 /// Initialize the terminal for TUI mode.
-fn init_terminal() -> io::Result<Term> {
+///
+/// Returns the terminal and whether keyboard enhancement was enabled.
+/// Keyboard enhancement (Kitty protocol) provides unambiguous key events,
+/// preventing escape sequence bytes from leaking as character input on
+/// terminals like Alacritty that support the protocol.
+fn init_terminal() -> io::Result<(Term, bool)> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+
+    let keyboard_enhanced =
+        matches!(supports_keyboard_enhancement(), Ok(true));
+
+    if keyboard_enhanced {
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
+    } else {
+        execute!(stdout, EnterAlternateScreen)?;
+    }
+
     let backend = CrosstermBackend::new(stdout);
-    Terminal::new(backend)
+    Ok((Terminal::new(backend)?, keyboard_enhanced))
 }
 
 /// Restore terminal to normal mode.
-fn restore_terminal(terminal: &mut Term) -> io::Result<()> {
+fn restore_terminal(terminal: &mut Term, keyboard_enhanced: bool) -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    if keyboard_enhanced {
+        execute!(
+            terminal.backend_mut(),
+            PopKeyboardEnhancementFlags,
+            LeaveAlternateScreen
+        )?;
+    } else {
+        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    }
     terminal.show_cursor()?;
     Ok(())
 }
@@ -72,11 +102,11 @@ pub(crate) async fn run(
     let mut event_sub = client.subscribe_events(session_id).await?;
 
     // Initialize terminal — wrapped in a guard for proper cleanup.
-    let mut terminal = init_terminal()?;
+    let (mut terminal, keyboard_enhanced) = init_terminal()?;
     let result = run_loop(&mut terminal, &mut app, client, session_id, &mut event_sub).await;
 
     // Always restore terminal, even on error.
-    let _ = restore_terminal(&mut terminal);
+    let _ = restore_terminal(&mut terminal, keyboard_enhanced);
 
     result
 }
