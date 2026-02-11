@@ -1,23 +1,134 @@
-//! Astralis User Identity - Cross-Frontend Identity Management
+//! # Astralis User Identity — Cross-Frontend Identity Management
 //!
-//! This module provides a unified identity system that spans all frontends.
-//! A single `AstralisUserId` represents the same user across Discord, WhatsApp,
-//! Telegram, CLI, and other frontends.
+//! This module provides a unified identity system that maps platform-specific
+//! user accounts (Discord, Telegram, WhatsApp, CLI, etc.) to a single canonical
+//! internal identity: [`AstralisUserId`].
 //!
-//! # Key Types
+//! ## Why Identity Mapping Matters
 //!
-//! - [`AstralisUserId`] - The canonical user identifier
-//! - [`FrontendLink`] - Links a frontend account to an Astralis identity
-//! - [`FrontendType`] - Supported frontend platforms
-//! - [`LinkVerificationMethod`] - How the link was verified
+//! Astralis is designed to be deployed across multiple frontends simultaneously.
+//! The same agent runtime can serve a user through a Telegram bot, a Discord
+//! channel, a CLI session, and a web dashboard — all at once. Without identity
+//! mapping, each frontend sees a disconnected stranger. With it, the system
+//! recognises that the same human is speaking, regardless of which platform
+//! they're using.
 //!
-//! # Example
+//! This has three critical consequences:
+//!
+//! ### 1. Memory Continuity
+//!
+//! When the memory system is active, facts learned about a user on one platform
+//! carry over to every other platform they've linked. If a user tells the agent
+//! their preferred programming language via Discord, that preference is available
+//! when they later interact via Telegram. Without identity mapping, each frontend
+//! would build an isolated, incomplete picture of the same person.
+//!
+//! ### 2. Multi-Tenant Context Isolation
+//!
+//! Astralis is tenanted by design. When deployed into a shared environment (a
+//! Discord server, a Telegram group), the system isolates context per-user
+//! and per-environment. Identity mapping is what makes this possible — it
+//! distinguishes User A from User B within the same channel, and User A in
+//! Channel X from User A in Channel Y.
+//!
+//! This isolation is enforced through [`ContextIdentifier`](crate::input::ContextIdentifier),
+//! which combines the frontend type, a context ID (channel/group/chat), and the
+//! resolved [`AstralisUserId`]. Together these form the boundaries for session
+//! state, approval history, capability tokens, and eventually memory retrieval.
+//!
+//! ### 3. Unified Security and Audit
+//!
+//! Capability tokens, approval history, budget tracking, and audit entries are
+//! all anchored to the canonical [`AstralisUserId`]. When a user grants "Allow
+//! Always" on one platform, the resulting capability token is bound to their
+//! internal identity — not to a transient platform-specific ID. Audit trails
+//! can trace actions back to a single person across all their linked accounts.
+//!
+//! ## Architecture
+//!
+//! The identity system has two layers:
+//!
+//! **Layer 1 — Canonical Identity ([`AstralisUserId`]):**
+//! A UUID-based internal identifier, optionally bound to an ed25519 public key
+//! for cryptographic signing. This is the single source of truth for "who is
+//! this person" across the entire system.
+//!
+//! **Layer 2 — Platform Links ([`FrontendLink`]):**
+//! Each platform account (e.g., Discord user `123456789`, Telegram user `987654`)
+//! is linked to exactly one `AstralisUserId` via a [`FrontendLink`]. Links are
+//! verified through one of three methods (see [`LinkVerificationMethod`]):
+//! initial creation, cross-platform code verification, or admin linking.
+//!
+//! ```text
+//!                    ┌─────────────────────┐
+//!                    │   AstralisUserId     │
+//!                    │   (UUID + pubkey)     │
+//!                    └────────┬────────────┘
+//!                             │
+//!              ┌──────────────┼──────────────┐
+//!              │              │              │
+//!     ┌────────▼───┐  ┌──────▼─────┐  ┌─────▼──────┐
+//!     │ Discord    │  │ Telegram   │  │ CLI        │
+//!     │ "12345"    │  │ "98765"    │  │ "cli_user" │
+//!     └────────────┘  └────────────┘  └────────────┘
+//!       FrontendLink    FrontendLink    FrontendLink
+//! ```
+//!
+//! ## Cross-Frontend Linking
+//!
+//! When a user is already known on one platform and wants to link a second,
+//! the [`IdentityStore`] provides a verification flow:
+//!
+//! 1. User requests a link from the new platform (e.g., Telegram).
+//! 2. A 6-digit [`PendingLinkCode`] is generated (5-minute TTL).
+//! 3. User enters that code on the already-verified platform (e.g., Discord).
+//! 4. If the code matches, a new [`FrontendLink`] is created, binding the
+//!    Telegram account to the same [`AstralisUserId`].
+//!
+//! ## For Frontend Implementors
+//!
+//! Every [`Frontend`](crate::frontend::Frontend) implementation should resolve
+//! identity on first contact with a user. The typical pattern:
+//!
+//! 1. Extract the platform-specific user ID from the incoming message.
+//! 2. Call [`IdentityStore::resolve`] with the [`FrontendType`] and platform ID.
+//! 3. If `None`, this is a new user — call [`IdentityStore::create_identity`]
+//!    to mint a fresh [`AstralisUserId`] with an initial [`FrontendLink`].
+//! 4. Populate [`FrontendUser::astralis_id`](crate::frontend::FrontendUser::astralis_id)
+//!    with the resolved UUID.
+//! 5. Include the resolved identity in [`FrontendContext`](crate::frontend::FrontendContext)
+//!    so downstream systems (sessions, approval, audit) operate on the canonical ID.
+//!
+//! ## Key Types
+//!
+//! - [`AstralisUserId`] — Canonical internal user identity (UUID + optional ed25519 key)
+//! - [`FrontendLink`] — Binds a platform account to an `AstralisUserId`
+//! - [`FrontendType`] — Enum of supported platforms (Discord, Telegram, WhatsApp, etc.)
+//! - [`LinkVerificationMethod`] — How a cross-platform link was verified
+//! - [`PendingLinkCode`] — Time-limited code for cross-frontend verification
+//! - [`IdentityStore`] — Async trait for identity storage and resolution
+//! - [`InMemoryIdentityStore`] — Reference implementation for testing
+//!
+//! ## Example
 //!
 //! ```rust
-//! use astralis_core::identity::{AstralisUserId, FrontendType};
+//! use astralis_core::identity::{AstralisUserId, FrontendType, FrontendLink, LinkVerificationMethod};
+//! use uuid::Uuid;
 //!
-//! let user = AstralisUserId::new();
-//! println!("User ID: {}", user.id);
+//! // Create a canonical identity
+//! let user = AstralisUserId::new().with_display_name("Alice");
+//!
+//! // Link a Telegram account to it
+//! let link = FrontendLink::new(
+//!     user.id,
+//!     FrontendType::Telegram,
+//!     "98765",
+//!     LinkVerificationMethod::InitialCreation,
+//!     true, // primary
+//! );
+//!
+//! assert_eq!(link.astralis_id, user.id);
+//! assert_eq!(link.frontend, FrontendType::Telegram);
 //! ```
 
 // Allow "WhatsApp" in docs - it's a product name, not code
