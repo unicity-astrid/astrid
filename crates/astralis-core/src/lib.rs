@@ -23,6 +23,7 @@ pub mod identity;
 pub mod input;
 pub mod retry;
 pub mod types;
+pub mod utils;
 pub mod verification;
 pub mod version;
 
@@ -37,5 +38,6 @@ pub use identity::{AstralisUserId, FrontendLink, FrontendType, LinkVerificationM
 pub use input::{ContextIdentifier, MessageId, TaggedMessage};
 pub use retry::{RetryConfig, RetryOutcome, retry};
 pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
+pub use utils::truncate_to_boundary;
 pub use verification::{VerificationRequest, VerificationResponse};
 pub use version::{Version, VersionParseError, Versioned};

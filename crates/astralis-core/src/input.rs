@@ -29,6 +29,7 @@ use std::fmt;
 use uuid::Uuid;
 
 use crate::identity::{AstralisUserId, FrontendType};
+use crate::utils::truncate_to_boundary;
 
 /// Unique message identifier.
 ///
@@ -185,7 +186,7 @@ impl fmt::Display for TaggedMessage {
             self.astralis_user_id,
             self.context,
             if self.content.len() > 50 {
-                format!("{}...", &self.content[..50])
+                format!("{}...", truncate_to_boundary(&self.content, 50))
             } else {
                 self.content.clone()
             }

@@ -1,6 +1,6 @@
 //! Sessions command - manage sessions.
 
-use astralis_core::SessionId;
+use astralis_core::{SessionId, truncate_to_boundary};
 use astralis_runtime::SessionStore;
 use colored::Colorize;
 
@@ -74,7 +74,7 @@ pub(crate) fn show_session(store: &SessionStore, id: &str) -> anyhow::Result<()>
         let content = match &msg.content {
             astralis_llm::MessageContent::Text(t) => {
                 if t.len() > 100 {
-                    format!("{}...", &t[..100])
+                    format!("{}...", truncate_to_boundary(t, 100))
                 } else {
                     t.clone()
                 }
@@ -83,10 +83,7 @@ pub(crate) fn show_session(store: &SessionStore, id: &str) -> anyhow::Result<()>
                 format!("[Tool calls: {}]", calls.len())
             },
             astralis_llm::MessageContent::ToolResult(r) => {
-                format!(
-                    "[Tool result: {}...]",
-                    &r.content[..50.min(r.content.len())]
-                )
+                format!("[Tool result: {}...]", truncate_to_boundary(&r.content, 50))
             },
             astralis_llm::MessageContent::MultiPart(_) => "[Multi-part]".to_string(),
         };

@@ -1,5 +1,6 @@
 //! Servers command - manage MCP servers.
 
+use astralis_core::truncate_to_boundary;
 use astralis_gateway::rpc::ToolInfo;
 use astralis_mcp::ServersConfig;
 use colored::Colorize;
@@ -146,7 +147,7 @@ pub(crate) async fn list_tools(client: &DaemonClient) -> anyhow::Result<()> {
             || "-".to_string(),
             |d| {
                 if d.len() > 40 {
-                    format!("{}...", &d[..40])
+                    format!("{}...", truncate_to_boundary(d, 40))
                 } else {
                     d.to_string()
                 }

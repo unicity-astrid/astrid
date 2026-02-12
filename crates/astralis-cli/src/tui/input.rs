@@ -113,14 +113,18 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         // ── Text editing ────────────────────────────────────────
         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
             app.input.insert(app.cursor_pos, c);
-            app.cursor_pos += 1;
+            app.cursor_pos += c.len_utf8();
             app.scroll_offset = 0;
             app.palette_reset();
         },
         (KeyCode::Backspace, _) => {
             if app.cursor_pos > 0 {
-                app.cursor_pos -= 1;
-                app.input.remove(app.cursor_pos);
+                let prev = app.input[..app.cursor_pos]
+                    .char_indices()
+                    .next_back()
+                    .map_or(0, |(i, _)| i);
+                app.input.remove(prev);
+                app.cursor_pos = prev;
             }
             app.palette_reset();
         },
@@ -133,10 +137,18 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
 
         // Cursor movement
         (KeyCode::Left, _) => {
-            app.cursor_pos = app.cursor_pos.saturating_sub(1);
+            if app.cursor_pos > 0 {
+                app.cursor_pos = app.input[..app.cursor_pos]
+                    .char_indices()
+                    .next_back()
+                    .map_or(0, |(i, _)| i);
+            }
         },
         (KeyCode::Right, _) => {
-            app.cursor_pos = (app.cursor_pos + 1).min(app.input.len());
+            if app.cursor_pos < app.input.len() {
+                let (_, c) = app.input[app.cursor_pos..].char_indices().next().unwrap();
+                app.cursor_pos += c.len_utf8();
+            }
         },
         (KeyCode::Home, _) if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.scroll_offset = usize::MAX;

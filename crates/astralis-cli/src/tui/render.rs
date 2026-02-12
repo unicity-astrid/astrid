@@ -5,6 +5,7 @@ use super::state::{
     UiState,
 };
 use super::theme::Theme;
+use astralis_core::truncate_to_boundary;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -878,7 +879,7 @@ fn render_palette_items(
 
         let desc_avail = (area.width as usize).saturating_sub(padded_name.len());
         let description = if cmd.description.len() > desc_avail && desc_avail > 1 {
-            format!("{}…", &cmd.description[..desc_avail - 1])
+            format!("{}…", truncate_to_boundary(cmd.description, desc_avail - 1))
         } else {
             cmd.description.to_string()
         };
