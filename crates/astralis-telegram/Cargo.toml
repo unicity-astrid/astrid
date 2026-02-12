@@ -1,0 +1,47 @@
+[package]
+name = "astralis-telegram"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Telegram bot frontend for the Astralis agent runtime"
+
+[[bin]]
+name = "astralis-telegram"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+astralis-config = { workspace = true }
+astralis-core = { workspace = true }
+astralis-gateway = { workspace = true }
+
+# Telegram
+teloxide = { version = "0.13", features = ["macros"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# JSON-RPC client
+jsonrpsee = { workspace = true }
+
+# Serialization
+serde_json = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Text processing
+regex = { workspace = true }
+
+[lints]
+workspace = true

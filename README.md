@@ -189,6 +189,87 @@ cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
+## Telegram Integration
+
+Astralis includes a Telegram bot frontend that connects users to the agent runtime via Telegram. It supports two modes:
+
+- **Embedded mode** (default) — The daemon spawns the bot automatically when `bot_token` is configured. No separate process needed.
+- **Standalone mode** — Run the bot as a separate binary (`astralis-telegram`), useful for deploying the bot on a different machine from the daemon.
+
+### Setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) on Telegram and copy the API token.
+
+2. Add the token to your config (`~/.astralis/config.toml`):
+
+```toml
+[telegram]
+bot_token = "123456:ABC-DEF..."
+```
+
+Or use an environment variable:
+
+```bash
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+```
+
+3. Start the daemon:
+
+```bash
+cargo run -p astralis-cli --bin astralisd
+```
+
+The bot starts automatically and begins polling Telegram for messages.
+
+### Configuration
+
+All settings go in the `[telegram]` section of `config.toml`:
+
+```toml
+[telegram]
+# Bot API token from @BotFather (required).
+# Prefer TELEGRAM_BOT_TOKEN env var over storing in config.
+bot_token = "123456:ABC-DEF..."
+
+# Restrict access to specific Telegram user IDs.
+# Empty list = allow all users.
+allowed_user_ids = [123456789, 987654321]
+
+# Workspace path for sessions created by the bot.
+# workspace_path = "/path/to/project"
+
+# Embedded mode (default: true).
+# Set to false to run the bot as a separate process.
+embedded = true
+```
+
+### Standalone Mode
+
+To run the bot separately from the daemon:
+
+1. Set `embedded = false` in config (or omit `bot_token` from daemon config entirely).
+2. Start the daemon: `cargo run -p astralis-cli --bin astralisd`
+3. Start the bot: `cargo run -p astralis-telegram`
+
+The standalone bot auto-discovers the daemon via `~/.astralis/daemon.port`, or you can set `daemon_url` explicitly:
+
+```toml
+[telegram]
+daemon_url = "ws://127.0.0.1:3100"
+```
+
+### Bot Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome message |
+| `/help` | Show available commands |
+| `/reset` | End current session and start fresh |
+| `/status` | Show daemon status and budget |
+| `/cancel` | Cancel the current agent turn |
+
+The bot supports approval and elicitation flows via inline keyboards — when the agent needs permission or user input, Telegram buttons appear inline in the chat.
+
 ## Project Structure
 
 ```
@@ -210,6 +291,7 @@ crates/
 ├── astralis-gateway          # Gateway daemon — hosts runtime, manages sessions + MCP servers
 ├── astralis-cli              # Thin CLI client — connects to daemon via JSON-RPC
 ├── astralis-cli-mockup       # Ratatui-based TUI prototype
+├── astralis-telegram         # Telegram bot frontend (embedded or standalone)
 ├── astralis-telemetry        # Tracing and metrics
 ├── astralis-test             # Test utilities
 └── astralis-prelude          # Common re-exports
@@ -240,15 +322,15 @@ crates/
                  ▼
          astralis-gateway (daemon — hosts runtime)
                  │
-    ┌────────────┼────────────┐
-    ▼            ▼            ▼
-astralis-cli  (discord)  (other frontends)
-  (thin client via JSON-RPC)
+    ┌────────────┼──────────────────┐
+    ▼            ▼                  ▼
+astralis-cli  astralis-telegram  (other frontends)
+  (thin clients via JSON-RPC)
 ```
 
 ## Configuration
 
-Astralis uses a layered TOML configuration system with 17 config sections (model, runtime, security, budget, rate limits, servers, audit, keys, workspace, git, hooks, logging, gateway, timeouts, sessions, subagents, retry):
+Astralis uses a layered TOML configuration system with 18 config sections (model, runtime, security, budget, rate limits, servers, audit, keys, workspace, git, hooks, logging, gateway, timeouts, sessions, subagents, telegram, retry):
 
 ```
 embedded defaults → system config → user config → workspace config

@@ -165,7 +165,8 @@ impl DaemonServer {
     #[allow(clippy::too_many_lines)]
     pub async fn start(
         options: DaemonStartOptions,
-    ) -> Result<(Self, ServerHandle, SocketAddr), crate::GatewayError> {
+    ) -> Result<(Self, ServerHandle, SocketAddr, astralis_config::Config), crate::GatewayError>
+    {
         let paths = DaemonPaths::default_dir().map_err(|e| {
             crate::GatewayError::Runtime(format!("Failed to resolve daemon paths: {e}"))
         })?;
@@ -376,7 +377,7 @@ impl DaemonServer {
             active_connections,
             session_cleanup_interval,
         };
-        Ok((daemon, handle, addr))
+        Ok((daemon, handle, addr, cfg))
     }
 
     /// Gracefully shut down all MCP servers.

@@ -38,6 +38,7 @@ members = [
     # Frontends
     "crates/astralis-cli",
     "crates/astralis-cli-mockup",  # UI/UX prototype (not part of SDK)
+    "crates/astralis-telegram",
     # "crates/astralis-discord",  # Phase 7
     # "crates/astralis-web",      # Phase 7
 
@@ -70,6 +71,7 @@ astralis-workspace = { path = "crates/astralis-workspace" }
 astralis-tools = { path = "crates/astralis-tools" }
 astralis-prelude = { path = "crates/astralis-prelude" }
 astralis-gateway = { path = "crates/astralis-gateway" }
+astralis-telegram = { path = "crates/astralis-telegram" }
 
 # Internal crates - Configuration
 astralis-config = { path = "crates/astralis-config" }
@@ -150,6 +152,9 @@ globset = "0.4"
 
 # Regex
 regex = "1.10"
+
+# Telegram bot framework
+teloxide = { version = "0.13", features = ["macros"] }
 
 # Async utilities
 async-trait = "0.1"

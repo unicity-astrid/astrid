@@ -421,6 +421,32 @@ max_depth = 3
 timeout_secs = 300
 
 # ============================================================================
+# Telegram Bot Configuration
+# ============================================================================
+# Settings for the Telegram bot frontend (astralis-telegram).
+
+[telegram]
+# Telegram Bot API token from @BotFather.
+# Prefer environment variable TELEGRAM_BOT_TOKEN over storing here.
+# bot_token = ""
+
+# WebSocket URL for the daemon (e.g. "ws://127.0.0.1:3100").
+# If omitted, auto-discovers from ~/.astralis/daemon.port.
+# daemon_url = ""
+
+# Telegram user IDs allowed to interact with the bot.
+# Empty list means allow all users.
+allowed_user_ids = []
+
+# Workspace path to use when creating sessions.
+# workspace_path = ""
+
+# Whether the daemon should embed and auto-start the Telegram bot.
+# When true (default), the daemon spawns the bot if bot_token is configured.
+# Set to false to run the bot as a separate standalone process.
+embedded = true
+
+# ============================================================================
 # Retry Configuration
 # ============================================================================
 # Controls retry behaviour for transient failures (LLM and MCP).

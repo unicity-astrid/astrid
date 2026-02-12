@@ -27,6 +27,7 @@ astralis-llm = { workspace = true }
 astralis-runtime = { workspace = true }
 astralis-gateway = { workspace = true }
 astralis-hooks = { workspace = true }
+astralis-telegram = { workspace = true }
 astralis-telemetry = { workspace = true }
 astralis-approval = { workspace = true }
 

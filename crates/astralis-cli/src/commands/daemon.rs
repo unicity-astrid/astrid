@@ -15,7 +15,7 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
         grace_period_secs: grace_period,
     };
 
-    let (daemon, handle, addr) = DaemonServer::start(options).await?;
+    let (daemon, handle, addr, cfg) = DaemonServer::start(options).await?;
 
     let mode_label = if daemon.is_ephemeral() {
         "ephemeral"
@@ -38,6 +38,9 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
     // Start ephemeral shutdown monitor (returns None in persistent mode).
     let ephemeral_handle = daemon.spawn_ephemeral_monitor();
 
+    // Spawn embedded Telegram bot if configured.
+    let telegram_handle = astralis_telegram::bot::spawn_embedded(&cfg.telegram, addr);
+
     // Wait for shutdown signal (Ctrl+C, RPC shutdown, or ephemeral monitor).
     let mut shutdown_rx = daemon.subscribe_shutdown();
     tokio::select! {
@@ -51,6 +54,9 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
     health_handle.abort();
     cleanup_handle.abort();
     if let Some(h) = ephemeral_handle {
+        h.abort();
+    }
+    if let Some(h) = telegram_handle {
         h.abort();
     }
 

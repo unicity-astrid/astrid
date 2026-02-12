@@ -91,6 +91,19 @@ const ENV_MAPPINGS: &[EnvMapping] = &[
         var_name: "OPENAI_API_KEY",
         field_path: "model.api_key",
     },
+    // Telegram bot settings.
+    EnvMapping {
+        var_name: "TELEGRAM_BOT_TOKEN",
+        field_path: "telegram.bot_token",
+    },
+    EnvMapping {
+        var_name: "ASTRALIS_DAEMON_URL",
+        field_path: "telegram.daemon_url",
+    },
+    EnvMapping {
+        var_name: "ASTRALIS_WORKSPACE",
+        field_path: "telegram.workspace_path",
+    },
 ];
 
 /// Apply environment variable fallbacks to fields that were **not** set by
@@ -289,6 +302,7 @@ fn coerce_to_toml_value(path: &str, val: &str) -> toml::Value {
         "security.require_signatures"
             | "security.policy.require_approval_for_delete"
             | "security.policy.require_approval_for_network"
+            | "telegram.embedded"
     ) && let Ok(b) = val.parse::<bool>()
     {
         return toml::Value::Boolean(b);
