@@ -84,7 +84,10 @@ pub(crate) async fn run(
     session_info: &SessionInfo,
     model_name: &str,
 ) -> anyhow::Result<()> {
-    let working_dir = session_info.workspace.display().to_string();
+    let working_dir = session_info
+        .workspace
+        .as_ref()
+        .map_or_else(|| "no workspace".to_string(), |p| p.display().to_string());
     let session_id_short = session_id.0.to_string()[..8].to_string();
 
     let mut app = App::new(working_dir, model_name.to_string(), session_id_short);

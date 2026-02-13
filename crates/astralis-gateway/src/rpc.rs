@@ -21,8 +21,8 @@ use serde_json::Value;
 pub struct SessionInfo {
     /// Unique session identifier.
     pub id: SessionId,
-    /// Workspace root this session is bound to.
-    pub workspace: PathBuf,
+    /// Workspace root this session is bound to (if any).
+    pub workspace: Option<PathBuf>,
     /// When the session was created.
     pub created_at: DateTime<Utc>,
     /// Number of messages in the session.

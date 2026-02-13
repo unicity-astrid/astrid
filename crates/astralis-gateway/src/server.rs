@@ -109,8 +109,8 @@ struct SessionHandle {
     frontend: Arc<DaemonFrontend>,
     /// Broadcast channel for events going to CLI subscribers.
     event_tx: broadcast::Sender<DaemonEvent>,
-    /// The workspace path for this session.
-    workspace: PathBuf,
+    /// The workspace path for this session (if any).
+    workspace: Option<PathBuf>,
     /// When the session was created (immutable).
     created_at: DateTime<Utc>,
     /// Handle to the currently running turn task (if any).
@@ -622,11 +622,8 @@ impl AstralisRpcServer for RpcImpl {
         &self,
         workspace_path: Option<PathBuf>,
     ) -> Result<SessionInfo, ErrorObjectOwned> {
-        let workspace = workspace_path
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-
-        let mut session = self.runtime.create_session(Some(&workspace));
-        session.workspace_path = Some(workspace.clone());
+        let mut session = self.runtime.create_session(workspace_path.as_deref());
+        session.workspace_path = workspace_path.clone();
         session.model = Some(self.model_name.clone());
 
         // Wire persistent capability store (shared across sessions).
@@ -683,7 +680,7 @@ impl AstralisRpcServer for RpcImpl {
             session: Arc::new(Mutex::new(session)),
             frontend,
             event_tx,
-            workspace: workspace.clone(),
+            workspace: workspace_path.clone(),
             created_at,
             turn_handle: Arc::new(Mutex::new(None)),
         };
@@ -695,7 +692,7 @@ impl AstralisRpcServer for RpcImpl {
 
         let info = SessionInfo {
             id: session_id.clone(),
-            workspace,
+            workspace: workspace_path,
             created_at,
             message_count,
             pending_deferred_count,
@@ -787,10 +784,7 @@ impl AstralisRpcServer for RpcImpl {
 
         let pending_deferred_count = session.approval_manager.get_pending_resolutions().len();
 
-        let workspace = session
-            .workspace_path
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let workspace = session.workspace_path.clone();
         let created_at = session.created_at;
         let message_count = session.messages.len();
 
@@ -1004,7 +998,7 @@ impl AstralisRpcServer for RpcImpl {
         for (id, handle) in sessions.iter() {
             // Filter by workspace path if provided.
             if let Some(ref ws) = workspace_path
-                && &handle.workspace != ws
+                && handle.workspace.as_ref() != Some(ws)
             {
                 continue;
             }
