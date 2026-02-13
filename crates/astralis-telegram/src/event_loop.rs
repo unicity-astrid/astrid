@@ -299,8 +299,7 @@ pub(crate) fn truncate_preview(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        let boundary = s.floor_char_boundary(max);
-        let mut t = s[..boundary].to_string();
+        let mut t = astralis_core::truncate_to_boundary(s, max).to_string();
         t.push_str("...");
         t
     }
