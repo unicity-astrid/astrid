@@ -17,21 +17,25 @@ pub enum BridgeError {
     #[error("entry point not found: {0}")]
     EntryPointNotFound(PathBuf),
 
-    /// esbuild invocation failed.
-    #[error("esbuild failed: {0}")]
-    BundleFailed(String),
+    /// OXC parse or transform failed.
+    #[error("transpile failed: {0}")]
+    TranspileFailed(String),
 
-    /// `extism-js` invocation failed.
-    #[error("extism-js compilation failed: {0}")]
+    /// Plugin source contains unresolved import statements.
+    #[error("unresolved imports: {0}")]
+    UnresolvedImports(String),
+
+    /// JS → WASM compilation failed (Wizer / kernel).
+    #[error("compilation failed: {0}")]
     CompileFailed(String),
+
+    /// WASM export stitching failed (wasmparser / wasm-encoder).
+    #[error("export stitch failed: {0}")]
+    ExportStitchFailed(String),
 
     /// Failed to write output files.
     #[error("output error: {0}")]
     Output(String),
-
-    /// An external tool is not installed.
-    #[error("{tool} not found in PATH. Install: {install_hint}")]
-    ToolNotFound { tool: String, install_hint: String },
 
     /// Generic I/O error.
     #[error("I/O error: {0}")]

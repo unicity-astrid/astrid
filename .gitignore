@@ -25,6 +25,9 @@ secrets.toml
 # Compiled WASM test fixtures (rebuild via scripts/compile-test-plugin.sh)
 crates/astralis-plugins/tests/fixtures/*.wasm
 
+# QuickJS kernel (rebuild via scripts/build-quickjs-kernel.sh)
+crates/openclaw-bridge/kernel/engine.wasm
+
 # Node.js (packages/)
 packages/*/node_modules/
 packages/*/dist/

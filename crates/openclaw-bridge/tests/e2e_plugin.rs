@@ -3,16 +3,13 @@
 //! Verifies that the shim wraps the plugin code correctly and includes
 //! all host function bindings needed for the 6 registered tools.
 //!
-//! The WASM compilation + execution tests require `extism-js` and are gated
-//! behind `#[ignore]`. Run with:
-//!
-//! ```bash
-//! cargo test -p openclaw-bridge --test e2e_plugin -- --ignored
-//! ```
+//! The WASM compilation test requires the QuickJS kernel to be built.
+//! If the kernel is a placeholder stub, the compile test is skipped.
 
 use std::collections::HashMap;
 
 use openclaw_bridge::shim;
+use openclaw_bridge::transpiler;
 
 /// Read the test plugin source.
 fn test_plugin_source() -> String {
@@ -30,34 +27,34 @@ fn shim_wraps_test_plugin_with_all_host_functions() {
 
     let shim = shim::generate(&plugin_code, &config);
 
-    // Host function imports are present
+    // Host function references are present (lazy-resolved via _getHostFn)
     assert!(
-        shim.contains("_astralis_log"),
-        "missing astralis_log import"
+        shim.contains("\"astralis_log\""),
+        "missing astralis_log reference"
     );
     assert!(
-        shim.contains("_astralis_get_config"),
-        "missing astralis_get_config import"
+        shim.contains("\"astralis_get_config\""),
+        "missing astralis_get_config reference"
     );
     assert!(
-        shim.contains("_astralis_kv_get"),
-        "missing astralis_kv_get import"
+        shim.contains("\"astralis_kv_get\""),
+        "missing astralis_kv_get reference"
     );
     assert!(
-        shim.contains("_astralis_kv_set"),
-        "missing astralis_kv_set import"
+        shim.contains("\"astralis_kv_set\""),
+        "missing astralis_kv_set reference"
     );
     assert!(
-        shim.contains("_astralis_read_file"),
-        "missing astralis_read_file import"
+        shim.contains("\"astralis_read_file\""),
+        "missing astralis_read_file reference"
     );
     assert!(
-        shim.contains("_astralis_write_file"),
-        "missing astralis_write_file import"
+        shim.contains("\"astralis_write_file\""),
+        "missing astralis_write_file reference"
     );
     assert!(
-        shim.contains("_astralis_http_request"),
-        "missing astralis_http_request import"
+        shim.contains("\"astralis_http_request\""),
+        "missing astralis_http_request reference"
     );
 
     // Host function wrappers are present
@@ -153,18 +150,39 @@ fn shim_registers_all_six_tools() {
     );
 }
 
-/// Compile the shimmed JS to WASM via `extism-js`.
-///
-/// Requires `extism-js` to be installed. Run with:
-/// ```bash
-/// cargo test -p openclaw-bridge --test e2e_plugin -- --ignored
-/// ```
 #[test]
-#[ignore = "requires extism-js installed"]
+fn transpile_js_fixture_passthrough() {
+    // Plain JS should pass through the transpiler cleanly
+    let source = test_plugin_source();
+    let result = transpiler::transpile(&source, "index.js").unwrap();
+    // The transpiled output should still contain the key plugin patterns
+    assert!(
+        result.contains("registerTool"),
+        "registerTool should survive transpilation"
+    );
+    assert!(
+        result.contains("test-log"),
+        "tool names should survive transpilation"
+    );
+}
+
+/// Compile the shimmed JS to WASM via the embedded Wizer + kernel.
+///
+/// This test requires the real QuickJS kernel (not the placeholder stub).
+/// It is skipped if the kernel is too small to be real.
+#[test]
 fn compile_test_plugin_to_wasm() {
-    // Check extism-js is available
-    if which::which("extism-js").is_err() {
-        eprintln!("extism-js not found, skipping compilation test");
+    // Check if the kernel is a real build (not the placeholder stub)
+    let kernel_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("kernel/engine.wasm");
+    let kernel_size = std::fs::metadata(&kernel_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    if kernel_size < 100 {
+        eprintln!(
+            "QuickJS kernel is a placeholder ({kernel_size} bytes), skipping compile test. \
+             Build the real kernel — see kernel/README.md"
+        );
         return;
     }
 
@@ -174,16 +192,14 @@ fn compile_test_plugin_to_wasm() {
 
     let shimmed = shim::generate(&plugin_code, &config);
 
-    // Write shimmed JS to temp file
+    // Write shimmed JS to temp file for debugging
     let tmp_dir = std::env::temp_dir().join("oc-e2e-compile");
     let _ = std::fs::create_dir_all(&tmp_dir);
-    let js_path = tmp_dir.join("plugin.js");
     let wasm_path = tmp_dir.join("plugin.wasm");
-    std::fs::write(&js_path, &shimmed).expect("write shimmed JS");
 
-    // Compile
-    openclaw_bridge::compiler::compile(&js_path, &wasm_path)
-        .expect("extism-js compilation should succeed");
+    // Compile (now takes string, not path)
+    openclaw_bridge::compiler::compile(&shimmed, &wasm_path)
+        .expect("embedded compilation should succeed");
 
     assert!(wasm_path.exists(), "WASM output file should exist");
     let wasm_bytes = std::fs::read(&wasm_path).unwrap();
@@ -192,6 +208,9 @@ fn compile_test_plugin_to_wasm() {
         "WASM file should be non-trivial (got {} bytes)",
         wasm_bytes.len()
     );
+
+    // Verify WASM magic
+    assert_eq!(&wasm_bytes[..4], b"\0asm", "output should be valid WASM");
 
     // Copy to the fixture location for the astralis-plugins integration test
     let fixture_dest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -209,4 +228,46 @@ fn compile_test_plugin_to_wasm() {
     );
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Test transpiling a TypeScript plugin source.
+#[test]
+fn transpile_typescript_plugin() {
+    let ts_source = r#"
+interface ToolDef {
+    description: string;
+    inputSchema: object;
+}
+
+function activate(ctx: any): void {
+    ctx.logger.info("TypeScript plugin activating");
+    ctx.registerTool("ts-test", {
+        description: "A TypeScript test tool",
+        inputSchema: { type: "object" }
+    } as ToolDef, (name: string, args: Record<string, unknown>) => {
+        return "hello from TypeScript";
+    });
+}
+
+module.exports = { activate };
+"#;
+
+    let result = transpiler::transpile(ts_source, "plugin.ts").unwrap();
+    // Type annotations should be stripped
+    assert!(!result.contains(": any"), "should strip type annotations");
+    assert!(!result.contains(": void"), "should strip return type");
+    assert!(
+        !result.contains("interface ToolDef"),
+        "should strip interfaces"
+    );
+    assert!(
+        !result.contains("as ToolDef"),
+        "should strip type assertions"
+    );
+    // Core logic should be preserved
+    assert!(
+        result.contains("registerTool"),
+        "should preserve registerTool call"
+    );
+    assert!(result.contains("ts-test"), "should preserve tool name");
 }

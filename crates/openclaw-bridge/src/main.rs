@@ -8,12 +8,12 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
-use openclaw_bridge::bundler;
 use openclaw_bridge::compiler;
 use openclaw_bridge::error::{BridgeError, BridgeResult};
 use openclaw_bridge::manifest;
 use openclaw_bridge::output;
 use openclaw_bridge::shim;
+use openclaw_bridge::transpiler;
 
 #[derive(Parser)]
 #[command(
@@ -44,14 +44,15 @@ enum Command {
         /// Only generate the JS shim (skip WASM compilation).
         #[arg(long)]
         js_only: bool,
-
-        /// Skip esbuild bundling (use the entry point JS file directly).
-        #[arg(long)]
-        skip_bundle: bool,
     },
 
-    /// Check that required external tools are installed.
-    Doctor,
+    /// Internal: run Wizer on the embedded `QuickJS` kernel (hidden, used by compiler subprocess).
+    #[command(hide = true)]
+    WizerInternal {
+        /// Output path for the Wizer'd WASM.
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 fn main() {
@@ -69,18 +70,8 @@ fn run(cli: Cli) -> BridgeResult<()> {
             output: output_dir,
             config,
             js_only,
-            skip_bundle,
-        } => run_convert(
-            &plugin_dir,
-            &output_dir,
-            config.as_deref(),
-            js_only,
-            skip_bundle,
-        ),
-        Command::Doctor => {
-            run_doctor();
-            Ok(())
-        },
+        } => run_convert(&plugin_dir, &output_dir, config.as_deref(), js_only),
+        Command::WizerInternal { output } => compiler::run_wizer_internal(&output),
     }
 }
 
@@ -89,7 +80,6 @@ fn run_convert(
     output_dir: &Path,
     config_json: Option<&str>,
     js_only: bool,
-    skip_bundle: bool,
 ) -> BridgeResult<()> {
     // 1. Parse config from --config flag
     let config: HashMap<String, serde_json::Value> = match config_json {
@@ -111,13 +101,10 @@ fn run_convert(
         return Err(BridgeError::EntryPointNotFound(entry_point));
     }
 
-    // 4. Bundle if needed
-    let js_code = if skip_bundle {
-        std::fs::read_to_string(&entry_point)?
-    } else {
-        // Always run through esbuild for a self-contained CJS bundle
-        bundler::bundle(&entry_point)?
-    };
+    // 4. Read and transpile source (TS→JS + import rejection)
+    let raw_source = std::fs::read_to_string(&entry_point)?;
+    let js_code = transpiler::transpile(&raw_source, &oc_manifest.main)?;
+    eprintln!("Transpiled: {}", oc_manifest.main);
 
     // 5. Generate JS shim
     let astralis_id = manifest::convert_id(&oc_manifest.id)?;
@@ -134,9 +121,9 @@ fn run_convert(
     if js_only {
         eprintln!("--js-only: skipping WASM compilation");
     } else {
-        // 7. Compile to WASM
+        // 7. Compile to WASM (embedded Wizer + kernel)
         let wasm_path = output_dir.join("plugin.wasm");
-        compiler::compile(&shim_path, &wasm_path)?;
+        compiler::compile(&shim_code, &wasm_path)?;
         eprintln!("Compiled WASM: {}", wasm_path.display());
 
         // 8. Generate plugin.toml
@@ -146,32 +133,4 @@ fn run_convert(
 
     eprintln!("Done.");
     Ok(())
-}
-
-fn run_doctor() {
-    let mut all_ok = true;
-
-    // Check extism-js
-    if let Ok(path) = which::which("extism-js") {
-        eprintln!("[ok] extism-js found: {}", path.display());
-    } else {
-        eprintln!("[missing] extism-js — Extism JS PDK compiler");
-        eprintln!("  Install: https://github.com/nicholasgasior/extism-js/releases");
-        all_ok = false;
-    }
-
-    // Check esbuild
-    if let Ok(path) = which::which("esbuild") {
-        eprintln!("[ok] esbuild found: {}", path.display());
-    } else {
-        eprintln!("[missing] esbuild — JS/TS bundler");
-        eprintln!("  Install: npm i -g esbuild");
-        all_ok = false;
-    }
-
-    if all_ok {
-        eprintln!("\nAll tools installed.");
-    } else {
-        eprintln!("\nSome tools are missing. Install them before running `convert`.");
-    }
 }

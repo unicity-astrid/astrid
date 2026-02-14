@@ -464,12 +464,17 @@ fn lexical_normalize(path: &Path) -> std::path::PathBuf {
 
 /// Register all host functions with an Extism `PluginBuilder`.
 ///
-/// This is the single point where all 7 host functions are wired up.
+/// Registers:
+/// - 7 host functions in the `extism:host/user` namespace (astralis_*)
+/// - 3 shim functions in the `shim` namespace (for `QuickJS` kernel dispatch)
 pub fn register_host_functions(
     builder: extism::PluginBuilder,
     user_data: UserData<HostState>,
 ) -> extism::PluginBuilder {
+    use extism::ValType;
+
     builder
+        // ── extism:host/user namespace (standard host functions) ──
         .with_function(
             "astralis_log",
             [PTR, PTR],
@@ -516,9 +521,212 @@ pub fn register_host_functions(
             "astralis_http_request",
             [PTR],
             [PTR],
-            user_data,
+            user_data.clone(),
             astralis_http_request_impl,
         )
+        // ── shim namespace (QuickJS kernel dispatch layer) ──
+        //
+        // The QuickJS kernel imports 3 functions from the `shim` namespace to
+        // handle host function type introspection and dispatch. These are
+        // normally provided by a generated shim WASM merged via wasm-merge.
+        // We provide them as host functions instead, eliminating the merge step.
+        //
+        // Host function indices (alphabetically sorted):
+        //   0: astralis_get_config   (PTR) -> PTR
+        //   1: astralis_http_request (PTR) -> PTR
+        //   2: astralis_kv_get       (PTR) -> PTR
+        //   3: astralis_kv_set       (PTR, PTR) -> void
+        //   4: astralis_log          (PTR, PTR) -> void
+        //   5: astralis_read_file    (PTR) -> PTR
+        //   6: astralis_write_file   (PTR, PTR) -> void
+        .with_function_in_namespace(
+            "shim",
+            "__get_function_arg_type",
+            [ValType::I32, ValType::I32],
+            [ValType::I32],
+            UserData::new(()),
+            shim_get_function_arg_type,
+        )
+        .with_function_in_namespace(
+            "shim",
+            "__get_function_return_type",
+            [ValType::I32],
+            [ValType::I32],
+            UserData::new(()),
+            shim_get_function_return_type,
+        )
+        .with_function_in_namespace(
+            "shim",
+            "__invokeHostFunc",
+            [
+                ValType::I32,
+                ValType::I64,
+                ValType::I64,
+                ValType::I64,
+                ValType::I64,
+                ValType::I64,
+            ],
+            [ValType::I64],
+            user_data,
+            shim_invoke_host_func,
+        )
+}
+
+// ---------------------------------------------------------------------------
+// QuickJS shim functions (shim:: namespace)
+// ---------------------------------------------------------------------------
+
+/// Type codes used by the `QuickJS` kernel for host function dispatch.
+const TYPE_VOID: i32 = 0;
+const TYPE_I64: i32 = 2;
+
+/// Number of host functions.
+const NUM_HOST_FNS: i32 = 7;
+
+/// Number of arguments per host function (alphabetically sorted).
+///
+/// `[get_config=1, http_request=1, kv_get=1, kv_set=2, log=2, read_file=1, write_file=2]`
+const HOST_FN_ARG_COUNTS: [i32; 7] = [1, 1, 1, 2, 2, 1, 2];
+
+/// Return type per host function: 0=void, 2=i64.
+///
+/// `[get_config→i64, http_request→i64, kv_get→i64, kv_set→void, log→void, read_file→i64, write_file→void]`
+const HOST_FN_RETURN_TYPES: [i32; 7] = [
+    TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
+];
+
+/// `shim::__get_function_arg_type(func_idx, arg_idx) -> type_code`
+///
+/// Returns the WASM type code for a host function argument.
+/// All our host functions use i64 (memory offset) arguments.
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+fn shim_get_function_arg_type(
+    _plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<()>,
+) -> Result<(), Error> {
+    let func_idx = inputs[0].unwrap_i32();
+    let arg_idx = inputs[1].unwrap_i32();
+
+    #[allow(clippy::cast_sign_loss)]
+    let type_code = if (0..NUM_HOST_FNS).contains(&func_idx)
+        && (0..HOST_FN_ARG_COUNTS[func_idx as usize]).contains(&arg_idx)
+    {
+        TYPE_I64 // All our args are i64 (memory offsets)
+    } else {
+        TYPE_VOID
+    };
+
+    outputs[0] = Val::I32(type_code);
+    Ok(())
+}
+
+/// `shim::__get_function_return_type(func_idx) -> type_code`
+///
+/// Returns the WASM type code for a host function's return value.
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+fn shim_get_function_return_type(
+    _plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<()>,
+) -> Result<(), Error> {
+    let func_idx = inputs[0].unwrap_i32();
+
+    #[allow(clippy::cast_sign_loss)]
+    let type_code = if (0..NUM_HOST_FNS).contains(&func_idx) {
+        HOST_FN_RETURN_TYPES[func_idx as usize]
+    } else {
+        TYPE_VOID
+    };
+
+    outputs[0] = Val::I32(type_code);
+    Ok(())
+}
+
+/// `shim::__invokeHostFunc(func_idx, arg0, arg1, arg2, arg3, arg4) -> i64`
+///
+/// Dispatches a host function call from the `QuickJS` kernel.
+/// Arguments are passed as i64 bit patterns (memory offsets for our functions).
+#[allow(clippy::needless_pass_by_value)]
+fn shim_invoke_host_func(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let func_idx = inputs[0].unwrap_i32();
+    let args = &inputs[1..]; // arg0..arg4 as i64
+
+    // Dispatch based on alphabetically sorted function index.
+    // Each branch repackages i64 args as Val::I64 and delegates to the
+    // actual host function implementation.
+    match func_idx {
+        0 => {
+            // astralis_get_config(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astralis_get_config_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        1 => {
+            // astralis_http_request(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astralis_http_request_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        2 => {
+            // astralis_kv_get(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astralis_kv_get_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        3 => {
+            // astralis_kv_set(PTR, PTR) -> void
+            let fn_inputs = [
+                Val::I64(args[0].unwrap_i64()),
+                Val::I64(args[1].unwrap_i64()),
+            ];
+            let mut fn_outputs = [];
+            astralis_kv_set_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(0);
+        },
+        4 => {
+            // astralis_log(PTR, PTR) -> void
+            let fn_inputs = [
+                Val::I64(args[0].unwrap_i64()),
+                Val::I64(args[1].unwrap_i64()),
+            ];
+            let mut fn_outputs = [];
+            astralis_log_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(0);
+        },
+        5 => {
+            // astralis_read_file(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astralis_read_file_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        6 => {
+            // astralis_write_file(PTR, PTR) -> void
+            let fn_inputs = [
+                Val::I64(args[0].unwrap_i64()),
+                Val::I64(args[1].unwrap_i64()),
+            ];
+            let mut fn_outputs = [];
+            astralis_write_file_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(0);
+        },
+        _ => {
+            outputs[0] = Val::I64(0);
+        },
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -552,5 +760,72 @@ mod tests {
     fn lexical_normalize_handles_only_dots() {
         let normalized = lexical_normalize(Path::new("./foo/./bar"));
         assert_eq!(normalized, Path::new("foo/bar"));
+    }
+
+    /// Verify host function metadata is in strict alphabetical order.
+    ///
+    /// The shim dispatch layer, `HOST_FN_ARG_COUNTS`, `HOST_FN_RETURN_TYPES`,
+    /// and the `shim_invoke_host_func` match arms ALL depend on alphabetical
+    /// ordering. This test catches any desynchronization.
+    #[test]
+    fn host_function_ordering_is_alphabetical() {
+        // Canonical alphabetically sorted host function names.
+        // This list is the single source of truth — if a function is added,
+        // it must be inserted here in sorted order.
+        let expected_order = [
+            "astralis_get_config",
+            "astralis_http_request",
+            "astralis_kv_get",
+            "astralis_kv_set",
+            "astralis_log",
+            "astralis_read_file",
+            "astralis_write_file",
+        ];
+
+        // Verify count matches constants
+        assert_eq!(
+            expected_order.len() as i32,
+            NUM_HOST_FNS,
+            "NUM_HOST_FNS doesn't match expected function count"
+        );
+        assert_eq!(
+            HOST_FN_ARG_COUNTS.len(),
+            expected_order.len(),
+            "HOST_FN_ARG_COUNTS length mismatch"
+        );
+        assert_eq!(
+            HOST_FN_RETURN_TYPES.len(),
+            expected_order.len(),
+            "HOST_FN_RETURN_TYPES length mismatch"
+        );
+
+        // Verify the list is actually sorted
+        let mut sorted = expected_order;
+        sorted.sort();
+        assert_eq!(
+            expected_order, sorted,
+            "host function names must be alphabetically sorted"
+        );
+
+        // Verify arg counts match expected signatures:
+        //   get_config(key)=1, http_request(json)=1, kv_get(key)=1,
+        //   kv_set(key,val)=2, log(level,msg)=2, read_file(path)=1,
+        //   write_file(path,content)=2
+        let expected_args = [1, 1, 1, 2, 2, 1, 2];
+        assert_eq!(
+            HOST_FN_ARG_COUNTS, expected_args,
+            "HOST_FN_ARG_COUNTS doesn't match expected signatures"
+        );
+
+        // Verify return types match:
+        //   get_config→i64, http_request→i64, kv_get→i64,
+        //   kv_set→void, log→void, read_file→i64, write_file→void
+        let expected_returns = [
+            TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
+        ];
+        assert_eq!(
+            HOST_FN_RETURN_TYPES, expected_returns,
+            "HOST_FN_RETURN_TYPES doesn't match expected signatures"
+        );
     }
 }

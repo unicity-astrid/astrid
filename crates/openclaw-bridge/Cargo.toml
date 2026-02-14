@@ -14,11 +14,19 @@ path = "src/main.rs"
 [dependencies]
 blake3.workspace = true
 clap.workspace = true
+oxc.workspace = true
+oxc_allocator.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 toml.workspace = true
-which.workspace = true
+wasm-encoder.workspace = true
+wasmparser.workspace = true
+wizer.workspace = true
+
+[build-dependencies]
+blake3 = { workspace = true }
 
 [dev-dependencies]
 astralis-plugins = { workspace = true }

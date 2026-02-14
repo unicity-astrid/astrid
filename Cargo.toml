@@ -99,6 +99,20 @@ rmcp = { version = "0.15", features = ["client", "transport-child-process", "tra
 # Binary lookup
 which = "7"
 
+# JS/TS transpilation (OXC)
+oxc = { version = "0.112", features = ["transformer", "semantic", "codegen"] }
+oxc_allocator = "0.112"
+
+# WASM pre-initialization
+wizer = "10"
+
+# WASM binary manipulation
+wasmparser = "0.227"
+wasm-encoder = "0.227"
+
+# Temporary files
+tempfile = "3"
+
 # JSON-RPC over WebSocket (daemon ↔ CLI IPC)
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
 
