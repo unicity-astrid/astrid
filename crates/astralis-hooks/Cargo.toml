@@ -9,10 +9,14 @@ description = "Hook system for Astralis secure agent runtime SDK"
 
 [dependencies]
 astralis-core.workspace = true
+astralis-plugins.workspace = true
+astralis-storage.workspace = true
+extism.workspace = true
+blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["process", "time", "sync"] }
+tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }
 tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true

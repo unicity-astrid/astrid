@@ -70,7 +70,9 @@ pub use error::{GatewayError, GatewayResult};
 pub use health::{HealthCheck, HealthState, HealthStatus};
 pub use manager::{AgentHandle, AgentManager, AgentStatus};
 pub use router::{ChannelBinding, MessageRouter};
-pub use rpc::{AstralisRpcClient, DaemonEvent, DaemonStatus, McpServerInfo, SessionInfo, ToolInfo};
+pub use rpc::{
+    AstralisRpcClient, DaemonEvent, DaemonStatus, McpServerInfo, PluginInfo, SessionInfo, ToolInfo,
+};
 pub use runtime::GatewayRuntime;
 pub use secrets::Secrets;
 pub use server::{DaemonServer, DaemonStartOptions};

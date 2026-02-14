@@ -47,6 +47,9 @@ pub struct DaemonStatus {
     pub mcp_servers_configured: usize,
     /// Number of running MCP servers.
     pub mcp_servers_running: usize,
+    /// Number of loaded plugins.
+    #[serde(default)]
+    pub plugins_loaded: usize,
     /// Whether the daemon is running in ephemeral mode (auto-shutdown when
     /// all clients disconnect).
     #[serde(default)]
@@ -71,6 +74,25 @@ pub struct McpServerInfo {
     pub restart_count: u32,
     /// Human-readable description.
     pub description: Option<String>,
+}
+
+/// Information about a loaded plugin (wire type for the RPC boundary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginInfo {
+    /// Unique plugin identifier.
+    pub id: String,
+    /// Human-readable plugin name.
+    pub name: String,
+    /// Plugin version string.
+    pub version: String,
+    /// Plugin state: `"unloaded"`, `"loading"`, `"ready"`, `"failed"`, or `"unloading"`.
+    pub state: String,
+    /// Number of tools this plugin provides.
+    pub tool_count: usize,
+    /// Human-readable description.
+    pub description: Option<String>,
+    /// Error message if state is `"failed"` (None otherwise).
+    pub error: Option<String>,
 }
 
 /// Budget information for a session (wire type).
@@ -186,6 +208,27 @@ pub enum DaemonEvent {
     TurnComplete,
     /// An error occurred.
     Error(String),
+    /// A plugin was loaded successfully.
+    PluginLoaded {
+        /// Plugin identifier.
+        id: String,
+        /// Human-readable plugin name.
+        name: String,
+    },
+    /// A plugin failed to load.
+    PluginFailed {
+        /// Plugin identifier.
+        id: String,
+        /// Error message.
+        error: String,
+    },
+    /// A plugin was unloaded.
+    PluginUnloaded {
+        /// Plugin identifier.
+        id: String,
+        /// Human-readable plugin name.
+        name: String,
+    },
 }
 
 // ---------- RPC API ----------
@@ -291,6 +334,18 @@ pub trait AstralisRpc {
     #[method(name = "saveSession")]
     async fn save_session(&self, session_id: SessionId) -> Result<(), ErrorObjectOwned>;
 
+    /// List registered plugins and their status.
+    #[method(name = "listPlugins")]
+    async fn list_plugins(&self) -> Result<Vec<PluginInfo>, ErrorObjectOwned>;
+
+    /// Load (or reload) a plugin by ID.
+    #[method(name = "loadPlugin")]
+    async fn load_plugin(&self, plugin_id: String) -> Result<PluginInfo, ErrorObjectOwned>;
+
+    /// Unload a plugin by ID.
+    #[method(name = "unloadPlugin")]
+    async fn unload_plugin(&self, plugin_id: String) -> Result<(), ErrorObjectOwned>;
+
     /// Cancel the currently running turn for a session.
     #[method(name = "cancelTurn")]
     async fn cancel_turn(&self, session_id: SessionId) -> Result<(), ErrorObjectOwned>;
@@ -328,6 +383,76 @@ mod tests {
         assert_eq!(tool.name, "exec");
         assert!(tool.description.is_none());
     }
+
+    #[test]
+    fn plugin_info_serde_round_trip() {
+        let info = PluginInfo {
+            id: "my-plugin".to_string(),
+            name: "My Plugin".to_string(),
+            version: "0.1.0".to_string(),
+            state: "ready".to_string(),
+            tool_count: 3,
+            description: Some("A test plugin".to_string()),
+            error: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let decoded: PluginInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.id, "my-plugin");
+        assert_eq!(decoded.state, "ready");
+        assert_eq!(decoded.tool_count, 3);
+        assert!(decoded.error.is_none());
+    }
+
+    #[test]
+    fn plugin_info_failed_state() {
+        let info = PluginInfo {
+            id: "broken".to_string(),
+            name: "Broken".to_string(),
+            version: "0.0.1".to_string(),
+            state: "failed".to_string(),
+            tool_count: 0,
+            description: None,
+            error: Some("WASM compile error".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let decoded: PluginInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.state, "failed");
+        assert_eq!(decoded.error.as_deref(), Some("WASM compile error"));
+    }
+
+    #[test]
+    fn daemon_event_plugin_variants_serde() {
+        let loaded = DaemonEvent::PluginLoaded {
+            id: "hello".to_string(),
+            name: "Hello Plugin".to_string(),
+        };
+        let json = serde_json::to_string(&loaded).unwrap();
+        let decoded: DaemonEvent = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, DaemonEvent::PluginLoaded { .. }));
+
+        let failed = DaemonEvent::PluginFailed {
+            id: "broken".to_string(),
+            error: "load error".to_string(),
+        };
+        let json = serde_json::to_string(&failed).unwrap();
+        let decoded: DaemonEvent = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, DaemonEvent::PluginFailed { .. }));
+
+        let unloaded = DaemonEvent::PluginUnloaded {
+            id: "hello".to_string(),
+            name: "Hello Plugin".to_string(),
+        };
+        let json = serde_json::to_string(&unloaded).unwrap();
+        let decoded: DaemonEvent = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, DaemonEvent::PluginUnloaded { .. }));
+    }
+
+    #[test]
+    fn daemon_status_plugins_loaded_default() {
+        let json = r#"{"running":true,"uptime_secs":10,"active_sessions":0,"version":"0.1.0","mcp_servers_configured":0,"mcp_servers_running":0}"#;
+        let status: DaemonStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(status.plugins_loaded, 0);
+    }
 }
 
 /// Error codes for the RPC API.
@@ -342,4 +467,8 @@ pub mod error_codes {
     pub const INTERNAL_ERROR: i32 = -32004;
     /// Invalid request (bad parameters, etc.).
     pub const INVALID_REQUEST: i32 = -32005;
+    /// Plugin not found.
+    pub const PLUGIN_NOT_FOUND: i32 = -32006;
+    /// Plugin operation error.
+    pub const PLUGIN_ERROR: i32 = -32007;
 }

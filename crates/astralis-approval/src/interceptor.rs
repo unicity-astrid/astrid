@@ -628,6 +628,33 @@ fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<AllowancePatt
             host: host.clone(),
             ports: Some(vec![*port]),
         }),
+        SensitiveAction::PluginExecution {
+            plugin_id,
+            capability,
+        } => Some(AllowancePattern::PluginCapability {
+            plugin_id: plugin_id.clone(),
+            capability: capability.clone(),
+        }),
+        SensitiveAction::PluginHttpRequest { plugin_id, .. } => {
+            Some(AllowancePattern::PluginCapability {
+                plugin_id: plugin_id.clone(),
+                capability: "http_request".to_string(),
+            })
+        },
+        SensitiveAction::PluginFileAccess {
+            plugin_id, mode, ..
+        } => {
+            let cap = match mode {
+                Permission::Read => "file_read",
+                Permission::Write => "file_write",
+                Permission::Delete => "file_delete",
+                _ => return None,
+            };
+            Some(AllowancePattern::PluginCapability {
+                plugin_id: plugin_id.clone(),
+                capability: cap.to_string(),
+            })
+        },
         // Always require per-action approval — no blanket allowance
         SensitiveAction::TransmitData { .. }
         | SensitiveAction::FinancialTransaction { .. }
@@ -654,6 +681,28 @@ fn action_to_resource_permission(action: &SensitiveAction) -> Option<(String, Pe
         },
         SensitiveAction::NetworkRequest { host, port } => {
             Some((format!("net://{host}:{port}"), Permission::Invoke))
+        },
+        SensitiveAction::PluginExecution {
+            plugin_id,
+            capability,
+        } => Some((
+            format!("plugin://{plugin_id}:{capability}"),
+            Permission::Invoke,
+        )),
+        SensitiveAction::PluginHttpRequest { plugin_id, .. } => Some((
+            format!("plugin://{plugin_id}:http_request"),
+            Permission::Invoke,
+        )),
+        SensitiveAction::PluginFileAccess {
+            plugin_id, mode, ..
+        } => {
+            let cap = match mode {
+                Permission::Read => "file_read",
+                Permission::Write => "file_write",
+                Permission::Delete => "file_delete",
+                _ => return None,
+            };
+            Some((format!("plugin://{plugin_id}:{cap}"), Permission::Invoke))
         },
         // These action types don't have a natural resource/permission mapping
         // for capability tokens — they always go through approval
@@ -686,6 +735,40 @@ fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
             action_type: "network_request".to_string(),
             resource: format!("{host}:{port}"),
             risk_level: action.default_risk_level(),
+        },
+        SensitiveAction::PluginExecution {
+            plugin_id,
+            capability,
+        } => AuditAction::ApprovalRequested {
+            action_type: "plugin_execution".to_string(),
+            resource: format!("plugin://{plugin_id}:{capability}"),
+            risk_level: action.default_risk_level(),
+        },
+        SensitiveAction::PluginHttpRequest {
+            plugin_id,
+            url,
+            method,
+        } => AuditAction::ApprovalRequested {
+            action_type: "plugin_http_request".to_string(),
+            resource: format!("plugin://{plugin_id}:http_request ({method} {url})"),
+            risk_level: action.default_risk_level(),
+        },
+        SensitiveAction::PluginFileAccess {
+            plugin_id,
+            path,
+            mode,
+        } => {
+            let cap = match mode {
+                Permission::Read => "file_read",
+                Permission::Write => "file_write",
+                Permission::Delete => "file_delete",
+                _ => "file_access",
+            };
+            AuditAction::ApprovalRequested {
+                action_type: "plugin_file_access".to_string(),
+                resource: format!("plugin://{plugin_id}:{cap} ({path})"),
+                risk_level: action.default_risk_level(),
+            }
         },
         _ => AuditAction::ApprovalRequested {
             action_type: action.action_type().to_string(),
@@ -992,6 +1075,113 @@ mod tests {
             recipient: "vendor".to_string(),
         };
         let result = interceptor.intercept(&action, "paying vendor", None).await;
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Debug
+    // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // Plugin interceptor tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_plugin_execution_auto_approve() {
+        let interceptor = make_interceptor(
+            SecurityPolicy::permissive(),
+            Some(Arc::new(AutoApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: "weather".to_string(),
+            capability: "config_read".to_string(),
+        };
+        // Permissive policy still requires approval for plugins
+        let result = interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_blocked_by_policy() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.blocked_plugins.insert("evil-plugin".to_string());
+
+        let interceptor = make_interceptor(policy, Some(Arc::new(AutoApproveHandler))).await;
+
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: "evil-plugin".to_string(),
+            capability: "anything".to_string(),
+        };
+        let result = interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_allow_always_creates_capability() {
+        let interceptor = make_interceptor(
+            SecurityPolicy::default(),
+            Some(Arc::new(AlwaysAlwaysHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: "weather".to_string(),
+            capability: "config_read".to_string(),
+        };
+        let result = interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert!(matches!(
+            result.proof,
+            InterceptProof::CapabilityCreated { .. }
+        ));
+
+        // Verify the capability is stored and can be looked up
+        let found = interceptor
+            .capability_store
+            .find_capability("plugin://weather:config_read", Permission::Invoke);
+        assert!(found.is_some());
+
+        // Second call should use the existing capability
+        let result2 = interceptor.intercept(&action, "test again", None).await;
+        assert!(result2.is_ok());
+        assert!(matches!(
+            result2.unwrap().proof,
+            InterceptProof::Capability { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_plugin_http_denied_host_blocked() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.denied_hosts.push("evil.com".to_string());
+
+        let interceptor = make_interceptor(policy, Some(Arc::new(AutoApproveHandler))).await;
+
+        let action = SensitiveAction::PluginHttpRequest {
+            plugin_id: "weather".to_string(),
+            url: "https://evil.com/api".to_string(),
+            method: "GET".to_string(),
+        };
+        let result = interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_plugin_file_denied_path_blocked() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.denied_paths.push("/etc/**".to_string());
+
+        let interceptor = make_interceptor(policy, Some(Arc::new(AutoApproveHandler))).await;
+
+        let action = SensitiveAction::PluginFileAccess {
+            plugin_id: "cache".to_string(),
+            path: "/etc/passwd".to_string(),
+            mode: Permission::Read,
+        };
+        let result = interceptor.intercept(&action, "test", None).await;
         assert!(result.is_err());
     }
 

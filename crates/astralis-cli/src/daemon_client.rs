@@ -11,7 +11,7 @@ use astralis_core::{ApprovalDecision, ElicitationResponse, SessionId};
 use astralis_gateway::DaemonServer;
 use astralis_gateway::rpc::{
     AllowanceInfo, AstralisRpcClient, AuditEntryInfo, BudgetInfo, DaemonEvent, DaemonStatus,
-    McpServerInfo, SessionInfo, ToolInfo,
+    McpServerInfo, PluginInfo, SessionInfo, ToolInfo,
 };
 use astralis_gateway::server::DaemonPaths;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
@@ -238,6 +238,36 @@ impl DaemonClient {
     /// Returns an error if the RPC call fails.
     pub async fn stop_server(&self, name: &str) -> anyhow::Result<()> {
         self.client.stop_server(name.to_string()).await?;
+        Ok(())
+    }
+
+    /// List registered plugins and their status via the daemon.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC call fails.
+    pub async fn list_plugins(&self) -> anyhow::Result<Vec<PluginInfo>> {
+        let plugins = self.client.list_plugins().await?;
+        Ok(plugins)
+    }
+
+    /// Load (or reload) a plugin by ID via the daemon.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC call fails.
+    pub async fn load_plugin(&self, plugin_id: &str) -> anyhow::Result<PluginInfo> {
+        let info = self.client.load_plugin(plugin_id.to_string()).await?;
+        Ok(info)
+    }
+
+    /// Unload a plugin by ID via the daemon.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC call fails.
+    pub async fn unload_plugin(&self, plugin_id: &str) -> anyhow::Result<()> {
+        self.client.unload_plugin(plugin_id.to_string()).await?;
         Ok(())
     }
 

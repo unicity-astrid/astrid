@@ -21,6 +21,7 @@ astralis-mcp.workspace = true
 astralis-telemetry.workspace = true
 astralis-llm.workspace = true
 astralis-runtime.workspace = true
+astralis-plugins.workspace = true
 astralis-storage = { workspace = true, features = ["kv"] }
 
 serde.workspace = true

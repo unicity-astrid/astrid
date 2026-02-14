@@ -207,6 +207,15 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                         (context_tokens as f32 / max_context_tokens as f32).clamp(0.0, 1.0);
                 }
             },
+            DaemonEvent::PluginLoaded { name, .. } => {
+                app.push_notice(&format!("Plugin loaded: {name}"));
+            },
+            DaemonEvent::PluginFailed { id, error } => {
+                app.push_notice(&format!("Plugin {id} failed: {error}"));
+            },
+            DaemonEvent::PluginUnloaded { name, .. } => {
+                app.push_notice(&format!("Plugin unloaded: {name}"));
+            },
             _ => {},
         }
         return;
@@ -438,6 +447,15 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.push_notice(&format!("Error: {msg}"));
             app.state = UiState::Error { message: msg };
         },
+        DaemonEvent::PluginLoaded { name, .. } => {
+            app.push_notice(&format!("Plugin loaded: {name}"));
+        },
+        DaemonEvent::PluginFailed { id, error } => {
+            app.push_notice(&format!("Plugin {id} failed: {error}"));
+        },
+        DaemonEvent::PluginUnloaded { name, .. } => {
+            app.push_notice(&format!("Plugin unloaded: {name}"));
+        },
     }
 }
 
@@ -570,7 +588,7 @@ async fn handle_slash_command(
         "/help" => {
             app.push_notice(
                 "Commands: /help, /clear, /info, /servers, /tools [server], \
-                 /allowances, /budget, /audit [N], /save, /sessions, exit",
+                 /plugins, /allowances, /budget, /audit [N], /save, /sessions, exit",
             );
         },
         "/clear" => {
@@ -581,12 +599,13 @@ async fn handle_slash_command(
         "/info" => {
             if let Ok(status) = client.status().await {
                 app.push_notice(&format!(
-                    "Daemon v{} | Uptime: {}s | Sessions: {} | MCP: {}/{} servers",
+                    "Daemon v{} | Uptime: {}s | Sessions: {} | MCP: {}/{} servers | Plugins: {} loaded",
                     status.version,
                     status.uptime_secs,
                     status.active_sessions,
                     status.mcp_servers_running,
                     status.mcp_servers_configured,
+                    status.plugins_loaded,
                 ));
             } else {
                 app.push_notice("Failed to get daemon info.");
@@ -699,6 +718,33 @@ async fn handle_slash_command(
         "/save" => match client.save_session(session_id).await {
             Ok(()) => app.push_notice("Session saved."),
             Err(e) => app.push_notice(&format!("Failed to save: {e}")),
+        },
+        "/plugins" => match client.list_plugins().await {
+            Ok(plugins) if plugins.is_empty() => {
+                app.push_notice("No plugins registered.");
+            },
+            Ok(plugins) => {
+                let mut text = String::from("Plugins:");
+                for p in &plugins {
+                    let icon = match p.state.as_str() {
+                        "ready" => "●",
+                        "failed" => "✗",
+                        _ => "○",
+                    };
+                    let error_hint = p
+                        .error
+                        .as_deref()
+                        .map(|e| format!(" ({e})"))
+                        .unwrap_or_default();
+                    let _ = write!(
+                        text,
+                        "\n  {icon} {} v{} [{}] ({} tools){error_hint}",
+                        p.name, p.version, p.state, p.tool_count,
+                    );
+                }
+                app.push_notice(&text);
+            },
+            Err(e) => app.push_notice(&format!("Failed to list plugins: {e}")),
         },
         "/sessions" => match client.list_sessions(None).await {
             Ok(sessions) if sessions.is_empty() => {

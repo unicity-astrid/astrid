@@ -488,6 +488,37 @@ pub enum AstralisEvent {
         overage_cents: u64,
     },
 
+    // ========== Plugin Events ==========
+    /// Plugin loaded successfully.
+    PluginLoaded {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Plugin identifier.
+        plugin_id: String,
+        /// Plugin name.
+        plugin_name: String,
+    },
+
+    /// Plugin failed to load.
+    PluginFailed {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Plugin identifier.
+        plugin_id: String,
+        /// Error message.
+        error: String,
+    },
+
+    /// Plugin unloaded.
+    PluginUnloaded {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Plugin identifier.
+        plugin_id: String,
+        /// Plugin name.
+        plugin_name: String,
+    },
+
     // ========== System Events ==========
     /// Gateway daemon started.
     GatewayStarted {
@@ -598,6 +629,9 @@ impl AstralisEvent {
             | Self::SubAgentCompleted { metadata, .. }
             | Self::SubAgentFailed { metadata, .. }
             | Self::SubAgentCancelled { metadata, .. }
+            | Self::PluginLoaded { metadata, .. }
+            | Self::PluginFailed { metadata, .. }
+            | Self::PluginUnloaded { metadata, .. }
             | Self::CapabilityGranted { metadata, .. }
             | Self::CapabilityRevoked { metadata, .. }
             | Self::CapabilityChecked { metadata, .. }
@@ -657,6 +691,10 @@ impl AstralisEvent {
             Self::SubAgentCompleted { .. } => "subagent_completed",
             Self::SubAgentFailed { .. } => "subagent_failed",
             Self::SubAgentCancelled { .. } => "subagent_cancelled",
+            // Plugin
+            Self::PluginLoaded { .. } => "plugin_loaded",
+            Self::PluginFailed { .. } => "plugin_failed",
+            Self::PluginUnloaded { .. } => "plugin_unloaded",
             // Security
             Self::CapabilityGranted { .. } => "capability_granted",
             Self::CapabilityRevoked { .. } => "capability_revoked",

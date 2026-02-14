@@ -20,6 +20,10 @@ members = [
     # Configuration
     "crates/astralis-config",
 
+    # Plugins
+    "crates/astralis-plugins",
+    "crates/openclaw-bridge",
+
     # Phase 2
     "crates/astralis-approval",
     "crates/astralis-storage",
@@ -45,7 +49,7 @@ members = [
     # Optional Integrations
     # "crates/astralis-unicity",  # After research
 ]
-exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp"]
+exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest"]
 
 [workspace.package]
 version = "0.1.0"
@@ -75,6 +79,9 @@ astralis-telegram = { path = "crates/astralis-telegram" }
 
 # Internal crates - Configuration
 astralis-config = { path = "crates/astralis-config" }
+
+# Internal crates - Plugins
+astralis-plugins = { path = "crates/astralis-plugins" }
 
 # Internal crates - Phase 2
 astralis-approval = { path = "crates/astralis-approval" }
@@ -155,6 +162,12 @@ regex = "1.10"
 
 # Telegram bot framework
 teloxide = { version = "0.13", features = ["macros"] }
+
+# WASM plugin runtime
+extism = "1"
+
+# HTTP client (optional, for plugin HTTP host functions)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 # Async utilities
 async-trait = "0.1"

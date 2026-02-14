@@ -19,8 +19,10 @@ pub mod prelude;
 pub mod dirs;
 pub mod error;
 pub mod frontend;
+pub mod hook_event;
 pub mod identity;
 pub mod input;
+pub mod plugin_abi;
 pub mod retry;
 pub mod types;
 pub mod utils;
@@ -34,6 +36,7 @@ pub use frontend::{
     FrontendUser, SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
     UserInput,
 };
+pub use hook_event::HookEvent;
 pub use identity::{AstralisUserId, FrontendLink, FrontendType, LinkVerificationMethod};
 pub use input::{ContextIdentifier, MessageId, TaggedMessage};
 pub use retry::{RetryConfig, RetryOutcome, retry};

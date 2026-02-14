@@ -182,6 +182,21 @@ cargo run -p astralis-cli --bin astralis -- chat
 cargo test --workspace
 ```
 
+#### WASM Integration Tests
+
+The WASM plugin integration tests (`astralis-plugins/tests/wasm_e2e.rs`) auto-skip if the test fixture isn't compiled. To run them:
+
+```bash
+# One-time: install the WASM target
+rustup target add wasm32-unknown-unknown
+
+# Build the test fixture
+./scripts/compile-test-plugin.sh
+
+# Run the WASM e2e tests
+cargo test -p astralis-plugins --test wasm_e2e
+```
+
 ### Lint
 
 ```bash
@@ -284,6 +299,8 @@ crates/
 ├── astralis-config           # Unified TOML config with layered loading
 ├── astralis-events           # Event bus (46 event variants across 12 categories)
 ├── astralis-hooks            # Hook system (shell/WASM handlers)
+├── astralis-plugins          # WASM plugin runtime (Extism), host functions, lifecycle
+├── openclaw-bridge           # OpenClaw plugin format → Astralis adapter (JS/TS shim generation)
 ├── astralis-llm              # LLM provider trait, Claude integration, streaming
 ├── astralis-workspace        # Operational workspace boundaries
 ├── astralis-tools            # Built-in coding tools (read, write, edit, bash)
@@ -386,6 +403,7 @@ cargo run -p astralis-cli -- config paths
 | IPC | jsonrpsee (JSON-RPC 2.0 + WebSocket) |
 | Async | Tokio |
 | CLI | clap, dialoguer, syntect |
+| WASM Plugins | Extism (Wasmtime + WASI underneath) |
 | Sandbox | Landlock (Linux), sandbox-exec (macOS) |
 
 ## License

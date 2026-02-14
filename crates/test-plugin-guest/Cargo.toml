@@ -1,0 +1,14 @@
+[package]
+name = "test-plugin-guest"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "WASM guest plugin for end-to-end integration testing of Astralis host functions"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+extism-pdk = "1.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

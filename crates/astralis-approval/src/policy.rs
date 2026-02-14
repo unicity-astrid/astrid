@@ -83,6 +83,9 @@ pub struct SecurityPolicy {
 
     /// Whether network requests always require approval.
     pub require_approval_for_network: bool,
+
+    /// Plugins that are completely blocked from execution.
+    pub blocked_plugins: HashSet<String>,
 }
 
 impl SecurityPolicy {
@@ -99,6 +102,7 @@ impl SecurityPolicy {
             max_argument_size: 0,
             require_approval_for_delete: false,
             require_approval_for_network: false,
+            blocked_plugins: HashSet::new(),
         }
     }
 
@@ -132,6 +136,11 @@ impl SecurityPolicy {
             SensitiveAction::CapabilityGrant { .. } => PolicyResult::RequiresApproval(
                 RiskAssessment::new(RiskLevel::High, "Capability grants require approval"),
             ),
+            SensitiveAction::PluginExecution { plugin_id, .. }
+            | SensitiveAction::PluginHttpRequest { plugin_id, .. }
+            | SensitiveAction::PluginFileAccess { plugin_id, .. } => {
+                self.check_plugin_action(plugin_id, action)
+            },
         }
     }
 
@@ -255,6 +264,46 @@ impl SecurityPolicy {
         path_result
     }
 
+    /// Check a plugin action with layered enforcement.
+    ///
+    /// 1. Plugin in `blocked_plugins`? -> Blocked
+    /// 2. `PluginHttpRequest` URL host in `denied_hosts`? -> Blocked
+    /// 3. `PluginFileAccess` path matches `denied_paths`? -> Blocked
+    /// 4. Otherwise -> `RequiresApproval` (plugins always need approval)
+    fn check_plugin_action(&self, plugin_id: &str, action: &SensitiveAction) -> PolicyResult {
+        // 1. Check blocked plugins
+        if self.blocked_plugins.contains(plugin_id) {
+            return PolicyResult::Blocked {
+                reason: format!("plugin '{plugin_id}' is blocked by policy"),
+            };
+        }
+
+        // 2. PluginHttpRequest: check denied_hosts
+        if let SensitiveAction::PluginHttpRequest { url, .. } = action
+            && let Some(host) = extract_host_from_url(url)
+            && self.denied_hosts.iter().any(|h| h == host)
+        {
+            return PolicyResult::Blocked {
+                reason: format!("plugin '{plugin_id}' HTTP request to denied host '{host}'"),
+            };
+        }
+
+        // 3. PluginFileAccess: check denied_paths
+        if let SensitiveAction::PluginFileAccess { path, .. } = action
+            && matches_any_glob(&self.denied_paths, path)
+        {
+            return PolicyResult::Blocked {
+                reason: format!("plugin '{plugin_id}' file access to denied path '{path}'"),
+            };
+        }
+
+        // 4. Plugins always require approval
+        PolicyResult::RequiresApproval(RiskAssessment::new(
+            RiskLevel::High,
+            format!("plugin '{plugin_id}' action requires approval"),
+        ))
+    }
+
     /// Check a network host.
     fn check_network(&self, host: &str) -> PolicyResult {
         // Check denied hosts first
@@ -323,7 +372,34 @@ impl Default for SecurityPolicy {
             max_argument_size: 1024 * 1024, // 1 MB
             require_approval_for_delete: true,
             require_approval_for_network: true,
+            blocked_plugins: HashSet::new(),
         }
+    }
+}
+
+/// Extract the host from a URL string without depending on the `url` crate.
+///
+/// Handles `scheme://host`, `scheme://host:port`, and `scheme://host/path` forms.
+/// Returns `None` if the URL doesn't contain `://`.
+fn extract_host_from_url(url: &str) -> Option<&str> {
+    let after_scheme = url.split("://").nth(1)?;
+    // Strip userinfo if present (user:pass@host)
+    let after_auth = after_auth_part(after_scheme);
+    // Take everything before port or path
+    let host = after_auth
+        .split_once(':')
+        .or_else(|| after_auth.split_once('/'))
+        .map_or(after_auth, |(h, _)| h);
+    if host.is_empty() { None } else { Some(host) }
+}
+
+/// Strip optional `user:pass@` from the authority component.
+fn after_auth_part(authority: &str) -> &str {
+    // Only consider '@' before the first '/' (path start)
+    let before_path = authority.split('/').next().unwrap_or(authority);
+    match before_path.rfind('@') {
+        Some(pos) => &authority[pos + 1..],
+        None => authority,
     }
 }
 
@@ -733,5 +809,132 @@ mod tests {
         let deserialized: SecurityPolicy = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.blocked_tools.len(), policy.blocked_tools.len());
         assert_eq!(deserialized.require_approval_for_delete, true);
+        assert!(deserialized.blocked_plugins.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Plugin policy tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_blocked_plugin() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.blocked_plugins.insert("evil-plugin".to_string());
+
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: "evil-plugin".to_string(),
+            capability: "anything".to_string(),
+        };
+        assert!(policy.check(&action).is_blocked());
+
+        let action = SensitiveAction::PluginHttpRequest {
+            plugin_id: "evil-plugin".to_string(),
+            url: "https://safe.com".to_string(),
+            method: "GET".to_string(),
+        };
+        assert!(policy.check(&action).is_blocked());
+
+        let action = SensitiveAction::PluginFileAccess {
+            plugin_id: "evil-plugin".to_string(),
+            path: "/tmp/safe".to_string(),
+            mode: astralis_core::types::Permission::Read,
+        };
+        assert!(policy.check(&action).is_blocked());
+    }
+
+    #[test]
+    fn test_plugin_requires_approval() {
+        let policy = SecurityPolicy::permissive();
+
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: "good-plugin".to_string(),
+            capability: "config_read".to_string(),
+        };
+        assert!(policy.check(&action).requires_approval());
+    }
+
+    #[test]
+    fn test_plugin_http_denied_host() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.denied_hosts.push("evil.com".to_string());
+
+        let action = SensitiveAction::PluginHttpRequest {
+            plugin_id: "weather".to_string(),
+            url: "https://evil.com/api".to_string(),
+            method: "GET".to_string(),
+        };
+        assert!(policy.check(&action).is_blocked());
+
+        // Same plugin, different host — requires approval (not blocked)
+        let action = SensitiveAction::PluginHttpRequest {
+            plugin_id: "weather".to_string(),
+            url: "https://safe.com/api".to_string(),
+            method: "GET".to_string(),
+        };
+        assert!(policy.check(&action).requires_approval());
+    }
+
+    #[test]
+    fn test_plugin_file_denied_path() {
+        let mut policy = SecurityPolicy::permissive();
+        policy.denied_paths.push("/etc/**".to_string());
+
+        let action = SensitiveAction::PluginFileAccess {
+            plugin_id: "cache".to_string(),
+            path: "/etc/passwd".to_string(),
+            mode: astralis_core::types::Permission::Read,
+        };
+        assert!(policy.check(&action).is_blocked());
+
+        // Safe path — requires approval (not blocked)
+        let action = SensitiveAction::PluginFileAccess {
+            plugin_id: "cache".to_string(),
+            path: "/tmp/cache.json".to_string(),
+            mode: astralis_core::types::Permission::Read,
+        };
+        assert!(policy.check(&action).requires_approval());
+    }
+
+    // -----------------------------------------------------------------------
+    // Host extraction tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_host_from_url() {
+        use super::extract_host_from_url;
+
+        assert_eq!(
+            extract_host_from_url("https://example.com"),
+            Some("example.com")
+        );
+        assert_eq!(
+            extract_host_from_url("https://example.com:8080"),
+            Some("example.com")
+        );
+        assert_eq!(
+            extract_host_from_url("https://example.com/path"),
+            Some("example.com")
+        );
+        assert_eq!(
+            extract_host_from_url("https://example.com:443/path"),
+            Some("example.com")
+        );
+        assert_eq!(
+            extract_host_from_url("http://user:pass@example.com/path"),
+            Some("example.com")
+        );
+        assert_eq!(extract_host_from_url("not-a-url"), None);
+        assert_eq!(extract_host_from_url(""), None);
+        assert_eq!(extract_host_from_url("://"), None);
+    }
+
+    #[test]
+    fn test_plugin_policy_serialization() {
+        let mut policy = SecurityPolicy::default();
+        policy.blocked_plugins.insert("bad-plugin".to_string());
+
+        let json = serde_json::to_string(&policy).unwrap();
+        let deserialized: SecurityPolicy = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.blocked_plugins.contains("bad-plugin"));
     }
 }

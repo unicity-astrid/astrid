@@ -178,6 +178,18 @@ async fn run_json_chat(
                         .send_elicitation(session_id, &request_id, response)
                         .await?;
                 },
+                DaemonEvent::PluginLoaded { ref name, .. } => {
+                    println!("{}", Theme::success(&format!("Plugin loaded: {name}")));
+                },
+                DaemonEvent::PluginFailed { ref id, ref error } => {
+                    println!(
+                        "{}",
+                        Theme::warning(&format!("Plugin {id} failed to load: {error}"))
+                    );
+                },
+                DaemonEvent::PluginUnloaded { ref name, .. } => {
+                    println!("{}", Theme::dimmed(&format!("Plugin unloaded: {name}")));
+                },
                 DaemonEvent::Usage { .. } | DaemonEvent::SessionSaved => {},
                 DaemonEvent::TurnComplete => {
                     formatter.format_turn_complete();
@@ -225,9 +237,10 @@ async fn handle_slash_command(command: &str, client: &DaemonClient, session_id: 
                 println!("  Uptime:   {}s", status.uptime_secs);
                 println!("  Sessions: {}", status.active_sessions);
                 println!(
-                    "  MCP:      {}/{} servers running\n",
+                    "  MCP:      {}/{} servers running",
                     status.mcp_servers_running, status.mcp_servers_configured
                 );
+                println!("  Plugins:  {} loaded\n", status.plugins_loaded);
             } else {
                 println!("{}", Theme::error("Failed to get daemon info"));
             }
@@ -358,6 +371,40 @@ async fn handle_slash_command(command: &str, client: &DaemonClient, session_id: 
             Ok(()) => println!("{}", Theme::success("Session saved.")),
             Err(e) => println!("{}", Theme::error(&format!("Failed to save: {e}"))),
         },
+        "/plugins" => match client.list_plugins().await {
+            Ok(plugins) if plugins.is_empty() => {
+                println!("\n{}", Theme::dimmed("No plugins registered.\n"));
+            },
+            Ok(plugins) => {
+                println!("\n{}", Theme::header("Plugins"));
+                for p in &plugins {
+                    let status_icon = match p.state.as_str() {
+                        "ready" => "●".green().to_string(),
+                        "loading" | "unloading" => "○".yellow().to_string(),
+                        "failed" => "●".red().to_string(),
+                        _ => "○".dimmed().to_string(),
+                    };
+                    let error_hint = p
+                        .error
+                        .as_deref()
+                        .map(|e| format!(" ({e})"))
+                        .unwrap_or_default();
+                    let desc = p.description.as_deref().unwrap_or("");
+                    println!(
+                        "  {} {} v{} [{}] ({} tools) {} {}",
+                        status_icon,
+                        p.name,
+                        p.version,
+                        p.state,
+                        p.tool_count,
+                        desc.dimmed(),
+                        error_hint.red(),
+                    );
+                }
+                println!();
+            },
+            Err(e) => println!("{}", Theme::error(&format!("Failed to list plugins: {e}"))),
+        },
         "/sessions" => match client.list_sessions(None).await {
             Ok(sessions) if sessions.is_empty() => {
                 println!("\n{}", Theme::dimmed("No active sessions.\n"));
@@ -406,6 +453,8 @@ fn print_help() {
     println!("         Show active session allowances");
     println!("  {}", "/budget".cyan());
     println!("         Show budget usage and remaining");
+    println!("  {}", "/plugins".cyan());
+    println!("         List registered plugins and their status");
     println!("  {}", "/audit [N]".cyan());
     println!("         Show last N audit entries (default: 20)");
     println!("  {}   Save session explicitly", "/save".cyan());

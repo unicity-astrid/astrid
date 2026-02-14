@@ -127,7 +127,11 @@ async fn handle_event(
             sessions.set_turn_in_progress(chat_id, false).await;
             true
         },
-        DaemonEvent::Usage { .. } | DaemonEvent::SessionSaved => false,
+        DaemonEvent::Usage { .. }
+        | DaemonEvent::SessionSaved
+        | DaemonEvent::PluginLoaded { .. }
+        | DaemonEvent::PluginFailed { .. }
+        | DaemonEvent::PluginUnloaded { .. } => false,
     }
 }
 

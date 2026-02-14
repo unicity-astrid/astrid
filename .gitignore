@@ -1,5 +1,6 @@
 # Build
 /target
+**/target
 Cargo.lock
 
 # IDE
@@ -20,6 +21,13 @@ secrets.toml
 
 # Tools
 /tools
+
+# Compiled WASM test fixtures (rebuild via scripts/compile-test-plugin.sh)
+crates/astralis-plugins/tests/fixtures/*.wasm
+
+# Node.js (packages/)
+packages/*/node_modules/
+packages/*/dist/
 
 # AI
 .claude

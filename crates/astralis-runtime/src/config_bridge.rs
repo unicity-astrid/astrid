@@ -85,6 +85,7 @@ pub fn to_security_policy(cfg: &Config) -> SecurityPolicy {
         max_argument_size: policy.max_argument_size,
         require_approval_for_delete: policy.require_approval_for_delete,
         require_approval_for_network: policy.require_approval_for_network,
+        blocked_plugins: HashSet::new(),
     }
 }
 

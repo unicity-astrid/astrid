@@ -35,6 +35,10 @@ pub(crate) const SLASH_COMMANDS: &[SlashCommandDef] = &[
         description: "List available tools",
     },
     SlashCommandDef {
+        name: "/plugins",
+        description: "List registered plugins",
+    },
+    SlashCommandDef {
         name: "/allowances",
         description: "Show active allowances",
     },

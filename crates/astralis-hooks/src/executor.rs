@@ -10,7 +10,7 @@ use crate::hook::{FailAction, Hook, HookHandler, HookMatcher};
 use crate::result::{HookContext, HookExecution, HookExecutionResult, HookResult};
 
 /// Executes hooks using the appropriate handler.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 #[allow(clippy::struct_field_names)]
 pub struct HookExecutor {
     command_handler: CommandHandler,
@@ -19,14 +19,32 @@ pub struct HookExecutor {
     agent_handler: AgentHandler,
 }
 
+impl Default for HookExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HookExecutor {
-    /// Create a new hook executor.
+    /// Create a new hook executor with default workspace root (current directory).
     #[must_use]
     pub fn new() -> Self {
+        let workspace_root = std::env::current_dir().unwrap_or_default();
         Self {
             command_handler: CommandHandler::new(),
             http_handler: HttpHandler::new(),
-            wasm_handler: WasmHandler::new(),
+            wasm_handler: WasmHandler::new(workspace_root),
+            agent_handler: AgentHandler::new(),
+        }
+    }
+
+    /// Create a new hook executor with a specific workspace root for WASM handlers.
+    #[must_use]
+    pub fn with_workspace_root(workspace_root: std::path::PathBuf) -> Self {
+        Self {
+            command_handler: CommandHandler::new(),
+            http_handler: HttpHandler::new(),
+            wasm_handler: WasmHandler::new(workspace_root),
             agent_handler: AgentHandler::new(),
         }
     }

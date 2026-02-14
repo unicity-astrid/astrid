@@ -30,6 +30,10 @@ use astralis_crypto::KeyPair;
 use astralis_hooks::{HookManager, discover_hooks};
 use astralis_llm::{ClaudeProvider, LlmProvider, OpenAiCompatProvider, ZaiProvider};
 use astralis_mcp::McpClient;
+use astralis_plugins::{
+    PluginContext, PluginId, PluginRegistry, PluginState, WasmPluginLoader, discover_manifests,
+    manifest::PluginEntryPoint,
+};
 use astralis_runtime::{AgentRuntime, AgentSession, SessionStore, config_bridge};
 use astralis_storage::{KvStore, ScopedKvStore, SurrealKvStore};
 use chrono::{DateTime, Utc};
@@ -42,7 +46,7 @@ use tracing::{info, warn};
 use crate::daemon_frontend::DaemonFrontend;
 use crate::rpc::{
     AllowanceInfo, AstralisRpcServer, AuditEntryInfo, BudgetInfo, DaemonEvent, DaemonStatus,
-    McpServerInfo, SessionInfo, ToolInfo, error_codes,
+    McpServerInfo, PluginInfo, SessionInfo, ToolInfo, error_codes,
 };
 
 /// Build a workspace-namespaced key for the KV store.
@@ -134,6 +138,8 @@ pub struct DaemonServer {
     runtime: Arc<AgentRuntime<Box<dyn LlmProvider>>>,
     /// Session map (brief locks only for insert/remove/lookup).
     sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
+    /// Plugin registry (shared across RPC handlers).
+    plugin_registry: Arc<RwLock<PluginRegistry>>,
     /// When the daemon started.
     #[allow(dead_code)]
     started_at: Instant,
@@ -261,6 +267,9 @@ impl DaemonServer {
         let discovered = discover_hooks(None);
         hook_manager.register_all(discovered).await;
 
+        // Clone MCP client for plugin registry before moving into runtime.
+        let mcp_for_plugins = mcp.clone();
+
         let runtime =
             AgentRuntime::new_arc(llm, mcp, audit, sessions, key, config, Some(hook_manager));
 
@@ -283,6 +292,34 @@ impl DaemonServer {
             Arc::new(SurrealKvStore::open(home.deferred_db_path()).map_err(|e| {
                 crate::GatewayError::Runtime(format!("Failed to open deferred store: {e}"))
             })?);
+
+        // Discover and register plugins (does not load them yet).
+        let mut plugin_registry = PluginRegistry::new();
+        let wasm_loader = WasmPluginLoader::new();
+        let manifests = discover_manifests(None);
+        for manifest in manifests {
+            let plugin: Box<dyn astralis_plugins::Plugin> = match &manifest.entry_point {
+                PluginEntryPoint::Wasm { .. } => {
+                    Box::new(wasm_loader.create_plugin(manifest.clone()))
+                },
+                PluginEntryPoint::Mcp { .. } => {
+                    match astralis_plugins::create_plugin(
+                        manifest.clone(),
+                        Some(mcp_for_plugins.clone()),
+                    ) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            warn!(plugin = %manifest.id, error = %e, "Failed to create MCP plugin");
+                            continue;
+                        },
+                    }
+                },
+            };
+            if let Err(e) = plugin_registry.register(plugin) {
+                warn!(plugin = %manifest.id, error = %e, "Failed to register plugin");
+            }
+        }
+        let plugin_registry = Arc::new(RwLock::new(plugin_registry));
 
         let (shutdown_tx, _) = broadcast::channel(1);
         let session_map: Arc<RwLock<HashMap<SessionId, SessionHandle>>> =
@@ -323,9 +360,10 @@ impl DaemonServer {
         let rpc_impl = RpcImpl {
             runtime: Arc::clone(&runtime),
             sessions: Arc::clone(&session_map),
+            plugin_registry: Arc::clone(&plugin_registry),
             deferred_kv,
             capabilities_store,
-            workspace_kv,
+            workspace_kv: Arc::clone(&workspace_kv),
             workspace_budget_tracker,
             started_at: Instant::now(),
             shutdown_tx: shutdown_tx.clone(),
@@ -345,6 +383,39 @@ impl DaemonServer {
             .map_err(|e| crate::GatewayError::Runtime(format!("Failed to write port file: {e}")))?;
 
         info!(addr = %addr, pid = pid, "Daemon server started");
+
+        // Background task: auto-load discovered plugins after the server is
+        // accepting connections (avoids blocking the 5s CLI connect timeout).
+        {
+            let registry_clone = Arc::clone(&plugin_registry);
+            let kv_clone = Arc::clone(&workspace_kv);
+            let workspace_root = cwd.clone();
+            tokio::spawn(async move {
+                let mut registry = registry_clone.write().await;
+                let plugin_ids: Vec<PluginId> = registry.list().into_iter().cloned().collect();
+                for plugin_id in plugin_ids {
+                    if let Some(plugin) = registry.get_mut(&plugin_id) {
+                        let kv = match ScopedKvStore::new(
+                            Arc::clone(&kv_clone),
+                            format!("plugin:{plugin_id}"),
+                        ) {
+                            Ok(kv) => kv,
+                            Err(e) => {
+                                warn!(plugin_id = %plugin_id, error = %e, "Failed to create plugin KV scope");
+                                continue;
+                            },
+                        };
+                        let config = plugin.manifest().config.clone();
+                        let ctx = PluginContext::new(workspace_root.clone(), kv, config);
+                        if let Err(e) = plugin.load(&ctx).await {
+                            warn!(plugin_id = %plugin_id, error = %e, "Failed to auto-load plugin");
+                        } else {
+                            info!(plugin_id = %plugin_id, "Auto-loaded plugin");
+                        }
+                    }
+                }
+            });
+        }
 
         // Floor health interval at 5s to prevent zero/tiny intervals.
         let health_interval = Duration::from_secs(cfg.gateway.health_interval_secs.max(5));
@@ -368,6 +439,7 @@ impl DaemonServer {
         let daemon = Self {
             runtime,
             sessions: session_map,
+            plugin_registry,
             started_at: Instant::now(),
             shutdown_tx,
             paths,
@@ -378,6 +450,20 @@ impl DaemonServer {
             session_cleanup_interval,
         };
         Ok((daemon, handle, addr, cfg))
+    }
+
+    /// Gracefully unload all registered plugins.
+    pub async fn shutdown_plugins(&self) {
+        let mut registry = self.plugin_registry.write().await;
+        let ids: Vec<PluginId> = registry.list().into_iter().cloned().collect();
+        for id in ids {
+            if let Some(plugin) = registry.get_mut(&id)
+                && let Err(e) = plugin.unload().await
+            {
+                warn!(plugin_id = %id, error = %e, "Error unloading plugin during shutdown");
+            }
+        }
+        info!("Plugins shut down");
     }
 
     /// Gracefully shut down all MCP servers.
@@ -594,6 +680,8 @@ struct RpcImpl {
     runtime: Arc<AgentRuntime<Box<dyn LlmProvider>>>,
     /// Session map (brief locks for insert/remove/lookup only).
     sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
+    /// Plugin registry (shared, behind `RwLock`).
+    plugin_registry: Arc<RwLock<PluginRegistry>>,
     /// Shared KV store for deferred resolution persistence.
     deferred_kv: Arc<dyn KvStore>,
     /// Shared persistent capability store (tokens survive restarts).
@@ -1063,6 +1151,20 @@ impl AstralisRpcServer for RpcImpl {
     async fn status(&self) -> Result<DaemonStatus, ErrorObjectOwned> {
         let mcp = self.runtime.mcp();
         let session_count = self.sessions.read().await.len();
+
+        let plugins_loaded = {
+            let registry = self.plugin_registry.read().await;
+            registry
+                .list()
+                .iter()
+                .filter(|id| {
+                    registry
+                        .get(id)
+                        .is_some_and(|p| matches!(p.state(), PluginState::Ready))
+                })
+                .count()
+        };
+
         Ok(DaemonStatus {
             running: true,
             uptime_secs: self.started_at.elapsed().as_secs(),
@@ -1070,6 +1172,7 @@ impl AstralisRpcServer for RpcImpl {
             version: env!("CARGO_PKG_VERSION").to_string(),
             mcp_servers_configured: mcp.server_manager().configured_count(),
             mcp_servers_running: mcp.server_manager().running_count().await,
+            plugins_loaded,
             ephemeral: self.ephemeral,
             active_connections: self.active_connections.load(Ordering::Relaxed),
         })
@@ -1115,6 +1218,9 @@ impl AstralisRpcServer for RpcImpl {
     }
 
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ErrorObjectOwned> {
+        let mut result: Vec<ToolInfo> = Vec::new();
+
+        // MCP server tools.
         let tools = self.runtime.mcp().list_tools().await.map_err(|e| {
             ErrorObjectOwned::owned(
                 error_codes::INTERNAL_ERROR,
@@ -1122,14 +1228,29 @@ impl AstralisRpcServer for RpcImpl {
                 None::<()>,
             )
         })?;
-        Ok(tools
-            .into_iter()
-            .map(|t| ToolInfo {
-                name: t.name,
-                server: t.server,
-                description: t.description,
-            })
-            .collect())
+        result.extend(tools.into_iter().map(|t| ToolInfo {
+            name: t.name,
+            server: t.server,
+            description: t.description,
+        }));
+
+        // Plugin tools.
+        let registry = self.plugin_registry.read().await;
+        for td in registry.all_tool_definitions() {
+            // Qualified name is "plugin:{plugin_id}:{tool_name}".
+            // Extract the "plugin:{plugin_id}" prefix as the server field.
+            let server = td
+                .name
+                .rsplit_once(':')
+                .map_or_else(|| td.name.clone(), |(prefix, _)| prefix.to_string());
+            result.push(ToolInfo {
+                name: td.name,
+                server,
+                description: Some(td.description),
+            });
+        }
+
+        Ok(result)
     }
 
     async fn shutdown(&self) -> Result<(), ErrorObjectOwned> {
@@ -1285,6 +1406,166 @@ impl AstralisRpcServer for RpcImpl {
         Ok(())
     }
 
+    async fn list_plugins(&self) -> Result<Vec<PluginInfo>, ErrorObjectOwned> {
+        let registry = self.plugin_registry.read().await;
+        let mut infos = Vec::new();
+        for id in registry.list() {
+            if let Some(plugin) = registry.get(id) {
+                let (state_str, error) = match plugin.state() {
+                    PluginState::Unloaded => ("unloaded".to_string(), None),
+                    PluginState::Loading => ("loading".to_string(), None),
+                    PluginState::Ready => ("ready".to_string(), None),
+                    PluginState::Failed(msg) => ("failed".to_string(), Some(msg)),
+                    PluginState::Unloading => ("unloading".to_string(), None),
+                };
+                let manifest = plugin.manifest();
+                infos.push(PluginInfo {
+                    id: id.as_str().to_string(),
+                    name: manifest.name.clone(),
+                    version: manifest.version.clone(),
+                    state: state_str,
+                    tool_count: plugin.tools().len(),
+                    description: manifest.description.clone(),
+                    error,
+                });
+            }
+        }
+        Ok(infos)
+    }
+
+    async fn load_plugin(&self, plugin_id: String) -> Result<PluginInfo, ErrorObjectOwned> {
+        let pid = PluginId::new(&plugin_id).map_err(|e| {
+            ErrorObjectOwned::owned(
+                error_codes::INVALID_REQUEST,
+                format!("Invalid plugin id: {e}"),
+                None::<()>,
+            )
+        })?;
+
+        // Acquire write lock, load the plugin, extract event info, then release.
+        let (info, event) = {
+            let mut registry = self.plugin_registry.write().await;
+            let plugin = registry.get_mut(&pid).ok_or_else(|| {
+                ErrorObjectOwned::owned(
+                    error_codes::PLUGIN_NOT_FOUND,
+                    format!("Plugin not found: {plugin_id}"),
+                    None::<()>,
+                )
+            })?;
+
+            let kv = ScopedKvStore::new(
+                Arc::clone(&self.workspace_kv),
+                format!("plugin:{plugin_id}"),
+            )
+            .map_err(|e| {
+                ErrorObjectOwned::owned(
+                    error_codes::INTERNAL_ERROR,
+                    format!("Failed to create plugin KV scope: {e}"),
+                    None::<()>,
+                )
+            })?;
+
+            let config = plugin.manifest().config.clone();
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let ctx = PluginContext::new(cwd, kv, config);
+
+            let load_result = plugin.load(&ctx).await;
+            let manifest = plugin.manifest();
+            let name = manifest.name.clone();
+
+            let (state_str, error, event) = match load_result {
+                Ok(()) => (
+                    "ready".to_string(),
+                    None,
+                    DaemonEvent::PluginLoaded {
+                        id: plugin_id.clone(),
+                        name: name.clone(),
+                    },
+                ),
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    (
+                        "failed".to_string(),
+                        Some(err_msg.clone()),
+                        DaemonEvent::PluginFailed {
+                            id: plugin_id.clone(),
+                            error: err_msg,
+                        },
+                    )
+                },
+            };
+
+            let info = PluginInfo {
+                id: plugin_id.clone(),
+                name,
+                version: manifest.version.clone(),
+                state: state_str,
+                tool_count: plugin.tools().len(),
+                description: manifest.description.clone(),
+                error,
+            };
+
+            (info, event)
+        };
+        // Lock released — safe to broadcast.
+
+        self.broadcast_to_all_sessions(event).await;
+
+        if info.state == "failed" {
+            return Err(ErrorObjectOwned::owned(
+                error_codes::PLUGIN_ERROR,
+                format!(
+                    "Plugin load failed: {}",
+                    info.error.as_deref().unwrap_or("unknown")
+                ),
+                None::<()>,
+            ));
+        }
+
+        Ok(info)
+    }
+
+    async fn unload_plugin(&self, plugin_id: String) -> Result<(), ErrorObjectOwned> {
+        let pid = PluginId::new(&plugin_id).map_err(|e| {
+            ErrorObjectOwned::owned(
+                error_codes::INVALID_REQUEST,
+                format!("Invalid plugin id: {e}"),
+                None::<()>,
+            )
+        })?;
+
+        // Acquire write lock, unload, extract event info, then release.
+        let event = {
+            let mut registry = self.plugin_registry.write().await;
+            let plugin = registry.get_mut(&pid).ok_or_else(|| {
+                ErrorObjectOwned::owned(
+                    error_codes::PLUGIN_NOT_FOUND,
+                    format!("Plugin not found: {plugin_id}"),
+                    None::<()>,
+                )
+            })?;
+
+            let name = plugin.manifest().name.clone();
+            plugin.unload().await.map_err(|e| {
+                ErrorObjectOwned::owned(
+                    error_codes::PLUGIN_ERROR,
+                    format!("Failed to unload plugin: {e}"),
+                    None::<()>,
+                )
+            })?;
+
+            DaemonEvent::PluginUnloaded {
+                id: plugin_id,
+                name,
+            }
+        };
+        // Lock released — safe to broadcast.
+
+        self.broadcast_to_all_sessions(event).await;
+
+        Ok(())
+    }
+
     async fn cancel_turn(&self, session_id: SessionId) -> Result<(), ErrorObjectOwned> {
         let handle = {
             let sessions = self.sessions.read().await;
@@ -1368,6 +1649,18 @@ impl AstralisRpcServer for RpcImpl {
 }
 
 impl RpcImpl {
+    /// Broadcast an event to all active sessions.
+    ///
+    /// Acquires a read lock on the session map (brief), iterates each
+    /// session's `event_tx`, and sends the event. Must NOT be called while
+    /// holding the plugin registry lock (deadlock risk).
+    async fn broadcast_to_all_sessions(&self, event: DaemonEvent) {
+        let sessions = self.sessions.read().await;
+        for handle in sessions.values() {
+            let _ = handle.event_tx.send(event.clone());
+        }
+    }
+
     /// Load workspace-scoped allowances from the workspace KV store.
     async fn load_workspace_allowances(&self) -> Vec<Allowance> {
         let ns = ws_ns(&self.workspace_id, "allowances");

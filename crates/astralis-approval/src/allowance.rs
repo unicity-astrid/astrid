@@ -105,6 +105,25 @@ pub enum AllowancePattern {
         /// Pattern string (interpretation is context-dependent).
         pattern: String,
     },
+
+    /// Match a specific plugin capability.
+    ///
+    /// For `PluginExecution`, matches on the `capability` field directly.
+    /// For `PluginHttpRequest`, matches on `"http_request"`.
+    /// For `PluginFileAccess`, matches on the derived capability name
+    /// (`"file_read"`, `"file_write"`, `"file_delete"`).
+    PluginCapability {
+        /// Plugin identifier.
+        plugin_id: String,
+        /// Capability name to match.
+        capability: String,
+    },
+
+    /// Match any action from a specific plugin (wildcard).
+    PluginWildcard {
+        /// Plugin identifier.
+        plugin_id: String,
+    },
 }
 
 impl AllowancePattern {
@@ -125,6 +144,7 @@ impl AllowancePattern {
     /// * `workspace_root` — The current workspace root. For `WorkspaceRelative` patterns,
     ///   the action path must fall under this root for the match to succeed.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn matches(&self, action: &SensitiveAction, workspace_root: Option<&Path>) -> bool {
         match (self, action) {
             // ExactTool: exact server + tool match
@@ -236,6 +256,67 @@ impl AllowancePattern {
                 SensitiveAction::ExecuteCommand { command, .. },
             ) => matches_file_glob(pattern, command),
 
+            // PluginCapability: match plugin actions with same plugin_id + derived capability
+            (
+                Self::PluginCapability {
+                    plugin_id,
+                    capability,
+                },
+                SensitiveAction::PluginExecution {
+                    plugin_id: action_pid,
+                    capability: action_cap,
+                },
+            ) => plugin_id == action_pid && capability == action_cap,
+
+            (
+                Self::PluginCapability {
+                    plugin_id,
+                    capability,
+                },
+                SensitiveAction::PluginHttpRequest {
+                    plugin_id: action_pid,
+                    ..
+                },
+            ) => plugin_id == action_pid && capability == "http_request",
+
+            (
+                Self::PluginCapability {
+                    plugin_id,
+                    capability,
+                },
+                SensitiveAction::PluginFileAccess {
+                    plugin_id: action_pid,
+                    mode,
+                    ..
+                },
+            ) => {
+                plugin_id == action_pid
+                    && capability
+                        == match mode {
+                            Permission::Read => "file_read",
+                            Permission::Write => "file_write",
+                            Permission::Delete => "file_delete",
+                            _ => return false,
+                        }
+            },
+
+            // PluginWildcard: match any plugin action from the same plugin_id
+            (
+                Self::PluginWildcard { plugin_id },
+                SensitiveAction::PluginExecution {
+                    plugin_id: action_pid,
+                    ..
+                }
+                | SensitiveAction::PluginHttpRequest {
+                    plugin_id: action_pid,
+                    ..
+                }
+                | SensitiveAction::PluginFileAccess {
+                    plugin_id: action_pid,
+                    ..
+                },
+            ) => plugin_id == action_pid,
+
             // Custom never matches (future extensibility), and all other combinations don't match
             _ => false,
         }
@@ -295,6 +376,11 @@ impl fmt::Display for AllowancePattern {
                 permission,
             } => write!(f, "workspace:{pattern} ({permission})"),
             Self::Custom { pattern } => write!(f, "custom:{pattern}"),
+            Self::PluginCapability {
+                plugin_id,
+                capability,
+            } => write!(f, "plugin://{plugin_id}:{capability}"),
+            Self::PluginWildcard { plugin_id } => write!(f, "plugin://{plugin_id}:*"),
         }
     }
 }
@@ -1397,5 +1483,268 @@ mod tests {
             command: "cargo".to_string(),
         };
         assert_eq!(pattern.to_string(), "cmd:cargo");
+    }
+
+    // -----------------------------------------------------------------------
+    // PluginCapability matching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_plugin_capability_matches_execution() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "config_read".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginExecution {
+                plugin_id: "weather".to_string(),
+                capability: "config_read".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_wrong_plugin() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "config_read".to_string(),
+        };
+        assert!(!pattern.matches(
+            &SensitiveAction::PluginExecution {
+                plugin_id: "other".to_string(),
+                capability: "config_read".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_wrong_capability() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "config_read".to_string(),
+        };
+        assert!(!pattern.matches(
+            &SensitiveAction::PluginExecution {
+                plugin_id: "weather".to_string(),
+                capability: "config_write".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_matches_http_request() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "http_request".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginHttpRequest {
+                plugin_id: "weather".to_string(),
+                url: "https://api.weather.com".to_string(),
+                method: "GET".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_wrong_cap_for_http() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "file_read".to_string(),
+        };
+        assert!(!pattern.matches(
+            &SensitiveAction::PluginHttpRequest {
+                plugin_id: "weather".to_string(),
+                url: "https://api.weather.com".to_string(),
+                method: "GET".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_matches_file_read() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "cache".to_string(),
+            capability: "file_read".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginFileAccess {
+                plugin_id: "cache".to_string(),
+                path: "/tmp/data".to_string(),
+                mode: Permission::Read,
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_matches_file_write() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "cache".to_string(),
+            capability: "file_write".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginFileAccess {
+                plugin_id: "cache".to_string(),
+                path: "/tmp/data".to_string(),
+                mode: Permission::Write,
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_matches_file_delete() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "cache".to_string(),
+            capability: "file_delete".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginFileAccess {
+                plugin_id: "cache".to_string(),
+                path: "/tmp/data".to_string(),
+                mode: Permission::Delete,
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_capability_file_mode_mismatch() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "cache".to_string(),
+            capability: "file_read".to_string(),
+        };
+        // file_read pattern should NOT match Write mode
+        assert!(!pattern.matches(
+            &SensitiveAction::PluginFileAccess {
+                plugin_id: "cache".to_string(),
+                path: "/tmp/data".to_string(),
+                mode: Permission::Write,
+            },
+            None
+        ));
+    }
+
+    // -----------------------------------------------------------------------
+    // PluginWildcard matching tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_plugin_wildcard_matches_execution() {
+        let pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "weather".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginExecution {
+                plugin_id: "weather".to_string(),
+                capability: "anything".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_wildcard_matches_http() {
+        let pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "weather".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginHttpRequest {
+                plugin_id: "weather".to_string(),
+                url: "https://example.com".to_string(),
+                method: "GET".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_wildcard_matches_file() {
+        let pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "weather".to_string(),
+        };
+        assert!(pattern.matches(
+            &SensitiveAction::PluginFileAccess {
+                plugin_id: "weather".to_string(),
+                path: "/tmp/file".to_string(),
+                mode: Permission::Read,
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_wildcard_wrong_plugin() {
+        let pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "weather".to_string(),
+        };
+        assert!(!pattern.matches(
+            &SensitiveAction::PluginExecution {
+                plugin_id: "other".to_string(),
+                capability: "anything".to_string(),
+            },
+            None
+        ));
+    }
+
+    #[test]
+    fn test_plugin_patterns_dont_match_non_plugin_actions() {
+        let cap_pattern = AllowancePattern::PluginCapability {
+            plugin_id: "test".to_string(),
+            capability: "read".to_string(),
+        };
+        let wildcard_pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "test".to_string(),
+        };
+        let non_plugin = SensitiveAction::McpToolCall {
+            server: "test".to_string(),
+            tool: "read".to_string(),
+        };
+        assert!(!cap_pattern.matches(&non_plugin, None));
+        assert!(!wildcard_pattern.matches(&non_plugin, None));
+
+        let file_action = SensitiveAction::FileDelete {
+            path: "/tmp/file".to_string(),
+        };
+        assert!(!cap_pattern.matches(&file_action, None));
+        assert!(!wildcard_pattern.matches(&file_action, None));
+    }
+
+    #[test]
+    fn test_plugin_pattern_display() {
+        let pattern = AllowancePattern::PluginCapability {
+            plugin_id: "weather".to_string(),
+            capability: "http_request".to_string(),
+        };
+        assert_eq!(pattern.to_string(), "plugin://weather:http_request");
+
+        let pattern = AllowancePattern::PluginWildcard {
+            plugin_id: "weather".to_string(),
+        };
+        assert_eq!(pattern.to_string(), "plugin://weather:*");
+    }
+
+    #[test]
+    fn test_plugin_pattern_serialization_roundtrip() {
+        let patterns = vec![
+            AllowancePattern::PluginCapability {
+                plugin_id: "p1".to_string(),
+                capability: "cap1".to_string(),
+            },
+            AllowancePattern::PluginWildcard {
+                plugin_id: "p2".to_string(),
+            },
+        ];
+        for pattern in patterns {
+            let json = serde_json::to_string(&pattern).unwrap();
+            let deserialized: AllowancePattern = serde_json::from_str(&json).unwrap();
+            assert_eq!(pattern.to_string(), deserialized.to_string());
+        }
     }
 }
