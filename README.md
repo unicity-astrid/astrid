@@ -7,7 +7,7 @@ Astralis is a modular, security-first runtime for AI agents. A thin CLI client (
 ## Key Features
 
 - **Cryptography over prompts** — Authorization uses ed25519 signatures and capability tokens, not LLM instructions
-- **MCP 2025-11-25 spec** — Full client implementation via `rmcp` v0.14: sampling, roots, elicitation, URL elicitation, tasks
+- **MCP 2025-11-25 spec** — Full client implementation via `rmcp` v0.15: sampling, roots, elicitation, URL elicitation, tasks
 - **Defense in depth** — Input classification, capability validation, MCP permissions, sandbox, approval gates, audit logging
 - **Two sandbox model** — WASM (inescapable, for untrusted code) + operational workspace (escapable with approval, for trusted actions)
 - **Human-in-the-loop** — MCP elicitation for user input, URL elicitation for OAuth/payments, approval with Allow Once/Session/Workspace/Always/Deny
@@ -380,7 +380,7 @@ cargo run -p astralis-cli -- config paths
 | Component | Technology |
 |-----------|------------|
 | Language | Rust (`#![deny(unsafe_code)]`) |
-| MCP | `rmcp` v0.14 (2025-11-25 spec) |
+| MCP | `rmcp` v0.15 (2025-11-25 spec) |
 | Crypto | ed25519-dalek, blake3 |
 | Storage | SurrealDB (SurrealKV backend) |
 | IPC | jsonrpsee (JSON-RPC 2.0 + WebSocket) |

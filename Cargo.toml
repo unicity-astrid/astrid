@@ -87,7 +87,7 @@ astralis-storage = { path = "crates/astralis-storage" }
 
 # MCP - Official Rust SDK (2025-11-25 spec)
 # https://github.com/modelcontextprotocol/rust-sdk
-rmcp = { version = "0.14", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
+rmcp = { version = "0.15", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
 
 # Binary lookup
 which = "7"

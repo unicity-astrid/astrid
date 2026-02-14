@@ -280,7 +280,7 @@ impl std::fmt::Debug for CapabilitiesHandler {
 
 use rmcp::model::CreateElicitationRequestParams;
 
-/// Convert an rmcp elicitation request's schema to a core elicitation schema.
+/// Convert an rmcp elicitation schema to a core elicitation schema.
 ///
 /// The rmcp schema is a JSON Schema object with typed properties, while the core
 /// schema is a simple enum (`Text`/`Secret`/`Select`/`Confirm`). This does a
@@ -289,9 +289,8 @@ use rmcp::model::CreateElicitationRequestParams;
 /// Returns `(core_schema, first_property_name)` where the property name is used
 /// to wrap single-value responses back into the object format rmcp expects.
 fn convert_rmcp_schema(
-    params: &CreateElicitationRequestParams,
+    schema: &rmcp::model::ElicitationSchema,
 ) -> (ElicitationSchema, Option<String>) {
-    let schema = &params.requested_schema;
     let first = schema.properties.iter().next();
     let prop_name = first.map(|(name, _)| name.clone());
 
@@ -384,8 +383,9 @@ fn wrap_response_value(value: Value, prop_name: Option<&str>) -> Value {
 // ─── rmcp ClientHandler bridge ───────────────────────────────────────────────
 
 use rmcp::model::{
-    AnnotateAble, ClientCapabilities, ClientInfo, CreateMessageRequestParams, CreateMessageResult,
-    ElicitationCapability, Implementation, ProtocolVersion, RawContent, RootsCapabilities,
+    ClientCapabilities, ClientInfo, CreateMessageRequestParams, CreateMessageResult,
+    ElicitationCapability, FormElicitationCapability, Implementation, RootsCapabilities,
+    SamplingCapability, SamplingMessageContent, UrlElicitationCapability,
 };
 use rmcp::model::{CreateElicitationResult, ElicitationAction as RmcpElicitationAction};
 use rmcp::model::{ListRootsResult, Role};
@@ -453,26 +453,35 @@ impl rmcp::ClientHandler for AstralisClientHandler {
                 None
             },
             sampling: if self.inner.has_sampling() {
-                Some(serde_json::Map::new())
+                Some(SamplingCapability::default())
             } else {
                 None
             },
-            elicitation: if self.inner.has_elicitation() {
-                Some(ElicitationCapability::default())
-            } else {
-                None
+            elicitation: {
+                let has_form = self.inner.has_elicitation();
+                let has_url = self.inner.has_url_elicitation();
+                if has_form || has_url {
+                    Some(ElicitationCapability {
+                        form: has_form.then(FormElicitationCapability::default),
+                        url: has_url.then(UrlElicitationCapability::default),
+                    })
+                } else {
+                    None
+                }
             },
             ..Default::default()
         };
 
         ClientInfo {
             meta: None,
-            protocol_version: ProtocolVersion::default(),
+            protocol_version: serde_json::from_value(serde_json::json!("2025-11-25"))
+                .expect("valid protocol version"),
             capabilities,
             client_info: Implementation {
                 name: "astralis".to_string(),
                 title: Some("Astralis Secure Agent Runtime".to_string()),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                description: None,
                 icons: None,
                 website_url: None,
             },
@@ -491,7 +500,9 @@ impl rmcp::ClientHandler for AstralisClientHandler {
             ));
         };
 
-        // Convert rmcp SamplingMessages to astralis SamplingMessages
+        // Convert rmcp SamplingMessages to astralis SamplingMessages.
+        // Each rmcp message may carry Single or Multiple content items;
+        // we take the first supported item for our simpler representation.
         let messages = params
             .messages
             .iter()
@@ -500,11 +511,21 @@ impl rmcp::ClientHandler for AstralisClientHandler {
                     Role::User => "user",
                     Role::Assistant => "assistant",
                 };
-                let content = match &*m.content {
-                    RawContent::Text(t) => SamplingContent::Text {
+                // Find the first supported content item (Text/Image) from Single/Multiple.
+                let first_supported = match &m.content {
+                    rmcp::model::SamplingContent::Single(item) => Some(item),
+                    rmcp::model::SamplingContent::Multiple(items) => items.iter().find(|item| {
+                        matches!(
+                            item,
+                            SamplingMessageContent::Text(_) | SamplingMessageContent::Image(_)
+                        )
+                    }),
+                };
+                let content = match first_supported {
+                    Some(SamplingMessageContent::Text(t)) => SamplingContent::Text {
                         text: t.text.clone(),
                     },
-                    RawContent::Image(i) => SamplingContent::Image {
+                    Some(SamplingMessageContent::Image(i)) => SamplingContent::Image {
                         data: i.data.clone(),
                         mime_type: i.mime_type.clone(),
                     },
@@ -543,10 +564,7 @@ impl rmcp::ClientHandler for AstralisClientHandler {
         Ok(CreateMessageResult {
             model: response.model.unwrap_or_else(|| "unknown".to_string()),
             stop_reason: response.stop_reason,
-            message: rmcp::model::SamplingMessage {
-                role: Role::Assistant,
-                content: RawContent::text(text).no_annotation(),
-            },
+            message: rmcp::model::SamplingMessage::assistant_text(text),
         })
     }
 
@@ -582,50 +600,82 @@ impl rmcp::ClientHandler for AstralisClientHandler {
         request: CreateElicitationRequestParams,
         _context: RequestContext<RoleClient>,
     ) -> Result<CreateElicitationResult, rmcp::ErrorData> {
-        let Some(ref handler) = self.inner.elicitation else {
-            return Err(rmcp::ErrorData::internal_error(
-                "Elicitation not supported",
-                None,
-            ));
-        };
+        match request {
+            CreateElicitationRequestParams::FormElicitationParams {
+                message,
+                requested_schema,
+                ..
+            } => {
+                let Some(ref handler) = self.inner.elicitation else {
+                    return Err(rmcp::ErrorData::internal_error(
+                        "Elicitation not supported",
+                        None,
+                    ));
+                };
 
-        // Convert rmcp schema to core schema
-        let (core_schema, prop_name) = convert_rmcp_schema(&request);
+                // Convert rmcp schema to core schema
+                let (core_schema, prop_name) = convert_rmcp_schema(&requested_schema);
 
-        // Determine if required from schema's required field list
-        let required = request
-            .requested_schema
-            .required
-            .as_ref()
-            .is_some_and(|r| !r.is_empty());
+                // Determine if the elicited property is required based on the schema's required list
+                let required = match (requested_schema.required.as_ref(), prop_name.as_deref()) {
+                    (Some(required_fields), Some(name)) => {
+                        required_fields.iter().any(|field| field == name)
+                    },
+                    _ => false,
+                };
 
-        let core_request =
-            ElicitationRequest::new(&self.server_name, &request.message).with_schema(core_schema);
-        let core_request = if required {
-            core_request
-        } else {
-            core_request.optional()
-        };
+                let core_request =
+                    ElicitationRequest::new(&self.server_name, &message).with_schema(core_schema);
+                let core_request = if required {
+                    core_request
+                } else {
+                    core_request.optional()
+                };
 
-        let response = handler.handle_elicitation(core_request).await;
+                let response = handler.handle_elicitation(core_request).await;
 
-        // Convert core response to rmcp result
-        match response.action {
-            CoreElicitationAction::Submit { value } => {
-                let content = wrap_response_value(value, prop_name.as_deref());
-                Ok(CreateElicitationResult {
-                    action: RmcpElicitationAction::Accept,
-                    content: Some(content),
-                })
+                // Convert core response to rmcp result
+                match response.action {
+                    CoreElicitationAction::Submit { value } => {
+                        let content = wrap_response_value(value, prop_name.as_deref());
+                        Ok(CreateElicitationResult {
+                            action: RmcpElicitationAction::Accept,
+                            content: Some(content),
+                        })
+                    },
+                    CoreElicitationAction::Cancel => Ok(CreateElicitationResult {
+                        action: RmcpElicitationAction::Cancel,
+                        content: None,
+                    }),
+                    CoreElicitationAction::Dismiss => Ok(CreateElicitationResult {
+                        action: RmcpElicitationAction::Decline,
+                        content: None,
+                    }),
+                }
             },
-            CoreElicitationAction::Cancel => Ok(CreateElicitationResult {
-                action: RmcpElicitationAction::Cancel,
-                content: None,
-            }),
-            CoreElicitationAction::Dismiss => Ok(CreateElicitationResult {
-                action: RmcpElicitationAction::Decline,
-                content: None,
-            }),
+            CreateElicitationRequestParams::UrlElicitationParams { message, url, .. } => {
+                let Some(ref handler) = self.inner.url_elicitation else {
+                    return Err(rmcp::ErrorData::internal_error(
+                        "URL elicitation not supported",
+                        None,
+                    ));
+                };
+
+                let core_request = UrlElicitationRequest::new(&self.server_name, &url, &message);
+                let response = handler.handle_url_elicitation(core_request).await;
+
+                if response.completed {
+                    Ok(CreateElicitationResult {
+                        action: RmcpElicitationAction::Accept,
+                        content: None,
+                    })
+                } else {
+                    Ok(CreateElicitationResult {
+                        action: RmcpElicitationAction::Decline,
+                        content: None,
+                    })
+                }
+            },
         }
     }
 
@@ -706,13 +756,7 @@ mod tests {
             }))
             .unwrap();
 
-        let params = CreateElicitationRequestParams {
-            meta: None,
-            message: "Confirm?".to_string(),
-            requested_schema: rmcp_schema,
-        };
-
-        let (schema, prop_name) = convert_rmcp_schema(&params);
+        let (schema, prop_name) = convert_rmcp_schema(&rmcp_schema);
         assert!(matches!(
             schema,
             ElicitationSchema::Confirm { default: false }
@@ -735,13 +779,7 @@ mod tests {
             }))
             .unwrap();
 
-        let params = CreateElicitationRequestParams {
-            meta: None,
-            message: "API key needed".to_string(),
-            requested_schema: rmcp_schema,
-        };
-
-        let (schema, prop_name) = convert_rmcp_schema(&params);
+        let (schema, prop_name) = convert_rmcp_schema(&rmcp_schema);
         assert!(matches!(
             schema,
             ElicitationSchema::Text {
