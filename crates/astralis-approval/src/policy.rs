@@ -398,6 +398,8 @@ fn after_auth_part(authority: &str) -> &str {
     // Only consider '@' before the first '/' (path start)
     let before_path = authority.split('/').next().unwrap_or(authority);
     match before_path.rfind('@') {
+        // Safety: pos is from rfind() within authority, pos+1 is within bounds
+        #[allow(clippy::arithmetic_side_effects)]
         Some(pos) => &authority[pos + 1..],
         None => authority,
     }

@@ -160,29 +160,29 @@ impl PrettyFormatter {
 
         while i < len {
             // Bold: **...**
-            if i + 1 < len
+            if i.saturating_add(1) < len
                 && chars[i] == '*'
-                && chars[i + 1] == '*'
-                && let Some(end) = Self::find_closing_double_star(&chars, i + 2)
+                && chars[i.saturating_add(1)] == '*'
+                && let Some(end) = Self::find_closing_double_star(&chars, i.saturating_add(2))
             {
-                let inner: String = chars[i + 2..end].iter().collect();
+                let inner: String = chars[i.saturating_add(2)..end].iter().collect();
                 let _ = write!(result, "{}", inner.bold());
-                i = end + 2;
+                i = end.saturating_add(2);
                 continue;
             }
 
             // Inline code: `...`
             if chars[i] == '`'
-                && let Some(end) = Self::find_closing_backtick(&chars, i + 1)
+                && let Some(end) = Self::find_closing_backtick(&chars, i.saturating_add(1))
             {
-                let inner: String = chars[i + 1..end].iter().collect();
+                let inner: String = chars[i.saturating_add(1)..end].iter().collect();
                 let _ = write!(result, "{}", inner.yellow());
-                i = end + 1;
+                i = end.saturating_add(1);
                 continue;
             }
 
             result.push(chars[i]);
-            i += 1;
+            i = i.saturating_add(1);
         }
 
         result
@@ -192,11 +192,11 @@ impl PrettyFormatter {
     fn find_closing_double_star(chars: &[char], start: usize) -> Option<usize> {
         let len = chars.len();
         let mut i = start;
-        while i + 1 < len {
-            if chars[i] == '*' && chars[i + 1] == '*' {
+        while i.saturating_add(1) < len {
+            if chars[i] == '*' && chars[i.saturating_add(1)] == '*' {
                 return Some(i);
             }
-            i += 1;
+            i = i.saturating_add(1);
         }
         None
     }
@@ -206,7 +206,7 @@ impl PrettyFormatter {
         chars[start..]
             .iter()
             .position(|&c| c == '`')
-            .map(|p| p + start)
+            .map(|p| p.saturating_add(start))
     }
 
     /// Render a fenced code block using syntect highlighting.

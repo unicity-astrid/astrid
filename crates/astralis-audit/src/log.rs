@@ -167,7 +167,7 @@ impl AuditLog {
         }
 
         let mut issues = Vec::new();
-        let mut entries_verified = 0;
+        let mut entries_verified: usize = 0;
 
         // Sort by timestamp to ensure correct order
         let mut sorted_entries = entries;
@@ -188,11 +188,13 @@ impl AuditLog {
                     entry_id: entry.id.clone(),
                 });
             }
-            entries_verified += 1;
+            entries_verified = entries_verified.saturating_add(1);
         }
 
         // Verify chain linking
         for i in 1..sorted_entries.len() {
+            // Safety: i starts at 1, so i-1 is always valid
+            #[allow(clippy::arithmetic_side_effects)]
             let prev = &sorted_entries[i - 1];
             let curr = &sorted_entries[i];
 

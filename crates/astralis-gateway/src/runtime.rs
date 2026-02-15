@@ -381,7 +381,12 @@ impl GatewayRuntime {
     pub async fn health(&self) -> HealthStatus {
         let uptime = self
             .started_at
-            .map(|s| (Utc::now() - s).to_std().unwrap_or_default())
+            .map(|s| {
+                // Safety: chrono DateTime subtraction cannot overflow for reasonable uptime values
+                #[allow(clippy::arithmetic_side_effects)]
+                let duration = (Utc::now() - s).to_std().unwrap_or_default();
+                duration
+            })
             .unwrap_or_default();
 
         let agents = self.agents.read().await;

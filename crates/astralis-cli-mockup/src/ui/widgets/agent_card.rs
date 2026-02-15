@@ -121,7 +121,10 @@ pub(crate) fn render_agent_card(
     // Error
     if let Some(ref err) = agent.last_error {
         lines.push(Line::from(Span::styled(
-            format!("! {}", truncate(err, inner.width as usize - 2)),
+            format!(
+                "! {}",
+                truncate(err, (inner.width as usize).saturating_sub(2))
+            ),
             Style::default().fg(theme.error),
         )));
     }

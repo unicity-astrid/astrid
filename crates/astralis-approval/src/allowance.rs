@@ -594,7 +594,7 @@ impl AllowanceStore {
         };
         let before = store.len();
         store.retain(|_, a| !a.is_expired());
-        before - store.len()
+        before.saturating_sub(store.len())
     }
 
     /// Remove all session-only allowances from the store.

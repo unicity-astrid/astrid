@@ -617,6 +617,8 @@ impl IdentityStore for InMemoryIdentityStore {
             astralis_id,
             requesting_frontend,
             requesting_user_id: requesting_user_id.to_string(),
+            // Safety: chrono::Duration addition to DateTime cannot overflow for reasonable durations
+            #[allow(clippy::arithmetic_side_effects)]
             expires_at: Utc::now() + chrono::Duration::minutes(5),
         };
 

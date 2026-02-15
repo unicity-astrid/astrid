@@ -148,7 +148,12 @@ impl CapabilityToken {
     ) -> Self {
         let id = TokenId::new();
         let issued_at = Timestamp::now();
-        let expires_at = ttl.map(|d| Timestamp::from_datetime(Utc::now() + d));
+        let expires_at = ttl.map(|d| {
+            // Safety: chrono Duration addition to DateTime cannot overflow for reasonable durations
+            #[allow(clippy::arithmetic_side_effects)]
+            let expiry = Utc::now() + d;
+            Timestamp::from_datetime(expiry)
+        });
         let issuer = runtime_key.export_public_key();
 
         // Create token without signature for signing
@@ -264,6 +269,8 @@ impl CapabilityToken {
     pub fn is_expired_with_skew(&self, skew_secs: i64) -> bool {
         self.expires_at.as_ref().is_some_and(|exp| {
             let now = Utc::now();
+            // Safety: chrono Duration addition to DateTime cannot overflow for reasonable skew values
+            #[allow(clippy::arithmetic_side_effects)]
             let adjusted_expiry = exp.0 + Duration::seconds(skew_secs);
             now > adjusted_expiry
         })

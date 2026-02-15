@@ -104,7 +104,10 @@ impl RequestContext {
     /// Get elapsed time since the request started.
     #[must_use]
     pub fn elapsed(&self) -> chrono::Duration {
-        Utc::now() - self.started_at
+        // Utc::now() >= self.started_at by construction (started_at is set at creation time)
+        #[allow(clippy::arithmetic_side_effects)]
+        let elapsed = Utc::now() - self.started_at;
+        elapsed
     }
 
     /// Get elapsed time in milliseconds.

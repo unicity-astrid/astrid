@@ -25,7 +25,10 @@ impl SpinnerStyle {
     pub(crate) fn frame_at(self, elapsed_ms: u128) -> &'static str {
         let frames = self.frames();
         let interval = 120u128;
-        frames[(elapsed_ms / interval % frames.len() as u128) as usize]
+        #[allow(clippy::arithmetic_side_effects)]
+        // constant divisor, modulo by non-empty frames array
+        let idx = (elapsed_ms / interval % frames.len() as u128) as usize;
+        frames[idx]
     }
 }
 

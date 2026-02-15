@@ -79,6 +79,8 @@ impl VerificationRequest {
                 VerificationOption::Deny,
             ],
             risk_level: RiskLevel::Medium,
+            // Safety: chrono Duration addition to DateTime cannot overflow for reasonable durations
+            #[allow(clippy::arithmetic_side_effects)]
             expires_at: Utc::now() + Duration::minutes(5),
             metadata: VerificationMetadata::default(),
         }
@@ -108,7 +110,11 @@ impl VerificationRequest {
     /// Set the expiration time.
     #[must_use]
     pub fn expires_in(mut self, duration: Duration) -> Self {
-        self.expires_at = Utc::now() + duration;
+        // Safety: chrono Duration addition to DateTime cannot overflow for reasonable durations
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            self.expires_at = Utc::now() + duration;
+        }
         self
     }
 
@@ -342,6 +348,8 @@ impl VerificationResponse {
         Self {
             request_id,
             decision: VerificationDecision::Confirmed {
+                // Safety: chrono Duration addition to DateTime cannot overflow for reasonable durations
+                #[allow(clippy::arithmetic_side_effects)]
                 expiry: Some(Utc::now() + duration),
             },
             decided_at: Utc::now(),

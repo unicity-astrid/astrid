@@ -261,7 +261,10 @@ impl LlmProvider for ClaudeProvider {
                 // Process complete SSE events
                 while let Some(event_end) = buffer.find("\n\n") {
                     let event_data = buffer[..event_end].to_string();
-                    buffer = buffer[event_end + 2..].to_string();
+                    // Safety: event_end from find() is within bounds, +2 for "\n\n" length
+                    #[allow(clippy::arithmetic_side_effects)]
+                    let rest_start = event_end + 2;
+                    buffer = buffer[rest_start..].to_string();
 
                     // Parse SSE event
                     for line in event_data.lines() {

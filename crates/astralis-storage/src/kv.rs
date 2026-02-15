@@ -65,7 +65,7 @@ fn validate_key(key: &str) -> StorageResult<()> {
 /// Build the composite key `"{namespace}\0{key}"` as bytes.
 #[cfg(feature = "kv")]
 fn composite_key(namespace: &str, key: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(namespace.len() + 1 + key.len());
+    let mut buf = Vec::with_capacity(namespace.len().saturating_add(1).saturating_add(key.len()));
     buf.extend_from_slice(namespace.as_bytes());
     buf.push(0);
     buf.extend_from_slice(key.as_bytes());
@@ -75,7 +75,7 @@ fn composite_key(namespace: &str, key: &str) -> Vec<u8> {
 /// Build the start of the namespace range (inclusive): `"{namespace}\0"`.
 #[cfg(feature = "kv")]
 fn namespace_range_start(namespace: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(namespace.len() + 1);
+    let mut buf = Vec::with_capacity(namespace.len().saturating_add(1));
     buf.extend_from_slice(namespace.as_bytes());
     buf.push(0);
     buf
@@ -89,7 +89,7 @@ fn namespace_range_start(namespace: &str) -> Vec<u8> {
 /// all keys in the namespace.
 #[cfg(feature = "kv")]
 fn namespace_range_end(namespace: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(namespace.len() + 1);
+    let mut buf = Vec::with_capacity(namespace.len().saturating_add(1));
     buf.extend_from_slice(namespace.as_bytes());
     buf.push(1);
     buf
@@ -362,7 +362,7 @@ impl KvStore for SurrealKvStore {
         validate_namespace(namespace)?;
         let start = namespace_range_start(namespace);
         let end = namespace_range_end(namespace);
-        let prefix_len = namespace.len() + 1; // namespace + \0
+        let prefix_len = namespace.len().saturating_add(1); // namespace + \0
 
         let tx = self
             .tree

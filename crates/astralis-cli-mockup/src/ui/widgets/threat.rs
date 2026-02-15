@@ -16,6 +16,8 @@ pub(crate) fn render_threat_indicator<'a>(level: ThreatLevel, theme: &Theme) -> 
         ThreatLevel::Critical => (theme.threat_high, 4),
     };
 
+    // Safety: filled is 1..=4 so 4 - filled is always valid
+    #[allow(clippy::arithmetic_side_effects)]
     let bar: String = "=".repeat(filled) + &" ".repeat(4 - filled);
 
     Line::from(vec![

@@ -713,7 +713,10 @@ fn remove_nested(val: &mut toml::Value, path: &[&str]) {
     }
 
     let mut current = val;
-    for segment in &path[..path.len() - 1] {
+    // Safety: path is non-empty (checked above)
+    #[allow(clippy::arithmetic_side_effects)]
+    let parent_path = &path[..path.len() - 1];
+    for segment in parent_path {
         let Some(next) = current.as_table_mut().and_then(|t| t.get_mut(*segment)) else {
             return;
         };
@@ -721,7 +724,10 @@ fn remove_nested(val: &mut toml::Value, path: &[&str]) {
     }
 
     if let Some(table) = current.as_table_mut() {
-        table.remove(path[path.len() - 1]);
+        // Safety: path is non-empty (checked above)
+        #[allow(clippy::arithmetic_side_effects)]
+        let leaf = path[path.len() - 1];
+        table.remove(leaf);
     }
 }
 
@@ -741,7 +747,10 @@ fn set_nested(val: &mut toml::Value, path: &[&str], new_val: toml::Value) {
     }
 
     let mut current = val;
-    for segment in &path[..path.len() - 1] {
+    // Safety: path is non-empty (checked above)
+    #[allow(clippy::arithmetic_side_effects)]
+    let parent_path = &path[..path.len() - 1];
+    for segment in parent_path {
         let Some(next) = current.as_table_mut().and_then(|t| t.get_mut(*segment)) else {
             warn!("set_nested: missing intermediate table at '{segment}'; skipping");
             return;
@@ -750,7 +759,10 @@ fn set_nested(val: &mut toml::Value, path: &[&str], new_val: toml::Value) {
     }
 
     if let Some(table) = current.as_table_mut() {
-        table.insert(path[path.len() - 1].to_owned(), new_val);
+        // Safety: path is non-empty (checked above)
+        #[allow(clippy::arithmetic_side_effects)]
+        let leaf = path[path.len() - 1];
+        table.insert(leaf.to_owned(), new_val);
     }
 }
 

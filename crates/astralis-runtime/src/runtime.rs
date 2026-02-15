@@ -489,7 +489,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                         .await?;
                     frontend.tool_completed(&call.id, &result.content, result.is_error);
                     session.add_message(Message::tool_result(result));
-                    session.metadata.tool_call_count += 1;
+                    session.metadata.tool_call_count =
+                        session.metadata.tool_call_count.saturating_add(1);
                 }
 
                 // Continue the loop for next LLM turn

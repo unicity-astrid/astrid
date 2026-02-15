@@ -165,11 +165,11 @@ impl McpClient {
     /// the remaining servers.
     pub async fn connect_auto_servers(&self) -> McpResult<usize> {
         let names = self.servers.list_auto_start_names();
-        let mut connected = 0;
+        let mut connected: usize = 0;
 
         for name in &names {
             match self.connect(name).await {
-                Ok(()) => connected += 1,
+                Ok(()) => connected = connected.saturating_add(1),
                 Err(e) => {
                     warn!(server = %name, error = %e, "Failed to auto-connect server");
                 },

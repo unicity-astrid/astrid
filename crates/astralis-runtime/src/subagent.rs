@@ -212,6 +212,7 @@ impl SubAgentHandle {
     }
 
     /// Get duration (if completed).
+    #[allow(clippy::arithmetic_side_effects)] // completed_at is always >= started_at
     pub async fn duration(&self) -> Option<chrono::Duration> {
         self.completed_at()
             .await
@@ -296,7 +297,9 @@ impl SubAgentPool {
             // Find parent depth
             let active = self.active.read().await;
             if let Some(parent) = parent_id.as_ref().and_then(|id| active.get(id)) {
-                parent.depth + 1
+                parent.depth.checked_add(1).ok_or_else(|| {
+                    RuntimeError::SubAgentError("subagent depth overflow".to_string())
+                })?
             } else {
                 1
             }
@@ -400,7 +403,9 @@ impl SubAgentPool {
             return false; // parent not found
         };
 
-        let child_depth = parent_depth + 1;
+        let Some(child_depth) = parent_depth.checked_add(1) else {
+            return false;
+        };
         if child_depth >= self.max_depth {
             return false;
         }
@@ -532,10 +537,10 @@ impl SubAgentPool {
         }
         drop(active);
 
-        let mut cancelled = 0;
+        let mut cancelled = 0usize;
         for id in &to_cancel {
             if self.stop(id).await.is_some() {
-                cancelled += 1;
+                cancelled = cancelled.saturating_add(1);
             }
         }
         cancelled
@@ -559,13 +564,16 @@ impl SubAgentPool {
         let (succeeded, failed, cancelled, timed_out) =
             completed
                 .iter()
-                .fold((0, 0, 0, 0), |(s, f, c, t), h| match h.final_status() {
-                    Some(SubAgentStatus::Completed) => (s + 1, f, c, t),
-                    Some(SubAgentStatus::Failed) => (s, f + 1, c, t),
-                    Some(SubAgentStatus::Cancelled) => (s, f, c + 1, t),
-                    Some(SubAgentStatus::TimedOut) => (s, f, c, t + 1),
-                    _ => (s, f, c, t),
-                });
+                .fold(
+                    (0usize, 0usize, 0usize, 0usize),
+                    |(s, f, c, t), h| match h.final_status() {
+                        Some(SubAgentStatus::Completed) => (s.saturating_add(1), f, c, t),
+                        Some(SubAgentStatus::Failed) => (s, f.saturating_add(1), c, t),
+                        Some(SubAgentStatus::Cancelled) => (s, f, c.saturating_add(1), t),
+                        Some(SubAgentStatus::TimedOut) => (s, f, c, t.saturating_add(1)),
+                        _ => (s, f, c, t),
+                    },
+                );
 
         SubAgentPoolStats {
             max_concurrent: self.max_concurrent,

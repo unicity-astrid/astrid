@@ -252,11 +252,18 @@ where
                 if !config.should_retry(attempt) || !should_retry(&error) {
                     return RetryOutcome::Exhausted {
                         error,
-                        attempts: attempt + 1,
+                        // Report total attempts; saturating is fine since this is
+                        // only used for diagnostics.
+                        attempts: attempt.saturating_add(1),
                     };
                 }
 
-                attempt += 1;
+                // attempt is bounded by max_attempts (u32) via the should_retry
+                // check above, so +1 cannot overflow.
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    attempt += 1;
+                }
                 let delay = config.delay_for_attempt(attempt);
                 tokio::time::sleep(delay).await;
             },

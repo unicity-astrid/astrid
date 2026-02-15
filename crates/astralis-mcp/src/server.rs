@@ -399,18 +399,15 @@ impl ServerManager {
         self.connect_server(name, handler, notice_tx).await?;
 
         // Restore and increment restart count.
+        let new_count = prev_count.saturating_add(1);
         {
             let mut running = self.running.write().await;
             if let Some(server) = running.get_mut(name) {
-                server.restart_count = prev_count + 1;
+                server.restart_count = new_count;
             }
         }
 
-        info!(
-            server = name,
-            restart_count = prev_count + 1,
-            "Server restarted"
-        );
+        info!(server = name, restart_count = new_count, "Server restarted");
         Ok(())
     }
 
@@ -669,17 +666,18 @@ impl ServerManager {
         }
 
         // Set the incremented restart count and record the attempt timestamp.
+        let new_count = prev_count.saturating_add(1);
         {
             let mut running = self.running.write().await;
             if let Some(server) = running.get_mut(name) {
-                server.restart_count = prev_count + 1;
+                server.restart_count = new_count;
                 server.last_restart_attempt = Some(Instant::now());
             }
         }
 
         info!(
             server = name,
-            restart_count = prev_count + 1,
+            restart_count = new_count,
             "Server restarted (policy-allowed)"
         );
         Ok(true)

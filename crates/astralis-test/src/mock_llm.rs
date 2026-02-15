@@ -165,7 +165,7 @@ impl MockLlmProvider {
     fn next_turn(&self, messages: &[Message]) -> Result<MockLlmTurn, LlmError> {
         {
             let mut count = self.call_count.lock().expect("lock poisoned");
-            *count += 1;
+            *count = count.saturating_add(1);
         }
         {
             let mut captured = self.captured_messages.lock().expect("lock poisoned");

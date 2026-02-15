@@ -263,15 +263,17 @@ impl SessionStore {
     ///
     /// Returns an error if the sessions cannot be listed.
     pub fn cleanup_old(&self, max_age_days: i64) -> RuntimeResult<usize> {
+        // Safety: subtracting a known-positive duration from current time
+        #[allow(clippy::arithmetic_side_effects)]
         let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days);
-        let mut removed = 0;
+        let mut removed = 0usize;
 
         for id in self.list()? {
             if let Ok(Some(session)) = self.load(&id)
                 && session.created_at < cutoff
                 && self.delete(&id).is_ok()
             {
-                removed += 1;
+                removed = removed.saturating_add(1);
             }
         }
 

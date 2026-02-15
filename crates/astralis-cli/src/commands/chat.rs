@@ -465,8 +465,9 @@ fn print_help() {
 }
 
 fn budget_bar(percent: u8) -> String {
+    // .min(100) / 5 guarantees filled ∈ [0, 20]
     let filled = (percent as usize).min(100) / 5;
-    let empty = 20 - filled;
+    let empty = 20usize.saturating_sub(filled);
     let bar = format!("[{}{}]", "█".repeat(filled), "░".repeat(empty));
     if percent >= 90 {
         bar.red().to_string()

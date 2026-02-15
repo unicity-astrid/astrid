@@ -75,16 +75,23 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             let count = app.palette_filtered().len();
             if count > 0 {
                 if app.palette_selected == 0 {
-                    app.palette_selected = count - 1;
+                    app.palette_selected = count.saturating_sub(1);
                 } else {
-                    app.palette_selected -= 1;
+                    app.palette_selected = app.palette_selected.saturating_sub(1);
                 }
                 // Adjust scroll to keep selected visible
                 if app.palette_selected < app.palette_scroll_offset {
                     app.palette_scroll_offset = app.palette_selected;
                 }
-                if app.palette_selected >= app.palette_scroll_offset + PALETTE_MAX_VISIBLE {
-                    app.palette_scroll_offset = app.palette_selected + 1 - PALETTE_MAX_VISIBLE;
+                if app.palette_selected
+                    >= app
+                        .palette_scroll_offset
+                        .saturating_add(PALETTE_MAX_VISIBLE)
+                {
+                    app.palette_scroll_offset = app
+                        .palette_selected
+                        .saturating_add(1)
+                        .saturating_sub(PALETTE_MAX_VISIBLE);
                 }
             }
         },
@@ -93,10 +100,20 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Down, _) if palette_is_active => {
             let count = app.palette_filtered().len();
             if count > 0 {
-                app.palette_selected = (app.palette_selected + 1) % count;
+                #[allow(clippy::arithmetic_side_effects)] // modulo by count > 0 is safe
+                {
+                    app.palette_selected = (app.palette_selected.saturating_add(1)) % count;
+                }
                 // Adjust scroll to keep selected visible
-                if app.palette_selected >= app.palette_scroll_offset + PALETTE_MAX_VISIBLE {
-                    app.palette_scroll_offset = app.palette_selected + 1 - PALETTE_MAX_VISIBLE;
+                if app.palette_selected
+                    >= app
+                        .palette_scroll_offset
+                        .saturating_add(PALETTE_MAX_VISIBLE)
+                {
+                    app.palette_scroll_offset = app
+                        .palette_selected
+                        .saturating_add(1)
+                        .saturating_sub(PALETTE_MAX_VISIBLE);
                 }
                 if app.palette_selected < app.palette_scroll_offset {
                     app.palette_scroll_offset = app.palette_selected;
@@ -113,7 +130,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         // ── Text editing ────────────────────────────────────────
         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
             app.input.insert(app.cursor_pos, c);
-            app.cursor_pos += c.len_utf8();
+            app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
             app.scroll_offset = 0;
             app.palette_reset();
         },
@@ -147,7 +164,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Right, _) => {
             if app.cursor_pos < app.input.len() {
                 let (_, c) = app.input[app.cursor_pos..].char_indices().next().unwrap();
-                app.cursor_pos += c.len_utf8();
+                app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
             }
         },
         (KeyCode::Home, _) if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -199,9 +216,11 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    let id = app.pending_approvals[app.selected_approval.min(app.pending_approvals.len() - 1)]
-        .id
-        .clone();
+    let id = app.pending_approvals[app
+        .selected_approval
+        .min(app.pending_approvals.len().saturating_sub(1))]
+    .id
+    .clone();
 
     match key.code {
         // Approve once
@@ -223,7 +242,11 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
         // Navigate between approvals
         KeyCode::Tab | KeyCode::Down => {
             if !app.pending_approvals.is_empty() {
-                app.selected_approval = (app.selected_approval + 1) % app.pending_approvals.len();
+                #[allow(clippy::arithmetic_side_effects)] // modulo by non-empty len is safe
+                {
+                    app.selected_approval =
+                        app.selected_approval.saturating_add(1) % app.pending_approvals.len();
+                }
             }
         },
         KeyCode::BackTab | KeyCode::Up => {
@@ -231,7 +254,7 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
                 app.selected_approval = app
                     .selected_approval
                     .checked_sub(1)
-                    .unwrap_or(app.pending_approvals.len() - 1);
+                    .unwrap_or(app.pending_approvals.len().saturating_sub(1));
             }
         },
         // Quit
@@ -279,14 +302,12 @@ fn handle_copy_input(app: &mut App, key: KeyEvent) {
     match (key.code, key.modifiers) {
         // Navigate up
         (KeyCode::Up, _) => {
-            if app.copy_cursor > 0 {
-                app.copy_cursor -= 1;
-            }
+            app.copy_cursor = app.copy_cursor.saturating_sub(1);
         },
         // Navigate down
         (KeyCode::Down, _) => {
-            if app.copy_cursor + 1 < app.nexus_stream.len() {
-                app.copy_cursor += 1;
+            if app.copy_cursor.saturating_add(1) < app.nexus_stream.len() {
+                app.copy_cursor = app.copy_cursor.saturating_add(1);
             }
         },
         // Jump up by 5
@@ -295,7 +316,10 @@ fn handle_copy_input(app: &mut App, key: KeyEvent) {
         },
         // Jump down by 5
         (KeyCode::PageDown, _) => {
-            app.copy_cursor = (app.copy_cursor + 5).min(app.nexus_stream.len().saturating_sub(1));
+            app.copy_cursor = app
+                .copy_cursor
+                .saturating_add(5)
+                .min(app.nexus_stream.len().saturating_sub(1));
         },
         // Toggle selection on current entry
         (KeyCode::Char(' '), _) => {

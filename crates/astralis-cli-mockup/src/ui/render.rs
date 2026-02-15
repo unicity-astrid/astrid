@@ -46,6 +46,8 @@ pub(super) fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> 
 
     // - list item / * list item -> bullet prefix in tool color
     if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+        // Safety: trimmed is a suffix of line, so line.len() >= trimmed.len()
+        #[allow(clippy::arithmetic_side_effects)]
         let indent = &line[..line.len() - trimmed.len()];
         spans.push(Span::styled(
             format!("{indent}  "),
@@ -61,6 +63,8 @@ pub(super) fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> 
         .strip_prefix(|c: char| c.is_ascii_digit())
         .and_then(|s| s.strip_prefix(". "))
     {
+        // Safety: trimmed is a suffix of line, so line.len() >= trimmed.len()
+        #[allow(clippy::arithmetic_side_effects)]
         let indent = &line[..line.len() - trimmed.len()];
         let num_char = trimmed.chars().next().unwrap();
         spans.push(Span::styled(
@@ -185,10 +189,13 @@ pub(super) fn render_inline_tool(lines: &mut Vec<Line<'_>>, app: &App, idx: usiz
                         ]));
                     }
                     if output_lines.len() > max_lines {
+                        // Safety: output_lines.len() > max_lines checked above
+                        #[allow(clippy::arithmetic_side_effects)]
+                        let extra = output_lines.len() - max_lines;
                         lines.push(Line::from(vec![
                             Span::styled("  ⎿ ", Style::default().fg(theme.border)),
                             Span::styled(
-                                format!("... {} more lines", output_lines.len() - max_lines),
+                                format!("... {extra} more lines"),
                                 Style::default().fg(theme.warning),
                             ),
                         ]));
@@ -224,7 +231,10 @@ pub(super) fn to_pascal_case(s: &str) -> String {
 pub(super) fn format_elapsed(d: std::time::Duration) -> String {
     let secs = d.as_secs();
     if secs >= 60 {
-        format!("{}m {:02}s", secs / 60, secs % 60)
+        // Safety: division and modulo by nonzero literal 60
+        #[allow(clippy::arithmetic_side_effects)]
+        let (mins, rem) = (secs / 60, secs % 60);
+        format!("{mins}m {rem:02}s")
     } else {
         format!("{:.1}s", d.as_secs_f32())
     }
@@ -439,8 +449,12 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         UiState::Thinking { start_time, .. } => {
             let elapsed = start_time.elapsed();
             let spinner = theme.spinner.frame_at(elapsed.as_millis());
+            // Safety: division and modulo by nonzero literals cannot panic
+            #[allow(clippy::arithmetic_side_effects)]
             let verb_idx = (elapsed.as_millis() / 2500) as usize % FUN_VERBS.len();
             let verb = FUN_VERBS[verb_idx].0;
+            // Safety: modulo and division by nonzero literals
+            #[allow(clippy::arithmetic_side_effects)]
             let pulse_phase = (elapsed.as_millis() % 2000) as f32 / 2000.0;
             let spinner_color = if pulse_phase < 0.5 {
                 theme.thinking
@@ -556,17 +570,17 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
     if text.is_empty() || width == 0 {
         return 1;
     }
-    let mut lines = 1;
-    let mut col = 0;
+    let mut lines = 1usize;
+    let mut col = 0usize;
     for word in text.split_whitespace() {
         let wlen = word.len();
-        if col > 0 && col + 1 + wlen > width {
-            lines += 1;
+        if col > 0 && col.saturating_add(1).saturating_add(wlen) > width {
+            lines = lines.saturating_add(1);
             col = wlen;
         } else if col == 0 {
             col = wlen;
         } else {
-            col += 1 + wlen;
+            col = col.saturating_add(1).saturating_add(wlen);
         }
     }
     lines
@@ -574,7 +588,7 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
 
 fn input_height(app: &App, content_width: u16) -> u16 {
     let prompt_len = 2u16;
-    let avail = content_width.saturating_sub(prompt_len + 1) as usize;
+    let avail = content_width.saturating_sub(prompt_len.saturating_add(1)) as usize;
     let display_text = if app.input.starts_with('/') {
         &app.input[1..]
     } else {
@@ -582,7 +596,7 @@ fn input_height(app: &App, content_width: u16) -> u16 {
     };
     #[allow(clippy::cast_possible_truncation)]
     let text_lines = wrapped_line_count(display_text, avail) as u16;
-    (1 + text_lines).clamp(3, 8)
+    1u16.saturating_add(text_lines).clamp(3, 8)
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -598,7 +612,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let input_area = Rect::new(
         area.x,
-        area.y + 1,
+        area.y.saturating_add(1),
         area.width,
         area.height.saturating_sub(1),
     );
@@ -675,7 +689,10 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if i > 0 {
             spans.push(Span::styled(" > ", Style::default().fg(theme.border)));
         }
-        let style = if i == breadcrumb.len() - 1 {
+        // Safety: breadcrumb is non-empty (we're iterating), so len() - 1 is valid
+        #[allow(clippy::arithmetic_side_effects)]
+        let is_last = i == breadcrumb.len() - 1;
+        let style = if is_last {
             Style::default().fg(theme.user)
         } else {
             Style::default().fg(theme.muted)
@@ -701,8 +718,12 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     // Right: model + context progress bar
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // Safety: f32 mul for display estimation
+    #[allow(clippy::arithmetic_side_effects)]
     let context_pct = (app.context_usage * 100.0) as u8;
     let bar_width: usize = 8;
+    // Safety: division by nonzero literal 100
+    #[allow(clippy::arithmetic_side_effects)]
     let filled = (usize::from(context_pct) * bar_width) / 100;
     let empty = bar_width.saturating_sub(filled);
 
@@ -718,13 +739,20 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let bar_empty = "░".repeat(empty);
     let right_label = format!("{} ", app.model_name);
     let right_pct = format!(" {context_pct}%");
-    let right_len = right_label.len() + bar_width + right_pct.len();
+    let right_len = right_label
+        .len()
+        .saturating_add(bar_width)
+        .saturating_add(right_pct.len());
 
+    // Safety: division by nonzero literal 2
+    #[allow(clippy::arithmetic_side_effects)]
     let center_pos = width / 2;
+    // Safety: division by nonzero literal 2
+    #[allow(clippy::arithmetic_side_effects)]
     let center_start = center_pos.saturating_sub(center_len / 2);
     let left_pad = center_start.saturating_sub(left_len);
-    let right_start = center_start + center_len;
-    let right_pad = width.saturating_sub(right_start + right_len);
+    let right_start = center_start.saturating_add(center_len);
+    let right_pad = width.saturating_sub(right_start.saturating_add(right_len));
 
     spans.push(Span::raw(" ".repeat(left_pad)));
 
@@ -774,8 +802,16 @@ fn build_breadcrumb(path: &str) -> Vec<String> {
 fn render_welcome(frame: &mut Frame, content_area: Rect, app: &App, theme: &Theme) {
     let box_w = (content_area.width.saturating_sub(4)).min(76);
     let box_h = 14u16.min(content_area.height.saturating_sub(2));
-    let x = content_area.x + (content_area.width.saturating_sub(box_w)) / 2;
-    let y = content_area.y + (content_area.height.saturating_sub(box_h)) / 2;
+    // Safety: division by nonzero literal 2
+    #[allow(clippy::arithmetic_side_effects)]
+    let x = content_area
+        .x
+        .saturating_add((content_area.width.saturating_sub(box_w)) / 2);
+    // Safety: division by nonzero literal 2
+    #[allow(clippy::arithmetic_side_effects)]
+    let y = content_area
+        .y
+        .saturating_add((content_area.height.saturating_sub(box_h)) / 2);
     let overlay = Rect::new(x, y, box_w, box_h);
 
     frame.render_widget(Clear, overlay);
@@ -789,19 +825,21 @@ fn render_welcome(frame: &mut Frame, content_area: Rect, app: &App, theme: &Them
     frame.render_widget(block, overlay);
 
     let inner = Rect::new(
-        overlay.x + 1,
-        overlay.y + 1,
+        overlay.x.saturating_add(1),
+        overlay.y.saturating_add(1),
         overlay.width.saturating_sub(2),
         overlay.height.saturating_sub(2),
     );
 
+    // Safety: division by nonzero literal 2
+    #[allow(clippy::arithmetic_side_effects)]
     let half_w = inner.width / 2;
     let left_area = Rect::new(inner.x, inner.y, half_w, inner.height);
-    let sep_x = inner.x + half_w;
+    let sep_x = inner.x.saturating_add(half_w);
     let right_area = Rect::new(
-        sep_x + 1,
+        sep_x.saturating_add(1),
         inner.y,
-        inner.width.saturating_sub(half_w + 1),
+        inner.width.saturating_sub(half_w.saturating_add(1)),
         inner.height,
     );
 
@@ -871,7 +909,7 @@ fn render_welcome(frame: &mut Frame, content_area: Rect, app: &App, theme: &Them
                 "│",
                 Style::default().fg(theme.border),
             ))),
-            Rect::new(sep_x, inner.y + row, 1, 1),
+            Rect::new(sep_x, inner.y.saturating_add(row), 1, 1),
         );
     }
 
@@ -937,11 +975,14 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
 
     let approval = &app.pending_approvals[0];
     let area = frame.area();
-    let width = (area.width * 60 / 100).clamp(40, 60);
+    #[allow(clippy::arithmetic_side_effects, clippy::cast_possible_truncation)]
+    // u32 intermediate prevents u16 overflow; result <= area.width so truncation is safe
+    let width = (u32::from(area.width) * 60 / 100) as u16;
+    let width = width.clamp(40, 60);
     // 2 (tool + risk) + 1 (blank) + 1 (description) + 1 (blank)
     // + details count + 1 (blank) + 1 (hotkeys) + 2 (borders)
     #[allow(clippy::cast_possible_truncation)]
-    let content_lines = 9 + approval.details.len() as u16;
+    let content_lines = 9u16.saturating_add(approval.details.len() as u16);
     let height = content_lines.clamp(10, area.height.saturating_sub(4));
     let x = (area.width.saturating_sub(width)) / 2;
     let y = (area.height.saturating_sub(height)) / 2;

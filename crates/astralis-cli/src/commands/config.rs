@@ -59,7 +59,7 @@ pub(crate) fn show_paths() -> Result<()> {
     for (i, path) in paths.iter().enumerate() {
         let exists = std::path::Path::new(path).exists();
         let status = if exists { "found" } else { "not found" };
-        println!("  {}. {path}  [{status}]", i + 1);
+        println!("  {}. {path}  [{status}]", i.saturating_add(1));
     }
 
     println!("\nEnvironment variable fallbacks:");

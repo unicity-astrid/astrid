@@ -74,8 +74,13 @@ pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &
             };
 
             // Agent header line with connecting dashes
-            let name_len = agent.name.len() + status_label.len() + 4;
-            let dash_count = (area.width as usize).saturating_sub(name_len + uptime_str.len() + 6);
+            let name_len = agent
+                .name
+                .len()
+                .saturating_add(status_label.len())
+                .saturating_add(4);
+            let dash_count = (area.width as usize)
+                .saturating_sub(name_len.saturating_add(uptime_str.len()).saturating_add(6));
             let dashes = "─".repeat(dash_count);
 
             lines.push(Line::from(vec![
@@ -104,6 +109,8 @@ pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &
                 // No sub-agents, nothing to show
             } else {
                 for (i, child) in children.iter().enumerate() {
+                    // Safety: children is non-empty (we're iterating), so len() - 1 is valid
+                    #[allow(clippy::arithmetic_side_effects)]
                     let is_last = i == children.len() - 1;
                     lines.push(render_tree_node(child, is_last, theme));
 
@@ -115,6 +122,8 @@ pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &
                         .collect();
 
                     for (j, grandchild) in grandchildren.iter().enumerate() {
+                        // Safety: grandchildren is non-empty (we're iterating), so len() - 1 is valid
+                        #[allow(clippy::arithmetic_side_effects)]
                         let is_last_gc = j == grandchildren.len() - 1;
                         lines.push(render_tree_node(grandchild, is_last_gc, theme));
                     }

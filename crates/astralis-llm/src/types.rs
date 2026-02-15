@@ -301,7 +301,7 @@ impl Usage {
     /// Total tokens.
     #[must_use]
     pub fn total(&self) -> usize {
-        self.input_tokens + self.output_tokens
+        self.input_tokens.saturating_add(self.output_tokens)
     }
 }
 

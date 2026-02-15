@@ -39,10 +39,10 @@ pub(crate) fn render_shield(frame: &mut Frame, area: Rect, app: &App, theme: &Th
     render_queue(frame, chunks[1], app, theme);
 
     // Detail panel
-    let mut next_chunk = 2;
+    let mut next_chunk = 2usize;
     if has_detail && chunks.len() > next_chunk {
         render_detail_panel(frame, chunks[next_chunk], app, theme);
-        next_chunk += 1;
+        next_chunk = next_chunk.saturating_add(1);
     }
 
     // Action bar
@@ -203,7 +203,9 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) 
         return;
     }
 
-    let approval = &app.shield_approvals[app.shield_selected.min(app.shield_approvals.len() - 1)];
+    let approval = &app.shield_approvals[app
+        .shield_selected
+        .min(app.shield_approvals.len().saturating_sub(1))];
 
     let lines = vec![
         Line::from(Span::styled(

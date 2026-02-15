@@ -224,7 +224,9 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     match event {
         DaemonEvent::Text(text) => {
             app.stream_buffer.push_str(&text);
-            app.tokens_streamed += text.split_whitespace().count();
+            app.tokens_streamed = app
+                .tokens_streamed
+                .saturating_add(text.split_whitespace().count());
 
             // Update or create the assistant message in the nexus stream.
             if let Some(NexusEntry::Message(last)) = app.nexus_stream.last_mut()

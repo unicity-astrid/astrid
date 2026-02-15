@@ -109,7 +109,7 @@ impl AgentHandle {
     /// Increment request count.
     pub async fn increment_requests(&self) {
         let mut count = self.request_count.write().await;
-        *count += 1;
+        *count = count.saturating_add(1);
     }
 
     /// Get request count.

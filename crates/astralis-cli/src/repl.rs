@@ -54,7 +54,9 @@ impl Completer for ReplHelper {
         // Only complete if the cursor is at a word that starts with '/'
         // and that word begins at the start of the line or after whitespace.
         let prefix = &line[..pos];
-        let word_start = prefix.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+        let word_start = prefix
+            .rfind(char::is_whitespace)
+            .map_or(0, |i| i.saturating_add(1));
         let word = &prefix[word_start..];
 
         if !word.starts_with('/') {
@@ -150,7 +152,7 @@ impl ReplEditor {
                 Ok(line) => {
                     if line.ends_with('\\') {
                         // Strip trailing backslash and continue to next line.
-                        accumulated.push_str(&line[..line.len() - 1]);
+                        accumulated.push_str(&line[..line.len().saturating_sub(1)]);
                         accumulated.push('\n');
                         is_continuation = true;
                         continue;

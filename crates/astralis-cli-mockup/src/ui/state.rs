@@ -79,14 +79,21 @@ impl ViewMode {
     pub(crate) fn next(self) -> Self {
         let all = Self::all_ordered();
         let idx = all.iter().position(|v| *v == self).unwrap_or(0);
-        all[(idx + 1) % all.len()]
+        // Safety: all.len() > 0 (hardcoded list), modulo by nonzero
+        #[allow(clippy::arithmetic_side_effects)]
+        let next_idx = (idx + 1) % all.len();
+        all[next_idx]
     }
 
     /// Previous view in Tab order
     pub(crate) fn prev(self) -> Self {
         let all = Self::all_ordered();
         let idx = all.iter().position(|v| *v == self).unwrap_or(0);
-        all[(idx + all.len() - 1) % all.len()]
+        // Safety: all.len() > 0 (hardcoded list), so idx + all.len() - 1 won't underflow,
+        // and modulo by nonzero
+        #[allow(clippy::arithmetic_side_effects)]
+        let prev_idx = (idx + all.len() - 1) % all.len();
+        all[prev_idx]
     }
 
     /// Map from number key character to `ViewMode`
@@ -1204,7 +1211,7 @@ impl App {
             .stream_buffer
             .find(' ')
             .unwrap_or(self.stream_buffer.len());
-        let chunk_size = (chunk_size + 1).min(self.stream_buffer.len());
+        let chunk_size = chunk_size.saturating_add(1).min(self.stream_buffer.len());
         let chunk: String = self.stream_buffer.drain(..chunk_size).collect();
 
         // Add to last assistant message or create new one

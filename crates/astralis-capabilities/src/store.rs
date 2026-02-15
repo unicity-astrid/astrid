@@ -491,7 +491,7 @@ impl CapabilityStore {
     ///
     /// Returns an error if storage operations fail.
     pub fn cleanup_expired(&self) -> CapabilityResult<usize> {
-        let mut removed = 0;
+        let mut removed: usize = 0;
 
         if let Some(store) = &self.persistent_store {
             let keys = block_on(store.list_keys(NS_TOKENS))
@@ -505,7 +505,7 @@ impl CapabilityStore {
                     && token.is_expired()
                 {
                     let _ = block_on(store.delete(NS_TOKENS, &key));
-                    removed += 1;
+                    removed = removed.saturating_add(1);
                 }
             }
         }

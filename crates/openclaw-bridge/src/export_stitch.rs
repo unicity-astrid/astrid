@@ -41,7 +41,10 @@ pub fn stitch_exports(wasm_bytes: &[u8], export_names: &[&str]) -> BridgeResult<
 
     let needs_new_type = info.void_to_i32_type_idx.is_none();
     let wrapper_type_idx = info.void_to_i32_type_idx.unwrap_or(info.num_types);
-    let total_existing_funcs = info.num_imported_funcs + info.num_defined_funcs;
+    let total_existing_funcs = info
+        .num_imported_funcs
+        .checked_add(info.num_defined_funcs)
+        .ok_or_else(|| BridgeError::ExportStitchFailed("function count overflow".to_string()))?;
 
     let ctx = StitchContext {
         wasm_bytes,
@@ -189,7 +192,11 @@ fn emit_export_section(
         exports.export(
             name,
             wasm_encoder::ExportKind::Func,
-            ctx.total_existing_funcs + i as u32,
+            ctx.total_existing_funcs
+                .checked_add(i as u32)
+                .ok_or_else(|| {
+                    BridgeError::ExportStitchFailed("function index overflow".to_string())
+                })?,
         );
     }
     module.section(&exports);
@@ -255,7 +262,9 @@ fn gather_module_info(wasm_bytes: &[u8]) -> BridgeResult<ModuleInfo> {
                     if is_void_to_i32(&recgroup) {
                         info.void_to_i32_type_idx = Some(i as u32);
                     }
-                    info.num_types = (i + 1) as u32;
+                    info.num_types = i.checked_add(1).ok_or_else(|| {
+                        BridgeError::ExportStitchFailed("type count overflow".to_string())
+                    })? as u32;
                 }
             },
             wasmparser::Payload::ImportSection(reader) => {
@@ -264,7 +273,12 @@ fn gather_module_info(wasm_bytes: &[u8]) -> BridgeResult<ModuleInfo> {
                         BridgeError::ExportStitchFailed(format!("failed to read import: {e}"))
                     })?;
                     if matches!(import.ty, wasmparser::TypeRef::Func(_)) {
-                        info.num_imported_funcs += 1;
+                        info.num_imported_funcs =
+                            info.num_imported_funcs.checked_add(1).ok_or_else(|| {
+                                BridgeError::ExportStitchFailed(
+                                    "imported function count overflow".to_string(),
+                                )
+                            })?;
                     }
                 }
             },

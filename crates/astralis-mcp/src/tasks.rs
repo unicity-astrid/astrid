@@ -142,6 +142,7 @@ impl Task {
 
     /// Get the duration of the task.
     #[must_use]
+    #[allow(clippy::arithmetic_side_effects)] // end >= start and now >= start by construction
     pub fn duration(&self) -> Option<chrono::Duration> {
         match (self.started_at, self.finished_at) {
             (Some(start), Some(end)) => Some(end - start),
@@ -215,9 +216,10 @@ impl TaskManager {
 
             // Prune old tasks if over limit
             if server_tasks.len() > self.max_tasks_per_server {
-                let to_remove: Vec<_> = server_tasks
-                    .drain(..server_tasks.len() - self.max_tasks_per_server)
-                    .collect();
+                // Safety: checked `len() > max_tasks_per_server` above
+                #[allow(clippy::arithmetic_side_effects)]
+                let drain_count = server_tasks.len() - self.max_tasks_per_server;
+                let to_remove: Vec<_> = server_tasks.drain(..drain_count).collect();
 
                 let mut tasks = self.tasks.write().await;
                 for id in to_remove {
@@ -304,6 +306,8 @@ impl TaskManager {
 
     /// Clean up completed tasks older than the given duration.
     pub async fn cleanup_old_tasks(&self, max_age: chrono::Duration) {
+        // Safety: subtracting a positive duration from current time
+        #[allow(clippy::arithmetic_side_effects)]
         let cutoff = Utc::now() - max_age;
 
         let to_remove: Vec<Uuid> = {

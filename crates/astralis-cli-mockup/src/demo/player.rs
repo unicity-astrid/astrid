@@ -94,14 +94,19 @@ impl DemoPlayer {
                     app.cursor_pos = text.len();
                     self.next_step();
                 } else {
-                    let chars_to_show =
-                        (elapsed.as_millis() / u128::from(*typing_speed_ms)) as usize;
+                    let chars_to_show = if *typing_speed_ms == 0 {
+                        text.len()
+                    } else {
+                        #[allow(clippy::arithmetic_side_effects)] // divisor checked non-zero above
+                        let c = (elapsed.as_millis() / u128::from(*typing_speed_ms)) as usize;
+                        c
+                    };
                     if chars_to_show > self.typing_index && self.typing_index < text.len() {
                         // Add next character to input
                         let next_char = text.chars().nth(self.typing_index).unwrap();
                         app.input.push(next_char);
                         app.cursor_pos = app.input.len();
-                        self.typing_index += 1;
+                        self.typing_index = self.typing_index.saturating_add(1);
                     }
                     if self.typing_index >= text.len() {
                         self.next_step();
@@ -148,6 +153,8 @@ impl DemoPlayer {
 
                     if elapsed >= *duration {
                         // Record completed activity for status bar
+                        // Safety: division and modulo cannot overflow
+                        #[allow(clippy::arithmetic_side_effects)]
                         let verb_index =
                             (duration.as_millis() / 3000) as usize % crate::ui::FUN_VERBS.len();
                         let (_, past) = crate::ui::FUN_VERBS[verb_index];
@@ -167,8 +174,9 @@ impl DemoPlayer {
             } => {
                 // Calculate total tokens for this response
                 let words: Vec<&str> = text.split_whitespace().collect();
+                #[allow(clippy::arithmetic_side_effects)] // f32 mul for estimation
                 let total_tokens = (words.len() as f32 * 1.3) as usize;
-                let total_duration_ms = (*word_delay_ms as usize) * words.len();
+                let total_duration_ms = (*word_delay_ms as usize).saturating_mul(words.len());
 
                 if self.fast_forward {
                     // Instantly add full message with final token count
@@ -268,6 +276,8 @@ impl DemoPlayer {
                         });
 
                         // Push inline tool result message
+                        // Safety: we just pushed to completed_tools, so len() > 0
+                        #[allow(clippy::arithmetic_side_effects)]
                         let tool_idx = app.completed_tools.len() - 1;
                         let msg = Message {
                             role: MessageRole::System,
@@ -326,6 +336,8 @@ impl DemoPlayer {
                         app.completed_tools.push(completed);
 
                         // Push inline tool result message
+                        // Safety: we just pushed to completed_tools, so len() > 0
+                        #[allow(clippy::arithmetic_side_effects)]
                         let tool_idx = app.completed_tools.len() - 1;
                         let msg = Message {
                             role: MessageRole::System,
@@ -599,7 +611,7 @@ impl DemoPlayer {
                 };
                 app.nexus_stream.push(NexusEntry::Message(header.clone()));
                 app.messages.push(header);
-                let mut line_num = 1;
+                let mut line_num: usize = 1;
                 for line in removed {
                     let m = Message {
                         role: MessageRole::System,
@@ -610,7 +622,7 @@ impl DemoPlayer {
                     };
                     app.nexus_stream.push(NexusEntry::Message(m.clone()));
                     app.messages.push(m);
-                    line_num += 1;
+                    line_num = line_num.saturating_add(1);
                 }
                 for line in added {
                     let m = Message {
@@ -622,7 +634,7 @@ impl DemoPlayer {
                     };
                     app.nexus_stream.push(NexusEntry::Message(m.clone()));
                     app.messages.push(m);
-                    line_num += 1;
+                    line_num = line_num.saturating_add(1);
                 }
                 let footer = Message {
                     role: MessageRole::System,
@@ -730,7 +742,7 @@ impl DemoPlayer {
             },
 
             DemoStep::SpawnSubAgent { parent_agent, task } => {
-                self.subagent_counter += 1;
+                self.subagent_counter = self.subagent_counter.saturating_add(1);
                 let id = format!("sub-{:03}", self.subagent_counter);
 
                 // Count depth based on parent
@@ -754,7 +766,7 @@ impl DemoPlayer {
 
                 // Update parent agent's sub-agent count
                 if let Some(a) = app.agents.iter_mut().find(|a| a.name == *parent_agent) {
-                    a.active_subagents += 1;
+                    a.active_subagents = a.active_subagents.saturating_add(1);
                 }
 
                 app.event_stream.push_back(EventRecord {
@@ -814,7 +826,7 @@ impl DemoPlayer {
             } => {
                 let expires_in = ttl_secs.map(Duration::from_secs);
                 app.active_capabilities.push(CapabilitySnapshot {
-                    id: format!("cap-{}", app.active_capabilities.len() + 1),
+                    id: format!("cap-{}", app.active_capabilities.len().saturating_add(1)),
                     resource: resource.clone(),
                     permissions: vec!["execute".to_string()],
                     scope: scope.clone(),
@@ -867,7 +879,7 @@ impl DemoPlayer {
                 action,
                 outcome,
             } => {
-                self.audit_counter += 1;
+                self.audit_counter = self.audit_counter.saturating_add(1);
                 let audit_outcome = match outcome {
                     AuditOutcomeDemo::Success => AuditOutcome::Success,
                     AuditOutcomeDemo::Failure => AuditOutcome::Failure,
@@ -1011,7 +1023,7 @@ impl DemoPlayer {
 
                 // Update agent's pending count
                 if let Some(a) = app.agents.iter_mut().find(|a| a.name == *agent) {
-                    a.pending_approvals += 1;
+                    a.pending_approvals = a.pending_approvals.saturating_add(1);
                 }
 
                 self.next_step();
@@ -1077,7 +1089,7 @@ impl DemoPlayer {
     }
 
     fn next_step(&mut self) {
-        self.current_step += 1;
+        self.current_step = self.current_step.saturating_add(1);
         self.step_start = Instant::now();
         self.typing_index = 0;
         self.streaming_index = 0;

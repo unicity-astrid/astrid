@@ -231,6 +231,8 @@ impl DeferredResolution {
     /// Check if this resolution is older than the given duration.
     #[must_use]
     pub fn is_older_than(&self, max_age: Duration) -> bool {
+        // Safety: chrono Duration subtraction from DateTime cannot overflow for reasonable durations
+        #[allow(clippy::arithmetic_side_effects)]
         let cutoff = Timestamp::from_datetime(chrono::Utc::now() - max_age);
         self.queued_at < cutoff
     }
@@ -406,7 +408,7 @@ impl DeferredResolutionStore {
         };
         let before = store.len();
         store.retain(|_, r| !r.is_older_than(max_age));
-        before - store.len()
+        before.saturating_sub(store.len())
     }
 
     /// Queue a new deferred resolution with persistence.

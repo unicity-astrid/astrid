@@ -86,7 +86,7 @@ impl BuiltinTool for ReadFileTool {
 
         // Apply offset (1-based)
         let start = offset.map_or(0, |o| o.saturating_sub(1));
-        let end = (start + limit).min(total_lines);
+        let end = start.saturating_add(limit).min(total_lines);
 
         if start >= total_lines {
             return Ok(format!(
@@ -96,6 +96,8 @@ impl BuiltinTool for ReadFileTool {
 
         let mut output = String::new();
         for (idx, &line) in lines[start..end].iter().enumerate() {
+            // Safety: start and idx are bounded by total_lines, +1 for 1-based display
+            #[allow(clippy::arithmetic_side_effects)]
             let line_num = start + idx + 1;
             let display_line = if line.len() > MAX_LINE_LENGTH {
                 &line[..MAX_LINE_LENGTH]
@@ -109,7 +111,7 @@ impl BuiltinTool for ReadFileTool {
             let _ = write!(
                 output,
                 "\n(showing lines {}-{} of {total_lines}; use offset/limit for more)",
-                start + 1,
+                start.saturating_add(1),
                 end
             );
         }

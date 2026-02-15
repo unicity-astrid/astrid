@@ -29,20 +29,20 @@ fn main() -> io::Result<()> {
     let demo_scenario = args
         .iter()
         .position(|a| a == "--demo")
-        .and_then(|i| args.get(i + 1))
+        .and_then(|i| args.get(i.saturating_add(1)))
         .map(String::as_str);
 
     // Check for snapshot mode
     let snapshot_scenario = args
         .iter()
         .position(|a| a == "--snapshot")
-        .and_then(|i| args.get(i + 1))
+        .and_then(|i| args.get(i.saturating_add(1)))
         .map(String::as_str);
 
     let snapshot_count: usize = args
         .iter()
         .position(|a| a == "--steps")
-        .and_then(|i| args.get(i + 1))
+        .and_then(|i| args.get(i.saturating_add(1)))
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
@@ -92,15 +92,15 @@ fn run_snapshot_mode(scenario: &str, snapshots: usize) {
 
     println!("=== Snapshot Mode: {scenario} ({snapshots} snapshots) ===\n");
 
-    let mut snapshot_count = 0;
-    let mut total_advances = 0;
-    let max_advances = 5000; // Safety limit
+    let mut snapshot_count: usize = 0;
+    let mut total_advances: usize = 0;
+    let max_advances: usize = 5000; // Safety limit
 
     // Take snapshots at meaningful intervals
     while snapshot_count < snapshots && total_advances < max_advances {
         // Advance the demo player multiple times to get meaningful state changes
-        let mut advanced_this_round = 0;
-        let advances_per_snapshot = 20; // Advance 20 times between snapshots
+        let mut advanced_this_round: usize = 0;
+        let advances_per_snapshot: usize = 20; // Advance 20 times between snapshots
 
         while advanced_this_round < advances_per_snapshot && total_advances < max_advances {
             if app.demo_player.is_some() {
@@ -114,12 +114,12 @@ fn run_snapshot_mode(scenario: &str, snapshots: usize) {
                 }
                 app.demo_player = Some(player);
             }
-            advanced_this_round += 1;
-            total_advances += 1;
+            advanced_this_round = advanced_this_round.saturating_add(1);
+            total_advances = total_advances.saturating_add(1);
         }
 
         // Print snapshot
-        snapshot_count += 1;
+        snapshot_count = snapshot_count.saturating_add(1);
         println!(
             "\n┌─── Snapshot {snapshot_count} (after {total_advances} advances) ──────────────────────────────┐"
         );

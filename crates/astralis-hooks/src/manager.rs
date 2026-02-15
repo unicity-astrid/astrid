@@ -187,7 +187,7 @@ impl HookManager {
         HookStats {
             total,
             enabled,
-            disabled: total - enabled,
+            disabled: total.saturating_sub(enabled),
             events_with_hooks,
         }
     }

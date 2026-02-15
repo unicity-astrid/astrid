@@ -14,6 +14,8 @@ pub(crate) struct MockToolCall {
 pub(crate) fn extract_tool_call(response: &str) -> Option<MockToolCall> {
     // Look for [TOOL:name:arg] pattern
     if let Some(start) = response.find("[TOOL:") {
+        // Safety: start is from find(), so start + 6 is within bounds of the "[TOOL:" match
+        #[allow(clippy::arithmetic_side_effects)]
         let rest = &response[start + 6..];
         if let Some(end) = rest.find(']') {
             let tool_spec = &rest[..end];

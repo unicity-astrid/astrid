@@ -215,12 +215,14 @@ impl AgentSession {
 
     /// Add a message to the session.
     pub fn add_message(&mut self, message: Message) {
-        // Estimate tokens (rough: 4 chars per token)
+        // Rough token estimate (4 chars per token). This is a heuristic for
+        // context-limit warnings, not billing. Real context windows top out at
+        // ~200K tokens, so overflow of usize is not a practical concern.
         let msg_tokens = match &message.content {
             astralis_llm::MessageContent::Text(t) => t.len() / 4,
             _ => 100, // Rough estimate for tool calls
         };
-        self.token_count += msg_tokens;
+        self.token_count = self.token_count.saturating_add(msg_tokens);
         self.messages.push(message);
     }
 
@@ -240,7 +242,11 @@ impl AgentSession {
     /// Get session duration.
     #[must_use]
     pub fn duration(&self) -> chrono::Duration {
-        Utc::now() - self.created_at
+        // Safety: current time is always >= created_at
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            Utc::now() - self.created_at
+        }
     }
 
     /// Clean up session-scoped state.

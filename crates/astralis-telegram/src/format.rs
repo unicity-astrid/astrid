@@ -142,7 +142,8 @@ fn find_split_point(text: &str, boundary: usize, delimiter: &str) -> Option<usiz
     let search_region = &text[..boundary];
     search_region
         .rfind(delimiter)
-        .map(|pos| pos + delimiter.len())
+        // Safety: pos from rfind() is within bounds, delimiter.len() keeps us within text
+        .map(|pos| pos.saturating_add(delimiter.len()))
 }
 
 /// Find a safe truncation boundary in an HTML string at or before `max_len`.

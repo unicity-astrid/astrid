@@ -69,6 +69,8 @@ impl ContextManager {
             });
         }
 
+        // Safety: checked `len() > keep_recent_count` above
+        #[allow(clippy::arithmetic_side_effects)]
         let evict_count = session.messages.len() - self.keep_recent_count;
         let messages_to_summarize: Vec<_> = session.messages.drain(..evict_count).collect();
 
@@ -106,7 +108,7 @@ impl ContextManager {
 
         // Update token count
         session.token_count = session.token_count.saturating_sub(tokens_freed);
-        session.token_count += summary.len() / 4; // Add summary tokens
+        session.token_count = session.token_count.saturating_add(summary.len() / 4); // Add summary tokens
 
         Ok(SummarizationResult {
             messages_evicted: evict_count,

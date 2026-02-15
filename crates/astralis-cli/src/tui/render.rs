@@ -34,7 +34,7 @@ fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> {
 
     // - list / * list → bullet prefix in tool color
     if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-        let indent = &line[..line.len() - trimmed.len()];
+        let indent = &line[..line.len().saturating_sub(trimmed.len())];
         spans.push(Span::styled(
             format!("{indent}  \u{2022} "),
             Style::default().fg(theme.tool),
@@ -49,7 +49,7 @@ fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> {
         .strip_prefix(|c: char| c.is_ascii_digit())
         .and_then(|s| s.strip_prefix(". "))
     {
-        let indent = &line[..line.len() - trimmed.len()];
+        let indent = &line[..line.len().saturating_sub(trimmed.len())];
         let num_char = trimmed.chars().next().unwrap();
         spans.push(Span::styled(
             format!("{indent}{num_char}. "),
@@ -176,7 +176,10 @@ fn render_inline_tool(lines: &mut Vec<Line<'_>>, app: &App, idx: usize, theme: &
                         lines.push(Line::from(vec![
                             Span::styled("  ⎿ ", Style::default().fg(theme.border)),
                             Span::styled(
-                                format!("... {} more lines", output_lines.len() - max_lines),
+                                format!(
+                                    "... {} more lines",
+                                    output_lines.len().saturating_sub(max_lines)
+                                ),
                                 Style::default().fg(theme.warning),
                             ),
                         ]));
@@ -212,7 +215,9 @@ fn to_pascal_case(s: &str) -> String {
 fn format_elapsed(d: std::time::Duration) -> String {
     let secs = d.as_secs();
     if secs >= 60 {
-        format!("{}m {:02}s", secs / 60, secs % 60)
+        #[allow(clippy::arithmetic_side_effects)] // constant divisors, no overflow risk
+        let (mins, rem) = (secs / 60, secs % 60);
+        format!("{mins}m {rem:02}s")
     } else {
         format!("{:.1}s", d.as_secs_f32())
     }
@@ -271,7 +276,7 @@ fn word_wrap_line(text: &str, max_width: usize) -> Vec<String> {
     }
 
     let trimmed = text.trim_start();
-    let leading = &text[..text.len() - trimmed.len()];
+    let leading = &text[..text.len().saturating_sub(trimmed.len())];
 
     let mut result = Vec::new();
     let mut line = String::from(leading);
@@ -285,12 +290,12 @@ fn word_wrap_line(text: &str, max_width: usize) -> Vec<String> {
         let w = word.chars().count();
         if first_word {
             line.push_str(word);
-            width += w;
+            width = width.saturating_add(w);
             first_word = false;
-        } else if width + 1 + w <= max_width {
+        } else if width.saturating_add(1).saturating_add(w) <= max_width {
             line.push(' ');
             line.push_str(word);
-            width += 1 + w;
+            width = width.saturating_add(1).saturating_add(w);
         } else {
             result.push(std::mem::take(&mut line));
             line = word.to_string();
@@ -311,17 +316,17 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
     if text.is_empty() || width == 0 {
         return 1;
     }
-    let mut lines = 1;
-    let mut col = 0;
+    let mut lines = 1usize;
+    let mut col = 0usize;
     for word in text.split_whitespace() {
         let wlen = word.len();
-        if col > 0 && col + 1 + wlen > width {
-            lines += 1;
+        if col > 0 && col.saturating_add(1).saturating_add(wlen) > width {
+            lines = lines.saturating_add(1);
             col = wlen;
         } else if col == 0 {
             col = wlen;
         } else {
-            col += 1 + wlen;
+            col = col.saturating_add(1).saturating_add(wlen);
         }
     }
     lines
@@ -337,15 +342,15 @@ fn input_height(app: &App, content_width: u16) -> u16 {
     };
     #[allow(clippy::cast_possible_truncation)]
     let text_lines = wrapped_line_count(display_text, avail) as u16;
-    let base = (1 + text_lines).clamp(3, 8);
+    let base = (1u16.saturating_add(text_lines)).clamp(3, 8);
 
     if app.palette_active() {
         let n = app.palette_filtered().len();
         if n > 0 {
             // 1 for separator border + visible item rows
             #[allow(clippy::cast_possible_truncation)]
-            let palette_rows = 1 + n.min(PALETTE_MAX_VISIBLE) as u16;
-            return base + palette_rows;
+            let palette_rows = 1u16.saturating_add(n.min(PALETTE_MAX_VISIBLE) as u16);
+            return base.saturating_add(palette_rows);
         }
     }
 
@@ -485,7 +490,7 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     }
                 }
                 // Tag all lines added for this entry
-                let added = lines.len() - before;
+                let added = lines.len().saturating_sub(before);
                 line_entry_idx.extend(std::iter::repeat_n(Some(entry_idx), added));
 
                 if msg.spacing {
@@ -563,8 +568,10 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         UiState::Thinking { start_time, .. } => {
             let elapsed = start_time.elapsed();
             let spinner = theme.spinner.frame_at(elapsed.as_millis());
+            #[allow(clippy::arithmetic_side_effects)] // constant divisors, no overflow risk
             let verb_idx = (elapsed.as_millis() / 2500) as usize % FUN_VERBS.len();
             let verb = FUN_VERBS[verb_idx].0;
+            #[allow(clippy::arithmetic_side_effects)] // constant divisors, no overflow risk
             let pulse_phase = (elapsed.as_millis() % 2000) as f32 / 2000.0;
             let spinner_color = if pulse_phase < 0.5 {
                 theme.thinking
@@ -609,6 +616,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         } => {
             let elapsed = start_time.elapsed();
             let spinner = theme.spinner.frame_at(elapsed.as_millis());
+            #[allow(clippy::arithmetic_side_effects)] // constant divisors, no overflow risk
             let flash_phase = (elapsed.as_millis() % 1000) as f32 / 1000.0;
             let tool_color = if flash_phase < 0.5 {
                 theme.tool
@@ -746,15 +754,16 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         0u16
     } else {
         #[allow(clippy::cast_possible_truncation)]
-        let rows = 1 + filtered.len().min(PALETTE_MAX_VISIBLE) as u16;
+        let rows = 1u16.saturating_add(filtered.len().min(PALETTE_MAX_VISIBLE) as u16);
         rows
     };
 
     let input_area = Rect::new(
         area.x,
-        area.y + 1,
+        area.y.saturating_add(1),
         area.width,
-        area.height.saturating_sub(1 + palette_rows),
+        area.height
+            .saturating_sub(1u16.saturating_add(palette_rows)),
     );
 
     if app.quit_pending {
@@ -814,7 +823,10 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     // Render palette below input
     if !filtered.is_empty() {
-        let palette_y = area.y + area.height - palette_rows;
+        let palette_y = area
+            .y
+            .saturating_add(area.height)
+            .saturating_sub(palette_rows);
 
         // Dashed separator between input and palette
         let sep = Paragraph::new(Line::from(Span::styled(
@@ -825,7 +837,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
         let items_area = Rect::new(
             area.x,
-            palette_y + 1,
+            palette_y.saturating_add(1),
             area.width,
             palette_rows.saturating_sub(1),
         );
@@ -845,8 +857,8 @@ fn render_palette_items(
 
     #[allow(clippy::cast_possible_truncation)]
     for (i, cmd) in filtered.iter().skip(scroll).take(visible_count).enumerate() {
-        let is_selected = (scroll + i) == app.palette_selected;
-        let y = area.y + i as u16;
+        let is_selected = scroll.saturating_add(i) == app.palette_selected;
+        let y = area.y.saturating_add(i as u16);
         let row_area = Rect::new(area.x, y, area.width, 1);
 
         let name_style = if is_selected {
@@ -879,13 +891,16 @@ fn render_palette_items(
 
         let desc_avail = (area.width as usize).saturating_sub(padded_name.len());
         let description = if cmd.description.len() > desc_avail && desc_avail > 1 {
-            format!("{}…", truncate_to_boundary(cmd.description, desc_avail - 1))
+            format!(
+                "{}…",
+                truncate_to_boundary(cmd.description, desc_avail.saturating_sub(1))
+            )
         } else {
             cmd.description.to_string()
         };
 
         // Fill remaining width with background
-        let total_used = padded_name.len() + description.len();
+        let total_used = padded_name.len().saturating_add(description.len());
         let trailing = (area.width as usize).saturating_sub(total_used);
 
         let line = Line::from(vec![
@@ -910,7 +925,7 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if i > 0 {
             spans.push(Span::styled(" > ", Style::default().fg(theme.border)));
         }
-        let style = if i == breadcrumb.len() - 1 {
+        let style = if i == breadcrumb.len().saturating_sub(1) {
             Style::default().fg(theme.user)
         } else {
             Style::default().fg(theme.muted)
@@ -934,6 +949,8 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let context_pct = (app.context_usage * 100.0) as u8;
     let bar_width: usize = 8;
+    #[allow(clippy::arithmetic_side_effects)]
+    // division by constant 100, multiplication bounded by u8 * 8
     let filled = (usize::from(context_pct) * bar_width) / 100;
     let empty = bar_width.saturating_sub(filled);
 
@@ -949,10 +966,13 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let bar_empty = "░".repeat(empty);
     let right_label = format!("{} ", app.model_name);
     let right_pct = format!(" {context_pct}%");
-    let right_len = right_label.len() + bar_width + right_pct.len();
+    let right_len = right_label
+        .len()
+        .saturating_add(bar_width)
+        .saturating_add(right_pct.len());
 
     let left_len: usize = spans.iter().map(|s| s.content.len()).sum();
-    let pad = width.saturating_sub(left_len + right_len);
+    let pad = width.saturating_sub(left_len.saturating_add(right_len));
 
     spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(right_label, Style::default().fg(theme.tool)));
@@ -966,15 +986,20 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 // ─── Approval Overlay ────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
     if app.pending_approvals.is_empty() {
         return;
     }
 
-    let approval =
-        &app.pending_approvals[app.selected_approval.min(app.pending_approvals.len() - 1)];
+    let approval = &app.pending_approvals[app
+        .selected_approval
+        .min(app.pending_approvals.len().saturating_sub(1))];
     let area = frame.area();
-    let width = (area.width * 60 / 100).clamp(40, 60);
+    #[allow(clippy::arithmetic_side_effects, clippy::cast_possible_truncation)]
+    // u32 intermediate prevents u16 overflow; result <= area.width so truncation is safe
+    let width = (u32::from(area.width) * 60 / 100) as u16;
+    let width = width.clamp(40, 60);
     // Inner width after borders (left + right = 2 chars)
     let inner_width = width.saturating_sub(2) as usize;
 
@@ -1049,17 +1074,23 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
     for line in &lines {
         let line_len: usize = line.spans.iter().map(|s| s.content.len()).sum();
         if inner_width > 0 && line_len > inner_width {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_possible_truncation, clippy::arithmetic_side_effects)]
+            // div_ceil by inner_width > 0 is safe
             {
-                content_height += line_len.div_ceil(inner_width) as u16;
+                content_height =
+                    content_height.saturating_add(line_len.div_ceil(inner_width) as u16);
             }
         } else {
-            content_height += 1;
+            content_height = content_height.saturating_add(1);
         }
     }
     // Total height = content lines + 2 (top + bottom border)
-    let height = (content_height + 2).clamp(8, area.height.saturating_sub(4));
+    let height = content_height
+        .saturating_add(2)
+        .clamp(8, area.height.saturating_sub(4));
+    #[allow(clippy::arithmetic_side_effects)] // division by constant 2
     let x = (area.width.saturating_sub(width)) / 2;
+    #[allow(clippy::arithmetic_side_effects)] // division by constant 2
     let y = (area.height.saturating_sub(height)) / 2;
     let overlay_area = Rect::new(x, y, width, height);
 

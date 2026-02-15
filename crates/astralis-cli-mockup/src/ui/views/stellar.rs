@@ -32,6 +32,8 @@ pub(crate) fn render_stellar(frame: &mut Frame, area: Rect, app: &App, theme: &T
         // Build file tree with connectors
         let total = app.files.len();
         for (i, entry) in app.files.iter().enumerate() {
+            // Safety: total > 0 (we're iterating), and i + 1 checked before indexing
+            #[allow(clippy::arithmetic_side_effects)]
             let is_last = i == total - 1 || (i + 1 < total && app.files[i + 1].depth < entry.depth);
             let connector = if is_last { "└── " } else { "├── " };
             let indent = "│   ".repeat(entry.depth.saturating_sub(1));

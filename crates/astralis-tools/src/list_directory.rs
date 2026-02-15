@@ -79,7 +79,7 @@ impl BuiltinTool for ListDirectoryTool {
             output.push('\n');
         }
 
-        let total = dirs.len() + files.len();
+        let total = dirs.len().saturating_add(files.len());
 
         let _ = write!(
             output,

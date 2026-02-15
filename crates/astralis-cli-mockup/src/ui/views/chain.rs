@@ -174,13 +174,15 @@ fn render_chain_entries(frame: &mut Frame, area: Rect, app: &App, theme: &Theme)
         .collect();
 
     // Apply scroll
+    // Safety: division by nonzero literal 3
+    #[allow(clippy::arithmetic_side_effects)]
     let visible_count = (area.height as usize) / 3; // ~3 lines per entry
     let start = filtered
         .len()
-        .saturating_sub(visible_count + app.audit_scroll);
+        .saturating_sub(visible_count.saturating_add(app.audit_scroll));
     let end = filtered.len().saturating_sub(app.audit_scroll);
 
-    for entry in filtered.iter().skip(start).take(end - start) {
+    for entry in filtered.iter().skip(start).take(end.saturating_sub(start)) {
         let outcome_color = match entry.outcome {
             AuditOutcome::Success => theme.success,
             AuditOutcome::Failure | AuditOutcome::Violation => theme.error,

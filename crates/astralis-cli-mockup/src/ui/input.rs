@@ -76,8 +76,13 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                     None => app.nexus_agent_filter = Some(agent_names[0].clone()),
                     Some(current) => {
                         if let Some(idx) = agent_names.iter().position(|n| n == current) {
-                            if idx + 1 < agent_names.len() {
-                                app.nexus_agent_filter = Some(agent_names[idx + 1].clone());
+                            // Safety: saturating_add(1) is fine; if it saturates
+                            // the < check will fail and we go to the else branch
+                            if idx.saturating_add(1) < agent_names.len() {
+                                // Safety: idx + 1 < agent_names.len() checked above
+                                #[allow(clippy::arithmetic_side_effects)]
+                                let next_idx = idx + 1;
+                                app.nexus_agent_filter = Some(agent_names[next_idx].clone());
                             } else {
                                 app.nexus_agent_filter = None; // Back to "all"
                             }
@@ -154,13 +159,17 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         // Text editing
         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
             app.input.insert(app.cursor_pos, c);
-            app.cursor_pos += 1;
+            app.cursor_pos = app.cursor_pos.saturating_add(1);
             // Reset scroll to bottom when typing
             app.scroll_offset = 0;
         },
         (KeyCode::Backspace, _) => {
             if app.cursor_pos > 0 {
-                app.cursor_pos -= 1;
+                // Safety: cursor_pos > 0, so subtraction won't underflow
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    app.cursor_pos -= 1;
+                }
                 app.input.remove(app.cursor_pos);
             }
         },
@@ -175,7 +184,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             app.cursor_pos = app.cursor_pos.saturating_sub(1);
         },
         (KeyCode::Right, _) => {
-            app.cursor_pos = (app.cursor_pos + 1).min(app.input.len());
+            app.cursor_pos = app.cursor_pos.saturating_add(1).min(app.input.len());
         },
         (KeyCode::Home, _) if key.modifiers.contains(KeyModifiers::CONTROL) => {
             // Ctrl+Home: scroll to top
@@ -283,13 +292,16 @@ fn handle_view_down(app: &mut App) {
     match app.view {
         ViewMode::Command => {
             if !app.agents.is_empty() {
-                app.selected_agent = (app.selected_agent + 1).min(app.agents.len() - 1);
+                app.selected_agent = app
+                    .selected_agent
+                    .saturating_add(1)
+                    .min(app.agents.len().saturating_sub(1));
             }
         },
         ViewMode::Shield => {
             // Flat approval queue navigation
             let max = app.shield_approvals.len().saturating_sub(1);
-            app.shield_selected = (app.shield_selected + 1).min(max);
+            app.shield_selected = app.shield_selected.saturating_add(1).min(max);
         },
         ViewMode::Chain => {
             app.audit_scroll = app.audit_scroll.saturating_sub(1);
@@ -323,7 +335,12 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
         // Navigate between approvals (if multiple)
         KeyCode::Tab | KeyCode::Down => {
             if !app.pending_approvals.is_empty() {
-                app.selected_approval = (app.selected_approval + 1) % app.pending_approvals.len();
+                // Safety: modulo by len() which is > 0 (checked above), cannot divide by zero
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    app.selected_approval =
+                        app.selected_approval.saturating_add(1) % app.pending_approvals.len();
+                }
             }
         },
         KeyCode::BackTab | KeyCode::Up => {
@@ -331,7 +348,7 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
                 app.selected_approval = app
                     .selected_approval
                     .checked_sub(1)
-                    .unwrap_or(app.pending_approvals.len() - 1);
+                    .unwrap_or(app.pending_approvals.len().saturating_sub(1));
             }
         },
         // Interrupt

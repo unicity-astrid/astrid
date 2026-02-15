@@ -61,7 +61,7 @@ impl ResolvedConfig {
         if !self.loaded_files.is_empty() {
             output.push_str("#\n# Loaded files (in precedence order):\n");
             for (i, path) in self.loaded_files.iter().enumerate() {
-                let _ = writeln!(output, "#   {}. {path}", i + 1);
+                let _ = writeln!(output, "#   {}. {path}", i.saturating_add(1));
             }
         }
 

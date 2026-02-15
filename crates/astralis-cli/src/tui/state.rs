@@ -397,7 +397,7 @@ impl App {
         if self.nexus_stream.is_empty() {
             return;
         }
-        self.copy_cursor = self.nexus_stream.len() - 1;
+        self.copy_cursor = self.nexus_stream.len().saturating_sub(1);
         self.copy_selected.clear();
         self.state = UiState::CopyMode;
         self.scroll_offset = 0;

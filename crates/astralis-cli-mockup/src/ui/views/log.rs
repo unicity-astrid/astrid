@@ -102,11 +102,14 @@ pub(crate) fn render_log(frame: &mut Frame, area: Rect, app: &App, theme: &Theme
     } else {
         0
     };
-    let end_line = (start_line + visible_height).min(total_lines);
+    let end_line = start_line.saturating_add(visible_height).min(total_lines);
+    // Safety: end_line >= start_line by construction (min of sum with total_lines)
+    #[allow(clippy::arithmetic_side_effects)]
+    let take_count = end_line - start_line;
     let visible_lines: Vec<Line> = lines
         .into_iter()
         .skip(start_line)
-        .take(end_line - start_line)
+        .take(take_count)
         .collect();
 
     let paragraph = Paragraph::new(visible_lines)

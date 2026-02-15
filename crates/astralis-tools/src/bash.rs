@@ -135,6 +135,8 @@ async fn run_bash(command: &str, cwd: &std::path::Path) -> std::io::Result<(Stri
 fn parse_sentinel_output(stdout: &str) -> (String, Option<PathBuf>) {
     if let Some(sentinel_pos) = stdout.find(CWD_SENTINEL) {
         let output = stdout[..sentinel_pos].trim_end().to_string();
+        // Safety: sentinel_pos comes from find() and CWD_SENTINEL.len() is within bounds
+        #[allow(clippy::arithmetic_side_effects)]
         let after_sentinel = &stdout[sentinel_pos + CWD_SENTINEL.len()..];
         let new_cwd = after_sentinel
             .lines()

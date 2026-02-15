@@ -111,8 +111,8 @@ impl BuiltinTool for GrepTool {
 
         // Walk directory
         let mut output = String::new();
-        let mut match_count = 0;
-        let mut file_count = 0;
+        let mut match_count: usize = 0;
+        let mut file_count: usize = 0;
 
         for entry in WalkDir::new(&search_path)
             .follow_links(false)
@@ -162,7 +162,7 @@ impl BuiltinTool for GrepTool {
                 if regex.is_match(line) {
                     if !file_has_match {
                         file_has_match = true;
-                        file_count += 1;
+                        file_count = file_count.saturating_add(1);
                         if file_count > MAX_MATCHING_FILES {
                             let _ = write!(
                                 output,
@@ -172,7 +172,7 @@ impl BuiltinTool for GrepTool {
                         }
                     }
 
-                    match_count += 1;
+                    match_count = match_count.saturating_add(1);
                     write_context_lines(&mut output, entry.path(), &lines, idx, context_lines);
                 }
             }
@@ -195,21 +195,35 @@ fn write_context_lines(
     idx: usize,
     context: usize,
 ) {
+    // Safety: idx is a valid index into lines from enumerate(), so idx+1 won't overflow
+    #[allow(clippy::arithmetic_side_effects)]
     let line_num = idx + 1;
 
     // Context before
     let start = idx.saturating_sub(context);
     for (i, line) in lines[start..idx].iter().enumerate() {
-        let _ = writeln!(output, "{}:{}-{}", path.display(), start + i + 1, line);
+        // Safety: start <= idx and i < idx-start, so start+i+1 won't overflow
+        #[allow(clippy::arithmetic_side_effects)]
+        let display_num = start + i + 1;
+        let _ = writeln!(output, "{}:{display_num}-{}", path.display(), line);
     }
 
     // The match itself
     let _ = writeln!(output, "{}:{line_num}:{}", path.display(), lines[idx]);
 
     // Context after
-    let end = (idx + 1 + context).min(lines.len());
-    for (i, line) in lines[(idx + 1)..end].iter().enumerate() {
-        let _ = writeln!(output, "{}:{}-{}", path.display(), idx + 2 + i, line);
+    let end = idx
+        .saturating_add(1)
+        .saturating_add(context)
+        .min(lines.len());
+    // Safety: line_num = idx+1, so idx+1 won't overflow; i is bounded by end-idx-1
+    #[allow(clippy::arithmetic_side_effects)]
+    let after_start = idx + 1;
+    for (i, line) in lines[after_start..end].iter().enumerate() {
+        // Safety: idx+2+i bounded by lines.len()
+        #[allow(clippy::arithmetic_side_effects)]
+        let display_num = idx + 2 + i;
+        let _ = writeln!(output, "{}:{display_num}-{}", path.display(), line);
     }
 }
 
@@ -218,11 +232,11 @@ fn search_file(path: &Path, regex: &Regex, context_lines: usize) -> ToolResult {
     let content = std::fs::read_to_string(path)?;
     let lines: Vec<&str> = content.lines().collect();
     let mut output = String::new();
-    let mut match_count = 0;
+    let mut match_count: usize = 0;
 
     for (idx, line) in lines.iter().enumerate() {
         if regex.is_match(line) {
-            match_count += 1;
+            match_count = match_count.saturating_add(1);
             write_context_lines(&mut output, path, &lines, idx, context_lines);
         }
     }
