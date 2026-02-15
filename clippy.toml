@@ -1,4 +1,4 @@
-# Astralis clippy configuration
+# Astrid clippy configuration
 # See: https://doc.rust-lang.org/clippy/lint_configuration.html
 
 # MSRV for lint suggestions
@@ -13,7 +13,7 @@ type-complexity-threshold = 250
 # Allow certain patterns common in our codebase
 allowed-duplicate-crates = []
 doc-valid-idents = [
-    "Astralis",
+    "Astrid",
     "MCP",
     "WASM",
     "WASI",

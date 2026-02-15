@@ -1,7 +1,7 @@
-//! Astralis plugin manifest (`plugin.toml`) generation and output assembly.
+//! Astrid plugin manifest (`plugin.toml`) generation and output assembly.
 //!
 //! Generates a `plugin.toml` that is serde-compatible with
-//! [`astralis_plugins::manifest::PluginManifest`] including the tagged enum
+//! [`astrid_plugins::manifest::PluginManifest`] including the tagged enum
 //! format for `entry_point` and `capabilities`.
 
 use std::collections::HashMap;
@@ -10,9 +10,9 @@ use std::path::Path;
 use crate::error::{BridgeError, BridgeResult};
 use crate::manifest::OpenClawManifest;
 
-/// A serializable Astralis plugin manifest matching the `PluginManifest` serde format.
+/// A serializable Astrid plugin manifest matching the `PluginManifest` serde format.
 ///
-/// This is a local mirror — we don't depend on `astralis-plugins` at compile time
+/// This is a local mirror — we don't depend on `astrid-plugins` at compile time
 /// to keep the binary lean. The dev-dependency round-trip test verifies compatibility.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct OutputManifest {
@@ -56,7 +56,7 @@ enum OutputCapability {
 /// Returns `BridgeError::Output` if the WASM file cannot be read or the TOML cannot be written.
 #[allow(clippy::implicit_hasher)]
 pub fn generate_manifest(
-    astralis_id: &str,
+    astrid_id: &str,
     oc_manifest: &OpenClawManifest,
     wasm_path: &Path,
     config: &HashMap<String, serde_json::Value>,
@@ -74,7 +74,7 @@ pub fn generate_manifest(
     }
 
     let manifest = OutputManifest {
-        id: astralis_id.to_string(),
+        id: astrid_id.to_string(),
         name: oc_manifest.name.clone(),
         version: oc_manifest.version.clone(),
         description: oc_manifest.description.clone(),

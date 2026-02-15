@@ -1,7 +1,7 @@
 //! `OpenClaw` Tool Plugin Compatibility Shim (WS-5).
 //!
-//! Converts `OpenClaw` tool plugins into Astralis WASM plugins. The ~20% of
-//! `OpenClaw` plugins that are pure tool plugins can run inside the Astralis WASM
+//! Converts `OpenClaw` tool plugins into Astrid WASM plugins. The ~20% of
+//! `OpenClaw` plugins that are pure tool plugins can run inside the Astrid WASM
 //! sandbox (Tier 1 path) with full security enforcement.
 //!
 //! ## Compilation Pipeline

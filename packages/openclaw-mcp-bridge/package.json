@@ -1,5 +1,5 @@
 {
-  "name": "@astralis/openclaw-mcp-bridge",
+  "name": "@astrid/openclaw-mcp-bridge",
   "version": "0.1.0",
   "description": "Bridge that loads OpenClaw plugins and exposes them as MCP servers over stdio",
   "private": true,

@@ -1,12 +1,12 @@
-// Test plugin that exercises every Astralis host function endpoint.
+// Test plugin that exercises every Astrid host function endpoint.
 //
 // Each tool maps to one or more host functions:
-//   test-log        -> astralis_log (all 5 levels)
-//   test-config     -> astralis_get_config
-//   test-kv         -> astralis_kv_set, astralis_kv_get
-//   test-file-write -> astralis_write_file
-//   test-file-read  -> astralis_read_file
-//   test-roundtrip  -> astralis_kv_set + astralis_kv_get (verify data integrity)
+//   test-log        -> astrid_log (all 5 levels)
+//   test-config     -> astrid_get_config
+//   test-kv         -> astrid_kv_set, astrid_kv_get
+//   test-file-write -> astrid_write_file
+//   test-file-read  -> astrid_read_file
+//   test-roundtrip  -> astrid_kv_set + astrid_kv_get (verify data integrity)
 
 module.exports = {
   activate: function(context) {

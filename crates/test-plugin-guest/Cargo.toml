@@ -3,7 +3,7 @@ name = "test-plugin-guest"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "WASM guest plugin for end-to-end integration testing of Astralis host functions"
+description = "WASM guest plugin for end-to-end integration testing of Astrid host functions"
 
 [lib]
 crate-type = ["cdylib"]

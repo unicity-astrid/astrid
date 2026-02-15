@@ -1,0 +1,27 @@
+[package]
+name = "astrid-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+astrid-core.workspace = true
+astrid-crypto.workspace = true
+astrid-capabilities.workspace = true
+astrid-audit.workspace = true
+astrid-mcp.workspace = true
+astrid-llm.workspace = true
+astrid-runtime.workspace = true
+astrid-approval.workspace = true
+astrid-workspace.workspace = true
+astrid-tools.workspace = true
+astrid-test.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile = "3"
+serde_json.workspace = true
+futures.workspace = true
+chrono.workspace = true
+
+[lints]
+workspace = true

@@ -2,14 +2,14 @@
 
 use std::path::PathBuf;
 
-/// All errors that can occur during `OpenClaw` → Astralis conversion.
+/// All errors that can occur during `OpenClaw` → Astrid conversion.
 #[derive(Debug, thiserror::Error)]
 pub enum BridgeError {
     /// Failed to read or parse the `OpenClaw` manifest.
     #[error("manifest error: {0}")]
     Manifest(String),
 
-    /// The `OpenClaw` plugin ID could not be converted to a valid Astralis `PluginId`.
+    /// The `OpenClaw` plugin ID could not be converted to a valid Astrid `PluginId`.
     #[error("invalid plugin id '{original}': {reason}")]
     InvalidId { original: String, reason: String },
 

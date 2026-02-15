@@ -1,12 +1,12 @@
-//! Round-trip test: generated TOML parses as `astralis_plugins::manifest::PluginManifest`.
+//! Round-trip test: generated TOML parses as `astrid_plugins::manifest::PluginManifest`.
 //!
-//! This test uses `astralis-plugins` as a dev-dependency to verify that the
+//! This test uses `astrid-plugins` as a dev-dependency to verify that the
 //! TOML output from `openclaw-bridge` is serde-compatible with the real
 //! `PluginManifest` type.
 
 use std::collections::HashMap;
 
-use astralis_plugins::manifest::PluginManifest;
+use astrid_plugins::manifest::PluginManifest;
 
 #[test]
 fn generated_toml_parses_as_plugin_manifest() {
@@ -77,7 +77,7 @@ fn output_manifest_round_trips_through_real_type() {
     };
 
     // Use the same serialization logic as output.rs
-    let astralis_id = openclaw_bridge::manifest::convert_id(&oc.id).unwrap();
+    let astrid_id = openclaw_bridge::manifest::convert_id(&oc.id).unwrap();
 
     // Create a temp dir with a fake WASM file
     let dir = std::env::temp_dir().join("oc-bridge-roundtrip-test");
@@ -85,8 +85,7 @@ fn output_manifest_round_trips_through_real_type() {
     let wasm_path = dir.join("plugin.wasm");
     std::fs::write(&wasm_path, b"fake wasm content").unwrap();
 
-    openclaw_bridge::output::generate_manifest(&astralis_id, &oc, &wasm_path, &config, &dir)
-        .unwrap();
+    openclaw_bridge::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, &dir).unwrap();
 
     let toml_content = std::fs::read_to_string(dir.join("plugin.toml")).unwrap();
     let parsed: PluginManifest =

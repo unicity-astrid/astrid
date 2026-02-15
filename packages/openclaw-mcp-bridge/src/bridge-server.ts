@@ -2,8 +2,8 @@
  * MCP server setup — stdio transport, tool registration.
  *
  * Creates an MCP server that exposes OpenClaw plugin tools over the
- * stdio transport. Also listens for custom `notifications/astralis.hookEvent`
- * notifications from the Astralis client and dispatches them to the
+ * stdio transport. Also listens for custom `notifications/astrid.hookEvent`
+ * notifications from the Astrid client and dispatches them to the
  * plugin's `onEvent()` handler.
  */
 
@@ -108,9 +108,9 @@ export async function startBridgeServer(
   const transport = new StdioServerTransport();
 
   // Hook event forwarding: listen for custom notifications from the
-  // Astralis client. The MCP SDK's transport emits 'message' events
+  // Astrid client. The MCP SDK's transport emits 'message' events
   // for incoming JSON-RPC messages. We intercept notifications with
-  // method "notifications/astralis.hookEvent" and dispatch to the
+  // method "notifications/astrid.hookEvent" and dispatch to the
   // plugin's onEvent() handler.
   if (pluginModule.onEvent) {
     const onEvent = pluginModule.onEvent.bind(pluginModule);
@@ -121,7 +121,7 @@ export async function startBridgeServer(
           params?: { event?: string; data?: unknown };
         };
         if (
-          msg.method === "notifications/astralis.hookEvent" &&
+          msg.method === "notifications/astrid.hookEvent" &&
           msg.params?.event
         ) {
           // Fire-and-forget dispatch to plugin

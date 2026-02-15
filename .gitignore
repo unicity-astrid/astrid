@@ -34,5 +34,5 @@ packages/*/dist/
 
 # AI
 .claude
-.astralis
+.astrid
 .mcp.json

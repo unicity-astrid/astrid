@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI tool to convert OpenClaw tool plugins into Astralis WASM plugins"
+description = "CLI tool to convert OpenClaw tool plugins into Astrid WASM plugins"
 
 [[bin]]
 name = "openclaw-bridge"
@@ -30,7 +30,7 @@ wizer.workspace = true
 blake3 = { workspace = true }
 
 [dev-dependencies]
-astralis-plugins = { workspace = true }
+astrid-plugins = { workspace = true }
 
 [lints]
 workspace = true

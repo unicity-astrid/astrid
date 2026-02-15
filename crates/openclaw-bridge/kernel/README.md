@@ -51,7 +51,7 @@ wasm-opt --enable-reference-types --enable-bulk-memory --strip -O3 \
   -o target/wasm32-wasip1/release/js_pdk_core.wasm
 
 # Copy to this directory
-cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astralis/crates/openclaw-bridge/kernel/engine.wasm
+cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astrid/crates/openclaw-bridge/kernel/engine.wasm
 ```
 
 ### Updating the Hash

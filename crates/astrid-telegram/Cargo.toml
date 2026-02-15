@@ -1,0 +1,47 @@
+[package]
+name = "astrid-telegram"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Telegram bot frontend for the Astrid agent runtime"
+
+[[bin]]
+name = "astrid-telegram"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+astrid-config = { workspace = true }
+astrid-core = { workspace = true }
+astrid-gateway = { workspace = true }
+
+# Telegram
+teloxide = { version = "0.13", features = ["macros"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# JSON-RPC client
+jsonrpsee = { workspace = true }
+
+# Serialization
+serde_json = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Text processing
+regex = { workspace = true }
+
+[lints]
+workspace = true

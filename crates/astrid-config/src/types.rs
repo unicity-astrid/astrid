@@ -1,0 +1,931 @@
+//! Configuration types for the Astrid runtime.
+//!
+//! All types in this module are self-contained with no dependencies on other
+//! internal astrid crates. Domain types are mirrored here and converted at
+//! the boundary. Every struct implements [`Default`] with sensible production
+//! defaults so that a bare `[section]` header in TOML produces a working
+//! configuration.
+
+use std::collections::HashMap;
+
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// Top-level Config
+// ---------------------------------------------------------------------------
+
+/// Root configuration for the Astrid runtime.
+///
+/// Loaded from layered TOML files (global, project, local) with environment
+/// variable overrides. Every section defaults to safe, production-ready values.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// LLM model selection and pricing.
+    pub model: ModelConfig,
+    /// Runtime behaviour (context limits, summarisation).
+    pub runtime: RuntimeSection,
+    /// Security policy and signature requirements.
+    pub security: SecurityConfig,
+    /// Budget limits for sessions and individual actions.
+    pub budget: BudgetSection,
+    /// Rate-limiting knobs for elicitation and pending requests.
+    pub rate_limits: RateLimitsConfig,
+    /// Named MCP server definitions.
+    pub servers: HashMap<String, ServerSection>,
+    /// Audit log storage configuration.
+    pub audit: AuditConfig,
+    /// Paths to cryptographic key material.
+    pub keys: KeysConfig,
+    /// Workspace boundary and escape policy.
+    pub workspace: WorkspaceSection,
+    /// Git integration settings (branch strategy, auto-test).
+    pub git: GitConfig,
+    /// Hook execution policy.
+    pub hooks: HooksSection,
+    /// Logging level, format, and per-crate directives.
+    pub logging: LoggingSection,
+    /// Gateway daemon settings.
+    pub gateway: GatewaySection,
+    /// Timeout budgets for various operations.
+    pub timeouts: TimeoutsSection,
+    /// Session management limits and persistence.
+    pub sessions: SessionsSection,
+    /// Sub-agent pool limits.
+    pub subagents: SubagentsSection,
+    /// Retry behaviour for transient failures.
+    pub retry: RetrySection,
+    /// Telegram bot frontend settings.
+    pub telegram: TelegramSection,
+}
+
+// ---------------------------------------------------------------------------
+// ModelConfig
+// ---------------------------------------------------------------------------
+
+/// LLM provider selection, endpoint, and token pricing.
+#[derive(Clone, Deserialize)]
+#[serde(default)]
+pub struct ModelConfig {
+    /// Provider identifier (e.g. `"claude"`, `"openai"`).
+    pub provider: String,
+    /// Model name sent to the provider API.
+    pub model: String,
+    /// API key. Prefer environment variables over storing this in a file.
+    #[serde(skip_serializing)]
+    pub api_key: Option<String>,
+    /// Base URL for the provider API (overrides the default endpoint).
+    #[serde(skip_serializing)]
+    pub api_url: Option<String>,
+    /// Maximum tokens to request per completion.
+    pub max_tokens: usize,
+    /// Sampling temperature.
+    pub temperature: f64,
+    /// Context window size in tokens. When set, overrides the provider's
+    /// built-in default for the model. Useful for OpenAI-compatible providers
+    /// where the model name is not recognized.
+    pub context_window: Option<usize>,
+    /// Token pricing used for budget tracking.
+    pub pricing: PricingConfig,
+}
+
+impl std::fmt::Debug for ModelConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModelConfig")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("has_api_key", &self.api_key.is_some())
+            .field("has_api_url", &self.api_url.is_some())
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .field("context_window", &self.context_window)
+            .field("pricing", &self.pricing)
+            .finish()
+    }
+}
+
+impl Serialize for ModelConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("ModelConfig", 6)?;
+        state.serialize_field("provider", &self.provider)?;
+        state.serialize_field("model", &self.model)?;
+        // api_key and api_url are intentionally omitted.
+        state.serialize_field("max_tokens", &self.max_tokens)?;
+        state.serialize_field("temperature", &self.temperature)?;
+        state.serialize_field("context_window", &self.context_window)?;
+        state.serialize_field("pricing", &self.pricing)?;
+        state.end()
+    }
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            provider: "claude".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+            api_key: None,
+            api_url: None,
+            max_tokens: 4096,
+            temperature: 0.7,
+            context_window: None,
+            pricing: PricingConfig::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PricingConfig
+// ---------------------------------------------------------------------------
+
+/// Per-token pricing used to compute spend against budget limits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PricingConfig {
+    /// USD cost per 1 million input tokens.
+    pub input_per_million: f64,
+    /// USD cost per 1 million output tokens.
+    pub output_per_million: f64,
+}
+
+impl Default for PricingConfig {
+    fn default() -> Self {
+        Self {
+            input_per_million: 3.0,
+            output_per_million: 15.0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RuntimeSection
+// ---------------------------------------------------------------------------
+
+/// Runtime behaviour settings (context management, summarisation).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RuntimeSection {
+    /// Maximum context window size in tokens before summarisation kicks in.
+    pub max_context_tokens: usize,
+    /// System prompt prepended to every conversation.
+    pub system_prompt: String,
+    /// Whether to automatically summarise older messages when the context
+    /// window fills up.
+    pub auto_summarize: bool,
+    /// Number of recent messages to always keep verbatim (not summarised).
+    pub keep_recent_count: usize,
+}
+
+impl Default for RuntimeSection {
+    fn default() -> Self {
+        Self {
+            max_context_tokens: 100_000,
+            system_prompt: String::new(),
+            auto_summarize: true,
+            keep_recent_count: 10,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SecurityConfig
+// ---------------------------------------------------------------------------
+
+/// Top-level security settings (signatures, approval timeout, policy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecurityConfig {
+    /// Require ed25519 signatures for capability tokens and audit entries.
+    pub require_signatures: bool,
+    /// How long (in seconds) to wait for a human to respond to an approval
+    /// request before timing out.
+    pub approval_timeout_secs: u64,
+    /// Fine-grained policy rules (blocked tools, path restrictions, etc.).
+    pub policy: PolicySection,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            require_signatures: false,
+            approval_timeout_secs: 300,
+            policy: PolicySection::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PolicySection
+// ---------------------------------------------------------------------------
+
+/// Fine-grained security policy controlling which tools, paths, and hosts are
+/// permitted, denied, or require explicit approval.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PolicySection {
+    /// Tool invocations that are unconditionally blocked.
+    pub blocked_tools: Vec<String>,
+    /// Tool invocations that always require human approval regardless of
+    /// capability tokens.
+    pub approval_required_tools: Vec<String>,
+    /// Filesystem path globs the agent is allowed to access. An empty list
+    /// means "no explicit allowlist" (workspace rules apply instead).
+    pub allowed_paths: Vec<String>,
+    /// Filesystem path globs the agent is never allowed to access.
+    pub denied_paths: Vec<String>,
+    /// Network host patterns the agent is allowed to contact. An empty list
+    /// means "no explicit allowlist".
+    pub allowed_hosts: Vec<String>,
+    /// Network host patterns the agent is never allowed to contact.
+    pub denied_hosts: Vec<String>,
+    /// Maximum size (in bytes) of any single tool argument. Prevents
+    /// exfiltration of large blobs.
+    pub max_argument_size: usize,
+    /// Whether delete operations always require human approval.
+    pub require_approval_for_delete: bool,
+    /// Whether network-accessing operations always require human approval.
+    pub require_approval_for_network: bool,
+}
+
+impl Default for PolicySection {
+    fn default() -> Self {
+        Self {
+            blocked_tools: vec![
+                "rm -rf /".to_owned(),
+                "rm -rf /*".to_owned(),
+                "sudo".to_owned(),
+                "su".to_owned(),
+                "mkfs".to_owned(),
+                "dd".to_owned(),
+                "chmod 777".to_owned(),
+                "shutdown".to_owned(),
+                "reboot".to_owned(),
+                "init".to_owned(),
+            ],
+            approval_required_tools: Vec::new(),
+            allowed_paths: Vec::new(),
+            denied_paths: vec![
+                "/etc/**".to_owned(),
+                "/boot/**".to_owned(),
+                "/sys/**".to_owned(),
+                "/proc/**".to_owned(),
+                "/dev/**".to_owned(),
+            ],
+            allowed_hosts: Vec::new(),
+            denied_hosts: Vec::new(),
+            max_argument_size: 1_048_576, // 1 MB
+            require_approval_for_delete: true,
+            require_approval_for_network: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BudgetSection
+// ---------------------------------------------------------------------------
+
+/// Spending limits that prevent runaway costs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BudgetSection {
+    /// Maximum USD spend allowed for a single session.
+    pub session_max_usd: f64,
+    /// Maximum USD spend allowed for a single tool invocation.
+    pub per_action_max_usd: f64,
+    /// Percentage of `session_max_usd` at which to emit a warning.
+    pub warn_at_percent: u8,
+    /// Maximum cumulative USD spend across all sessions in a workspace.
+    /// `None` means unlimited.
+    pub workspace_max_usd: Option<f64>,
+}
+
+impl Default for BudgetSection {
+    fn default() -> Self {
+        Self {
+            session_max_usd: 100.0,
+            per_action_max_usd: 10.0,
+            warn_at_percent: 80,
+            workspace_max_usd: None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RateLimitsConfig
+// ---------------------------------------------------------------------------
+
+/// Rate-limiting settings to prevent server abuse and request floods.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RateLimitsConfig {
+    /// Maximum elicitation requests allowed per MCP server per minute.
+    pub elicitation_per_server_per_min: u32,
+    /// Maximum number of pending (unanswered) approval requests across all
+    /// servers.
+    pub max_pending_requests: u32,
+}
+
+impl Default for RateLimitsConfig {
+    fn default() -> Self {
+        Self {
+            elicitation_per_server_per_min: 10,
+            max_pending_requests: 50,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ServerSection
+// ---------------------------------------------------------------------------
+
+/// Policy for restarting a server when it dies (config-layer mirror).
+///
+/// This mirrors the domain `RestartPolicy` from `astrid-mcp` so that the
+/// config crate stays dependency-free. The runtime config bridge converts
+/// this into the domain type.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestartPolicyConfig {
+    /// Never restart (default).
+    #[default]
+    Never,
+    /// Restart on failure, up to `max_retries` times.
+    OnFailure {
+        /// Maximum number of restart attempts.
+        #[serde(default = "default_max_retries")]
+        max_retries: u32,
+    },
+    /// Always restart (no retry limit).
+    Always,
+}
+
+fn default_max_retries() -> u32 {
+    3
+}
+
+/// Configuration for a single MCP server.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerSection {
+    /// Transport type (`"stdio"`, `"sse"`, `"streamable-http"`).
+    pub transport: String,
+    /// Command to launch the server (stdio transport).
+    pub command: Option<String>,
+    /// Arguments passed to `command`.
+    pub args: Vec<String>,
+    /// URL for network-based transports (SSE / streamable-http).
+    pub url: Option<String>,
+    /// Expected BLAKE3 hash of the server binary. When set, the runtime
+    /// verifies the hash before launching.
+    pub binary_hash: Option<String>,
+    /// Extra environment variables passed to the server process.
+    #[serde(skip_serializing)]
+    pub env: HashMap<String, String>,
+    /// Working directory for the server process.
+    pub cwd: Option<String>,
+    /// Whether to start the server automatically when the runtime boots.
+    pub auto_start: bool,
+    /// Human-readable description of what this server provides.
+    pub description: Option<String>,
+    /// Whether this server is trusted (runs natively with OS sandbox) or
+    /// untrusted (must run in WASM).
+    pub trusted: bool,
+    /// Restart policy when the server process dies.
+    pub restart_policy: RestartPolicyConfig,
+}
+
+impl std::fmt::Debug for ServerSection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redacted_env: HashMap<&String, &str> = self.env.keys().map(|k| (k, "***")).collect();
+        f.debug_struct("ServerSection")
+            .field("transport", &self.transport)
+            .field("command", &self.command)
+            .field("args", &self.args)
+            .field("url", &self.url)
+            .field("binary_hash", &self.binary_hash)
+            .field("env", &redacted_env)
+            .field("cwd", &self.cwd)
+            .field("auto_start", &self.auto_start)
+            .field("description", &self.description)
+            .field("trusted", &self.trusted)
+            .field("restart_policy", &self.restart_policy)
+            .finish()
+    }
+}
+
+impl Default for ServerSection {
+    fn default() -> Self {
+        Self {
+            transport: "stdio".to_owned(),
+            command: None,
+            args: Vec::new(),
+            url: None,
+            binary_hash: None,
+            env: HashMap::new(),
+            cwd: None,
+            auto_start: false,
+            description: None,
+            trusted: false,
+            restart_policy: RestartPolicyConfig::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AuditConfig
+// ---------------------------------------------------------------------------
+
+/// Audit log storage settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AuditConfig {
+    /// Path to the on-disk audit log. `None` means in-memory only.
+    pub path: Option<String>,
+    /// Maximum size of the audit log in megabytes before rotation.
+    pub max_size_mb: u64,
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        Self {
+            path: None,
+            max_size_mb: 100,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// KeysConfig
+// ---------------------------------------------------------------------------
+
+/// Paths to cryptographic key material used for signatures and verification.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KeysConfig {
+    /// Path to the user's ed25519 private key file.
+    pub user_key_path: Option<String>,
+    /// Path to a directory or file containing trusted public keys.
+    pub trusted_keys_path: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// WorkspaceSection
+// ---------------------------------------------------------------------------
+
+/// Operational workspace boundary and escape policy.
+///
+/// The workspace defines where the agent is allowed to operate by default.
+/// Accesses outside the workspace boundary are governed by `escape_policy`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WorkspaceSection {
+    /// Workspace mode: `"safe"` (default, ask for everything outside
+    /// workspace), `"guided"` (auto-allow reads, ask for writes), or
+    /// `"autonomous"` (no restrictions).
+    pub mode: String,
+    /// What to do when the agent tries to escape the workspace: `"ask"`
+    /// (prompt the human), `"deny"` (always refuse), or `"allow"` (always
+    /// permit).
+    pub escape_policy: String,
+    /// Path globs that are automatically allowed for read access without
+    /// approval.
+    pub auto_allow_read: Vec<String>,
+    /// Path globs that are automatically allowed for write access without
+    /// approval.
+    pub auto_allow_write: Vec<String>,
+    /// Paths that are never accessible regardless of mode or escape policy.
+    pub never_allow: Vec<String>,
+}
+
+impl Default for WorkspaceSection {
+    fn default() -> Self {
+        Self {
+            mode: "safe".to_owned(),
+            escape_policy: "ask".to_owned(),
+            auto_allow_read: Vec::new(),
+            auto_allow_write: Vec::new(),
+            never_allow: vec![
+                "/etc".to_owned(),
+                "/var".to_owned(),
+                "/usr".to_owned(),
+                "/bin".to_owned(),
+                "/sbin".to_owned(),
+                "/boot".to_owned(),
+                "/root".to_owned(),
+            ],
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GitConfig
+// ---------------------------------------------------------------------------
+
+/// Git integration settings controlling how completed work is delivered.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GitConfig {
+    /// Completion strategy: `"merge"` (merge into target branch), `"pr"`
+    /// (open a pull request), or `"branch-only"` (leave on feature branch).
+    pub completion: String,
+    /// Whether to run the project test suite automatically after changes.
+    pub auto_test: bool,
+    /// Whether to squash commits when completing work.
+    pub squash: bool,
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self {
+            completion: "merge".to_owned(),
+            auto_test: false,
+            squash: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HooksSection
+// ---------------------------------------------------------------------------
+
+/// Hook execution policy. Controls which kinds of hooks are permitted and
+/// global limits on hook execution.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HooksSection {
+    /// Master switch: when `false`, no hooks run at all.
+    pub enabled: bool,
+    /// Default timeout for hook execution in seconds.
+    pub default_timeout_secs: u64,
+    /// Maximum number of hooks that can be registered.
+    pub max_hooks: usize,
+    /// Allow hooks to run asynchronously (non-blocking).
+    pub allow_async_hooks: bool,
+    /// Allow hooks compiled to WASM.
+    pub allow_wasm_hooks: bool,
+    /// Allow hooks that spawn sub-agents.
+    pub allow_agent_hooks: bool,
+    /// Allow hooks that make HTTP requests.
+    pub allow_http_hooks: bool,
+    /// Allow hooks that execute shell commands.
+    pub allow_command_hooks: bool,
+}
+
+impl Default for HooksSection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_timeout_secs: 30,
+            max_hooks: 100,
+            allow_async_hooks: true,
+            allow_wasm_hooks: false,
+            allow_agent_hooks: false,
+            allow_http_hooks: true,
+            allow_command_hooks: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LoggingSection
+// ---------------------------------------------------------------------------
+
+/// Logging and tracing configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LoggingSection {
+    /// Global log level filter (`"trace"`, `"debug"`, `"info"`, `"warn"`,
+    /// `"error"`).
+    pub level: String,
+    /// Output format: `"pretty"` (human-friendly), `"compact"` (one-line),
+    /// `"json"` (structured), or `"full"` (verbose).
+    pub format: String,
+    /// Per-crate tracing directives (e.g. `["astrid_mcp=debug",
+    /// "hyper=warn"]`).
+    pub directives: Vec<String>,
+}
+
+impl Default for LoggingSection {
+    fn default() -> Self {
+        Self {
+            level: "info".to_owned(),
+            format: "compact".to_owned(),
+            directives: Vec::new(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GatewaySection
+// ---------------------------------------------------------------------------
+
+/// Gateway daemon configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GatewaySection {
+    /// Directory for gateway runtime state (PID file, socket). `None` uses
+    /// the platform default (e.g. `$XDG_STATE_HOME/astrid`).
+    pub state_dir: Option<String>,
+    /// Path to a secrets file for credential management.
+    pub secrets_file: Option<String>,
+    /// Whether to watch configuration files and reload on change.
+    pub hot_reload: bool,
+    /// Interval (in seconds) between health checks for managed servers.
+    pub health_interval_secs: u64,
+    /// Grace period (in seconds) for a clean shutdown before force-killing
+    /// child processes.
+    pub shutdown_timeout_secs: u64,
+    /// Idle shutdown grace period (in seconds) for ephemeral mode. When all
+    /// clients disconnect and the daemon remains idle for this duration, it
+    /// shuts down automatically.
+    pub idle_shutdown_secs: u64,
+    /// Interval (in seconds) between stale session cleanup sweeps.
+    pub session_cleanup_interval_secs: u64,
+}
+
+impl Default for GatewaySection {
+    fn default() -> Self {
+        Self {
+            state_dir: None,
+            secrets_file: None,
+            hot_reload: true,
+            health_interval_secs: 30,
+            shutdown_timeout_secs: 30,
+            idle_shutdown_secs: 30,
+            session_cleanup_interval_secs: 60,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TimeoutsSection
+// ---------------------------------------------------------------------------
+
+/// Timeout budgets for various operations. All values are in seconds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TimeoutsSection {
+    /// Maximum time for a single LLM request.
+    pub request_secs: u64,
+    /// Maximum time for a single tool invocation.
+    pub tool_secs: u64,
+    /// Maximum time for a sub-agent to complete its task.
+    pub subagent_secs: u64,
+    /// Maximum time to wait when connecting to an MCP server.
+    pub mcp_connect_secs: u64,
+    /// Maximum time to wait for a human to respond to an approval request.
+    pub approval_secs: u64,
+    /// Time after which an idle session is automatically closed.
+    pub idle_secs: u64,
+}
+
+impl Default for TimeoutsSection {
+    fn default() -> Self {
+        Self {
+            request_secs: 120,
+            tool_secs: 60,
+            subagent_secs: 300,
+            mcp_connect_secs: 10,
+            approval_secs: 300,
+            idle_secs: 3600,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SessionsSection
+// ---------------------------------------------------------------------------
+
+/// Session management limits and persistence settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SessionsSection {
+    /// Maximum number of concurrent sessions per user.
+    pub max_per_user: usize,
+    /// Maximum number of messages retained in session history.
+    pub history_limit: usize,
+    /// Interval (in seconds) between automatic session state saves.
+    pub save_interval_secs: u64,
+    /// Whether to persist session state to disk across restarts.
+    pub persist: bool,
+}
+
+impl Default for SessionsSection {
+    fn default() -> Self {
+        Self {
+            max_per_user: 10,
+            history_limit: 100,
+            save_interval_secs: 60,
+            persist: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SubagentsSection
+// ---------------------------------------------------------------------------
+
+/// Sub-agent pool limits and defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SubagentsSection {
+    /// Maximum number of sub-agents running concurrently.
+    pub max_concurrent: usize,
+    /// Maximum nesting depth for recursive sub-agent delegation.
+    pub max_depth: usize,
+    /// Default timeout for a sub-agent task in seconds.
+    pub timeout_secs: u64,
+}
+
+impl Default for SubagentsSection {
+    fn default() -> Self {
+        Self {
+            max_concurrent: 5,
+            max_depth: 3,
+            timeout_secs: 300,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TelegramSection
+// ---------------------------------------------------------------------------
+
+/// Telegram bot frontend configuration.
+#[derive(Clone, Deserialize)]
+#[serde(default)]
+pub struct TelegramSection {
+    /// Telegram Bot API token (from `@BotFather`).
+    /// Prefer environment variables over storing this in a file.
+    pub bot_token: Option<String>,
+    /// `WebSocket` URL for the daemon (e.g. `ws://127.0.0.1:3100`).
+    /// If not set, auto-discovers from `~/.astrid/daemon.port`.
+    pub daemon_url: Option<String>,
+    /// Telegram user IDs allowed to interact with the bot.
+    /// Empty means allow all users.
+    pub allowed_user_ids: Vec<u64>,
+    /// Workspace path to use when creating sessions.
+    pub workspace_path: Option<String>,
+    /// Whether the daemon should embed and auto-start the Telegram bot.
+    /// When `true` (default), the daemon spawns the bot automatically if
+    /// `bot_token` is configured. Set to `false` to run the bot as a
+    /// separate standalone process.
+    pub embedded: bool,
+}
+
+impl Default for TelegramSection {
+    fn default() -> Self {
+        Self {
+            bot_token: None,
+            daemon_url: None,
+            allowed_user_ids: Vec::new(),
+            workspace_path: None,
+            embedded: true,
+        }
+    }
+}
+
+impl std::fmt::Debug for TelegramSection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TelegramSection")
+            .field("has_bot_token", &self.bot_token.is_some())
+            .field("daemon_url", &self.daemon_url)
+            .field("allowed_user_ids", &self.allowed_user_ids)
+            .field("workspace_path", &self.workspace_path)
+            .field("embedded", &self.embedded)
+            .finish()
+    }
+}
+
+impl Serialize for TelegramSection {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("TelegramSection", 4)?;
+        // bot_token is intentionally omitted (secret).
+        state.serialize_field("daemon_url", &self.daemon_url)?;
+        state.serialize_field("allowed_user_ids", &self.allowed_user_ids)?;
+        state.serialize_field("workspace_path", &self.workspace_path)?;
+        state.serialize_field("embedded", &self.embedded)?;
+        state.end()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RetrySection
+// ---------------------------------------------------------------------------
+
+/// Retry behaviour for transient failures (LLM and MCP requests).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetrySection {
+    /// Maximum retry attempts for LLM requests.
+    pub llm_max_attempts: u32,
+    /// Maximum retry attempts for MCP connections.
+    pub mcp_max_attempts: u32,
+    /// Initial retry delay in milliseconds.
+    pub initial_delay_ms: u64,
+    /// Maximum retry delay in milliseconds.
+    pub max_delay_ms: u64,
+}
+
+impl Default for RetrySection {
+    fn default() -> Self {
+        Self {
+            llm_max_attempts: 3,
+            mcp_max_attempts: 5,
+            initial_delay_ms: 100,
+            max_delay_ms: 10_000,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restart_policy_config_default_is_never() {
+        let policy = RestartPolicyConfig::default();
+        assert_eq!(policy, RestartPolicyConfig::Never);
+    }
+
+    #[test]
+    fn restart_policy_config_parse_never() {
+        let toml = r#"
+[servers.test]
+command = "cmd"
+restart_policy = "never"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.servers["test"].restart_policy,
+            RestartPolicyConfig::Never
+        );
+    }
+
+    #[test]
+    fn restart_policy_config_parse_always() {
+        let toml = r#"
+[servers.test]
+command = "cmd"
+restart_policy = "always"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.servers["test"].restart_policy,
+            RestartPolicyConfig::Always
+        );
+    }
+
+    #[test]
+    fn restart_policy_config_parse_on_failure() {
+        let toml = r#"
+[servers.test]
+command = "cmd"
+
+[servers.test.restart_policy]
+on_failure = { max_retries = 7 }
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.servers["test"].restart_policy,
+            RestartPolicyConfig::OnFailure { max_retries: 7 }
+        );
+    }
+
+    #[test]
+    fn restart_policy_config_on_failure_default_retries() {
+        let toml = r#"
+[servers.test]
+command = "cmd"
+
+[servers.test.restart_policy]
+on_failure = {}
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.servers["test"].restart_policy,
+            RestartPolicyConfig::OnFailure { max_retries: 3 }
+        );
+    }
+
+    #[test]
+    fn restart_policy_config_omitted_defaults_to_never() {
+        let toml = r#"
+[servers.test]
+command = "cmd"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.servers["test"].restart_policy,
+            RestartPolicyConfig::Never
+        );
+    }
+
+    #[test]
+    fn server_section_default_has_restart_policy_never() {
+        let section = ServerSection::default();
+        assert_eq!(section.restart_policy, RestartPolicyConfig::Never);
+    }
+}

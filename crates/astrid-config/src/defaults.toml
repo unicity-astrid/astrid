@@ -1,0 +1,462 @@
+# Astrid Default Configuration
+#
+# This file documents all available configuration options with their default values.
+# It is embedded in the binary and serves as the fallback when no user config exists.
+#
+# Configuration precedence (highest to lowest):
+# 1. Project config ({workspace}/.astrid/config.toml) — can only tighten security
+# 2. User config (~/.astrid/config.toml)
+# 3. System config (/etc/astrid/config.toml)
+# 4. Environment variables (ASTRID_*, ANTHROPIC_*) — fallback only, not override
+# 5. This defaults file (embedded in binary)
+
+# ============================================================================
+# Model Configuration
+# ============================================================================
+# Controls which LLM provider and model to use, along with generation settings.
+
+[model]
+# LLM provider to use. Currently supported: "claude"
+provider = "claude"
+
+# Model identifier. Examples:
+# - "claude-sonnet-4-20250514" (Claude Sonnet 4)
+# - "claude-opus-4-6" (Claude Opus 4.6)
+# - "claude-sonnet-4-5-20250929" (Claude Sonnet 4.5)
+model = "claude-sonnet-4-20250514"
+
+# API key for the provider. If not set here, will be read from:
+# - ANTHROPIC_API_KEY environment variable (for Claude)
+# - OPENAI_API_KEY environment variable (for OpenAI, future)
+# api_key = ""
+
+# Custom API endpoint URL. Leave empty to use provider's default.
+# Useful for proxies, local models, or alternative endpoints.
+# api_url = ""
+
+# Maximum tokens to generate per response
+max_tokens = 4096
+
+# Sampling temperature (0.0-1.0). Higher = more random, lower = more deterministic
+temperature = 0.7
+
+# Pricing information for budget tracking (USD per million tokens)
+[model.pricing]
+input_per_million = 3.0
+output_per_million = 15.0
+
+# ============================================================================
+# Runtime Configuration
+# ============================================================================
+# Controls the agent runtime behavior, context management, and system prompts.
+
+[runtime]
+# Maximum context window size in tokens (soft limit for summarization)
+max_context_tokens = 100000
+
+# Custom system prompt override. Leave empty to use the dynamic prompt
+# that includes working directory, platform, tool guidelines, and
+# project instructions (ASTRID.md).
+system_prompt = ""
+
+# Whether to automatically summarize old messages when context grows too large
+auto_summarize = true
+
+# Number of recent messages to keep in full when summarizing
+keep_recent_count = 10
+
+# ============================================================================
+# Security Configuration
+# ============================================================================
+# Core security settings for cryptographic verification and approval gates.
+
+[security]
+# Whether to require ed25519 signatures for user inputs.
+# Disable for standard AI assistant use, enable for high-security scenarios.
+require_signatures = false
+
+# Timeout in seconds for approval requests. If user doesn't respond within
+# this time, the action is denied (unless fallback policy says otherwise).
+approval_timeout_secs = 300
+
+# Security policy: hard boundaries enforced by the runtime
+[security.policy]
+# Tool invocations that are ALWAYS blocked, regardless of capabilities.
+# These are extremely dangerous operations that should never be automated.
+blocked_tools = [
+    "rm -rf /",
+    "rm -rf /*",
+    "sudo",
+    "su",
+    "mkfs",
+    "dd",
+    "chmod 777",
+    "shutdown",
+    "reboot",
+    "init"
+]
+
+# Tools that ALWAYS require approval, even with capability tokens.
+# Use this for operations you want to review every time.
+approval_required_tools = []
+
+# Filesystem paths the agent is ALLOWED to access (glob patterns).
+# Empty list = no explicit allowlist (use workspace boundaries instead).
+allowed_paths = []
+
+# Filesystem paths the agent is DENIED from accessing (glob patterns).
+# These are enforced even if inside workspace or granted via capability.
+denied_paths = [
+    "/etc/**",
+    "/boot/**",
+    "/sys/**",
+    "/proc/**",
+    "/dev/**"
+]
+
+# Network hosts the agent is ALLOWED to contact (glob patterns).
+# Empty list = no explicit allowlist.
+allowed_hosts = []
+
+# Network hosts the agent is DENIED from contacting (glob patterns).
+denied_hosts = []
+
+# Maximum size of a single tool argument in bytes.
+# Prevents abuse via extremely large payloads.
+max_argument_size = 1048576  # 1MB
+
+# Whether file deletion operations require approval
+require_approval_for_delete = true
+
+# Whether network access operations require approval
+require_approval_for_network = true
+
+# ============================================================================
+# Budget Configuration
+# ============================================================================
+# Controls spending limits for LLM API calls to prevent runaway costs.
+
+[budget]
+# Maximum USD spend per session before blocking further requests
+session_max_usd = 100.0
+
+# Maximum USD spend per single action (tool call, agent spawn, etc.)
+per_action_max_usd = 10.0
+
+# Percentage of session budget at which to show warnings (0-100)
+warn_at_percent = 80
+
+# ============================================================================
+# Rate Limits
+# ============================================================================
+# Prevents abuse and runaway loops by limiting request frequency.
+
+[rate_limits]
+# Maximum elicitation requests per MCP server per minute.
+# Prevents a malicious/buggy server from spamming approval requests.
+elicitation_per_server_per_min = 10
+
+# Maximum concurrent pending approval/elicitation requests.
+# Prevents queue exhaustion.
+max_pending_requests = 50
+
+# ============================================================================
+# MCP Server Configuration
+# ============================================================================
+# Define MCP servers to connect to. Each server is a separate TOML table.
+#
+# Example server configurations (commented out by default):
+#
+# [servers.filesystem]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+# auto_start = true
+# trusted = false
+# restart_policy = "never"  # Options: "never", "always", or { on_failure = { max_retries = 3 } }
+#
+# [servers.postgres]
+# transport = "stdio"
+# command = "uvx"
+# args = ["mcp-server-postgres", "postgresql://localhost/mydb"]
+# auto_start = false
+# trusted = true
+# restart_policy = "always"  # Always restart when the server dies
+#
+# [servers.orchestrator]
+# transport = "stdio"
+# command = "astrid-orchestrator"
+# args = ["--config", "orchestrator.toml"]
+# auto_start = true
+# trusted = true
+# binary_hash = "sha256:abc123..."  # Optional: verify binary integrity
+#
+# # Restart on failure with max 5 retries (exponential backoff applied):
+# [servers.orchestrator.restart_policy]
+# on_failure = { max_retries = 5 }
+
+# ============================================================================
+# Audit Configuration
+# ============================================================================
+# Controls the cryptographic audit trail for all agent actions.
+
+[audit]
+# Path to the audit log database. If omitted, logs are kept in-memory only.
+# Recommended: Set to a persistent path for production use.
+# Example: "~/.local/share/astrid/audit.db"
+# path = ""
+
+# Maximum size of audit database in MB before rotation/archival
+max_size_mb = 100
+
+# ============================================================================
+# Cryptographic Keys
+# ============================================================================
+# Paths to ed25519 key files for signing and verification.
+
+[keys]
+# Path to user's private key for signing inputs (optional).
+# Only needed if security.require_signatures = true
+# user_key_path = ""
+
+# Path to file containing trusted public keys (one per line).
+# Only needed if verifying signatures from other users/agents.
+# trusted_keys_path = ""
+
+# ============================================================================
+# Workspace Configuration
+# ============================================================================
+# Defines operational boundaries for the agent's filesystem access.
+# This is NOT a code execution sandbox - see CLAUDE.md for WASM vs workspace.
+
+[workspace]
+# Workspace mode:
+# - "safe": Agent can work within workspace, must ask to escape
+# - "guided": Agent can work within workspace with more guidance
+# - "autonomous": No workspace restrictions (for trusted agent machines)
+mode = "safe"
+
+# What to do when agent tries to access outside workspace:
+# - "ask": Prompt user for approval (creates capability token if allowed)
+# - "deny": Silently deny access
+# - "allow": Always permit (for trusted agent machines)
+escape_policy = "ask"
+
+# Paths that are auto-allowed for reading, even outside workspace (globs)
+auto_allow_read = []
+
+# Paths that are auto-allowed for writing, even outside workspace (globs)
+auto_allow_write = []
+
+# Paths that are NEVER allowed, even if user grants capability (globs)
+never_allow = [
+    "/etc",
+    "/var",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/boot",
+    "/root"
+]
+
+# ============================================================================
+# Git Integration
+# ============================================================================
+# Controls git workflow automation when agent makes commits.
+
+[git]
+# How to handle commits:
+# - "merge": Create merge commits (preserves full history)
+# - "pr": Create a pull request
+# - "branch-only": Only create a branch (no merge or PR)
+completion = "merge"
+
+# Whether to automatically run tests before committing
+auto_test = false
+
+# Whether to squash all agent commits in a session into one
+squash = false
+
+# ============================================================================
+# Hook System
+# ============================================================================
+# Controls the user-defined extension points (pre/post action hooks).
+
+[hooks]
+# Whether the hook system is enabled at all
+enabled = true
+
+# Default timeout for hook execution in seconds
+default_timeout_secs = 30
+
+# Maximum number of hooks that can be registered
+max_hooks = 100
+
+# Whether to allow asynchronous hooks (fire-and-forget)
+allow_async_hooks = true
+
+# Whether to allow WASM-based hooks (runs in sandbox)
+allow_wasm_hooks = false
+
+# Whether to allow agent-defined hooks (high-risk)
+allow_agent_hooks = false
+
+# Whether to allow HTTP webhook hooks (calls external URLs)
+allow_http_hooks = true
+
+# Whether to allow command-line hooks (shell commands)
+allow_command_hooks = true
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+# Controls application logging (separate from audit trail).
+
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+# Can be overridden by ASTRID_LOG_LEVEL or RUST_LOG env vars
+level = "info"
+
+# Log format:
+# - "compact": Human-readable, compact format
+# - "full": Detailed format with timestamps, spans, etc.
+# - "pretty": Pretty-printed for terminal (colors, indentation)
+# - "json": JSON lines format (for log aggregation)
+format = "compact"
+
+# Custom tracing directives (e.g., ["astrid_mcp=debug", "rmcp=trace"])
+# Allows fine-grained control over specific module logging.
+directives = []
+
+# ============================================================================
+# Gateway Configuration
+# ============================================================================
+# Settings for the astrid-gateway daemon (if using daemon mode).
+
+[gateway]
+# Directory to store gateway state (server metadata, health status, etc.)
+# If omitted, defaults to ~/.astrid/state/
+# state_dir = ""
+
+# Path to a secrets file for credential management.
+# secrets_file = ""
+
+# Whether to automatically reload server configs when files change
+hot_reload = true
+
+# Interval in seconds for health checks on running servers
+health_interval_secs = 30
+
+# Grace period in seconds for clean shutdown before force-kill
+shutdown_timeout_secs = 30
+
+# Idle shutdown grace period (seconds) for ephemeral mode.
+# When all clients disconnect and the daemon stays idle this long, it shuts down.
+idle_shutdown_secs = 30
+
+# Interval (seconds) between stale session cleanup sweeps.
+session_cleanup_interval_secs = 60
+
+# ============================================================================
+# Timeout Configuration
+# ============================================================================
+# Various timeout settings to prevent hanging operations.
+
+[timeouts]
+# HTTP request timeout for LLM API calls (seconds)
+request_secs = 120
+
+# Maximum time for a single tool invocation (seconds)
+tool_secs = 60
+
+# Maximum time for a sub-agent to complete its task (seconds)
+subagent_secs = 300
+
+# Timeout for establishing MCP server connection (seconds)
+mcp_connect_secs = 10
+
+# Timeout for a human to respond to an approval request (seconds)
+approval_secs = 300
+
+# Idle timeout: how long to keep session alive with no activity (seconds)
+# Set to 0 to disable idle timeout.
+idle_secs = 3600  # 1 hour
+
+# ============================================================================
+# Session Management
+# ============================================================================
+# Controls session lifecycle, persistence, and limits.
+
+[sessions]
+# Maximum concurrent sessions per user.
+# Prevents resource exhaustion from abandoned sessions.
+max_per_user = 10
+
+# Maximum number of messages to keep in session history
+history_limit = 100
+
+# How often to save session state to disk (seconds)
+save_interval_secs = 60
+
+# Whether to persist sessions to disk at all.
+# If false, sessions are ephemeral (lost on restart).
+persist = true
+
+# ============================================================================
+# Sub-Agent Configuration
+# ============================================================================
+# Controls the sub-agent pool for recursive task delegation.
+
+[subagents]
+# Maximum number of sub-agents running concurrently
+max_concurrent = 5
+
+# Maximum nesting depth for recursive sub-agent delegation
+max_depth = 3
+
+# Default timeout for a sub-agent task (seconds)
+timeout_secs = 300
+
+# ============================================================================
+# Telegram Bot Configuration
+# ============================================================================
+# Settings for the Telegram bot frontend (astrid-telegram).
+
+[telegram]
+# Telegram Bot API token from @BotFather.
+# Prefer environment variable TELEGRAM_BOT_TOKEN over storing here.
+# bot_token = ""
+
+# WebSocket URL for the daemon (e.g. "ws://127.0.0.1:3100").
+# If omitted, auto-discovers from ~/.astrid/daemon.port.
+# daemon_url = ""
+
+# Telegram user IDs allowed to interact with the bot.
+# Empty list means allow all users.
+allowed_user_ids = []
+
+# Workspace path to use when creating sessions.
+# workspace_path = ""
+
+# Whether the daemon should embed and auto-start the Telegram bot.
+# When true (default), the daemon spawns the bot if bot_token is configured.
+# Set to false to run the bot as a separate standalone process.
+embedded = true
+
+# ============================================================================
+# Retry Configuration
+# ============================================================================
+# Controls retry behaviour for transient failures (LLM and MCP).
+
+[retry]
+# Maximum retry attempts for LLM API requests
+llm_max_attempts = 3
+
+# Maximum retry attempts for MCP server connections
+mcp_max_attempts = 5
+
+# Initial retry delay (milliseconds)
+initial_delay_ms = 100
+
+# Maximum retry delay (milliseconds) — exponential backoff caps here
+max_delay_ms = 10000

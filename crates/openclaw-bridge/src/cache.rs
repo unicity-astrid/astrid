@@ -82,7 +82,7 @@ impl CompilationCache {
     /// Create a new compilation cache.
     ///
     /// The `cache_dir` is the root directory for all cached artifacts
-    /// (e.g. `~/.astralis/cache/plugins/`).
+    /// (e.g. `~/.astrid/cache/plugins/`).
     ///
     /// The `kernel_hash` is the blake3 hex hash of the embedded `QuickJS` kernel,
     /// used to invalidate entries when the kernel changes.

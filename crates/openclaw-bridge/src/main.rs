@@ -1,4 +1,4 @@
-//! CLI entry point for the `OpenClaw` → Astralis bridge.
+//! CLI entry point for the `OpenClaw` → Astrid bridge.
 
 #![deny(unsafe_code)]
 
@@ -18,7 +18,7 @@ use openclaw_bridge::transpiler;
 #[derive(Parser)]
 #[command(
     name = "openclaw-bridge",
-    about = "Convert OpenClaw tool plugins into Astralis WASM plugins"
+    about = "Convert OpenClaw tool plugins into Astrid WASM plugins"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -27,13 +27,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Convert an `OpenClaw` plugin to an Astralis WASM plugin.
+    /// Convert an `OpenClaw` plugin to an Astrid WASM plugin.
     Convert {
         /// Path to the `OpenClaw` plugin directory (containing `openclaw.plugin.json`).
         #[arg(long)]
         plugin_dir: PathBuf,
 
-        /// Output directory for the generated Astralis plugin. Defaults to `./output`.
+        /// Output directory for the generated Astrid plugin. Defaults to `./output`.
         #[arg(long, default_value = "output")]
         output: PathBuf,
 
@@ -107,7 +107,7 @@ fn run_convert(
     eprintln!("Transpiled: {}", oc_manifest.main);
 
     // 5. Generate JS shim
-    let astralis_id = manifest::convert_id(&oc_manifest.id)?;
+    let astrid_id = manifest::convert_id(&oc_manifest.id)?;
     let shim_code = shim::generate(&js_code, &config);
 
     // 6. Write output directory
@@ -127,7 +127,7 @@ fn run_convert(
         eprintln!("Compiled WASM: {}", wasm_path.display());
 
         // 8. Generate plugin.toml
-        output::generate_manifest(&astralis_id, &oc_manifest, &wasm_path, &config, output_dir)?;
+        output::generate_manifest(&astrid_id, &oc_manifest, &wasm_path, &config, output_dir)?;
         eprintln!("Wrote plugin.toml");
     }
 

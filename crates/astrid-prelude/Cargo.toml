@@ -1,0 +1,25 @@
+[package]
+name = "astrid-prelude"
+description = "Unified prelude for the Astrid secure agent runtime SDK"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+astrid-core.workspace = true
+astrid-crypto.workspace = true
+astrid-capabilities.workspace = true
+astrid-audit.workspace = true
+astrid-mcp.workspace = true
+astrid-runtime.workspace = true
+astrid-llm.workspace = true
+astrid-events.workspace = true
+astrid-hooks.workspace = true
+astrid-workspace.workspace = true
+astrid-telemetry.workspace = true
+astrid-gateway.workspace = true
+
+[lints]
+workspace = true

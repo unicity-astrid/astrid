@@ -1,8 +1,8 @@
-# Astralis
+# Astrid
 
 **Production-grade secure agent runtime in Rust.**
 
-Astralis is a modular, security-first runtime for AI agents. A thin CLI client (`astralis`) connects to a background daemon (`astralisd`) that hosts the agent runtime, manages sessions, and enforces security. Additional frontends (Discord, Web, etc.) can plug in via the `Frontend` trait — one runtime, single source of truth, with shared budget, capabilities, memory, and audit across all frontends.
+Astrid is a modular, security-first runtime for AI agents. A thin CLI client (`astrid`) connects to a background daemon (`astridd`) that hosts the agent runtime, manages sessions, and enforces security. Additional frontends (Discord, Web, etc.) can plug in via the `Frontend` trait — one runtime, single source of truth, with shared budget, capabilities, memory, and audit across all frontends.
 
 ## Key Features
 
@@ -16,29 +16,29 @@ Astralis is a modular, security-first runtime for AI agents. A thin CLI client (
 
 ## Architecture
 
-The CLI (`astralis`) is a thin stateless client. All state and execution live in the gateway daemon (`astralisd`), which hosts the `AgentRuntime` and manages sessions, MCP servers, security, and audit. The CLI auto-starts the daemon if it isn't running.
+The CLI (`astrid`) is a thin stateless client. All state and execution live in the gateway daemon (`astridd`), which hosts the `AgentRuntime` and manages sessions, MCP servers, security, and audit. The CLI auto-starts the daemon if it isn't running.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                     FRONTEND CLIENTS                           │
-│    CLI (astralis)  │  Discord  │  Web  │  Telegram  │  ...     │
+│    CLI (astrid)  │  Discord  │  Web  │  Telegram  │  ...     │
 │                    └───────────┴───────┴────────────┘          │
 │              Thin clients — stateless, replaceable             │
 └──────────────────────────┬─────────────────────────────────────┘
                            │  WebSocket + JSON-RPC 2.0
                            │  (jsonrpsee, ws://127.0.0.1:{port})
 ┌──────────────────────────▼─────────────────────────────────────┐
-│               GATEWAY DAEMON (astralisd)                       │
+│               GATEWAY DAEMON (astridd)                       │
 │                                                                │
 │  DaemonServer ── Session lifecycle, event streaming,           │
 │                  approval/elicitation relay, MCP server        │
 │                  health checks, auto-restart, cleanup          │
 │                                                                │
 │  Modes: ephemeral (auto-shutdown) or persistent                │
-│  State: ~/.astralis/ (sessions, audit, capabilities, keys)     │
+│  State: ~/.astrid/ (sessions, audit, capabilities, keys)     │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    ASTRALIS CORE                         │  │
+│  │                    ASTRID CORE                         │  │
 │  │                                                          │  │
 │  │  AgentRuntime ── Agentic loop, context summarization     │  │
 │  │  Security Layer ── Capability tokens (ed25519 signed)    │  │
@@ -54,7 +54,7 @@ The CLI (`astralis`) is a thin stateless client. All state and execution live in
 └────────────────────────────────────────────────────────────────┘
 ```
 
-The daemon exposes an `astralis.*` JSON-RPC API for session management, agent execution, approval/elicitation responses, MCP server control, budget monitoring, and audit queries. Frontends subscribe to a streaming event channel for LLM text chunks, tool call progress, and approval/elicitation requests.
+The daemon exposes an `astrid.*` JSON-RPC API for session management, agent execution, approval/elicitation responses, MCP server control, budget monitoring, and audit queries. Frontends subscribe to a streaming event channel for LLM text chunks, tool call progress, and approval/elicitation requests.
 
 ### Frontend Trait
 
@@ -98,7 +98,7 @@ All client-side features from the [November 2025 MCP specification](https://mode
 
 ### Execution Model
 
-Astralis distinguishes between trusted and untrusted code execution:
+Astrid distinguishes between trusted and untrusted code execution:
 
 - **Native execution** (trusted, admin-configured servers): Binary hash verified before launch, OS-sandboxed (Landlock/sandbox-exec) as defense-in-depth, full native performance.
 - **WASM execution** (untrusted, agent-fetched code): Must be WASM — runs in Wasmtime with WASI capabilities explicitly granted via elicitation. Memory-safe, no raw syscalls, deterministic, cross-platform.
@@ -150,7 +150,7 @@ When an action requires user consent:
 1. `AgentRuntime` in the daemon calls `SecureMcpClient::check_authorization`
 2. Security interceptor runs the 5-step check
 3. If approval needed, daemon pushes an `ApprovalNeeded` event to the subscribed frontend client
-4. The frontend (e.g. CLI) prompts the user and sends the decision back via `astralis.approvalResponse` RPC
+4. The frontend (e.g. CLI) prompts the user and sends the decision back via `astrid.approvalResponse` RPC
 5. User sees risk level and chooses: **Allow Once**, **Allow Session**, **Allow Workspace**, **Allow Always**, or **Deny**
 6. "Allow Always" creates a persistent `CapabilityToken` (ed25519 signed, audit-linked, scoped TTL)
 7. If user is unavailable, request is queued in `DeferredResolutionStore` for later resolution
@@ -170,10 +170,10 @@ cargo build --workspace
 
 ### Run the CLI
 
-The workspace produces two binaries: `astralis` (CLI client) and `astralisd` (gateway daemon). The CLI auto-starts the daemon in ephemeral mode if it isn't already running.
+The workspace produces two binaries: `astrid` (CLI client) and `astridd` (gateway daemon). The CLI auto-starts the daemon in ephemeral mode if it isn't already running.
 
 ```bash
-cargo run -p astralis-cli --bin astralis -- chat
+cargo run -p astrid-cli --bin astrid -- chat
 ```
 
 ### Run Tests
@@ -184,7 +184,7 @@ cargo test --workspace
 
 #### WASM Integration Tests
 
-The WASM plugin integration tests (`astralis-plugins/tests/wasm_e2e.rs`) auto-skip if the test fixture isn't compiled. To run them:
+The WASM plugin integration tests (`astrid-plugins/tests/wasm_e2e.rs`) auto-skip if the test fixture isn't compiled. To run them:
 
 ```bash
 # One-time: install the WASM target
@@ -194,7 +194,7 @@ rustup target add wasm32-unknown-unknown
 ./scripts/compile-test-plugin.sh
 
 # Run the WASM e2e tests
-cargo test -p astralis-plugins --test wasm_e2e
+cargo test -p astrid-plugins --test wasm_e2e
 ```
 
 ### Lint
@@ -206,16 +206,16 @@ cargo fmt --all -- --check
 
 ## Telegram Integration
 
-Astralis includes a Telegram bot frontend that connects users to the agent runtime via Telegram. It supports two modes:
+Astrid includes a Telegram bot frontend that connects users to the agent runtime via Telegram. It supports two modes:
 
 - **Embedded mode** (default) — The daemon spawns the bot automatically when `bot_token` is configured. No separate process needed.
-- **Standalone mode** — Run the bot as a separate binary (`astralis-telegram`), useful for deploying the bot on a different machine from the daemon.
+- **Standalone mode** — Run the bot as a separate binary (`astrid-telegram`), useful for deploying the bot on a different machine from the daemon.
 
 ### Setup
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) on Telegram and copy the API token.
 
-2. Add the token to your config (`~/.astralis/config.toml`):
+2. Add the token to your config (`~/.astrid/config.toml`):
 
 ```toml
 [telegram]
@@ -231,7 +231,7 @@ export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
 3. Start the daemon:
 
 ```bash
-cargo run -p astralis-cli --bin astralisd
+cargo run -p astrid-cli --bin astridd
 ```
 
 The bot starts automatically and begins polling Telegram for messages.
@@ -263,10 +263,10 @@ embedded = true
 To run the bot separately from the daemon:
 
 1. Set `embedded = false` in config (or omit `bot_token` from daemon config entirely).
-2. Start the daemon: `cargo run -p astralis-cli --bin astralisd`
-3. Start the bot: `cargo run -p astralis-telegram`
+2. Start the daemon: `cargo run -p astrid-cli --bin astridd`
+3. Start the bot: `cargo run -p astrid-telegram`
 
-The standalone bot auto-discovers the daemon via `~/.astralis/daemon.port`, or you can set `daemon_url` explicitly:
+The standalone bot auto-discovers the daemon via `~/.astrid/daemon.port`, or you can set `daemon_url` explicitly:
 
 ```toml
 [telegram]
@@ -289,81 +289,81 @@ The bot supports approval and elicitation flows via inline keyboards — when th
 
 ```
 crates/
-├── astralis-core            # Foundation types, traits, errors
-├── astralis-crypto           # ed25519 signing, blake3 hashing
-├── astralis-capabilities     # Capability tokens, validation, storage
-├── astralis-audit            # Immutable chain-linked audit logging
-├── astralis-mcp              # MCP client wrapper with security integration
-├── astralis-approval         # Security interceptor, approval manager, budget tracking
-├── astralis-storage          # Two-tier persistence (KvStore + SurrealDB)
-├── astralis-config           # Unified TOML config with layered loading
-├── astralis-events           # Event bus (46 event variants across 12 categories)
-├── astralis-hooks            # Hook system (shell/WASM handlers)
-├── astralis-plugins          # WASM plugin runtime (Extism), host functions, lifecycle
-├── openclaw-bridge           # OpenClaw plugin format → Astralis adapter (JS/TS shim generation)
-├── astralis-llm              # LLM provider trait, Claude integration, streaming
-├── astralis-workspace        # Operational workspace boundaries
-├── astralis-tools            # Built-in coding tools (read, write, edit, bash)
-├── astralis-runtime          # AgentRuntime — orchestrates LLM + MCP + audit
-├── astralis-gateway          # Gateway daemon — hosts runtime, manages sessions + MCP servers
-├── astralis-cli              # Thin CLI client — connects to daemon via JSON-RPC
-├── astralis-cli-mockup       # Ratatui-based TUI prototype
-├── astralis-telegram         # Telegram bot frontend (embedded or standalone)
-├── astralis-telemetry        # Tracing and metrics
-├── astralis-test             # Test utilities
-└── astralis-prelude          # Common re-exports
+├── astrid-core            # Foundation types, traits, errors
+├── astrid-crypto           # ed25519 signing, blake3 hashing
+├── astrid-capabilities     # Capability tokens, validation, storage
+├── astrid-audit            # Immutable chain-linked audit logging
+├── astrid-mcp              # MCP client wrapper with security integration
+├── astrid-approval         # Security interceptor, approval manager, budget tracking
+├── astrid-storage          # Two-tier persistence (KvStore + SurrealDB)
+├── astrid-config           # Unified TOML config with layered loading
+├── astrid-events           # Event bus (46 event variants across 12 categories)
+├── astrid-hooks            # Hook system (shell/WASM handlers)
+├── astrid-plugins          # WASM plugin runtime (Extism), host functions, lifecycle
+├── openclaw-bridge           # OpenClaw plugin format → Astrid adapter (JS/TS shim generation)
+├── astrid-llm              # LLM provider trait, Claude integration, streaming
+├── astrid-workspace        # Operational workspace boundaries
+├── astrid-tools            # Built-in coding tools (read, write, edit, bash)
+├── astrid-runtime          # AgentRuntime — orchestrates LLM + MCP + audit
+├── astrid-gateway          # Gateway daemon — hosts runtime, manages sessions + MCP servers
+├── astrid-cli              # Thin CLI client — connects to daemon via JSON-RPC
+├── astrid-cli-mockup       # Ratatui-based TUI prototype
+├── astrid-telegram         # Telegram bot frontend (embedded or standalone)
+├── astrid-telemetry        # Tracing and metrics
+├── astrid-test             # Test utilities
+└── astrid-prelude          # Common re-exports
 ```
 
 ### Crate Dependency Graph
 
 ```
-                    astralis-core
+                    astrid-core
                          │
           ┌──────────────┼──────────────┐
           ▼              ▼              ▼
-    astralis-crypto  astralis-audit  astralis-workspace
+    astrid-crypto  astrid-audit  astrid-workspace
           │              │
           └──────┬───────┘
                  ▼
-         astralis-capabilities
+         astrid-capabilities
                  │
                  ▼
-           astralis-mcp
+           astrid-mcp
                  │
                  ▼
-         astralis-approval
+         astrid-approval
                  │
                  ▼
-         astralis-runtime
+         astrid-runtime
                  │
                  ▼
-         astralis-gateway (daemon — hosts runtime)
+         astrid-gateway (daemon — hosts runtime)
                  │
     ┌────────────┼──────────────────┐
     ▼            ▼                  ▼
-astralis-cli  astralis-telegram  (other frontends)
+astrid-cli  astrid-telegram  (other frontends)
   (thin clients via JSON-RPC)
 ```
 
 ## Configuration
 
-Astralis uses a layered TOML configuration system with 18 config sections (model, runtime, security, budget, rate limits, servers, audit, keys, workspace, git, hooks, logging, gateway, timeouts, sessions, subagents, telegram, retry):
+Astrid uses a layered TOML configuration system with 18 config sections (model, runtime, security, budget, rate limits, servers, audit, keys, workspace, git, hooks, logging, gateway, timeouts, sessions, subagents, telegram, retry):
 
 ```
 embedded defaults → system config → user config → workspace config
 ```
 
-Workspace configs can only **tighten** restrictions, never loosen them. Environment variables (`ASTRALIS_*`, `ANTHROPIC_*`) are applied after the merge as fallbacks, not overrides.
+Workspace configs can only **tighten** restrictions, never loosen them. Environment variables (`ASTRID_*`, `ANTHROPIC_*`) are applied after the merge as fallbacks, not overrides.
 
 ```bash
 # Show resolved configuration
-cargo run -p astralis-cli -- config show
+cargo run -p astrid-cli -- config show
 
 # Validate configuration
-cargo run -p astralis-cli -- config validate
+cargo run -p astrid-cli -- config validate
 
 # Show config file search paths
-cargo run -p astralis-cli -- config paths
+cargo run -p astrid-cli -- config paths
 ```
 
 ## Feature Flags
@@ -376,7 +376,7 @@ cargo run -p astralis-cli -- config paths
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                 ASTRALIS CORE (always available)                │
+│                 ASTRID CORE (always available)                │
 │  MCP (rmcp) │ Elicitation │ Capability Tokens │ Audit │ Crypto  │
 └──────────────────────────────┬──────────────────────────────────┘
                                │

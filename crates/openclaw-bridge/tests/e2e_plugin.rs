@@ -29,32 +29,32 @@ fn shim_wraps_test_plugin_with_all_host_functions() {
 
     // Host function references are present (lazy-resolved via _getHostFn)
     assert!(
-        shim.contains("\"astralis_log\""),
-        "missing astralis_log reference"
+        shim.contains("\"astrid_log\""),
+        "missing astrid_log reference"
     );
     assert!(
-        shim.contains("\"astralis_get_config\""),
-        "missing astralis_get_config reference"
+        shim.contains("\"astrid_get_config\""),
+        "missing astrid_get_config reference"
     );
     assert!(
-        shim.contains("\"astralis_kv_get\""),
-        "missing astralis_kv_get reference"
+        shim.contains("\"astrid_kv_get\""),
+        "missing astrid_kv_get reference"
     );
     assert!(
-        shim.contains("\"astralis_kv_set\""),
-        "missing astralis_kv_set reference"
+        shim.contains("\"astrid_kv_set\""),
+        "missing astrid_kv_set reference"
     );
     assert!(
-        shim.contains("\"astralis_read_file\""),
-        "missing astralis_read_file reference"
+        shim.contains("\"astrid_read_file\""),
+        "missing astrid_read_file reference"
     );
     assert!(
-        shim.contains("\"astralis_write_file\""),
-        "missing astralis_write_file reference"
+        shim.contains("\"astrid_write_file\""),
+        "missing astrid_write_file reference"
     );
     assert!(
-        shim.contains("\"astralis_http_request\""),
-        "missing astralis_http_request reference"
+        shim.contains("\"astrid_http_request\""),
+        "missing astrid_http_request reference"
     );
 
     // Host function wrappers are present
@@ -212,11 +212,11 @@ fn compile_test_plugin_to_wasm() {
     // Verify WASM magic
     assert_eq!(&wasm_bytes[..4], b"\0asm", "output should be valid WASM");
 
-    // Copy to the fixture location for the astralis-plugins integration test
+    // Copy to the fixture location for the astrid-plugins integration test
     let fixture_dest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("astralis-plugins/tests/fixtures");
+        .join("astrid-plugins/tests/fixtures");
     let _ = std::fs::create_dir_all(&fixture_dest);
     std::fs::copy(&wasm_path, fixture_dest.join("test-all-endpoints.wasm"))
         .expect("copy WASM fixture");

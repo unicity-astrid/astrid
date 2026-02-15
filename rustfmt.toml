@@ -1,4 +1,4 @@
-# Astralis rustfmt configuration
+# Astrid rustfmt configuration
 # See: https://rust-lang.github.io/rustfmt/
 
 edition = "2024"

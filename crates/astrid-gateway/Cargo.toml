@@ -1,0 +1,47 @@
+[package]
+name = "astrid-gateway"
+version.workspace = true
+edition.workspace = true
+description = "Gateway daemon for the Astrid secure agent runtime"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+astrid-approval.workspace = true
+astrid-config.workspace = true
+astrid-core.workspace = true
+astrid-crypto.workspace = true
+astrid-capabilities.workspace = true
+astrid-audit.workspace = true
+astrid-events.workspace = true
+astrid-hooks.workspace = true
+astrid-workspace.workspace = true
+astrid-mcp.workspace = true
+astrid-telemetry.workspace = true
+astrid-llm.workspace = true
+astrid-runtime.workspace = true
+astrid-plugins.workspace = true
+astrid-storage = { workspace = true, features = ["kv"] }
+
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full", "signal"] }
+tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+directories.workspace = true
+jsonrpsee = { workspace = true }
+
+# Config hot-reload
+notify = "7"
+
+[dev-dependencies]
+astrid-test.workspace = true
+tempfile = "3.10"
+
+[lints]
+workspace = true

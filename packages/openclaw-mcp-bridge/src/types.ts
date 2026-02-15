@@ -99,7 +99,7 @@ export interface PluginContext {
  *
  * Plugins export an object with `activate` and optionally `deactivate`
  * lifecycle hooks, plus an optional `onEvent` handler for hook events
- * from Astralis.
+ * from Astrid.
  */
 export interface PluginModule {
   /** Called when the plugin is loaded. Register tools here. */
@@ -109,7 +109,7 @@ export interface PluginModule {
   deactivate?(): void | Promise<void>;
 
   /**
-   * Called when Astralis sends a hook event notification.
+   * Called when Astrid sends a hook event notification.
    * This is a fire-and-forget callback; return value is ignored.
    */
   onEvent?(event: string, data: unknown): void | Promise<void>;

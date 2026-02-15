@@ -1,20 +1,20 @@
 //! Test WASM guest plugin for end-to-end integration testing.
 //!
-//! Exercises all 7 Astralis host functions through 6 tools:
+//! Exercises all 7 Astrid host functions through 6 tools:
 //!
 //! | Tool             | Host Functions Used                        |
 //! |------------------|--------------------------------------------|
-//! | `test-log`       | `astralis_log`                             |
-//! | `test-config`    | `astralis_get_config`                      |
-//! | `test-kv`        | `astralis_kv_set`, `astralis_kv_get`       |
-//! | `test-file-write`| `astralis_write_file`                      |
-//! | `test-file-read` | `astralis_read_file`                       |
-//! | `test-roundtrip` | `astralis_kv_set`, `astralis_kv_get`       |
+//! | `test-log`       | `astrid_log`                             |
+//! | `test-config`    | `astrid_get_config`                      |
+//! | `test-kv`        | `astrid_kv_set`, `astrid_kv_get`       |
+//! | `test-file-write`| `astrid_write_file`                      |
+//! | `test-file-read` | `astrid_read_file`                       |
+//! | `test-roundtrip` | `astrid_kv_set`, `astrid_kv_get`       |
 //!
 //! Built as a `cdylib` targeting `wasm32-unknown-unknown` for Extism.
 //!
 //! Export names use hyphens (`describe-tools`, `execute-tool`, `run-hook`)
-//! to match the Astralis plugin ABI convention. Since `#[plugin_fn]` only
+//! to match the Astrid plugin ABI convention. Since `#[plugin_fn]` only
 //! exports with Rust identifier names (underscores), we use `#[export_name]`
 //! on raw `extern "C"` functions that call into the Extism input/output API.
 
@@ -23,22 +23,22 @@ use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Host function imports — must match the signatures registered by
-// `astralis_plugins::wasm::host_functions::register_host_functions`
+// `astrid_plugins::wasm::host_functions::register_host_functions`
 // ---------------------------------------------------------------------------
 
 #[host_fn]
 extern "ExtismHost" {
-    fn astralis_log(level: String, message: String);
-    fn astralis_get_config(key: String) -> String;
-    fn astralis_kv_get(key: String) -> String;
-    fn astralis_kv_set(key: String, value: String);
-    fn astralis_read_file(path: String) -> String;
-    fn astralis_write_file(path: String, content: String);
-    fn astralis_http_request(request_json: String) -> String;
+    fn astrid_log(level: String, message: String);
+    fn astrid_get_config(key: String) -> String;
+    fn astrid_kv_get(key: String) -> String;
+    fn astrid_kv_set(key: String, value: String);
+    fn astrid_read_file(path: String) -> String;
+    fn astrid_write_file(path: String, content: String);
+    fn astrid_http_request(request_json: String) -> String;
 }
 
 // ---------------------------------------------------------------------------
-// ABI types — mirrors `astralis_core::plugin_abi`
+// ABI types — mirrors `astrid_core::plugin_abi`
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -78,7 +78,7 @@ struct HookResult {
 // ---------------------------------------------------------------------------
 // Extism exports with hyphenated names
 //
-// We use `#[export_name]` to produce the exact export names the Astralis
+// We use `#[export_name]` to produce the exact export names the Astrid
 // plugin system expects: `describe-tools`, `execute-tool`, `run-hook`.
 // ---------------------------------------------------------------------------
 
@@ -197,10 +197,10 @@ fn handle_test_log(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let message = args["message"].as_str().unwrap_or("test");
 
     unsafe {
-        astralis_log("debug".into(), format!("debug: {message}"))?;
-        astralis_log("info".into(), format!("info: {message}"))?;
-        astralis_log("warn".into(), format!("warn: {message}"))?;
-        astralis_log("error".into(), format!("error: {message}"))?;
+        astrid_log("debug".into(), format!("debug: {message}"))?;
+        astrid_log("info".into(), format!("info: {message}"))?;
+        astrid_log("warn".into(), format!("warn: {message}"))?;
+        astrid_log("error".into(), format!("error: {message}"))?;
     }
 
     Ok(ToolOutput {
@@ -212,7 +212,7 @@ fn handle_test_log(args: &serde_json::Value) -> Result<ToolOutput, Error> {
 fn handle_test_config(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let key = args["key"].as_str().unwrap_or("");
 
-    let value = unsafe { astralis_get_config(key.into())? };
+    let value = unsafe { astrid_get_config(key.into())? };
 
     let result = if value.is_empty() {
         serde_json::json!({ "found": false, "key": key, "value": null })
@@ -234,9 +234,9 @@ fn handle_test_kv(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let value = args["value"].as_str().unwrap_or("");
 
     unsafe {
-        astralis_kv_set(key.into(), value.into())?;
+        astrid_kv_set(key.into(), value.into())?;
     }
-    let read_back = unsafe { astralis_kv_get(key.into())? };
+    let read_back = unsafe { astrid_kv_get(key.into())? };
 
     let result = serde_json::json!({
         "key": key,
@@ -256,7 +256,7 @@ fn handle_test_file_write(args: &serde_json::Value) -> Result<ToolOutput, Error>
     let content = args["content"].as_str().unwrap_or("");
 
     unsafe {
-        astralis_write_file(path.into(), content.into())?;
+        astrid_write_file(path.into(), content.into())?;
     }
 
     let result = serde_json::json!({ "written": true, "path": path });
@@ -269,7 +269,7 @@ fn handle_test_file_write(args: &serde_json::Value) -> Result<ToolOutput, Error>
 fn handle_test_file_read(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let path = args["path"].as_str().unwrap_or("");
 
-    let content = unsafe { astralis_read_file(path.into())? };
+    let content = unsafe { astrid_read_file(path.into())? };
 
     let result = serde_json::json!({ "path": path, "content": content });
     Ok(ToolOutput {
@@ -283,9 +283,9 @@ fn handle_test_roundtrip(args: &serde_json::Value) -> Result<ToolOutput, Error> 
     let serialized = serde_json::to_string(data)?;
 
     unsafe {
-        astralis_kv_set("roundtrip-test".into(), serialized.clone())?;
+        astrid_kv_set("roundtrip-test".into(), serialized.clone())?;
     }
-    let read_back = unsafe { astralis_kv_get("roundtrip-test".into())? };
+    let read_back = unsafe { astrid_kv_get("roundtrip-test".into())? };
     let parsed: serde_json::Value = serde_json::from_str(&read_back)?;
 
     let result = serde_json::json!({

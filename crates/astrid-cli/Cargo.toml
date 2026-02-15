@@ -1,0 +1,86 @@
+[package]
+name = "astrid-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for Astrid secure agent runtime"
+
+[[bin]]
+name = "astrid"
+path = "src/main.rs"
+
+[[bin]]
+name = "astridd"
+path = "src/daemon_main.rs"
+
+[dependencies]
+# Internal
+astrid-config = { workspace = true }
+astrid-core = { workspace = true }
+astrid-crypto = { workspace = true }
+astrid-capabilities = { workspace = true }
+astrid-audit = { workspace = true }
+astrid-mcp = { workspace = true }
+astrid-llm = { workspace = true }
+astrid-runtime = { workspace = true }
+astrid-gateway = { workspace = true }
+astrid-hooks = { workspace = true }
+astrid-plugins = { workspace = true, features = ["http"] }
+astrid-telegram = { workspace = true }
+astrid-telemetry = { workspace = true }
+astrid-approval = { workspace = true }
+openclaw-bridge = { workspace = true }
+blake3 = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+dialoguer = { workspace = true }
+indicatif = { workspace = true }
+colored = { workspace = true }
+rustyline = { workspace = true }
+syntect = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# JSON-RPC client (connects to daemon)
+jsonrpsee = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Time & IDs
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Encoding
+hex = { workspace = true }
+
+# Tracing
+tracing = { workspace = true }
+
+# TUI
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+arboard = { workspace = true }
+
+# Web browser
+webbrowser = "1.0"
+
+# Temp files (staging dirs for atomic installs)
+tempfile = { workspace = true }
+
+# Directories
+directories = { workspace = true }
+
+[lints]
+workspace = true

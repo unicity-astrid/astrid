@@ -1,7 +1,7 @@
 //! `OpenClaw` manifest parsing and ID conversion.
 //!
 //! Reads `openclaw.plugin.json` from a plugin directory, validates required
-//! fields, and converts the `OpenClaw` ID to an Astralis-compatible `PluginId`
+//! fields, and converts the `OpenClaw` ID to an Astrid-compatible `PluginId`
 //! (lowercase, hyphens only, no leading/trailing hyphens).
 
 use std::path::Path;
@@ -86,7 +86,7 @@ fn validate_manifest(m: &OpenClawManifest) -> BridgeResult<()> {
     Ok(())
 }
 
-/// Convert an `OpenClaw` plugin ID to an Astralis-compatible plugin ID.
+/// Convert an `OpenClaw` plugin ID to an Astrid-compatible plugin ID.
 ///
 /// Rules:
 /// - Lowercase the entire string
