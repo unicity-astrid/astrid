@@ -33,7 +33,6 @@ tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
-directories.workspace = true
 jsonrpsee = { workspace = true }
 
 # Config hot-reload

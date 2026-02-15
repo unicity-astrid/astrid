@@ -22,7 +22,12 @@
 //! ├── audit.db/                     (SurrealKV — audit entries)
 //! ├── capabilities.db/              (SurrealKV — capability tokens)
 //! ├── deferred.db/                  (SurrealKV — deferred queue)
+//! ├── hooks/                        (user-level hooks)
+//! ├── plugins/                      (installed plugins)
+//! ├── cache/plugins/                (plugin compilation cache)
+//! ├── state/                        (gateway state)
 //! ├── servers.toml                  (MCP server config)
+//! ├── gateway.toml                  (gateway daemon config)
 //! └── config.toml                   (global runtime config)
 //!
 //! <project>/.astralis/              (WorkspaceDir)
@@ -167,6 +172,36 @@ impl AstralisHome {
     #[must_use]
     pub fn state_db_path(&self) -> PathBuf {
         self.root.join("state.db")
+    }
+
+    /// Installed plugins directory (`~/.astralis/plugins/`).
+    #[must_use]
+    pub fn plugins_dir(&self) -> PathBuf {
+        self.root.join("plugins")
+    }
+
+    /// Plugin compilation cache directory (`~/.astralis/cache/plugins/`).
+    #[must_use]
+    pub fn plugin_cache_dir(&self) -> PathBuf {
+        self.root.join("cache").join("plugins")
+    }
+
+    /// Hooks directory (`~/.astralis/hooks/`).
+    #[must_use]
+    pub fn hooks_dir(&self) -> PathBuf {
+        self.root.join("hooks")
+    }
+
+    /// Path to the gateway configuration file (`~/.astralis/gateway.toml`).
+    #[must_use]
+    pub fn gateway_config_path(&self) -> PathBuf {
+        self.root.join("gateway.toml")
+    }
+
+    /// State directory (`~/.astralis/state/`).
+    #[must_use]
+    pub fn state_dir(&self) -> PathBuf {
+        self.root.join("state")
     }
 }
 
@@ -425,6 +460,20 @@ mod tests {
             home.state_db_path(),
             PathBuf::from("/tmp/test-astralis/state.db")
         );
+        assert_eq!(
+            home.plugins_dir(),
+            PathBuf::from("/tmp/test-astralis/plugins")
+        );
+        assert_eq!(
+            home.plugin_cache_dir(),
+            PathBuf::from("/tmp/test-astralis/cache/plugins")
+        );
+        assert_eq!(home.hooks_dir(), PathBuf::from("/tmp/test-astralis/hooks"));
+        assert_eq!(
+            home.gateway_config_path(),
+            PathBuf::from("/tmp/test-astralis/gateway.toml")
+        );
+        assert_eq!(home.state_dir(), PathBuf::from("/tmp/test-astralis/state"));
     }
 
     #[test]

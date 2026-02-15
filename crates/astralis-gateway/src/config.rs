@@ -376,16 +376,17 @@ impl GatewayConfig {
         Ok(config)
     }
 
-    /// Load configuration from the default location.
+    /// Load configuration from the default location (`~/.astralis/gateway.toml`).
     ///
     /// # Errors
     ///
     /// Returns an error if the config directory cannot be determined or the file cannot be parsed.
     pub fn load_default() -> GatewayResult<Self> {
-        let dirs = directories::ProjectDirs::from("", "", "astralis")
-            .ok_or_else(|| GatewayError::Config("could not determine config directory".into()))?;
+        let home = astralis_core::dirs::AstralisHome::resolve().map_err(|e| {
+            GatewayError::Config(format!("could not determine config directory: {e}"))
+        })?;
 
-        let config_path = dirs.config_dir().join("gateway.toml");
+        let config_path = home.gateway_config_path();
 
         if config_path.exists() {
             Self::load(&config_path)
@@ -449,9 +450,9 @@ impl GatewayConfig {
 
 // Default value functions
 fn default_state_dir() -> String {
-    directories::ProjectDirs::from("", "", "astralis").map_or_else(
-        || "~/.astralis/state".into(),
-        |dirs| dirs.data_dir().join("state").to_string_lossy().to_string(),
+    astralis_core::dirs::AstralisHome::resolve().map_or_else(
+        |_| "~/.astralis/state".into(),
+        |home| home.state_dir().to_string_lossy().to_string(),
     )
 }
 

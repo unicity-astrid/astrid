@@ -81,8 +81,8 @@ pub fn from_unified_config(cfg: &astralis_config::Config) -> GatewayConfig {
 }
 
 fn default_state_dir() -> String {
-    directories::ProjectDirs::from("", "", "astralis").map_or_else(
-        || "~/.astralis/state".into(),
-        |dirs| dirs.data_dir().join("state").to_string_lossy().to_string(),
+    astralis_core::dirs::AstralisHome::resolve().map_or_else(
+        |_| "~/.astralis/state".into(),
+        |home| home.state_dir().to_string_lossy().to_string(),
     )
 }

@@ -22,7 +22,8 @@ mod theme;
 mod tui;
 
 use commands::{
-    audit, chat, config, daemon, doctor, hooks, init, keys, onboarding, run, servers, sessions,
+    audit, chat, config, daemon, doctor, hooks, init, keys, onboarding, plugin, run, servers,
+    sessions,
 };
 use theme::print_banner;
 
@@ -106,6 +107,12 @@ enum Commands {
     Keys {
         #[command(subcommand)]
         command: KeyCommands,
+    },
+
+    /// Manage plugins
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommands,
     },
 
     /// Initialize a workspace
@@ -258,6 +265,41 @@ enum ConfigCommands {
     Paths,
 }
 
+#[derive(Subcommand)]
+enum PluginCommands {
+    /// List installed plugins
+    List,
+    /// Install a plugin from a local path or registry
+    Install {
+        /// Plugin source (local path or package name)
+        source: String,
+        /// Install from the `OpenClaw` registry
+        #[arg(long)]
+        from_openclaw: bool,
+        /// Install to workspace instead of user-level
+        #[arg(long)]
+        workspace: bool,
+    },
+    /// Remove an installed plugin
+    Remove {
+        /// Plugin ID
+        id: String,
+    },
+    /// Compile a plugin without loading it
+    Compile {
+        /// Path to plugin source
+        path: String,
+        /// Output directory
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Show detailed plugin information
+    Info {
+        /// Plugin ID
+        id: String,
+    },
+}
+
 /// Ensure the global config directory and `config.toml` exist.
 ///
 /// Returns `true` if this is a first run (config was just created).
@@ -386,6 +428,9 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Keys { command }) => {
             handle_keys(&command)?;
+        },
+        Some(Commands::Plugin { command }) => {
+            handle_plugins(command).await?;
         },
         Some(Commands::Init) => {
             init::run_init()?;
@@ -537,5 +582,21 @@ fn handle_keys(command: &KeyCommands) -> Result<()> {
     match command {
         KeyCommands::Show => keys::show_key(),
         KeyCommands::Generate { force } => keys::generate_key(*force),
+    }
+}
+
+async fn handle_plugins(command: PluginCommands) -> Result<()> {
+    match command {
+        PluginCommands::List => plugin::list_plugins().await,
+        PluginCommands::Install {
+            source,
+            from_openclaw,
+            workspace,
+        } => plugin::install_plugin(&source, from_openclaw, workspace).await,
+        PluginCommands::Remove { id } => plugin::remove_plugin(&id).await,
+        PluginCommands::Compile { path, output } => {
+            plugin::compile_plugin(&path, output.as_deref())
+        },
+        PluginCommands::Info { id } => plugin::plugin_info(&id),
     }
 }

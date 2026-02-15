@@ -259,12 +259,11 @@ impl ServersConfig {
     ///
     /// Returns an error if the configuration directory cannot be determined.
     pub fn default_path() -> McpResult<PathBuf> {
-        let dirs =
-            directories::ProjectDirs::from("com", "astralis", "astralis").ok_or_else(|| {
-                McpError::ConfigError("Cannot determine config directory".to_string())
-            })?;
+        let home = astralis_core::dirs::AstralisHome::resolve().map_err(|e| {
+            McpError::ConfigError(format!("Cannot determine config directory: {e}"))
+        })?;
 
-        Ok(dirs.config_dir().join("servers.toml"))
+        Ok(home.servers_config_path())
     }
 
     /// Save configuration to a file.

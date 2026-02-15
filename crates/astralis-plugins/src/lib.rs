@@ -29,8 +29,11 @@
 pub mod context;
 pub mod discovery;
 pub mod error;
+pub mod lockfile;
 pub mod manifest;
 pub mod mcp_plugin;
+#[cfg(feature = "http")]
+pub mod npm;
 pub mod plugin;
 pub mod registry;
 pub mod sandbox;
@@ -41,6 +44,7 @@ pub mod wasm;
 pub use context::{PluginContext, PluginToolContext};
 pub use discovery::{discover_manifests, load_manifest, load_manifests_from_dir};
 pub use error::{PluginError, PluginResult};
+pub use lockfile::{IntegrityViolation, LockedPlugin, PluginLockfile, PluginSource};
 pub use manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
 pub use mcp_plugin::{McpPlugin, create_plugin};
 pub use plugin::{Plugin, PluginId, PluginState};

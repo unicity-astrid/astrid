@@ -16,27 +16,22 @@ pub const MANIFEST_FILE_NAME: &str = "plugin.toml";
 /// Discover plugin manifests from standard locations.
 ///
 /// Scans the following directories for `plugin.toml` files:
-/// 1. `~/.config/astralis/plugins/` (user-level)
-/// 2. `.astralis/plugins/` (workspace-level, relative to CWD)
-/// 3. Any additional paths provided in `extra_paths`
+/// 1. `.astralis/plugins/` (workspace-level, relative to CWD)
+/// 2. Any additional paths provided in `extra_paths`
+///
+/// Callers should pass the user-level plugins directory (e.g.
+/// `AstralisHome::plugins_dir()`) via `extra_paths` rather than relying
+/// on hard-coded platform paths.
 ///
 /// Each subdirectory containing a `plugin.toml` is treated as a plugin.
 /// Errors in individual manifests are logged as warnings but do not
 /// prevent other manifests from loading.
-pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<PluginManifest> {
+///
+/// Returns `(manifest, plugin_dir)` pairs where `plugin_dir` is the
+/// directory containing the manifest. Callers should resolve relative
+/// entry-point paths against `plugin_dir`.
+pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<(PluginManifest, PathBuf)> {
     let mut manifests = Vec::new();
-
-    // User-level plugins
-    if let Some(config_dir) = dirs_config() {
-        let plugins_dir = config_dir.join("plugins");
-        if plugins_dir.exists() {
-            info!(path = %plugins_dir.display(), "Discovering plugins from config directory");
-            match load_manifests_from_dir(&plugins_dir) {
-                Ok(found) => manifests.extend(found),
-                Err(e) => warn!(error = %e, "Failed to load plugins from config directory"),
-            }
-        }
-    }
 
     // Workspace-level plugins
     let local_plugins_dir = PathBuf::from(".astralis/plugins");
@@ -48,7 +43,7 @@ pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<PluginManifest
         }
     }
 
-    // Extra paths
+    // Extra paths (user-level, custom, etc.)
     if let Some(paths) = extra_paths {
         for path in paths {
             if path.exists() {
@@ -70,10 +65,13 @@ pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<PluginManifest
 /// Looks for subdirectories containing `plugin.toml` files, as well as
 /// `plugin.toml` files directly in the directory.
 ///
+/// Returns `(manifest, plugin_dir)` pairs where `plugin_dir` is the
+/// directory containing each manifest file.
+///
 /// # Errors
 ///
 /// Returns an error if the directory cannot be read.
-pub fn load_manifests_from_dir(dir: &Path) -> PluginResult<Vec<PluginManifest>> {
+pub fn load_manifests_from_dir(dir: &Path) -> PluginResult<Vec<(PluginManifest, PathBuf)>> {
     let mut manifests = Vec::new();
 
     let entries = std::fs::read_dir(dir)?;
@@ -93,7 +91,7 @@ pub fn load_manifests_from_dir(dir: &Path) -> PluginResult<Vec<PluginManifest>> 
                             plugin_id = %manifest.id,
                             "Loaded plugin manifest"
                         );
-                        manifests.push(manifest);
+                        manifests.push((manifest, path));
                     },
                     Err(e) => {
                         warn!(
@@ -110,6 +108,7 @@ pub fn load_manifests_from_dir(dir: &Path) -> PluginResult<Vec<PluginManifest>> 
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n == MANIFEST_FILE_NAME)
         {
+            let plugin_dir = path.parent().unwrap_or(dir).to_path_buf();
             match load_manifest(&path) {
                 Ok(manifest) => {
                     debug!(
@@ -117,7 +116,7 @@ pub fn load_manifests_from_dir(dir: &Path) -> PluginResult<Vec<PluginManifest>> 
                         plugin_id = %manifest.id,
                         "Loaded plugin manifest"
                     );
-                    manifests.push(manifest);
+                    manifests.push((manifest, plugin_dir));
                 },
                 Err(e) => {
                     warn!(path = %path.display(), error = %e, "Failed to load plugin manifest");
@@ -153,46 +152,6 @@ pub fn load_manifest(path: &Path) -> PluginResult<PluginManifest> {
 #[must_use]
 pub fn workspace_plugins_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".astralis").join("plugins")
-}
-
-/// Get the config directory for Astralis.
-fn dirs_config() -> Option<PathBuf> {
-    if let Some(config) = dirs::config_dir() {
-        return Some(config.join("astralis"));
-    }
-    dirs::home_dir().map(|h| h.join(".config").join("astralis"))
-}
-
-// Platform-specific directory resolution (same as astralis-hooks).
-mod dirs {
-    use std::path::PathBuf;
-
-    pub(super) fn config_dir() -> Option<PathBuf> {
-        #[cfg(target_os = "macos")]
-        {
-            home_dir().map(|h| h.join("Library/Application Support"))
-        }
-        #[cfg(target_os = "linux")]
-        {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| home_dir().map(|h| h.join(".config")))
-        }
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var_os("APPDATA").map(PathBuf::from)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            home_dir().map(|h| h.join(".config"))
-        }
-    }
-
-    pub(super) fn home_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from)
-    }
 }
 
 #[cfg(test)]
@@ -261,8 +220,12 @@ args = ["-y", "@mcp/server"]
         )
         .unwrap();
 
-        let manifests = load_manifests_from_dir(dir.path()).unwrap();
-        assert_eq!(manifests.len(), 2);
+        let results = load_manifests_from_dir(dir.path()).unwrap();
+        assert_eq!(results.len(), 2);
+        // Each result should include the plugin directory
+        for (_, plugin_dir) in &results {
+            assert!(plugin_dir.exists());
+        }
     }
 
     #[test]
@@ -279,9 +242,9 @@ args = ["-y", "@mcp/server"]
         std::fs::create_dir(&invalid).unwrap();
         std::fs::write(invalid.join(MANIFEST_FILE_NAME), "not valid toml {{{{").unwrap();
 
-        let manifests = load_manifests_from_dir(dir.path()).unwrap();
-        assert_eq!(manifests.len(), 1);
-        assert_eq!(manifests[0].id.as_str(), "test-plugin");
+        let results = load_manifests_from_dir(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id.as_str(), "test-plugin");
     }
 
     #[test]
@@ -308,8 +271,8 @@ args = ["-y", "@mcp/server"]
         std::fs::create_dir(&plugin_dir).unwrap();
         std::fs::write(plugin_dir.join(MANIFEST_FILE_NAME), sample_manifest_toml()).unwrap();
 
-        let manifests = discover_manifests(Some(&[dir.path().to_path_buf()]));
-        assert!(manifests.iter().any(|m| m.id.as_str() == "test-plugin"));
+        let results = discover_manifests(Some(&[dir.path().to_path_buf()]));
+        assert!(results.iter().any(|(m, _)| m.id.as_str() == "test-plugin"));
     }
 
     #[test]

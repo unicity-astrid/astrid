@@ -1,6 +1,7 @@
 //! Hook management commands.
 
 use anyhow::Result;
+use astralis_core::dirs::AstralisHome;
 use astralis_hooks::{
     HookEvent, HookExecutor, HookHandler, HookManager, HooksConfig, discover_hooks,
     profiles::{available_profiles, get_profile},
@@ -22,11 +23,9 @@ pub(crate) fn list_hooks() {
         return;
     }
 
-    // Discover hooks from default directory
-    let hooks_dir = directories::ProjectDirs::from("", "", "astralis").map_or_else(
-        || PathBuf::from("~/.config/astralis/hooks"),
-        |dirs| dirs.config_dir().join("hooks"),
-    );
+    // Discover hooks from user-level directory
+    let hooks_dir = AstralisHome::resolve()
+        .map_or_else(|_| PathBuf::from(".astralis/hooks"), |h| h.hooks_dir());
 
     let extra_paths = vec![hooks_dir.clone()];
     let hooks = discover_hooks(Some(&extra_paths));
@@ -84,7 +83,10 @@ pub(crate) fn hook_info(name: &str) {
     println!("{}", format!("Hook: {name}").cyan().bold());
     println!();
 
-    let hooks = discover_hooks(None);
+    let extra_paths: Vec<PathBuf> = AstralisHome::resolve()
+        .map(|h| vec![h.hooks_dir()])
+        .unwrap_or_default();
+    let hooks = discover_hooks(Some(&extra_paths));
 
     let hook = hooks
         .iter()
@@ -166,7 +168,10 @@ pub(crate) async fn test_hook(name: &str, dry_run: bool) -> Result<()> {
     );
     println!();
 
-    let hooks = discover_hooks(None);
+    let extra_paths: Vec<PathBuf> = AstralisHome::resolve()
+        .map(|h| vec![h.hooks_dir()])
+        .unwrap_or_default();
+    let hooks = discover_hooks(Some(&extra_paths));
 
     let hook = hooks
         .iter()

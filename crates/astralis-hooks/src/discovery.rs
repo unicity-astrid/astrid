@@ -46,23 +46,14 @@ pub const HOOK_FILE_NAMES: &[&str] = &["HOOK.toml", "hook.toml", "hooks.toml"];
 /// Discover hooks from standard locations.
 ///
 /// This function looks for hooks in:
-/// 1. `~/.config/astralis/hooks/`
-/// 2. `.astralis/hooks/` in the current directory
-/// 3. Custom paths if provided
+/// 1. `.astralis/hooks/` in the current directory (workspace-level)
+/// 2. Any additional paths provided in `extra_paths`
+///
+/// Callers should pass the user-level hooks directory (e.g.
+/// `AstralisHome::hooks_dir()`) via `extra_paths` rather than relying
+/// on hard-coded platform paths.
 pub fn discover_hooks(extra_paths: Option<&[PathBuf]>) -> Vec<Hook> {
     let mut hooks = Vec::new();
-
-    // Look in user config directory
-    if let Some(config_dir) = dirs_config() {
-        let hooks_dir = config_dir.join("hooks");
-        if hooks_dir.exists() {
-            info!(path = %hooks_dir.display(), "Discovering hooks from config directory");
-            match load_hooks_from_dir(&hooks_dir) {
-                Ok(found) => hooks.extend(found),
-                Err(e) => warn!(error = %e, "Failed to load hooks from config directory"),
-            }
-        }
-    }
 
     // Look in local .astralis/hooks directory
     let local_hooks_dir = PathBuf::from(".astralis/hooks");
@@ -194,17 +185,6 @@ pub fn save_hook(hook: &Hook, path: &Path) -> DiscoveryResult<()> {
     Ok(())
 }
 
-/// Get the config directory for Astralis.
-fn dirs_config() -> Option<PathBuf> {
-    // Use standard config locations
-    if let Some(config) = dirs::config_dir() {
-        return Some(config.join("astralis"));
-    }
-
-    // Fallback to home directory
-    dirs::home_dir().map(|h| h.join(".config").join("astralis"))
-}
-
 /// Hooks directory in a workspace.
 #[must_use]
 pub fn workspace_hooks_dir(workspace_root: &Path) -> PathBuf {
@@ -220,38 +200,6 @@ pub fn ensure_hooks_dir(workspace_root: &Path) -> std::io::Result<PathBuf> {
     let dir = workspace_hooks_dir(workspace_root);
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
-}
-
-// Re-export dirs for convenience
-mod dirs {
-    use std::path::PathBuf;
-
-    pub(super) fn config_dir() -> Option<PathBuf> {
-        #[cfg(target_os = "macos")]
-        {
-            home_dir().map(|h| h.join("Library/Application Support"))
-        }
-        #[cfg(target_os = "linux")]
-        {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| home_dir().map(|h| h.join(".config")))
-        }
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var_os("APPDATA").map(PathBuf::from)
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            home_dir().map(|h| h.join(".config"))
-        }
-    }
-
-    pub(super) fn home_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from)
-    }
 }
 
 #[cfg(test)]

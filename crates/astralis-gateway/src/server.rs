@@ -264,7 +264,8 @@ impl DaemonServer {
         let config = config_bridge::to_runtime_config(&cfg, &cwd);
 
         let hook_manager = HookManager::new();
-        let discovered = discover_hooks(None);
+        let hooks_extra = vec![home.hooks_dir()];
+        let discovered = discover_hooks(Some(&hooks_extra));
         hook_manager.register_all(discovered).await;
 
         // Clone MCP client for plugin registry before moving into runtime.
@@ -296,8 +297,19 @@ impl DaemonServer {
         // Discover and register plugins (does not load them yet).
         let mut plugin_registry = PluginRegistry::new();
         let wasm_loader = WasmPluginLoader::new();
-        let manifests = discover_manifests(None);
-        for manifest in manifests {
+        let plugin_dirs = vec![home.plugins_dir()];
+        let discovered = discover_manifests(Some(&plugin_dirs));
+        for (mut manifest, plugin_dir) in discovered {
+            // Resolve relative WASM paths to absolute, anchored at the
+            // directory where the manifest was discovered. Without this,
+            // WasmPlugin::do_load would resolve them against the daemon CWD
+            // which is wrong for both user-level and workspace-level plugins.
+            if let PluginEntryPoint::Wasm { ref mut path, .. } = manifest.entry_point
+                && path.is_relative()
+            {
+                *path = plugin_dir.join(&*path);
+            }
+
             let plugin: Box<dyn astralis_plugins::Plugin> = match &manifest.entry_point {
                 PluginEntryPoint::Wasm { .. } => {
                     Box::new(wasm_loader.create_plugin(manifest.clone()))

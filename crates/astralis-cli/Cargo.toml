@@ -27,9 +27,12 @@ astralis-llm = { workspace = true }
 astralis-runtime = { workspace = true }
 astralis-gateway = { workspace = true }
 astralis-hooks = { workspace = true }
+astralis-plugins = { workspace = true, features = ["http"] }
 astralis-telegram = { workspace = true }
 astralis-telemetry = { workspace = true }
 astralis-approval = { workspace = true }
+openclaw-bridge = { workspace = true }
+blake3 = { workspace = true }
 
 # CLI
 clap = { workspace = true }
@@ -72,6 +75,9 @@ arboard = { workspace = true }
 
 # Web browser
 webbrowser = "1.0"
+
+# Temp files (staging dirs for atomic installs)
+tempfile = { workspace = true }
 
 # Directories
 directories = { workspace = true }

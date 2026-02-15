@@ -82,6 +82,7 @@ astralis-config = { path = "crates/astralis-config" }
 
 # Internal crates - Plugins
 astralis-plugins = { path = "crates/astralis-plugins" }
+openclaw-bridge = { path = "crates/openclaw-bridge" }
 
 # Internal crates - Phase 2
 astralis-approval = { path = "crates/astralis-approval" }
@@ -181,7 +182,7 @@ teloxide = { version = "0.13", features = ["macros"] }
 extism = "1"
 
 # HTTP client (optional, for plugin HTTP host functions)
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 
 # Async utilities
 async-trait = "0.1"
@@ -191,6 +192,20 @@ tokio-util = "0.7"
 # Encoding
 base64 = "0.22"
 hex = "0.4"
+
+# Archive / compression
+flate2 = "1.0"
+tar = "0.4"
+
+# Hashing (SHA-2 family for npm SRI verification)
+sha2 = "0.10"
+subtle = "2"
+
+# File locking
+fs2 = "0.4"
+
+# URL parsing
+url = "2"
 
 # Directory utilities
 directories = "5.0"

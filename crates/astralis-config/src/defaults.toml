@@ -335,10 +335,7 @@ directives = []
 
 [gateway]
 # Directory to store gateway state (server metadata, health status, etc.)
-# If omitted, uses platform-specific default:
-# - Linux: $XDG_STATE_HOME/astralis or ~/.local/state/astralis
-# - macOS: ~/Library/Application Support/astralis
-# - Windows: %LOCALAPPDATA%\astralis
+# If omitted, defaults to ~/.astralis/state/
 # state_dir = ""
 
 # Path to a secrets file for credential management.

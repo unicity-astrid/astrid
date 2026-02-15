@@ -33,6 +33,10 @@ pub enum BridgeError {
     #[error("export stitch failed: {0}")]
     ExportStitchFailed(String),
 
+    /// Compilation cache error (read/write/gc).
+    #[error("cache error: {0}")]
+    Cache(String),
+
     /// Failed to write output files.
     #[error("output error: {0}")]
     Output(String),

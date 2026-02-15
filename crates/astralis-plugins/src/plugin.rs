@@ -15,8 +15,20 @@ use crate::tool::PluginTool;
 /// Plugin IDs are strings like `"my-cool-plugin"` or `"openclaw-git-tools"`.
 /// They must be non-empty and contain only lowercase alphanumeric characters
 /// and hyphens.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct PluginId(String);
+
+/// Deserialize with validation — rejects malformed IDs (e.g. path traversal
+/// payloads in crafted lockfiles).
+impl<'de> Deserialize<'de> for PluginId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::new(s).map_err(serde::de::Error::custom)
+    }
+}
 
 impl PluginId {
     /// Create a new `PluginId`, validating the format.

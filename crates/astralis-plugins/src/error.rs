@@ -78,6 +78,74 @@ pub enum PluginError {
     #[error("WASM error: {0}")]
     WasmError(String),
 
+    /// npm registry API failure.
+    #[error("registry error: {message}")]
+    RegistryError {
+        /// Description of the registry failure.
+        message: String,
+    },
+
+    /// SHA-512 SRI integrity verification failed.
+    #[error("integrity mismatch for {package}: expected {expected}")]
+    IntegrityError {
+        /// Package that failed verification.
+        package: String,
+        /// Expected SRI hash string.
+        expected: String,
+    },
+
+    /// Tarball extraction failure.
+    #[error("extraction error: {message}")]
+    ExtractionError {
+        /// Description of the extraction failure.
+        message: String,
+    },
+
+    /// Unsafe entry type in archive (e.g. symlink, hardlink, device node).
+    #[error("unsafe archive entry type '{entry_type}' at {path}")]
+    UnsafeEntryType {
+        /// The entry type that was rejected.
+        entry_type: String,
+        /// The path of the entry.
+        path: String,
+    },
+
+    /// Path traversal detected in archive entry.
+    #[error("path traversal detected: {path}")]
+    PathTraversal {
+        /// The offending path.
+        path: String,
+    },
+
+    /// Tarball exceeds maximum allowed size.
+    #[error("package too large: {size} bytes (limit: {limit} bytes)")]
+    PackageTooLarge {
+        /// Actual size in bytes.
+        size: u64,
+        /// Maximum allowed size in bytes.
+        limit: u64,
+    },
+
+    /// Package is not an `OpenClaw` plugin (missing `openclaw.plugin.json`).
+    #[error("not an OpenClaw plugin: missing openclaw.plugin.json")]
+    NotOpenClawPlugin,
+
+    /// Invalid npm package name.
+    #[error("invalid package name '{name}': {reason}")]
+    InvalidPackageName {
+        /// The invalid name.
+        name: String,
+        /// Why the name is invalid.
+        reason: String,
+    },
+
+    /// SSRF attempt blocked — tarball URL doesn't match registry.
+    #[error("SSRF blocked: tarball URL {url} does not match registry")]
+    SsrfBlocked {
+        /// The blocked URL.
+        url: String,
+    },
+
     /// Security gate denied the operation.
     #[error("security denied: {0}")]
     SecurityDenied(String),
@@ -89,6 +157,15 @@ pub enum PluginError {
         expected: String,
         /// Actual blake3 hex digest.
         actual: String,
+    },
+
+    /// Lockfile read/write/parse error.
+    #[error("lockfile error at {path}: {message}")]
+    LockfileError {
+        /// Path to the lockfile.
+        path: PathBuf,
+        /// Error description.
+        message: String,
     },
 }
 

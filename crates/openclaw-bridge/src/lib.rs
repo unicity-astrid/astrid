@@ -15,6 +15,10 @@
 
 #![deny(unsafe_code)]
 
+/// Bridge crate version, used for compilation cache invalidation.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub mod cache;
 pub mod compiler;
 pub mod error;
 pub mod export_stitch;

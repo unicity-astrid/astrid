@@ -9,7 +9,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> GatewayResult<()> {
-//!     let config = GatewayConfig::load("~/.config/astralis/gateway.toml")?;
+//!     let config = GatewayConfig::load("~/.astralis/gateway.toml")?;
 //!     let runtime = GatewayRuntime::new(config)?;
 //!
 //!     // Check health

@@ -36,6 +36,15 @@ const QUICKJS_KERNEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/engine.w
 /// `QuickJS` uses when looking up `module.exports` keys.
 const PLUGIN_EXPORTS: &[&str] = &["describe-tools", "execute-tool", "run-hook"];
 
+/// Compute the blake3 hash of the embedded `QuickJS` kernel.
+///
+/// Used for compilation cache invalidation — when the kernel changes,
+/// all cached compilations must be rebuilt.
+#[must_use]
+pub fn kernel_hash() -> String {
+    blake3::hash(QUICKJS_KERNEL).to_hex().to_string()
+}
+
 /// Compile a JS source string to a WASM plugin.
 ///
 /// The `js_source` should be the complete shimmed `JavaScript` (output of
@@ -201,6 +210,14 @@ mod tests {
             b"\0asm",
             "kernel should start with WASM magic"
         );
+    }
+
+    #[test]
+    fn kernel_hash_is_stable() {
+        let h1 = kernel_hash();
+        let h2 = kernel_hash();
+        assert_eq!(h1, h2, "kernel_hash should be deterministic");
+        assert_eq!(h1.len(), 64, "blake3 hex should be 64 chars");
     }
 
     #[test]
