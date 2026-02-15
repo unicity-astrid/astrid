@@ -1,25 +1,14 @@
 //! End-to-end WASM plugin integration test.
 //!
-//! Loads the `test-all-endpoints` WASM fixture (compiled from the OpenClaw
-//! JS test plugin via `extism-js`) and exercises every host function endpoint.
+//! Loads the `test-all-endpoints` WASM fixture (compiled from the
+//! `test-plugin-guest` Rust crate) and exercises every host function endpoint.
 //!
-//! ## Prerequisites
-//!
-//! The WASM fixture must be compiled before running these tests:
-//!
-//! ```bash
-//! # Install extism-js (one-time):
-//! # https://github.com/nicholasgasior/extism-js/releases
-//!
-//! # Compile the test fixture:
-//! cargo test -p openclaw-bridge --test e2e_plugin compile_test_plugin_to_wasm -- --ignored
-//! ```
-//!
-//! Tests will auto-skip if the fixture is not present.
+//! The WASM fixture is automatically compiled on first use via
+//! `cargo build --target wasm32-unknown-unknown` on the guest crate.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 
 use astrid_core::plugin_abi::{ToolDefinition, ToolInput, ToolOutput};
 use astrid_plugins::PluginId;
@@ -33,19 +22,31 @@ fn wasm_fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test-all-endpoints.wasm")
 }
 
-/// Skip the test if the WASM fixture doesn't exist.
-macro_rules! require_fixture {
-    () => {
-        let path = wasm_fixture_path();
-        if !path.exists() {
-            eprintln!(
-                "WASM fixture not found at {}. Compile it first:\n  \
-                 cargo test -p openclaw-bridge --test e2e_plugin compile_test_plugin_to_wasm -- --ignored",
-                path.display()
-            );
-            return;
-        }
-    };
+static BUILD_FIXTURE: Once = Once::new();
+
+/// Build the `test-plugin-guest` crate to WASM and copy to the fixtures directory.
+/// Uses `Once` to ensure compilation happens at most once per test process.
+fn build_fixture() {
+    BUILD_FIXTURE.call_once(|| {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let guest_dir = manifest_dir.parent().unwrap().join("test-plugin-guest");
+        let fixture_dir = manifest_dir.join("tests/fixtures");
+
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+            .current_dir(&guest_dir)
+            .status()
+            .expect("failed to invoke cargo for test-plugin-guest");
+        assert!(
+            status.success(),
+            "failed to compile test-plugin-guest to WASM"
+        );
+
+        let src = guest_dir.join("target/wasm32-unknown-unknown/release/test_plugin_guest.wasm");
+        std::fs::create_dir_all(&fixture_dir).expect("create fixtures dir");
+        std::fs::copy(&src, fixture_dir.join("test-all-endpoints.wasm"))
+            .expect("copy WASM fixture");
+    });
 }
 
 /// Build an Extism plugin from the test fixture with all host functions registered.
@@ -115,7 +116,7 @@ fn execute_tool(plugin: &mut extism::Plugin, name: &str, args: serde_json::Value
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn discover_all_six_tools() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-discover");
     let _ = std::fs::create_dir_all(&workspace);
@@ -152,7 +153,7 @@ async fn discover_all_six_tools() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_log_all_levels() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-log");
     let _ = std::fs::create_dir_all(&workspace);
@@ -176,7 +177,7 @@ async fn host_log_all_levels() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_config_reads_baked_value() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-config");
     let _ = std::fs::create_dir_all(&workspace);
@@ -211,7 +212,7 @@ async fn host_config_reads_baked_value() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_kv_set_and_get() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-kv");
     let _ = std::fs::create_dir_all(&workspace);
@@ -235,7 +236,7 @@ async fn host_kv_set_and_get() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_file_write_and_read() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-file");
     let _ = std::fs::create_dir_all(&workspace);
@@ -270,7 +271,7 @@ async fn host_file_write_and_read() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_kv_roundtrip_structured_data() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-roundtrip");
     let _ = std::fs::create_dir_all(&workspace);
@@ -302,7 +303,7 @@ async fn host_kv_roundtrip_structured_data() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unknown_tool_returns_error() {
-    require_fixture!();
+    build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-unknown");
     let _ = std::fs::create_dir_all(&workspace);

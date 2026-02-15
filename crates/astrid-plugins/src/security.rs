@@ -90,7 +90,7 @@ impl PluginSecurityGate for DenyAllGate {
 
 #[cfg(feature = "approval")]
 mod interceptor_gate {
-    use super::*;
+    use super::{PluginSecurityGate, async_trait};
     use astrid_approval::action::SensitiveAction;
     use astrid_approval::interceptor::SecurityInterceptor;
     use astrid_core::types::Permission;

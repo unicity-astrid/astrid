@@ -29,8 +29,5 @@ wizer.workspace = true
 [build-dependencies]
 blake3 = { workspace = true }
 
-[dev-dependencies]
-astrid-plugins = { workspace = true }
-
 [lints]
 workspace = true

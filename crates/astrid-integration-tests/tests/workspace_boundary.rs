@@ -1,7 +1,5 @@
 //! Integration tests for workspace boundary enforcement.
 
-mod common;
-
 use std::sync::Arc;
 
 use astrid_core::ApprovalOption;

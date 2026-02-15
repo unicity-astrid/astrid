@@ -107,6 +107,7 @@ impl SandboxProfile {
     }
 
     #[cfg(target_os = "linux")]
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     fn platform_wrap_command(
         &self,
         command: &str,
