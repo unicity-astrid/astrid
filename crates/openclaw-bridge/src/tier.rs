@@ -122,6 +122,10 @@ fn requires_host_integration_from_file(plugin_dir: &Path) -> bool {
 }
 
 /// Check if `package.json` exists and has non-empty `dependencies`.
+///
+/// Note: only checks `"dependencies"`, not `"peerDependencies"`. Plugins
+/// using peer deps for runtime requirements may be mis-classified as Tier 1.
+/// In practice `OpenClaw` plugins use `"dependencies"` for runtime deps.
 fn has_npm_dependencies(plugin_dir: &Path) -> bool {
     let pkg_path = plugin_dir.join("package.json");
     let Ok(content) = std::fs::read_to_string(pkg_path) else {

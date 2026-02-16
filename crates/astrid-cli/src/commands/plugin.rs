@@ -182,10 +182,8 @@ fn compile_openclaw(
     source_dir: &Path,
     output_dir: &Path,
     home: &AstridHome,
+    oc_manifest: &openclaw_bridge::manifest::OpenClawManifest,
 ) -> anyhow::Result<String> {
-    let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_dir)
-        .context("failed to parse openclaw.plugin.json")?;
-
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .context("failed to convert OpenClaw ID to Astrid ID")?;
 
@@ -237,7 +235,7 @@ fn compile_openclaw(
 
     openclaw_bridge::output::generate_manifest(
         &astrid_id,
-        &oc_manifest,
+        oc_manifest,
         &wasm_path,
         &config,
         output_dir,
@@ -276,10 +274,8 @@ fn prepare_tier2(
     source_dir: &Path,
     output_dir: &Path,
     _home: &AstridHome,
+    oc_manifest: &openclaw_bridge::manifest::OpenClawManifest,
 ) -> anyhow::Result<String> {
-    let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_dir)
-        .context("failed to parse openclaw.plugin.json")?;
-
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .context("failed to convert OpenClaw ID")?;
 
@@ -711,7 +707,9 @@ pub(crate) fn compile_plugin(path: &str, output: Option<&str>) -> anyhow::Result
             "{}",
             Theme::info(&format!("Compiling OpenClaw plugin at: {path}"))
         );
-        let astrid_id = compile_openclaw(source_path, &out_dir, &home)?;
+        let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
+            .context("failed to parse openclaw.plugin.json")?;
+        let astrid_id = compile_openclaw(source_path, &out_dir, &home, &oc_manifest)?;
         let wasm_path = out_dir.join("plugin.wasm");
         let meta = std::fs::metadata(&wasm_path)?;
         let hash = LockedPlugin::compute_wasm_hash(&wasm_path)?;
@@ -922,7 +920,7 @@ async fn install_from_openclaw(
                 "{}",
                 Theme::dimmed(&format!("  Compiling to WASM (ID: {astrid_id})..."))
             );
-            compile_openclaw(&pkg.package_root, staging.path(), home)?;
+            compile_openclaw(&pkg.package_root, staging.path(), home, &oc_manifest)?;
         },
         PluginTier::Node => {
             println!(
@@ -931,7 +929,7 @@ async fn install_from_openclaw(
                     "  Preparing Tier 2 Node.js bridge (ID: {astrid_id})..."
                 ))
             );
-            prepare_tier2(&pkg.package_root, staging.path(), home)?;
+            prepare_tier2(&pkg.package_root, staging.path(), home, &oc_manifest)?;
         },
     }
 
@@ -1155,7 +1153,7 @@ async fn install_from_local(
                     "{}",
                     Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
                 );
-                compile_openclaw(source_path, staging.path(), home)?;
+                compile_openclaw(source_path, staging.path(), home, &oc_manifest)?;
             },
             PluginTier::Node => {
                 println!(
@@ -1164,7 +1162,7 @@ async fn install_from_local(
                         "  Preparing Tier 2 Node.js bridge (ID: {astrid_id})..."
                     ))
                 );
-                prepare_tier2(source_path, staging.path(), home)?;
+                prepare_tier2(source_path, staging.path(), home, &oc_manifest)?;
             },
         }
 
