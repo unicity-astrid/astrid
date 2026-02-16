@@ -74,11 +74,14 @@ fn output_manifest_round_trips_through_toml() {
 
     let oc = openclaw_bridge::manifest::OpenClawManifest {
         id: "my-cool-plugin".into(),
-        name: "My Cool Plugin".into(),
-        version: "2.0.0".into(),
+        name: Some("My Cool Plugin".into()),
+        version: Some("2.0.0".into()),
         description: Some("Cool stuff".into()),
-        main: "index.js".into(),
-        engines: None,
+        config_schema: serde_json::json!({"type": "object"}),
+        kind: None,
+        channels: vec![],
+        providers: vec![],
+        skills: vec![],
     };
 
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc.id).unwrap();
