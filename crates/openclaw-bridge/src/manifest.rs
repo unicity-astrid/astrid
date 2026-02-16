@@ -123,6 +123,12 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
             .and_then(|e| e.as_array())
         && let Some(first) = extensions.first().and_then(|v| v.as_str())
     {
+        // Reject path traversal — entry point must stay within plugin_dir
+        if first.contains("..") {
+            return Err(BridgeError::Manifest(format!(
+                "entry point '{first}' contains '..' — path traversal not allowed"
+            )));
+        }
         return Ok(first.to_string());
     }
 
@@ -245,30 +251,26 @@ mod tests {
 
     #[test]
     fn parse_manifest_minimal() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-minimal");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
+            dir.path().join(MANIFEST_FILENAME),
             r#"{"id":"hello-tool","configSchema":{"type":"object","properties":{}}}"#,
         )
         .unwrap();
 
-        let m = parse_manifest(&dir).unwrap();
+        let m = parse_manifest(dir.path()).unwrap();
         assert_eq!(m.id, "hello-tool");
         assert!(m.name.is_none());
         assert!(m.version.is_none());
         assert_eq!(m.display_name(), "hello-tool");
         assert_eq!(m.display_version(), "0.0.0");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn parse_manifest_full() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-full");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
+            dir.path().join(MANIFEST_FILENAME),
             r#"{
                 "id": "discord",
                 "name": "Discord Channel",
@@ -281,92 +283,91 @@ mod tests {
         )
         .unwrap();
 
-        let m = parse_manifest(&dir).unwrap();
+        let m = parse_manifest(dir.path()).unwrap();
         assert_eq!(m.id, "discord");
         assert_eq!(m.name.as_deref(), Some("Discord Channel"));
         assert_eq!(m.channels, vec!["discord"]);
         assert!(m.requires_host_integration());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn parse_manifest_with_providers() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-providers");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
+            dir.path().join(MANIFEST_FILENAME),
             r#"{"id":"copilot-proxy","configSchema":{},"providers":["copilot-proxy"]}"#,
         )
         .unwrap();
 
-        let m = parse_manifest(&dir).unwrap();
+        let m = parse_manifest(dir.path()).unwrap();
         assert!(m.requires_host_integration());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn parse_manifest_missing_id() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-no-id");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(dir.join(MANIFEST_FILENAME), r#"{"configSchema":{}}"#).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(MANIFEST_FILENAME), r#"{"configSchema":{}}"#).unwrap();
 
-        let result = parse_manifest(&dir);
+        let result = parse_manifest(dir.path());
         assert!(result.is_err());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn parse_manifest_missing_config_schema() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-no-schema");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(dir.join(MANIFEST_FILENAME), r#"{"id":"test"}"#).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(MANIFEST_FILENAME), r#"{"id":"test"}"#).unwrap();
 
-        let result = parse_manifest(&dir);
+        let result = parse_manifest(dir.path());
         assert!(result.is_err());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn resolve_entry_from_package_json() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-entry-pkg");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join("package.json"),
+            dir.path().join("package.json"),
             r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
         )
         .unwrap();
 
-        let entry = resolve_entry_point(&dir).unwrap();
+        let entry = resolve_entry_point(dir.path()).unwrap();
         assert_eq!(entry, "./src/index.ts");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn resolve_entry_fallback_src_index_ts() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-entry-fallback");
-        let _ = std::fs::create_dir_all(dir.join("src"));
-        std::fs::write(dir.join("src/index.ts"), "// plugin").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/index.ts"), "// plugin").unwrap();
 
-        let entry = resolve_entry_point(&dir).unwrap();
+        let entry = resolve_entry_point(dir.path()).unwrap();
         assert_eq!(entry, "src/index.ts");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn resolve_entry_no_match_fails() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-entry-none");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
 
-        let result = resolve_entry_point(&dir);
+        let result = resolve_entry_point(dir.path());
         assert!(result.is_err());
+    }
 
-        let _ = std::fs::remove_dir_all(&dir);
+    #[test]
+    fn resolve_entry_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["../../etc/passwd"]}}"#,
+        )
+        .unwrap();
+
+        let result = resolve_entry_point(dir.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("path traversal"),
+            "error should mention path traversal: {err}"
+        );
     }
 
     #[test]

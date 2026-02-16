@@ -13,6 +13,8 @@
 
 use std::path::Path;
 
+use crate::manifest::OpenClawManifest;
+
 /// The runtime tier for a plugin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginTier {
@@ -36,6 +38,8 @@ impl std::fmt::Display for PluginTier {
 /// Plugins importing these modules are automatically routed to Tier 2.
 /// Modules that *can* be polyfilled (fs, path, os) are NOT in this list.
 const UNSUPPORTED_NODE_MODULES: &[&str] = &[
+    "node:http",
+    "node:https",
     "node:net",
     "node:child_process",
     "node:worker_threads",
@@ -47,6 +51,8 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
     "node:v8",
     "node:vm",
     "node:async_hooks",
+    "http",
+    "https",
     "net",
     "child_process",
     "worker_threads",
@@ -58,6 +64,7 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
 
 /// Detect the appropriate runtime tier for an `OpenClaw` plugin.
 ///
+/// If the manifest has already been parsed, pass it to avoid redundant I/O.
 /// `plugin_dir` should contain `openclaw.plugin.json` and optionally `package.json`.
 ///
 /// Detection order:
@@ -66,9 +73,14 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
 /// 3. Source files import unsupported `node:*` modules → Node
 /// 4. Default → Wasm
 #[must_use]
-pub fn detect_tier(plugin_dir: &Path) -> PluginTier {
+pub fn detect_tier(plugin_dir: &Path, manifest: Option<&OpenClawManifest>) -> PluginTier {
     // 1. Check for channels/providers in manifest (requires host integration)
-    if requires_host_integration(plugin_dir) {
+    let needs_host = if let Some(m) = manifest {
+        m.requires_host_integration()
+    } else {
+        requires_host_integration_from_file(plugin_dir)
+    };
+    if needs_host {
         return PluginTier::Node;
     }
 
@@ -86,11 +98,8 @@ pub fn detect_tier(plugin_dir: &Path) -> PluginTier {
     PluginTier::Wasm
 }
 
-/// Check if `openclaw.plugin.json` declares channels or providers.
-///
-/// Plugins with channels or providers require host-side integration that
-/// cannot run in a WASM sandbox.
-fn requires_host_integration(plugin_dir: &Path) -> bool {
+/// Fallback: read `openclaw.plugin.json` from disk when no parsed manifest is available.
+fn requires_host_integration_from_file(plugin_dir: &Path) -> bool {
     let manifest_path = plugin_dir.join("openclaw.plugin.json");
     let Ok(content) = std::fs::read_to_string(manifest_path) else {
         return false;
@@ -128,7 +137,13 @@ fn has_npm_dependencies(plugin_dir: &Path) -> bool {
         .is_some_and(|deps| !deps.is_empty())
 }
 
-/// Scan source files for imports of unsupported Node.js modules.
+/// Scan the entry point file for imports of unsupported Node.js modules.
+///
+/// This is a **heuristic** — it uses substring matching on the entry point file only.
+/// False positives (e.g. module name in a comment) are safe (plugin still works via Node).
+/// False negatives (e.g. unsupported import in a transitive dependency) may cause WASM
+/// compilation to fail; the user can work around this by adding npm `dependencies` to
+/// `package.json` which triggers the earlier Tier 2 check.
 ///
 /// Resolves the entry point via `package.json` → `openclaw.extensions`
 /// or falls back to common file locations.
@@ -166,7 +181,7 @@ mod tests {
     #[test]
     fn empty_dir_defaults_to_wasm() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Wasm);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Wasm);
     }
 
     #[test]
@@ -174,7 +189,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manifest = r#"{"id": "discord", "configSchema": {}, "channels": ["discord"]}"#;
         std::fs::write(dir.path().join("openclaw.plugin.json"), manifest).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Node);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
     }
 
     #[test]
@@ -182,7 +197,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manifest = r#"{"id": "copilot", "configSchema": {}, "providers": ["copilot-proxy"]}"#;
         std::fs::write(dir.path().join("openclaw.plugin.json"), manifest).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Node);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
     }
 
     #[test]
@@ -190,7 +205,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let manifest = r#"{"id": "test", "configSchema": {}, "channels": []}"#;
         std::fs::write(dir.path().join("openclaw.plugin.json"), manifest).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Wasm);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Wasm);
     }
 
     #[test]
@@ -198,7 +213,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pkg = r#"{"name": "test", "dependencies": {"nostr-tools": "^2.0.0"}}"#;
         std::fs::write(dir.path().join("package.json"), pkg).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Node);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
     }
 
     #[test]
@@ -206,7 +221,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pkg = r#"{"name": "test", "dependencies": {}}"#;
         std::fs::write(dir.path().join("package.json"), pkg).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Wasm);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Wasm);
     }
 
     #[test]
@@ -221,7 +236,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         let source = r#"import { createServer } from "node:net";"#;
         std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Node);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
     }
 
     #[test]
@@ -231,7 +246,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         let source = r#"import { createServer } from "node:net";"#;
         std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Node);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
     }
 
     #[test]
@@ -244,6 +259,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 "#;
         std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
-        assert_eq!(detect_tier(dir.path()), PluginTier::Wasm);
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Wasm);
     }
 }

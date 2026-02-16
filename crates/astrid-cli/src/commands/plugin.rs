@@ -93,6 +93,11 @@ fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
         }
 
         if file_type.is_dir() {
+            // Skip directories that would be recreated or are not needed
+            let name = entry.file_name();
+            if name == "node_modules" || name == ".git" || name == "dist" {
+                continue;
+            }
             copy_plugin_dir(&src_path, &dst_path)?;
         } else {
             std::fs::copy(&src_path, &dst_path)
@@ -263,7 +268,7 @@ fn compile_openclaw(
 /// 1. Copy source to output directory
 /// 2. Pre-transpile all `.ts`/`.tsx` files to `.js` using OXC
 /// 3. Write the universal MCP bridge script
-/// 4. Run `npm install --production --ignore-scripts` if `package.json` exists
+/// 4. Run `npm install --omit=dev --ignore-scripts` if `package.json` exists
 /// 5. Generate `plugin.toml` with MCP entry point
 ///
 /// Returns the Astrid plugin ID.
@@ -287,7 +292,8 @@ fn prepare_tier2(
     copy_plugin_dir(source_dir, output_dir)?;
 
     // Pre-transpile TS→JS in-place using OXC
-    transpile_ts_in_dir(&output_dir.join("src"))?;
+    // Transpile TS→JS in the entire output dir (not just src/ — entry points may be at root)
+    transpile_ts_in_dir(output_dir)?;
 
     // Rewrite main entry point extension from .ts/.tsx to .js
     let main_path = Path::new(&entry_point);
@@ -308,10 +314,10 @@ fn prepare_tier2(
     if output_dir.join("package.json").exists() {
         println!(
             "{}",
-            Theme::dimmed("  Running npm install --production --ignore-scripts...")
+            Theme::dimmed("  Running npm install --omit=dev --ignore-scripts...")
         );
         let status = std::process::Command::new("npm")
-            .args(["install", "--production", "--ignore-scripts"])
+            .args(["install", "--omit=dev", "--ignore-scripts"])
             .current_dir(output_dir)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
@@ -335,7 +341,7 @@ fn prepare_tier2(
             args: vec![
                 "astrid_bridge.mjs".into(),
                 "--entry".into(),
-                format!("./{main_entry}"),
+                format!("./{}", main_entry.strip_prefix("./").unwrap_or(&main_entry)),
                 "--plugin-id".into(),
                 astrid_id.clone(),
             ],
@@ -896,7 +902,7 @@ async fn install_from_openclaw(
         .context("failed to convert OpenClaw ID")?;
 
     // Detect runtime tier
-    let tier = detect_tier(&pkg.package_root);
+    let tier = detect_tier(&pkg.package_root, Some(&oc_manifest));
     println!("{}", Theme::dimmed(&format!("  Detected tier: {tier}")));
 
     let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
@@ -1131,7 +1137,7 @@ async fn install_from_local(
             .context("failed to convert OpenClaw ID")?;
 
         // Detect runtime tier
-        let tier = detect_tier(source_path);
+        let tier = detect_tier(source_path, Some(&oc_manifest));
         println!("{}", Theme::dimmed(&format!("  Detected tier: {tier}")));
 
         let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
