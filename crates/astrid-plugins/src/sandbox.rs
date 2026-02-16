@@ -96,7 +96,7 @@ impl SandboxProfile {
     ///
     /// Sets up:
     /// - Read-only access to `install_dir` (plugin code + `node_modules`)
-    /// - Read-write access to `data_dir` (plugin's private data) via `extra_write_paths`
+    /// - Read-write access to `data_dir` (plugin's private data) as the `workspace_root`
     /// - `HOME` override pointing to `data_dir`
     /// - Default resource limits (`RLIMIT_NPROC=256`, `RLIMIT_AS=4GB`, `RLIMIT_NOFILE=256`)
     ///
@@ -119,6 +119,13 @@ impl SandboxProfile {
     #[must_use]
     pub fn with_extra_read_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.extra_read_paths = paths;
+        self
+    }
+
+    /// Add extra read+write paths.
+    #[must_use]
+    pub fn with_extra_write_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.extra_write_paths = paths;
         self
     }
 
@@ -449,6 +456,30 @@ mod tests {
         assert!(content.contains("/workspace"));
         assert!(content.contains("/plugins/my-plugin"));
         assert!(content.contains("api.github.com"));
+    }
+
+    #[test]
+    fn test_for_node_plugin() {
+        let profile = SandboxProfile::for_node_plugin(
+            PathBuf::from("/install/my-plugin"),
+            PathBuf::from("/data/my-plugin"),
+        );
+        assert_eq!(profile.workspace_root, PathBuf::from("/data/my-plugin"));
+        assert_eq!(profile.plugin_dir, PathBuf::from("/install/my-plugin"));
+        assert!(profile.extra_write_paths.is_empty());
+        assert!(profile.resource_limits.is_some());
+        assert_eq!(
+            profile.home_override,
+            Some(PathBuf::from("/data/my-plugin"))
+        );
+    }
+
+    #[test]
+    fn test_resource_limits_defaults() {
+        let limits = ResourceLimits::default();
+        assert_eq!(limits.max_processes, 256);
+        assert_eq!(limits.max_memory_bytes, 4 * 1024 * 1024 * 1024);
+        assert_eq!(limits.max_open_files, 256);
     }
 
     #[cfg(target_os = "linux")]
