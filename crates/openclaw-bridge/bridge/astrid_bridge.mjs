@@ -10,7 +10,6 @@
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { resolve, dirname } from "node:path";
-import { createRequire } from "node:module";
 import {
   writeFileSync,
   mkdirSync,
@@ -28,6 +27,11 @@ for (let i = 0; i < args.length; i++) {
 
 if (!entryPath) {
   process.stderr.write("astrid_bridge: --entry <path> is required\n");
+  process.exit(1);
+}
+
+if (/[/\\]|\.\./.test(pluginId)) {
+  process.stderr.write("astrid_bridge: --plugin-id must not contain path separators or '..'\n");
   process.exit(1);
 }
 
@@ -275,9 +279,9 @@ async function handleToolsCall(id, params) {
       content: [{ type: "text", text }],
     });
   } catch (e) {
-    log.error(`Tool call failed: ${e.message}`);
+    log.error(`Tool call failed: ${e.message}\n${e.stack ?? ""}`);
     sendResponse(id, {
-      content: [{ type: "text", text: `Tool execution failed: ${e.message}` }],
+      content: [{ type: "text", text: "Tool execution failed" }],
       isError: true,
     });
   }
@@ -307,6 +311,7 @@ async function handleNotification(method, params) {
 // ── Service lifecycle ───────────────────────────────────────────────
 
 async function startServices() {
+  let failedCount = 0;
   for (const [name, service] of registeredServices) {
     try {
       log.info(`Starting service: ${name}`);
@@ -315,11 +320,16 @@ async function startServices() {
       }
       log.info(`Service started: ${name}`);
     } catch (e) {
+      failedCount++;
       log.error(`Service ${name} failed to start: ${e.message}`);
     }
   }
   servicesReady = true;
-  log.info("All services started");
+  if (failedCount > 0) {
+    log.warn(`Services ready (${failedCount} failed to start — tool calls will proceed)`);
+  } else {
+    log.info("All services started");
+  }
 }
 
 async function stopServices() {
@@ -447,9 +457,14 @@ async function main() {
     }
   });
 
-  rl.on("close", () => shutdown("stdin closed"));
-  process.on("SIGTERM", () => shutdown("SIGTERM received"));
-  process.on("SIGINT", () => shutdown("SIGINT received"));
+  const onShutdown = (reason) => shutdown(reason).catch((e) => {
+    log.error(`Shutdown error: ${e?.message ?? e}`);
+    process.exit(1);
+  });
+
+  rl.on("close", () => onShutdown("stdin closed"));
+  process.on("SIGTERM", () => onShutdown("SIGTERM received"));
+  process.on("SIGINT", () => onShutdown("SIGINT received"));
 }
 
 main().catch((e) => {
