@@ -317,6 +317,7 @@ impl DaemonServer {
                     match astrid_plugins::create_plugin(
                         manifest.clone(),
                         Some(mcp_for_plugins.clone()),
+                        Some(plugin_dir.clone()),
                     ) {
                         Ok(p) => p,
                         Err(e) => {
