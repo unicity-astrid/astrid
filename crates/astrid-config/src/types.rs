@@ -632,6 +632,8 @@ pub struct GatewaySection {
     pub secrets_file: Option<String>,
     /// Whether to watch configuration files and reload on change.
     pub hot_reload: bool,
+    /// Whether to watch plugin directories and hot-reload on file changes.
+    pub watch_plugins: bool,
     /// Interval (in seconds) between health checks for managed servers.
     pub health_interval_secs: u64,
     /// Grace period (in seconds) for a clean shutdown before force-killing
@@ -651,6 +653,7 @@ impl Default for GatewaySection {
             state_dir: None,
             secrets_file: None,
             hot_reload: true,
+            watch_plugins: true,
             health_interval_secs: 30,
             shutdown_timeout_secs: 30,
             idle_shutdown_secs: 30,

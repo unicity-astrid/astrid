@@ -74,6 +74,11 @@ async fn main() -> Result<()> {
     let health_handle = daemon.spawn_health_loop();
     let cleanup_handle = daemon.spawn_session_cleanup_loop();
     let ephemeral_handle = daemon.spawn_ephemeral_monitor();
+    let watcher_handle = if cfg.gateway.watch_plugins {
+        daemon.spawn_plugin_watcher()
+    } else {
+        None
+    };
 
     // Spawn embedded Telegram bot if configured.
     let telegram_handle = astrid_telegram::bot::spawn_embedded(&cfg.telegram, addr);
@@ -91,6 +96,9 @@ async fn main() -> Result<()> {
     health_handle.abort();
     cleanup_handle.abort();
     if let Some(h) = ephemeral_handle {
+        h.abort();
+    }
+    if let Some(h) = watcher_handle {
         h.abort();
     }
     if let Some(h) = telegram_handle {

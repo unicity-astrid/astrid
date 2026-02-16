@@ -38,6 +38,14 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
     // Start ephemeral shutdown monitor (returns None in persistent mode).
     let ephemeral_handle = daemon.spawn_ephemeral_monitor();
 
+    // Start plugin hot-reload watcher (gated by config, returns None if disabled
+    // or no plugin dirs exist).
+    let watcher_handle = if cfg.gateway.watch_plugins {
+        daemon.spawn_plugin_watcher()
+    } else {
+        None
+    };
+
     // Spawn embedded Telegram bot if configured.
     let telegram_handle = astrid_telegram::bot::spawn_embedded(&cfg.telegram, addr);
 
@@ -54,6 +62,9 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
     health_handle.abort();
     cleanup_handle.abort();
     if let Some(h) = ephemeral_handle {
+        h.abort();
+    }
+    if let Some(h) = watcher_handle {
         h.abort();
     }
     if let Some(h) = telegram_handle {
