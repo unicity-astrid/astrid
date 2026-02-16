@@ -86,14 +86,14 @@ fn output_manifest_round_trips_through_toml() {
 
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc.id).unwrap();
 
-    let dir = std::env::temp_dir().join("oc-bridge-roundtrip-test");
-    let _ = std::fs::create_dir_all(&dir);
-    let wasm_path = dir.join("plugin.wasm");
+    let dir = tempfile::tempdir().unwrap();
+    let wasm_path = dir.path().join("plugin.wasm");
     std::fs::write(&wasm_path, b"fake wasm content").unwrap();
 
-    openclaw_bridge::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, &dir).unwrap();
+    openclaw_bridge::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, dir.path())
+        .unwrap();
 
-    let toml_content = std::fs::read_to_string(dir.join("plugin.toml")).unwrap();
+    let toml_content = std::fs::read_to_string(dir.path().join("plugin.toml")).unwrap();
     let parsed: toml::Value = toml::from_str(&toml_content).expect("generated TOML should parse");
     let table = parsed.as_table().unwrap();
 
@@ -103,6 +103,4 @@ fn output_manifest_round_trips_through_toml() {
 
     let config_table = table["config"].as_table().unwrap();
     assert_eq!(config_table["debug"].as_bool().unwrap(), true);
-
-    let _ = std::fs::remove_dir_all(&dir);
 }

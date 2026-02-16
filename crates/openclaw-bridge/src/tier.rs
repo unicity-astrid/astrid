@@ -60,6 +60,10 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
     "dgram",
     "tls",
     "http2",
+    "inspector",
+    "v8",
+    "vm",
+    "async_hooks",
 ];
 
 /// Detect the appropriate runtime tier for an `OpenClaw` plugin.

@@ -385,6 +385,16 @@ fn transpile_ts_in_dir(dir: &Path) -> anyhow::Result<()> {
             continue;
         }
 
+        // Skip TypeScript declaration files (.d.ts / .d.tsx)
+        if path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|stem| Path::new(stem).extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("d"))
+        {
+            continue;
+        }
+
         let source = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
 
@@ -703,12 +713,22 @@ pub(crate) fn compile_plugin(path: &str, output: Option<&str>) -> anyhow::Result
         // OpenClaw plugin directory
         let out_dir = output.map_or_else(|| source_path.join("dist"), PathBuf::from);
 
+        let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
+            .context("failed to parse openclaw.plugin.json")?;
+
+        // Check if this plugin requires Tier 2 (Node.js)
+        let tier = detect_tier(source_path, Some(&oc_manifest));
+        if tier == PluginTier::Node {
+            bail!(
+                "Plugin detected as Tier 2 (Node.js). Tier 2 plugins cannot be compiled to WASM.\n\
+                 Use `astrid plugin install` to install via the Node.js bridge instead."
+            );
+        }
+
         println!(
             "{}",
             Theme::info(&format!("Compiling OpenClaw plugin at: {path}"))
         );
-        let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
-            .context("failed to parse openclaw.plugin.json")?;
         let astrid_id = compile_openclaw(source_path, &out_dir, &home, &oc_manifest)?;
         let wasm_path = out_dir.join("plugin.wasm");
         let meta = std::fs::metadata(&wasm_path)?;
