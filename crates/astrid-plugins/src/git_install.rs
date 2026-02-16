@@ -16,6 +16,9 @@ use crate::error::{PluginError, PluginResult};
 /// Maximum tarball download size (100 MB).
 const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024;
 
+/// Timeout for git clone operations (5 minutes).
+const GIT_CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 /// Parsed git source specifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitSource {
@@ -297,15 +300,22 @@ pub async fn fetch_git_source(source: &GitSource) -> PluginResult<(tempfile::Tem
             fetch_github_tarball(org, repo, git_ref.as_deref()).await
         },
         GitSource::GitUrl { url, git_ref } => {
-            // Run blocking git clone on a dedicated thread to avoid
-            // blocking the Tokio runtime.
+            // Run blocking git clone on a dedicated thread with a timeout
+            // to avoid blocking the Tokio runtime and prevent indefinite hangs.
             let url = url.clone();
             let git_ref = git_ref.clone();
-            tokio::task::spawn_blocking(move || clone_git_repo(&url, git_ref.as_deref()))
-                .await
-                .map_err(|e| {
-                    PluginError::ExecutionFailed(format!("git clone task panicked: {e}"))
-                })?
+            tokio::time::timeout(
+                GIT_CLONE_TIMEOUT,
+                tokio::task::spawn_blocking(move || clone_git_repo(&url, git_ref.as_deref())),
+            )
+            .await
+            .map_err(|_| {
+                PluginError::ExecutionFailed(format!(
+                    "git clone timed out after {}s",
+                    GIT_CLONE_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|e| PluginError::ExecutionFailed(format!("git clone task panicked: {e}")))?
         },
     }
 }
@@ -377,9 +387,10 @@ async fn download_with_limit(response: reqwest::Response, max_size: u64) -> Plug
         let chunk =
             chunk.map_err(|e| PluginError::ExecutionFailed(format!("download error: {e}")))?;
         bytes.extend_from_slice(&chunk);
-        if bytes.len() as u64 > max_size {
+        let current_size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        if current_size > max_size {
             return Err(PluginError::PackageTooLarge {
-                size: bytes.len() as u64,
+                size: current_size,
                 limit: max_size,
             });
         }
