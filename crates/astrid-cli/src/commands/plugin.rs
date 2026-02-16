@@ -1057,7 +1057,7 @@ async fn install_from_git(source: &str, workspace: bool, home: &AstridHome) -> a
             "{}",
             Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
         );
-        compile_openclaw(&source_root, staging.path(), home)?;
+        compile_openclaw(&source_root, staging.path(), home, &oc_manifest)?;
 
         let lockfile_path = resolve_lockfile_path(home, workspace)?;
         let manifest = load_manifest(&staging.path().join("plugin.toml"))?;
