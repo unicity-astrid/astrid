@@ -38,15 +38,35 @@ const log = {
 const registeredTools = new Map();
 const registeredChannels = new Map();
 const registeredServices = new Map();
-const registeredCli = new Map();
+const registeredHooks = new Map();
+const unsupportedRegistrations = [];
 const eventHandlers = new Map();
 let pluginConfig = {};
 let agentContext = null;
 let servicesReady = false;
 
-// ── OpenClaw Plugin API mock ────────────────────────────────────────
+// ── OpenClaw Plugin API mock (OpenClawPluginApi) ────────────────────
+// Matches the real OpenClaw plugin API surface. All 11 registration
+// methods are captured; unsupported ones are logged for diagnostics.
 const pluginApi = {
+  // Plugin identity (populated after manifest is read)
+  id: pluginId,
+  name: pluginId,
+  version: "0.0.0",
+  description: "",
+  source: "astrid-bridge",
+
+  // Config
+  config: {},
+  pluginConfig: {},
+
+  // Logger
   logger: log,
+
+  // Path resolution
+  resolvePath: (input) => resolve(dirname(resolve(entryPath)), input),
+
+  // Runtime helpers
   runtime: {
     config: {
       loadConfig: () => pluginConfig,
@@ -77,26 +97,59 @@ const pluginApi = {
       },
     },
   },
+
+  // ── Registration methods (11 total) ──────────────────────────────
+  // Must: registerTool, registerService
   registerTool: (name, definition, handler) => {
     registeredTools.set(name, { name, definition, handler });
     log.debug(`Registered tool: ${name}`);
-  },
-  registerChannel: (name, definition, handler) => {
-    registeredChannels.set(name, { name, definition, handler });
-    log.debug(`Registered channel: ${name}`);
   },
   registerService: (name, service) => {
     registeredServices.set(name, service);
     log.debug(`Registered service: ${name}`);
   },
-  registerCli: (name, definition) => {
-    registeredCli.set(name, definition);
-    log.debug(`Registered CLI command: ${name} (not available via MCP bridge)`);
+
+  // Should: registerChannel, registerHook, on
+  registerChannel: (name, definition, handler) => {
+    registeredChannels.set(name, { name, definition, handler });
+    log.debug(`Registered channel: ${name}`);
+  },
+  registerHook: (name, handler) => {
+    registeredHooks.set(name, handler);
+    log.debug(`Registered hook: ${name}`);
   },
   on: (event, handler) => {
     if (!eventHandlers.has(event)) eventHandlers.set(event, []);
     eventHandlers.get(event).push(handler);
     log.debug(`Registered event handler: ${event}`);
+  },
+
+  // Nice to have: registerCommand, registerGatewayMethod, registerHttpHandler, registerHttpRoute
+  registerCommand: (name, definition) => {
+    unsupportedRegistrations.push({ type: "command", name });
+    log.debug(`Registered command: ${name} (not wired to MCP bridge)`);
+  },
+  registerGatewayMethod: (name, handler) => {
+    unsupportedRegistrations.push({ type: "gatewayMethod", name });
+    log.debug(`Registered gateway method: ${name} (not wired to MCP bridge)`);
+  },
+  registerHttpHandler: (path, handler) => {
+    unsupportedRegistrations.push({ type: "httpHandler", name: path });
+    log.debug(`Registered HTTP handler: ${path} (not wired to MCP bridge)`);
+  },
+  registerHttpRoute: (method, path, handler) => {
+    unsupportedRegistrations.push({ type: "httpRoute", name: `${method} ${path}` });
+    log.debug(`Registered HTTP route: ${method} ${path} (not wired to MCP bridge)`);
+  },
+
+  // Out of scope: registerProvider (OAuth flows), registerCli (host-side)
+  registerProvider: (name, definition) => {
+    unsupportedRegistrations.push({ type: "provider", name });
+    log.debug(`Registered provider: ${name} (not wired to MCP bridge)`);
+  },
+  registerCli: (name, definition) => {
+    unsupportedRegistrations.push({ type: "cli", name });
+    log.debug(`Registered CLI command: ${name} (not available via MCP bridge)`);
   },
 };
 
@@ -334,24 +387,40 @@ async function loadPlugin() {
 
   try {
     const mod = await import(fileUrl);
-    const activate = mod.default?.activate || mod.activate;
+    const defaultExport = mod.default;
 
-    if (typeof activate === "function") {
-      log.debug("Calling plugin activate()");
-      await activate(pluginApi);
+    if (defaultExport && typeof defaultExport === "object" && typeof defaultExport.register === "function") {
+      // Object form: export default { id, name, configSchema, register(api) {} }
+      log.debug("Detected object-form plugin with register(api)");
+      if (defaultExport.id) pluginApi.id = defaultExport.id;
+      if (defaultExport.name) pluginApi.name = defaultExport.name;
+      if (defaultExport.version) pluginApi.version = defaultExport.version;
+      if (defaultExport.description) pluginApi.description = defaultExport.description;
+      await defaultExport.register(pluginApi);
+    } else if (typeof defaultExport === "function") {
+      // Function form: export default function(api) {}
+      log.debug("Detected function-form plugin");
+      await defaultExport(pluginApi);
+    } else if (typeof mod.register === "function") {
+      // Named export: export function register(api) {}
+      log.debug("Detected named register() export");
+      await mod.register(pluginApi);
     } else {
-      // Some plugins export the API object directly and register via side effects
-      log.debug("No activate() found — plugin may use side-effect registration");
-      // Try calling default export as function
-      if (typeof mod.default === "function") {
-        await mod.default(pluginApi);
+      // Fallback: try activate() for backwards compatibility
+      const activate = defaultExport?.activate || mod.activate;
+      if (typeof activate === "function") {
+        log.debug("Detected legacy activate() pattern");
+        await activate(pluginApi);
+      } else {
+        log.warn("No register(), activate(), or callable default export found — plugin may use side-effect registration");
       }
     }
 
     log.info(
       `Plugin loaded: ${registeredTools.size} tools, ` +
         `${registeredChannels.size} channels, ` +
-        `${registeredServices.size} services`
+        `${registeredServices.size} services` +
+        (unsupportedRegistrations.length > 0 ? `, ${unsupportedRegistrations.length} unsupported` : "")
     );
   } catch (e) {
     log.error(`Failed to load plugin: ${e.message}\n${e.stack}`);
