@@ -226,8 +226,11 @@ impl McpPlugin {
             // SAFETY: pre_exec runs between fork() and exec(). The closure
             // only invokes Landlock syscalls (landlock_create_ruleset,
             // landlock_add_rule, landlock_restrict_self) and setrlimit using
-            // pre-opened file descriptors. No heap allocation occurs inside
-            // the closure.
+            // pre-opened file descriptors. Error paths use last_os_error()
+            // (reads errno, no heap allocation). The ok_or_else and map_err
+            // closures in the Landlock path may allocate on error — this is
+            // technically not async-signal-safe but acceptable since errors
+            // here are fatal (process will not exec).
             unsafe {
                 cmd.pre_exec(move || {
                     // Apply Landlock filesystem restrictions
@@ -601,22 +604,18 @@ fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String>
 
 /// Apply resource limits via `setrlimit` inside a `pre_exec` closure.
 ///
-/// Only async-signal-safe operations are used (setrlimit is a simple syscall).
+/// Uses only async-signal-safe operations: `setrlimit` is a direct syscall,
+/// and `Error::last_os_error()` reads `errno` without heap allocation.
 #[cfg(target_os = "linux")]
 #[allow(unsafe_code)]
 fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), std::io::Error> {
-    use std::io::{Error, ErrorKind};
-
-    // RLIMIT_NPROC — max processes/threads
+    // RLIMIT_NPROC — max processes/threads (per-UID, not per-process)
     let nproc = libc::rlimit {
         rlim_cur: limits.max_processes,
         rlim_max: limits.max_processes,
     };
     if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &nproc) } != 0 {
-        return Err(Error::new(
-            ErrorKind::PermissionDenied,
-            "failed to set RLIMIT_NPROC",
-        ));
+        return Err(std::io::Error::last_os_error());
     }
 
     // RLIMIT_AS — max virtual address space
@@ -625,10 +624,7 @@ fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), 
         rlim_max: limits.max_memory_bytes,
     };
     if unsafe { libc::setrlimit(libc::RLIMIT_AS, &address_space) } != 0 {
-        return Err(Error::new(
-            ErrorKind::PermissionDenied,
-            "failed to set RLIMIT_AS",
-        ));
+        return Err(std::io::Error::last_os_error());
     }
 
     // RLIMIT_NOFILE — max open file descriptors
@@ -637,10 +633,7 @@ fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), 
         rlim_max: limits.max_open_files,
     };
     if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &nofile) } != 0 {
-        return Err(Error::new(
-            ErrorKind::PermissionDenied,
-            "failed to set RLIMIT_NOFILE",
-        ));
+        return Err(std::io::Error::last_os_error());
     }
 
     Ok(())

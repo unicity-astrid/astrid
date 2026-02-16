@@ -21,12 +21,21 @@ use crate::error::PluginResult;
 
 /// Resource limits applied to Tier 2 (Node.js) plugin subprocesses.
 ///
-/// These are enforced via `setrlimit` in a `pre_exec` hook on Linux/macOS.
+/// Enforced via `setrlimit` in a `pre_exec` hook on Linux. Not yet
+/// enforced on macOS (sandbox-exec does not support resource limits).
+///
+/// **Important**: `RLIMIT_NPROC` is per-UID on Linux, not per-process.
+/// The limit must account for all processes the user may be running.
+/// `RLIMIT_AS` limits virtual address space (not RSS) — Node.js/V8
+/// routinely reserves 1-2 GB of virtual address space at startup, so
+/// this must be set high enough for V8's memory management.
 #[derive(Debug, Clone)]
 pub struct ResourceLimits {
     /// Maximum number of processes/threads (`RLIMIT_NPROC`).
+    /// Note: this is per-UID on Linux, not per-process tree.
     pub max_processes: u64,
     /// Maximum virtual address space in bytes (`RLIMIT_AS`).
+    /// Set high enough for V8's virtual memory reservations (~4 GB).
     pub max_memory_bytes: u64,
     /// Maximum number of open file descriptors (`RLIMIT_NOFILE`).
     pub max_open_files: u64,
@@ -35,8 +44,8 @@ pub struct ResourceLimits {
 impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
-            max_processes: 64,
-            max_memory_bytes: 512 * 1024 * 1024, // 512 MB
+            max_processes: 256,
+            max_memory_bytes: 4 * 1024 * 1024 * 1024, // 4 GB virtual address space
             max_open_files: 256,
         }
     }
@@ -87,16 +96,19 @@ impl SandboxProfile {
     ///
     /// Sets up:
     /// - Read-only access to `install_dir` (plugin code + `node_modules`)
-    /// - Read-write access to `data_dir` (plugin's private data)
+    /// - Read-write access to `data_dir` (plugin's private data) via `extra_write_paths`
     /// - `HOME` override pointing to `data_dir`
-    /// - Default resource limits (`RLIMIT_NPROC=64`, `RLIMIT_AS=512MB`, `RLIMIT_NOFILE=256`)
+    /// - Default resource limits (`RLIMIT_NPROC=256`, `RLIMIT_AS=4GB`, `RLIMIT_NOFILE=256`)
+    ///
+    /// Note: `workspace_root` is set to `data_dir` since Tier 2 plugins have no
+    /// workspace access — their writable root is their isolated data directory.
     #[must_use]
     pub fn for_node_plugin(install_dir: PathBuf, data_dir: PathBuf) -> Self {
         Self {
             workspace_root: data_dir.clone(),
             plugin_dir: install_dir,
             extra_read_paths: Vec::new(),
-            extra_write_paths: vec![data_dir.clone()],
+            extra_write_paths: Vec::new(),
             allowed_network: Vec::new(),
             resource_limits: Some(ResourceLimits::default()),
             home_override: Some(data_dir),
