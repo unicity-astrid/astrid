@@ -82,7 +82,8 @@ impl GitSource {
             },
         };
         // Sanitize: lowercase, only alphanumeric and hyphens
-        raw.to_lowercase()
+        let hint: String = raw
+            .to_lowercase()
             .chars()
             .map(|c| {
                 if c.is_ascii_alphanumeric() || c == '-' {
@@ -91,7 +92,12 @@ impl GitSource {
                     '-'
                 }
             })
-            .collect()
+            .collect();
+        if hint.is_empty() || hint.chars().all(|c| c == '-') {
+            "git-plugin".to_string()
+        } else {
+            hint
+        }
     }
 
     /// Get a display string for the source (used in lockfile entries).
@@ -257,6 +263,11 @@ fn validate_git_ref(git_ref: &str) -> PluginResult<()> {
             "git ref contains '..': '{git_ref}'"
         )));
     }
+    if git_ref.starts_with('-') {
+        return Err(PluginError::ExecutionFailed(format!(
+            "git ref must not start with '-': '{git_ref}'"
+        )));
+    }
     // Only allow characters valid in git branch/tag names
     let is_valid = git_ref
         .bytes()
@@ -411,6 +422,9 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
 
     let decoder = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(decoder);
+    // Disable permission preservation to prevent setuid/setgid bits
+    // from malicious tarballs being restored on extracted files.
+    archive.set_preserve_permissions(false);
 
     let dest = dest
         .canonicalize()
@@ -578,6 +592,10 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
     if let Ok(home) = std::env::var("HOME") {
         cmd.env("HOME", home);
     }
+    // Prevent code execution via ~/.gitconfig directives (core.fsmonitor,
+    // core.hooksPath, etc.) while still allowing SSH key lookup via HOME.
+    cmd.env("GIT_CONFIG_NOSYSTEM", "1");
+    cmd.env("GIT_CONFIG_GLOBAL", "/dev/null");
     // Suppress interactive credential prompts — fail fast if auth is needed.
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
@@ -882,6 +900,36 @@ mod tests {
         let (url, git_ref) = split_ref("https://example.com");
         assert_eq!(url, "https://example.com");
         assert_eq!(git_ref, None);
+    }
+
+    #[test]
+    fn reject_git_ref_leading_dash() {
+        assert!(validate_git_ref("-evil").is_err());
+        assert!(validate_git_ref("--double").is_err());
+    }
+
+    #[test]
+    fn reject_git_ref_dot_lock_extension() {
+        assert!(validate_git_ref("refs/heads/main.lock").is_err());
+        assert!(validate_git_ref("branch.Lock").is_err());
+    }
+
+    #[test]
+    fn plugin_id_hint_degenerate_all_special() {
+        let src = GitSource::GitUrl {
+            url: "https://example.com/___.git".to_string(),
+            git_ref: None,
+        };
+        assert_eq!(src.plugin_id_hint(), "git-plugin");
+    }
+
+    #[test]
+    fn plugin_id_hint_degenerate_empty_segment() {
+        let src = GitSource::GitUrl {
+            url: "https://example.com/.git".to_string(),
+            git_ref: None,
+        };
+        assert_eq!(src.plugin_id_hint(), "git-plugin");
     }
 
     #[test]
