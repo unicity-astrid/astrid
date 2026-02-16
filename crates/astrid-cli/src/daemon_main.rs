@@ -97,6 +97,10 @@ async fn main() -> Result<()> {
         h.abort();
     }
 
+    // Gracefully unload all plugins before MCP shutdown.
+    daemon.shutdown_plugins().await;
+
+    // Gracefully stop all MCP servers before tearing down IPC.
     daemon.shutdown_servers().await;
 
     handle.stop()?;
