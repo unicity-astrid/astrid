@@ -1,4 +1,4 @@
-// astrid_bridge.mjs — Universal MCP bridge for OpenClaw plugins (Tier 2).
+// astrid_bridge.mjs — OpenClaw plugin bridge for Astrid (Tier 2).
 //
 // Loads an OpenClaw plugin, captures tool/channel/service registrations,
 // and exposes them over MCP JSON-RPC on stdin/stdout.
@@ -6,6 +6,19 @@
 // Usage: node astrid_bridge.mjs --entry ./src/index.js --plugin-id openclaw-unicity
 //
 // No npm dependencies — raw JSON-RPC over stdio.
+
+// ── CRITICAL: Redirect console to stderr ────────────────────────────
+// stdout is the MCP transport — any non-JSON-RPC output corrupts the
+// stream. Plugins and their dependencies may use console.log(), so we
+// must intercept it before any imports run.
+const _origLog = console.log;
+const _origWarn = console.warn;
+const _origInfo = console.info;
+const _origDebug = console.debug;
+console.log = (...args) => process.stderr.write(args.join(" ") + "\n");
+console.warn = (...args) => process.stderr.write(args.join(" ") + "\n");
+console.info = (...args) => process.stderr.write(args.join(" ") + "\n");
+console.debug = (...args) => process.stderr.write(args.join(" ") + "\n");
 
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
@@ -112,9 +125,28 @@ const pluginApi = {
 
   // ── Registration methods (11 total) ──────────────────────────────
   // Must: registerTool, registerService
-  registerTool: (name, definition, handler) => {
-    registeredTools.set(name, { name, definition, handler });
-    log.debug(`Registered tool: ${name}`);
+  //
+  // Supports two calling conventions:
+  //   registerTool(nameStr, definitionObj, handlerFn)   — name is a string
+  //   registerTool(definitionObj, handlerFn)             — name is on definition.name
+  registerTool: (nameOrDef, definitionOrHandler, maybeHandler) => {
+    let toolName, definition, handler;
+    if (typeof nameOrDef === "string") {
+      // registerTool("name", { ... }, handler)
+      toolName = nameOrDef;
+      definition = definitionOrHandler;
+      handler = maybeHandler;
+    } else if (nameOrDef && typeof nameOrDef === "object") {
+      // registerTool({ name: "name", ... }, handler)
+      toolName = nameOrDef.name || "unnamed";
+      definition = nameOrDef;
+      handler = definitionOrHandler;
+    } else {
+      log.warn(`registerTool: unexpected first argument type: ${typeof nameOrDef}`);
+      return;
+    }
+    registeredTools.set(toolName, { name: toolName, definition, handler });
+    log.debug(`Registered tool: ${toolName}`);
   },
   registerService: (name, service) => {
     registeredServices.set(name, service);
@@ -122,9 +154,24 @@ const pluginApi = {
   },
 
   // Should: registerChannel, registerHook, on
-  registerChannel: (name, definition, handler) => {
-    registeredChannels.set(name, { name, definition, handler });
-    log.debug(`Registered channel: ${name}`);
+  //
+  // Same dual calling convention as registerTool.
+  registerChannel: (nameOrDef, definitionOrHandler, maybeHandler) => {
+    let chanName, definition, handler;
+    if (typeof nameOrDef === "string") {
+      chanName = nameOrDef;
+      definition = definitionOrHandler;
+      handler = maybeHandler;
+    } else if (nameOrDef && typeof nameOrDef === "object") {
+      chanName = nameOrDef.name || "unnamed";
+      definition = nameOrDef;
+      handler = definitionOrHandler;
+    } else {
+      log.warn(`registerChannel: unexpected first argument type: ${typeof nameOrDef}`);
+      return;
+    }
+    registeredChannels.set(chanName, { name: chanName, definition, handler });
+    log.debug(`Registered channel: ${chanName}`);
   },
   registerHook: (name, handler) => {
     registeredHooks.set(name, handler);
@@ -169,17 +216,21 @@ const pluginApi = {
 
 function sendResponse(id, result) {
   const msg = JSON.stringify({ jsonrpc: "2.0", id, result });
+  log.debug(`→ ${msg}`);
   process.stdout.write(msg + "\n");
 }
 
 function sendError(id, code, message, data) {
   const err = { jsonrpc: "2.0", id, error: { code, message } };
   if (data !== undefined) err.error.data = data;
-  process.stdout.write(JSON.stringify(err) + "\n");
+  const msg = JSON.stringify(err);
+  log.debug(`→ ${msg}`);
+  process.stdout.write(msg + "\n");
 }
 
 function sendNotification(method, params) {
   const msg = JSON.stringify({ jsonrpc: "2.0", method, params });
+  log.debug(`→ (notification) ${msg}`);
   process.stdout.write(msg + "\n");
 }
 
@@ -192,7 +243,7 @@ function handleInitialize(id, params) {
   }
 
   sendResponse(id, {
-    protocolVersion: "2024-11-05",
+    protocolVersion: "2025-11-25",
     capabilities: {
       tools: { listChanged: false },
     },
@@ -212,11 +263,23 @@ function handleToolsList(id) {
   const tools = [];
 
   for (const [name, tool] of registeredTools) {
-    const schema = tool.definition?.inputSchema || tool.definition?.input_schema || { type: "object" };
+    // Coerce inputSchema to a plain JSON object — rmcp requires a JSON object
+    // (serde_json::Map), not an array, null, or primitive.
+    let schema = tool.definition?.inputSchema || tool.definition?.input_schema;
+    if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+      schema = { type: "object" };
+    }
+    // Coerce description to string — rmcp expects Option<Cow<str>>
+    const desc = typeof tool.definition?.description === "string"
+      ? tool.definition.description
+      : "";
+    // Coerce name to string
+    const toolName = typeof name === "string" ? name : String(name);
+
     tools.push({
-      name,
-      description: tool.definition?.description || "",
-      inputSchema: typeof schema === "object" ? schema : { type: "object" },
+      name: toolName,
+      description: desc,
+      inputSchema: schema,
     });
   }
 
@@ -227,7 +290,9 @@ function handleToolsList(id) {
     inputSchema: { type: "object", properties: {} },
   });
 
-  sendResponse(id, { tools });
+  const response = { tools };
+  log.debug(`tools/list response: ${JSON.stringify(response)}`);
+  sendResponse(id, response);
 }
 
 async function handleToolsCall(id, params) {
@@ -359,6 +424,7 @@ async function shutdown(reason) {
 
 async function dispatch(msg) {
   try {
+    log.debug(`← ${msg}`);
     const parsed = JSON.parse(msg);
 
     // Notification (no id)

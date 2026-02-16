@@ -18,6 +18,7 @@
 //! (`notifications/astrid.hookEvent`) over the MCP connection.
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -71,6 +72,9 @@ pub struct McpPlugin {
     peer: Option<Peer<RoleClient>>,
     /// Optional sandbox profile applied to the child process.
     sandbox: Option<SandboxProfile>,
+    /// Plugin install directory — used as `current_dir` when spawning the
+    /// subprocess so that relative paths in `args` resolve correctly.
+    plugin_dir: Option<PathBuf>,
 }
 
 impl McpPlugin {
@@ -92,7 +96,16 @@ impl McpPlugin {
             service: None,
             peer: None,
             sandbox: None,
+            plugin_dir: None,
         }
+    }
+
+    /// Set the plugin install directory. Used as `current_dir` when spawning
+    /// the subprocess so relative paths in args resolve correctly.
+    #[must_use]
+    pub fn with_plugin_dir(mut self, dir: PathBuf) -> Self {
+        self.plugin_dir = Some(dir);
+        self
     }
 
     /// Set an OS sandbox profile for the child process.
@@ -203,6 +216,11 @@ impl McpPlugin {
 
         let mut cmd = tokio::process::Command::new(&final_cmd);
         cmd.args(&final_args);
+
+        // Set working directory so relative paths in args resolve correctly.
+        if let Some(dir) = &self.plugin_dir {
+            cmd.current_dir(dir);
+        }
 
         for (key, value) in env {
             cmd.env(key, value);
@@ -509,12 +527,17 @@ impl PluginTool for McpPluginTool {
 pub fn create_plugin(
     manifest: PluginManifest,
     mcp_client: Option<McpClient>,
+    plugin_dir: Option<PathBuf>,
 ) -> PluginResult<Box<dyn Plugin>> {
     match &manifest.entry_point {
         PluginEntryPoint::Wasm { .. } => Err(PluginError::UnsupportedEntryPoint("wasm".into())),
         PluginEntryPoint::Mcp { .. } => {
             let client = mcp_client.ok_or(PluginError::McpClientRequired)?;
-            Ok(Box::new(McpPlugin::new(manifest, client)))
+            let mut plugin = McpPlugin::new(manifest, client);
+            if let Some(dir) = plugin_dir {
+                plugin = plugin.with_plugin_dir(dir);
+            }
+            Ok(Box::new(plugin))
         },
     }
 }
@@ -708,14 +731,14 @@ mod tests {
     async fn test_create_plugin_mcp() {
         let manifest = mcp_manifest("test-mcp");
         let client = test_mcp_client();
-        let plugin = create_plugin(manifest, Some(client));
+        let plugin = create_plugin(manifest, Some(client), None);
         assert!(plugin.is_ok());
     }
 
     #[test]
     fn test_create_plugin_mcp_requires_client() {
         let manifest = mcp_manifest("test-mcp");
-        let result = create_plugin(manifest, None);
+        let result = create_plugin(manifest, None, None);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -726,7 +749,7 @@ mod tests {
     #[test]
     fn test_create_plugin_wasm_unsupported() {
         let manifest = wasm_manifest("test-wasm");
-        let result = create_plugin(manifest, None);
+        let result = create_plugin(manifest, None, None);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -748,5 +771,107 @@ mod tests {
         let client = test_mcp_client();
         let mut plugin = McpPlugin::new(manifest, client);
         assert!(!plugin.check_health());
+    }
+
+    /// Verify that rmcp can deserialize the bridge's tools/list response format.
+    #[test]
+    fn test_bridge_tools_list_deserialization() {
+        use rmcp::model::*;
+
+        let json = r#"{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"__astrid_get_agent_context","description":"Returns plugin context","inputSchema":{"type":"object","properties":{}}}]}}"#;
+
+        let msg: ServerJsonRpcMessage = match serde_json::from_str(json) {
+            Ok(m) => m,
+            Err(e) => panic!("Failed to deserialize bridge response: {e}"),
+        };
+        match msg {
+            JsonRpcMessage::Response(resp) => match resp.result {
+                ServerResult::ListToolsResult(r) => {
+                    assert_eq!(r.tools.len(), 1);
+                    assert_eq!(r.tools[0].name.as_ref(), "__astrid_get_agent_context");
+                },
+                _other => panic!("Expected ListToolsResult variant"),
+            },
+            _ => panic!("Expected Response variant"),
+        }
+    }
+
+    /// Verify multi-tool response with complex schemas deserializes correctly.
+    #[test]
+    fn test_bridge_multi_tool_deserialization() {
+        use rmcp::model::*;
+
+        // Simulates a plugin that registers several tools with varied schemas.
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"send_token","description":"Send a token","inputSchema":{
+                "type":"object",
+                "properties":{"to":{"type":"string"},"amount":{"type":"number"}},
+                "required":["to","amount"]
+            }},
+            {"name":"get_balance","description":"","inputSchema":{"type":"object"}},
+            {"name":"__astrid_get_agent_context","description":"Returns plugin context","inputSchema":{"type":"object","properties":{}}}
+        ]}}"#;
+
+        let msg: ServerJsonRpcMessage =
+            serde_json::from_str(json).expect("Failed to deserialize multi-tool response");
+        match msg {
+            JsonRpcMessage::Response(resp) => match resp.result {
+                ServerResult::ListToolsResult(r) => {
+                    assert_eq!(r.tools.len(), 3);
+                    assert_eq!(r.tools[0].name.as_ref(), "send_token");
+                    assert_eq!(r.tools[1].name.as_ref(), "get_balance");
+                },
+                other => panic!("Expected ListToolsResult, got {other:?}"),
+            },
+            other => panic!("Expected Response, got {other:?}"),
+        }
+    }
+
+    /// Verify that bad inputSchema types cause CustomResult fallthrough.
+    /// This documents the failure mode we're guarding against in the bridge.
+    #[test]
+    fn test_array_input_schema_falls_to_custom_result() {
+        use rmcp::model::*;
+
+        // inputSchema as array — rmcp Tool requires JsonObject (Map<String, Value>)
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"bad_tool","description":"","inputSchema":["string"]}
+        ]}}"#;
+
+        let msg: ServerJsonRpcMessage =
+            serde_json::from_str(json).expect("Should still parse as JsonRpcMessage");
+        match msg {
+            JsonRpcMessage::Response(resp) => {
+                // Should NOT be ListToolsResult because inputSchema is an array
+                assert!(
+                    !matches!(resp.result, ServerResult::ListToolsResult(_)),
+                    "Array inputSchema should not parse as ListToolsResult"
+                );
+            },
+            other => panic!("Expected Response, got {other:?}"),
+        }
+    }
+
+    /// Verify that non-string description causes CustomResult fallthrough.
+    #[test]
+    fn test_numeric_description_falls_to_custom_result() {
+        use rmcp::model::*;
+
+        // description as number — rmcp Tool expects Option<Cow<str>>
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"bad_tool","description":42,"inputSchema":{"type":"object"}}
+        ]}}"#;
+
+        let msg: ServerJsonRpcMessage =
+            serde_json::from_str(json).expect("Should still parse as JsonRpcMessage");
+        match msg {
+            JsonRpcMessage::Response(resp) => {
+                assert!(
+                    !matches!(resp.result, ServerResult::ListToolsResult(_)),
+                    "Numeric description should not parse as ListToolsResult"
+                );
+            },
+            other => panic!("Expected Response, got {other:?}"),
+        }
     }
 }

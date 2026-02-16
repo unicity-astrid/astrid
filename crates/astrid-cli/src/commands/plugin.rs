@@ -1040,11 +1040,15 @@ async fn install_from_git(source: &str, workspace: bool, home: &AstridHome) -> a
 
         println!("{}", Theme::success(&format!("Installed plugin '{id}'")));
     } else if source_root.join("openclaw.plugin.json").exists() {
-        // OpenClaw plugin — compile to WASM via staging
+        // OpenClaw plugin — detect tier and route to WASM or Node.js bridge
         let oc_manifest = openclaw_bridge::manifest::parse_manifest(&source_root)
             .context("failed to parse openclaw.plugin.json from git source")?;
         let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
             .context("failed to convert OpenClaw ID")?;
+
+        let tier = detect_tier(&source_root, Some(&oc_manifest));
+        println!("{}", Theme::dimmed(&format!("  Detected tier: {tier}")));
+
         let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
 
         let parent = target_dir.parent().context("target dir has no parent")?;
@@ -1053,11 +1057,24 @@ async fn install_from_git(source: &str, workspace: bool, home: &AstridHome) -> a
 
         let staging = tempfile::tempdir_in(parent).context("failed to create staging directory")?;
 
-        println!(
-            "{}",
-            Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
-        );
-        compile_openclaw(&source_root, staging.path(), home, &oc_manifest)?;
+        match tier {
+            PluginTier::Wasm => {
+                println!(
+                    "{}",
+                    Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
+                );
+                compile_openclaw(&source_root, staging.path(), home, &oc_manifest)?;
+            },
+            PluginTier::Node => {
+                println!(
+                    "{}",
+                    Theme::dimmed(&format!(
+                        "  Preparing Tier 2 Node.js bridge (ID: {astrid_id})..."
+                    ))
+                );
+                prepare_tier2(&source_root, staging.path(), home, &oc_manifest)?;
+            },
+        }
 
         let lockfile_path = resolve_lockfile_path(home, workspace)?;
         let manifest = load_manifest(&staging.path().join("plugin.toml"))?;

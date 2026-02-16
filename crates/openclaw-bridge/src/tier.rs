@@ -9,7 +9,8 @@
 //! 1. Manifest declares `channels` or `providers` → Node (requires host integration)
 //! 2. Presence of `package.json` with non-empty `dependencies` → Node
 //! 3. Source imports of unsupported `node:*` modules → Node
-//! 4. Default: Tier 1 (WASM)
+//! 4. Source imports local relative paths (`./`, `../`) → Node (multi-file plugin)
+//! 5. Default: Tier 1 (WASM)
 
 use std::path::Path;
 
@@ -75,7 +76,8 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
 /// 1. Manifest declares `channels` or `providers` → Node (host integration required)
 /// 2. `package.json` with non-empty `"dependencies"` → Node
 /// 3. Source files import unsupported `node:*` modules → Node
-/// 4. Default → Wasm
+/// 4. Source files import local relative paths (`./`, `../`) → Node (multi-file)
+/// 5. Default → Wasm
 #[must_use]
 pub fn detect_tier(plugin_dir: &Path, manifest: Option<&OpenClawManifest>) -> PluginTier {
     // 1. Check for channels/providers in manifest (requires host integration)
@@ -98,7 +100,12 @@ pub fn detect_tier(plugin_dir: &Path, manifest: Option<&OpenClawManifest>) -> Pl
         return PluginTier::Node;
     }
 
-    // 4. Default to WASM
+    // 4. Check for local relative imports (multi-file plugin)
+    if has_local_imports(plugin_dir) {
+        return PluginTier::Node;
+    }
+
+    // 5. Default to WASM
     PluginTier::Wasm
 }
 
@@ -169,6 +176,45 @@ fn has_unsupported_imports(plugin_dir: &Path) -> bool {
     for module in UNSUPPORTED_NODE_MODULES {
         // Check for: import ... from "module" or require("module")
         if source.contains(&format!("\"{module}\"")) || source.contains(&format!("'{module}'")) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Scan the entry point file for local relative imports (`./` or `../`).
+///
+/// Multi-file plugins cannot be compiled to a single WASM module — they must
+/// run via the Node.js subprocess bridge. Like `has_unsupported_imports`, this
+/// is a heuristic on the entry point only; false positives are safe.
+fn has_local_imports(plugin_dir: &Path) -> bool {
+    let entry_path = match crate::manifest::resolve_entry_point(plugin_dir) {
+        Ok(entry) => plugin_dir.join(entry),
+        Err(_) => return false,
+    };
+
+    let Ok(source) = std::fs::read_to_string(entry_path) else {
+        return false;
+    };
+
+    // Match import/require of relative paths: "./foo" or "../bar"
+    for line in source.lines() {
+        let trimmed = line.trim();
+        // Skip comments
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            continue;
+        }
+        if (trimmed.contains("from \"./")
+            || trimmed.contains("from \"../")
+            || trimmed.contains("from './")
+            || trimmed.contains("from '../")
+            || trimmed.contains("require(\"./")
+            || trimmed.contains("require(\"../")
+            || trimmed.contains("require('./")
+            || trimmed.contains("require('../"))
+            && (trimmed.starts_with("import") || trimmed.contains("require("))
+        {
             return true;
         }
     }
@@ -255,6 +301,48 @@ mod tests {
         let source = r#"import { createServer } from "node:net";"#;
         std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
         assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
+    }
+
+    #[test]
+    fn local_import_triggers_node() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let source = r#"
+import { config } from "./config.js";
+import { sendMessage } from "./tools/send-message.js";
+"#;
+        std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
+    }
+
+    #[test]
+    fn local_import_parent_triggers_node() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let source = r#"import { shared } from "../shared/utils.js";"#;
+        std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
+    }
+
+    #[test]
+    fn local_require_triggers_node() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let source = r#"const config = require("./config");"#;
+        std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Node);
+    }
+
+    #[test]
+    fn comment_with_local_import_stays_wasm() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let source = r#"
+// import { config } from "./config.js";
+export function main() { return "hello"; }
+"#;
+        std::fs::write(dir.path().join("src/index.ts"), source).unwrap();
+        assert_eq!(detect_tier(dir.path(), None), PluginTier::Wasm);
     }
 
     #[test]
