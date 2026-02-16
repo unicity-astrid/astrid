@@ -92,19 +92,21 @@ fn run_convert(
     let oc_manifest = manifest::parse_manifest(plugin_dir)?;
     eprintln!(
         "Parsed manifest: {} v{}",
-        oc_manifest.name, oc_manifest.version
+        oc_manifest.display_name(),
+        oc_manifest.display_version()
     );
 
     // 3. Resolve the entry point file
-    let entry_point = plugin_dir.join(&oc_manifest.main);
+    let entry_point_rel = manifest::resolve_entry_point(plugin_dir)?;
+    let entry_point = plugin_dir.join(&entry_point_rel);
     if !entry_point.exists() {
         return Err(BridgeError::EntryPointNotFound(entry_point));
     }
 
     // 4. Read and transpile source (TS→JS + import rejection)
     let raw_source = std::fs::read_to_string(&entry_point)?;
-    let js_code = transpiler::transpile(&raw_source, &oc_manifest.main)?;
-    eprintln!("Transpiled: {}", oc_manifest.main);
+    let js_code = transpiler::transpile(&raw_source, &entry_point_rel)?;
+    eprintln!("Transpiled: {entry_point_rel}");
 
     // 5. Generate JS shim
     let astrid_id = manifest::convert_id(&oc_manifest.id)?;

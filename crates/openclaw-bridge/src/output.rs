@@ -75,8 +75,8 @@ pub fn generate_manifest(
 
     let manifest = OutputManifest {
         id: astrid_id.to_string(),
-        name: oc_manifest.name.clone(),
-        version: oc_manifest.version.clone(),
+        name: oc_manifest.display_name().to_string(),
+        version: oc_manifest.display_version().to_string(),
         description: oc_manifest.description.clone(),
         author: None,
         entry_point: OutputEntryPoint::Wasm {
@@ -160,11 +160,14 @@ mod tests {
 
         let oc = OpenClawManifest {
             id: "test-plugin".into(),
-            name: "Test Plugin".into(),
-            version: "1.0.0".into(),
+            config_schema: serde_json::json!({}),
+            name: Some("Test Plugin".into()),
+            version: Some("1.0.0".into()),
             description: Some("A test".into()),
-            main: "index.js".into(),
-            engines: None,
+            kind: None,
+            channels: vec![],
+            providers: vec![],
+            skills: vec![],
         };
 
         let config = HashMap::from([("key".into(), serde_json::json!("value"))]);

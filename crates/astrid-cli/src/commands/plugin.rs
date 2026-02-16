@@ -184,7 +184,9 @@ fn compile_openclaw(
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .context("failed to convert OpenClaw ID to Astrid ID")?;
 
-    let main_path = source_dir.join(&oc_manifest.main);
+    let entry_point = openclaw_bridge::manifest::resolve_entry_point(source_dir)
+        .context("failed to resolve plugin entry point")?;
+    let main_path = source_dir.join(&entry_point);
     let raw_source = std::fs::read_to_string(&main_path)
         .with_context(|| format!("failed to read entry point: {}", main_path.display()))?;
 
@@ -216,7 +218,7 @@ fn compile_openclaw(
     }
 
     // Full pipeline: transpile → shim → compile → generate_manifest
-    let js = openclaw_bridge::transpiler::transpile(&raw_source, &oc_manifest.main)
+    let js = openclaw_bridge::transpiler::transpile(&raw_source, &entry_point)
         .context("transpilation failed")?;
 
     let config: HashMap<String, serde_json::Value> = HashMap::new();
@@ -276,6 +278,9 @@ fn prepare_tier2(
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .context("failed to convert OpenClaw ID")?;
 
+    let entry_point = openclaw_bridge::manifest::resolve_entry_point(source_dir)
+        .context("failed to resolve plugin entry point")?;
+
     // Copy source to output dir (we'll modify files in-place for transpilation)
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
@@ -285,14 +290,14 @@ fn prepare_tier2(
     transpile_ts_in_dir(&output_dir.join("src"))?;
 
     // Rewrite main entry point extension from .ts/.tsx to .js
-    let main_path = Path::new(&oc_manifest.main);
+    let main_path = Path::new(&entry_point);
     let is_ts = main_path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("ts") || ext.eq_ignore_ascii_case("tsx"));
     let main_entry = if is_ts {
         main_path.with_extension("js").to_string_lossy().to_string()
     } else {
-        oc_manifest.main.clone()
+        entry_point
     };
 
     // Write the universal bridge script
@@ -321,8 +326,8 @@ fn prepare_tier2(
     // Generate plugin.toml with MCP entry point
     let manifest = astrid_plugins::manifest::PluginManifest {
         id: PluginId::new(&astrid_id).context("invalid plugin ID")?,
-        name: oc_manifest.name.clone(),
-        version: oc_manifest.version.clone(),
+        name: oc_manifest.display_name().to_string(),
+        version: oc_manifest.display_version().to_string(),
         description: oc_manifest.description.clone(),
         author: None,
         entry_point: PluginEntryPoint::Mcp {
