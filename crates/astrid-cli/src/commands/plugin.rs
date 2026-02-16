@@ -12,6 +12,7 @@ use astrid_plugins::manifest::{PluginCapability, PluginEntryPoint};
 use astrid_plugins::npm::{NpmFetcher, NpmSpec};
 use astrid_plugins::plugin::PluginId;
 use astrid_plugins::{discover_manifests, load_manifest};
+use openclaw_bridge::tier::{PluginTier, detect_tier};
 
 use crate::theme::Theme;
 
@@ -252,6 +253,195 @@ fn compile_openclaw(
     }
 
     Ok(astrid_id)
+}
+
+/// Prepare an `OpenClaw` plugin for Tier 2 (Node.js MCP bridge) installation.
+///
+/// Steps:
+/// 1. Copy source to output directory
+/// 2. Pre-transpile all `.ts`/`.tsx` files to `.js` using OXC
+/// 3. Write the universal MCP bridge script
+/// 4. Run `npm install --production --ignore-scripts` if `package.json` exists
+/// 5. Generate `plugin.toml` with MCP entry point
+///
+/// Returns the Astrid plugin ID.
+fn prepare_tier2(
+    source_dir: &Path,
+    output_dir: &Path,
+    _home: &AstridHome,
+) -> anyhow::Result<String> {
+    let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_dir)
+        .context("failed to parse openclaw.plugin.json")?;
+
+    let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
+        .context("failed to convert OpenClaw ID")?;
+
+    // Copy source to output dir (we'll modify files in-place for transpilation)
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("failed to create {}", output_dir.display()))?;
+    copy_plugin_dir(source_dir, output_dir)?;
+
+    // Pre-transpile TS→JS in-place using OXC
+    transpile_ts_in_dir(&output_dir.join("src"))?;
+
+    // Rewrite main entry point extension from .ts/.tsx to .js
+    let main_path = Path::new(&oc_manifest.main);
+    let is_ts = main_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("ts") || ext.eq_ignore_ascii_case("tsx"));
+    let main_entry = if is_ts {
+        main_path.with_extension("js").to_string_lossy().to_string()
+    } else {
+        oc_manifest.main.clone()
+    };
+
+    // Write the universal bridge script
+    openclaw_bridge::node_bridge::write_bridge_script(output_dir)
+        .context("failed to write bridge script")?;
+
+    // Run npm install if package.json exists
+    if output_dir.join("package.json").exists() {
+        println!(
+            "{}",
+            Theme::dimmed("  Running npm install --production --ignore-scripts...")
+        );
+        let status = std::process::Command::new("npm")
+            .args(["install", "--production", "--ignore-scripts"])
+            .current_dir(output_dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .status()
+            .context("failed to run npm install (is npm installed?)")?;
+
+        if !status.success() {
+            bail!("npm install failed with exit code: {status}");
+        }
+    }
+
+    // Generate plugin.toml with MCP entry point
+    let manifest = astrid_plugins::manifest::PluginManifest {
+        id: PluginId::new(&astrid_id).context("invalid plugin ID")?,
+        name: oc_manifest.name.clone(),
+        version: oc_manifest.version.clone(),
+        description: oc_manifest.description.clone(),
+        author: None,
+        entry_point: PluginEntryPoint::Mcp {
+            command: "node".into(),
+            args: vec![
+                "astrid_bridge.mjs".into(),
+                "--entry".into(),
+                format!("./{main_entry}"),
+                "--plugin-id".into(),
+                astrid_id.clone(),
+            ],
+            env: HashMap::new(),
+            binary_hash: None,
+        },
+        capabilities: vec![],
+        config: HashMap::new(),
+    };
+
+    let manifest_toml =
+        toml::to_string_pretty(&manifest).context("failed to serialize plugin manifest")?;
+    std::fs::write(output_dir.join("plugin.toml"), manifest_toml)
+        .context("failed to write plugin.toml")?;
+
+    Ok(astrid_id)
+}
+
+/// Recursively transpile all `.ts` and `.tsx` files in a directory to `.js` using OXC.
+///
+/// The original `.ts` file is removed after successful transpilation.
+fn transpile_ts_in_dir(dir: &Path) -> anyhow::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let name = entry.file_name();
+            if name == "node_modules" || name == "dist" || name == ".git" {
+                continue;
+            }
+            transpile_ts_in_dir(&path)?;
+            continue;
+        }
+
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext != "ts" && ext != "tsx" {
+            continue;
+        }
+
+        let source = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+
+        let filename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file.ts");
+
+        let js = transpile_lenient(&source, filename)
+            .with_context(|| format!("failed to transpile {}", path.display()))?;
+
+        let js_path = path.with_extension("js");
+        std::fs::write(&js_path, js)
+            .with_context(|| format!("failed to write {}", js_path.display()))?;
+
+        std::fs::remove_file(&path)
+            .with_context(|| format!("failed to remove {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
+/// Transpile `TypeScript` to `JavaScript`, allowing import statements.
+///
+/// Unlike `openclaw_bridge::transpiler::transpile()`, this does NOT reject
+/// runtime imports — Tier 2 plugins have npm dependencies available at runtime.
+fn transpile_lenient(source: &str, filename: &str) -> anyhow::Result<String> {
+    use oxc::codegen::Codegen;
+    use oxc::parser::Parser;
+    use oxc::semantic::SemanticBuilder;
+    use oxc::span::SourceType;
+    use oxc::transformer::{TransformOptions, Transformer};
+
+    let allocator = oxc_allocator::Allocator::default();
+    let source_type = SourceType::from_path(filename).unwrap_or_else(|_| SourceType::mjs());
+
+    let parse_ret = Parser::new(&allocator, source, source_type).parse();
+    if parse_ret.panicked || !parse_ret.errors.is_empty() {
+        let errors: Vec<String> = parse_ret.errors.iter().map(|e| format!("{e}")).collect();
+        bail!("parse errors:\n{}", errors.join("\n"));
+    }
+
+    let mut program = parse_ret.program;
+
+    let sem_ret = SemanticBuilder::new()
+        .with_excess_capacity(2.0)
+        .build(&program);
+    let scoping = sem_ret.semantic.into_scoping();
+
+    let transform_options = TransformOptions::default();
+    let path = std::path::Path::new(filename);
+    let transform_ret = Transformer::new(&allocator, path, &transform_options)
+        .build_with_scoping(scoping, &mut program);
+
+    if !transform_ret.errors.is_empty() {
+        let errors: Vec<String> = transform_ret
+            .errors
+            .iter()
+            .map(|e| format!("{e}"))
+            .collect();
+        bail!("transform errors:\n{}", errors.join("\n"));
+    }
+
+    let codegen_ret = Codegen::new().build(&program);
+    Ok(codegen_ret.code)
 }
 
 /// Best-effort daemon notification. Prints a warning on failure, never fails the command.
@@ -700,6 +890,10 @@ async fn install_from_openclaw(
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .context("failed to convert OpenClaw ID")?;
 
+    // Detect runtime tier
+    let tier = detect_tier(&pkg.package_root);
+    println!("{}", Theme::dimmed(&format!("  Detected tier: {tier}")));
+
     let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
 
     // Ensure parent exists for staging dir (same filesystem for atomic rename)
@@ -710,12 +904,24 @@ async fn install_from_openclaw(
     // Compile into a staging directory
     let staging = tempfile::tempdir_in(parent).context("failed to create staging directory")?;
 
-    println!(
-        "{}",
-        Theme::dimmed(&format!("  Compiling to WASM (ID: {astrid_id})..."))
-    );
-
-    compile_openclaw(&pkg.package_root, staging.path(), home)?;
+    match tier {
+        PluginTier::Wasm => {
+            println!(
+                "{}",
+                Theme::dimmed(&format!("  Compiling to WASM (ID: {astrid_id})..."))
+            );
+            compile_openclaw(&pkg.package_root, staging.path(), home)?;
+        },
+        PluginTier::Node => {
+            println!(
+                "{}",
+                Theme::dimmed(&format!(
+                    "  Preparing Tier 2 Node.js bridge (ID: {astrid_id})..."
+                ))
+            );
+            prepare_tier2(&pkg.package_root, staging.path(), home)?;
+        },
+    }
 
     // Prepare lockfile entry from staging contents before we move anything.
     let lockfile_path = resolve_lockfile_path(home, workspace)?;
@@ -918,6 +1124,11 @@ async fn install_from_local(
             .context("failed to parse openclaw.plugin.json")?;
         let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
             .context("failed to convert OpenClaw ID")?;
+
+        // Detect runtime tier
+        let tier = detect_tier(source_path);
+        println!("{}", Theme::dimmed(&format!("  Detected tier: {tier}")));
+
         let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
 
         let parent = target_dir.parent().context("target dir has no parent")?;
@@ -926,11 +1137,24 @@ async fn install_from_local(
 
         let staging = tempfile::tempdir_in(parent).context("failed to create staging directory")?;
 
-        println!(
-            "{}",
-            Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
-        );
-        compile_openclaw(source_path, staging.path(), home)?;
+        match tier {
+            PluginTier::Wasm => {
+                println!(
+                    "{}",
+                    Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
+                );
+                compile_openclaw(source_path, staging.path(), home)?;
+            },
+            PluginTier::Node => {
+                println!(
+                    "{}",
+                    Theme::dimmed(&format!(
+                        "  Preparing Tier 2 Node.js bridge (ID: {astrid_id})..."
+                    ))
+                );
+                prepare_tier2(source_path, staging.path(), home)?;
+            },
+        }
 
         // Prepare lockfile entry from staging contents.
         let lockfile_path = resolve_lockfile_path(home, workspace)?;
