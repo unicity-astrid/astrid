@@ -226,10 +226,14 @@ fn validate_github_component(value: &str, label: &str) -> PluginResult<()> {
             "GitHub {label} contains invalid characters: '{value}'"
         )));
     }
-    // Reject path traversal components and invalid dot patterns
-    if value == "." || value == ".." || value.starts_with('.') || value.ends_with('.') {
+    // Reject patterns GitHub disallows or that could cause path/arg issues
+    if value.starts_with('.')
+        || value.starts_with('-')
+        || value.ends_with('.')
+        || value.contains("..")
+    {
         return Err(PluginError::ExecutionFailed(format!(
-            "GitHub {label} must not start or end with '.': '{value}'"
+            "GitHub {label} has invalid format: '{value}'"
         )));
     }
     Ok(())
@@ -364,7 +368,9 @@ async fn fetch_github_tarball(
 async fn download_with_limit(response: reqwest::Response, max_size: u64) -> PluginResult<Vec<u8>> {
     use futures::StreamExt;
 
-    let mut bytes = Vec::new();
+    let capacity =
+        usize::try_from(response.content_length().unwrap_or(0).min(max_size)).unwrap_or(0);
+    let mut bytes = Vec::with_capacity(capacity);
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
@@ -551,6 +557,21 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
 
     let clone_path = tmp.path().join("repo");
     let mut cmd = Command::new("git");
+
+    // Clear inherited environment to prevent injected command execution via
+    // GIT_PROXY_COMMAND, GIT_EXTERNAL_DIFF, GIT_CONFIG_GLOBAL, etc.
+    cmd.env_clear();
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        cmd.env("HOME", home);
+    }
+    // Suppress interactive credential prompts — fail fast if auth is needed.
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+    cmd.stdin(std::process::Stdio::null());
+
     cmd.args(["clone", "--depth=1"]);
 
     if let Some(r) = git_ref {
@@ -559,11 +580,6 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
 
     cmd.arg(url);
     cmd.arg(&clone_path);
-
-    // Suppress interactive credential prompts — fail fast if auth is needed.
-    cmd.env("GIT_TERMINAL_PROMPT", "0");
-    cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
-    cmd.stdin(std::process::Stdio::null());
 
     let output = cmd
         .output()
@@ -772,6 +788,16 @@ mod tests {
     #[test]
     fn reject_github_org_with_url_injection() {
         assert!(validate_github_component("org/../admin", "org").is_err());
+    }
+
+    #[test]
+    fn reject_github_component_leading_dash() {
+        assert!(validate_github_component("-evil", "org").is_err());
+    }
+
+    #[test]
+    fn reject_github_component_leading_dot() {
+        assert!(validate_github_component(".hidden", "org").is_err());
     }
 
     #[test]
