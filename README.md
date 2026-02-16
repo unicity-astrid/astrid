@@ -21,24 +21,24 @@ The CLI (`astrid`) is a thin stateless client. All state and execution live in t
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                     FRONTEND CLIENTS                           │
-│    CLI (astrid)  │  Discord  │  Web  │  Telegram  │  ...     │
+│    CLI (astrid)  │  Discord  │  Web  │  Telegram  │  ...       │
 │                    └───────────┴───────┴────────────┘          │
 │              Thin clients — stateless, replaceable             │
 └──────────────────────────┬─────────────────────────────────────┘
                            │  WebSocket + JSON-RPC 2.0
                            │  (jsonrpsee, ws://127.0.0.1:{port})
 ┌──────────────────────────▼─────────────────────────────────────┐
-│               GATEWAY DAEMON (astridd)                       │
+│               GATEWAY DAEMON (astridd)                         │
 │                                                                │
 │  DaemonServer ── Session lifecycle, event streaming,           │
 │                  approval/elicitation relay, MCP server        │
 │                  health checks, auto-restart, cleanup          │
 │                                                                │
 │  Modes: ephemeral (auto-shutdown) or persistent                │
-│  State: ~/.astrid/ (sessions, audit, capabilities, keys)     │
+│  State: ~/.astrid/ (sessions, audit, capabilities, keys)       │
 │                                                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    ASTRID CORE                         │  │
+│  │                    ASTRID CORE                           │  │
 │  │                                                          │  │
 │  │  AgentRuntime ── Agentic loop, context summarization     │  │
 │  │  Security Layer ── Capability tokens (ed25519 signed)    │  │
@@ -376,7 +376,7 @@ cargo run -p astrid-cli -- config paths
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                 ASTRID CORE (always available)                │
+│                 ASTRID CORE (always available)                  │
 │  MCP (rmcp) │ Elicitation │ Capability Tokens │ Audit │ Crypto  │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
