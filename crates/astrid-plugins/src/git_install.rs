@@ -226,6 +226,12 @@ fn validate_github_component(value: &str, label: &str) -> PluginResult<()> {
             "GitHub {label} contains invalid characters: '{value}'"
         )));
     }
+    // Reject path traversal components and invalid dot patterns
+    if value == "." || value == ".." || value.starts_with('.') || value.ends_with('.') {
+        return Err(PluginError::ExecutionFailed(format!(
+            "GitHub {label} must not start or end with '.': '{value}'"
+        )));
+    }
     Ok(())
 }
 
@@ -253,9 +259,12 @@ fn validate_git_ref(git_ref: &str) -> PluginResult<()> {
             "git ref contains invalid characters: '{git_ref}'"
         )));
     }
-    // Git doesn't allow refs starting/ending with '.' or ending with '.lock'
+    // Git doesn't allow refs starting/ending with '.' or '/', ending with '.lock',
+    // or containing consecutive slashes
     if git_ref.starts_with('.')
         || git_ref.ends_with('.')
+        || git_ref.starts_with('/')
+        || git_ref.ends_with('/')
         || std::path::Path::new(git_ref)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("lock"))
@@ -476,15 +485,23 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
         let stripped = strip_first_component(&entry_path);
         let target = dest.join(stripped);
 
-        // Create parent directories first so we can canonicalize for the boundary check
+        // First: lexical boundary check (before creating any dirs).
+        // dest is already canonicalized (line 389), so this catches obvious escapes.
+        if !target.starts_with(&dest) {
+            return Err(PluginError::PathTraversal {
+                path: entry_path.display().to_string(),
+            });
+        }
+
+        // Create parent directories
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| PluginError::ExtractionError {
                 message: format!("failed to create directory {}: {e}", parent.display()),
             })?;
         }
 
-        // Mandatory boundary check — verify target stays within dest after symlink resolution.
-        // Parent directory now exists, so canonicalize will succeed.
+        // Second: symlink-aware boundary check (after dirs exist, so canonicalize succeeds).
+        // This catches symlink-based escapes that the lexical check misses.
         let canonical_parent = target
             .parent()
             .ok_or_else(|| PluginError::PathTraversal {
@@ -525,6 +542,9 @@ fn strip_first_component(path: &std::path::Path) -> PathBuf {
 }
 
 /// Clone a git repository into a temporary directory.
+///
+/// Suppresses interactive credential prompts and pipes stdin to null
+/// to prevent hanging if authentication is required.
 fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::TempDir, PathBuf)> {
     let tmp = tempfile::tempdir()
         .map_err(|e| PluginError::ExecutionFailed(format!("failed to create temp dir: {e}")))?;
@@ -539,6 +559,11 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
 
     cmd.arg(url);
     cmd.arg(&clone_path);
+
+    // Suppress interactive credential prompts — fail fast if auth is needed.
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+    cmd.stdin(std::process::Stdio::null());
 
     let output = cmd
         .output()
@@ -791,5 +816,42 @@ mod tests {
     fn reject_github_source_with_bad_ref() {
         let err = GitSource::parse("github:org/repo@main..evil").unwrap_err();
         assert!(err.to_string().contains(".."));
+    }
+
+    #[test]
+    fn reject_github_component_double_dot() {
+        assert!(validate_github_component("..", "org").is_err());
+        assert!(validate_github_component(".", "org").is_err());
+    }
+
+    #[test]
+    fn reject_github_component_leading_trailing_dot() {
+        assert!(validate_github_component(".hidden", "org").is_err());
+        assert!(validate_github_component("trailing.", "repo").is_err());
+    }
+
+    #[test]
+    fn reject_git_ref_starting_with_slash() {
+        assert!(validate_git_ref("/main").is_err());
+    }
+
+    #[test]
+    fn reject_git_ref_ending_with_slash() {
+        assert!(validate_git_ref("feature/").is_err());
+    }
+
+    #[test]
+    fn split_ref_url_no_path() {
+        let (url, git_ref) = split_ref("https://example.com");
+        assert_eq!(url, "https://example.com");
+        assert_eq!(git_ref, None);
+    }
+
+    #[test]
+    fn split_ref_multiple_at_in_path() {
+        // Should split on the LAST @ in the path
+        let (url, git_ref) = split_ref("https://host/p@th/repo@v1.0");
+        assert_eq!(url, "https://host/p@th/repo");
+        assert_eq!(git_ref, Some("v1.0".to_string()));
     }
 }
