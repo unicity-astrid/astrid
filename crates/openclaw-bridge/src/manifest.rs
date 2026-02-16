@@ -123,10 +123,15 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
             .and_then(|e| e.as_array())
         && let Some(first) = extensions.first().and_then(|v| v.as_str())
     {
-        // Reject path traversal — entry point must stay within plugin_dir
+        // Reject path traversal and absolute paths — entry point must stay within plugin_dir
         if first.contains("..") {
             return Err(BridgeError::Manifest(format!(
                 "entry point '{first}' contains '..' — path traversal not allowed"
+            )));
+        }
+        if Path::new(first).is_absolute() {
+            return Err(BridgeError::Manifest(format!(
+                "entry point '{first}' is an absolute path — must be relative to plugin directory"
             )));
         }
         return Ok(first.to_string());
@@ -367,6 +372,24 @@ mod tests {
         assert!(
             err.contains("path traversal"),
             "error should mention path traversal: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_entry_rejects_absolute_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["/etc/passwd"]}}"#,
+        )
+        .unwrap();
+
+        let result = resolve_entry_point(dir.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("absolute path"),
+            "error should mention absolute path: {err}"
         );
     }
 

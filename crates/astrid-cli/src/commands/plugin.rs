@@ -316,16 +316,17 @@ fn prepare_tier2(
             "{}",
             Theme::dimmed("  Running npm install --omit=dev --ignore-scripts...")
         );
-        let status = std::process::Command::new("npm")
+        let npm_output = std::process::Command::new("npm")
             .args(["install", "--omit=dev", "--ignore-scripts"])
             .current_dir(output_dir)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
-            .status()
+            .output()
             .context("failed to run npm install (is npm installed?)")?;
 
-        if !status.success() {
-            bail!("npm install failed with exit code: {status}");
+        if !npm_output.status.success() {
+            let stderr = String::from_utf8_lossy(&npm_output.stderr);
+            bail!("npm install failed (exit {}):\n{stderr}", npm_output.status);
         }
     }
 
