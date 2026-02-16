@@ -1,6 +1,5 @@
 //! Shared test harness for integration tests.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use astrid_audit::AuditLog;
@@ -23,64 +22,20 @@ pub struct RuntimeTestHarness {
     /// A fresh session.
     pub session: AgentSession,
     /// The workspace tempdir (held to prevent cleanup).
-    #[allow(dead_code)]
-    pub workspace_dir: TempDir,
+    _workspace_dir: TempDir,
 }
 
 impl RuntimeTestHarness {
     /// Build a new harness with the given LLM turns and default AllowOnce approval.
     pub fn new(turns: Vec<MockLlmTurn>) -> Self {
-        Self::builder(turns).build()
+        Self::with_approval(turns, ApprovalOption::AllowOnce)
     }
 
-    /// Start building a harness with customisation options.
-    pub fn builder(turns: Vec<MockLlmTurn>) -> HarnessBuilder {
-        HarnessBuilder {
-            turns,
-            default_approval: ApprovalOption::AllowOnce,
-            approval_queue: Vec::new(),
-        }
-    }
-
-    /// Convenience: run a single turn with the given user input.
-    pub async fn run_turn(&mut self, input: &str) -> Result<(), astrid_runtime::RuntimeError> {
-        self.runtime
-            .run_turn_streaming(&mut self.session, input, Arc::clone(&self.frontend))
-            .await
-    }
-
-    /// Get the workspace root path.
-    pub fn workspace_path(&self) -> PathBuf {
-        self.workspace_dir.path().to_path_buf()
-    }
-}
-
-/// Builder for [`RuntimeTestHarness`].
-pub struct HarnessBuilder {
-    turns: Vec<MockLlmTurn>,
-    default_approval: ApprovalOption,
-    approval_queue: Vec<ApprovalOption>,
-}
-
-impl HarnessBuilder {
-    /// Set the default approval option (when queue is empty).
-    pub fn default_approval(mut self, option: ApprovalOption) -> Self {
-        self.default_approval = option;
-        self
-    }
-
-    /// Queue specific approval responses.
-    pub fn approval_queue(mut self, queue: Vec<ApprovalOption>) -> Self {
-        self.approval_queue = queue;
-        self
-    }
-
-    /// Build the harness.
-    pub fn build(self) -> RuntimeTestHarness {
+    /// Build a new harness with the given LLM turns and a specific default approval.
+    pub fn with_approval(turns: Vec<MockLlmTurn>, default_approval: ApprovalOption) -> Self {
         let workspace_dir = TempDir::new().expect("failed to create tempdir");
 
-        let llm = MockLlmProvider::new(self.turns);
-
+        let llm = MockLlmProvider::new(turns);
         let mcp = McpClient::with_config(ServersConfig::default());
 
         let audit_key = KeyPair::generate();
@@ -101,20 +56,21 @@ impl HarnessBuilder {
         };
 
         let runtime = AgentRuntime::new(llm, mcp, audit, sessions, runtime_key, config);
-
-        let mut frontend = MockFrontend::new().with_default_approval(self.default_approval);
-        for option in self.approval_queue {
-            frontend = frontend.with_approval_response(option);
-        }
-        let frontend = Arc::new(frontend);
-
+        let frontend = Arc::new(MockFrontend::new().with_default_approval(default_approval));
         let session = runtime.create_session(None);
 
         RuntimeTestHarness {
             runtime,
             frontend,
             session,
-            workspace_dir,
+            _workspace_dir: workspace_dir,
         }
+    }
+
+    /// Convenience: run a single turn with the given user input.
+    pub async fn run_turn(&mut self, input: &str) -> Result<(), astrid_runtime::RuntimeError> {
+        self.runtime
+            .run_turn_streaming(&mut self.session, input, Arc::clone(&self.frontend))
+            .await
     }
 }

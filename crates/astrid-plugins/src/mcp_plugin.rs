@@ -213,8 +213,7 @@ impl McpPlugin {
         // Only raw Landlock syscalls run inside the pre_exec closure.
         #[cfg(target_os = "linux")]
         if let Some(sandbox) = &self.sandbox {
-            let prepared = prepare_landlock_rules(&sandbox.landlock_rules())
-                .map_err(|e| PluginError::SandboxError(format!("Landlock preparation: {e}")))?;
+            let prepared = prepare_landlock_rules(&sandbox.landlock_rules());
             let mut prepared = Some(prepared);
             // SAFETY: pre_exec runs between fork() and exec(). The closure
             // only invokes Landlock syscalls (landlock_create_ruleset,
@@ -223,13 +222,10 @@ impl McpPlugin {
             unsafe {
                 cmd.pre_exec(move || {
                     let rules = prepared.take().ok_or_else(|| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Landlock pre_exec called more than once",
-                        )
+                        std::io::Error::other("Landlock pre_exec called more than once")
                     })?;
                     enforce_landlock_rules(rules).map_err(|e| {
-                        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.to_string())
+                        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.clone())
                     })
                 });
             }
@@ -519,9 +515,7 @@ struct PreparedLandlockRules {
 /// This runs before `fork()`, so heap allocation and filesystem access are
 /// safe. Paths that don't exist are silently skipped.
 #[cfg(target_os = "linux")]
-fn prepare_landlock_rules(
-    rules: &[crate::sandbox::LandlockPathRule],
-) -> Result<PreparedLandlockRules, String> {
+fn prepare_landlock_rules(rules: &[crate::sandbox::LandlockPathRule]) -> PreparedLandlockRules {
     use landlock::PathFd;
 
     let mut prepared = Vec::with_capacity(rules.len());
@@ -537,7 +531,7 @@ fn prepare_landlock_rules(
         }
     }
 
-    Ok(PreparedLandlockRules { rules: prepared })
+    PreparedLandlockRules { rules: prepared }
 }
 
 /// Phase 2 (child process, inside `pre_exec`): create ruleset and enforce.
@@ -547,7 +541,7 @@ fn prepare_landlock_rules(
 #[cfg(target_os = "linux")]
 fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String> {
     use landlock::{
-        ABI, AccessFs, CompatLevel, Compatible, PathBeneath, Ruleset, RulesetAttr,
+        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, Ruleset, RulesetAttr,
         RulesetCreatedAttr, RulesetStatus,
     };
 
@@ -578,9 +572,10 @@ fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String>
         .map_err(|e| format!("failed to enforce Landlock ruleset: {e}"))?;
 
     match status.ruleset {
-        RulesetStatus::FullyEnforced | RulesetStatus::PartiallyEnforced => {},
-        RulesetStatus::NotEnforced => {
-            // Kernel doesn't support Landlock — not a fatal error
+        RulesetStatus::FullyEnforced
+        | RulesetStatus::PartiallyEnforced
+        | RulesetStatus::NotEnforced => {
+            // NotEnforced: kernel doesn't support Landlock — not a fatal error
         },
     }
 

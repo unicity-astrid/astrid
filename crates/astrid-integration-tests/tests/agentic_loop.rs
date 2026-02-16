@@ -164,15 +164,16 @@ async fn test_llm_error_propagates() {
 
 #[tokio::test]
 async fn test_unknown_builtin_tool() {
-    let mut harness = RuntimeTestHarness::builder(vec![
-        MockLlmTurn::tool_calls(vec![MockToolCall::new(
-            "nonexistent_tool",
-            serde_json::json!({}),
-        )]),
-        MockLlmTurn::text("I see the error"),
-    ])
-    .default_approval(ApprovalOption::AllowOnce)
-    .build();
+    let mut harness = RuntimeTestHarness::with_approval(
+        vec![
+            MockLlmTurn::tool_calls(vec![MockToolCall::new(
+                "nonexistent_tool",
+                serde_json::json!({}),
+            )]),
+            MockLlmTurn::text("I see the error"),
+        ],
+        ApprovalOption::AllowOnce,
+    );
 
     harness.run_turn("Do something").await.unwrap();
 
@@ -198,15 +199,16 @@ async fn test_unknown_builtin_tool() {
 
 #[tokio::test]
 async fn test_malformed_tool_args_returns_error_to_llm() {
-    let mut harness = RuntimeTestHarness::builder(vec![
-        MockLlmTurn::tool_calls(vec![MockToolCall::new(
-            "read_file",
-            serde_json::json!({"wrong_field": "val"}),
-        )]),
-        MockLlmTurn::text("I see the error"),
-    ])
-    .default_approval(ApprovalOption::AllowOnce)
-    .build();
+    let mut harness = RuntimeTestHarness::with_approval(
+        vec![
+            MockLlmTurn::tool_calls(vec![MockToolCall::new(
+                "read_file",
+                serde_json::json!({"wrong_field": "val"}),
+            )]),
+            MockLlmTurn::text("I see the error"),
+        ],
+        ApprovalOption::AllowOnce,
+    );
 
     // This should complete successfully — the error is returned as a tool result,
     // not as a fatal error.
