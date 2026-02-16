@@ -10,6 +10,11 @@
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { resolve, dirname } from "node:path";
+import { createRequire } from "node:module";
+import {
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 
 // ── CLI args ────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -42,8 +47,8 @@ const registeredHooks = new Map();
 const unsupportedRegistrations = [];
 const eventHandlers = new Map();
 let pluginConfig = {};
-let agentContext = null;
 let servicesReady = false;
+let shuttingDown = false;
 
 // ── OpenClaw Plugin API mock (OpenClawPluginApi) ────────────────────
 // Matches the real OpenClaw plugin API surface. All 11 registration
@@ -71,13 +76,16 @@ const pluginApi = {
     config: {
       loadConfig: () => pluginConfig,
       writeConfigFile: (data) => {
-        const configPath = resolve(
-          process.env.HOME || ".",
-          `.astrid-plugin-config.json`
+        const configDir = resolve(
+          process.env.HOME || "/tmp",
+          ".astrid",
+          "plugins",
+          pluginId
         );
         try {
-          const fs = await_import_fs();
-          fs.writeFileSync(configPath, JSON.stringify(data, null, 2));
+          mkdirSync(configDir, { recursive: true });
+          const configPath = resolve(configDir, "config.json");
+          writeFileSync(configPath, JSON.stringify(data, null, 2));
           sendNotification("notifications/astrid.configChanged", {
             pluginId,
             path: configPath,
@@ -153,25 +161,7 @@ const pluginApi = {
   },
 };
 
-// Lazy fs import (only if plugin calls writeConfigFile)
-let _fs = null;
-function await_import_fs() {
-  if (!_fs) {
-    // Dynamic import would be async; use createRequire for sync access
-    const { createRequire } = await_import_module();
-    const require = createRequire(import.meta.url);
-    _fs = require("node:fs");
-  }
-  return _fs;
-}
-let _module = null;
-function await_import_module() {
-  if (!_module) _module = { createRequire: (await import("node:module")).createRequire };
-  return _module;
-}
-
 // ── JSON-RPC over stdio ─────────────────────────────────────────────
-let jsonRpcId = 0;
 
 function sendResponse(id, result) {
   const msg = JSON.stringify({ jsonrpc: "2.0", id, result });
@@ -209,7 +199,9 @@ function handleInitialize(id, params) {
   });
 
   // Start services asynchronously after responding
-  startServices();
+  startServices().catch((e) => {
+    log.error(`Service startup failed: ${e?.message ?? e}`);
+  });
 }
 
 function handleToolsList(id) {
@@ -238,9 +230,9 @@ async function handleToolsCall(id, params) {
   const toolName = params?.name;
   const toolArgs = params?.arguments || {};
 
-  // Special: agent context tool
+  // Special: agent context tool (allowed before services are ready —
+  // before_agent_start handlers do not depend on services)
   if (toolName === "__astrid_get_agent_context") {
-    // Fire before_agent_start handlers
     const handlers = eventHandlers.get("before_agent_start") || [];
     let context = {};
     for (const handler of handlers) {
@@ -262,7 +254,7 @@ async function handleToolsCall(id, params) {
   const tool = registeredTools.get(toolName);
   if (!tool) {
     sendResponse(id, {
-      content: [{ type: "text", text: `Unknown tool: ${toolName}` }],
+      content: [{ type: "text", text: "Unknown tool" }],
       isError: true,
     });
     return;
@@ -270,7 +262,7 @@ async function handleToolsCall(id, params) {
 
   if (!servicesReady) {
     sendResponse(id, {
-      content: [{ type: "text", text: `Service not ready yet — plugin is still initializing` }],
+      content: [{ type: "text", text: "Service not ready yet — plugin is still initializing" }],
       isError: true,
     });
     return;
@@ -283,7 +275,7 @@ async function handleToolsCall(id, params) {
       content: [{ type: "text", text }],
     });
   } catch (e) {
-    log.error(`Tool ${toolName} failed: ${e.message}`);
+    log.error(`Tool call failed: ${e.message}`);
     sendResponse(id, {
       content: [{ type: "text", text: `Tool execution failed: ${e.message}` }],
       isError: true,
@@ -291,7 +283,7 @@ async function handleToolsCall(id, params) {
   }
 }
 
-function handleNotification(method, params) {
+async function handleNotification(method, params) {
   if (method === "notifications/initialized") {
     log.info("MCP session initialized");
     return;
@@ -302,7 +294,7 @@ function handleNotification(method, params) {
     const handlers = eventHandlers.get(event) || [];
     for (const handler of handlers) {
       try {
-        handler(data);
+        await handler(data);
       } catch (e) {
         log.error(`Hook event handler for ${event} failed: ${e.message}`);
       }
@@ -343,6 +335,16 @@ async function stopServices() {
   }
 }
 
+// ── Shutdown guard ──────────────────────────────────────────────────
+
+async function shutdown(reason) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`${reason} — shutting down`);
+  await stopServices();
+  process.exit(0);
+}
+
 // ── Message dispatch ────────────────────────────────────────────────
 
 async function dispatch(msg) {
@@ -351,7 +353,7 @@ async function dispatch(msg) {
 
     // Notification (no id)
     if (parsed.id === undefined || parsed.id === null) {
-      handleNotification(parsed.method, parsed.params);
+      await handleNotification(parsed.method, parsed.params);
       return;
     }
 
@@ -370,10 +372,11 @@ async function dispatch(msg) {
         sendResponse(parsed.id, {});
         break;
       default:
-        sendError(parsed.id, -32601, `Method not found: ${parsed.method}`);
+        sendError(parsed.id, -32601, "Method not found");
     }
   } catch (e) {
     log.error(`Failed to parse message: ${e.message}`);
+    sendError(null, -32700, "Parse error");
   }
 }
 
@@ -407,6 +410,7 @@ async function loadPlugin() {
       await mod.register(pluginApi);
     } else {
       // Fallback: try activate() for backwards compatibility
+      // OpenClaw loader uses: def.register ?? def.activate
       const activate = defaultExport?.activate || mod.activate;
       if (typeof activate === "function") {
         log.debug("Detected legacy activate() pattern");
@@ -436,26 +440,16 @@ async function main() {
   const rl = createInterface({ input: process.stdin, terminal: false });
 
   rl.on("line", (line) => {
-    if (line.trim()) dispatch(line.trim());
+    if (line.trim()) {
+      dispatch(line.trim()).catch((e) => {
+        log.error(`Dispatch failed: ${e?.message ?? e}`);
+      });
+    }
   });
 
-  rl.on("close", async () => {
-    log.info("stdin closed — shutting down");
-    await stopServices();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    log.info("SIGTERM received — shutting down");
-    await stopServices();
-    process.exit(0);
-  });
-
-  process.on("SIGINT", async () => {
-    log.info("SIGINT received — shutting down");
-    await stopServices();
-    process.exit(0);
-  });
+  rl.on("close", () => shutdown("stdin closed"));
+  process.on("SIGTERM", () => shutdown("SIGTERM received"));
+  process.on("SIGINT", () => shutdown("SIGINT received"));
 }
 
 main().catch((e) => {

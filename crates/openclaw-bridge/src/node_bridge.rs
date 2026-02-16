@@ -15,7 +15,7 @@ pub const BRIDGE_SCRIPT: &str = include_str!("../bridge/astrid_bridge.mjs");
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::Io`] if the file cannot be written.
+/// Returns [`BridgeError::Output`] if the file cannot be written.
 pub fn write_bridge_script(dest_dir: &Path) -> BridgeResult<()> {
     let dest = dest_dir.join("astrid_bridge.mjs");
     std::fs::write(&dest, BRIDGE_SCRIPT).map_err(|e| {
