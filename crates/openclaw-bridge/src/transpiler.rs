@@ -91,9 +91,17 @@ pub fn transpile(source: &str, filename: &str) -> BridgeResult<String> {
     Ok(esm_to_cjs(&js_output))
 }
 
+/// Node.js modules that are polyfilled in the WASM sandbox shim.
+///
+/// Imports from these modules are allowed and rewritten to `require()` calls
+/// by the ESM→CJS post-processing. The shim provides a `require()` polyfill
+/// that dispatches to virtual implementations backed by host functions.
+const POLYFILLED_NODE_MODULES: &[&str] = &["node:fs", "fs", "node:path", "path", "node:os", "os"];
+
 /// Check for non-type import declarations.
 ///
-/// Single-file plugins should not have runtime imports. Type-only imports
+/// Single-file plugins should not have runtime imports except for polyfilled
+/// Node.js modules (`node:fs`, `node:path`, `node:os`). Type-only imports
 /// (`import type { ... }`) are allowed since they're erased by the transformer.
 fn check_imports(program: &oxc::ast::ast::Program) -> BridgeResult<()> {
     let mut bad_imports = Vec::new();
@@ -104,7 +112,12 @@ fn check_imports(program: &oxc::ast::ast::Program) -> BridgeResult<()> {
             if decl.import_kind.is_type() {
                 continue;
             }
-            bad_imports.push(decl.source.value.to_string());
+            let module_name = decl.source.value.as_str();
+            // Allow polyfilled Node.js modules
+            if POLYFILLED_NODE_MODULES.contains(&module_name) {
+                continue;
+            }
+            bad_imports.push(module_name.to_string());
         }
     }
 
@@ -113,16 +126,24 @@ fn check_imports(program: &oxc::ast::ast::Program) -> BridgeResult<()> {
         return Err(BridgeError::UnresolvedImports(format!(
             "plugin imports modules that cannot be resolved at runtime: [{modules}]. \
              Single-file plugins must be self-contained. If your plugin needs external \
-             dependencies, pre-bundle it with esbuild or rollup before running openclaw-bridge."
+             dependencies, pre-bundle it with esbuild or rollup before running openclaw-bridge. \
+             Note: node:fs, node:path, and node:os are polyfilled and allowed."
         )));
     }
 
     Ok(())
 }
 
-/// Post-process OXC codegen output to convert ESM exports to CJS.
+/// Post-process OXC codegen output to convert ESM imports/exports to CJS.
 ///
 /// Handles the narrow set of patterns used in single-file plugins:
+///
+/// **Imports:**
+/// - `import { a, b } from "mod"` → `const { a, b } = require("mod");`
+/// - `import X from "mod"` → `const X = require("mod");`
+/// - `import * as X from "mod"` → `const X = require("mod");`
+///
+/// **Exports:**
 /// - `export default X` → `module.exports = X`
 /// - `export function name(` → `function name(` + `module.exports.name = name;`
 /// - `export const name =` → `const name =` + `module.exports.name = name;`
@@ -133,6 +154,17 @@ fn esm_to_cjs(js: &str) -> String {
 
     for line in js.lines() {
         let trimmed = line.trim();
+
+        // import { a, b } from "mod";
+        // import X from "mod";
+        // import * as X from "mod";
+        if trimmed.starts_with("import ")
+            && trimmed.contains(" from ")
+            && let Some(converted) = convert_import_to_require(trimmed)
+        {
+            output_lines.push(converted);
+            continue;
+        }
 
         // export default <expr>
         if let Some(rest) = trimmed.strip_prefix("export default ") {
@@ -240,6 +272,45 @@ fn esm_to_cjs(js: &str) -> String {
     output_lines.join("\n")
 }
 
+/// Convert an ESM import statement to a CJS `require()` call.
+///
+/// Returns `None` if the line doesn't match a recognized import pattern.
+fn convert_import_to_require(line: &str) -> Option<String> {
+    // Split on " from " to get the specifier part and the module part
+    let (specifier_part, module_part) = line.split_once(" from ")?;
+
+    // Extract the module name (strip quotes and semicolons)
+    let module = module_part
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'');
+
+    // Get everything after "import "
+    let specifier = specifier_part.strip_prefix("import ")?.trim();
+
+    // import * as X from "mod"
+    if let Some(name) = specifier.strip_prefix("* as ") {
+        let name = name.trim();
+        return Some(format!("const {name} = require(\"{module}\");"));
+    }
+
+    // import { a, b } from "mod"
+    if specifier.starts_with('{') && specifier.ends_with('}') {
+        return Some(format!("const {specifier} = require(\"{module}\");"));
+    }
+
+    // import X from "mod" (default import)
+    // Could also be "import X, { a, b } from ..." — handle the simple case
+    if !specifier.contains('{') {
+        let name = specifier.trim();
+        return Some(format!("const {name} = require(\"{module}\");"));
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,13 +353,68 @@ const cfg: Config = { apiKey: "test", timeout: 30 };
     #[test]
     fn transpile_rejects_runtime_imports() {
         let source = r#"
-import { readFile } from "fs";
-console.log(readFile);
+import { createServer } from "http";
+console.log(createServer);
 "#;
         let err = transpile(source, "plugin.js").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("unresolved imports"), "got: {msg}");
-        assert!(msg.contains("fs"), "got: {msg}");
+        assert!(msg.contains("http"), "got: {msg}");
+    }
+
+    #[test]
+    fn transpile_allows_polyfilled_node_fs() {
+        let source = r#"
+import { readFileSync, writeFileSync } from "node:fs";
+const data = readFileSync("config.json", "utf8");
+writeFileSync("out.json", data);
+"#;
+        let result = transpile(source, "plugin.ts").unwrap();
+        // The import should be converted to require() by ESM→CJS
+        assert!(result.contains("require(\"node:fs\")"), "got: {result}");
+    }
+
+    #[test]
+    fn transpile_allows_polyfilled_node_path() {
+        let source = r#"
+import { join, dirname } from "node:path";
+const p = join("a", "b");
+"#;
+        let result = transpile(source, "plugin.ts").unwrap();
+        assert!(result.contains("require(\"node:path\")"), "got: {result}");
+    }
+
+    #[test]
+    fn transpile_allows_polyfilled_node_os() {
+        let source = r#"
+import { homedir } from "node:os";
+const home = homedir();
+"#;
+        let result = transpile(source, "plugin.ts").unwrap();
+        assert!(result.contains("require(\"node:os\")"), "got: {result}");
+    }
+
+    #[test]
+    fn transpile_allows_bare_fs_import() {
+        // "fs" (without node: prefix) should also be allowed
+        let source = r#"
+import { existsSync } from "fs";
+const exists = existsSync("test.txt");
+"#;
+        let result = transpile(source, "plugin.js").unwrap();
+        assert!(result.contains("require(\"fs\")"), "got: {result}");
+    }
+
+    #[test]
+    fn transpile_rejects_non_polyfilled_node_modules() {
+        let source = r#"
+import { createConnection } from "node:net";
+createConnection(8080);
+"#;
+        let err = transpile(source, "plugin.js").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unresolved imports"), "got: {msg}");
+        assert!(msg.contains("node:net"), "got: {msg}");
     }
 
     #[test]
@@ -347,5 +473,52 @@ const x: number = 42;
         let input = "const x = 42;\nconsole.log(x);\n";
         let output = esm_to_cjs(input);
         assert_eq!(output.trim(), input.trim());
+    }
+
+    #[test]
+    fn esm_to_cjs_import_named() {
+        let input = r#"import { readFileSync, writeFileSync } from "node:fs";"#;
+        let output = esm_to_cjs(input);
+        assert_eq!(
+            output.trim(),
+            r#"const { readFileSync, writeFileSync } = require("node:fs");"#,
+            "got: {output}"
+        );
+    }
+
+    #[test]
+    fn esm_to_cjs_import_default() {
+        let input = r#"import path from "node:path";"#;
+        let output = esm_to_cjs(input);
+        assert_eq!(
+            output.trim(),
+            r#"const path = require("node:path");"#,
+            "got: {output}"
+        );
+    }
+
+    #[test]
+    fn esm_to_cjs_import_star() {
+        let input = r#"import * as fs from "node:fs";"#;
+        let output = esm_to_cjs(input);
+        assert_eq!(
+            output.trim(),
+            r#"const fs = require("node:fs");"#,
+            "got: {output}"
+        );
+    }
+
+    #[test]
+    fn convert_import_to_require_named() {
+        let result = convert_import_to_require(r#"import { join, dirname } from "node:path";"#);
+        assert_eq!(
+            result.as_deref(),
+            Some(r#"const { join, dirname } = require("node:path");"#)
+        );
+    }
+
+    #[test]
+    fn convert_import_to_require_returns_none_for_non_import() {
+        assert!(convert_import_to_require("const x = 42;").is_none());
     }
 }

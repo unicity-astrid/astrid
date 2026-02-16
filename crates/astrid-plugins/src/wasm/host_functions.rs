@@ -1,16 +1,21 @@
 //! Extism host function implementations matching the WIT `host` interface.
 //!
-//! Seven host functions are registered with every Extism plugin instance:
+//! Twelve host functions are registered with every Extism plugin instance:
 //!
 //! | Function | Security Gate | Async Bridge |
 //! |----------|--------------|--------------|
-//! | `astrid_log` | No | No |
+//! | `astrid_fs_exists` | Yes | No |
+//! | `astrid_fs_mkdir` | Yes | No |
+//! | `astrid_fs_readdir` | Yes | No |
+//! | `astrid_fs_stat` | Yes | No |
+//! | `astrid_fs_unlink` | Yes | No |
+//! | `astrid_get_config` | No | No |
 //! | `astrid_http_request` | Yes | Yes |
-//! | `astrid_read_file` | Yes | Yes |
-//! | `astrid_write_file` | Yes | Yes |
 //! | `astrid_kv_get` | No | Yes |
 //! | `astrid_kv_set` | No | Yes |
-//! | `astrid_get_config` | No | No |
+//! | `astrid_log` | No | No |
+//! | `astrid_read_file` | Yes | Yes |
+//! | `astrid_write_file` | Yes | Yes |
 //!
 //! All host functions use `UserData<HostState>` for shared state access.
 //! Async operations are bridged via `Handle::block_on()` — this requires
@@ -57,6 +62,226 @@ fn astrid_log_impl(
         LogLevel::Warn => tracing::warn!(plugin = %plugin_id, "{message}"),
         LogLevel::Error => tracing::error!(plugin = %plugin_id, "{message}"),
     }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// astrid_fs_exists(path) -> "true" | "false"
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_fs_exists_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let path: String = plugin.memory_get_val(&inputs[0])?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let workspace_root = state.workspace_root.clone();
+    drop(state);
+
+    let resolved = resolve_within_workspace(&workspace_root, &path)?;
+    let exists = resolved.exists();
+
+    let result = if exists { "true" } else { "false" };
+    let mem = plugin.memory_new(result)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// astrid_fs_mkdir(path)
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_fs_mkdir_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    _outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let path: String = plugin.memory_get_val(&inputs[0])?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let plugin_id = state.plugin_id.as_str().to_owned();
+    let workspace_root = state.workspace_root.clone();
+    let security = state.security.clone();
+    let handle = state.runtime_handle.clone();
+    drop(state);
+
+    let resolved = resolve_within_workspace(&workspace_root, &path)?;
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if let Some(gate) = &security {
+        let gate = gate.clone();
+        let pid = plugin_id.clone();
+        let rstr = resolved_str.clone();
+        let check = handle.block_on(async move { gate.check_file_write(&pid, &rstr).await });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!("security denied mkdir: {reason}")));
+        }
+    }
+
+    std::fs::create_dir_all(&resolved)
+        .map_err(|e| Error::msg(format!("mkdir failed ({resolved_str}): {e}")))?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// astrid_fs_readdir(path) -> JSON array of filenames
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_fs_readdir_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let path: String = plugin.memory_get_val(&inputs[0])?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let plugin_id = state.plugin_id.as_str().to_owned();
+    let workspace_root = state.workspace_root.clone();
+    let security = state.security.clone();
+    let handle = state.runtime_handle.clone();
+    drop(state);
+
+    let resolved = resolve_within_workspace(&workspace_root, &path)?;
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if let Some(gate) = &security {
+        let gate = gate.clone();
+        let pid = plugin_id.clone();
+        let rstr = resolved_str.clone();
+        let check = handle.block_on(async move { gate.check_file_read(&pid, &rstr).await });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!("security denied readdir: {reason}")));
+        }
+    }
+
+    let entries: Vec<String> = std::fs::read_dir(&resolved)
+        .map_err(|e| Error::msg(format!("readdir failed ({resolved_str}): {e}")))?
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+
+    let json = serde_json::to_string(&entries)
+        .map_err(|e| Error::msg(format!("failed to serialize readdir result: {e}")))?;
+
+    let mem = plugin.memory_new(&json)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// astrid_fs_stat(path) -> JSON {size, isDir, mtime}
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_fs_stat_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let path: String = plugin.memory_get_val(&inputs[0])?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let plugin_id = state.plugin_id.as_str().to_owned();
+    let workspace_root = state.workspace_root.clone();
+    let security = state.security.clone();
+    let handle = state.runtime_handle.clone();
+    drop(state);
+
+    let resolved = resolve_within_workspace(&workspace_root, &path)?;
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if let Some(gate) = &security {
+        let gate = gate.clone();
+        let pid = plugin_id.clone();
+        let rstr = resolved_str.clone();
+        let check = handle.block_on(async move { gate.check_file_read(&pid, &rstr).await });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!("security denied stat: {reason}")));
+        }
+    }
+
+    let metadata = std::fs::metadata(&resolved)
+        .map_err(|e| Error::msg(format!("stat failed ({resolved_str}): {e}")))?;
+
+    let mtime = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0u64, |d| d.as_secs());
+
+    let stat = serde_json::json!({
+        "size": metadata.len(),
+        "isDir": metadata.is_dir(),
+        "mtime": mtime
+    });
+
+    let json = stat.to_string();
+    let mem = plugin.memory_new(&json)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// astrid_fs_unlink(path)
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_fs_unlink_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    _outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let path: String = plugin.memory_get_val(&inputs[0])?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let plugin_id = state.plugin_id.as_str().to_owned();
+    let workspace_root = state.workspace_root.clone();
+    let security = state.security.clone();
+    let handle = state.runtime_handle.clone();
+    drop(state);
+
+    let resolved = resolve_within_workspace(&workspace_root, &path)?;
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if let Some(gate) = &security {
+        let gate = gate.clone();
+        let pid = plugin_id.clone();
+        let rstr = resolved_str.clone();
+        let check = handle.block_on(async move { gate.check_file_write(&pid, &rstr).await });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!("security denied unlink: {reason}")));
+        }
+    }
+
+    std::fs::remove_file(&resolved)
+        .map_err(|e| Error::msg(format!("unlink failed ({resolved_str}): {e}")))?;
 
     Ok(())
 }
@@ -465,8 +690,9 @@ fn lexical_normalize(path: &Path) -> std::path::PathBuf {
 /// Register all host functions with an Extism `PluginBuilder`.
 ///
 /// Registers:
-/// - 7 host functions in the `extism:host/user` namespace (astrid_*)
+/// - 12 host functions in the `extism:host/user` namespace (`astrid_*`)
 /// - 3 shim functions in the `shim` namespace (for `QuickJS` kernel dispatch)
+#[allow(clippy::too_many_lines)]
 pub fn register_host_functions(
     builder: extism::PluginBuilder,
     user_data: UserData<HostState>,
@@ -475,12 +701,41 @@ pub fn register_host_functions(
 
     builder
         // ── extism:host/user namespace (standard host functions) ──
+        // Registered alphabetically to match shim dispatch indices.
         .with_function(
-            "astrid_log",
-            [PTR, PTR],
+            "astrid_fs_exists",
+            [PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_fs_exists_impl,
+        )
+        .with_function(
+            "astrid_fs_mkdir",
+            [PTR],
             [],
             user_data.clone(),
-            astrid_log_impl,
+            astrid_fs_mkdir_impl,
+        )
+        .with_function(
+            "astrid_fs_readdir",
+            [PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_fs_readdir_impl,
+        )
+        .with_function(
+            "astrid_fs_stat",
+            [PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_fs_stat_impl,
+        )
+        .with_function(
+            "astrid_fs_unlink",
+            [PTR],
+            [],
+            user_data.clone(),
+            astrid_fs_unlink_impl,
         )
         .with_function(
             "astrid_get_config",
@@ -488,6 +743,13 @@ pub fn register_host_functions(
             [PTR],
             user_data.clone(),
             astrid_get_config_impl,
+        )
+        .with_function(
+            "astrid_http_request",
+            [PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_http_request_impl,
         )
         .with_function(
             "astrid_kv_get",
@@ -504,6 +766,13 @@ pub fn register_host_functions(
             astrid_kv_set_impl,
         )
         .with_function(
+            "astrid_log",
+            [PTR, PTR],
+            [],
+            user_data.clone(),
+            astrid_log_impl,
+        )
+        .with_function(
             "astrid_read_file",
             [PTR],
             [PTR],
@@ -517,13 +786,6 @@ pub fn register_host_functions(
             user_data.clone(),
             astrid_write_file_impl,
         )
-        .with_function(
-            "astrid_http_request",
-            [PTR],
-            [PTR],
-            user_data.clone(),
-            astrid_http_request_impl,
-        )
         // ── shim namespace (QuickJS kernel dispatch layer) ──
         //
         // The QuickJS kernel imports 3 functions from the `shim` namespace to
@@ -532,13 +794,18 @@ pub fn register_host_functions(
         // We provide them as host functions instead, eliminating the merge step.
         //
         // Host function indices (alphabetically sorted):
-        //   0: astrid_get_config   (PTR) -> PTR
-        //   1: astrid_http_request (PTR) -> PTR
-        //   2: astrid_kv_get       (PTR) -> PTR
-        //   3: astrid_kv_set       (PTR, PTR) -> void
-        //   4: astrid_log          (PTR, PTR) -> void
-        //   5: astrid_read_file    (PTR) -> PTR
-        //   6: astrid_write_file   (PTR, PTR) -> void
+        //   0: astrid_fs_exists    (PTR) -> PTR
+        //   1: astrid_fs_mkdir     (PTR) -> void
+        //   2: astrid_fs_readdir   (PTR) -> PTR
+        //   3: astrid_fs_stat      (PTR) -> PTR
+        //   4: astrid_fs_unlink    (PTR) -> void
+        //   5: astrid_get_config   (PTR) -> PTR
+        //   6: astrid_http_request (PTR) -> PTR
+        //   7: astrid_kv_get       (PTR) -> PTR
+        //   8: astrid_kv_set       (PTR, PTR) -> void
+        //   9: astrid_log          (PTR, PTR) -> void
+        //  10: astrid_read_file    (PTR) -> PTR
+        //  11: astrid_write_file   (PTR, PTR) -> void
         .with_function_in_namespace(
             "shim",
             "__get_function_arg_type",
@@ -581,18 +848,27 @@ const TYPE_VOID: i32 = 0;
 const TYPE_I64: i32 = 2;
 
 /// Number of host functions.
-const NUM_HOST_FNS: i32 = 7;
+const NUM_HOST_FNS: i32 = 12;
 
 /// Number of arguments per host function (alphabetically sorted).
 ///
-/// `[get_config=1, http_request=1, kv_get=1, kv_set=2, log=2, read_file=1, write_file=2]`
-const HOST_FN_ARG_COUNTS: [i32; 7] = [1, 1, 1, 2, 2, 1, 2];
+/// ```text
+/// [fs_exists=1, fs_mkdir=1, fs_readdir=1, fs_stat=1, fs_unlink=1,
+///  get_config=1, http_request=1, kv_get=1, kv_set=2, log=2,
+///  read_file=1, write_file=2]
+/// ```
+const HOST_FN_ARG_COUNTS: [i32; 12] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2];
 
 /// Return type per host function: 0=void, 2=i64.
 ///
-/// `[get_config→i64, http_request→i64, kv_get→i64, kv_set→void, log→void, read_file→i64, write_file→void]`
-const HOST_FN_RETURN_TYPES: [i32; 7] = [
-    TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
+/// ```text
+/// [fs_exists→i64, fs_mkdir→void, fs_readdir→i64, fs_stat→i64, fs_unlink→void,
+///  get_config→i64, http_request→i64, kv_get→i64, kv_set→void, log→void,
+///  read_file→i64, write_file→void]
+/// ```
+const HOST_FN_RETURN_TYPES: [i32; 12] = [
+    TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID,
+    TYPE_VOID, TYPE_I64, TYPE_VOID,
 ];
 
 /// `shim::__get_function_arg_type(func_idx, arg_idx) -> type_code`
@@ -649,7 +925,7 @@ fn shim_get_function_return_type(
 ///
 /// Dispatches a host function call from the `QuickJS` kernel.
 /// Arguments are passed as i64 bit patterns (memory offsets for our functions).
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 fn shim_invoke_host_func(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -664,27 +940,62 @@ fn shim_invoke_host_func(
     // actual host function implementation.
     match func_idx {
         0 => {
+            // astrid_fs_exists(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astrid_fs_exists_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        1 => {
+            // astrid_fs_mkdir(PTR) -> void
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [];
+            astrid_fs_mkdir_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(0);
+        },
+        2 => {
+            // astrid_fs_readdir(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astrid_fs_readdir_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        3 => {
+            // astrid_fs_stat(PTR) -> PTR
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [Val::I64(0)];
+            astrid_fs_stat_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        4 => {
+            // astrid_fs_unlink(PTR) -> void
+            let fn_inputs = [Val::I64(args[0].unwrap_i64())];
+            let mut fn_outputs = [];
+            astrid_fs_unlink_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(0);
+        },
+        5 => {
             // astrid_get_config(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_get_config_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        1 => {
+        6 => {
             // astrid_http_request(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_http_request_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        2 => {
+        7 => {
             // astrid_kv_get(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_kv_get_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        3 => {
+        8 => {
             // astrid_kv_set(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -694,7 +1005,7 @@ fn shim_invoke_host_func(
             astrid_kv_set_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        4 => {
+        9 => {
             // astrid_log(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -704,14 +1015,14 @@ fn shim_invoke_host_func(
             astrid_log_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        5 => {
+        10 => {
             // astrid_read_file(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_read_file_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        6 => {
+        11 => {
             // astrid_write_file(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -773,6 +1084,11 @@ mod tests {
         // This list is the single source of truth — if a function is added,
         // it must be inserted here in sorted order.
         let expected_order = [
+            "astrid_fs_exists",
+            "astrid_fs_mkdir",
+            "astrid_fs_readdir",
+            "astrid_fs_stat",
+            "astrid_fs_unlink",
             "astrid_get_config",
             "astrid_http_request",
             "astrid_kv_get",
@@ -808,20 +1124,24 @@ mod tests {
         );
 
         // Verify arg counts match expected signatures:
+        //   fs_exists(path)=1, fs_mkdir(path)=1, fs_readdir(path)=1,
+        //   fs_stat(path)=1, fs_unlink(path)=1,
         //   get_config(key)=1, http_request(json)=1, kv_get(key)=1,
         //   kv_set(key,val)=2, log(level,msg)=2, read_file(path)=1,
         //   write_file(path,content)=2
-        let expected_args = [1, 1, 1, 2, 2, 1, 2];
+        let expected_args = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2];
         assert_eq!(
             HOST_FN_ARG_COUNTS, expected_args,
             "HOST_FN_ARG_COUNTS doesn't match expected signatures"
         );
 
         // Verify return types match:
+        //   fs_exists→i64, fs_mkdir→void, fs_readdir→i64, fs_stat→i64, fs_unlink→void,
         //   get_config→i64, http_request→i64, kv_get→i64,
         //   kv_set→void, log→void, read_file→i64, write_file→void
         let expected_returns = [
-            TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
+            TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_I64,
+            TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
         ];
         assert_eq!(
             HOST_FN_RETURN_TYPES, expected_returns,
