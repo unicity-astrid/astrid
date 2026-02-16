@@ -42,6 +42,7 @@ url = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock.workspace = true
+libc = "0.2"
 
 [features]
 http = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:sha2", "dep:subtle", "dep:base64", "dep:url"]

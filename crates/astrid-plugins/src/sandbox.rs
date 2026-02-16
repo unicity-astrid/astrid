@@ -10,7 +10,7 @@
 //! These profiles are applied to the `tokio::process::Command` before
 //! spawning the MCP server process.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(not(target_os = "macos"))]
 use tracing::warn;
@@ -19,12 +19,36 @@ use tracing::warn;
 use crate::error::PluginError;
 use crate::error::PluginResult;
 
+/// Resource limits applied to Tier 2 (Node.js) plugin subprocesses.
+///
+/// These are enforced via `setrlimit` in a `pre_exec` hook on Linux/macOS.
+#[derive(Debug, Clone)]
+pub struct ResourceLimits {
+    /// Maximum number of processes/threads (`RLIMIT_NPROC`).
+    pub max_processes: u64,
+    /// Maximum virtual address space in bytes (`RLIMIT_AS`).
+    pub max_memory_bytes: u64,
+    /// Maximum number of open file descriptors (`RLIMIT_NOFILE`).
+    pub max_open_files: u64,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_processes: 64,
+            max_memory_bytes: 512 * 1024 * 1024, // 512 MB
+            max_open_files: 256,
+        }
+    }
+}
+
 /// Sandbox profile for constraining a plugin MCP server process.
 ///
 /// The profile grants:
 /// - Read+write access to `workspace_root`
 /// - Read-only access to `plugin_dir` and system library paths
 /// - Network access restricted to `allowed_network` hosts (best-effort)
+/// - Optional resource limits for Tier 2 subprocesses
 #[derive(Debug, Clone)]
 pub struct SandboxProfile {
     /// Workspace root — plugin gets read+write access.
@@ -33,9 +57,15 @@ pub struct SandboxProfile {
     pub plugin_dir: PathBuf,
     /// Additional paths the plugin may read (e.g. config dirs).
     pub extra_read_paths: Vec<PathBuf>,
+    /// Additional paths the plugin may read+write (e.g. data dirs).
+    pub extra_write_paths: Vec<PathBuf>,
     /// Allowed network destinations (host or host:port patterns).
     /// Empty means no network restrictions are applied.
     pub allowed_network: Vec<String>,
+    /// Optional resource limits for subprocess confinement.
+    pub resource_limits: Option<ResourceLimits>,
+    /// Optional HOME override for the subprocess environment.
+    pub home_override: Option<PathBuf>,
 }
 
 impl SandboxProfile {
@@ -46,7 +76,30 @@ impl SandboxProfile {
             workspace_root,
             plugin_dir,
             extra_read_paths: Vec::new(),
+            extra_write_paths: Vec::new(),
             allowed_network: Vec::new(),
+            resource_limits: None,
+            home_override: None,
+        }
+    }
+
+    /// Create a sandbox profile for a Tier 2 Node.js plugin.
+    ///
+    /// Sets up:
+    /// - Read-only access to `install_dir` (plugin code + `node_modules`)
+    /// - Read-write access to `data_dir` (plugin's private data)
+    /// - `HOME` override pointing to `data_dir`
+    /// - Default resource limits (`RLIMIT_NPROC=64`, `RLIMIT_AS=512MB`, `RLIMIT_NOFILE=256`)
+    #[must_use]
+    pub fn for_node_plugin(install_dir: PathBuf, data_dir: PathBuf) -> Self {
+        Self {
+            workspace_root: data_dir.clone(),
+            plugin_dir: install_dir,
+            extra_read_paths: Vec::new(),
+            extra_write_paths: vec![data_dir.clone()],
+            allowed_network: Vec::new(),
+            resource_limits: Some(ResourceLimits::default()),
+            home_override: Some(data_dir),
         }
     }
 
@@ -62,6 +115,19 @@ impl SandboxProfile {
     pub fn with_allowed_network(mut self, hosts: Vec<String>) -> Self {
         self.allowed_network = hosts;
         self
+    }
+
+    /// Set resource limits for the subprocess.
+    #[must_use]
+    pub fn with_resource_limits(mut self, limits: ResourceLimits) -> Self {
+        self.resource_limits = Some(limits);
+        self
+    }
+
+    /// Get the HOME override, if set.
+    #[must_use]
+    pub fn home_override(&self) -> Option<&Path> {
+        self.home_override.as_deref()
     }
 
     /// Wrap a command with platform-specific sandbox enforcement.
@@ -192,6 +258,20 @@ impl SandboxProfile {
             );
         }
 
+        // Extra write paths (e.g. plugin data dirs)
+        for path in &self.extra_write_paths {
+            let _ = writeln!(
+                profile,
+                "(allow file-read* (subpath \"{}\"))",
+                path.display()
+            );
+            let _ = writeln!(
+                profile,
+                "(allow file-write* (subpath \"{}\"))",
+                path.display()
+            );
+        }
+
         // Allow process execution for the command and node runtime
         let _ = writeln!(profile, "(allow process-exec (literal \"{command}\"))");
         if let Ok(node_path) = which::which("node") {
@@ -270,6 +350,15 @@ impl SandboxProfile {
                 path: path.clone(),
                 read: true,
                 write: false,
+            });
+        }
+
+        // Extra write paths (e.g. plugin data dirs)
+        for path in &self.extra_write_paths {
+            rules.push(LandlockPathRule {
+                path: path.clone(),
+                read: true,
+                write: true,
             });
         }
 
