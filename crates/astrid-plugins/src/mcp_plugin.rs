@@ -614,7 +614,7 @@ fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), 
         rlim_cur: limits.max_processes,
         rlim_max: limits.max_processes,
     };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &nproc) } != 0 {
+    if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
 
@@ -623,7 +623,7 @@ fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), 
         rlim_cur: limits.max_memory_bytes,
         rlim_max: limits.max_memory_bytes,
     };
-    if unsafe { libc::setrlimit(libc::RLIMIT_AS, &address_space) } != 0 {
+    if unsafe { libc::setrlimit(libc::RLIMIT_AS, &raw const address_space) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
 
@@ -632,7 +632,7 @@ fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), 
         rlim_cur: limits.max_open_files,
         rlim_max: limits.max_open_files,
     };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &nofile) } != 0 {
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const nofile) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
 
