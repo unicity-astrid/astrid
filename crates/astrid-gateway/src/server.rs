@@ -398,33 +398,55 @@ impl DaemonServer {
 
         // Background task: auto-load discovered plugins after the server is
         // accepting connections (avoids blocking the 5s CLI connect timeout).
+        // Each plugin is taken out of the registry, loaded without the lock
+        // held, then put back — so MCP handshakes don't block other operations.
         {
             let registry_clone = Arc::clone(&plugin_registry);
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
             tokio::spawn(async move {
-                let mut registry = registry_clone.write().await;
-                let plugin_ids: Vec<PluginId> = registry.list().into_iter().cloned().collect();
+                // Collect IDs under a brief read lock.
+                let plugin_ids: Vec<PluginId> = {
+                    let registry = registry_clone.read().await;
+                    registry.list().into_iter().cloned().collect()
+                };
+
                 for plugin_id in plugin_ids {
-                    if let Some(plugin) = registry.get_mut(&plugin_id) {
-                        let kv = match ScopedKvStore::new(
-                            Arc::clone(&kv_clone),
-                            format!("plugin:{plugin_id}"),
-                        ) {
-                            Ok(kv) => kv,
-                            Err(e) => {
-                                warn!(plugin_id = %plugin_id, error = %e, "Failed to create plugin KV scope");
-                                continue;
-                            },
-                        };
-                        let config = plugin.manifest().config.clone();
-                        let ctx = PluginContext::new(workspace_root.clone(), kv, config);
-                        if let Err(e) = plugin.load(&ctx).await {
-                            warn!(plugin_id = %plugin_id, error = %e, "Failed to auto-load plugin");
-                        } else {
-                            info!(plugin_id = %plugin_id, "Auto-loaded plugin");
+                    // Take the plugin out (brief write lock).
+                    let mut plugin = {
+                        let mut registry = registry_clone.write().await;
+                        match registry.unregister(&plugin_id) {
+                            Ok(p) => p,
+                            Err(_) => continue,
                         }
+                    };
+
+                    let kv = match ScopedKvStore::new(
+                        Arc::clone(&kv_clone),
+                        format!("plugin:{plugin_id}"),
+                    ) {
+                        Ok(kv) => kv,
+                        Err(e) => {
+                            warn!(plugin_id = %plugin_id, error = %e, "Failed to create plugin KV scope");
+                            // Put it back.
+                            let mut registry = registry_clone.write().await;
+                            let _ = registry.register(plugin);
+                            continue;
+                        },
+                    };
+                    let config = plugin.manifest().config.clone();
+                    let ctx = PluginContext::new(workspace_root.clone(), kv, config);
+
+                    // Load without holding any lock.
+                    if let Err(e) = plugin.load(&ctx).await {
+                        warn!(plugin_id = %plugin_id, error = %e, "Failed to auto-load plugin");
+                    } else {
+                        info!(plugin_id = %plugin_id, "Auto-loaded plugin");
                     }
+
+                    // Put the plugin back (brief write lock).
+                    let mut registry = registry_clone.write().await;
+                    let _ = registry.register(plugin);
                 }
             });
         }
@@ -1454,72 +1476,87 @@ impl AstridRpcServer for RpcImpl {
             )
         })?;
 
-        // Acquire write lock, load the plugin, extract event info, then release.
-        let (info, event) = {
+        // Take the plugin out of the registry so we can load it without
+        // holding the write lock (MCP plugins spawn subprocesses + handshake).
+        let mut plugin = {
             let mut registry = self.plugin_registry.write().await;
-            let plugin = registry.get_mut(&pid).ok_or_else(|| {
+            registry.unregister(&pid).map_err(|_| {
                 ErrorObjectOwned::owned(
                     error_codes::PLUGIN_NOT_FOUND,
                     format!("Plugin not found: {plugin_id}"),
                     None::<()>,
                 )
-            })?;
+            })?
+        };
+        // Write lock released — other registry operations are unblocked.
 
-            let kv = ScopedKvStore::new(
-                Arc::clone(&self.workspace_kv),
-                format!("plugin:{plugin_id}"),
-            )
-            .map_err(|e| {
-                ErrorObjectOwned::owned(
+        let kv = match ScopedKvStore::new(
+            Arc::clone(&self.workspace_kv),
+            format!("plugin:{plugin_id}"),
+        ) {
+            Ok(kv) => kv,
+            Err(e) => {
+                // Put the plugin back before returning the error.
+                let mut registry = self.plugin_registry.write().await;
+                let _ = registry.register(plugin);
+                return Err(ErrorObjectOwned::owned(
                     error_codes::INTERNAL_ERROR,
                     format!("Failed to create plugin KV scope: {e}"),
                     None::<()>,
-                )
-            })?;
-
-            let config = plugin.manifest().config.clone();
-            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            let ctx = PluginContext::new(cwd, kv, config);
-
-            let load_result = plugin.load(&ctx).await;
-            let manifest = plugin.manifest();
-            let name = manifest.name.clone();
-
-            let (state_str, error, event) = match load_result {
-                Ok(()) => (
-                    "ready".to_string(),
-                    None,
-                    DaemonEvent::PluginLoaded {
-                        id: plugin_id.clone(),
-                        name: name.clone(),
-                    },
-                ),
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    (
-                        "failed".to_string(),
-                        Some(err_msg.clone()),
-                        DaemonEvent::PluginFailed {
-                            id: plugin_id.clone(),
-                            error: err_msg,
-                        },
-                    )
-                },
-            };
-
-            let info = PluginInfo {
-                id: plugin_id.clone(),
-                name,
-                version: manifest.version.clone(),
-                state: state_str,
-                tool_count: plugin.tools().len(),
-                description: manifest.description.clone(),
-                error,
-            };
-
-            (info, event)
+                ));
+            },
         };
-        // Lock released — safe to broadcast.
+
+        let config = plugin.manifest().config.clone();
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let ctx = PluginContext::new(cwd, kv, config);
+
+        // Expensive async load happens outside the lock.
+        let load_result = plugin.load(&ctx).await;
+        let manifest = plugin.manifest();
+        let name = manifest.name.clone();
+
+        let (state_str, error, event) = match load_result {
+            Ok(()) => (
+                "ready".to_string(),
+                None,
+                DaemonEvent::PluginLoaded {
+                    id: plugin_id.clone(),
+                    name: name.clone(),
+                },
+            ),
+            Err(e) => {
+                let err_msg = e.to_string();
+                (
+                    "failed".to_string(),
+                    Some(err_msg.clone()),
+                    DaemonEvent::PluginFailed {
+                        id: plugin_id.clone(),
+                        error: err_msg,
+                    },
+                )
+            },
+        };
+
+        let tool_count = plugin.tools().len();
+        let version = manifest.version.clone();
+        let description = manifest.description.clone();
+
+        // Brief write lock to put the plugin back.
+        {
+            let mut registry = self.plugin_registry.write().await;
+            let _ = registry.register(plugin);
+        }
+
+        let info = PluginInfo {
+            id: plugin_id,
+            name,
+            version,
+            state: state_str,
+            tool_count,
+            description,
+            error,
+        };
 
         self.broadcast_to_all_sessions(event).await;
 
@@ -1546,33 +1583,43 @@ impl AstridRpcServer for RpcImpl {
             )
         })?;
 
-        // Acquire write lock, unload, extract event info, then release.
-        let event = {
+        // Take the plugin out so we can unload without holding the lock
+        // (MCP plugins may need to shut down child processes).
+        let mut plugin = {
             let mut registry = self.plugin_registry.write().await;
-            let plugin = registry.get_mut(&pid).ok_or_else(|| {
+            registry.unregister(&pid).map_err(|_| {
                 ErrorObjectOwned::owned(
                     error_codes::PLUGIN_NOT_FOUND,
                     format!("Plugin not found: {plugin_id}"),
                     None::<()>,
                 )
-            })?;
-
-            let name = plugin.manifest().name.clone();
-            plugin.unload().await.map_err(|e| {
-                ErrorObjectOwned::owned(
-                    error_codes::PLUGIN_ERROR,
-                    format!("Failed to unload plugin: {e}"),
-                    None::<()>,
-                )
-            })?;
-
-            DaemonEvent::PluginUnloaded {
-                id: plugin_id,
-                name,
-            }
+            })?
         };
-        // Lock released — safe to broadcast.
 
+        let name = plugin.manifest().name.clone();
+
+        // Unload outside the lock.
+        let unload_result = plugin.unload().await;
+
+        // Always put the plugin back (brief write lock).
+        {
+            let mut registry = self.plugin_registry.write().await;
+            let _ = registry.register(plugin);
+        }
+
+        // Now check the result after re-registering.
+        unload_result.map_err(|e| {
+            ErrorObjectOwned::owned(
+                error_codes::PLUGIN_ERROR,
+                format!("Failed to unload plugin: {e}"),
+                None::<()>,
+            )
+        })?;
+
+        let event = DaemonEvent::PluginUnloaded {
+            id: plugin_id,
+            name,
+        };
         self.broadcast_to_all_sessions(event).await;
 
         Ok(())
