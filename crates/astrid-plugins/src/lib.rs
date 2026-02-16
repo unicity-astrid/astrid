@@ -29,6 +29,8 @@
 pub mod context;
 pub mod discovery;
 pub mod error;
+#[cfg(feature = "http")]
+pub mod git_install;
 pub mod lockfile;
 pub mod manifest;
 pub mod mcp_plugin;
@@ -45,6 +47,8 @@ pub mod wasm;
 pub use context::{PluginContext, PluginToolContext};
 pub use discovery::{discover_manifests, load_manifest, load_manifests_from_dir};
 pub use error::{PluginError, PluginResult};
+#[cfg(feature = "http")]
+pub use git_install::GitSource;
 pub use lockfile::{IntegrityViolation, LockedPlugin, PluginLockfile, PluginSource};
 pub use manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
 pub use mcp_plugin::{McpPlugin, create_plugin};

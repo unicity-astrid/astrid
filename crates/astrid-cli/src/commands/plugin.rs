@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 
 use astrid_core::dirs::AstridHome;
+use astrid_plugins::git_install::GitSource;
 use astrid_plugins::lockfile::{LOCKFILE_NAME, LockedPlugin, PluginLockfile, PluginSource};
 use astrid_plugins::manifest::{PluginCapability, PluginEntryPoint};
 use astrid_plugins::npm::{NpmFetcher, NpmSpec};
@@ -641,13 +642,18 @@ pub(crate) async fn remove_plugin(id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Install a plugin from a local path or registry.
+/// Install a plugin from a local path, registry, or git source.
 pub(crate) async fn install_plugin(
     source: &str,
     from_openclaw: bool,
     workspace: bool,
 ) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
+
+    // Detect git source prefixes
+    if source.starts_with("github:") || source.starts_with("git:") {
+        return install_from_git(source, workspace, &home).await;
+    }
 
     if from_openclaw {
         install_from_openclaw(source, workspace, &home).await
@@ -737,6 +743,115 @@ async fn install_from_openclaw(
             "{}",
             Theme::dimmed(&format!("  Location: {}", target_dir.display()))
         );
+    }
+
+    Ok(())
+}
+
+/// Install from a git repository (GitHub shorthand or generic git URL).
+///
+/// Fetches the repository, detects the plugin type, compiles if needed,
+/// and installs atomically.
+async fn install_from_git(source: &str, workspace: bool, home: &AstridHome) -> anyhow::Result<()> {
+    let git_source = GitSource::parse(source).context("invalid git source specifier")?;
+
+    println!(
+        "{}",
+        Theme::info(&format!(
+            "Installing from git: {}",
+            git_source.display_source()
+        ))
+    );
+
+    // Fetch the source
+    println!("{}", Theme::dimmed("  Fetching repository..."));
+    let (_tmp_dir, source_root) = astrid_plugins::git_install::fetch_git_source(&git_source)
+        .await
+        .context("failed to fetch git source")?;
+
+    // Detect plugin type and route to appropriate pipeline
+    if source_root.join("plugin.toml").exists() {
+        // Pre-compiled plugin — copy into staging and install
+        let manifest = load_manifest(&source_root.join("plugin.toml"))
+            .context("failed to load plugin manifest from git source")?;
+        let id = manifest.id.as_str().to_string();
+        let target_dir = resolve_target_dir(home, &id, workspace)?;
+
+        let parent = target_dir.parent().context("target dir has no parent")?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+
+        let staging = tempfile::tempdir_in(parent).context("failed to create staging directory")?;
+
+        println!(
+            "{}",
+            Theme::dimmed(&format!("  Installing plugin '{id}'..."))
+        );
+        copy_plugin_dir(&source_root, staging.path())?;
+
+        let lockfile_path = resolve_lockfile_path(home, workspace)?;
+        let locked = LockedPlugin::from_manifest(
+            &manifest,
+            staging.path(),
+            PluginSource::Git {
+                url: git_source.display_source(),
+                commit: None,
+            },
+        )?;
+
+        atomic_install(staging, &target_dir, &locked, &lockfile_path)?;
+        notify_daemon("load", &id).await;
+
+        println!("{}", Theme::success(&format!("Installed plugin '{id}'")));
+    } else if source_root.join("openclaw.plugin.json").exists() {
+        // OpenClaw plugin — compile to WASM via staging
+        let oc_manifest = openclaw_bridge::manifest::parse_manifest(&source_root)
+            .context("failed to parse openclaw.plugin.json from git source")?;
+        let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
+            .context("failed to convert OpenClaw ID")?;
+        let target_dir = resolve_target_dir(home, &astrid_id, workspace)?;
+
+        let parent = target_dir.parent().context("target dir has no parent")?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+
+        let staging = tempfile::tempdir_in(parent).context("failed to create staging directory")?;
+
+        println!(
+            "{}",
+            Theme::dimmed(&format!("  Compiling OpenClaw plugin (ID: {astrid_id})..."))
+        );
+        compile_openclaw(&source_root, staging.path(), home)?;
+
+        let lockfile_path = resolve_lockfile_path(home, workspace)?;
+        let manifest = load_manifest(&staging.path().join("plugin.toml"))?;
+        let locked = LockedPlugin::from_manifest(
+            &manifest,
+            staging.path(),
+            PluginSource::Git {
+                url: git_source.display_source(),
+                commit: None,
+            },
+        )?;
+
+        atomic_install(staging, &target_dir, &locked, &lockfile_path)?;
+        notify_daemon("load", &astrid_id).await;
+
+        println!(
+            "{}",
+            Theme::success(&format!("Installed plugin '{astrid_id}'"))
+        );
+    } else {
+        bail!(
+            "Cannot detect plugin type in git source '{}'. Expected:\n\
+             - plugin.toml (pre-compiled plugin)\n\
+             - openclaw.plugin.json (OpenClaw plugin)",
+            git_source.display_source()
+        );
+    }
+
+    if workspace {
+        println!("{}", Theme::dimmed("  Location: .astrid/plugins/"));
     }
 
     Ok(())
