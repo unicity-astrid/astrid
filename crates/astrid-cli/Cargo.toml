@@ -53,6 +53,11 @@ jsonrpsee = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Transpilation (Tier 2 TS→JS pre-processing)
+oxc = { workspace = true }
+oxc_allocator = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }

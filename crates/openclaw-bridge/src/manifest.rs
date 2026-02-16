@@ -3,6 +3,10 @@
 //! Reads `openclaw.plugin.json` from a plugin directory, validates required
 //! fields, and converts the `OpenClaw` ID to an Astrid-compatible `PluginId`
 //! (lowercase, hyphens only, no leading/trailing hyphens).
+//!
+//! Entry points are NOT stored in `openclaw.plugin.json`. They come from
+//! `package.json` → `openclaw.extensions` array. Use [`resolve_entry_point`]
+//! to find the plugin's main file.
 
 use std::path::Path;
 
@@ -11,30 +15,61 @@ use serde::Deserialize;
 use crate::error::{BridgeError, BridgeResult};
 
 /// Parsed `OpenClaw` plugin manifest (`openclaw.plugin.json`).
+///
+/// Real `OpenClaw` manifests have `id` and `configSchema` as required fields.
+/// Everything else (`name`, `version`, `description`, `kind`, `channels`,
+/// `providers`, `skills`) is optional.
+///
+/// Entry points are NOT in this file — they come from `package.json`.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenClawManifest {
     /// Plugin identifier (e.g. `"hello-tool"`, `"my_plugin.v2"`).
     pub id: String,
-    /// Human-readable name.
-    pub name: String,
-    /// Semantic version string.
-    pub version: String,
+    /// JSON Schema for plugin configuration.
+    pub config_schema: serde_json::Value,
+    /// Optional human-readable name.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Optional semantic version string.
+    #[serde(default)]
+    pub version: Option<String>,
     /// Optional description.
     #[serde(default)]
     pub description: Option<String>,
-    /// Entry point file relative to the plugin directory.
-    pub main: String,
-    /// Engine version constraints.
+    /// Optional plugin kind (e.g. `"tool"`, `"service"`).
     #[serde(default)]
-    pub engines: Option<EngineConstraints>,
+    pub kind: Option<String>,
+    /// Channel identifiers this plugin registers (e.g. `["discord"]`).
+    #[serde(default)]
+    pub channels: Vec<String>,
+    /// Provider identifiers this plugin registers.
+    #[serde(default)]
+    pub providers: Vec<String>,
+    /// Skill identifiers this plugin registers.
+    #[serde(default)]
+    pub skills: Vec<String>,
 }
 
-/// Engine version constraints from the manifest.
-#[derive(Debug, Clone, Deserialize)]
-pub struct EngineConstraints {
-    /// Required `OpenClaw` engine version (e.g. `"^0.x"`).
-    #[serde(default)]
-    pub openclaw: Option<String>,
+impl OpenClawManifest {
+    /// Get the plugin name, falling back to the ID if not specified.
+    #[must_use]
+    pub fn display_name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+
+    /// Get the plugin version, falling back to `"0.0.0"` if not specified.
+    #[must_use]
+    pub fn display_version(&self) -> &str {
+        self.version.as_deref().unwrap_or("0.0.0")
+    }
+
+    /// Whether this plugin declares channels or providers that require
+    /// host-side integration (Tier 2 / Node.js).
+    #[must_use]
+    pub fn requires_host_integration(&self) -> bool {
+        !self.channels.is_empty() || !self.providers.is_empty()
+    }
 }
 
 const MANIFEST_FILENAME: &str = "openclaw.plugin.json";
@@ -57,33 +92,64 @@ pub fn parse_manifest(plugin_dir: &Path) -> BridgeResult<OpenClawManifest> {
     Ok(manifest)
 }
 
-/// Validate required fields and engine constraints.
+/// Validate required fields.
 fn validate_manifest(m: &OpenClawManifest) -> BridgeResult<()> {
     if m.id.is_empty() {
         return Err(BridgeError::Manifest("'id' must not be empty".into()));
     }
-    if m.name.is_empty() {
-        return Err(BridgeError::Manifest("'name' must not be empty".into()));
-    }
-    if m.version.is_empty() {
-        return Err(BridgeError::Manifest("'version' must not be empty".into()));
-    }
-    if m.main.is_empty() {
-        return Err(BridgeError::Manifest("'main' must not be empty".into()));
-    }
-
-    // Check engine version if specified — we only support ^0.x
-    if let Some(engines) = &m.engines
-        && let Some(oc_version) = &engines.openclaw
-        && !oc_version.starts_with("^0.")
-        && !oc_version.starts_with("0.")
-    {
-        return Err(BridgeError::Manifest(format!(
-            "unsupported engine version '{oc_version}', expected ^0.x"
-        )));
-    }
-
     Ok(())
+}
+
+/// Resolve the plugin's entry point file from `package.json`.
+///
+/// Looks for the entry point in this order:
+/// 1. `package.json` → `openclaw.extensions[0]`
+/// 2. `src/index.ts`
+/// 3. `src/index.js`
+/// 4. `index.ts`
+/// 5. `index.js`
+///
+/// # Errors
+///
+/// Returns `BridgeError::Manifest` if no entry point can be found.
+pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
+    // Try package.json → openclaw.extensions
+    let pkg_path = plugin_dir.join("package.json");
+    if let Ok(content) = std::fs::read_to_string(&pkg_path)
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content)
+        && let Some(extensions) = parsed
+            .get("openclaw")
+            .and_then(|oc| oc.get("extensions"))
+            .and_then(|e| e.as_array())
+        && let Some(first) = extensions.first().and_then(|v| v.as_str())
+    {
+        // Reject path traversal and absolute paths — entry point must stay within plugin_dir
+        if first.contains("..") {
+            return Err(BridgeError::Manifest(format!(
+                "entry point '{first}' contains '..' — path traversal not allowed"
+            )));
+        }
+        if Path::new(first).is_absolute() {
+            return Err(BridgeError::Manifest(format!(
+                "entry point '{first}' is an absolute path — must be relative to plugin directory"
+            )));
+        }
+        return Ok(first.to_string());
+    }
+
+    // Fallback: check common entry point locations
+    let candidates = ["src/index.ts", "src/index.js", "index.ts", "index.js"];
+    for candidate in &candidates {
+        if plugin_dir.join(candidate).exists() {
+            return Ok((*candidate).to_string());
+        }
+    }
+
+    Err(BridgeError::Manifest(
+        "could not resolve entry point: no 'openclaw.extensions' in package.json \
+         and no src/index.ts, src/index.js, index.ts, or index.js found"
+            .into(),
+    ))
 }
 
 /// Convert an `OpenClaw` plugin ID to an Astrid-compatible plugin ID.
@@ -189,75 +255,157 @@ mod tests {
     }
 
     #[test]
-    fn parse_manifest_valid() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-valid");
-        let _ = std::fs::create_dir_all(&dir);
+    fn parse_manifest_minimal() {
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
-            r#"{"id":"hello-tool","name":"Hello Tool","version":"1.0.0","main":"index.js"}"#,
+            dir.path().join(MANIFEST_FILENAME),
+            r#"{"id":"hello-tool","configSchema":{"type":"object","properties":{}}}"#,
         )
         .unwrap();
 
-        let m = parse_manifest(&dir).unwrap();
+        let m = parse_manifest(dir.path()).unwrap();
         assert_eq!(m.id, "hello-tool");
-        assert_eq!(m.name, "Hello Tool");
-        assert_eq!(m.version, "1.0.0");
-        assert_eq!(m.main, "index.js");
-        assert!(m.engines.is_none());
-
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(m.name.is_none());
+        assert!(m.version.is_none());
+        assert_eq!(m.display_name(), "hello-tool");
+        assert_eq!(m.display_version(), "0.0.0");
     }
 
     #[test]
-    fn parse_manifest_with_engines() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-engines");
-        let _ = std::fs::create_dir_all(&dir);
+    fn parse_manifest_full() {
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
-            r#"{"id":"test","name":"Test","version":"1.0.0","main":"index.js","engines":{"openclaw":"^0.1"}}"#,
+            dir.path().join(MANIFEST_FILENAME),
+            r#"{
+                "id": "discord",
+                "name": "Discord Channel",
+                "version": "1.0.0",
+                "description": "Discord integration",
+                "configSchema": {"type":"object","properties":{}},
+                "channels": ["discord"],
+                "providers": []
+            }"#,
         )
         .unwrap();
 
-        let m = parse_manifest(&dir).unwrap();
-        assert_eq!(
-            m.engines.as_ref().unwrap().openclaw.as_deref(),
-            Some("^0.1")
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
+        let m = parse_manifest(dir.path()).unwrap();
+        assert_eq!(m.id, "discord");
+        assert_eq!(m.name.as_deref(), Some("Discord Channel"));
+        assert_eq!(m.channels, vec!["discord"]);
+        assert!(m.requires_host_integration());
     }
 
     #[test]
-    fn parse_manifest_bad_engine_version() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-bad-engine");
-        let _ = std::fs::create_dir_all(&dir);
+    fn parse_manifest_with_providers() {
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
-            r#"{"id":"test","name":"Test","version":"1.0.0","main":"index.js","engines":{"openclaw":"^2.0"}}"#,
+            dir.path().join(MANIFEST_FILENAME),
+            r#"{"id":"copilot-proxy","configSchema":{},"providers":["copilot-proxy"]}"#,
         )
         .unwrap();
 
-        let result = parse_manifest(&dir);
+        let m = parse_manifest(dir.path()).unwrap();
+        assert!(m.requires_host_integration());
+    }
+
+    #[test]
+    fn parse_manifest_missing_id() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(MANIFEST_FILENAME), r#"{"configSchema":{}}"#).unwrap();
+
+        let result = parse_manifest(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_manifest_missing_config_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(MANIFEST_FILENAME), r#"{"id":"test"}"#).unwrap();
+
+        let result = parse_manifest(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_entry_from_package_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
+        )
+        .unwrap();
+
+        let entry = resolve_entry_point(dir.path()).unwrap();
+        assert_eq!(entry, "./src/index.ts");
+    }
+
+    #[test]
+    fn resolve_entry_fallback_src_index_ts() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src/index.ts"), "// plugin").unwrap();
+
+        let entry = resolve_entry_point(dir.path()).unwrap();
+        assert_eq!(entry, "src/index.ts");
+    }
+
+    #[test]
+    fn resolve_entry_no_match_fails() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let result = resolve_entry_point(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_entry_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["../../etc/passwd"]}}"#,
+        )
+        .unwrap();
+
+        let result = resolve_entry_point(dir.path());
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("unsupported engine version"), "got: {err}");
-
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            err.contains("path traversal"),
+            "error should mention path traversal: {err}"
+        );
     }
 
     #[test]
-    fn parse_manifest_missing_field() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-missing");
-        let _ = std::fs::create_dir_all(&dir);
+    fn resolve_entry_rejects_absolute_path() {
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
-            dir.join(MANIFEST_FILENAME),
-            r#"{"id":"test","name":"Test"}"#,
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["/etc/passwd"]}}"#,
         )
         .unwrap();
 
-        let result = parse_manifest(&dir);
+        let result = resolve_entry_point(dir.path());
         assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("absolute path"),
+            "error should mention absolute path: {err}"
+        );
+    }
 
-        let _ = std::fs::remove_dir_all(&dir);
+    #[test]
+    fn no_host_integration_for_simple_plugin() {
+        let m = OpenClawManifest {
+            id: "simple-tool".into(),
+            config_schema: serde_json::json!({}),
+            name: None,
+            version: None,
+            description: None,
+            kind: None,
+            channels: vec![],
+            providers: vec![],
+            skills: vec![],
+        };
+        assert!(!m.requires_host_integration());
     }
 }

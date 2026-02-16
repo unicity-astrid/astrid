@@ -75,8 +75,8 @@ pub fn generate_manifest(
 
     let manifest = OutputManifest {
         id: astrid_id.to_string(),
-        name: oc_manifest.name.clone(),
-        version: oc_manifest.version.clone(),
+        name: oc_manifest.display_name().to_string(),
+        version: oc_manifest.display_version().to_string(),
         description: oc_manifest.description.clone(),
         author: None,
         entry_point: OutputEntryPoint::Wasm {
@@ -150,28 +150,30 @@ mod tests {
 
     #[test]
     fn generate_manifest_creates_file() {
-        let dir = std::env::temp_dir().join("oc-bridge-test-output");
-        let _ = std::fs::create_dir_all(&dir);
+        let dir = tempfile::tempdir().unwrap();
 
         // Create a fake WASM file
-        let wasm_path = dir.join("plugin.wasm");
+        let wasm_path = dir.path().join("plugin.wasm");
         let mut f = std::fs::File::create(&wasm_path).unwrap();
         f.write_all(b"fake wasm bytes").unwrap();
 
         let oc = OpenClawManifest {
             id: "test-plugin".into(),
-            name: "Test Plugin".into(),
-            version: "1.0.0".into(),
+            config_schema: serde_json::json!({}),
+            name: Some("Test Plugin".into()),
+            version: Some("1.0.0".into()),
             description: Some("A test".into()),
-            main: "index.js".into(),
-            engines: None,
+            kind: None,
+            channels: vec![],
+            providers: vec![],
+            skills: vec![],
         };
 
         let config = HashMap::from([("key".into(), serde_json::json!("value"))]);
 
-        generate_manifest("test-plugin", &oc, &wasm_path, &config, &dir).unwrap();
+        generate_manifest("test-plugin", &oc, &wasm_path, &config, dir.path()).unwrap();
 
-        let toml_path = dir.join("plugin.toml");
+        let toml_path = dir.path().join("plugin.toml");
         assert!(toml_path.exists());
 
         let content = std::fs::read_to_string(&toml_path).unwrap();
@@ -179,7 +181,5 @@ mod tests {
         assert!(content.contains("type = \"wasm\""));
         assert!(content.contains("hash = "));
         assert!(content.contains("key = \"value\""));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
