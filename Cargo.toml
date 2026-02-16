@@ -204,6 +204,9 @@ subtle = "2"
 # File locking
 fs2 = "0.4"
 
+# Filesystem watching
+notify = "7"
+
 # URL parsing
 url = "2"
 

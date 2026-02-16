@@ -21,7 +21,7 @@ astrid-mcp.workspace = true
 astrid-telemetry.workspace = true
 astrid-llm.workspace = true
 astrid-runtime.workspace = true
-astrid-plugins.workspace = true
+astrid-plugins = { workspace = true, features = ["watch"] }
 astrid-storage = { workspace = true, features = ["kv"] }
 
 serde.workspace = true

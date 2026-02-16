@@ -43,6 +43,8 @@ pub mod sandbox;
 pub mod security;
 pub mod tool;
 pub mod wasm;
+#[cfg(feature = "watch")]
+pub mod watcher;
 
 pub use context::{PluginContext, PluginToolContext};
 pub use discovery::{discover_manifests, load_manifest, load_manifests_from_dir};
