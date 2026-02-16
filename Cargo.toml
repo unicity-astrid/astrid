@@ -55,7 +55,7 @@ exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-gues
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/astrid/astrid"
+repository = "https://github.com/unicity-astrid/astrid"
 rust-version = "1.93"
 
 [workspace.dependencies]
