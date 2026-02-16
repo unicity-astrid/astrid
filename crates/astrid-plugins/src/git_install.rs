@@ -123,6 +123,14 @@ impl GitSource {
             )));
         }
 
+        // Validate org/repo to prevent URL injection in API requests
+        validate_github_component(parts[0], "org")?;
+        validate_github_component(parts[1], "repo")?;
+
+        if let Some(ref r) = git_ref {
+            validate_git_ref(r)?;
+        }
+
         Ok(Self::GitHub {
             org: parts[0].to_string(),
             repo: parts[1].to_string(),
@@ -136,21 +144,32 @@ impl GitSource {
         // URL scheme whitelist: only https:// and ssh://
         validate_url_scheme(&url)?;
 
+        if let Some(ref r) = git_ref {
+            validate_git_ref(r)?;
+        }
+
         Ok(Self::GitUrl { url, git_ref })
     }
 }
 
 /// Split a `value@ref` string into `(value, Option<ref>)`.
 ///
-/// For git URLs, the `@` delimiter is only recognized after the host portion
-/// to avoid splitting on `@` in SSH URLs like `git@github.com:...`.
+/// For git URLs, the `@` delimiter is only recognized in the path portion
+/// (after the first `/` past `://`) to avoid splitting on `@` in the
+/// authority of SSH URLs like `ssh://git@github.com/...`.
 fn split_ref(s: &str) -> (String, Option<String>) {
-    // For URLs containing "://", split on the last "@" after the authority
+    // For URLs containing "://", only look for "@" in the path portion
+    // (after the authority), not in user@host.
     if let Some(scheme_end) = s.find("://") {
         let authority_start = scheme_end.saturating_add(3);
         let after_scheme = &s[authority_start..];
-        if let Some(at_pos) = after_scheme.rfind('@') {
-            let split_pos = authority_start.saturating_add(at_pos);
+        // Find the first '/' after the authority to skip user@host
+        let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let path_portion = &after_scheme[path_start..];
+        if let Some(at_pos) = path_portion.rfind('@') {
+            let split_pos = authority_start
+                .saturating_add(path_start)
+                .saturating_add(at_pos);
             let url = s[..split_pos].to_string();
             let ref_start = split_pos.saturating_add(1);
             let git_ref = s[ref_start..].to_string();
@@ -187,6 +206,68 @@ fn validate_url_scheme(url: &str) -> PluginResult<()> {
     )))
 }
 
+/// Validate a GitHub org or repo component against injection attacks.
+///
+/// GitHub usernames/org names: alphanumeric + hyphens (max 39 chars).
+/// Repo names: alphanumeric + hyphens + underscores + dots (max 100 chars).
+/// We use a generous superset that covers both.
+fn validate_github_component(value: &str, label: &str) -> PluginResult<()> {
+    if value.is_empty() || value.len() > 100 {
+        return Err(PluginError::ExecutionFailed(format!(
+            "GitHub {label} must be 1-100 characters, got {}",
+            value.len()
+        )));
+    }
+    let is_valid = value
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+    if !is_valid {
+        return Err(PluginError::ExecutionFailed(format!(
+            "GitHub {label} contains invalid characters: '{value}'"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate a git ref (branch, tag, or commit) for safety.
+///
+/// Rejects control characters, path traversal (`..`), shell metacharacters,
+/// and enforces git naming rules.
+fn validate_git_ref(git_ref: &str) -> PluginResult<()> {
+    if git_ref.is_empty() || git_ref.len() > 256 {
+        return Err(PluginError::ExecutionFailed(
+            "git ref must be 1-256 characters".into(),
+        ));
+    }
+    if git_ref.contains("..") {
+        return Err(PluginError::ExecutionFailed(format!(
+            "git ref contains '..': '{git_ref}'"
+        )));
+    }
+    // Only allow characters valid in git branch/tag names
+    let is_valid = git_ref
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/'));
+    if !is_valid {
+        return Err(PluginError::ExecutionFailed(format!(
+            "git ref contains invalid characters: '{git_ref}'"
+        )));
+    }
+    // Git doesn't allow refs starting/ending with '.' or ending with '.lock'
+    if git_ref.starts_with('.')
+        || git_ref.ends_with('.')
+        || std::path::Path::new(git_ref)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lock"))
+        || git_ref.contains("//")
+    {
+        return Err(PluginError::ExecutionFailed(format!(
+            "git ref has invalid format: '{git_ref}'"
+        )));
+    }
+    Ok(())
+}
+
 /// Fetch a plugin source from a git repository into a temporary directory.
 ///
 /// Returns the temp dir (ownership transferred to caller) and the path
@@ -202,7 +283,17 @@ pub async fn fetch_git_source(source: &GitSource) -> PluginResult<(tempfile::Tem
         GitSource::GitHub { org, repo, git_ref } => {
             fetch_github_tarball(org, repo, git_ref.as_deref()).await
         },
-        GitSource::GitUrl { url, git_ref } => clone_git_repo(url, git_ref.as_deref()),
+        GitSource::GitUrl { url, git_ref } => {
+            // Run blocking git clone on a dedicated thread to avoid
+            // blocking the Tokio runtime.
+            let url = url.clone();
+            let git_ref = git_ref.clone();
+            tokio::task::spawn_blocking(move || clone_git_repo(&url, git_ref.as_deref()))
+                .await
+                .map_err(|e| {
+                    PluginError::ExecutionFailed(format!("git clone task panicked: {e}"))
+                })?
+        },
     }
 }
 
@@ -385,20 +476,29 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
         let stripped = strip_first_component(&entry_path);
         let target = dest.join(stripped);
 
-        // Boundary check
-        if let Some(canonical_parent) = target.parent().and_then(|p| p.canonicalize().ok()) {
-            let canonical_target = canonical_parent.join(target.file_name().unwrap_or_default());
-            if !canonical_target.starts_with(&dest) {
-                return Err(PluginError::PathTraversal {
-                    path: entry_path.display().to_string(),
-                });
-            }
-        }
-
+        // Create parent directories first so we can canonicalize for the boundary check
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| PluginError::ExtractionError {
                 message: format!("failed to create directory {}: {e}", parent.display()),
             })?;
+        }
+
+        // Mandatory boundary check — verify target stays within dest after symlink resolution.
+        // Parent directory now exists, so canonicalize will succeed.
+        let canonical_parent = target
+            .parent()
+            .ok_or_else(|| PluginError::PathTraversal {
+                path: entry_path.display().to_string(),
+            })?
+            .canonicalize()
+            .map_err(|e| PluginError::ExtractionError {
+                message: format!("failed to canonicalize path for boundary check: {e}"),
+            })?;
+        let canonical_target = canonical_parent.join(target.file_name().unwrap_or_default());
+        if !canonical_target.starts_with(&dest) {
+            return Err(PluginError::PathTraversal {
+                path: entry_path.display().to_string(),
+            });
         }
 
         entry
@@ -608,5 +708,88 @@ mod tests {
         assert!(validate_url_scheme("file:///etc/passwd").is_err());
         assert!(validate_url_scheme("http://insecure.com/repo").is_err());
         assert!(validate_url_scheme("ftp://files.com/repo").is_err());
+    }
+
+    #[test]
+    fn split_ref_ssh_url_without_ref() {
+        // The '@' in ssh://git@github.com must NOT be treated as a ref delimiter
+        let (url, git_ref) = split_ref("ssh://git@github.com/org/repo.git");
+        assert_eq!(url, "ssh://git@github.com/org/repo.git");
+        assert_eq!(git_ref, None);
+    }
+
+    #[test]
+    fn split_ref_ssh_url_with_ref() {
+        let (url, git_ref) = split_ref("ssh://git@github.com/org/repo.git@v1.0.0");
+        assert_eq!(url, "ssh://git@github.com/org/repo.git");
+        assert_eq!(git_ref, Some("v1.0.0".to_string()));
+    }
+
+    #[test]
+    fn split_ref_https_url_with_ref() {
+        let (url, git_ref) = split_ref("https://github.com/org/repo.git@main");
+        assert_eq!(url, "https://github.com/org/repo.git");
+        assert_eq!(git_ref, Some("main".to_string()));
+    }
+
+    #[test]
+    fn split_ref_https_url_without_ref() {
+        let (url, git_ref) = split_ref("https://github.com/org/repo.git");
+        assert_eq!(url, "https://github.com/org/repo.git");
+        assert_eq!(git_ref, None);
+    }
+
+    #[test]
+    fn reject_github_org_with_slashes() {
+        assert!(validate_github_component("org/evil", "org").is_err());
+    }
+
+    #[test]
+    fn reject_github_org_with_url_injection() {
+        assert!(validate_github_component("org/../admin", "org").is_err());
+    }
+
+    #[test]
+    fn accept_valid_github_components() {
+        assert!(validate_github_component("my-org", "org").is_ok());
+        assert!(validate_github_component("my.repo_name", "repo").is_ok());
+        assert!(validate_github_component("CamelCase123", "org").is_ok());
+    }
+
+    #[test]
+    fn reject_git_ref_with_double_dot() {
+        assert!(validate_git_ref("main..evil").is_err());
+    }
+
+    #[test]
+    fn reject_git_ref_with_control_chars() {
+        assert!(validate_git_ref("main\x00evil").is_err());
+        assert!(validate_git_ref("v1.0;rm -rf /").is_err());
+    }
+
+    #[test]
+    fn reject_git_ref_too_long() {
+        let long_ref = "a".repeat(257);
+        assert!(validate_git_ref(&long_ref).is_err());
+    }
+
+    #[test]
+    fn accept_valid_git_refs() {
+        assert!(validate_git_ref("main").is_ok());
+        assert!(validate_git_ref("v1.0.0").is_ok());
+        assert!(validate_git_ref("feature/my-branch").is_ok());
+        assert!(validate_git_ref("abc123def456").is_ok());
+    }
+
+    #[test]
+    fn reject_github_source_with_invalid_org() {
+        let err = GitSource::parse("github:org/slashes/not-allowed").unwrap_err();
+        assert!(err.to_string().contains("invalid characters"));
+    }
+
+    #[test]
+    fn reject_github_source_with_bad_ref() {
+        let err = GitSource::parse("github:org/repo@main..evil").unwrap_err();
+        assert!(err.to_string().contains(".."));
     }
 }
