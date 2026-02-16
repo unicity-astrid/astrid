@@ -23,6 +23,7 @@ pub mod compiler;
 pub mod error;
 pub mod export_stitch;
 pub mod manifest;
+pub mod node_bridge;
 pub mod output;
 pub mod shim;
 pub mod transpiler;
