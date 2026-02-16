@@ -208,6 +208,13 @@ impl McpPlugin {
             cmd.env(key, value);
         }
 
+        // Inject HOME override from sandbox profile (Tier 2 plugins)
+        if let Some(sandbox) = &self.sandbox
+            && let Some(home) = sandbox.home_override()
+        {
+            cmd.env("HOME", home);
+        }
+
         // On Linux, apply Landlock rules via pre_exec hook.
         // PathFds are opened HERE (before fork) where heap allocation is safe.
         // Only raw Landlock syscalls run inside the pre_exec closure.
@@ -215,18 +222,31 @@ impl McpPlugin {
         if let Some(sandbox) = &self.sandbox {
             let prepared = prepare_landlock_rules(&sandbox.landlock_rules());
             let mut prepared = Some(prepared);
+            let rlimits = sandbox.resource_limits.clone();
             // SAFETY: pre_exec runs between fork() and exec(). The closure
             // only invokes Landlock syscalls (landlock_create_ruleset,
-            // landlock_add_rule, landlock_restrict_self) using pre-opened
-            // file descriptors. No heap allocation occurs inside the closure.
+            // landlock_add_rule, landlock_restrict_self) and setrlimit using
+            // pre-opened file descriptors. Error paths use last_os_error()
+            // (reads errno, no heap allocation). The ok_or_else and map_err
+            // closures in the Landlock path may allocate on error — this is
+            // technically not async-signal-safe but acceptable since errors
+            // here are fatal (process will not exec).
             unsafe {
                 cmd.pre_exec(move || {
+                    // Apply Landlock filesystem restrictions
                     let rules = prepared.take().ok_or_else(|| {
                         std::io::Error::other("Landlock pre_exec called more than once")
                     })?;
                     enforce_landlock_rules(rules).map_err(|e| {
                         std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.clone())
-                    })
+                    })?;
+
+                    // Apply resource limits if configured
+                    if let Some(ref limits) = rlimits {
+                        apply_resource_limits(limits)?;
+                    }
+
+                    Ok(())
                 });
             }
         }
@@ -577,6 +597,43 @@ fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String>
         | RulesetStatus::NotEnforced => {
             // NotEnforced: kernel doesn't support Landlock — not a fatal error
         },
+    }
+
+    Ok(())
+}
+
+/// Apply resource limits via `setrlimit` inside a `pre_exec` closure.
+///
+/// Uses only async-signal-safe operations: `setrlimit` is a direct syscall,
+/// and `Error::last_os_error()` reads `errno` without heap allocation.
+#[cfg(target_os = "linux")]
+#[allow(unsafe_code)]
+fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), std::io::Error> {
+    // RLIMIT_NPROC — max processes/threads (per-UID, not per-process)
+    let nproc = libc::rlimit {
+        rlim_cur: limits.max_processes,
+        rlim_max: limits.max_processes,
+    };
+    if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // RLIMIT_AS — max virtual address space
+    let address_space = libc::rlimit {
+        rlim_cur: limits.max_memory_bytes,
+        rlim_max: limits.max_memory_bytes,
+    };
+    if unsafe { libc::setrlimit(libc::RLIMIT_AS, &raw const address_space) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // RLIMIT_NOFILE — max open file descriptors
+    let nofile = libc::rlimit {
+        rlim_cur: limits.max_open_files,
+        rlim_max: limits.max_open_files,
+    };
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const nofile) } != 0 {
+        return Err(std::io::Error::last_os_error());
     }
 
     Ok(())

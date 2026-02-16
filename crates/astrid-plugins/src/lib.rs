@@ -35,6 +35,7 @@ pub mod mcp_plugin;
 #[cfg(feature = "http")]
 pub mod npm;
 pub mod plugin;
+pub mod plugin_dirs;
 pub mod registry;
 pub mod sandbox;
 pub mod security;
