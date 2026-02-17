@@ -1,9 +1,10 @@
 //! Extism host function implementations matching the WIT `host` interface.
 //!
-//! Twelve host functions are registered with every Extism plugin instance:
+//! Fourteen host functions are registered with every Extism plugin instance:
 //!
 //! | Function | Security Gate | Async Bridge |
 //! |----------|--------------|--------------|
+//! | `astrid_channel_send` | No | No |
 //! | `astrid_fs_exists` | Yes | No |
 //! | `astrid_fs_mkdir` | Yes | No |
 //! | `astrid_fs_readdir` | Yes | No |
@@ -15,6 +16,7 @@
 //! | `astrid_kv_set` | No | Yes |
 //! | `astrid_log` | No | No |
 //! | `astrid_read_file` | Yes | Yes |
+//! | `astrid_register_connector` | Yes | Yes |
 //! | `astrid_write_file` | Yes | Yes |
 //!
 //! All host functions use `UserData<HostState>` for shared state access.
@@ -30,6 +32,154 @@ use astrid_core::plugin_abi::HttpResponse;
 use astrid_core::plugin_abi::{KeyValuePair, LogLevel};
 
 use super::host_state::HostState;
+
+/// Maximum inbound message content size (1 MB).
+const MAX_INBOUND_MESSAGE_BYTES: usize = 1_048_576;
+
+/// Maximum length for connector name and `platform_user_id` strings (256 chars).
+const MAX_STRING_LENGTH: usize = 256;
+
+// ---------------------------------------------------------------------------
+// astrid_channel_send(connector_id, platform_user_id, content) -> result_json
+// ---------------------------------------------------------------------------
+
+/// Parse a platform string into a [`FrontendType`](astrid_core::identity::FrontendType).
+///
+/// Accepts lowercase platform names (e.g. `"discord"`, `"telegram"`, `"cli"`)
+/// and maps unknown strings to `FrontendType::Custom(...)`.
+///
+/// Note: unlike [`parse_connector_profile`], this intentionally never errors.
+/// `FrontendType` has a `Custom` variant for extensibility, so unknown
+/// platforms are valid rather than rejected.
+fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
+    use astrid_core::identity::FrontendType;
+    match platform.to_lowercase().as_str() {
+        "discord" => FrontendType::Discord,
+        "whatsapp" | "whats_app" => FrontendType::WhatsApp,
+        "telegram" => FrontendType::Telegram,
+        "slack" => FrontendType::Slack,
+        "web" => FrontendType::Web,
+        "cli" => FrontendType::Cli,
+        other => FrontendType::Custom(other.to_string()),
+    }
+}
+
+/// Parse a profile string into a [`ConnectorProfile`](astrid_core::ConnectorProfile).
+///
+/// Returns `Err` for unknown profile strings.
+fn parse_connector_profile(profile: &str) -> Result<astrid_core::ConnectorProfile, Error> {
+    use astrid_core::ConnectorProfile;
+    match profile.to_lowercase().as_str() {
+        "chat" => Ok(ConnectorProfile::Chat),
+        "interactive" => Ok(ConnectorProfile::Interactive),
+        "notify" => Ok(ConnectorProfile::Notify),
+        "bridge" => Ok(ConnectorProfile::Bridge),
+        other => Err(Error::msg(format!(
+            "invalid connector profile: {other:?} (expected: chat, interactive, notify, bridge)"
+        ))),
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_channel_send_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let connector_id_str: String = plugin.memory_get_val(&inputs[0])?;
+    let platform_user_id: String = plugin.memory_get_val(&inputs[1])?;
+    let content: String = plugin.memory_get_val(&inputs[2])?;
+
+    // Validate connector_id length (UUIDs are 36 chars; reject oversized strings early)
+    if connector_id_str.len() > 64 {
+        return Err(Error::msg("connector_id too long"));
+    }
+
+    // Validate platform_user_id length
+    if platform_user_id.len() > MAX_STRING_LENGTH {
+        return Err(Error::msg(format!(
+            "platform_user_id too long: {} bytes (max {MAX_STRING_LENGTH})",
+            platform_user_id.len()
+        )));
+    }
+
+    // Validate content size (max 1 MB per #36 guidance)
+    if content.len() > MAX_INBOUND_MESSAGE_BYTES {
+        return Err(Error::msg(format!(
+            "inbound message content too large: {} bytes (max {})",
+            content.len(),
+            MAX_INBOUND_MESSAGE_BYTES
+        )));
+    }
+
+    // Parse the connector_id UUID
+    let connector_uuid: uuid::Uuid = connector_id_str
+        .parse()
+        .map_err(|e| Error::msg(format!("invalid connector_id: {e}")))?;
+    let connector_id = astrid_core::ConnectorId::from_uuid(connector_uuid);
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let plugin_id = state.plugin_id.as_str().to_owned();
+    let inbound_tx = state.inbound_tx.clone();
+
+    // Explicit capability check (defense-in-depth — inbound_tx would be None
+    // anyway for non-connector plugins, but an explicit check is clearer)
+    if !state.has_connector_capability {
+        return Err(Error::msg(format!(
+            "plugin {plugin_id} does not declare Connector capability"
+        )));
+    }
+
+    // Find the platform from the registered connector
+    let platform = state
+        .registered_connectors
+        .iter()
+        .find(|c| c.id == connector_id)
+        .map(|c| c.frontend_type.clone())
+        .ok_or_else(|| {
+            Error::msg(format!(
+                "connector {connector_id} not registered by plugin {plugin_id}"
+            ))
+        })?;
+    drop(state);
+
+    // Verify we have an inbound channel
+    let tx = inbound_tx.ok_or_else(|| {
+        Error::msg(format!(
+            "plugin {plugin_id} has no inbound channel — is Connector capability declared?"
+        ))
+    })?;
+
+    // Build the inbound message
+    let message =
+        astrid_core::InboundMessage::builder(connector_id, platform, platform_user_id, content)
+            .build();
+
+    // Send through bounded channel — report drop if full (per #36 guidance)
+    let result = match tx.try_send(message) {
+        Ok(()) => serde_json::json!({"ok": true}),
+        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+            tracing::warn!(
+                plugin = %plugin_id,
+                connector = %connector_id,
+                "inbound channel full — dropping message"
+            );
+            serde_json::json!({"ok": false, "dropped": true})
+        },
+        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+            return Err(Error::msg("inbound channel closed"));
+        },
+    };
+
+    let result = result.to_string();
+    let mem = plugin.memory_new(&result)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // astrid_log(level, message)
@@ -428,6 +578,128 @@ fn astrid_read_file_impl(
 }
 
 // ---------------------------------------------------------------------------
+// astrid_register_connector(name, platform, profile) -> connector_id
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::needless_pass_by_value)] // Signature required by Extism callback API
+fn astrid_register_connector_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let name: String = plugin.memory_get_val(&inputs[0])?;
+    let platform_str: String = plugin.memory_get_val(&inputs[1])?;
+    let profile_str: String = plugin.memory_get_val(&inputs[2])?;
+
+    // Validate string lengths and emptiness
+    if name.is_empty() {
+        return Err(Error::msg("connector name must not be empty"));
+    }
+    if name.len() > MAX_STRING_LENGTH {
+        return Err(Error::msg(format!(
+            "connector name too long: {} bytes (max {MAX_STRING_LENGTH})",
+            name.len()
+        )));
+    }
+    if platform_str.len() > MAX_STRING_LENGTH {
+        return Err(Error::msg(format!(
+            "platform string too long: {} bytes (max {MAX_STRING_LENGTH})",
+            platform_str.len()
+        )));
+    }
+    if profile_str.len() > MAX_STRING_LENGTH {
+        return Err(Error::msg(format!(
+            "profile string too long: {} bytes (max {MAX_STRING_LENGTH})",
+            profile_str.len()
+        )));
+    }
+
+    // Validate inputs
+    let frontend_type = parse_frontend_type(&platform_str);
+    let profile = parse_connector_profile(&profile_str)?;
+
+    // First lock: read capability flag, security gate, and runtime handle
+    let ud = user_data.get()?;
+    let (plugin_id, has_capability, security, handle) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.plugin_id.as_str().to_owned(),
+            state.has_connector_capability,
+            state.security.clone(),
+            state.runtime_handle.clone(),
+        )
+    };
+
+    // Gate: only plugins with Connector capability may register connectors
+    if !has_capability {
+        return Err(Error::msg(format!(
+            "plugin {plugin_id} does not declare Connector capability"
+        )));
+    }
+
+    // Security gate check (may block on async)
+    if let Some(gate) = &security {
+        let gate = gate.clone();
+        let pid = plugin_id.clone();
+        let cname = name.clone();
+        let plat = platform_str.clone();
+        let check = handle
+            .block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!(
+                "security denied connector registration: {reason}"
+            )));
+        }
+    }
+
+    // Build the connector source (validated via ConnectorSource::new_wasm)
+    let source = astrid_core::ConnectorSource::new_wasm(&plugin_id).map_err(|e| {
+        Error::msg(format!(
+            "failed to create connector source for plugin {plugin_id}: {e}"
+        ))
+    })?;
+
+    // Build the descriptor
+    //
+    // NOTE: Capabilities are hardcoded to `receive_only()` for Phase 3. WASM
+    // connector plugins are inbound-only; send capabilities will be added in
+    // a future phase when outbound message routing is implemented.
+    let descriptor = astrid_core::ConnectorDescriptor::builder(name, frontend_type)
+        .source(source)
+        .capabilities(astrid_core::ConnectorCapabilities::receive_only())
+        .profile(profile)
+        .build();
+
+    let connector_id = descriptor.id.to_string();
+
+    // Second lock: register the descriptor
+    {
+        let mut state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        state.register_connector(descriptor).map_err(|e| {
+            Error::msg(format!(
+                "plugin {plugin_id}: {e} (max {})",
+                super::host_state::MAX_CONNECTORS_PER_PLUGIN
+            ))
+        })?;
+    }
+
+    tracing::info!(
+        plugin = %plugin_id,
+        connector = %connector_id,
+        "registered connector"
+    );
+
+    let mem = plugin.memory_new(&connector_id)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // astrid_write_file(path, content)
 // ---------------------------------------------------------------------------
 
@@ -690,7 +962,7 @@ fn lexical_normalize(path: &Path) -> std::path::PathBuf {
 /// Register all host functions with an Extism `PluginBuilder`.
 ///
 /// Registers:
-/// - 12 host functions in the `extism:host/user` namespace (`astrid_*`)
+/// - 14 host functions in the `extism:host/user` namespace (`astrid_*`)
 /// - 3 shim functions in the `shim` namespace (for `QuickJS` kernel dispatch)
 #[allow(clippy::too_many_lines)]
 pub fn register_host_functions(
@@ -702,6 +974,13 @@ pub fn register_host_functions(
     builder
         // ── extism:host/user namespace (standard host functions) ──
         // Registered alphabetically to match shim dispatch indices.
+        .with_function(
+            "astrid_channel_send",
+            [PTR, PTR, PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_channel_send_impl,
+        )
         .with_function(
             "astrid_fs_exists",
             [PTR],
@@ -780,6 +1059,13 @@ pub fn register_host_functions(
             astrid_read_file_impl,
         )
         .with_function(
+            "astrid_register_connector",
+            [PTR, PTR, PTR],
+            [PTR],
+            user_data.clone(),
+            astrid_register_connector_impl,
+        )
+        .with_function(
             "astrid_write_file",
             [PTR, PTR],
             [],
@@ -794,18 +1080,20 @@ pub fn register_host_functions(
         // We provide them as host functions instead, eliminating the merge step.
         //
         // Host function indices (alphabetically sorted):
-        //   0: astrid_fs_exists    (PTR) -> PTR
-        //   1: astrid_fs_mkdir     (PTR) -> void
-        //   2: astrid_fs_readdir   (PTR) -> PTR
-        //   3: astrid_fs_stat      (PTR) -> PTR
-        //   4: astrid_fs_unlink    (PTR) -> void
-        //   5: astrid_get_config   (PTR) -> PTR
-        //   6: astrid_http_request (PTR) -> PTR
-        //   7: astrid_kv_get       (PTR) -> PTR
-        //   8: astrid_kv_set       (PTR, PTR) -> void
-        //   9: astrid_log          (PTR, PTR) -> void
-        //  10: astrid_read_file    (PTR) -> PTR
-        //  11: astrid_write_file   (PTR, PTR) -> void
+        //   0: astrid_channel_send        (PTR, PTR, PTR) -> PTR
+        //   1: astrid_fs_exists           (PTR) -> PTR
+        //   2: astrid_fs_mkdir            (PTR) -> void
+        //   3: astrid_fs_readdir          (PTR) -> PTR
+        //   4: astrid_fs_stat             (PTR) -> PTR
+        //   5: astrid_fs_unlink           (PTR) -> void
+        //   6: astrid_get_config          (PTR) -> PTR
+        //   7: astrid_http_request        (PTR) -> PTR
+        //   8: astrid_kv_get              (PTR) -> PTR
+        //   9: astrid_kv_set              (PTR, PTR) -> void
+        //  10: astrid_log                 (PTR, PTR) -> void
+        //  11: astrid_read_file           (PTR) -> PTR
+        //  12: astrid_register_connector  (PTR, PTR, PTR) -> PTR
+        //  13: astrid_write_file          (PTR, PTR) -> void
         .with_function_in_namespace(
             "shim",
             "__get_function_arg_type",
@@ -848,27 +1136,28 @@ const TYPE_VOID: i32 = 0;
 const TYPE_I64: i32 = 2;
 
 /// Number of host functions.
-const NUM_HOST_FNS: i32 = 12;
+const NUM_HOST_FNS: i32 = 14;
 
 /// Number of arguments per host function (alphabetically sorted).
 ///
 /// ```text
-/// [fs_exists=1, fs_mkdir=1, fs_readdir=1, fs_stat=1, fs_unlink=1,
-///  get_config=1, http_request=1, kv_get=1, kv_set=2, log=2,
-///  read_file=1, write_file=2]
+/// [channel_send=3, fs_exists=1, fs_mkdir=1, fs_readdir=1, fs_stat=1,
+///  fs_unlink=1, get_config=1, http_request=1, kv_get=1, kv_set=2,
+///  log=2, read_file=1, register_connector=3, write_file=2]
 /// ```
-const HOST_FN_ARG_COUNTS: [i32; 12] = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2];
+const HOST_FN_ARG_COUNTS: [i32; 14] = [3, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 3, 2];
 
 /// Return type per host function: 0=void, 2=i64.
 ///
 /// ```text
-/// [fs_exists→i64, fs_mkdir→void, fs_readdir→i64, fs_stat→i64, fs_unlink→void,
-///  get_config→i64, http_request→i64, kv_get→i64, kv_set→void, log→void,
-///  read_file→i64, write_file→void]
+/// [channel_send→i64, fs_exists→i64, fs_mkdir→void, fs_readdir→i64,
+///  fs_stat→i64, fs_unlink→void, get_config→i64, http_request→i64,
+///  kv_get→i64, kv_set→void, log→void, read_file→i64,
+///  register_connector→i64, write_file→void]
 /// ```
-const HOST_FN_RETURN_TYPES: [i32; 12] = [
-    TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_I64, TYPE_VOID,
-    TYPE_VOID, TYPE_I64, TYPE_VOID,
+const HOST_FN_RETURN_TYPES: [i32; 14] = [
+    TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_I64,
+    TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID,
 ];
 
 /// `shim::__get_function_arg_type(func_idx, arg_idx) -> type_code`
@@ -940,62 +1229,73 @@ fn shim_invoke_host_func(
     // actual host function implementation.
     match func_idx {
         0 => {
+            // astrid_channel_send(PTR, PTR, PTR) -> PTR
+            let fn_inputs = [
+                Val::I64(args[0].unwrap_i64()),
+                Val::I64(args[1].unwrap_i64()),
+                Val::I64(args[2].unwrap_i64()),
+            ];
+            let mut fn_outputs = [Val::I64(0)];
+            astrid_channel_send_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        1 => {
             // astrid_fs_exists(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_fs_exists_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        1 => {
+        2 => {
             // astrid_fs_mkdir(PTR) -> void
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [];
             astrid_fs_mkdir_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        2 => {
+        3 => {
             // astrid_fs_readdir(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_fs_readdir_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        3 => {
+        4 => {
             // astrid_fs_stat(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_fs_stat_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        4 => {
+        5 => {
             // astrid_fs_unlink(PTR) -> void
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [];
             astrid_fs_unlink_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        5 => {
+        6 => {
             // astrid_get_config(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_get_config_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        6 => {
+        7 => {
             // astrid_http_request(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_http_request_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        7 => {
+        8 => {
             // astrid_kv_get(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_kv_get_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        8 => {
+        9 => {
             // astrid_kv_set(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -1005,7 +1305,7 @@ fn shim_invoke_host_func(
             astrid_kv_set_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        9 => {
+        10 => {
             // astrid_log(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -1015,14 +1315,25 @@ fn shim_invoke_host_func(
             astrid_log_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(0);
         },
-        10 => {
+        11 => {
             // astrid_read_file(PTR) -> PTR
             let fn_inputs = [Val::I64(args[0].unwrap_i64())];
             let mut fn_outputs = [Val::I64(0)];
             astrid_read_file_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
             outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
         },
-        11 => {
+        12 => {
+            // astrid_register_connector(PTR, PTR, PTR) -> PTR
+            let fn_inputs = [
+                Val::I64(args[0].unwrap_i64()),
+                Val::I64(args[1].unwrap_i64()),
+                Val::I64(args[2].unwrap_i64()),
+            ];
+            let mut fn_outputs = [Val::I64(0)];
+            astrid_register_connector_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?;
+            outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
+        },
+        13 => {
             // astrid_write_file(PTR, PTR) -> void
             let fn_inputs = [
                 Val::I64(args[0].unwrap_i64()),
@@ -1084,6 +1395,7 @@ mod tests {
         // This list is the single source of truth — if a function is added,
         // it must be inserted here in sorted order.
         let expected_order = [
+            "astrid_channel_send",
             "astrid_fs_exists",
             "astrid_fs_mkdir",
             "astrid_fs_readdir",
@@ -1095,6 +1407,7 @@ mod tests {
             "astrid_kv_set",
             "astrid_log",
             "astrid_read_file",
+            "astrid_register_connector",
             "astrid_write_file",
         ];
 
@@ -1124,28 +1437,98 @@ mod tests {
         );
 
         // Verify arg counts match expected signatures:
+        //   channel_send(connector_id,user_id,content)=3,
         //   fs_exists(path)=1, fs_mkdir(path)=1, fs_readdir(path)=1,
         //   fs_stat(path)=1, fs_unlink(path)=1,
         //   get_config(key)=1, http_request(json)=1, kv_get(key)=1,
         //   kv_set(key,val)=2, log(level,msg)=2, read_file(path)=1,
-        //   write_file(path,content)=2
-        let expected_args = [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2];
+        //   register_connector(name,platform,profile)=3, write_file(path,content)=2
+        let expected_args = [3, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 3, 2];
         assert_eq!(
             HOST_FN_ARG_COUNTS, expected_args,
             "HOST_FN_ARG_COUNTS doesn't match expected signatures"
         );
 
         // Verify return types match:
-        //   fs_exists→i64, fs_mkdir→void, fs_readdir→i64, fs_stat→i64, fs_unlink→void,
-        //   get_config→i64, http_request→i64, kv_get→i64,
-        //   kv_set→void, log→void, read_file→i64, write_file→void
+        //   channel_send→i64, fs_exists→i64, fs_mkdir→void, fs_readdir→i64,
+        //   fs_stat→i64, fs_unlink→void, get_config→i64, http_request→i64,
+        //   kv_get→i64, kv_set→void, log→void, read_file→i64,
+        //   register_connector→i64, write_file→void
         let expected_returns = [
-            TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_I64,
-            TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_VOID,
+            TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID, TYPE_I64, TYPE_I64,
+            TYPE_I64, TYPE_VOID, TYPE_VOID, TYPE_I64, TYPE_I64, TYPE_VOID,
         ];
         assert_eq!(
             HOST_FN_RETURN_TYPES, expected_returns,
             "HOST_FN_RETURN_TYPES doesn't match expected signatures"
         );
+    }
+
+    #[test]
+    fn parse_known_frontend_types() {
+        use astrid_core::identity::FrontendType;
+
+        assert_eq!(parse_frontend_type("discord"), FrontendType::Discord);
+        assert_eq!(parse_frontend_type("Discord"), FrontendType::Discord);
+        assert_eq!(parse_frontend_type("whatsapp"), FrontendType::WhatsApp);
+        assert_eq!(parse_frontend_type("whats_app"), FrontendType::WhatsApp);
+        assert_eq!(parse_frontend_type("telegram"), FrontendType::Telegram);
+        assert_eq!(parse_frontend_type("slack"), FrontendType::Slack);
+        assert_eq!(parse_frontend_type("web"), FrontendType::Web);
+        assert_eq!(parse_frontend_type("cli"), FrontendType::Cli);
+    }
+
+    #[test]
+    fn parse_unknown_frontend_type_becomes_custom() {
+        use astrid_core::identity::FrontendType;
+
+        assert_eq!(
+            parse_frontend_type("matrix"),
+            FrontendType::Custom("matrix".into())
+        );
+    }
+
+    #[test]
+    fn parse_valid_connector_profiles() {
+        use astrid_core::ConnectorProfile;
+
+        assert_eq!(
+            parse_connector_profile("chat").unwrap(),
+            ConnectorProfile::Chat
+        );
+        assert_eq!(
+            parse_connector_profile("interactive").unwrap(),
+            ConnectorProfile::Interactive
+        );
+        assert_eq!(
+            parse_connector_profile("notify").unwrap(),
+            ConnectorProfile::Notify
+        );
+        assert_eq!(
+            parse_connector_profile("bridge").unwrap(),
+            ConnectorProfile::Bridge
+        );
+        assert_eq!(
+            parse_connector_profile("Chat").unwrap(),
+            ConnectorProfile::Chat
+        );
+    }
+
+    #[test]
+    fn parse_invalid_connector_profile_rejected() {
+        assert!(parse_connector_profile("unknown").is_err());
+        assert!(parse_connector_profile("").is_err());
+    }
+
+    #[test]
+    fn max_string_length_constant_is_reasonable() {
+        // Sanity check: MAX_STRING_LENGTH shouldn't be 0 or absurdly large
+        assert!(MAX_STRING_LENGTH >= 64, "MAX_STRING_LENGTH too small");
+        assert!(MAX_STRING_LENGTH <= 4096, "MAX_STRING_LENGTH too large");
+    }
+
+    #[test]
+    fn max_inbound_message_bytes_constant_is_one_mb() {
+        assert_eq!(MAX_INBOUND_MESSAGE_BYTES, 1_048_576);
     }
 }
