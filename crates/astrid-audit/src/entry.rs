@@ -148,6 +148,16 @@ pub enum AuditAction {
         args_hash: ContentHash,
     },
 
+    /// Plugin tool was called.
+    PluginToolCall {
+        /// Plugin ID.
+        plugin_id: String,
+        /// Tool name.
+        tool: String,
+        /// Hash of the arguments (not the args themselves for privacy).
+        args_hash: ContentHash,
+    },
+
     /// MCP resource was read.
     McpResourceRead {
         /// Server name.
@@ -357,6 +367,11 @@ impl AuditAction {
         match self {
             Self::McpToolCall { server, tool, .. } => {
                 format!("Called tool {server}:{tool}")
+            },
+            Self::PluginToolCall {
+                plugin_id, tool, ..
+            } => {
+                format!("Called plugin tool {plugin_id}:{tool}")
             },
             Self::McpResourceRead { server, uri } => {
                 format!("Read resource {server}:{uri}")

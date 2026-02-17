@@ -663,6 +663,13 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         &self.boundary
     }
 
+    /// Set a custom security policy.
+    #[must_use]
+    pub fn with_security_policy(mut self, policy: SecurityPolicy) -> Self {
+        self.security_policy = policy;
+        self
+    }
+
     /// Set a pre-configured hook manager.
     #[must_use]
     pub fn with_hooks(mut self, hooks: HookManager) -> Self {
@@ -941,19 +948,20 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                         // ScopedKvStore backed by the workspace KV, not MemoryKvStore.
                         // Wire this when WASM plugin tool execution is fully supported.
                         let mem_kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
-                        let scoped_kv = ScopedKvStore::new(mem_kv, format!("plugin-tool:{server}"))
-                            .map_err(|e| {
-                                RuntimeError::StorageError(format!(
-                                    "Failed to create plugin tool KV scope: {e}"
-                                ))
-                            })?;
+                        let scoped_kv =
+                            match ScopedKvStore::new(mem_kv, format!("plugin-tool:{server}")) {
+                                Ok(kv) => kv,
+                                Err(e) => {
+                                    return Ok(ToolCallResult::error(
+                                        &call.id,
+                                        format!("Internal error creating plugin KV scope: {e}"),
+                                    ));
+                                },
+                            };
 
-                        // Extract plugin_id from the qualified name ("plugin:{id}:{tool}")
-                        let plugin_id_str = call
-                            .name
-                            .strip_prefix("plugin:")
-                            .and_then(|rest| rest.split_once(':'))
-                            .map_or("unknown", |(id, _)| id);
+                        // Extract plugin_id from the already-parsed server prefix
+                        // ("plugin:{id}"). Avoids re-parsing call.name a third time.
+                        let plugin_id_str = server.strip_prefix("plugin:").unwrap_or("unknown");
                         let plugin_id = astrid_plugins::PluginId::new(plugin_id_str)
                             .unwrap_or_else(|e| {
                                 warn!(
@@ -1006,10 +1014,14 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 AuditOutcome::success()
             };
             let args_hash = astrid_crypto::ContentHash::hash(call.arguments.to_string().as_bytes());
+            let plugin_id_for_audit = server
+                .strip_prefix("plugin:")
+                .unwrap_or("unknown")
+                .to_string();
             let _ = self.audit.append(
                 session.id.clone(),
-                AuditAction::McpToolCall {
-                    server: server.to_string(),
+                AuditAction::PluginToolCall {
+                    plugin_id: plugin_id_for_audit,
                     tool: tool.to_string(),
                     args_hash,
                 },

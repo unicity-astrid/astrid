@@ -118,7 +118,7 @@ impl PluginRegistry {
         let rest = qualified_name.strip_prefix("plugin:")?;
         let (plugin_id_str, tool_name) = rest.split_once(':')?;
 
-        let plugin_id = PluginId::from_static(plugin_id_str);
+        let plugin_id = PluginId::new(plugin_id_str).ok()?;
         let plugin = self.plugins.get(&plugin_id)?;
 
         let tool = plugin.tools().iter().find(|t| t.name() == tool_name)?;
@@ -143,6 +143,9 @@ impl PluginRegistry {
     pub fn all_tool_definitions(&self) -> Vec<PluginToolDefinition> {
         let mut defs = Vec::new();
         for (plugin_id, plugin) in &self.plugins {
+            if !matches!(plugin.state(), crate::plugin::PluginState::Ready) {
+                continue;
+            }
             for tool in plugin.tools() {
                 defs.push(PluginToolDefinition {
                     name: qualified_tool_name(plugin_id, tool.name()),
@@ -392,6 +395,36 @@ mod tests {
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "plugin:alpha:echo");
         assert_eq!(defs[0].description, "Echoes the input");
+    }
+
+    #[test]
+    fn test_all_tool_definitions_skips_non_ready_plugins() {
+        let mut registry = PluginRegistry::new();
+
+        // Register a Ready plugin and a non-Ready plugin (both have tools).
+        let mut failed_plugin = TestPlugin::new("beta");
+        failed_plugin.state = PluginState::Failed("something broke".into());
+        registry
+            .register(Box::new(TestPlugin::new("alpha")))
+            .unwrap();
+        registry.register(Box::new(failed_plugin)).unwrap();
+
+        let defs = registry.all_tool_definitions();
+        // Only alpha's tool should be exported (beta is in Failed state).
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "plugin:alpha:echo");
+    }
+
+    #[test]
+    fn test_find_tool_invalid_plugin_id_returns_none() {
+        let mut registry = PluginRegistry::new();
+        registry
+            .register(Box::new(TestPlugin::new("alpha")))
+            .unwrap();
+        // Invalid ID with uppercase — PluginId::new() rejects it, so find_tool returns None.
+        assert!(registry.find_tool("plugin:INVALID:echo").is_none());
+        // ID with spaces
+        assert!(registry.find_tool("plugin:has space:echo").is_none());
     }
 
     #[test]
