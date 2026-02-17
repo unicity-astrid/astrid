@@ -496,7 +496,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_start_shutdown() {
-        let config = GatewayConfig::default();
+        let tmp = TempDir::new().unwrap();
+        let mut config = GatewayConfig::default();
+        config.gateway.state_dir = tmp.path().display().to_string();
         let mut runtime = GatewayRuntime::new(config).unwrap();
 
         runtime.start().await.unwrap();
