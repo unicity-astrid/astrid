@@ -870,8 +870,8 @@ pub(crate) async fn install_plugin(
 ) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
-    // Detect git source prefixes
-    if source.starts_with("github:") || source.starts_with("git:") {
+    // Detect git source (prefixes, bare HTTPS URLs, SSH URLs)
+    if astrid_plugins::GitSource::looks_like_git(source) {
         return install_from_git(source, workspace, &home).await;
     }
 
