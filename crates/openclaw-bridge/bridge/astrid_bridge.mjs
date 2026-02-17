@@ -357,6 +357,13 @@ async function handleNotification(method, params) {
     log.info("MCP session initialized");
     return;
   }
+  if (method === "notifications/astrid.setPluginConfig") {
+    if (params?.config && typeof params.config === "object" && !Array.isArray(params.config)) {
+      pluginConfig = params.config;
+      log.info(`Plugin config updated (${Object.keys(pluginConfig).length} keys)`);
+    }
+    return;
+  }
   if (method === "notifications/astrid.hookEvent") {
     const event = params?.event;
     const data = params?.data;
