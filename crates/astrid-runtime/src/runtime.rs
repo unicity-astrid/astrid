@@ -116,6 +116,8 @@ pub struct AgentRuntime<P: LlmProvider> {
     plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
     /// Per-plugin KV stores that persist across tool calls.
     /// Keyed by `{session_id}:{server}` to isolate sessions from each other.
+    /// Call [`cleanup_plugin_kv_stores`](Self::cleanup_plugin_kv_stores) when a
+    /// session ends to prevent unbounded growth.
     plugin_kv_stores: std::sync::Mutex<std::collections::HashMap<String, Arc<dyn KvStore>>>,
     /// Weak self-reference for spawner injection (set via `set_self_arc`).
     self_arc: tokio::sync::RwLock<Option<std::sync::Weak<Self>>>,
@@ -667,6 +669,20 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         &self.boundary
     }
 
+    /// Remove plugin KV stores for a session that has ended.
+    ///
+    /// Should be called when a session is finished to prevent unbounded growth
+    /// of the `plugin_kv_stores` map in long-running processes.
+    pub fn cleanup_plugin_kv_stores(&self, session_id: &SessionId) {
+        let prefix = format!("{session_id}:");
+        // SAFETY: no .await while lock is held — HashMap::retain is synchronous.
+        let mut stores = self
+            .plugin_kv_stores
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        stores.retain(|key, _| !key.starts_with(&prefix));
+    }
+
     /// Set a custom security policy.
     #[must_use]
     pub fn with_security_policy(mut self, policy: SecurityPolicy) -> Self {
@@ -936,8 +952,14 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             }
         }
 
-        // Classify the plugin tool call as a SensitiveAction
-        let action = classify_tool_call(&server, tool, &call.arguments);
+        // Classify the plugin tool call as a PluginExecution (not McpToolCall).
+        // This routes through SecurityPolicy::check_plugin_action, which checks
+        // blocked_plugins and always requires approval — more appropriate than
+        // the generic MCP tool classification.
+        let action = SensitiveAction::PluginExecution {
+            plugin_id: plugin_id_str.to_string(),
+            capability: tool.to_string(),
+        };
 
         // Run through the SecurityInterceptor (same 5-step check as MCP tools).
         // Capture the intercept proof alongside the tool result for accurate auditing.
@@ -985,6 +1007,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                         // directly), but WASM plugins can use it for cross-call state.
                         let plugin_kv = {
                             let kv_key = format!("{}:{server}", session.id);
+                            // SAFETY: no .await while this std::sync::Mutex lock is held.
+                            // The critical section is a synchronous HashMap lookup/insert.
                             let mut stores = self
                                 .plugin_kv_stores
                                 .lock()
@@ -1007,15 +1031,11 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             };
 
                         // Build PluginId from the already-parsed plugin_id_str.
-                        let plugin_id = astrid_plugins::PluginId::new(plugin_id_str)
-                            .unwrap_or_else(|e| {
-                                warn!(
-                                    plugin_id_str,
-                                    error = %e,
-                                    "Failed to parse plugin ID from tool name, using fallback"
-                                );
-                                astrid_plugins::PluginId::new("unknown").unwrap()
-                            });
+                        // Invariant: is_plugin_tool() validated this ID and find_tool()
+                        // successfully parsed it, so PluginId::new() cannot fail here.
+                        let plugin_id = astrid_plugins::PluginId::new(plugin_id_str).expect(
+                            "plugin_id_str already validated by is_plugin_tool and find_tool",
+                        );
 
                         let user_uuid = Self::user_uuid(session.user_id);
 
@@ -1806,6 +1826,34 @@ mod tests {
                 assert!(reason.contains("plugin:test:echo"));
             },
             other => panic!("expected NotRequired for allowance, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_capability_created() {
+        use astrid_approval::InterceptProof;
+        let audit_id = AuditEntryId::new();
+        let token_id = astrid_core::TokenId::new();
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::CapabilityCreated {
+                token_id: token_id.clone(),
+                approval_audit_id: audit_id.clone(),
+            },
+            [7; 8],
+            "ctx",
+        );
+        // CapabilityCreated shares the UserApproval arm with UserApproval,
+        // using the approval_audit_id (the token_id is intentionally ignored
+        // since the approval event is what matters for audit linking).
+        match proof {
+            AuthorizationProof::UserApproval {
+                user_id,
+                approval_entry_id,
+            } => {
+                assert_eq!(user_id, [7; 8]);
+                assert_eq!(approval_entry_id, audit_id);
+            },
+            other => panic!("expected UserApproval for CapabilityCreated, got {other:?}"),
         }
     }
 }
