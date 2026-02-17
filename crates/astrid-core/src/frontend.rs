@@ -772,6 +772,34 @@ pub enum AttachmentType {
     Inline,
 }
 
+// ---------------------------------------------------------------------------
+// Blanket adapter implementations for Frontend
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl<T: Frontend + ?Sized> crate::connector::ApprovalAdapter for T {
+    async fn request_approval(
+        &self,
+        request: ApprovalRequest,
+    ) -> crate::connector::ConnectorResult<ApprovalDecision> {
+        Frontend::request_approval(self, request)
+            .await
+            .map_err(crate::connector::ConnectorError::from)
+    }
+}
+
+#[async_trait]
+impl<T: Frontend + ?Sized> crate::connector::ElicitationAdapter for T {
+    async fn elicit(
+        &self,
+        request: ElicitationRequest,
+    ) -> crate::connector::ConnectorResult<ElicitationResponse> {
+        Frontend::elicit(self, request)
+            .await
+            .map_err(crate::connector::ConnectorError::from)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -836,5 +864,199 @@ mod tests {
         let input = UserInput::new("Hello, world!");
         assert_eq!(input.content, "Hello, world!");
         assert!(input.attachments.is_empty());
+    }
+
+    // -- Blanket adapter delegation tests --
+
+    use crate::identity::FrontendType;
+    use crate::input::{ContextIdentifier, MessageId, TaggedMessage};
+    use crate::verification::{VerificationRequest, VerificationResponse};
+
+    /// Minimal stub that implements [`Frontend`] for adapter blanket tests.
+    struct StubFrontend;
+
+    #[async_trait]
+    impl Frontend for StubFrontend {
+        fn get_context(&self) -> FrontendContext {
+            FrontendContext::new(
+                ContextIdentifier::DirectMessage {
+                    participant_ids: vec![],
+                },
+                FrontendUser::new("stub"),
+                ChannelInfo::dm("stub-dm"),
+                FrontendSessionInfo::new(),
+            )
+        }
+
+        async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse> {
+            Ok(ElicitationResponse::cancel(request.request_id))
+        }
+
+        async fn elicit_url(
+            &self,
+            request: UrlElicitationRequest,
+        ) -> SecurityResult<UrlElicitationResponse> {
+            Ok(UrlElicitationResponse::not_completed(request.request_id))
+        }
+
+        async fn request_approval(
+            &self,
+            request: ApprovalRequest,
+        ) -> SecurityResult<ApprovalDecision> {
+            Ok(ApprovalDecision::new(
+                request.request_id,
+                ApprovalOption::AllowOnce,
+            ))
+        }
+
+        fn show_status(&self, _message: &str) {}
+        fn show_error(&self, _error: &str) {}
+
+        async fn receive_input(&self) -> Option<UserInput> {
+            None
+        }
+
+        async fn resolve_identity(&self, _frontend_user_id: &str) -> Option<crate::AstridUserId> {
+            None
+        }
+
+        async fn get_message(&self, _message_id: &MessageId) -> Option<TaggedMessage> {
+            None
+        }
+
+        async fn send_verification(
+            &self,
+            _user_id: &str,
+            _request: VerificationRequest,
+        ) -> SecurityResult<VerificationResponse> {
+            Err(crate::SecurityError::Internal(
+                "stub: not implemented".into(),
+            ))
+        }
+
+        async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+            Ok(())
+        }
+
+        fn frontend_type(&self) -> FrontendType {
+            FrontendType::Cli
+        }
+    }
+
+    #[tokio::test]
+    async fn blanket_approval_adapter_delegates() {
+        let stub = StubFrontend;
+        let req = ApprovalRequest::new("test_op", "test approval");
+        let result: crate::connector::ConnectorResult<ApprovalDecision> =
+            crate::connector::ApprovalAdapter::request_approval(&stub, req).await;
+        assert!(result.is_ok());
+        let decision = result.unwrap();
+        assert_eq!(decision.decision, ApprovalOption::AllowOnce);
+    }
+
+    #[tokio::test]
+    async fn blanket_elicitation_adapter_delegates() {
+        let stub = StubFrontend;
+        let req = ElicitationRequest::new("test-server", "need input");
+        let result: crate::connector::ConnectorResult<ElicitationResponse> =
+            crate::connector::ElicitationAdapter::elicit(&stub, req).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert!(matches!(resp.action, ElicitationAction::Cancel));
+    }
+
+    /// Stub that returns errors, for testing the blanket adapter error path.
+    struct ErrorStubFrontend;
+
+    #[async_trait]
+    impl Frontend for ErrorStubFrontend {
+        fn get_context(&self) -> FrontendContext {
+            FrontendContext::new(
+                ContextIdentifier::DirectMessage {
+                    participant_ids: vec![],
+                },
+                FrontendUser::new("err-stub"),
+                ChannelInfo::dm("err-dm"),
+                FrontendSessionInfo::new(),
+            )
+        }
+
+        async fn elicit(
+            &self,
+            _request: ElicitationRequest,
+        ) -> SecurityResult<ElicitationResponse> {
+            Err(crate::SecurityError::McpElicitationFailed(
+                "stub error".into(),
+            ))
+        }
+
+        async fn elicit_url(
+            &self,
+            request: UrlElicitationRequest,
+        ) -> SecurityResult<UrlElicitationResponse> {
+            Ok(UrlElicitationResponse::not_completed(request.request_id))
+        }
+
+        async fn request_approval(
+            &self,
+            _request: ApprovalRequest,
+        ) -> SecurityResult<ApprovalDecision> {
+            Err(crate::SecurityError::ApprovalDenied {
+                reason: "stub denied".into(),
+            })
+        }
+
+        fn show_status(&self, _message: &str) {}
+        fn show_error(&self, _error: &str) {}
+
+        async fn receive_input(&self) -> Option<UserInput> {
+            None
+        }
+
+        async fn resolve_identity(&self, _frontend_user_id: &str) -> Option<crate::AstridUserId> {
+            None
+        }
+
+        async fn get_message(&self, _message_id: &MessageId) -> Option<TaggedMessage> {
+            None
+        }
+
+        async fn send_verification(
+            &self,
+            _user_id: &str,
+            _request: VerificationRequest,
+        ) -> SecurityResult<VerificationResponse> {
+            Err(crate::SecurityError::Internal("not implemented".into()))
+        }
+
+        async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+            Ok(())
+        }
+
+        fn frontend_type(&self) -> FrontendType {
+            FrontendType::Cli
+        }
+    }
+
+    #[tokio::test]
+    async fn blanket_approval_adapter_propagates_security_error() {
+        let stub = ErrorStubFrontend;
+        let req = ApprovalRequest::new("op", "denied test");
+        let result: crate::connector::ConnectorResult<ApprovalDecision> =
+            crate::connector::ApprovalAdapter::request_approval(&stub, req).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, crate::connector::ConnectorError::Security(_)));
+    }
+
+    #[tokio::test]
+    async fn blanket_elicitation_adapter_propagates_security_error() {
+        let stub = ErrorStubFrontend;
+        let req = ElicitationRequest::new("srv", "fail test");
+        let result: crate::connector::ConnectorResult<ElicitationResponse> =
+            crate::connector::ElicitationAdapter::elicit(&stub, req).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, crate::connector::ConnectorError::Security(_)));
     }
 }

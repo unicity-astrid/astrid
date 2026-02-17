@@ -29,6 +29,8 @@ pub mod utils;
 pub mod verification;
 pub mod version;
 
+pub mod connector;
+
 pub use error::{SecurityError, SecurityResult};
 pub use frontend::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
@@ -44,3 +46,11 @@ pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 pub use utils::truncate_to_boundary;
 pub use verification::{VerificationRequest, VerificationResponse};
 pub use version::{Version, VersionParseError, Versioned};
+
+// Connector types
+pub use connector::{
+    ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
+    ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
+    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder, OutboundAdapter,
+    OutboundMessage, OutboundMessageBuilder,
+};

@@ -42,3 +42,11 @@ pub use crate::{VerificationRequest, VerificationResponse};
 
 // Versioning
 pub use crate::{Version, VersionParseError, Versioned};
+
+// Connector
+pub use crate::{
+    ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
+    ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
+    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder, OutboundAdapter,
+    OutboundMessage, OutboundMessageBuilder,
+};

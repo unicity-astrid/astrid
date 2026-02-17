@@ -17,7 +17,7 @@ thiserror = { workspace = true }
 
 # Async
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "sync"] }
 
 # Time & IDs
 chrono = { workspace = true }
