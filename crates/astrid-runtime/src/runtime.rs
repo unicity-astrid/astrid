@@ -871,7 +871,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
 
         // Parse the qualified name into server-like prefix and tool name for
         // hooks/interceptor. Format: "plugin:{plugin_id}:{tool_name}".
-        // Use rsplit_once to split as server="plugin:{plugin_id}", tool="{tool_name}".
+        // Safety: PluginId cannot contain ':' (validated on creation), so
+        // rsplit_once reliably splits server="plugin:{id}" and tool="{tool_name}".
         let (server, tool) = call.name.rsplit_once(':').unwrap_or(("plugin", &call.name));
 
         // Check workspace boundaries
@@ -916,13 +917,29 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     ));
                 }
 
-                // Execute via plugin registry (brief read lock)
-                let registry = registry_lock.read().await;
-                match registry.find_tool(&call.name) {
-                    Some((_plugin, plugin_tool)) => {
+                // Look up the tool under a brief read lock, clone the Arc handle
+                // and extract plugin config, then drop the lock before executing.
+                // This avoids blocking write-lock callers (load/unload/hot-reload)
+                // during potentially slow tool calls.
+                let (plugin_tool, plugin_config) = {
+                    let registry = registry_lock.read().await;
+                    match registry.find_tool(&call.name) {
+                        Some((plugin, tool_arc)) => {
+                            (Some(tool_arc), plugin.manifest().config.clone())
+                        },
+                        None => (None, std::collections::HashMap::new()),
+                    }
+                    // Read lock dropped here.
+                };
+
+                match plugin_tool {
+                    Some(plugin_tool) => {
                         // Build a PluginToolContext with a MemoryKvStore placeholder.
                         // McpPluginTool::execute() calls peer.call_tool() directly
                         // and ignores the context's KV store, so MemoryKvStore is fine.
+                        // TODO: WASM plugins that use KV storage need a persistent
+                        // ScopedKvStore backed by the workspace KV, not MemoryKvStore.
+                        // Wire this when WASM plugin tool execution is fully supported.
                         let mem_kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
                         let scoped_kv = ScopedKvStore::new(mem_kv, format!("plugin-tool:{server}"))
                             .map_err(|e| {
@@ -938,17 +955,28 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             .and_then(|rest| rest.split_once(':'))
                             .map_or("unknown", |(id, _)| id);
                         let plugin_id = astrid_plugins::PluginId::new(plugin_id_str)
-                            .unwrap_or_else(|_| {
-                                // Fallback: this shouldn't happen if is_plugin_tool passed.
+                            .unwrap_or_else(|e| {
+                                warn!(
+                                    plugin_id_str,
+                                    error = %e,
+                                    "Failed to parse plugin ID from tool name, using fallback"
+                                );
                                 astrid_plugins::PluginId::new("unknown").unwrap()
                             });
+
+                        // Convert [u8; 8] user_id to UUID by zero-padding to 16 bytes.
+                        let mut uuid_bytes = [0u8; 16];
+                        uuid_bytes[..8].copy_from_slice(&session.user_id);
+                        let user_uuid = uuid::Uuid::from_bytes(uuid_bytes);
 
                         let tool_ctx = astrid_plugins::PluginToolContext::new(
                             plugin_id,
                             self.config.workspace.root.clone(),
                             scoped_kv,
                         )
-                        .with_session(session.id.clone());
+                        .with_config(plugin_config)
+                        .with_session(session.id.clone())
+                        .with_user(user_uuid);
 
                         match plugin_tool.execute(call.arguments.clone(), &tool_ctx).await {
                             Ok(output) => {
@@ -969,6 +997,28 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             },
             Err(e) => ToolCallResult::error(&call.id, e.to_string()),
         };
+
+        // Audit the plugin tool call
+        {
+            let outcome = if tool_result.is_error {
+                AuditOutcome::failure(&tool_result.content)
+            } else {
+                AuditOutcome::success()
+            };
+            let args_hash = astrid_crypto::ContentHash::hash(call.arguments.to_string().as_bytes());
+            let _ = self.audit.append(
+                session.id.clone(),
+                AuditAction::McpToolCall {
+                    server: server.to_string(),
+                    tool: tool.to_string(),
+                    args_hash,
+                },
+                AuthorizationProof::System {
+                    reason: format!("plugin tool: {}", call.name),
+                },
+                outcome,
+            );
+        }
 
         // Fire PostToolCall or ToolError hook
         {

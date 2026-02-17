@@ -61,7 +61,7 @@ pub struct McpPlugin {
     id: PluginId,
     manifest: PluginManifest,
     state: PluginState,
-    tools: Vec<Box<dyn PluginTool>>,
+    tools: Vec<Arc<dyn PluginTool>>,
     /// MCP server name (format: `"plugin:{plugin_id}"`).
     server_name: String,
     /// Injected at construction — used for hook forwarding and lifecycle.
@@ -373,18 +373,17 @@ impl Plugin for McpPlugin {
         let peer = service.peer().clone();
 
         // 7. Create McpPluginTool wrappers
-        let tools: Vec<Box<dyn PluginTool>> = rmcp_tools
+        let tools: Vec<Arc<dyn PluginTool>> = rmcp_tools
             .iter()
             .map(|t| {
-                let tool: Box<dyn PluginTool> = Box::new(McpPluginTool {
+                Arc::new(McpPluginTool {
                     name: t.name.to_string(),
                     description: t.description.as_deref().unwrap_or("").to_string(),
                     input_schema: serde_json::to_value(&*t.input_schema)
                         .unwrap_or_else(|_| serde_json::json!({"type": "object"})),
                     server_name: self.server_name.clone(),
                     peer: peer.clone(),
-                });
-                tool
+                }) as Arc<dyn PluginTool>
             })
             .collect();
 
@@ -444,7 +443,7 @@ impl Plugin for McpPlugin {
         Ok(())
     }
 
-    fn tools(&self) -> &[Box<dyn PluginTool>] {
+    fn tools(&self) -> &[Arc<dyn PluginTool>] {
         &self.tools
     }
 }

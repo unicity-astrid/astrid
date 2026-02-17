@@ -1,6 +1,7 @@
 //! Plugin trait and core types.
 
 use std::fmt;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -144,7 +145,10 @@ pub trait Plugin: Send + Sync {
     /// The tools this plugin provides.
     ///
     /// Returns an empty slice if the plugin has no tools or is not loaded.
-    fn tools(&self) -> &[Box<dyn PluginTool>];
+    /// Tools are `Arc`-wrapped so callers can clone a handle and release
+    /// the registry lock before executing (avoids holding a read lock
+    /// across potentially slow tool calls).
+    fn tools(&self) -> &[Arc<dyn PluginTool>];
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 //! all registered plugins.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use tracing::{debug, info};
 
@@ -109,9 +110,10 @@ impl PluginRegistry {
 
     /// Find a tool by its fully qualified name (`plugin:{plugin_id}:{tool_name}`).
     ///
-    /// Returns the plugin and tool if found.
+    /// Returns the plugin and an `Arc` clone of the tool. The `Arc` allows
+    /// callers to drop the registry lock before executing the tool.
     #[must_use]
-    pub fn find_tool(&self, qualified_name: &str) -> Option<(&dyn Plugin, &dyn PluginTool)> {
+    pub fn find_tool(&self, qualified_name: &str) -> Option<(&dyn Plugin, Arc<dyn PluginTool>)> {
         // Parse "plugin:{plugin_id}:{tool_name}"
         let rest = qualified_name.strip_prefix("plugin:")?;
         let (plugin_id_str, tool_name) = rest.split_once(':')?;
@@ -127,7 +129,7 @@ impl PluginRegistry {
             tool_name,
             "Found plugin tool"
         );
-        Some((plugin.as_ref(), tool.as_ref()))
+        Some((plugin.as_ref(), Arc::clone(tool)))
     }
 
     /// Check if a tool name refers to a plugin tool (has two colons with `plugin:` prefix).
@@ -180,7 +182,7 @@ mod tests {
         id: PluginId,
         manifest: PluginManifest,
         state: PluginState,
-        tools: Vec<Box<dyn PluginTool>>,
+        tools: Vec<Arc<dyn PluginTool>>,
     }
 
     impl TestPlugin {
@@ -202,7 +204,7 @@ mod tests {
                 },
                 id: plugin_id,
                 state: PluginState::Ready,
-                tools: vec![Box::new(EchoTool)],
+                tools: vec![Arc::new(EchoTool)],
             }
         }
 
@@ -232,7 +234,7 @@ mod tests {
             self.state = PluginState::Unloaded;
             Ok(())
         }
-        fn tools(&self) -> &[Box<dyn PluginTool>] {
+        fn tools(&self) -> &[Arc<dyn PluginTool>] {
             &self.tools
         }
     }
