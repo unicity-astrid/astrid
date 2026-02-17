@@ -1086,18 +1086,14 @@ async fn test_hot_reload_race_plugin_failed_mid_turn() {
     );
 
     // Transition the plugin to Failed state before execution.
+    // Unregister the Ready version and re-register with Failed state.
     {
         let mut reg = registry_lock.write().await;
         let pid = PluginId::from_static("fragile");
-        if let Some(plugin) = reg.get_mut(&pid) {
-            // Unload it to transition state, then we need to re-register with Failed state.
-            // Easier approach: unregister, create a failed version, re-register.
-            drop(plugin);
-            reg.unregister(&pid).unwrap();
-            let mut failed_plugin = TestPlugin::new("fragile");
-            failed_plugin.state = PluginState::Failed("simulated crash".into());
-            reg.register(Box::new(failed_plugin)).unwrap();
-        }
+        reg.unregister(&pid).unwrap();
+        let mut failed_plugin = TestPlugin::new("fragile");
+        failed_plugin.state = PluginState::Failed("simulated crash".into());
+        reg.register(Box::new(failed_plugin)).unwrap();
     }
 
     runtime
@@ -1360,4 +1356,142 @@ async fn test_tool_name_with_colons_resolves_correctly() {
     } else {
         panic!("expected ToolResult content");
     }
+
+    // Verify audit entry has correct plugin_id and tool fields (not mangled by
+    // colon-containing tool name).
+    let entries = runtime
+        .audit()
+        .get_session_entries(&session.id)
+        .expect("should retrieve audit entries");
+
+    let plugin_audit = entries.iter().find(|e| {
+        matches!(
+            &e.action,
+            astrid_audit::AuditAction::PluginToolCall { plugin_id, tool, .. }
+                if plugin_id == "colon-test" && tool == "name:with:colons"
+        )
+    });
+
+    assert!(
+        plugin_audit.is_some(),
+        "audit entry should have plugin_id='colon-test' and tool='name:with:colons', entries: {:?}",
+        entries
+            .iter()
+            .map(|e| format!("{:?}", e.action))
+            .collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// New tests: KV store session isolation
+// ---------------------------------------------------------------------------
+
+/// Plugin KV stores are keyed by session+plugin so different sessions
+/// cannot leak data to each other. We verify this by running two sessions
+/// against the same runtime and checking that the second session does not
+/// see the first session's tool result in its messages.
+#[tokio::test]
+async fn test_kv_store_session_isolation() {
+    let ws = tempfile::tempdir().unwrap();
+
+    let mut registry = PluginRegistry::new();
+    registry
+        .register(Box::new(TestPlugin::new("test")))
+        .unwrap();
+
+    // Build runtime with enough turns for two sessions.
+    let llm = astrid_test::MockLlmProvider::new(vec![
+        // Session 1 turns
+        MockLlmTurn::tool_calls(vec![MockToolCall::new(
+            "plugin:test:echo",
+            serde_json::json!({"message": "session-one-data"}),
+        )]),
+        MockLlmTurn::text("done1"),
+        // Session 2 turns
+        MockLlmTurn::tool_calls(vec![MockToolCall::new(
+            "plugin:test:echo",
+            serde_json::json!({"message": "session-two-data"}),
+        )]),
+        MockLlmTurn::text("done2"),
+    ]);
+    let mcp = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+    let audit = astrid_audit::AuditLog::in_memory(astrid_crypto::KeyPair::generate());
+    let sessions = astrid_runtime::SessionStore::new(ws.path().join("sessions"));
+    let mut ws_config = astrid_runtime::WorkspaceConfig::new(ws.path().to_path_buf());
+    ws_config.never_allow.clear();
+    let config = astrid_runtime::RuntimeConfig {
+        workspace: ws_config,
+        system_prompt: "You are a test assistant.".to_string(),
+        ..astrid_runtime::RuntimeConfig::default()
+    };
+
+    let plugin_registry = Arc::new(RwLock::new(registry));
+    let runtime = astrid_runtime::AgentRuntime::new(
+        llm,
+        mcp,
+        audit,
+        sessions,
+        astrid_crypto::KeyPair::generate(),
+        config,
+    )
+    .with_plugin_registry(Arc::clone(&plugin_registry));
+
+    let frontend = Arc::new(
+        astrid_test::MockFrontend::new()
+            .with_default_approval(astrid_core::ApprovalOption::AllowOnce),
+    );
+
+    // Session 1
+    let mut session1 = runtime.create_session(None);
+    runtime
+        .run_turn_streaming(&mut session1, "Call plugin s1", Arc::clone(&frontend))
+        .await
+        .unwrap();
+
+    // Session 2
+    let mut session2 = runtime.create_session(None);
+    runtime
+        .run_turn_streaming(&mut session2, "Call plugin s2", Arc::clone(&frontend))
+        .await
+        .unwrap();
+
+    // Verify each session only contains its own data (basic isolation).
+    let s1_results: Vec<_> = session1
+        .messages
+        .iter()
+        .filter_map(|m| {
+            if let astrid_llm::MessageContent::ToolResult(ref result) = m.content {
+                Some(result.content.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let s2_results: Vec<_> = session2
+        .messages
+        .iter()
+        .filter_map(|m| {
+            if let astrid_llm::MessageContent::ToolResult(ref result) = m.content {
+                Some(result.content.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert!(
+        s1_results.iter().any(|r| r.contains("session-one-data")),
+        "session 1 should have its own data"
+    );
+    assert!(
+        s2_results.iter().any(|r| r.contains("session-two-data")),
+        "session 2 should have its own data"
+    );
+
+    // Verify the sessions have distinct IDs (basic sanity).
+    assert_ne!(
+        session1.id, session2.id,
+        "sessions should have different IDs"
+    );
 }

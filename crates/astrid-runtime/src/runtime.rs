@@ -114,8 +114,8 @@ pub struct AgentRuntime<P: LlmProvider> {
     subagent_pool: Arc<SubAgentPool>,
     /// Plugin registry (shared with the gateway).
     plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
-    /// Per-plugin KV stores that persist across tool calls within a session.
-    /// Keyed by `plugin:{plugin_id}` server string.
+    /// Per-plugin KV stores that persist across tool calls.
+    /// Keyed by `{session_id}:{server}` to isolate sessions from each other.
     plugin_kv_stores: std::sync::Mutex<std::collections::HashMap<String, Arc<dyn KvStore>>>,
     /// Weak self-reference for spawner injection (set via `set_self_arc`).
     self_arc: tokio::sync::RwLock<Option<std::sync::Weak<Self>>>,
@@ -882,15 +882,39 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             ));
         };
 
-        // Parse the qualified name into server-like prefix and tool name for
-        // hooks/interceptor. Format: "plugin:{plugin_id}:{tool_name}".
-        // Safety: PluginId cannot contain ':' (validated on creation), so
-        // rsplit_once reliably splits server="plugin:{id}" and tool="{tool_name}".
-        let (server, tool) = call.name.rsplit_once(':').unwrap_or(("plugin", &call.name));
+        // Parse the qualified name into plugin ID and tool name.
+        // Format: "plugin:{plugin_id}:{tool_name}" where tool_name may contain colons.
+        // Uses strip_prefix + split_once (left-to-right) to correctly handle tool names
+        // with colons (e.g. "plugin:foo:name:with:colons" → id="foo", tool="name:with:colons").
+        let (plugin_id_str, tool) = match call.name.strip_prefix("plugin:") {
+            Some(rest) => match rest.split_once(':') {
+                Some((id, tool_name)) => (id, tool_name),
+                None => {
+                    return Ok(ToolCallResult::error(
+                        &call.id,
+                        format!(
+                            "Malformed plugin tool name (missing tool segment): {}",
+                            call.name
+                        ),
+                    ));
+                },
+            },
+            None => {
+                return Ok(ToolCallResult::error(
+                    &call.id,
+                    format!(
+                        "Malformed plugin tool name (missing plugin: prefix): {}",
+                        call.name
+                    ),
+                ));
+            },
+        };
+        // Server-like prefix used for hooks, interceptor, and audit metadata.
+        let server = format!("plugin:{plugin_id_str}");
 
         // Check workspace boundaries
         if let Err(tool_error) = self
-            .check_workspace_boundaries(session, call, server, tool, frontend)
+            .check_workspace_boundaries(session, call, &server, tool, frontend)
             .await
         {
             return Ok(tool_error);
@@ -913,7 +937,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         }
 
         // Classify the plugin tool call as a SensitiveAction
-        let action = classify_tool_call(server, tool, &call.arguments);
+        let action = classify_tool_call(&server, tool, &call.arguments);
 
         // Run through the SecurityInterceptor (same 5-step check as MCP tools).
         // Capture the intercept proof alongside the tool result for accurate auditing.
@@ -954,19 +978,20 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
 
                 let result = match plugin_tool {
                     Some(plugin_tool) => {
-                        // Get or create a persistent KV store for this plugin.
-                        // The store is keyed by server prefix ("plugin:{id}") and
-                        // persists across tool calls within the runtime's lifetime.
+                        // Get or create a persistent KV store for this plugin+session.
+                        // Keyed by "{session_id}:{server}" so different sessions are
+                        // isolated from each other (prevents cross-session data leaks).
                         // MCP plugins ignore the KV context (call peer.call_tool()
                         // directly), but WASM plugins can use it for cross-call state.
                         let plugin_kv = {
+                            let kv_key = format!("{}:{server}", session.id);
                             let mut stores = self
                                 .plugin_kv_stores
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner);
                             Arc::clone(
                                 stores
-                                    .entry(server.to_string())
+                                    .entry(kv_key)
                                     .or_insert_with(|| Arc::new(MemoryKvStore::new())),
                             )
                         };
@@ -981,9 +1006,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                                 },
                             };
 
-                        // Extract plugin_id from the already-parsed server prefix
-                        // ("plugin:{id}"). Avoids re-parsing call.name a third time.
-                        let plugin_id_str = server.strip_prefix("plugin:").unwrap_or("unknown");
+                        // Build PluginId from the already-parsed plugin_id_str.
                         let plugin_id = astrid_plugins::PluginId::new(plugin_id_str)
                             .unwrap_or_else(|e| {
                                 warn!(
@@ -1042,14 +1065,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 AuditOutcome::success()
             };
             let args_hash = astrid_crypto::ContentHash::hash(call.arguments.to_string().as_bytes());
-            let plugin_id_for_audit = server
-                .strip_prefix("plugin:")
-                .unwrap_or("unknown")
-                .to_string();
             if let Err(e) = self.audit.append(
                 session.id.clone(),
                 AuditAction::PluginToolCall {
-                    plugin_id: plugin_id_for_audit,
+                    plugin_id: plugin_id_str.to_string(),
                     tool: tool.to_string(),
                     args_hash,
                 },
@@ -1456,15 +1475,19 @@ fn intercept_proof_to_auth_proof(
             user_id,
             approval_entry_id: approval_audit_id.clone(),
         },
-        InterceptProof::SessionApproval { .. } | InterceptProof::WorkspaceApproval { .. } => {
-            AuthorizationProof::UserApproval {
-                user_id,
-                approval_entry_id: AuditEntryId::new(),
-            }
+        InterceptProof::SessionApproval { allowance_id } => AuthorizationProof::NotRequired {
+            reason: format!("session-scoped allowance {allowance_id}: {context}"),
+        },
+        InterceptProof::WorkspaceApproval { allowance_id } => AuthorizationProof::NotRequired {
+            reason: format!("workspace-scoped allowance {allowance_id}: {context}"),
         },
         InterceptProof::Capability { token_id } => AuthorizationProof::Capability {
             token_id: token_id.clone(),
-            token_hash: astrid_crypto::ContentHash::hash(b""),
+            // InterceptProof only carries the token_id, not the full token bytes.
+            // Hash the token_id string as a deterministic fingerprint so the audit
+            // entry is at least tied to a specific token, even though we cannot
+            // compute the true content hash without the full token.
+            token_hash: astrid_crypto::ContentHash::hash(token_id.to_string().as_bytes()),
         },
         InterceptProof::Allowance { .. } => AuthorizationProof::NotRequired {
             reason: format!("pre-existing allowance: {context}"),
@@ -1664,5 +1687,125 @@ mod tests {
             risk_level_for_operation(EscapeOperation::Delete),
             RiskLevel::Critical
         );
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_policy_allowed() {
+        use astrid_approval::InterceptProof;
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::PolicyAllowed,
+            [1; 8],
+            "plugin:test:echo",
+        );
+        match proof {
+            AuthorizationProof::NotRequired { reason } => {
+                assert!(reason.contains("policy auto-approved"));
+                assert!(reason.contains("plugin:test:echo"));
+            },
+            other => panic!("expected NotRequired, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_user_approval() {
+        use astrid_approval::InterceptProof;
+        let audit_id = AuditEntryId::new();
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::UserApproval {
+                approval_audit_id: audit_id.clone(),
+            },
+            [2; 8],
+            "ctx",
+        );
+        match proof {
+            AuthorizationProof::UserApproval {
+                user_id,
+                approval_entry_id,
+            } => {
+                assert_eq!(user_id, [2; 8]);
+                assert_eq!(approval_entry_id, audit_id);
+            },
+            other => panic!("expected UserApproval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_session_approval() {
+        use astrid_approval::InterceptProof;
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::SessionApproval {
+                allowance_id: astrid_approval::AllowanceId::new(),
+            },
+            [3; 8],
+            "ctx",
+        );
+        match proof {
+            AuthorizationProof::NotRequired { reason } => {
+                assert!(reason.contains("session-scoped allowance"));
+            },
+            other => panic!("expected NotRequired for session approval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_workspace_approval() {
+        use astrid_approval::InterceptProof;
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::WorkspaceApproval {
+                allowance_id: astrid_approval::AllowanceId::new(),
+            },
+            [4; 8],
+            "ctx",
+        );
+        match proof {
+            AuthorizationProof::NotRequired { reason } => {
+                assert!(reason.contains("workspace-scoped allowance"));
+            },
+            other => panic!("expected NotRequired for workspace approval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_capability() {
+        use astrid_approval::InterceptProof;
+        let token_id = astrid_core::TokenId::new();
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::Capability {
+                token_id: token_id.clone(),
+            },
+            [5; 8],
+            "ctx",
+        );
+        match proof {
+            AuthorizationProof::Capability {
+                token_id: id,
+                token_hash,
+            } => {
+                assert_eq!(id, token_id);
+                // Hash should be derived from token_id string, not empty bytes.
+                let expected = astrid_crypto::ContentHash::hash(token_id.to_string().as_bytes());
+                assert_eq!(token_hash, expected);
+            },
+            other => panic!("expected Capability, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_intercept_proof_to_auth_proof_allowance() {
+        use astrid_approval::InterceptProof;
+        let proof = intercept_proof_to_auth_proof(
+            &InterceptProof::Allowance {
+                allowance_id: astrid_approval::AllowanceId::new(),
+            },
+            [6; 8],
+            "plugin:test:echo",
+        );
+        match proof {
+            AuthorizationProof::NotRequired { reason } => {
+                assert!(reason.contains("pre-existing allowance"));
+                assert!(reason.contains("plugin:test:echo"));
+            },
+            other => panic!("expected NotRequired for allowance, got {other:?}"),
+        }
     }
 }

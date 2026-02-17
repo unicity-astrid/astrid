@@ -149,7 +149,7 @@ impl PluginRegistry {
         if let Some(rest) = name.strip_prefix("plugin:")
             && let Some((id, tool_name)) = rest.split_once(':')
         {
-            return !tool_name.is_empty() && PluginId::new(id).is_ok();
+            return !tool_name.is_empty() && PluginId::is_valid_id(id);
         }
         false
     }

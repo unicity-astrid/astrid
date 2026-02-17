@@ -55,6 +55,15 @@ impl PluginId {
         &self.0
     }
 
+    /// Check whether a string is a valid plugin ID without allocating.
+    ///
+    /// Unlike [`PluginId::new`], this takes a `&str` and returns a bool,
+    /// avoiding the `String` allocation needed for construction.
+    #[must_use]
+    pub fn is_valid_id(id: &str) -> bool {
+        Self::validate(id).is_ok()
+    }
+
     /// Validate that a plugin ID string is well-formed.
     fn validate(id: &str) -> PluginResult<()> {
         if id.is_empty() {
