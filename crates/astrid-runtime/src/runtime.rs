@@ -114,6 +114,9 @@ pub struct AgentRuntime<P: LlmProvider> {
     subagent_pool: Arc<SubAgentPool>,
     /// Plugin registry (shared with the gateway).
     plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
+    /// Per-plugin KV stores that persist across tool calls within a session.
+    /// Keyed by `plugin:{plugin_id}` server string.
+    plugin_kv_stores: std::sync::Mutex<std::collections::HashMap<String, Arc<dyn KvStore>>>,
     /// Weak self-reference for spawner injection (set via `set_self_arc`).
     self_arc: tokio::sync::RwLock<Option<std::sync::Weak<Self>>>,
 }
@@ -163,6 +166,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             security_policy: SecurityPolicy::default(),
             subagent_pool,
             plugin_registry: None,
+            plugin_kv_stores: std::sync::Mutex::new(std::collections::HashMap::new()),
             self_arc: tokio::sync::RwLock::new(None),
         }
     }
@@ -742,17 +746,19 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         }
     }
 
+    /// Convert a `[u8; 8]` user ID to a UUID by zero-padding to 16 bytes.
+    fn user_uuid(user_id: [u8; 8]) -> uuid::Uuid {
+        let mut uuid_bytes = [0u8; 16];
+        uuid_bytes[..8].copy_from_slice(&user_id);
+        uuid::Uuid::from_bytes(uuid_bytes)
+    }
+
     /// Build a hook context with session info.
     #[allow(clippy::unused_self)]
     fn build_hook_context(&self, session: &AgentSession, event: HookEvent) -> HookContext {
-        // Convert [u8; 8] user_id to UUID by zero-padding to 16 bytes
-        let mut uuid_bytes = [0u8; 16];
-        uuid_bytes[..8].copy_from_slice(&session.user_id);
-        let user_uuid = uuid::Uuid::from_bytes(uuid_bytes);
-
         HookContext::new(event)
             .with_session(session.id.0)
-            .with_user(user_uuid)
+            .with_user(Self::user_uuid(session.user_id))
     }
 
     /// Build a `SecurityInterceptor` for the given session.
@@ -909,9 +915,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         // Classify the plugin tool call as a SensitiveAction
         let action = classify_tool_call(server, tool, &call.arguments);
 
-        // Run through the SecurityInterceptor (same 5-step check as MCP tools)
+        // Run through the SecurityInterceptor (same 5-step check as MCP tools).
+        // Capture the intercept proof alongside the tool result for accurate auditing.
         let interceptor = self.build_interceptor(session);
-        let tool_result = match interceptor
+        let (tool_result, auth_proof) = match interceptor
             .intercept(&action, &format!("Plugin tool call to {}", call.name), None)
             .await
         {
@@ -923,6 +930,12 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                         warning.current_spend, warning.session_max, warning.percent_used
                     ));
                 }
+
+                let proof = intercept_proof_to_auth_proof(
+                    &intercept_result.proof,
+                    session.user_id,
+                    &call.name,
+                );
 
                 // Look up the tool under a brief read lock, clone the Arc handle
                 // and extract plugin config, then drop the lock before executing.
@@ -939,17 +952,26 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     // Read lock dropped here.
                 };
 
-                match plugin_tool {
+                let result = match plugin_tool {
                     Some(plugin_tool) => {
-                        // Build a PluginToolContext with a MemoryKvStore placeholder.
-                        // McpPluginTool::execute() calls peer.call_tool() directly
-                        // and ignores the context's KV store, so MemoryKvStore is fine.
-                        // TODO: WASM plugins that use KV storage need a persistent
-                        // ScopedKvStore backed by the workspace KV, not MemoryKvStore.
-                        // Wire this when WASM plugin tool execution is fully supported.
-                        let mem_kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+                        // Get or create a persistent KV store for this plugin.
+                        // The store is keyed by server prefix ("plugin:{id}") and
+                        // persists across tool calls within the runtime's lifetime.
+                        // MCP plugins ignore the KV context (call peer.call_tool()
+                        // directly), but WASM plugins can use it for cross-call state.
+                        let plugin_kv = {
+                            let mut stores = self
+                                .plugin_kv_stores
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            Arc::clone(
+                                stores
+                                    .entry(server.to_string())
+                                    .or_insert_with(|| Arc::new(MemoryKvStore::new())),
+                            )
+                        };
                         let scoped_kv =
-                            match ScopedKvStore::new(mem_kv, format!("plugin-tool:{server}")) {
+                            match ScopedKvStore::new(plugin_kv, format!("plugin-tool:{server}")) {
                                 Ok(kv) => kv,
                                 Err(e) => {
                                     return Ok(ToolCallResult::error(
@@ -972,10 +994,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                                 astrid_plugins::PluginId::new("unknown").unwrap()
                             });
 
-                        // Convert [u8; 8] user_id to UUID by zero-padding to 16 bytes.
-                        let mut uuid_bytes = [0u8; 16];
-                        uuid_bytes[..8].copy_from_slice(&session.user_id);
-                        let user_uuid = uuid::Uuid::from_bytes(uuid_bytes);
+                        let user_uuid = Self::user_uuid(session.user_id);
 
                         let tool_ctx = astrid_plugins::PluginToolContext::new(
                             plugin_id,
@@ -991,7 +1010,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                                 let output = astrid_tools::truncate_output(output);
                                 ToolCallResult::success(&call.id, output)
                             },
-                            Err(e) => ToolCallResult::error(&call.id, e.to_string()),
+                            Err(e) => {
+                                let msg = astrid_tools::truncate_output(e.to_string());
+                                ToolCallResult::error(&call.id, msg)
+                            },
                         }
                     },
                     None => ToolCallResult::error(
@@ -1001,9 +1023,15 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             call.name
                         ),
                     ),
-                }
+                };
+                (result, proof)
             },
-            Err(e) => ToolCallResult::error(&call.id, e.to_string()),
+            Err(e) => (
+                ToolCallResult::error(&call.id, e.to_string()),
+                AuthorizationProof::Denied {
+                    reason: e.to_string(),
+                },
+            ),
         };
 
         // Audit the plugin tool call
@@ -1018,18 +1046,22 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 .strip_prefix("plugin:")
                 .unwrap_or("unknown")
                 .to_string();
-            let _ = self.audit.append(
+            if let Err(e) = self.audit.append(
                 session.id.clone(),
                 AuditAction::PluginToolCall {
                     plugin_id: plugin_id_for_audit,
                     tool: tool.to_string(),
                     args_hash,
                 },
-                AuthorizationProof::System {
-                    reason: format!("plugin tool: {}", call.name),
-                },
+                auth_proof,
                 outcome,
-            );
+            ) {
+                warn!(
+                    error = %e,
+                    tool_name = %call.name,
+                    "Failed to audit plugin tool call"
+                );
+            }
         }
 
         // Fire PostToolCall or ToolError hook
@@ -1399,6 +1431,44 @@ fn classify_tool_call(server: &str, tool: &str, args: &serde_json::Value) -> Sen
     SensitiveAction::McpToolCall {
         server: server.to_string(),
         tool: tool.to_string(),
+    }
+}
+
+/// Convert an [`InterceptProof`] to an [`AuthorizationProof`] for audit logging.
+///
+/// Maps the interceptor's authorization decision to the audit trail's proof
+/// format, preserving the actual authorization mechanism (policy, user approval,
+/// capability, or allowance) rather than using a generic `System` proof.
+fn intercept_proof_to_auth_proof(
+    proof: &astrid_approval::InterceptProof,
+    user_id: [u8; 8],
+    context: &str,
+) -> AuthorizationProof {
+    use astrid_approval::InterceptProof;
+    match proof {
+        InterceptProof::PolicyAllowed => AuthorizationProof::NotRequired {
+            reason: format!("policy auto-approved: {context}"),
+        },
+        InterceptProof::UserApproval { approval_audit_id }
+        | InterceptProof::CapabilityCreated {
+            approval_audit_id, ..
+        } => AuthorizationProof::UserApproval {
+            user_id,
+            approval_entry_id: approval_audit_id.clone(),
+        },
+        InterceptProof::SessionApproval { .. } | InterceptProof::WorkspaceApproval { .. } => {
+            AuthorizationProof::UserApproval {
+                user_id,
+                approval_entry_id: AuditEntryId::new(),
+            }
+        },
+        InterceptProof::Capability { token_id } => AuthorizationProof::Capability {
+            token_id: token_id.clone(),
+            token_hash: astrid_crypto::ContentHash::hash(b""),
+        },
+        InterceptProof::Allowance { .. } => AuthorizationProof::NotRequired {
+            reason: format!("pre-existing allowance: {context}"),
+        },
     }
 }
 
