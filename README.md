@@ -11,9 +11,9 @@
 
 Astrid is an SDK for building AI agents that can't go rogue.
 
-Most agent frameworks control what an AI can do with system prompts -- text that tells the model "don't delete files" or "don't spend money." The problem: models can be tricked into ignoring those instructions (prompt injection), and there's no way to prove they followed them.
+Most agent frameworks control what an AI can do with system prompts, text that tells the model "don't delete files" or "don't spend money." The problem: models can be tricked into ignoring those instructions (prompt injection), and there's no way to prove they followed them.
 
-Astrid takes a different approach. When an agent wants to do something risky -- delete a file, make an HTTP request, run a shell command -- it has to get permission first. That permission is recorded as a signed token (the same kind of digital signature used in SSH keys) that the runtime checks before executing anything. The agent can't forge the token, can't replay an old one, and can't talk its way past the check. Every decision goes into an append-only log where each entry is chained to the previous one, so you can detect if anyone tampers with the history.
+Astrid takes a different approach. When an agent wants to do something risky (delete a file, make an HTTP request, run a shell command), it has to get permission first. That permission is recorded as a signed token (the same kind of digital signature used in SSH keys) that the runtime checks before executing anything. The agent can't forge the token, can't replay an old one, and can't talk its way past the check. Every decision goes into an append-only log where each entry is chained to the previous one, so you can detect if anyone tampers with the history.
 
 ```bash
 # Start an interactive session
@@ -46,10 +46,10 @@ The agent never decides what it's allowed to do. It proposes actions. You approv
 
 ## Who is this for?
 
-- **Coding assistants and dev tools** -- where an unconstrained agent could `rm -rf /` or push to production
-- **Multi-user bots** (Telegram, Discord) -- where multiple users share one runtime and need isolated sessions and budgets
-- **Enterprise integrations** -- agents that touch internal APIs and databases where every action needs a paper trail
-- **Plugin ecosystems** -- where third-party code runs alongside trusted operations and you need real sandboxing
+- **Coding assistants and dev tools**: where an unconstrained agent could `rm -rf /` or push to production
+- **Multi-user bots** (Telegram, Discord): where multiple users share one runtime and need isolated sessions and budgets
+- **Enterprise integrations**: agents that touch internal APIs and databases where every action needs a paper trail
+- **Plugin ecosystems**: where third-party code runs alongside trusted operations and you need real sandboxing
 
 ## How the security layer works
 
@@ -58,40 +58,40 @@ Every tool call passes through a `SecurityInterceptor` that combines five checks
 ```
 Agent proposes action
        |
-  [1. Policy] -- Admin sets hard boundaries: blocked commands, denied paths/hosts.
+  [1. Policy]    Admin sets hard boundaries: blocked commands, denied paths/hosts.
        |         "sudo" is always blocked. "/etc/**" is always blocked.
        |         These can't be overridden.
        |
-  [2. Token]  -- Does a signed authorization token cover this action?
+  [2. Token]     Does a signed authorization token cover this action?
        |         Tokens use ed25519 signatures (same algorithm as SSH keys).
        |         They're scoped to specific resources with glob patterns,
        |         have expiration times, and link back to the audit entry
        |         that created them.
        |
-  [3. Budget] -- Is the session within its spending limit?
+  [3. Budget]    Is the session within its spending limit?
        |         Per-action and per-session limits are enforced atomically.
        |
-  [4. Approval] -- If no token exists, ask the human.
+  [4. Approval]  If no token exists, ask the human.
        |           Options: Allow Once, Allow Session, Allow Always, Deny.
        |           "Allow Always" creates a signed token for future use.
        |           If the human is unavailable, the action is queued (not silently skipped).
        |
-  [5. Audit]  -- Log the decision (allowed or denied) with the authorization proof.
+  [5. Audit]     Log the decision (allowed or denied) with the authorization proof.
                  Each entry contains the hash of the previous entry,
                  so tampering with history is detectable.
 ```
 
-This is real code. Look at `crates/astrid-approval/src/interceptor.rs` -- the `SecurityInterceptor::intercept()` method implements this exact flow. The tests in that file cover policy blocks, budget enforcement, token-based authorization, and the "Allow Always" flow that creates new tokens.
+This is real code. Look at `crates/astrid-approval/src/interceptor.rs`. The `SecurityInterceptor::intercept()` method implements this exact flow. The tests in that file cover policy blocks, budget enforcement, token-based authorization, and the "Allow Always" flow that creates new tokens.
 
 ## Two sandboxes
 
 Untrusted code and trusted agent actions are fundamentally different threats, so they get different sandboxes.
 
-### WASM sandbox -- for plugins (locked, no overrides)
+### WASM sandbox: for plugins (locked, no overrides)
 
-Plugins run inside WebAssembly via Wasmtime. This isn't a policy you configure -- it's a physical boundary enforced by the WASM runtime. A plugin *cannot* make a syscall. It has no file descriptors, no network sockets, no access to process memory outside its own linear memory. It's like running code inside a calculator that only has 12 buttons.
+Plugins run inside WebAssembly via Wasmtime. This isn't a policy you configure. It's a physical boundary enforced by the WASM runtime. A plugin *cannot* make a syscall. It has no file descriptors, no network sockets, no access to process memory outside its own linear memory. It's like running code inside a calculator that only has 12 buttons.
 
-Those 12 buttons are host functions -- the only way a plugin can interact with the outside world:
+Those 12 buttons are host functions, the only way a plugin can interact with the outside world:
 
 | Host function | What it does | Security gated? |
 |---------------|-------------|:---:|
@@ -103,18 +103,18 @@ Those 12 buttons are host functions -- the only way a plugin can interact with t
 | `get-config` | Read plugin config values | No |
 | `log` | Write to the host log | No |
 
-Every "Yes" in that table means the host function goes through a `PluginSecurityGate` check *before* the operation happens. A plugin calling `write-file("../../etc/passwd", ...)` gets rejected twice -- once by path confinement (all paths are canonicalized and must resolve inside the workspace root), and again by the security gate.
+Every "Yes" in that table means the host function goes through a `PluginSecurityGate` check *before* the operation happens. A plugin calling `write-file("../../etc/passwd", ...)` gets rejected twice: once by path confinement (all paths are canonicalized and must resolve inside the workspace root), and again by the security gate.
 
 The hard limits:
-- **64 MB memory** (configurable down, not up) -- the WASM linear memory ceiling
-- **30-second timeout** per call -- if a plugin hangs, it gets killed
-- **BLAKE3 hash verification** -- every `.wasm` binary is hashed on load and checked against the manifest. If someone swaps the file, it won't load. In production mode, plugins without a hash in their manifest are rejected entirely.
+- **64 MB memory** (configurable down, not up). The WASM linear memory ceiling.
+- **30-second timeout** per call. If a plugin hangs, it gets killed.
+- **BLAKE3 hash verification**: every `.wasm` binary is hashed on load and checked against the manifest. If someone swaps the file, it won't load. In production mode, plugins without a hash in their manifest are rejected entirely.
 
-If you genuinely need to remove the guardrails -- you're running trusted first-party plugins in a controlled environment, or you just like living dangerously -- a `--yolo` flag is planned. It'll do exactly what it sounds like. You've been warned.
+If you genuinely need to remove the guardrails (you're running trusted first-party plugins in a controlled environment, or you just like living dangerously), a `--yolo` flag is planned. It'll do exactly what it sounds like. You've been warned.
 
-### Workspace boundary -- for the agent (flexible, approval-gated)
+### Workspace boundary: for the agent (flexible, approval-gated)
 
-The agent itself (not plugins) operates within your project directory. Inside the workspace, it can read and write files freely. But the moment it tries to do something outside that boundary -- write to a system path, run a shell command, make a network request -- it goes through the approval flow described above.
+The agent itself (not plugins) operates within your project directory. Inside the workspace, it can read and write files freely. But the moment it tries to do something outside that boundary (write to a system path, run a shell command, make a network request), it goes through the approval flow described above.
 
 You configure how strict this is:
 
@@ -141,7 +141,7 @@ Astrid supports two kinds of plugins:
 
 ### The OpenClaw bridge
 
-If you have TypeScript/JavaScript plugins from the [OpenClaw](https://docs.openclaw.ai) ecosystem, Astrid can compile them to WASM automatically. The pipeline is pure Rust -- no Node.js or npm required for compilation:
+If you have TypeScript/JavaScript plugins from the [OpenClaw](https://docs.openclaw.ai) ecosystem, Astrid can compile them to WASM automatically. The pipeline is pure Rust, no Node.js or npm required for compilation:
 
 ```
 Plugin.ts --> OXC transpiler --> JS --> ABI shim --> QuickJS/Wizer --> plugin.wasm
@@ -157,25 +157,25 @@ astrid plugin compile ./my-openclaw-plugin
 ## Features
 
 ### Security
-- Signed authorization tokens (ed25519) -- scoped, time-limited, linked to audit trail
-- Append-only audit log -- each entry hashes the previous one (BLAKE3), detects tampering
-- Input classification -- everything entering the system is tagged as trusted (verified user), pre-authorized (token), or untrusted (tool results, external data)
-- Admin policy layer -- blocked commands, denied paths/hosts, argument size limits
-- Budget tracking -- per-session and per-action spending limits, enforced atomically
-- Deferred approval -- if you're away, risky actions queue instead of failing silently
+- Signed authorization tokens (ed25519): scoped, time-limited, linked to audit trail
+- Append-only audit log: each entry hashes the previous one (BLAKE3), detects tampering
+- Input classification: everything entering the system is tagged as trusted (verified user), pre-authorized (token), or untrusted (tool results, external data)
+- Admin policy layer: blocked commands, denied paths/hosts, argument size limits
+- Budget tracking: per-session and per-action spending limits, enforced atomically
+- Deferred approval: if you're away, risky actions queue instead of failing silently
 
 ### Runtime
-- Streaming LLM support -- Anthropic Claude, OpenAI-compatible providers (LM Studio, vLLM), and Zai
-- MCP client (2025-11-25 spec) -- sampling, roots, elicitation, URL elicitation, and tasks via `rmcp` v0.15
-- 8 built-in tools -- `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `list_directory`, `task` -- all run in-process
-- Sub-agent delegation -- spawn child agents with restricted permissions and configurable concurrency
-- Session persistence -- sessions survive daemon restarts
+- Streaming LLM support: Anthropic Claude, OpenAI-compatible providers (LM Studio, vLLM), and Zai
+- MCP client (2025-11-25 spec): sampling, roots, elicitation, URL elicitation, and tasks via `rmcp` v0.15
+- 8 built-in tools: `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `list_directory`, `task`. All run in-process.
+- Sub-agent delegation: spawn child agents with restricted permissions and configurable concurrency
+- Session persistence: sessions survive daemon restarts
 
 ### Frontends
-- **CLI** (`astrid`) -- interactive REPL with TUI, syntax highlighting, clipboard support
-- **Telegram** (`astrid-telegram`) -- bot with inline approval buttons and streaming responses
-- **Daemon** (`astridd`) -- background server with JSON-RPC over WebSocket
-- **Build your own** -- implement the `Frontend` trait to add new interfaces
+- **CLI** (`astrid`): interactive REPL with TUI, syntax highlighting, clipboard support
+- **Telegram** (`astrid-telegram`): bot with inline approval buttons and streaming responses
+- **Daemon** (`astridd`): background server with JSON-RPC over WebSocket
+- **Build your own**: implement the `Frontend` trait to add new interfaces
 
 ## Architecture
 
@@ -200,7 +200,7 @@ astrid-telegram--+        |
                           +-- astrid-config (layered TOML)
 ```
 
-The `Frontend` trait is how you plug in new UIs. Every frontend -- CLI, Telegram, or whatever you build -- shares the same runtime, sessions, authorization tokens, budget tracking, and audit log.
+The `Frontend` trait is how you plug in new UIs. Every frontend (CLI, Telegram, or whatever you build) shares the same runtime, sessions, authorization tokens, budget tracking, and audit log.
 
 ## Quick start
 
@@ -218,8 +218,8 @@ cargo build --release
 ```
 
 This produces two binaries:
-- `target/release/astrid` -- the CLI client
-- `target/release/astridd` -- the daemon server
+- `target/release/astrid`: the CLI client
+- `target/release/astridd`: the daemon server
 
 ### First run
 
@@ -312,12 +312,12 @@ struct MyFrontend;
 impl Frontend for MyFrontend {
     fn get_context(&self) -> FrontendContext { /* ... */ }
 
-    // MCP elicitation -- server asking the user for input
+    // MCP elicitation: server asking the user for input
     async fn elicit(
         &self, request: ElicitationRequest,
     ) -> SecurityResult<ElicitationResponse> { /* ... */ }
 
-    // URL-based flows (OAuth, payments) -- the LLM never sees sensitive data
+    // URL-based flows (OAuth, payments). The LLM never sees sensitive data.
     async fn elicit_url(
         &self, request: UrlElicitationRequest,
     ) -> SecurityResult<UrlElicitationResponse> { /* ... */ }
@@ -356,9 +356,9 @@ path = "plugin.wasm"
 
 Your plugin implements three WASM exports:
 
-- `describe-tools` -- returns tool definitions for the LLM
-- `execute-tool` -- handles tool invocations
-- `run-hook` -- responds to lifecycle events
+- `describe-tools`: returns tool definitions for the LLM
+- `execute-tool`: handles tool invocations
+- `run-hook`: responds to lifecycle events
 
 Host functions available inside the sandbox: `log`, `http-request`, `read-file`, `write-file`, `kv-get`, `kv-set`, `get-config`, `fs-exists`, `fs-mkdir`, `fs-readdir`, `fs-stat`, `fs-unlink`. All go through security checks.
 
@@ -423,7 +423,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-features -- -D warnings
 ```
 
-All crates enforce `#![deny(unsafe_code)]` -- there is no unsafe Rust anywhere in the codebase. Clippy runs at pedantic level, and integer arithmetic overflow is a compile error.
+All crates enforce `#![deny(unsafe_code)]`. There is no unsafe Rust anywhere in the codebase. Clippy runs at pedantic level, and integer arithmetic overflow is a compile error.
 
 ## License
 
