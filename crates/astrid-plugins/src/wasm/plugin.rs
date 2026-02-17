@@ -335,6 +335,7 @@ mod tests {
                 hash: None,
             },
             capabilities: vec![],
+            connectors: vec![],
             config: HashMap::new(),
         };
         let config = WasmPluginConfig {

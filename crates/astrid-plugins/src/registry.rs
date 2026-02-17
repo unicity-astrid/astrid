@@ -8,6 +8,9 @@ use std::sync::Arc;
 
 use tracing::{debug, info};
 
+use astrid_core::identity::FrontendType;
+use astrid_core::{ConnectorCapabilities, ConnectorDescriptor, ConnectorId};
+
 use crate::error::{PluginError, PluginResult};
 use crate::plugin::{Plugin, PluginId};
 use crate::tool::PluginTool;
@@ -37,6 +40,7 @@ pub struct PluginToolDefinition {
 /// their `PluginId` and provides cross-plugin tool lookup.
 pub struct PluginRegistry {
     plugins: HashMap<PluginId, Box<dyn Plugin>>,
+    connectors: HashMap<ConnectorId, (PluginId, ConnectorDescriptor)>,
 }
 
 impl PluginRegistry {
@@ -45,6 +49,7 @@ impl PluginRegistry {
     pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),
+            connectors: HashMap::new(),
         }
     }
 
@@ -59,6 +64,21 @@ impl PluginRegistry {
         if self.plugins.contains_key(&id) {
             return Err(PluginError::AlreadyRegistered(id));
         }
+
+        // Register the plugin's connectors, rolling back on failure.
+        let mut registered_ids = Vec::new();
+        for descriptor in plugin.connectors() {
+            match self.register_connector(&id, descriptor.clone()) {
+                Ok(()) => registered_ids.push(descriptor.id),
+                Err(e) => {
+                    for rollback_id in &registered_ids {
+                        self.connectors.remove(rollback_id);
+                    }
+                    return Err(e);
+                },
+            }
+        }
+
         info!(plugin_id = %id, "Registered plugin");
         self.plugins.insert(id, plugin);
         Ok(())
@@ -74,6 +94,10 @@ impl PluginRegistry {
             .plugins
             .remove(id)
             .ok_or_else(|| PluginError::NotFound(id.clone()))?;
+
+        // Clean up the plugin's connectors.
+        self.unregister_plugin_connectors(id);
+
         info!(plugin_id = %id, "Unregistered plugin");
         Ok(plugin)
     }
@@ -107,6 +131,111 @@ impl PluginRegistry {
     pub fn is_empty(&self) -> bool {
         self.plugins.is_empty()
     }
+
+    // -----------------------------------------------------------------
+    // Connector management
+    // -----------------------------------------------------------------
+
+    /// Look up a connector by its ID.
+    #[must_use]
+    pub fn get_connector(&self, id: &ConnectorId) -> Option<&ConnectorDescriptor> {
+        self.connectors.get(id).map(|(_, desc)| desc)
+    }
+
+    /// Register a connector for a plugin.
+    ///
+    /// The `plugin_id` must refer to a plugin that is either already
+    /// registered or is in the process of being registered (i.e. called
+    /// from within [`register`](Self::register)). Passing a `plugin_id`
+    /// that is never registered leaves orphaned connectors that cannot be
+    /// cleaned up via [`unregister`](Self::unregister) — use
+    /// [`unregister_plugin_connectors`](Self::unregister_plugin_connectors)
+    /// to remove them manually.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::ConnectorAlreadyRegistered`] if a connector
+    /// with the same ID is already in the registry.
+    pub fn register_connector(
+        &mut self,
+        plugin_id: &PluginId,
+        descriptor: ConnectorDescriptor,
+    ) -> PluginResult<()> {
+        let connector_id = descriptor.id;
+        if self.connectors.contains_key(&connector_id) {
+            return Err(PluginError::ConnectorAlreadyRegistered(connector_id));
+        }
+        debug!(
+            plugin_id = %plugin_id,
+            connector_id = %connector_id,
+            connector_name = %descriptor.name,
+            "Registered connector"
+        );
+        self.connectors
+            .insert(connector_id, (plugin_id.clone(), descriptor));
+        Ok(())
+    }
+
+    /// Unregister a single connector by ID, returning it if it was present.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PluginError::ConnectorNotFound`] if no connector with the
+    /// given ID exists.
+    pub fn unregister_connector(&mut self, id: &ConnectorId) -> PluginResult<ConnectorDescriptor> {
+        let (_, descriptor) = self
+            .connectors
+            .remove(id)
+            .ok_or(PluginError::ConnectorNotFound(*id))?;
+        debug!(connector_id = %id, "Unregistered connector");
+        Ok(descriptor)
+    }
+
+    /// Remove all connectors belonging to a plugin.
+    pub fn unregister_plugin_connectors(&mut self, plugin_id: &PluginId) {
+        self.connectors.retain(|_, (owner, _)| owner != plugin_id);
+    }
+
+    /// Find a connector that serves the given platform type.
+    ///
+    /// If multiple connectors serve the same platform, the choice is
+    /// arbitrary (`HashMap` iteration order). Returns `None` if no connector
+    /// matches.
+    #[must_use]
+    pub fn find_connector_by_platform(
+        &self,
+        platform: &FrontendType,
+    ) -> Option<&ConnectorDescriptor> {
+        self.connectors
+            .values()
+            .find(|(_, desc)| &desc.frontend_type == platform)
+            .map(|(_, desc)| desc)
+    }
+
+    /// Find all connectors whose capabilities satisfy the given predicate.
+    ///
+    /// The order of results is non-deterministic (`HashMap` iteration order).
+    #[must_use]
+    pub fn find_connectors_with_capability(
+        &self,
+        check: impl Fn(&ConnectorCapabilities) -> bool,
+    ) -> Vec<&ConnectorDescriptor> {
+        self.connectors
+            .values()
+            .filter(|(_, desc)| check(&desc.capabilities))
+            .map(|(_, desc)| desc)
+            .collect()
+    }
+
+    /// List all registered connector descriptors.
+    #[must_use]
+    pub fn all_connector_descriptors(&self) -> Vec<&ConnectorDescriptor> {
+        self.connectors.values().map(|(_, desc)| desc).collect()
+    }
+
+    // -----------------------------------------------------------------
+    // Tool lookup
+    // -----------------------------------------------------------------
 
     /// Find a tool by its fully qualified name (`plugin:{plugin_id}:{tool_name}`).
     ///
@@ -185,6 +314,7 @@ impl std::fmt::Debug for PluginRegistry {
         f.debug_struct("PluginRegistry")
             .field("plugin_count", &self.plugins.len())
             .field("plugin_ids", &self.list())
+            .field("connector_count", &self.connectors.len())
             .finish()
     }
 }
@@ -195,13 +325,15 @@ mod tests {
     use crate::context::{PluginContext, PluginToolContext};
     use crate::manifest::{PluginEntryPoint, PluginManifest};
     use crate::plugin::PluginState;
+    use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
 
-    /// A test plugin that provides a single tool.
+    /// A test plugin that provides a single tool and optional connectors.
     struct TestPlugin {
         id: PluginId,
         manifest: PluginManifest,
         state: PluginState,
         tools: Vec<Arc<dyn PluginTool>>,
+        connectors: Vec<ConnectorDescriptor>,
     }
 
     impl TestPlugin {
@@ -219,17 +351,25 @@ mod tests {
                         hash: None,
                     },
                     capabilities: vec![],
+                    connectors: vec![],
                     config: HashMap::new(),
                 },
                 id: plugin_id,
                 state: PluginState::Ready,
                 tools: vec![Arc::new(EchoTool)],
+                connectors: vec![],
             }
         }
 
         fn with_no_tools(id: &str) -> Self {
             let mut p = Self::new(id);
             p.tools.clear();
+            p
+        }
+
+        fn with_connectors(id: &str, connectors: Vec<ConnectorDescriptor>) -> Self {
+            let mut p = Self::new(id);
+            p.connectors = connectors;
             p
         }
     }
@@ -255,6 +395,9 @@ mod tests {
         }
         fn tools(&self) -> &[Arc<dyn PluginTool>] {
             &self.tools
+        }
+        fn connectors(&self) -> &[ConnectorDescriptor] {
+            &self.connectors
         }
     }
 
@@ -542,5 +685,259 @@ mod tests {
         let debug = format!("{registry:?}");
         assert!(debug.contains("PluginRegistry"));
         assert!(debug.contains("plugin_count"));
+    }
+
+    // -----------------------------------------------------------------
+    // Connector tests
+    // -----------------------------------------------------------------
+
+    fn make_descriptor(name: &str, platform: FrontendType) -> ConnectorDescriptor {
+        ConnectorDescriptor::builder(name, platform)
+            .source(ConnectorSource::new_wasm("test-plugin").unwrap())
+            .capabilities(ConnectorCapabilities::full())
+            .profile(ConnectorProfile::Chat)
+            .build()
+    }
+
+    #[test]
+    fn test_register_plugin_with_connectors() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("discord-bot", FrontendType::Discord);
+        let connector_id = desc.id;
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![desc])))
+            .unwrap();
+
+        // Connector should be registered alongside the plugin.
+        assert_eq!(registry.all_connector_descriptors().len(), 1);
+        assert_eq!(registry.all_connector_descriptors()[0].id, connector_id);
+    }
+
+    #[test]
+    fn test_unregister_plugin_cleans_up_connectors() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("discord-bot", FrontendType::Discord);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![desc])))
+            .unwrap();
+        assert_eq!(registry.all_connector_descriptors().len(), 1);
+
+        let id = PluginId::from_static("alpha");
+        registry.unregister(&id).unwrap();
+
+        // Connectors should be cleaned up.
+        assert!(registry.all_connector_descriptors().is_empty());
+    }
+
+    #[test]
+    fn test_register_connector_duplicate_fails() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("bot", FrontendType::Discord);
+        let dup = desc.clone();
+
+        let plugin_id = PluginId::from_static("alpha");
+        registry.register_connector(&plugin_id, desc).unwrap();
+
+        let result = registry.register_connector(&plugin_id, dup);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            PluginError::ConnectorAlreadyRegistered(_)
+        ));
+    }
+
+    #[test]
+    fn test_unregister_connector_by_id() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("bot", FrontendType::Discord);
+        let connector_id = desc.id;
+
+        let plugin_id = PluginId::from_static("alpha");
+        registry.register_connector(&plugin_id, desc).unwrap();
+        assert_eq!(registry.all_connector_descriptors().len(), 1);
+
+        let removed = registry.unregister_connector(&connector_id).unwrap();
+        assert_eq!(removed.id, connector_id);
+        assert!(registry.all_connector_descriptors().is_empty());
+    }
+
+    #[test]
+    fn test_unregister_connector_not_found() {
+        let mut registry = PluginRegistry::new();
+        let missing_id = ConnectorId::new();
+        let result = registry.unregister_connector(&missing_id);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            PluginError::ConnectorNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn test_find_connector_by_platform() {
+        let mut registry = PluginRegistry::new();
+        let discord_desc = make_descriptor("discord-bot", FrontendType::Discord);
+        let cli_desc = make_descriptor("cli-bot", FrontendType::Cli);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors(
+                "alpha",
+                vec![discord_desc.clone(), cli_desc],
+            )))
+            .unwrap();
+
+        let found = registry.find_connector_by_platform(&FrontendType::Discord);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "discord-bot");
+
+        let found = registry.find_connector_by_platform(&FrontendType::Cli);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "cli-bot");
+
+        // Platform not registered.
+        let found = registry.find_connector_by_platform(&FrontendType::Web);
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn test_find_connectors_with_capability() {
+        let mut registry = PluginRegistry::new();
+
+        // Full-capability connector.
+        let full = make_descriptor("full-bot", FrontendType::Discord);
+        // Notify-only connector (can_approve == false).
+        let notify = ConnectorDescriptor::builder("notifier", FrontendType::Cli)
+            .capabilities(ConnectorCapabilities::notify_only())
+            .build();
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors(
+                "alpha",
+                vec![full, notify],
+            )))
+            .unwrap();
+
+        // Find connectors that support approval.
+        let approval = registry.find_connectors_with_capability(|c| c.can_approve);
+        assert_eq!(approval.len(), 1);
+        assert_eq!(approval[0].name, "full-bot");
+
+        // Find connectors that can send.
+        let senders = registry.find_connectors_with_capability(|c| c.can_send);
+        assert_eq!(senders.len(), 2);
+    }
+
+    #[test]
+    fn test_all_connector_descriptors() {
+        let mut registry = PluginRegistry::new();
+        assert!(registry.all_connector_descriptors().is_empty());
+
+        let d1 = make_descriptor("a", FrontendType::Discord);
+        let d2 = make_descriptor("b", FrontendType::Cli);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![d1, d2])))
+            .unwrap();
+
+        assert_eq!(registry.all_connector_descriptors().len(), 2);
+    }
+
+    #[test]
+    fn test_unregister_plugin_connectors_selective() {
+        let mut registry = PluginRegistry::new();
+
+        let d1 = make_descriptor("alpha-bot", FrontendType::Discord);
+        let d2 = make_descriptor("beta-bot", FrontendType::Cli);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![d1])))
+            .unwrap();
+        registry
+            .register(Box::new(TestPlugin::with_connectors("beta", vec![d2])))
+            .unwrap();
+
+        assert_eq!(registry.all_connector_descriptors().len(), 2);
+
+        // Unregister alpha — only alpha's connector should be removed.
+        let alpha_id = PluginId::from_static("alpha");
+        registry.unregister(&alpha_id).unwrap();
+
+        let remaining = registry.all_connector_descriptors();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].name, "beta-bot");
+    }
+
+    #[test]
+    fn test_register_plugin_rolls_back_connectors_on_failure() {
+        let mut registry = PluginRegistry::new();
+
+        // Pre-register a connector directly so the second one in the plugin
+        // will collide with it.
+        let collider = make_descriptor("collider", FrontendType::Web);
+        let collider_id = collider.id;
+        let owner = PluginId::from_static("other");
+        registry.register_connector(&owner, collider).unwrap();
+
+        // Build a plugin with two connectors: one unique and one that
+        // duplicates the pre-registered collider ID.
+        let good = make_descriptor("good-bot", FrontendType::Discord);
+        let mut bad = make_descriptor("bad-bot", FrontendType::Cli);
+        bad.id = collider_id; // force collision
+
+        let plugin = TestPlugin::with_connectors("alpha", vec![good, bad]);
+        let result = registry.register(Box::new(plugin));
+
+        // Registration must fail.
+        assert!(result.is_err());
+
+        // The first connector ("good-bot") must have been rolled back.
+        // Only the original "collider" should remain.
+        assert_eq!(registry.all_connector_descriptors().len(), 1);
+        assert_eq!(registry.all_connector_descriptors()[0].name, "collider");
+
+        // The plugin itself must not be registered.
+        assert!(registry.get(&PluginId::from_static("alpha")).is_none());
+    }
+
+    #[test]
+    fn test_get_connector_by_id() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("discord-bot", FrontendType::Discord);
+        let connector_id = desc.id;
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![desc])))
+            .unwrap();
+
+        let found = registry.get_connector(&connector_id);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "discord-bot");
+
+        // Missing ID returns None.
+        assert!(registry.get_connector(&ConnectorId::new()).is_none());
+    }
+
+    #[test]
+    fn test_find_connector_by_platform_multiple_matches() {
+        let mut registry = PluginRegistry::new();
+
+        // Two connectors from different plugins, same platform.
+        let d1 = make_descriptor("bot-a", FrontendType::Discord);
+        let d2 = make_descriptor("bot-b", FrontendType::Discord);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![d1])))
+            .unwrap();
+        registry
+            .register(Box::new(TestPlugin::with_connectors("beta", vec![d2])))
+            .unwrap();
+
+        // Should return one of the two (non-deterministic, but must not panic).
+        let found = registry.find_connector_by_platform(&FrontendType::Discord);
+        assert!(found.is_some());
+        let name = &found.unwrap().name;
+        assert!(name == "bot-a" || name == "bot-b");
     }
 }

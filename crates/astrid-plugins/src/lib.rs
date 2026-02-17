@@ -52,7 +52,7 @@ pub use error::{PluginError, PluginResult};
 #[cfg(feature = "http")]
 pub use git_install::GitSource;
 pub use lockfile::{IntegrityViolation, LockedPlugin, PluginLockfile, PluginSource};
-pub use manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
+pub use manifest::{ManifestConnector, PluginCapability, PluginEntryPoint, PluginManifest};
 pub use mcp_plugin::{McpPlugin, create_plugin};
 pub use plugin::{Plugin, PluginId, PluginState};
 pub use registry::{PluginRegistry, PluginToolDefinition};
