@@ -346,6 +346,7 @@ fn prepare_tier2(
             binary_hash: None,
         },
         capabilities: vec![],
+        connectors: vec![],
         config: HashMap::new(),
     };
 
@@ -563,6 +564,9 @@ pub(crate) fn plugin_info(id: &str) -> anyhow::Result<()> {
                 },
                 PluginCapability::KvStore => "kv_store".to_string(),
                 PluginCapability::Config => "config".to_string(),
+                PluginCapability::Connector { profile } => {
+                    format!("connector (profile: {profile})")
+                },
             };
             println!("  - {desc}");
         }

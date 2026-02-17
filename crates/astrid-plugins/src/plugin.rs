@@ -6,6 +6,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use astrid_core::ConnectorDescriptor;
+
 use crate::context::PluginContext;
 use crate::error::PluginResult;
 use crate::manifest::PluginManifest;
@@ -158,6 +160,15 @@ pub trait Plugin: Send + Sync {
     /// the registry lock before executing (avoids holding a read lock
     /// across potentially slow tool calls).
     fn tools(&self) -> &[Arc<dyn PluginTool>];
+
+    /// The connectors this plugin provides.
+    ///
+    /// Returns an empty slice by default. Plugins that provide connectors
+    /// (e.g. a Telegram bridge plugin) override this to return their
+    /// connector descriptors.
+    fn connectors(&self) -> &[ConnectorDescriptor] {
+        &[]
+    }
 }
 
 #[cfg(test)]

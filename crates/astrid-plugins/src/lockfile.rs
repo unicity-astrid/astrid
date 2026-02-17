@@ -1016,6 +1016,7 @@ path = "plugin.wasm"
                 hash: None,
             },
             capabilities: vec![],
+            connectors: vec![],
             config: std::collections::HashMap::new(),
         };
 

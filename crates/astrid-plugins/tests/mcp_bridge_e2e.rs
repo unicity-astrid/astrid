@@ -68,6 +68,7 @@ fn setup_bridge_plugin(tmp: &tempfile::TempDir) -> McpPlugin {
             binary_hash: None,
         },
         capabilities: vec![],
+        connectors: vec![],
         config: HashMap::new(),
     };
 
