@@ -333,6 +333,49 @@ async fn test_bridge_tool_discovery() {
     plugin.unload().await.expect("plugin unload");
 }
 
+/// Load plugin via [`McpPlugin`] with config, call `get-config`, verify
+/// the config notification was delivered and `loadConfig()` returns it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_bridge_config_via_plugin() {
+    if !node_available() {
+        eprintln!("SKIP: node not found on $PATH");
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    let mut plugin = setup_bridge_plugin(&tmp);
+
+    let mut config = HashMap::new();
+    config.insert("network".into(), serde_json::json!("testnet"));
+    config.insert("owner".into(), serde_json::json!("0xABC"));
+
+    let ctx = make_context(config);
+    plugin.load(&ctx).await.expect("plugin load");
+
+    // Wait for the notification to be processed by the bridge.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let tool = plugin
+        .tools()
+        .iter()
+        .find(|t| t.name() == "get-config")
+        .expect("get-config tool should be registered");
+
+    let tool_ctx = make_tool_context();
+    let result = tool
+        .execute(serde_json::json!({}), &tool_ctx)
+        .await
+        .expect("get-config execution");
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("parse get-config result as JSON");
+
+    assert_eq!(parsed["network"], "testnet", "config.network mismatch");
+    assert_eq!(parsed["owner"], "0xABC", "config.owner mismatch");
+
+    plugin.unload().await.expect("plugin unload");
+}
+
 /// Load plugin via [`McpPlugin`] (no config), call `get-config`, verify
 /// tool execution returns `{}`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

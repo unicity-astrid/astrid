@@ -237,11 +237,6 @@ function sendNotification(method, params) {
 // ── MCP method handlers ─────────────────────────────────────────────
 
 function handleInitialize(id, params) {
-  // Extract config from initialize params if provided
-  if (params?.initializationOptions?.config) {
-    pluginConfig = params.initializationOptions.config;
-  }
-
   sendResponse(id, {
     protocolVersion: "2025-11-25",
     capabilities: {
