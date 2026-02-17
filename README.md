@@ -110,7 +110,7 @@ The hard limits:
 - **30-second timeout** per call -- if a plugin hangs, it gets killed
 - **BLAKE3 hash verification** -- every `.wasm` binary is hashed on load and checked against the manifest. If someone swaps the file, it won't load. In production mode, plugins without a hash in their manifest are rejected entirely.
 
-You can't disable any of this. There's no `--yolo` flag for the WASM sandbox.
+If you genuinely need to remove the guardrails -- you're running trusted first-party plugins in a controlled environment, or you just like living dangerously -- a `--yolo` flag is planned. It'll do exactly what it sounds like. You've been warned.
 
 ### Workspace boundary -- for the agent (flexible, approval-gated)
 
