@@ -16,6 +16,7 @@ use astrid_plugins::wasm::host_functions::register_host_functions;
 use astrid_plugins::wasm::host_state::HostState;
 use astrid_storage::kv::ScopedKvStore;
 use extism::{Manifest, PluginBuilder, UserData, Wasm};
+use tokio::sync::mpsc;
 
 /// Path to the compiled WASM fixture.
 fn wasm_fixture_path() -> PathBuf {
@@ -67,6 +68,9 @@ fn build_test_plugin(
         config,
         security: None,
         runtime_handle: tokio::runtime::Handle::current(),
+        has_connector_capability: false,
+        inbound_tx: None,
+        registered_connectors: Vec::new(),
     };
     let user_data = UserData::new(host_state);
 
@@ -76,6 +80,45 @@ fn build_test_plugin(
     let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
     let builder = register_host_functions(builder, user_data);
     builder.build().expect("build Extism plugin")
+}
+
+/// Build an Extism plugin with Connector capability enabled and an inbound channel.
+///
+/// Returns the plugin and the receiver end of the inbound message channel.
+fn build_connector_plugin(
+    workspace_root: &PathBuf,
+) -> (
+    extism::Plugin,
+    mpsc::Receiver<astrid_core::connector::InboundMessage>,
+) {
+    let wasm_bytes = std::fs::read(wasm_fixture_path()).expect("read WASM fixture");
+
+    let store = Arc::new(astrid_storage::MemoryKvStore::new());
+    let kv = ScopedKvStore::new(store, "plugin:test-connector").expect("create scoped KV store");
+
+    let (tx, rx) = mpsc::channel(256);
+
+    let host_state = HostState {
+        plugin_id: PluginId::from_static("test-connector"),
+        workspace_root: workspace_root.clone(),
+        kv,
+        config: HashMap::new(),
+        security: None,
+        runtime_handle: tokio::runtime::Handle::current(),
+        has_connector_capability: true,
+        inbound_tx: Some(tx),
+        registered_connectors: Vec::new(),
+    };
+    let user_data = UserData::new(host_state);
+
+    let extism_wasm = Wasm::data(wasm_bytes);
+    let extism_manifest = Manifest::new([extism_wasm]);
+
+    let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
+    let builder = register_host_functions(builder, user_data);
+    let plugin = builder.build().expect("build Extism plugin");
+
+    (plugin, rx)
 }
 
 /// Call `describe-tools` and parse the result.
@@ -110,12 +153,33 @@ fn execute_tool(plugin: &mut extism::Plugin, name: &str, args: serde_json::Value
         .unwrap_or_else(|e| panic!("parse ToolOutput for {name}: {e}\nraw: {result}"))
 }
 
+/// Like `execute_tool` but returns `Err` if the Extism call itself fails
+/// (e.g. host function rejects the call). This is needed for testing that
+/// host-level security gates produce errors.
+fn try_execute_tool(
+    plugin: &mut extism::Plugin,
+    name: &str,
+    args: serde_json::Value,
+) -> Result<ToolOutput, String> {
+    let input = ToolInput {
+        name: name.to_string(),
+        arguments: serde_json::to_string(&args).unwrap(),
+    };
+    let input_json = serde_json::to_string(&input).unwrap();
+    let result = tokio::task::block_in_place(|| {
+        plugin
+            .call::<&str, String>("execute-tool", &input_json)
+            .map_err(|e| e.to_string())
+    })?;
+    serde_json::from_str(&result).map_err(|e| format!("parse ToolOutput: {e}\nraw: {result}"))
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn discover_all_six_tools() {
+async fn discover_all_eight_tools() {
     build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-discover");
@@ -140,11 +204,19 @@ async fn discover_all_six_tools() {
         names.contains(&"test-roundtrip"),
         "missing test-roundtrip tool"
     );
+    assert!(
+        names.contains(&"test-register-connector"),
+        "missing test-register-connector tool"
+    );
+    assert!(
+        names.contains(&"test-channel-send"),
+        "missing test-channel-send tool"
+    );
 
     assert_eq!(
         tools.len(),
-        6,
-        "expected exactly 6 tools, got {}",
+        8,
+        "expected exactly 8 tools, got {}",
         tools.len()
     );
 
@@ -316,6 +388,108 @@ async fn unknown_tool_returns_error() {
         output.content.contains("unknown tool"),
         "error should mention unknown tool: {}",
         output.content
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+// ---------------------------------------------------------------------------
+// Connector E2E tests (require has_connector_capability = true)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_register_connector_returns_uuid() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-register-conn");
+    let _ = std::fs::create_dir_all(&workspace);
+    let (mut plugin, _rx) = build_connector_plugin(&workspace);
+
+    let output = execute_tool(
+        &mut plugin,
+        "test-register-connector",
+        serde_json::json!({ "name": "my-discord-bot", "platform": "discord", "profile": "chat" }),
+    );
+
+    assert!(
+        !output.is_error,
+        "register-connector should succeed: {}",
+        output.content
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(parsed["registered"], true);
+    assert_eq!(parsed["name"], "my-discord-bot");
+    assert_eq!(parsed["platform"], "discord");
+
+    // Verify the connector_id is a valid UUID
+    let connector_id = parsed["connector_id"].as_str().unwrap();
+    assert!(
+        uuid::Uuid::parse_str(connector_id).is_ok(),
+        "connector_id should be a valid UUID: {connector_id}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_channel_send_delivers_message() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-channel-send");
+    let _ = std::fs::create_dir_all(&workspace);
+    let (mut plugin, mut rx) = build_connector_plugin(&workspace);
+
+    let output = execute_tool(
+        &mut plugin,
+        "test-channel-send",
+        serde_json::json!({
+            "connector_name": "test-bot",
+            "platform": "telegram",
+            "user_id": "user-42",
+            "message": "hello from WASM"
+        }),
+    );
+
+    assert!(
+        !output.is_error,
+        "channel-send should succeed: {}",
+        output.content
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(parsed["send_result"]["ok"], true);
+    assert_eq!(parsed["user_id"], "user-42");
+    assert_eq!(parsed["message"], "hello from WASM");
+
+    // Verify the message was received on the inbound channel
+    let msg = rx
+        .try_recv()
+        .expect("should have received an inbound message");
+    assert_eq!(msg.platform_user_id, "user-42");
+    assert_eq!(msg.content, "hello from WASM");
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_register_connector_rejected_without_capability() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-no-cap");
+    let _ = std::fs::create_dir_all(&workspace);
+    // Use the standard plugin builder (has_connector_capability = false)
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    let result = try_execute_tool(
+        &mut plugin,
+        "test-register-connector",
+        serde_json::json!({ "name": "bad-conn", "platform": "discord", "profile": "chat" }),
+    );
+
+    // The host function rejects at the Extism level (before the guest can return ToolOutput).
+    // Extism wraps host function errors in a WASM backtrace; verify the call failed.
+    assert!(
+        result.is_err(),
+        "register-connector without capability should fail"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);

@@ -28,6 +28,25 @@ pub trait PluginSecurityGate: Send + Sync {
 
     /// Check whether the plugin is allowed to write a file.
     async fn check_file_write(&self, plugin_id: &str, path: &str) -> Result<(), String>;
+
+    /// Check whether the plugin is allowed to register a connector.
+    ///
+    /// Default implementation permits all registrations. Override to enforce
+    /// connector policies (e.g. platform allowlists per plugin).
+    ///
+    /// RATIONALE: This has a permissive default (unlike the required file/HTTP
+    /// methods) to maintain backward compatibility with existing
+    /// `PluginSecurityGate` implementors. The `has_connector_capability` flag
+    /// on `HostState` already gates access — this method adds operator-level
+    /// policy on top.
+    async fn check_connector_register(
+        &self,
+        _plugin_id: &str,
+        _connector_name: &str,
+        _platform: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Security gate that permits all operations (for testing).
@@ -50,6 +69,15 @@ impl PluginSecurityGate for AllowAllGate {
     }
 
     async fn check_file_write(&self, _plugin_id: &str, _path: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn check_connector_register(
+        &self,
+        _plugin_id: &str,
+        _connector_name: &str,
+        _platform: &str,
+    ) -> Result<(), String> {
         Ok(())
     }
 }
@@ -80,6 +108,17 @@ impl PluginSecurityGate for DenyAllGate {
     async fn check_file_write(&self, plugin_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
             "plugin '{plugin_id}' denied: write {path} (DenyAllGate)"
+        ))
+    }
+
+    async fn check_connector_register(
+        &self,
+        plugin_id: &str,
+        connector_name: &str,
+        platform: &str,
+    ) -> Result<(), String> {
+        Err(format!(
+            "plugin '{plugin_id}' denied: register connector {connector_name} ({platform}) (DenyAllGate)"
         ))
     }
 }
@@ -165,6 +204,23 @@ mod interceptor_gate {
                 .map(|_| ())
                 .map_err(|e| e.to_string())
         }
+
+        async fn check_connector_register(
+            &self,
+            plugin_id: &str,
+            connector_name: &str,
+            platform: &str,
+        ) -> Result<(), String> {
+            let action = SensitiveAction::PluginExecution {
+                plugin_id: plugin_id.to_string(),
+                capability: format!("register_connector({connector_name}, {platform})"),
+            };
+            self.interceptor
+                .intercept(&action, "plugin host function: register connector", None)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -185,6 +241,11 @@ mod tests {
         );
         assert!(gate.check_file_read("p", "/tmp/f").await.is_ok());
         assert!(gate.check_file_write("p", "/tmp/f").await.is_ok());
+        assert!(
+            gate.check_connector_register("p", "my-conn", "discord")
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -197,5 +258,10 @@ mod tests {
         );
         assert!(gate.check_file_read("p", "/tmp/f").await.is_err());
         assert!(gate.check_file_write("p", "/tmp/f").await.is_err());
+        assert!(
+            gate.check_connector_register("p", "my-conn", "discord")
+                .await
+                .is_err()
+        );
     }
 }

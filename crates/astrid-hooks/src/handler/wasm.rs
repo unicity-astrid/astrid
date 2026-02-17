@@ -188,6 +188,9 @@ impl WasmHandler {
             config: HashMap::new(),
             security: None,
             runtime_handle: tokio::runtime::Handle::current(),
+            has_connector_capability: false,
+            inbound_tx: None,
+            registered_connectors: Vec::new(),
         };
         let user_data = UserData::new(host_state);
 

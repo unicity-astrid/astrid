@@ -10,18 +10,23 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use extism::{Manifest, PluginBuilder, UserData, Wasm};
+use tokio::sync::mpsc;
 
+use astrid_core::connector::{ConnectorDescriptor, InboundMessage};
 use astrid_core::plugin_abi::ToolDefinition;
 
 use crate::context::PluginContext;
 use crate::error::{PluginError, PluginResult};
-use crate::manifest::{PluginEntryPoint, PluginManifest};
+use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::security::PluginSecurityGate;
 use crate::tool::PluginTool;
 use crate::wasm::host_functions::register_host_functions;
 use crate::wasm::host_state::HostState;
 use crate::wasm::tool::WasmPluginTool;
+
+/// Bounded channel capacity for inbound messages from connector plugins.
+const INBOUND_CHANNEL_CAPACITY: usize = 256;
 
 /// Configuration from [`WasmPluginLoader`](super::loader::WasmPluginLoader).
 ///
@@ -59,6 +64,13 @@ pub struct WasmPlugin {
     extism_plugin: Option<Arc<Mutex<extism::Plugin>>>,
     /// Tools discovered from the guest's `describe-tools` export.
     tools: Vec<Arc<dyn PluginTool>>,
+    /// Connectors registered by the WASM guest via `astrid_register_connector`.
+    connectors: Vec<ConnectorDescriptor>,
+    /// Receiver for inbound messages from the WASM guest via `astrid_channel_send`.
+    ///
+    /// Created during load when the manifest declares `PluginCapability::Connector`.
+    /// The gateway consumes this receiver to route messages.
+    inbound_rx: Option<mpsc::Receiver<InboundMessage>>,
 }
 
 impl WasmPlugin {
@@ -72,7 +84,17 @@ impl WasmPlugin {
             config,
             extism_plugin: None,
             tools: Vec::new(),
+            connectors: Vec::new(),
+            inbound_rx: None,
         }
+    }
+
+    /// Take the inbound message receiver, if any.
+    ///
+    /// This can only be called once — subsequent calls return `None`.
+    /// The gateway should call this after loading to consume inbound messages.
+    pub fn take_inbound_rx(&mut self) -> Option<mpsc::Receiver<InboundMessage>> {
+        self.inbound_rx.take()
     }
 }
 
@@ -109,6 +131,8 @@ impl Plugin for WasmPlugin {
     async fn unload(&mut self) -> PluginResult<()> {
         self.state = PluginState::Unloading;
         self.tools.clear();
+        self.connectors.clear();
+        self.inbound_rx = None;
         self.extism_plugin = None;
         self.state = PluginState::Unloaded;
         Ok(())
@@ -117,9 +141,21 @@ impl Plugin for WasmPlugin {
     fn tools(&self) -> &[Arc<dyn PluginTool>] {
         &self.tools
     }
+
+    fn connectors(&self) -> &[ConnectorDescriptor] {
+        &self.connectors
+    }
 }
 
 impl WasmPlugin {
+    /// Check if the manifest declares a `Connector` capability.
+    fn has_connector_capability(&self) -> bool {
+        self.manifest
+            .capabilities
+            .iter()
+            .any(|c| matches!(c, PluginCapability::Connector { .. }))
+    }
+
     /// Internal load logic. Separated so we can catch errors and set `Failed` state.
     fn do_load(&mut self, ctx: &PluginContext) -> PluginResult<()> {
         // 1. Resolve WASM file path
@@ -154,7 +190,17 @@ impl WasmPlugin {
             self.config.require_hash,
         )?;
 
-        // 4. Build HostState
+        // 4. Create inbound channel if this plugin declares Connector capability
+        let inbound_tx = if self.has_connector_capability() {
+            let (tx, rx) = mpsc::channel(INBOUND_CHANNEL_CAPACITY);
+            self.inbound_rx = Some(rx);
+            Some(tx)
+        } else {
+            None
+        };
+
+        // 5. Build HostState
+        let has_connector = self.has_connector_capability();
         let host_state = HostState {
             plugin_id: self.id.clone(),
             workspace_root: ctx.workspace_root.clone(),
@@ -162,10 +208,15 @@ impl WasmPlugin {
             config: ctx.config.clone(),
             security: self.config.security.clone(),
             runtime_handle: tokio::runtime::Handle::current(),
+            has_connector_capability: has_connector,
+            inbound_tx,
+            registered_connectors: Vec::new(),
         };
         let user_data = UserData::new(host_state);
+        // Keep a reference to extract registered connectors after plugin build
+        let user_data_ref = user_data.clone();
 
-        // 5. Build Extism Manifest
+        // 6. Build Extism Manifest
         let extism_wasm = Wasm::data(wasm_bytes);
         let mut extism_manifest = Manifest::new([extism_wasm]);
         extism_manifest = extism_manifest.with_timeout(self.config.max_execution_time);
@@ -174,14 +225,14 @@ impl WasmPlugin {
         let max_pages = u32::try_from(pages).unwrap_or(u32::MAX);
         extism_manifest = extism_manifest.with_memory_max(max_pages);
 
-        // 6. Build Extism Plugin
+        // 7. Build Extism Plugin
         let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
         let builder = register_host_functions(builder, user_data);
         let mut plugin = builder
             .build()
             .map_err(|e| PluginError::WasmError(format!("failed to build Extism plugin: {e}")))?;
 
-        // 7. Discover tools via `describe-tools` export
+        // 8. Discover tools via `describe-tools` export
         let tools = discover_tools(&mut plugin)?;
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
@@ -199,8 +250,26 @@ impl WasmPlugin {
             })
             .collect();
 
+        // 9. Extract registered connectors from HostState
+        //    (the guest may have called astrid_register_connector during describe-tools
+        //     or any other guest export called during initialization)
+        //
+        //    NOTE: This is a snapshot. Connectors registered after load completes
+        //    (e.g. during tool execution) will not be reflected in Plugin::connectors().
+        //    A future enhancement could watch for late registrations if needed.
+        let connectors = {
+            let ud = user_data_ref.get().map_err(|e| {
+                PluginError::WasmError(format!("failed to access host state after build: {e}"))
+            })?;
+            let state = ud.lock().map_err(|e| {
+                PluginError::WasmError(format!("host state lock poisoned after build: {e}"))
+            })?;
+            state.registered_connectors.clone()
+        };
+
         self.extism_plugin = Some(plugin_arc);
         self.tools = wasm_tools;
+        self.connectors = connectors;
 
         Ok(())
     }
@@ -263,6 +332,8 @@ impl std::fmt::Debug for WasmPlugin {
             .field("id", &self.id)
             .field("state", &self.state)
             .field("tool_count", &self.tools.len())
+            .field("connector_count", &self.connectors.len())
+            .field("has_inbound_rx", &self.inbound_rx.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -347,5 +418,89 @@ mod tests {
         let plugin = WasmPlugin::new(manifest, config);
         assert_eq!(plugin.state(), PluginState::Unloaded);
         assert!(plugin.tools().is_empty());
+        assert!(plugin.connectors().is_empty());
+        assert!(plugin.inbound_rx.is_none());
+    }
+
+    #[test]
+    fn wasm_plugin_has_connector_capability() {
+        use astrid_core::ConnectorProfile;
+
+        let manifest = PluginManifest {
+            id: PluginId::from_static("conn-test"),
+            name: "ConnectorTest".into(),
+            version: "0.1.0".into(),
+            description: None,
+            author: None,
+            entry_point: PluginEntryPoint::Wasm {
+                path: "plugin.wasm".into(),
+                hash: None,
+            },
+            capabilities: vec![PluginCapability::Connector {
+                profile: ConnectorProfile::Chat,
+            }],
+            connectors: vec![],
+            config: HashMap::new(),
+        };
+        let config = WasmPluginConfig {
+            security: None,
+            max_memory_bytes: 64 * 1024 * 1024,
+            max_execution_time: Duration::from_secs(30),
+            require_hash: false,
+        };
+        let plugin = WasmPlugin::new(manifest, config);
+        assert!(plugin.has_connector_capability());
+    }
+
+    #[test]
+    fn wasm_plugin_no_connector_capability() {
+        let manifest = PluginManifest {
+            id: PluginId::from_static("no-conn"),
+            name: "NoConn".into(),
+            version: "0.1.0".into(),
+            description: None,
+            author: None,
+            entry_point: PluginEntryPoint::Wasm {
+                path: "plugin.wasm".into(),
+                hash: None,
+            },
+            capabilities: vec![PluginCapability::KvStore],
+            connectors: vec![],
+            config: HashMap::new(),
+        };
+        let config = WasmPluginConfig {
+            security: None,
+            max_memory_bytes: 64 * 1024 * 1024,
+            max_execution_time: Duration::from_secs(30),
+            require_hash: false,
+        };
+        let plugin = WasmPlugin::new(manifest, config);
+        assert!(!plugin.has_connector_capability());
+    }
+
+    #[test]
+    fn take_inbound_rx_returns_none_when_not_loaded() {
+        let manifest = PluginManifest {
+            id: PluginId::from_static("test"),
+            name: "Test".into(),
+            version: "0.1.0".into(),
+            description: None,
+            author: None,
+            entry_point: PluginEntryPoint::Wasm {
+                path: "plugin.wasm".into(),
+                hash: None,
+            },
+            capabilities: vec![],
+            connectors: vec![],
+            config: HashMap::new(),
+        };
+        let config = WasmPluginConfig {
+            security: None,
+            max_memory_bytes: 64 * 1024 * 1024,
+            max_execution_time: Duration::from_secs(30),
+            require_hash: false,
+        };
+        let mut plugin = WasmPlugin::new(manifest, config);
+        assert!(plugin.take_inbound_rx().is_none());
     }
 }

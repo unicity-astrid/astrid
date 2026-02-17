@@ -1,15 +1,17 @@
 //! Test WASM guest plugin for end-to-end integration testing.
 //!
-//! Exercises all 7 Astrid host functions through 6 tools:
+//! Exercises all 9 Astrid host functions through 8 tools:
 //!
-//! | Tool             | Host Functions Used                        |
-//! |------------------|--------------------------------------------|
-//! | `test-log`       | `astrid_log`                             |
-//! | `test-config`    | `astrid_get_config`                      |
-//! | `test-kv`        | `astrid_kv_set`, `astrid_kv_get`       |
-//! | `test-file-write`| `astrid_write_file`                      |
-//! | `test-file-read` | `astrid_read_file`                       |
-//! | `test-roundtrip` | `astrid_kv_set`, `astrid_kv_get`       |
+//! | Tool                     | Host Functions Used                        |
+//! |--------------------------|--------------------------------------------|
+//! | `test-log`               | `astrid_log`                             |
+//! | `test-config`            | `astrid_get_config`                      |
+//! | `test-kv`                | `astrid_kv_set`, `astrid_kv_get`       |
+//! | `test-file-write`        | `astrid_write_file`                      |
+//! | `test-file-read`         | `astrid_read_file`                       |
+//! | `test-roundtrip`         | `astrid_kv_set`, `astrid_kv_get`       |
+//! | `test-register-connector`| `astrid_register_connector`              |
+//! | `test-channel-send`      | `astrid_register_connector`, `astrid_channel_send` |
 //!
 //! Built as a `cdylib` targeting `wasm32-unknown-unknown` for Extism.
 //!
@@ -28,11 +30,13 @@ use serde::{Deserialize, Serialize};
 
 #[host_fn]
 extern "ExtismHost" {
+    fn astrid_channel_send(connector_id: String, platform_user_id: String, content: String) -> String;
     fn astrid_log(level: String, message: String);
     fn astrid_get_config(key: String) -> String;
     fn astrid_kv_get(key: String) -> String;
     fn astrid_kv_set(key: String, value: String);
     fn astrid_read_file(path: String) -> String;
+    fn astrid_register_connector(name: String, platform: String, profile: String) -> String;
     fn astrid_write_file(path: String, content: String);
     fn astrid_http_request(request_json: String) -> String;
 }
@@ -115,6 +119,16 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Write structured data to KV, read it back, verify integrity".into(),
             input_schema: r#"{"type":"object","properties":{"data":{"type":"object"}},"required":["data"]}"#.into(),
         },
+        ToolDefinition {
+            name: "test-register-connector".into(),
+            description: "Register a connector and return its assigned ID".into(),
+            input_schema: r#"{"type":"object","properties":{"name":{"type":"string"},"platform":{"type":"string"},"profile":{"type":"string"}},"required":["name","platform","profile"]}"#.into(),
+        },
+        ToolDefinition {
+            name: "test-channel-send".into(),
+            description: "Register a connector, then send a message through it".into(),
+            input_schema: r#"{"type":"object","properties":{"connector_name":{"type":"string"},"platform":{"type":"string"},"user_id":{"type":"string"},"message":{"type":"string"}},"required":["connector_name","platform","user_id","message"]}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -156,6 +170,8 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-file-write" => handle_test_file_write(&args),
         "test-file-read" => handle_test_file_read(&args),
         "test-roundtrip" => handle_test_roundtrip(&args),
+        "test-register-connector" => handle_test_register_connector(&args),
+        "test-channel-send" => handle_test_channel_send(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -292,6 +308,62 @@ fn handle_test_roundtrip(args: &serde_json::Value) -> Result<ToolOutput, Error> 
         "original": data,
         "round_tripped": parsed,
         "integrity": serialized == read_back
+    });
+
+    Ok(ToolOutput {
+        content: serde_json::to_string(&result)?,
+        is_error: false,
+    })
+}
+
+fn handle_test_register_connector(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let name = args["name"].as_str().unwrap_or("");
+    let platform = args["platform"].as_str().unwrap_or("");
+    let profile = args["profile"].as_str().unwrap_or("chat");
+
+    let connector_id = unsafe {
+        astrid_register_connector(name.into(), platform.into(), profile.into())?
+    };
+
+    let result = serde_json::json!({
+        "registered": true,
+        "connector_id": connector_id,
+        "name": name,
+        "platform": platform,
+        "profile": profile
+    });
+
+    Ok(ToolOutput {
+        content: serde_json::to_string(&result)?,
+        is_error: false,
+    })
+}
+
+fn handle_test_channel_send(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let connector_name = args["connector_name"].as_str().unwrap_or("");
+    let platform = args["platform"].as_str().unwrap_or("");
+    let user_id = args["user_id"].as_str().unwrap_or("");
+    let message = args["message"].as_str().unwrap_or("");
+
+    // First register a connector to get an ID
+    let connector_id = unsafe {
+        astrid_register_connector(connector_name.into(), platform.into(), "chat".into())?
+    };
+
+    // Then send a message through it
+    let send_result = unsafe {
+        astrid_channel_send(connector_id.clone(), user_id.into(), message.into())?
+    };
+
+    // Parse the send result
+    let send_parsed: serde_json::Value = serde_json::from_str(&send_result)
+        .unwrap_or(serde_json::json!({"raw": send_result}));
+
+    let result = serde_json::json!({
+        "connector_id": connector_id,
+        "send_result": send_parsed,
+        "user_id": user_id,
+        "message": message
     });
 
     Ok(ToolOutput {
