@@ -85,11 +85,51 @@ This is real code. Look at `crates/astrid-approval/src/interceptor.rs` -- the `S
 
 ## Two sandboxes
 
-Astrid has two separate security boundaries because untrusted code and trusted agent actions need different treatment:
+Untrusted code and trusted agent actions are fundamentally different threats, so they get different sandboxes.
 
-**WASM sandbox (locked down, no overrides):** Plugins run inside WebAssembly (via Wasmtime). They get 64 MB of memory, a 30-second timeout, and can only interact with the outside world through 12 host functions -- things like `read-file`, `http-request`, `kv-get` -- each of which checks permissions before doing anything. A plugin literally cannot access the filesystem or network except through these gated functions. You can't turn this off.
+### WASM sandbox -- for plugins (locked, no overrides)
 
-**Workspace boundary (flexible, approval-gated):** The agent itself (not plugins) operates freely within your project directory. If it tries to write a file outside that directory, or run a shell command, or make a network request, it goes through the approval flow above. You can configure how strict this is -- from "ask me about everything" to "let the agent work autonomously within the workspace."
+Plugins run inside WebAssembly via Wasmtime. This isn't a policy you configure -- it's a physical boundary enforced by the WASM runtime. A plugin *cannot* make a syscall. It has no file descriptors, no network sockets, no access to process memory outside its own linear memory. It's like running code inside a calculator that only has 12 buttons.
+
+Those 12 buttons are host functions -- the only way a plugin can interact with the outside world:
+
+| Host function | What it does | Security gated? |
+|---------------|-------------|:---:|
+| `read-file` | Read a file inside the workspace | Yes |
+| `write-file` | Write a file inside the workspace | Yes |
+| `http-request` | Make an HTTP request | Yes |
+| `fs-exists`, `fs-mkdir`, `fs-readdir`, `fs-stat`, `fs-unlink` | Filesystem operations | Yes |
+| `kv-get`, `kv-set` | Plugin-scoped key-value storage | No (isolated per plugin) |
+| `get-config` | Read plugin config values | No |
+| `log` | Write to the host log | No |
+
+Every "Yes" in that table means the host function goes through a `PluginSecurityGate` check *before* the operation happens. A plugin calling `write-file("../../etc/passwd", ...)` gets rejected twice -- once by path confinement (all paths are canonicalized and must resolve inside the workspace root), and again by the security gate.
+
+The hard limits:
+- **64 MB memory** (configurable down, not up) -- the WASM linear memory ceiling
+- **30-second timeout** per call -- if a plugin hangs, it gets killed
+- **BLAKE3 hash verification** -- every `.wasm` binary is hashed on load and checked against the manifest. If someone swaps the file, it won't load. In production mode, plugins without a hash in their manifest are rejected entirely.
+
+You can't disable any of this. There's no `--yolo` flag for the WASM sandbox.
+
+### Workspace boundary -- for the agent (flexible, approval-gated)
+
+The agent itself (not plugins) operates within your project directory. Inside the workspace, it can read and write files freely. But the moment it tries to do something outside that boundary -- write to a system path, run a shell command, make a network request -- it goes through the approval flow described above.
+
+You configure how strict this is:
+
+```toml
+[workspace]
+mode = "safe"          # "safe" = ask about everything
+                       # "guided" = auto-approve reads, ask about writes
+                       # "autonomous" = trust the agent within the workspace
+escape_policy = "ask"  # what happens when the agent tries to leave the workspace
+                       # "ask" = prompt the user
+                       # "deny" = block silently
+                       # "allow" = let it through (you probably don't want this)
+```
+
+The key difference: the WASM sandbox is a hard wall that nobody can turn off. The workspace boundary is a fence with a gate that you control.
 
 ## Plugin system
 
@@ -385,19 +425,8 @@ cargo clippy --workspace --all-features -- -D warnings
 
 All crates enforce `#![deny(unsafe_code)]` -- there is no unsafe Rust anywhere in the codebase. Clippy runs at pedantic level, and integer arithmetic overflow is a compile error.
 
-## Roadmap
-
-Astrid is under active development. Current status:
-
-- **Phase 1** (current) -- Core SDK: runtime, MCP, capabilities, audit, crypto, tools, CLI, plugins
-- **Phase 2** -- Approval system, storage layer, security interceptor, budget tracking
-- **Phase 3** -- Native OS sandboxing (Landlock, sandbox-exec), WASM guest storage
-- **Phase 4** -- Skills system
-- **Phase 7** -- Discord and Web frontends
-- **Phase 11** -- Memory system
-
 ## License
 
 Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).
 
-Copyright (c) 2025 Joshua J. Bouw and Unicity Labs.
+Copyright (c) 2026 Joshua J. Bouw and Unicity Labs.
