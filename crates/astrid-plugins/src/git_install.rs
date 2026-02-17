@@ -59,9 +59,47 @@ impl GitSource {
         if let Some(rest) = source.strip_prefix("git:") {
             return Self::parse_git_url(rest);
         }
+        // Bare HTTPS URLs pointing to known git hosts or ending in .git
+        if Self::looks_like_bare_https(source) {
+            return Self::parse_git_url(source);
+        }
+        // SSH URLs: git@host:org/repo
+        if source.starts_with("git@") {
+            return Self::parse_ssh_url(source);
+        }
         Err(PluginError::ExecutionFailed(format!(
-            "invalid git source: '{source}'. Expected 'github:org/repo[@ref]' or 'git:URL[@ref]'"
+            "invalid git source: '{source}'. Expected 'github:org/repo[@ref]', 'git:URL[@ref]', or a git URL (https/ssh)"
         )))
+    }
+
+    /// Check if a source string looks like a git URL (any supported format).
+    #[must_use]
+    pub fn looks_like_git(source: &str) -> bool {
+        source.starts_with("github:")
+            || source.starts_with("git:")
+            || source.starts_with("git@")
+            || Self::looks_like_bare_https(source)
+    }
+
+    /// Check if a source looks like a bare `https://` git URL.
+    ///
+    /// Matches when the **host** is a known git forge (github.com, gitlab.com)
+    /// or the URL path ends in `.git` (after stripping any `@ref` suffix).
+    fn looks_like_bare_https(source: &str) -> bool {
+        let Some(after_scheme) = source.strip_prefix("https://") else {
+            return false;
+        };
+        // Extract host: everything before the first '/'
+        let host = after_scheme.split('/').next().unwrap_or("");
+        if host.eq_ignore_ascii_case("github.com") || host.eq_ignore_ascii_case("gitlab.com") {
+            return true;
+        }
+        // Strip @ref suffix before checking extension, so
+        // "https://host/repo.git@main" is recognized correctly.
+        let (url_part, _) = split_ref(source);
+        std::path::Path::new(url_part.as_str())
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("git"))
     }
 
     /// Derive a plugin ID from the git source.
@@ -159,6 +197,46 @@ impl GitSource {
 
         Ok(Self::GitUrl { url, git_ref })
     }
+
+    /// Parse SSH-style `git@host:org/repo[.git][@ref]` into a `GitUrl`.
+    ///
+    /// Converts the SCP-style syntax to `ssh://git@host/org/repo` so that
+    /// downstream `git clone` works uniformly.
+    fn parse_ssh_url(source: &str) -> PluginResult<Self> {
+        // Split ref first: git@github.com:org/repo.git@main → (git@github.com:org/repo.git, Some(main))
+        let (url_part, git_ref) = split_ssh_ref(source);
+
+        // Expect git@<host>:<path>
+        let after_at = url_part
+            .strip_prefix("git@")
+            .ok_or_else(|| PluginError::ExecutionFailed(format!("invalid SSH URL: '{source}'")))?;
+
+        let (host, path) = after_at.split_once(':').ok_or_else(|| {
+            PluginError::ExecutionFailed(format!(
+                "invalid SSH URL: '{source}'. Expected 'git@host:org/repo'"
+            ))
+        })?;
+
+        if host.is_empty() || path.is_empty() {
+            return Err(PluginError::ExecutionFailed(format!(
+                "invalid SSH URL: '{source}'. Expected 'git@host:org/repo'"
+            )));
+        }
+
+        validate_ssh_host(host)?;
+        validate_ssh_path(path)?;
+
+        let url = format!("ssh://git@{host}/{path}");
+
+        // Defense-in-depth: verify the constructed URL passes scheme validation
+        validate_url_scheme(&url)?;
+
+        if let Some(ref r) = git_ref {
+            validate_git_ref(r)?;
+        }
+
+        Ok(Self::GitUrl { url, git_ref })
+    }
 }
 
 /// Split a `value@ref` string into `(value, Option<ref>)`.
@@ -204,6 +282,22 @@ fn split_ref(s: &str) -> (String, Option<String>) {
     (s.to_string(), None)
 }
 
+/// Split an SCP-style SSH ref: `git@host:org/repo.git@ref` → `(git@host:org/repo.git, Some(ref))`.
+///
+/// The first `@` is part of `git@host`, so we look for `@` only after the
+/// colon-separated path portion (i.e. after `host:`).
+fn split_ssh_ref(s: &str) -> (String, Option<String>) {
+    // Find the colon that separates host from path: git@github.com:org/repo
+    if let Some((host_part, path)) = s.split_once(':')
+        && let Some((path_part, git_ref)) = path.rsplit_once('@')
+        && !git_ref.is_empty()
+    {
+        let url = format!("{host_part}:{path_part}");
+        return (url, Some(git_ref.to_string()));
+    }
+    (s.to_string(), None)
+}
+
 /// Validate that a URL uses an allowed scheme.
 fn validate_url_scheme(url: &str) -> PluginResult<()> {
     let allowed = ["https://", "ssh://"];
@@ -213,6 +307,47 @@ fn validate_url_scheme(url: &str) -> PluginResult<()> {
     Err(PluginError::ExecutionFailed(format!(
         "blocked URL scheme in '{url}'. Only https:// and ssh:// are allowed"
     )))
+}
+
+/// Validate an SSH hostname for safety.
+///
+/// Rejects control characters, spaces, slashes, brackets (`IPv6`), and other
+/// characters that could cause URL confusion or injection.
+fn validate_ssh_host(host: &str) -> PluginResult<()> {
+    let is_valid = host
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.'));
+    if !is_valid {
+        return Err(PluginError::ExecutionFailed(format!(
+            "SSH host contains invalid characters: '{host}'. Only alphanumeric, hyphens, and dots are allowed"
+        )));
+    }
+    if host.starts_with('-') || host.starts_with('.') || host.ends_with('.') {
+        return Err(PluginError::ExecutionFailed(format!(
+            "SSH host has invalid format: '{host}'"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate an SSH path component for safety.
+///
+/// Rejects path traversal (`..`), control characters, and other dangerous patterns.
+fn validate_ssh_path(path: &str) -> PluginResult<()> {
+    if path.contains("..") {
+        return Err(PluginError::ExecutionFailed(format!(
+            "SSH path contains '..': '{path}'"
+        )));
+    }
+    let has_bad_chars = path
+        .bytes()
+        .any(|b| b.is_ascii_control() || matches!(b, b' ' | b'\\' | b':'));
+    if has_bad_chars {
+        return Err(PluginError::ExecutionFailed(format!(
+            "SSH path contains invalid characters: '{path}'"
+        )));
+    }
+    Ok(())
 }
 
 /// Validate a GitHub org or repo component against injection attacks.
@@ -938,5 +1073,149 @@ mod tests {
         let (url, git_ref) = split_ref("https://host/p@th/repo@v1.0");
         assert_eq!(url, "https://host/p@th/repo");
         assert_eq!(git_ref, Some("v1.0".to_string()));
+    }
+
+    #[test]
+    fn parse_bare_https_github() {
+        let src = GitSource::parse("https://github.com/user/repo.git").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://github.com/user/repo.git".to_string(),
+                git_ref: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_bare_https_github_no_dot_git() {
+        let src = GitSource::parse("https://github.com/user/repo").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://github.com/user/repo".to_string(),
+                git_ref: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_bare_https_github_with_ref() {
+        let src = GitSource::parse("https://github.com/user/repo.git@main").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://github.com/user/repo.git".to_string(),
+                git_ref: Some("main".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_bare_https_gitlab() {
+        let src = GitSource::parse("https://gitlab.com/org/repo").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://gitlab.com/org/repo".to_string(),
+                git_ref: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_bare_https_dot_git_suffix() {
+        let src = GitSource::parse("https://custom-host.com/org/repo.git").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://custom-host.com/org/repo.git".to_string(),
+                git_ref: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_ssh_scp_style() {
+        let src = GitSource::parse("git@github.com:user/repo.git").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "ssh://git@github.com/user/repo.git".to_string(),
+                git_ref: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_ssh_scp_style_with_ref() {
+        let src = GitSource::parse("git@github.com:user/repo.git@v2.0").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "ssh://git@github.com/user/repo.git".to_string(),
+                git_ref: Some("v2.0".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn reject_bare_https_unknown_host() {
+        // https:// without known host or .git suffix should not match
+        assert!(GitSource::parse("https://example.com/something").is_err());
+    }
+
+    #[test]
+    fn reject_spoofed_github_in_path() {
+        // github.com in the *path* (not host) must NOT be accepted
+        assert!(GitSource::parse("https://evil.com/github.com/payload").is_err());
+    }
+
+    #[test]
+    fn reject_spoofed_gitlab_in_path() {
+        assert!(GitSource::parse("https://evil.com/gitlab.com/payload").is_err());
+    }
+
+    #[test]
+    fn parse_bare_https_custom_host_with_ref() {
+        // .git extension with @ref on a non-github/gitlab host
+        let src = GitSource::parse("https://custom-host.com/org/repo.git@main").unwrap();
+        assert_eq!(
+            src,
+            GitSource::GitUrl {
+                url: "https://custom-host.com/org/repo.git".to_string(),
+                git_ref: Some("main".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn reject_ssh_path_traversal() {
+        assert!(GitSource::parse("git@github.com:../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn reject_ssh_host_with_spaces() {
+        assert!(GitSource::parse("git@evil host:org/repo").is_err());
+    }
+
+    #[test]
+    fn reject_ssh_host_with_slashes() {
+        assert!(GitSource::parse("git@evil/host:org/repo").is_err());
+    }
+
+    #[test]
+    fn reject_ssh_empty_host() {
+        assert!(GitSource::parse("git@:org/repo").is_err());
+    }
+
+    #[test]
+    fn reject_ssh_empty_path() {
+        assert!(GitSource::parse("git@host:").is_err());
+    }
+
+    #[test]
+    fn reject_ssh_no_colon() {
+        assert!(GitSource::parse("git@host-no-colon").is_err());
     }
 }
