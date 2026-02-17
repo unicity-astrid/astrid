@@ -18,6 +18,8 @@ use astrid_hooks::result::HookContext;
 use astrid_hooks::{HookEvent, HookManager};
 use astrid_llm::{LlmProvider, LlmToolDefinition, Message, StreamEvent, ToolCall, ToolCallResult};
 use astrid_mcp::McpClient;
+use astrid_plugins::PluginRegistry;
+use astrid_storage::{KvStore, MemoryKvStore, ScopedKvStore};
 use astrid_tools::{ToolContext, ToolRegistry, truncate_output};
 use astrid_workspace::{
     EscapeDecision, EscapeRequest, PathCheck, WorkspaceBoundary, WorkspaceConfig,
@@ -110,6 +112,8 @@ pub struct AgentRuntime<P: LlmProvider> {
     security_policy: SecurityPolicy,
     /// Sub-agent pool (shared across turns).
     subagent_pool: Arc<SubAgentPool>,
+    /// Plugin registry (shared with the gateway).
+    plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
     /// Weak self-reference for spawner injection (set via `set_self_arc`).
     self_arc: tokio::sync::RwLock<Option<std::sync::Weak<Self>>>,
 }
@@ -158,16 +162,28 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             shared_cwd,
             security_policy: SecurityPolicy::default(),
             subagent_pool,
+            plugin_registry: None,
             self_arc: tokio::sync::RwLock::new(None),
         }
+    }
+
+    /// Set the plugin registry for plugin tool integration.
+    #[must_use]
+    pub fn with_plugin_registry(
+        mut self,
+        registry: Arc<tokio::sync::RwLock<PluginRegistry>>,
+    ) -> Self {
+        self.plugin_registry = Some(registry);
+        self
     }
 
     /// Create a new runtime wrapped in `Arc` with the self-reference pre-set.
     ///
     /// Uses `Arc::new_cyclic` to avoid the two-step `new()` + `set_self_arc()` pattern.
     /// Accepts an optional `HookManager` since `with_hooks()` can't be chained after
-    /// Arc wrapping.
+    /// Arc wrapping. Accepts an optional `PluginRegistry` for plugin tool integration.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new_arc(
         llm: P,
         mcp: McpClient,
@@ -176,12 +192,14 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         crypto: KeyPair,
         config: RuntimeConfig,
         hooks: Option<HookManager>,
+        plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| {
             let mut runtime = Self::new(llm, mcp, audit, sessions, crypto, config);
             if let Some(hook_manager) = hooks {
                 runtime.hooks = Arc::new(hook_manager);
             }
+            runtime.plugin_registry = plugin_registry;
             // Pre-set the self-reference (no async needed — field is initialized directly).
             runtime.self_arc = tokio::sync::RwLock::new(Some(weak.clone()));
             runtime
@@ -416,6 +434,16 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     .with_schema(t.input_schema.clone())
             }));
 
+            // Plugin tools (snapshot under a brief read lock).
+            if let Some(ref registry) = self.plugin_registry {
+                let registry = registry.read().await;
+                llm_tools.extend(registry.all_tool_definitions().into_iter().map(|td| {
+                    LlmToolDefinition::new(td.name)
+                        .with_description(td.description)
+                        .with_schema(td.input_schema)
+                }));
+            }
+
             // Stream from LLM
             let mut stream = self
                 .llm
@@ -522,6 +550,11 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             return self
                 .execute_builtin_tool(session, call, frontend, tool_ctx)
                 .await;
+        }
+
+        // Check for plugin tool (plugin:{plugin_id}:{tool_name})
+        if PluginRegistry::is_plugin_tool(&call.name) {
+            return self.execute_plugin_tool(session, call, frontend).await;
         }
 
         let (server, tool) = call.parse_name().ok_or_else(|| {
@@ -811,6 +844,143 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 .build_hook_context(session, hook_event)
                 .with_data("tool_name", serde_json::json!(tool_name))
                 .with_data("server_name", serde_json::json!("builtin"))
+                .with_data("is_error", serde_json::json!(tool_result.is_error));
+            let _ = self.hooks.trigger_simple(hook_event, ctx).await;
+        }
+
+        Ok(tool_result)
+    }
+
+    /// Execute a plugin tool with security checks, interceptor, and hooks.
+    ///
+    /// Plugin tool names follow the format `plugin:{plugin_id}:{tool_name}`.
+    /// The qualified name is used as-is for `PluginRegistry::find_tool()`.
+    #[allow(clippy::too_many_lines)]
+    async fn execute_plugin_tool<F: Frontend>(
+        &self,
+        session: &mut AgentSession,
+        call: &ToolCall,
+        frontend: &F,
+    ) -> RuntimeResult<ToolCallResult> {
+        let Some(ref registry_lock) = self.plugin_registry else {
+            return Ok(ToolCallResult::error(
+                &call.id,
+                "Plugin tools are not available (no plugin registry configured)",
+            ));
+        };
+
+        // Parse the qualified name into server-like prefix and tool name for
+        // hooks/interceptor. Format: "plugin:{plugin_id}:{tool_name}".
+        // Use rsplit_once to split as server="plugin:{plugin_id}", tool="{tool_name}".
+        let (server, tool) = call.name.rsplit_once(':').unwrap_or(("plugin", &call.name));
+
+        // Check workspace boundaries
+        if let Err(tool_error) = self
+            .check_workspace_boundaries(session, call, server, tool, frontend)
+            .await
+        {
+            return Ok(tool_error);
+        }
+
+        // Fire PreToolCall hook
+        {
+            let ctx = self
+                .build_hook_context(session, HookEvent::PreToolCall)
+                .with_data("tool_name", serde_json::json!(tool))
+                .with_data("server_name", serde_json::json!(server))
+                .with_data("arguments", call.arguments.clone());
+            let result = self.hooks.trigger_simple(HookEvent::PreToolCall, ctx).await;
+            if let astrid_hooks::HookResult::Block { reason } = result {
+                return Ok(ToolCallResult::error(&call.id, reason));
+            }
+            if let astrid_hooks::HookResult::ContinueWith { modifications } = &result {
+                debug!(?modifications, "PreToolCall hook modified context");
+            }
+        }
+
+        // Classify the plugin tool call as a SensitiveAction
+        let action = classify_tool_call(server, tool, &call.arguments);
+
+        // Run through the SecurityInterceptor (same 5-step check as MCP tools)
+        let interceptor = self.build_interceptor(session);
+        let tool_result = match interceptor
+            .intercept(&action, &format!("Plugin tool call to {}", call.name), None)
+            .await
+        {
+            Ok(intercept_result) => {
+                // Surface budget warning to user
+                if let Some(warning) = &intercept_result.budget_warning {
+                    frontend.show_status(&format!(
+                        "Budget warning: ${:.2}/${:.2} spent ({:.0}%)",
+                        warning.current_spend, warning.session_max, warning.percent_used
+                    ));
+                }
+
+                // Execute via plugin registry (brief read lock)
+                let registry = registry_lock.read().await;
+                match registry.find_tool(&call.name) {
+                    Some((_plugin, plugin_tool)) => {
+                        // Build a PluginToolContext with a MemoryKvStore placeholder.
+                        // McpPluginTool::execute() calls peer.call_tool() directly
+                        // and ignores the context's KV store, so MemoryKvStore is fine.
+                        let mem_kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+                        let scoped_kv = ScopedKvStore::new(mem_kv, format!("plugin-tool:{server}"))
+                            .map_err(|e| {
+                                RuntimeError::StorageError(format!(
+                                    "Failed to create plugin tool KV scope: {e}"
+                                ))
+                            })?;
+
+                        // Extract plugin_id from the qualified name ("plugin:{id}:{tool}")
+                        let plugin_id_str = call
+                            .name
+                            .strip_prefix("plugin:")
+                            .and_then(|rest| rest.split_once(':'))
+                            .map_or("unknown", |(id, _)| id);
+                        let plugin_id = astrid_plugins::PluginId::new(plugin_id_str)
+                            .unwrap_or_else(|_| {
+                                // Fallback: this shouldn't happen if is_plugin_tool passed.
+                                astrid_plugins::PluginId::new("unknown").unwrap()
+                            });
+
+                        let tool_ctx = astrid_plugins::PluginToolContext::new(
+                            plugin_id,
+                            self.config.workspace.root.clone(),
+                            scoped_kv,
+                        )
+                        .with_session(session.id.clone());
+
+                        match plugin_tool.execute(call.arguments.clone(), &tool_ctx).await {
+                            Ok(output) => {
+                                let output = astrid_tools::truncate_output(output);
+                                ToolCallResult::success(&call.id, output)
+                            },
+                            Err(e) => ToolCallResult::error(&call.id, e.to_string()),
+                        }
+                    },
+                    None => ToolCallResult::error(
+                        &call.id,
+                        format!(
+                            "Plugin tool not found: {} (plugin may have been unloaded)",
+                            call.name
+                        ),
+                    ),
+                }
+            },
+            Err(e) => ToolCallResult::error(&call.id, e.to_string()),
+        };
+
+        // Fire PostToolCall or ToolError hook
+        {
+            let hook_event = if tool_result.is_error {
+                HookEvent::ToolError
+            } else {
+                HookEvent::PostToolCall
+            };
+            let ctx = self
+                .build_hook_context(session, hook_event)
+                .with_data("tool_name", serde_json::json!(tool))
+                .with_data("server_name", serde_json::json!(server))
                 .with_data("is_error", serde_json::json!(tool_result.is_error));
             let _ = self.hooks.trigger_simple(hook_event, ctx).await;
         }
