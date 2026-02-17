@@ -51,6 +51,7 @@ watch = ["dep:notify"]
 approval = ["dep:astrid-approval"]
 
 [dev-dependencies]
+openclaw-bridge = { path = "../openclaw-bridge" }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 
 [lints]

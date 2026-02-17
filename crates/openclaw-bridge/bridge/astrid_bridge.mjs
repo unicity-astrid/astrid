@@ -237,11 +237,6 @@ function sendNotification(method, params) {
 // ── MCP method handlers ─────────────────────────────────────────────
 
 function handleInitialize(id, params) {
-  // Extract config from initialize params if provided
-  if (params?.initializationOptions?.config) {
-    pluginConfig = params.initializationOptions.config;
-  }
-
   sendResponse(id, {
     protocolVersion: "2025-11-25",
     capabilities: {
@@ -355,6 +350,13 @@ async function handleToolsCall(id, params) {
 async function handleNotification(method, params) {
   if (method === "notifications/initialized") {
     log.info("MCP session initialized");
+    return;
+  }
+  if (method === "notifications/astrid.setPluginConfig") {
+    if (params?.config && typeof params.config === "object" && !Array.isArray(params.config)) {
+      pluginConfig = params.config;
+      log.info(`Plugin config updated (${Object.keys(pluginConfig).length} keys)`);
+    }
     return;
   }
   if (method === "notifications/astrid.hookEvent") {

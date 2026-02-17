@@ -318,7 +318,7 @@ impl Plugin for McpPlugin {
         self.state.clone()
     }
 
-    async fn load(&mut self, _ctx: &PluginContext) -> PluginResult<()> {
+    async fn load(&mut self, ctx: &PluginContext) -> PluginResult<()> {
         self.state = PluginState::Loading;
 
         // 1. Verify binary hash if configured
@@ -395,9 +395,36 @@ impl Plugin for McpPlugin {
         );
 
         self.service = Some(service);
-        self.peer = Some(peer);
+        self.peer = Some(peer.clone());
         self.tools = tools;
         self.state = PluginState::Ready;
+
+        // 8. Send plugin config as a post-init notification.
+        // The MCP handshake doesn't support custom initialization options,
+        // so we deliver config via a custom notification. The bridge's
+        // dispatch loop is already running at this point.
+        if !ctx.config.is_empty() {
+            let notification = CustomNotification::new(
+                "notifications/astrid.setPluginConfig",
+                Some(serde_json::json!({ "config": ctx.config })),
+            );
+            if let Err(e) = peer
+                .send_notification(ClientNotification::CustomNotification(notification))
+                .await
+            {
+                warn!(
+                    plugin_id = %self.id,
+                    error = %e,
+                    "Failed to send plugin config notification"
+                );
+            } else {
+                debug!(
+                    plugin_id = %self.id,
+                    config_keys = ?ctx.config.keys().collect::<Vec<_>>(),
+                    "Sent plugin config to bridge"
+                );
+            }
+        }
 
         Ok(())
     }
