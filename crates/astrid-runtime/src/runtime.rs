@@ -1077,7 +1077,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             ),
         };
 
-        // Audit the plugin tool call
+        // Audit the plugin tool call.
+        // Note: the interceptor also writes an authorization-level audit entry.
+        // This explicit entry records richer metadata (plugin_id, tool, args_hash)
+        // and the execution outcome (success/failure) — complementary, not redundant.
         {
             let outcome = if tool_result.is_error {
                 AuditOutcome::failure(&tool_result.content)

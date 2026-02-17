@@ -1526,6 +1526,9 @@ impl AstridRpcServer for RpcImpl {
         // Clear session allowances (security hygiene).
         session.allowance_store.clear_session_allowances();
 
+        // Evict plugin KV stores for this session (prevents unbounded growth).
+        self.runtime.cleanup_plugin_kv_stores(&session_id);
+
         // Save session before ending.
         if let Err(e) = self.runtime.save_session(&session) {
             warn!(session_id = %session_id, error = %e, "Failed to save session on end");
