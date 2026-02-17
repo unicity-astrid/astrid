@@ -1,4 +1,4 @@
-//! Astrid Events - Event bus for the Astrid secure agent runtime SDK.
+//! Astrid Events - Event bus for the Astrid secure agent runtime.
 //!
 //! This crate provides:
 //! - Event types for all runtime operations

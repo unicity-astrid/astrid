@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Core types and traits for Astrid secure agent runtime SDK"
+description = "Core types and traits for Astrid secure agent runtime"
 
 [dependencies]
 # Serialization

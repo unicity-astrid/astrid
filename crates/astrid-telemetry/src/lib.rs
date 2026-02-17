@@ -1,4 +1,4 @@
-//! Astrid Telemetry - Logging and tracing for the Astrid secure agent runtime SDK.
+//! Astrid Telemetry - Logging and tracing for the Astrid secure agent runtime.
 //!
 //! This crate provides:
 //! - Configurable logging setup with multiple formats

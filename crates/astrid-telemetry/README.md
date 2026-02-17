@@ -1,6 +1,6 @@
 # astrid-telemetry
 
-Logging and tracing for the Astrid secure agent runtime SDK.
+Logging and tracing for the Astrid secure agent runtime.
 
 ## Features
 

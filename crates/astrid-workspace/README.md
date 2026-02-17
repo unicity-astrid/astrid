@@ -1,6 +1,6 @@
 # astrid-workspace
 
-Operational workspace boundaries for the Astrid secure agent runtime SDK.
+Operational workspace boundaries for the Astrid secure agent runtime.
 
 ## Overview
 

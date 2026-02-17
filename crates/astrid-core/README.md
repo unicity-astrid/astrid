@@ -1,6 +1,6 @@
 # astrid-core
 
-Foundation types and traits for the Astrid secure agent runtime SDK.
+Foundation types and traits for the Astrid secure agent runtime.
 
 ## Overview
 
@@ -8,7 +8,7 @@ This crate provides the core abstractions that all other Astrid crates build upo
 
 ## Features
 
-- **Error Types**: `SecurityError` and `SecurityResult` for consistent error handling across the SDK
+- **Error Types**: `SecurityError` and `SecurityResult` for consistent error handling across the runtime
 - **Input Classification**: `TaggedMessage` for attributing messages to their source with context
 - **Identity Management**: `AstridUserId` for unified user identity across frontends (CLI, Discord, Web, etc.)
 - **Frontend Trait**: Abstract interface for UI implementations

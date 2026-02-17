@@ -1,6 +1,6 @@
 # astrid-test
 
-Shared test utilities for the Astrid secure agent runtime SDK.
+Shared test utilities for the Astrid secure agent runtime.
 
 ## Overview
 

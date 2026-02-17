@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    # Core SDK
+    # Core
     "crates/astrid-audit",
     "crates/astrid-capabilities",
     "crates/astrid-core",
@@ -41,7 +41,7 @@ members = [
 
     # Frontends
     "crates/astrid-cli",
-    "crates/astrid-cli-mockup",  # UI/UX prototype (not part of SDK)
+    "crates/astrid-cli-mockup",  # UI/UX prototype
     "crates/astrid-telegram",
     # "crates/astrid-discord",  # Phase 7
     # "crates/astrid-web",      # Phase 7
@@ -59,7 +59,7 @@ repository = "https://github.com/unicity-astrid/astrid"
 rust-version = "1.93"
 
 [workspace.dependencies]
-# Internal crates - Core SDK (Phase 1)
+# Internal crates - Core (Phase 1)
 astrid-core = { path = "crates/astrid-core", version = "0.1.0" }
 astrid-crypto = { path = "crates/astrid-crypto", version = "0.1.0" }
 astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.1.0" }
