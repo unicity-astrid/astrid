@@ -58,7 +58,7 @@ pub struct WasmPlugin {
     /// The Extism plugin instance (created during load).
     extism_plugin: Option<Arc<Mutex<extism::Plugin>>>,
     /// Tools discovered from the guest's `describe-tools` export.
-    tools: Vec<Box<dyn PluginTool>>,
+    tools: Vec<Arc<dyn PluginTool>>,
 }
 
 impl WasmPlugin {
@@ -114,7 +114,7 @@ impl Plugin for WasmPlugin {
         Ok(())
     }
 
-    fn tools(&self) -> &[Box<dyn PluginTool>] {
+    fn tools(&self) -> &[Arc<dyn PluginTool>] {
         &self.tools
     }
 }
@@ -185,17 +185,17 @@ impl WasmPlugin {
         let tools = discover_tools(&mut plugin)?;
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
-        let wasm_tools: Vec<Box<dyn PluginTool>> = tools
+        let wasm_tools: Vec<Arc<dyn PluginTool>> = tools
             .into_iter()
             .map(|td| {
                 let schema: serde_json::Value =
                     serde_json::from_str(&td.input_schema).unwrap_or(serde_json::json!({}));
-                Box::new(WasmPluginTool::new(
+                Arc::new(WasmPluginTool::new(
                     td.name,
                     td.description,
                     schema,
                     Arc::clone(&plugin_arc),
-                )) as Box<dyn PluginTool>
+                )) as Arc<dyn PluginTool>
             })
             .collect();
 

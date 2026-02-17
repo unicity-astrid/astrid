@@ -311,9 +311,6 @@ impl DaemonServer {
         // Clone MCP client for watcher-driven plugin reloads.
         let mcp_for_watcher = mcp.clone();
 
-        let runtime =
-            AgentRuntime::new_arc(llm, mcp, audit, sessions, key, config, Some(hook_manager));
-
         // Open persistent capability store (tokens survive restarts).
         let capabilities_store = Arc::new(
             CapabilityStore::with_persistence(home.capabilities_db_path()).map_err(|e| {
@@ -335,6 +332,7 @@ impl DaemonServer {
             })?);
 
         // Discover and register plugins (does not load them yet).
+        // Built before the runtime so we can pass the Arc into new_arc().
         let mut plugin_registry = PluginRegistry::new();
         let wasm_loader = Arc::new(WasmPluginLoader::new());
         let plugin_dirs = vec![home.plugins_dir()];
@@ -373,6 +371,17 @@ impl DaemonServer {
             }
         }
         let plugin_registry = Arc::new(RwLock::new(plugin_registry));
+
+        let runtime = AgentRuntime::new_arc(
+            llm,
+            mcp,
+            audit,
+            sessions,
+            key,
+            config,
+            Some(hook_manager),
+            Some(Arc::clone(&plugin_registry)),
+        );
 
         let (shutdown_tx, _) = broadcast::channel(1);
         let session_map: Arc<RwLock<HashMap<SessionId, SessionHandle>>> =
@@ -685,6 +694,8 @@ impl DaemonServer {
                         } else {
                             info!(session_id = %id, "Cleaned up orphaned session");
                         }
+                        // Evict plugin KV stores for this session (same as end_session).
+                        runtime.cleanup_plugin_kv_stores(id);
                     }
                 }
             }
@@ -1516,6 +1527,9 @@ impl AstridRpcServer for RpcImpl {
 
         // Clear session allowances (security hygiene).
         session.allowance_store.clear_session_allowances();
+
+        // Evict plugin KV stores for this session (prevents unbounded growth).
+        self.runtime.cleanup_plugin_kv_stores(&session_id);
 
         // Save session before ending.
         if let Err(e) = self.runtime.save_session(&session) {

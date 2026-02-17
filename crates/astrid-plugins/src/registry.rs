@@ -4,6 +4,7 @@
 //! all registered plugins.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use tracing::{debug, info};
 
@@ -109,15 +110,23 @@ impl PluginRegistry {
 
     /// Find a tool by its fully qualified name (`plugin:{plugin_id}:{tool_name}`).
     ///
-    /// Returns the plugin and tool if found.
+    /// Returns the plugin and an `Arc` clone of the tool. The `Arc` allows
+    /// callers to drop the registry lock before executing the tool.
     #[must_use]
-    pub fn find_tool(&self, qualified_name: &str) -> Option<(&dyn Plugin, &dyn PluginTool)> {
+    pub fn find_tool(&self, qualified_name: &str) -> Option<(&dyn Plugin, Arc<dyn PluginTool>)> {
         // Parse "plugin:{plugin_id}:{tool_name}"
         let rest = qualified_name.strip_prefix("plugin:")?;
         let (plugin_id_str, tool_name) = rest.split_once(':')?;
 
-        let plugin_id = PluginId::from_static(plugin_id_str);
+        let plugin_id = PluginId::new(plugin_id_str).ok()?;
         let plugin = self.plugins.get(&plugin_id)?;
+
+        // Only return tools from Ready plugins. This mirrors the filter in
+        // all_tool_definitions() and prevents execution of stale tools from
+        // plugins that transitioned to Failed/Unloaded between listing and dispatch.
+        if !matches!(plugin.state(), crate::plugin::PluginState::Ready) {
+            return None;
+        }
 
         let tool = plugin.tools().iter().find(|t| t.name() == tool_name)?;
 
@@ -127,13 +136,22 @@ impl PluginRegistry {
             tool_name,
             "Found plugin tool"
         );
-        Some((plugin.as_ref(), tool.as_ref()))
+        Some((plugin.as_ref(), Arc::clone(tool)))
     }
 
-    /// Check if a tool name refers to a plugin tool (has two colons with `plugin:` prefix).
+    /// Check if a tool name refers to a plugin tool (`plugin:{valid_id}:{tool}`).
+    ///
+    /// Uses [`PluginId::new`] to validate the ID segment, which prevents
+    /// collision with an MCP server named `"plugin"` whose tool name contains
+    /// a colon (e.g. `"plugin:some:tool"`).
     #[must_use]
     pub fn is_plugin_tool(name: &str) -> bool {
-        name.starts_with("plugin:") && name.matches(':').count() == 2
+        if let Some(rest) = name.strip_prefix("plugin:")
+            && let Some((id, tool_name)) = rest.split_once(':')
+        {
+            return !tool_name.is_empty() && PluginId::is_valid_id(id);
+        }
+        false
     }
 
     /// Export all tool definitions from all plugins for the LLM.
@@ -141,6 +159,9 @@ impl PluginRegistry {
     pub fn all_tool_definitions(&self) -> Vec<PluginToolDefinition> {
         let mut defs = Vec::new();
         for (plugin_id, plugin) in &self.plugins {
+            if !matches!(plugin.state(), crate::plugin::PluginState::Ready) {
+                continue;
+            }
             for tool in plugin.tools() {
                 defs.push(PluginToolDefinition {
                     name: qualified_tool_name(plugin_id, tool.name()),
@@ -180,7 +201,7 @@ mod tests {
         id: PluginId,
         manifest: PluginManifest,
         state: PluginState,
-        tools: Vec<Box<dyn PluginTool>>,
+        tools: Vec<Arc<dyn PluginTool>>,
     }
 
     impl TestPlugin {
@@ -202,7 +223,7 @@ mod tests {
                 },
                 id: plugin_id,
                 state: PluginState::Ready,
-                tools: vec![Box::new(EchoTool)],
+                tools: vec![Arc::new(EchoTool)],
             }
         }
 
@@ -232,7 +253,7 @@ mod tests {
             self.state = PluginState::Unloaded;
             Ok(())
         }
-        fn tools(&self) -> &[Box<dyn PluginTool>] {
+        fn tools(&self) -> &[Arc<dyn PluginTool>] {
             &self.tools
         }
     }
@@ -390,6 +411,114 @@ mod tests {
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, "plugin:alpha:echo");
         assert_eq!(defs[0].description, "Echoes the input");
+    }
+
+    #[test]
+    fn test_all_tool_definitions_skips_non_ready_plugins() {
+        let mut registry = PluginRegistry::new();
+
+        // Register a Ready plugin and a non-Ready plugin (both have tools).
+        let mut failed_plugin = TestPlugin::new("beta");
+        failed_plugin.state = PluginState::Failed("something broke".into());
+        registry
+            .register(Box::new(TestPlugin::new("alpha")))
+            .unwrap();
+        registry.register(Box::new(failed_plugin)).unwrap();
+
+        let defs = registry.all_tool_definitions();
+        // Only alpha's tool should be exported (beta is in Failed state).
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "plugin:alpha:echo");
+    }
+
+    #[test]
+    fn test_find_tool_invalid_plugin_id_returns_none() {
+        let mut registry = PluginRegistry::new();
+        registry
+            .register(Box::new(TestPlugin::new("alpha")))
+            .unwrap();
+        // Invalid ID with uppercase — PluginId::new() rejects it, so find_tool returns None.
+        assert!(registry.find_tool("plugin:INVALID:echo").is_none());
+        // ID with spaces
+        assert!(registry.find_tool("plugin:has space:echo").is_none());
+    }
+
+    #[test]
+    fn test_find_tool_non_ready_plugin_returns_none() {
+        let mut registry = PluginRegistry::new();
+
+        // Register a plugin in Failed state that has tools.
+        let mut failed_plugin = TestPlugin::new("broken");
+        failed_plugin.state = PluginState::Failed("crashed".into());
+        registry.register(Box::new(failed_plugin)).unwrap();
+
+        // Even though the tool exists, find_tool rejects non-Ready plugins.
+        assert!(
+            registry.find_tool("plugin:broken:echo").is_none(),
+            "find_tool should return None for non-Ready plugins"
+        );
+    }
+
+    #[test]
+    fn test_find_tool_unloaded_plugin_returns_none() {
+        let mut registry = PluginRegistry::new();
+
+        let mut unloaded_plugin = TestPlugin::new("gone");
+        unloaded_plugin.state = PluginState::Unloaded;
+        registry.register(Box::new(unloaded_plugin)).unwrap();
+
+        assert!(
+            registry.find_tool("plugin:gone:echo").is_none(),
+            "find_tool should return None for Unloaded plugins"
+        );
+    }
+
+    #[test]
+    fn test_is_plugin_tool_rejects_empty_tool_name() {
+        // "plugin:alpha:" has an empty tool name segment — should be rejected.
+        assert!(!PluginRegistry::is_plugin_tool("plugin:alpha:"));
+    }
+
+    #[test]
+    fn test_find_tool_with_colons_in_tool_name() {
+        let mut registry = PluginRegistry::new();
+
+        // Create a plugin with a tool whose name contains colons.
+        struct ColonTool;
+
+        #[async_trait::async_trait]
+        impl PluginTool for ColonTool {
+            fn name(&self) -> &str {
+                "name:with:colons"
+            }
+            fn description(&self) -> &str {
+                "A tool with colons in the name"
+            }
+            fn input_schema(&self) -> serde_json::Value {
+                serde_json::json!({ "type": "object" })
+            }
+            async fn execute(
+                &self,
+                _args: serde_json::Value,
+                _ctx: &PluginToolContext,
+            ) -> PluginResult<String> {
+                Ok("ok".to_string())
+            }
+        }
+
+        let mut plugin = TestPlugin::new("alpha");
+        plugin.tools = vec![Arc::new(ColonTool)];
+        registry.register(Box::new(plugin)).unwrap();
+
+        // "plugin:alpha:name:with:colons" → split_once on first colon after "alpha"
+        // → plugin_id="alpha", tool_name="name:with:colons"
+        let result = registry.find_tool("plugin:alpha:name:with:colons");
+        assert!(
+            result.is_some(),
+            "should find tool even with colons in tool name"
+        );
+        let (_, tool) = result.unwrap();
+        assert_eq!(tool.name(), "name:with:colons");
     }
 
     #[test]
