@@ -707,6 +707,7 @@ mod tests {
                 binary_hash: None,
             },
             capabilities: vec![],
+            connectors: vec![],
             config: HashMap::new(),
         }
     }
@@ -723,6 +724,7 @@ mod tests {
                 hash: None,
             },
             capabilities: vec![],
+            connectors: vec![],
             config: HashMap::new(),
         }
     }

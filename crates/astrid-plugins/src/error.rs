@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use astrid_core::ConnectorId;
+
 use crate::PluginId;
 
 /// Errors from plugin operations.
@@ -14,6 +16,14 @@ pub enum PluginError {
     /// A plugin with this ID is already registered.
     #[error("plugin already registered: {0}")]
     AlreadyRegistered(PluginId),
+
+    /// A connector with this ID is already registered.
+    #[error("connector already registered: {0}")]
+    ConnectorAlreadyRegistered(ConnectorId),
+
+    /// The requested connector was not found in the registry.
+    #[error("connector not found: {0}")]
+    ConnectorNotFound(ConnectorId),
 
     /// Failed to parse a plugin manifest file.
     #[error("manifest parse error in {path}: {message}")]

@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use astrid_core::ConnectorProfile;
+
 use crate::PluginId;
 
 /// A plugin manifest loaded from `plugin.toml`.
@@ -34,6 +36,9 @@ pub struct PluginManifest {
     /// Capabilities the plugin requires from the runtime.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<PluginCapability>,
+    /// Connectors the plugin provides.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<ManifestConnector>,
     /// Arbitrary plugin configuration.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
@@ -90,6 +95,31 @@ pub enum PluginCapability {
     KvStore,
     /// Plugin needs access to its configuration.
     Config,
+    /// Plugin needs to register connectors.
+    Connector {
+        /// The behavioural profile of the connector.
+        profile: ConnectorProfile,
+    },
+}
+
+/// A connector declared in a plugin manifest.
+///
+/// Parsed from `[[connectors]]` sections in `plugin.toml`:
+///
+/// ```toml
+/// [[connectors]]
+/// name = "telegram"
+/// platform = "telegram"
+/// profile = "chat"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestConnector {
+    /// Human-readable connector name.
+    pub name: String,
+    /// Platform identifier string, parsed to [`FrontendType`](astrid_core::FrontendType) at load time.
+    pub platform: String,
+    /// Behavioural profile of the connector.
+    pub profile: ConnectorProfile,
 }
 
 #[cfg(test)]
@@ -113,6 +143,7 @@ mod tests {
                     hosts: vec!["api.github.com".into()],
                 },
             ],
+            connectors: vec![],
             config: HashMap::from([("timeout".into(), serde_json::json!(30))]),
         }
     }
@@ -201,6 +232,88 @@ mod tests {
         assert_eq!(manifest.id.as_str(), "minimal-plugin");
         assert!(manifest.description.is_none());
         assert!(manifest.capabilities.is_empty());
+        assert!(manifest.connectors.is_empty());
         assert!(manifest.config.is_empty());
+    }
+
+    #[test]
+    fn test_manifest_with_connectors_toml() {
+        let toml_str = r#"
+            id = "telegram-bridge"
+            name = "Telegram Bridge"
+            version = "1.0.0"
+
+            [entry_point]
+            type = "mcp"
+            command = "node"
+            args = ["dist/index.js"]
+
+            [[connectors]]
+            name = "telegram"
+            platform = "telegram"
+            profile = "chat"
+
+            [[connectors]]
+            name = "notify"
+            platform = "webhook"
+            profile = "notify"
+        "#;
+        let manifest: PluginManifest = toml::from_str(toml_str).unwrap();
+        assert_eq!(manifest.connectors.len(), 2);
+        assert_eq!(manifest.connectors[0].name, "telegram");
+        assert_eq!(manifest.connectors[0].platform, "telegram");
+        assert_eq!(manifest.connectors[0].profile, ConnectorProfile::Chat);
+        assert_eq!(manifest.connectors[1].name, "notify");
+        assert_eq!(manifest.connectors[1].profile, ConnectorProfile::Notify);
+    }
+
+    #[test]
+    fn test_manifest_without_connectors_backward_compat() {
+        // Existing manifests without [[connectors]] must still parse.
+        let toml_str = r#"
+            id = "old-plugin"
+            name = "Old Plugin"
+            version = "0.1.0"
+
+            [entry_point]
+            type = "wasm"
+            path = "plugin.wasm"
+
+            [[capabilities]]
+            type = "kv_store"
+        "#;
+        let manifest: PluginManifest = toml::from_str(toml_str).unwrap();
+        assert_eq!(manifest.id.as_str(), "old-plugin");
+        assert!(manifest.connectors.is_empty());
+        assert_eq!(manifest.capabilities.len(), 1);
+    }
+
+    #[test]
+    fn test_connector_capability_serde() {
+        let cap = PluginCapability::Connector {
+            profile: ConnectorProfile::Chat,
+        };
+        let json = serde_json::to_string(&cap).unwrap();
+        let parsed: PluginCapability = serde_json::from_str(&json).unwrap();
+        match parsed {
+            PluginCapability::Connector { profile } => {
+                assert_eq!(profile, ConnectorProfile::Chat);
+            },
+            _ => panic!("expected Connector capability"),
+        }
+    }
+
+    #[test]
+    fn test_manifest_connector_serde_roundtrip() {
+        let mc = ManifestConnector {
+            name: "telegram".into(),
+            platform: "telegram".into(),
+            profile: ConnectorProfile::Chat,
+        };
+        let json = serde_json::to_string(&mc).unwrap();
+        let parsed: ManifestConnector = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "telegram");
+        assert_eq!(parsed.platform, "telegram");
+        assert_eq!(parsed.profile, ConnectorProfile::Chat);
     }
 }
