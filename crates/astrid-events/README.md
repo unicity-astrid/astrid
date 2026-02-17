@@ -1,6 +1,6 @@
 # astrid-events
 
-Event bus for the Astrid secure agent runtime SDK.
+Event bus for the Astrid secure agent runtime.
 
 ## Overview
 

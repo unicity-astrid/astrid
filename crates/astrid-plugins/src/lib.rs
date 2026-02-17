@@ -1,4 +1,4 @@
-//! Plugin trait and registry for the Astrid secure agent runtime SDK.
+//! Plugin trait and registry for the Astrid secure agent runtime.
 //!
 //! Provides the core abstractions for extending Astrid with plugins:
 //!

@@ -9,7 +9,7 @@
 
 ---
 
-Astrid is an SDK for building AI agents that can't go rogue.
+Astrid is a secure runtime for building AI agents that can't go rogue.
 
 Most agent frameworks control what an AI can do with system prompts, text that tells the model "don't delete files" or "don't spend money." The problem: models can be tricked into ignoring those instructions (prompt injection), and there's no way to prove they followed them.
 

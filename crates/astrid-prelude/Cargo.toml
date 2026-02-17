@@ -1,6 +1,6 @@
 [package]
 name = "astrid-prelude"
-description = "Unified prelude for the Astrid secure agent runtime SDK"
+description = "Unified prelude for the Astrid secure agent runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

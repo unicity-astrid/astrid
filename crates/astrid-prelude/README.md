@@ -1,6 +1,6 @@
 # astrid-prelude
 
-Unified prelude for the Astrid secure agent runtime SDK.
+Unified prelude for the Astrid secure agent runtime.
 
 ## Usage
 
@@ -19,7 +19,7 @@ use astrid_prelude::*;
 
 ## What's Included
 
-This crate re-exports the preludes from all Astrid SDK crates:
+This crate re-exports the preludes from all Astrid crates:
 
 | Crate | Types |
 |-------|-------|

@@ -1,11 +1,11 @@
-//! Astrid Core - Foundation types and traits for the Astrid secure agent runtime SDK.
+//! Astrid Core - Foundation types and traits for the Astrid secure agent runtime.
 //!
 //! This crate provides:
 //! - Error types for security operations
 //! - Input classification and message attribution
 //! - Identity management across frontends
 //! - The `Frontend` trait for different UI implementations
-//! - Common types used throughout the SDK
+//! - Common types used throughout the runtime
 //! - Version management for state migrations
 //! - Retry utilities with exponential backoff
 

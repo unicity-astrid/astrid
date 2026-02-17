@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Operational workspace boundaries for Astrid secure agent runtime SDK"
+description = "Operational workspace boundaries for Astrid secure agent runtime"
 
 [dependencies]
 astrid-core.workspace = true

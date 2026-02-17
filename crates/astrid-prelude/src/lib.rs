@@ -1,7 +1,7 @@
-//! Unified prelude for the Astrid secure agent runtime SDK.
+//! Unified prelude for the Astrid secure agent runtime.
 //!
 //! This crate provides a single import to bring in all commonly used types
-//! from across the Astrid SDK. Use this when you need types from multiple
+//! from across Astrid. Use this when you need types from multiple
 //! crates without managing individual imports.
 //!
 //! # Usage
