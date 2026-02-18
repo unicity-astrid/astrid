@@ -266,6 +266,9 @@ impl DaemonServer {
         let user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>> =
             Arc::new(RwLock::new(HashSet::new()));
 
+        // Central inbound message channel: all connector plugin receivers fan in here.
+        let (inbound_tx, inbound_rx) = mpsc::channel::<astrid_core::InboundMessage>(256);
+
         // Pre-clone fields needed by the inbound router before rpc_impl takes ownership.
         // Note: `workspace_kv` is NOT listed here because rpc_impl takes
         // `Arc::clone(&workspace_kv)` (not by move), so the original Arc survives
@@ -291,6 +294,7 @@ impl DaemonServer {
             ephemeral: options.ephemeral,
             user_unloaded_plugins: Arc::clone(&user_unloaded_plugins),
             workspace_root: cwd.clone(),
+            inbound_tx: inbound_tx.clone(),
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -304,9 +308,6 @@ impl DaemonServer {
 
         info!(addr = %addr, pid = pid, "Daemon server started");
 
-        // Central inbound message channel: all connector plugin receivers fan in here.
-        let (inbound_tx, inbound_rx) = mpsc::channel::<astrid_core::InboundMessage>(256);
-
         // Identity store for resolving platform users → canonical AstridUserIds.
         // InMemoryIdentityStore is used for now; a persistent implementation can
         // be swapped in later without changing the routing logic.
@@ -317,7 +318,7 @@ impl DaemonServer {
         // a follow-up phase.
         let identity_store: Arc<dyn astrid_core::identity::IdentityStore> =
             Arc::new(InMemoryIdentityStore::new());
-        warn!(
+        info!(
             "Identity store is in-memory only — connector user mappings are not \
              persisted. Linked connector users must re-link after each daemon restart."
         );

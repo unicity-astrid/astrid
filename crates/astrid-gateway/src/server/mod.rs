@@ -125,9 +125,9 @@ pub struct DaemonServer {
     inbound_tx: mpsc::Sender<InboundMessage>,
     /// Maps `AstridUserId` (UUID) → most recent active `SessionId`.
     ///
-    /// Stored here for future RPC endpoints. The inbound router holds its own
+    /// Shared with the session cleanup loop (periodic stale-entry sweep) and
+    /// reserved for future RPC endpoints. The inbound router holds its own
     /// `Arc` clone and manages this map directly.
-    #[allow(dead_code)]
     connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>>,
 }
 

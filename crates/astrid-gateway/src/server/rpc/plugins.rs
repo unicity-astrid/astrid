@@ -37,6 +37,7 @@ impl RpcImpl {
         Ok(infos)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) async fn load_plugin_impl(
         &self,
         plugin_id: String,
@@ -117,10 +118,29 @@ impl RpcImpl {
         let version = manifest.version.clone();
         let description = manifest.description.clone();
 
+        // Take the inbound receiver before re-registering, while we have
+        // exclusive ownership of the plugin. Mirrors the auto-load and
+        // hot-reload watcher paths. Only meaningful on successful load.
+        let inbound_rx = if state_str == "ready" {
+            plugin.take_inbound_rx()
+        } else {
+            None
+        };
+
         // Brief write lock to put the plugin back.
         {
             let mut registry = self.plugin_registry.write().await;
             let _ = registry.register(plugin);
+        }
+
+        // Spawn the fan-in forwarder after releasing the registry lock.
+        // JoinHandle intentionally discarded: self-terminating (see inbound_router.rs).
+        if let Some(rx) = inbound_rx {
+            let tx = self.inbound_tx.clone();
+            let pid = plugin_id.clone();
+            tokio::spawn(async move {
+                super::super::inbound_router::forward_inbound(pid, rx, tx).await;
+            });
         }
 
         let info = PluginInfo {

@@ -106,6 +106,14 @@ pub(super) struct InboundRouterCtx {
 /// current phase because there is no outbound reply path yet; once
 /// `OutboundAdapter` lands, consider a two-phase drain (flush remaining
 /// messages before breaking) to preserve at-least-once delivery.
+///
+/// # Sequential processing
+///
+/// Messages are processed one at a time: the router awaits `handle_inbound`
+/// before picking up the next message. LLM turns are spawned as separate Tokio
+/// tasks (see `run_connector_turn`), so a slow turn does not block the router
+/// from routing subsequent messages from other connector users. The bottleneck
+/// is identity resolution + session lookup, which are fast in-memory operations.
 pub(super) async fn run_inbound_router(mut ctx: InboundRouterCtx) {
     loop {
         tokio::select! {
@@ -185,6 +193,8 @@ async fn handle_inbound(ctx: &InboundRouterCtx, msg: InboundMessage) {
 /// follow-up once the identity/pairing flow is complete.
 async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option<SessionId> {
     // Brief read — look for an existing, live session.
+    // Also track whether we found a stale entry so we can prune it on error.
+    let had_stale;
     {
         let cs = ctx.connector_sessions.read().await;
         if let Some(sid) = cs.get(&user_id) {
@@ -193,6 +203,9 @@ async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option
                 return Some(sid.clone());
             }
             // Session was cleaned up — fall through to creation.
+            had_stale = true;
+        } else {
+            had_stale = false;
         }
     }
 
@@ -208,6 +221,10 @@ async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option
         Ok(s) => s,
         Err(e) => {
             warn!(%e, %user_id, "Failed to create deferred KV scope for connector session");
+            // Remove the stale entry so the next message gets a clean attempt.
+            if had_stale {
+                ctx.connector_sessions.write().await.remove(&user_id);
+            }
             return None;
         },
     };
@@ -215,6 +232,9 @@ async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option
         Ok(s) => s,
         Err(e) => {
             warn!(%e, %user_id, "Failed to init deferred queue for connector session");
+            if had_stale {
+                ctx.connector_sessions.write().await.remove(&user_id);
+            }
             return None;
         },
     };

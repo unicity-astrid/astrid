@@ -235,6 +235,17 @@ impl RpcImpl {
         };
         // Map lock released here.
 
+        // Connector sessions are managed exclusively by the inbound router.
+        // Sending input via RPC would bypass identity resolution and produce
+        // turn output with no outbound path back to the connector user.
+        if handle.user_id.is_some() {
+            return Err(ErrorObjectOwned::owned(
+                error_codes::INVALID_REQUEST,
+                "session is managed by the inbound router and cannot be targeted via RPC",
+                None::<()>,
+            ));
+        }
+
         let runtime = Arc::clone(&self.runtime);
         let event_tx = handle.event_tx.clone();
         let frontend = Arc::clone(&handle.frontend);
