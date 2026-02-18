@@ -176,7 +176,7 @@ globset = "0.4"
 regex = "1.10"
 
 # Telegram bot framework
-teloxide = { version = "0.13", features = ["macros"] }
+teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 
 # WASM plugin runtime
 extism = "1"

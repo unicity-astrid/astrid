@@ -21,7 +21,7 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { workspace = true }
 
 # Streaming
 tokio-stream = "0.1"
