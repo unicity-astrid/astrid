@@ -81,6 +81,7 @@ impl RpcImpl {
             workspace: workspace_path.clone(),
             created_at,
             turn_handle: Arc::new(Mutex::new(None)),
+            user_id: None,
         };
 
         {
@@ -199,6 +200,7 @@ impl RpcImpl {
             workspace: workspace.clone(),
             created_at,
             turn_handle: Arc::new(Mutex::new(None)),
+            user_id: None,
         };
 
         {

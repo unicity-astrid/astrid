@@ -145,6 +145,12 @@ impl Plugin for WasmPlugin {
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &self.connectors
     }
+
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        self.inbound_rx.take()
+    }
 }
 
 impl WasmPlugin {

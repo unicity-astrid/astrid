@@ -4,12 +4,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use astrid_core::SessionId;
+use astrid_core::{InboundMessage, SessionId};
 use astrid_mcp::McpClient;
 use astrid_plugins::manifest::PluginEntryPoint;
 use astrid_plugins::{PluginContext, PluginId, PluginRegistry, PluginState, WasmPluginLoader};
 use astrid_storage::{KvStore, ScopedKvStore};
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use super::monitoring::AbortOnDrop;
@@ -26,6 +27,8 @@ pub(super) struct WatcherReloadContext {
     pub(super) workspace_root: PathBuf,
     pub(super) user_unloaded: Arc<RwLock<HashSet<PluginId>>>,
     pub(super) wasm_loader: Arc<WasmPluginLoader>,
+    /// Central inbound channel sender — cloned for each hot-reloaded connector plugin.
+    pub(super) inbound_tx: mpsc::Sender<InboundMessage>,
 }
 
 impl DaemonServer {
@@ -92,6 +95,7 @@ impl DaemonServer {
             workspace_root: self.workspace_root.clone(),
             user_unloaded: Arc::clone(&self.user_unloaded_plugins),
             wasm_loader: Arc::clone(&self.wasm_loader),
+            inbound_tx: self.inbound_tx.clone(),
         };
 
         let handle = tokio::spawn(async move {
@@ -124,6 +128,7 @@ impl DaemonServer {
     /// Discovers the manifest in the changed directory, unloads the old plugin
     /// if loaded, re-registers it, loads it with a fresh context, and broadcasts
     /// the result to all connected sessions.
+    #[allow(clippy::too_many_lines)]
     async fn handle_watcher_reload(plugin_dir: &std::path::Path, ctx: &WatcherReloadContext) {
         let WatcherReloadContext {
             plugin_registry,
@@ -133,6 +138,7 @@ impl DaemonServer {
             workspace_root,
             user_unloaded,
             wasm_loader,
+            inbound_tx,
         } = ctx;
         // Try to load the manifest. Compiled plugins have plugin.toml;
         // uncompiled OpenClaw plugins only have openclaw.plugin.json and
@@ -217,6 +223,23 @@ impl DaemonServer {
         match load_result {
             Ok(()) => {
                 info!(plugin = %plugin_id, "Hot-reloaded plugin");
+
+                // Wire inbound receiver if the reloaded plugin has connector capability.
+                // Takes a brief write lock to call take_inbound_rx() through the trait.
+                {
+                    let rx = {
+                        let mut reg = plugin_registry.write().await;
+                        reg.get_mut(&plugin_id).and_then(|p| p.take_inbound_rx())
+                    };
+                    if let Some(rx) = rx {
+                        let tx = inbound_tx.clone();
+                        let pid = plugin_id_str.clone();
+                        tokio::spawn(async move {
+                            super::inbound_router::forward_inbound(pid, rx, tx).await;
+                        });
+                    }
+                }
+
                 Self::broadcast_event(
                     sessions,
                     DaemonEvent::PluginLoaded {

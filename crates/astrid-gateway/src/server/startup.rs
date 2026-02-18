@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use astrid_approval::budget::{WorkspaceBudgetSnapshot, WorkspaceBudgetTracker};
 use astrid_audit::AuditLog;
 use astrid_capabilities::CapabilityStore;
+use astrid_core::SessionId;
+use astrid_core::identity::InMemoryIdentityStore;
 use astrid_crypto::KeyPair;
 use astrid_hooks::{HookManager, discover_hooks};
 use astrid_llm::{ClaudeProvider, LlmProvider, OpenAiCompatProvider, ZaiProvider};
@@ -21,8 +23,9 @@ use astrid_plugins::{
 use astrid_runtime::{AgentRuntime, SessionStore, config_bridge};
 use astrid_storage::{KvStore, ScopedKvStore, SurrealKvStore};
 use jsonrpsee::server::{Server, ServerHandle};
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use super::paths::DaemonPaths;
 use super::rpc::RpcImpl;
@@ -263,6 +266,12 @@ impl DaemonServer {
         let user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>> =
             Arc::new(RwLock::new(HashSet::new()));
 
+        // Pre-clone fields needed by the inbound router before rpc_impl takes ownership.
+        let router_deferred_kv = Arc::clone(&deferred_kv);
+        let router_capabilities_store = Arc::clone(&capabilities_store);
+        let router_workspace_budget = Arc::clone(&workspace_budget_tracker);
+        let router_model_name = model_name.clone();
+
         let rpc_impl = RpcImpl {
             runtime: Arc::clone(&runtime),
             sessions: Arc::clone(&session_map),
@@ -292,6 +301,32 @@ impl DaemonServer {
 
         info!(addr = %addr, pid = pid, "Daemon server started");
 
+        // Central inbound message channel: all connector plugin receivers fan in here.
+        let (inbound_tx, inbound_rx) = mpsc::channel::<astrid_core::InboundMessage>(256);
+
+        // Identity store for resolving platform users → canonical AstridUserIds.
+        // InMemoryIdentityStore is used for now; a persistent implementation can
+        // be swapped in later without changing the routing logic.
+        let identity_store: Arc<dyn astrid_core::identity::IdentityStore> =
+            Arc::new(InMemoryIdentityStore::new());
+
+        // Reverse index: AstridUserId (UUID) → most recent active SessionId.
+        let connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
+        // Register the native CLI connector in the plugin registry so the
+        // approval fallback chain can find an interactive surface.
+        {
+            let descriptor = crate::daemon_frontend::DaemonFrontend::native_connector_descriptor();
+            let mut reg = plugin_registry.write().await;
+            if let Err(e) = reg.register_connector(
+                &astrid_plugins::PluginId::from_static("native-cli"),
+                descriptor,
+            ) {
+                warn!(error = %e, "Failed to register native CLI connector");
+            }
+        }
+
         // Background task: auto-load discovered plugins after the server is
         // accepting connections (avoids blocking the 5s CLI connect timeout).
         // Each plugin is taken out of the registry, loaded without the lock
@@ -300,6 +335,7 @@ impl DaemonServer {
             let registry_clone = Arc::clone(&plugin_registry);
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
+            let inbound_tx_for_autoload = inbound_tx.clone();
             tokio::spawn(async move {
                 // Collect IDs under a brief read lock.
                 let plugin_ids: Vec<PluginId> = {
@@ -338,6 +374,15 @@ impl DaemonServer {
                         warn!(plugin_id = %plugin_id, error = %e, "Failed to auto-load plugin");
                     } else {
                         info!(plugin_id = %plugin_id, "Auto-loaded plugin");
+                        // Wire inbound receiver for connector plugins. Called after
+                        // load() because the receiver is only created during load.
+                        if let Some(rx) = plugin.take_inbound_rx() {
+                            let tx = inbound_tx_for_autoload.clone();
+                            let pid = plugin_id.as_str().to_string();
+                            tokio::spawn(async move {
+                                super::inbound_router::forward_inbound(pid, rx, tx).await;
+                            });
+                        }
                     }
 
                     // Put the plugin back (brief write lock).
@@ -367,16 +412,16 @@ impl DaemonServer {
         let _ = std::fs::write(paths.mode_file(), mode_str);
 
         let daemon = Self {
-            runtime,
-            sessions: session_map,
-            plugin_registry,
-            workspace_kv,
+            runtime: Arc::clone(&runtime),
+            sessions: Arc::clone(&session_map),
+            plugin_registry: Arc::clone(&plugin_registry),
+            workspace_kv: Arc::clone(&workspace_kv),
             mcp_client: mcp_for_watcher,
             wasm_loader,
             home: home.clone(),
             workspace_root: cwd,
             started_at: Instant::now(),
-            shutdown_tx,
+            shutdown_tx: shutdown_tx.clone(),
             paths,
             health_interval,
             ephemeral: options.ephemeral,
@@ -384,7 +429,30 @@ impl DaemonServer {
             active_connections,
             session_cleanup_interval,
             user_unloaded_plugins,
+            identity_store: Arc::clone(&identity_store),
+            inbound_tx: inbound_tx.clone(),
+            connector_sessions: Arc::clone(&connector_sessions),
         };
+
+        // Spawn the inbound message router. It drains the central inbound channel
+        // and routes each message to an agent session by identity.
+        let router_ctx = super::inbound_router::InboundRouterCtx {
+            inbound_rx,
+            identity_store,
+            sessions: session_map,
+            connector_sessions,
+            plugin_registry,
+            runtime,
+            workspace_kv: Arc::clone(&workspace_kv),
+            workspace_budget_tracker: router_workspace_budget,
+            workspace_id,
+            capabilities_store: router_capabilities_store,
+            deferred_kv: router_deferred_kv,
+            model_name: router_model_name,
+            shutdown_rx: shutdown_tx.subscribe(),
+        };
+        tokio::spawn(super::inbound_router::run_inbound_router(router_ctx));
+
         Ok((daemon, handle, addr, cfg))
     }
 }
