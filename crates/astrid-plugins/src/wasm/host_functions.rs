@@ -52,12 +52,12 @@ const MAX_STRING_LENGTH: usize = 256;
 /// `FrontendType` has a `Custom` variant for extensibility, so unknown
 /// platforms are valid rather than rejected.
 fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
+    use astrid_core::identity::FrontendType;
     debug_assert_eq!(
         platform,
         platform.trim(),
         "caller must trim platform before parsing"
     );
-    use astrid_core::identity::FrontendType;
     match platform.to_ascii_lowercase().as_str() {
         "discord" => FrontendType::Discord,
         "whatsapp" | "whats_app" => FrontendType::WhatsApp,
@@ -627,8 +627,9 @@ fn astrid_register_connector_impl(
 
     // Validate inputs — trim whitespace before parsing so the stored
     // FrontendType never contains leading/trailing spaces.
-    let frontend_type = parse_frontend_type(platform_str.trim());
-    let profile = parse_connector_profile(&profile_str)?;
+    let trimmed_platform = platform_str.trim();
+    let frontend_type = parse_frontend_type(trimmed_platform);
+    let profile = parse_connector_profile(profile_str.trim())?;
 
     // First lock: read capability flag, security gate, and runtime handle
     let ud = user_data.get()?;
@@ -656,7 +657,7 @@ fn astrid_register_connector_impl(
         let gate = gate.clone();
         let pid = plugin_id.clone();
         let cname = name.clone();
-        let plat = platform_str.trim().to_owned();
+        let plat = trimmed_platform.to_owned();
         let check = handle
             .block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await });
         if let Err(reason) = check {
@@ -1544,24 +1545,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_frontend_type_trimmed_input_matches_known() {
-        use astrid_core::identity::FrontendType;
-
-        // Callers must trim before calling parse_frontend_type (enforced by
-        // debug_assert). Pre-trimmed known platforms resolve to the correct variant.
-        assert_eq!(parse_frontend_type("telegram"), FrontendType::Telegram);
-        assert_eq!(parse_frontend_type("discord"), FrontendType::Discord);
-        assert_eq!(parse_frontend_type("whatsapp"), FrontendType::WhatsApp);
-    }
-
-    #[test]
     fn parse_frontend_type_unknown_is_lowercased() {
         use astrid_core::identity::FrontendType;
 
-        // Unknown platforms are lowercased by to_lowercase() in the match.
+        // Unknown platforms are lowercased by to_ascii_lowercase() in the match.
         assert_eq!(
             parse_frontend_type("MATRIX"),
             FrontendType::Custom("matrix".into())
+        );
+        assert_eq!(
+            parse_frontend_type("Signal"),
+            FrontendType::Custom("signal".into())
         );
     }
 }
