@@ -439,13 +439,18 @@ fn test_inbound_message_missing_content() {
     );
 }
 
-// ─── Unused constant checks (ensure consts are exported correctly) ─────────────
+// ─── Constant value regression guards ─────────────────────────────────────────
 
 #[test]
-fn test_bridge_constants_accessible() {
-    assert!(MAX_CHANNELS_PER_PLUGIN > 0);
-    assert!(MAX_CHANNEL_NAME_LEN > 0);
-    assert!(MAX_NOTIFICATION_PAYLOAD_BYTES > 0);
-    assert!(MAX_CONTEXT_BYTES > 0);
-    assert!(MAX_PLATFORM_USER_ID_BYTES > 0);
+fn test_size_constants_have_expected_values() {
+    // Regression guard: accidental changes to these limits would silently
+    // weaken security bounds or break wire compatibility.
+    assert_eq!(MAX_NOTIFICATION_PAYLOAD_BYTES, 1_024 * 1_024); // 1 MB
+    assert_eq!(MAX_CONTEXT_BYTES, 64 * 1024); // 64 KB
+    assert_eq!(MAX_PLATFORM_USER_ID_BYTES, 512);
+    assert_eq!(MAX_CHANNEL_NAME_LEN, 128);
+    assert_eq!(
+        MAX_CHANNELS_PER_PLUGIN,
+        astrid_core::MAX_CONNECTORS_PER_PLUGIN
+    );
 }

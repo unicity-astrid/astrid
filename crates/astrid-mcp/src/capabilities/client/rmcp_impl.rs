@@ -14,7 +14,7 @@ use rmcp::model::{
     RootsCapabilities, SamplingCapability, SamplingMessageContent, UrlElicitationCapability,
 };
 use rmcp::service::{NotificationContext, RequestContext, RoleClient};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::types::ToolDefinition;
@@ -366,7 +366,6 @@ impl rmcp::ClientHandler for AstridClientHandler {
             // when plugin config is written. Currently informational only; a
             // future phase may reload config or forward to the runtime.
             other => {
-                use tracing::debug;
                 debug!(
                     server = %self.server_name,
                     method = %other,
