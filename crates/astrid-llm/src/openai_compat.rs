@@ -153,12 +153,20 @@ impl OpenAiCompatProvider {
             let openai_tools: Vec<Value> = tools
                 .iter()
                 .map(|t| {
+                    // Ensure `properties` is always an object (even if empty).
+                    // Strict OpenAI-compatible endpoints (e.g. LM Studio) use Zod
+                    // validation that rejects a missing `properties` field with HTTP 400.
+                    let mut parameters = t.input_schema.clone();
+                    if let Some(obj) = parameters.as_object_mut() {
+                        obj.entry("properties")
+                            .or_insert_with(|| serde_json::json!({}));
+                    }
                     serde_json::json!({
                         "type": "function",
                         "function": {
                             "name": t.name,
                             "description": t.description,
-                            "parameters": t.input_schema
+                            "parameters": parameters
                         }
                     })
                 })
