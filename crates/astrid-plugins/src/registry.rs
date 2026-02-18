@@ -208,7 +208,7 @@ impl PluginRegistry {
     ) -> Option<&ConnectorDescriptor> {
         self.connectors
             .values()
-            .find(|(_, desc)| &desc.frontend_type == platform)
+            .find(|(_, desc)| desc.frontend_type.is_same_platform(platform))
             .map(|(_, desc)| desc)
     }
 

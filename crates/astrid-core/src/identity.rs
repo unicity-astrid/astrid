@@ -320,6 +320,64 @@ pub enum FrontendType {
     Custom(String),
 }
 
+impl FrontendType {
+    /// Return a lowercase canonical key for this platform.
+    ///
+    /// Known variants return their static name; [`Custom`](Self::Custom) values
+    /// are lowercased and, if they match a known variant, collapse to that
+    /// variant's key (e.g. `Custom("Telegram")` → `"telegram"`).
+    ///
+    /// This should be used instead of raw `PartialEq` when comparing platform
+    /// identity across trust boundaries (e.g. WASM guests, MCP plugins).
+    #[must_use]
+    pub fn canonical_name(&self) -> &str {
+        match self {
+            Self::Discord => "discord",
+            Self::WhatsApp => "whatsapp",
+            Self::Telegram => "telegram",
+            Self::Slack => "slack",
+            Self::Web => "web",
+            Self::Cli => "cli",
+            Self::Custom(name) => {
+                // Collapse known aliases back to their canonical form.
+                let lower = name.trim();
+                // We can't return a borrow of a temporary, so we match
+                // known names and fall through to the original string for
+                // truly custom platforms.  Case-insensitive matching is
+                // handled by `is_same_platform` instead.
+                match lower {
+                    _ if lower.eq_ignore_ascii_case("discord") => "discord",
+                    _ if lower.eq_ignore_ascii_case("whatsapp") => "whatsapp",
+                    _ if lower.eq_ignore_ascii_case("telegram") => "telegram",
+                    _ if lower.eq_ignore_ascii_case("slack") => "slack",
+                    _ if lower.eq_ignore_ascii_case("web") => "web",
+                    _ if lower.eq_ignore_ascii_case("cli") => "cli",
+                    _ => name.as_str(),
+                }
+            },
+        }
+    }
+
+    /// Returns `true` if `self` and `other` refer to the same logical platform,
+    /// normalizing [`Custom`](Self::Custom) aliases and ignoring case.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use astrid_core::identity::FrontendType;
+    ///
+    /// assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("telegram".into())));
+    /// assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("Telegram".into())));
+    /// assert!(FrontendType::Custom("MATRIX".into()).is_same_platform(&FrontendType::Custom("matrix".into())));
+    /// assert!(!FrontendType::Discord.is_same_platform(&FrontendType::Telegram));
+    /// ```
+    #[must_use]
+    pub fn is_same_platform(&self, other: &Self) -> bool {
+        self.canonical_name()
+            .eq_ignore_ascii_case(other.canonical_name())
+    }
+}
+
 impl fmt::Display for FrontendType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -696,6 +754,71 @@ mod tests {
         assert_eq!(
             FrontendType::Custom("matrix".to_string()).to_string(),
             "custom:matrix"
+        );
+    }
+
+    #[test]
+    fn canonical_name_known_variants() {
+        assert_eq!(FrontendType::Discord.canonical_name(), "discord");
+        assert_eq!(FrontendType::WhatsApp.canonical_name(), "whatsapp");
+        assert_eq!(FrontendType::Telegram.canonical_name(), "telegram");
+        assert_eq!(FrontendType::Slack.canonical_name(), "slack");
+        assert_eq!(FrontendType::Web.canonical_name(), "web");
+        assert_eq!(FrontendType::Cli.canonical_name(), "cli");
+    }
+
+    #[test]
+    fn canonical_name_collapses_known_aliases() {
+        // Custom strings matching a known variant collapse to that variant's key.
+        assert_eq!(
+            FrontendType::Custom("telegram".into()).canonical_name(),
+            "telegram"
+        );
+        assert_eq!(
+            FrontendType::Custom("Telegram".into()).canonical_name(),
+            "telegram"
+        );
+        assert_eq!(
+            FrontendType::Custom("DISCORD".into()).canonical_name(),
+            "discord"
+        );
+    }
+
+    #[test]
+    fn canonical_name_preserves_unknown_custom() {
+        // Truly custom names are returned as-is (no lowercasing — comparison
+        // goes through `is_same_platform` which does case-insensitive compare).
+        assert_eq!(
+            FrontendType::Custom("matrix".into()).canonical_name(),
+            "matrix"
+        );
+    }
+
+    #[test]
+    fn is_same_platform_known_vs_custom_alias() {
+        assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("telegram".into())));
+        assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("Telegram".into())));
+        assert!(FrontendType::Discord.is_same_platform(&FrontendType::Custom("DISCORD".into())));
+    }
+
+    #[test]
+    fn is_same_platform_custom_case_insensitive() {
+        assert!(
+            FrontendType::Custom("MATRIX".into())
+                .is_same_platform(&FrontendType::Custom("matrix".into()))
+        );
+        assert!(
+            FrontendType::Custom("Matrix".into())
+                .is_same_platform(&FrontendType::Custom("MATRIX".into()))
+        );
+    }
+
+    #[test]
+    fn is_same_platform_different_platforms() {
+        assert!(!FrontendType::Discord.is_same_platform(&FrontendType::Telegram));
+        assert!(
+            !FrontendType::Custom("matrix".into())
+                .is_same_platform(&FrontendType::Custom("signal".into()))
         );
     }
 
