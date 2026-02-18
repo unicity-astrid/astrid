@@ -23,6 +23,9 @@ tokio = { workspace = true, features = ["time", "sync"] }
 chrono = { workspace = true }
 uuid = { workspace = true }
 
+# Cryptography
+rand = { workspace = true }
+
 # Encoding
 base64 = { workspace = true }
 
