@@ -231,7 +231,14 @@ impl McpPlugin {
         }
         for ch in &all_channels {
             if let Some(desc) = self.channel_to_descriptor(ch) {
-                self.registered_connectors.push(desc);
+                // Deduplicate: skip if a connector with the same name is already registered.
+                if !self
+                    .registered_connectors
+                    .iter()
+                    .any(|d| d.name == desc.name)
+                {
+                    self.registered_connectors.push(desc);
+                }
             }
         }
     }
@@ -248,7 +255,7 @@ impl McpPlugin {
             "whatsapp" => FrontendType::WhatsApp,
             "web" => FrontendType::Web,
             "cli" => FrontendType::Cli,
-            other => FrontendType::Custom(other.to_string()),
+            _ => FrontendType::Custom(ch.name.clone()),
         };
 
         let source = ConnectorSource::new_openclaw(self.id.as_str())

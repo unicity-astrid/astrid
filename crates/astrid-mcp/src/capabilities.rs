@@ -827,7 +827,12 @@ impl rmcp::ClientHandler for AstridClientHandler {
                     match notification.params_as::<ConnectorRegisteredParams>() {
                         Ok(Some(params)) => {
                             // Log if the plugin claims a different identity than expected.
-                            if !self.server_name.ends_with(&params.plugin_id) {
+                            // server_name is "plugin:<id>"; strip the prefix for exact match.
+                            let expected_id = self
+                                .server_name
+                                .strip_prefix("plugin:")
+                                .unwrap_or(&self.server_name);
+                            if params.plugin_id != expected_id {
                                 warn!(
                                     server = %self.server_name,
                                     claimed_id = %params.plugin_id,
