@@ -195,6 +195,20 @@ impl McpPlugin {
     /// (they are simple kernel calls that don't allocate or lock).
     #[allow(unsafe_code)]
     fn build_command(&self) -> PluginResult<tokio::process::Command> {
+        // Env vars that could compromise sandbox integrity. A future
+        // elicitation flow will let users approve these at install time;
+        // until then, reject them with a warning.
+        const BLOCKED_ENV_KEYS: &[&str] = &[
+            "HOME",
+            "PATH",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+        ];
+
         let PluginEntryPoint::Mcp {
             command,
             args,
@@ -223,6 +237,15 @@ impl McpPlugin {
         }
 
         for (key, value) in env {
+            if BLOCKED_ENV_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+                warn!(
+                    plugin_id = %self.manifest.id,
+                    key = %key,
+                    "Ignoring blocked env var from plugin manifest \
+                     (may compromise sandbox isolation)"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
 
