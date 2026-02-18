@@ -48,6 +48,18 @@ if (/[/\\]|\.\./.test(pluginId)) {
   process.exit(1);
 }
 
+// ── Validate HOME early ─────────────────────────────────────────────
+// HOME is used to build the plugin config directory. A manipulated HOME
+// (e.g. "/tmp/../etc") would cause path traversal via resolve().
+// Reject values containing ".." path segments and resolve once.
+const rawHome = process.env.HOME || "/tmp";
+if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(rawHome)) {
+  process.stderr.write("astrid_bridge: HOME contains '..' path components — refusing to start\n");
+  process.exit(1);
+}
+const resolvedHome = resolve(rawHome);
+const pluginConfigBase = resolve(resolvedHome, ".astrid", "plugins");
+
 // ── Logger (stderr only — stdout is MCP transport) ──────────────────
 const log = {
   info: (msg) => process.stderr.write(`[${pluginId}] INFO: ${msg}\n`),
@@ -93,12 +105,12 @@ const pluginApi = {
     config: {
       loadConfig: () => pluginConfig,
       writeConfigFile: (data) => {
-        const configDir = resolve(
-          process.env.HOME || "/tmp",
-          ".astrid",
-          "plugins",
-          pluginId
-        );
+        const configDir = resolve(pluginConfigBase, pluginId);
+        // Defense in depth: verify resolved path is under the expected base
+        if (!configDir.startsWith(pluginConfigBase + "/")) {
+          log.error("writeConfigFile: path traversal detected — refusing to write");
+          return;
+        }
         try {
           mkdirSync(configDir, { recursive: true });
           const configPath = resolve(configDir, "config.json");
