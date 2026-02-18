@@ -65,6 +65,11 @@ impl BuiltinTool for ReadFileTool {
             });
 
         let path = std::path::Path::new(file_path);
+        if !path.is_absolute() {
+            return Err(ToolError::InvalidArguments(
+                "file_path must be an absolute path".into(),
+            ));
+        }
         if !path.exists() {
             return Err(ToolError::PathNotFound(file_path.to_string()));
         }
@@ -100,7 +105,12 @@ impl BuiltinTool for ReadFileTool {
             #[allow(clippy::arithmetic_side_effects)]
             let line_num = start + idx + 1;
             let display_line = if line.len() > MAX_LINE_LENGTH {
-                &line[..MAX_LINE_LENGTH]
+                // Find a safe truncation point at a char boundary
+                let mut end = MAX_LINE_LENGTH;
+                while end > 0 && !line.is_char_boundary(end) {
+                    end = end.saturating_sub(1);
+                }
+                &line[..end]
             } else {
                 line
             };
@@ -127,7 +137,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn ctx() -> ToolContext {
-        ToolContext::new(std::env::temp_dir())
+        ToolContext::new(std::env::temp_dir(), None)
     }
 
     #[tokio::test]
@@ -211,6 +221,43 @@ mod tests {
     #[tokio::test]
     async fn test_read_file_missing_arg() {
         let result = ReadFileTool.execute(serde_json::json!({}), &ctx()).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ToolError::InvalidArguments(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_multibyte_truncation() {
+        // Create a file with a line containing multi-byte emoji near the truncation boundary.
+        // Each emoji is 4 bytes. A line of 501 emojis = 2004 bytes > MAX_LINE_LENGTH (2000).
+        // Byte 2000 falls inside the 501st emoji (bytes 2000-2003), so naive slicing panics.
+        let mut f = NamedTempFile::new().unwrap();
+        let line = "\u{1F525}".repeat(501); // 501 fire emojis = 2004 bytes
+        writeln!(f, "{line}").unwrap();
+
+        let result = ReadFileTool
+            .execute(
+                serde_json::json!({"file_path": f.path().to_str().unwrap()}),
+                &ctx(),
+            )
+            .await
+            .unwrap();
+
+        // Should not panic and should produce valid UTF-8 output
+        assert!(result.contains('\u{1F525}'));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_rejects_relative_path() {
+        let result = ReadFileTool
+            .execute(
+                serde_json::json!({"file_path": "relative/path.txt"}),
+                &ctx(),
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(

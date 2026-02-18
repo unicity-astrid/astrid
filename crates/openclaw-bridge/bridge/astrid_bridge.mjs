@@ -22,7 +22,7 @@ console.debug = (...args) => process.stderr.write(args.join(" ") + "\n");
 
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, sep } from "node:path";
 import {
   writeFileSync,
   mkdirSync,
@@ -111,7 +111,7 @@ const pluginApi = {
       writeConfigFile: (data) => {
         const configDir = resolve(pluginConfigBase, pluginId);
         // Defense in depth: verify resolved path is under the expected base
-        if (!configDir.startsWith(pluginConfigBase + "/")) {
+        if (!configDir.startsWith(pluginConfigBase + sep)) {
           log.error("writeConfigFile: path traversal detected — refusing to write");
           return;
         }

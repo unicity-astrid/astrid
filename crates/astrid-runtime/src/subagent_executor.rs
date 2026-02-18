@@ -40,6 +40,8 @@ pub struct SubAgentExecutor<P: LlmProvider, F: Frontend + 'static> {
     parent_budget_tracker: Arc<astrid_approval::budget::BudgetTracker>,
     /// Default timeout for sub-agents.
     default_timeout: Duration,
+    /// Parent agent's callsign (inherited for sub-agent identity).
+    parent_callsign: Option<String>,
 }
 
 impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
@@ -56,6 +58,7 @@ impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
         parent_capabilities: Arc<astrid_capabilities::CapabilityStore>,
         parent_budget_tracker: Arc<astrid_approval::budget::BudgetTracker>,
         default_timeout: Duration,
+        parent_callsign: Option<String>,
     ) -> Self {
         Self {
             runtime,
@@ -68,6 +71,7 @@ impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
             parent_capabilities,
             parent_budget_tracker,
             default_timeout,
+            parent_callsign,
         }
     }
 }
@@ -113,8 +117,13 @@ impl<P: LlmProvider + 'static, F: Frontend + 'static> SubAgentSpawner for SubAge
         } else {
             request.description.clone()
         };
+        let identity = if let Some(ref callsign) = self.parent_callsign {
+            format!("You are {callsign} (sub-agent).")
+        } else {
+            "You are a focused sub-agent.".to_string()
+        };
         let subagent_system_prompt = format!(
-            "You are a focused sub-agent. Your task:\n\n{safe_description}\n\n\
+            "{identity} Your task:\n\n{safe_description}\n\n\
              Complete this task and provide a clear, concise result. \
              Do not ask for clarification — work with what you have. \
              When done, provide your final answer as a clear summary.",

@@ -17,6 +17,7 @@
 pub mod prelude;
 
 pub mod dirs;
+pub mod env_policy;
 pub mod error;
 pub mod frontend;
 pub mod hook_event;

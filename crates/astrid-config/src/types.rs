@@ -58,6 +58,8 @@ pub struct Config {
     pub retry: RetrySection,
     /// Telegram bot frontend settings.
     pub telegram: TelegramSection,
+    /// Agent identity seed (static fallback for spark.toml).
+    pub spark: SparkSection,
 }
 
 // ---------------------------------------------------------------------------
@@ -843,6 +845,44 @@ impl Default for RetrySection {
     }
 }
 
+// ---------------------------------------------------------------------------
+// SparkSection
+// ---------------------------------------------------------------------------
+
+/// Agent identity seed configuration.
+///
+/// Provides a static fallback for the living `spark.toml` file. Fields set here
+/// are used when no `spark.toml` exists yet. Once the agent evolves its spark,
+/// `spark.toml` takes priority.
+///
+/// All fields default to empty strings (no identity configured).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SparkSection {
+    /// Agent's name (e.g. "Stellar", "Nova", "Orion").
+    pub callsign: String,
+    /// Role archetype (e.g. "navigator", "engineer", "sentinel").
+    pub class: String,
+    /// Personality energy (e.g. "calm", "sharp", "warm", "analytical").
+    pub aura: String,
+    /// Communication style (e.g. "formal", "concise", "casual", "poetic").
+    pub signal: String,
+    /// Soul/philosophy — free-form values, learned patterns, personality depth.
+    pub core: String,
+}
+
+impl SparkSection {
+    /// Returns `true` when all fields are empty (no identity configured).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.callsign.is_empty()
+            && self.class.is_empty()
+            && self.aura.is_empty()
+            && self.signal.is_empty()
+            && self.core.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -930,5 +970,37 @@ command = "cmd"
     fn server_section_default_has_restart_policy_never() {
         let section = ServerSection::default();
         assert_eq!(section.restart_policy, RestartPolicyConfig::Never);
+    }
+
+    #[test]
+    fn spark_section_default_is_empty() {
+        let spark = SparkSection::default();
+        assert!(spark.is_empty());
+    }
+
+    #[test]
+    fn spark_section_parses_from_config() {
+        let toml = r#"
+[spark]
+callsign = "Stellar"
+class = "navigator"
+aura = "calm"
+signal = "concise"
+core = "I value clarity."
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.spark.callsign, "Stellar");
+        assert_eq!(cfg.spark.class, "navigator");
+        assert_eq!(cfg.spark.aura, "calm");
+        assert_eq!(cfg.spark.signal, "concise");
+        assert_eq!(cfg.spark.core, "I value clarity.");
+        assert!(!cfg.spark.is_empty());
+    }
+
+    #[test]
+    fn spark_section_omitted_defaults_to_empty() {
+        let toml = "[model]\nprovider = \"claude\"\n";
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert!(cfg.spark.is_empty());
     }
 }

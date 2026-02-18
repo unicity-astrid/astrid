@@ -85,6 +85,12 @@ impl AstridHome {
                 )
             })?;
             let home_path = PathBuf::from(&home);
+            if !home_path.is_absolute() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "HOME must be an absolute path",
+                ));
+            }
             reject_parent_traversal(&home_path, "HOME")?;
             home_path.join(".astrid")
         };
@@ -444,6 +450,7 @@ mod tests {
     #[test]
     fn test_astrid_home_rejects_traversal_in_astrid_home() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::set_var("ASTRID_HOME", "/tmp/../etc") };
         let result = AstridHome::resolve();
@@ -453,7 +460,6 @@ mod tests {
             err.to_string().contains("'..'"),
             "expected path traversal error, got: {err}"
         );
-        unsafe { std::env::remove_var("ASTRID_HOME") };
     }
 
     #[test]
@@ -477,6 +483,7 @@ mod tests {
     #[test]
     fn test_astrid_home_rejects_relative_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::set_var("ASTRID_HOME", "relative/path") };
         let result = AstridHome::resolve();
@@ -486,17 +493,33 @@ mod tests {
             err.to_string().contains("absolute"),
             "expected absolute path error, got: {err}"
         );
-        unsafe { std::env::remove_var("ASTRID_HOME") };
     }
 
     #[test]
     fn test_astrid_home_rejects_empty_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::set_var("ASTRID_HOME", "") };
         let result = AstridHome::resolve();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_astrid_home_rejects_relative_home() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let _home_guard = EnvGuard::save("HOME");
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
+        // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::remove_var("ASTRID_HOME") };
+        unsafe { std::env::set_var("HOME", "relative/path") };
+        let result = AstridHome::resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("absolute"),
+            "expected absolute path error, got: {err}"
+        );
     }
 
     #[test]

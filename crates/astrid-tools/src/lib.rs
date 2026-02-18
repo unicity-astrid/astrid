@@ -4,8 +4,8 @@
 #![warn(unreachable_pub)]
 //! Built-in coding tools for the Astrid agent runtime.
 //!
-//! Provides 8 tools as direct Rust function calls (not MCP) for the hot-path
-//! coding operations: read, write, edit, search, and execute.
+//! Provides 9 tools as direct Rust function calls (not MCP) for the hot-path
+//! coding operations: read, write, edit, search, execute, and identity.
 
 mod bash;
 mod edit_file;
@@ -14,6 +14,8 @@ mod grep;
 mod instructions;
 mod list_directory;
 mod read_file;
+pub mod spark;
+mod spark_tool;
 mod subagent_spawner;
 mod system_prompt;
 mod task;
@@ -26,6 +28,8 @@ pub use grep::GrepTool;
 pub use instructions::load_project_instructions;
 pub use list_directory::ListDirectoryTool;
 pub use read_file::ReadFileTool;
+pub use spark::SparkConfig;
+pub use spark_tool::SparkTool;
 pub use subagent_spawner::{SubAgentRequest, SubAgentResult, SubAgentSpawner};
 pub use system_prompt::build_system_prompt;
 pub use task::TaskTool;
@@ -63,6 +67,8 @@ pub struct ToolContext {
     pub workspace_root: PathBuf,
     /// Current working directory (persists across bash invocations).
     pub cwd: Arc<RwLock<PathBuf>>,
+    /// Path to the living spark file (`~/.astrid/spark.toml`).
+    pub spark_file: Option<PathBuf>,
     /// Sub-agent spawner (set by runtime before each turn, cleared after).
     subagent_spawner: RwLock<Option<Arc<dyn SubAgentSpawner>>>,
 }
@@ -70,11 +76,12 @@ pub struct ToolContext {
 impl ToolContext {
     /// Create a new tool context.
     #[must_use]
-    pub fn new(workspace_root: PathBuf) -> Self {
+    pub fn new(workspace_root: PathBuf, spark_file: Option<PathBuf>) -> Self {
         let cwd = Arc::new(RwLock::new(workspace_root.clone()));
         Self {
             workspace_root,
             cwd,
+            spark_file,
             subagent_spawner: RwLock::new(None),
         }
     }
@@ -85,10 +92,15 @@ impl ToolContext {
     /// This prevents concurrent sessions from racing on the spawner field
     /// while still sharing the working directory state.
     #[must_use]
-    pub fn with_shared_cwd(workspace_root: PathBuf, cwd: Arc<RwLock<PathBuf>>) -> Self {
+    pub fn with_shared_cwd(
+        workspace_root: PathBuf,
+        cwd: Arc<RwLock<PathBuf>>,
+        spark_file: Option<PathBuf>,
+    ) -> Self {
         Self {
             workspace_root,
             cwd,
+            spark_file,
             subagent_spawner: RwLock::new(None),
         }
     }
@@ -161,6 +173,7 @@ impl ToolRegistry {
         registry.register(Box::new(BashTool));
         registry.register(Box::new(ListDirectoryTool));
         registry.register(Box::new(TaskTool));
+        registry.register(Box::new(SparkTool));
         registry
     }
 
@@ -236,6 +249,7 @@ mod tests {
         assert!(registry.get("bash").is_some());
         assert!(registry.get("list_directory").is_some());
         assert!(registry.get("task").is_some());
+        assert!(registry.get("spark").is_some());
         assert!(registry.get("nonexistent").is_none());
     }
 
@@ -243,7 +257,7 @@ mod tests {
     fn test_all_definitions() {
         let registry = ToolRegistry::with_defaults();
         let defs = registry.all_definitions();
-        assert_eq!(defs.len(), 8);
+        assert_eq!(defs.len(), 9);
         for def in &defs {
             assert!(!def.name.contains(':'));
             assert!(def.description.is_some());

@@ -26,37 +26,11 @@ const ALLOWED_ENV_VARS: &[&str] = &[
     "TMPDIR", "TMP", "TEMP",
 ];
 
-/// Env vars that must never be set by hook configs in sandbox mode.
-/// These can inject code or libraries into the spawned process.
-const BLOCKED_HOOK_ENV: &[&str] = &[
-    // Library injection
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "DYLD_FRAMEWORK_PATH",
-    // Code injection via runtime flags
-    "NODE_OPTIONS",
-    "NODE_PATH",
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "PERL5LIB",
-    "RUBYLIB",
-    // Shell startup injection
-    "BASH_ENV",
-    "ENV",
-    // OpenSSL engine loading
-    "OPENSSL_CONF",
-];
-
 /// Returns true if `key` matches a blocked env var or a blocked prefix.
+///
+/// Delegates to the shared blocklist in `astrid_core::env_policy`.
 fn is_blocked_hook_env(key: &str) -> bool {
-    if BLOCKED_HOOK_ENV.iter().any(|k| k.eq_ignore_ascii_case(key)) {
-        return true;
-    }
-    // Block entire prefixes that grant broad override capability.
-    let lower = key.to_ascii_lowercase();
-    lower.starts_with("npm_config_") || lower.starts_with("ld_") || lower.starts_with("dyld_")
+    astrid_core::env_policy::is_blocked_spawn_env(key)
 }
 
 /// Safe directories to include in PATH for sandboxed execution.
@@ -116,6 +90,18 @@ impl CommandHandler {
                 if let Ok(value) = std::env::var(var) {
                     if *var == "PATH" {
                         cmd.env("PATH", Self::safe_path());
+                    } else if *var == "HOME" {
+                        // Validate HOME before relaying to child process
+                        let p = std::path::Path::new(&value);
+                        if p.is_absolute()
+                            && !p
+                                .components()
+                                .any(|c| matches!(c, std::path::Component::ParentDir))
+                        {
+                            cmd.env(var, value);
+                        } else {
+                            warn!("Skipping HOME with invalid path in sandboxed hook");
+                        }
                     } else {
                         cmd.env(var, value);
                     }
@@ -143,7 +129,15 @@ impl CommandHandler {
             cmd.env(key, value);
         }
 
+        // Apply context env vars, filtering through the blocklist for safety.
         for (key, value) in context.to_env_vars() {
+            if self.sandboxed && is_blocked_hook_env(&key) {
+                warn!(
+                    key = %key,
+                    "Blocking dangerous context env var in sandboxed hook"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
     }

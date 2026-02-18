@@ -125,6 +125,34 @@ impl Default for GatewaySettings {
     }
 }
 
+/// Agent identity configuration (gateway-local mirror of `astrid_tools::SparkConfig`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SparkConfig {
+    /// Agent's name.
+    pub callsign: String,
+    /// Role archetype.
+    pub class: String,
+    /// Personality energy.
+    pub aura: String,
+    /// Communication style.
+    pub signal: String,
+    /// Soul/philosophy.
+    pub core: String,
+}
+
+impl SparkConfig {
+    /// Returns `true` when all fields are empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.callsign.is_empty()
+            && self.class.is_empty()
+            && self.aura.is_empty()
+            && self.signal.is_empty()
+            && self.core.is_empty()
+    }
+}
+
 /// Default agent settings applied to all agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDefaults {
@@ -142,6 +170,10 @@ pub struct AgentDefaults {
     /// Maximum context tokens.
     #[serde(default = "default_max_context")]
     pub max_context_tokens: usize,
+
+    /// Default agent identity (spark).
+    #[serde(default)]
+    pub spark: Option<SparkConfig>,
 }
 
 impl Default for AgentDefaults {
@@ -151,6 +183,7 @@ impl Default for AgentDefaults {
             subagents: SubAgentDefaults::default(),
             system_prompt: None,
             max_context_tokens: default_max_context(),
+            spark: None,
         }
     }
 }
@@ -186,6 +219,9 @@ pub struct AgentConfig {
     /// Auto-start this agent on gateway startup.
     #[serde(default)]
     pub auto_start: bool,
+
+    /// Agent identity (spark) override for this agent.
+    pub spark: Option<SparkConfig>,
 }
 
 /// Channel configuration for routing.
@@ -437,6 +473,16 @@ impl GatewayConfig {
             .unwrap_or_else(|| self.timeouts.clone())
     }
 
+    /// Get effective spark identity for an agent (agent overrides fall back to defaults).
+    #[must_use]
+    pub fn effective_spark(&self, agent_name: &str) -> Option<SparkConfig> {
+        self.agents
+            .get(agent_name)
+            .and_then(|agent| agent.spark.clone())
+            .or_else(|| self.defaults.spark.clone())
+            .filter(|s| !s.is_empty())
+    }
+
     /// Get auto-start agents.
     #[must_use]
     pub fn auto_start_agents(&self) -> Vec<&str> {
@@ -603,6 +649,7 @@ mod tests {
                 timeouts: None,
                 channels: vec![],
                 auto_start: false,
+                spark: None,
             },
         );
 
@@ -633,6 +680,7 @@ mod tests {
                 }),
                 channels: vec![],
                 auto_start: false,
+                spark: None,
             },
         );
 
@@ -660,6 +708,7 @@ mod tests {
                 timeouts: None,
                 channels: vec![],
                 auto_start: true,
+                spark: None,
             },
         );
         config.agents.insert(
@@ -674,6 +723,7 @@ mod tests {
                 timeouts: None,
                 channels: vec![],
                 auto_start: false,
+                spark: None,
             },
         );
 

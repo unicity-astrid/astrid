@@ -3,12 +3,17 @@
 use std::path::Path;
 
 use crate::instructions::load_project_instructions;
+use crate::spark::SparkConfig;
 
 /// Build the complete system prompt for an agent session.
 ///
-/// Assembles: base prompt + workspace context + tool guidelines + project instructions.
+/// Assembles: identity (from spark) + workspace context + tool guidelines + project instructions.
+///
+/// When `spark` is `Some` and non-empty, the spark preamble replaces the generic
+/// "You are an AI coding assistant" opening. When `None` or empty, the output is
+/// identical to the pre-spark behavior (zero behavior change).
 #[must_use]
-pub fn build_system_prompt(workspace_root: &Path) -> String {
+pub fn build_system_prompt(workspace_root: &Path, spark: Option<&SparkConfig>) -> String {
     let project_name = workspace_root.file_name().map_or_else(
         || "project".to_string(),
         |n| n.to_string_lossy().to_string(),
@@ -18,8 +23,14 @@ pub fn build_system_prompt(workspace_root: &Path) -> String {
 
     let os = std::env::consts::OS;
 
+    // Build the opening line based on spark
+    let opening = spark.and_then(SparkConfig::build_preamble).map_or_else(
+        || format!("You are an AI coding assistant working in the project \"{project_name}\"."),
+        |preamble| format!("{preamble}\n\nYou are working in the project \"{project_name}\"."),
+    );
+
     let mut prompt = format!(
-        "You are an AI coding assistant working in the project \"{project_name}\".\n\n\
+        "{opening}\n\n\
          # Environment\n\
          - Current working directory: {workspace}\n\
          - Platform: {os}\n\n",
@@ -68,7 +79,7 @@ mod tests {
     #[test]
     fn test_build_system_prompt_basic() {
         let dir = TempDir::new().unwrap();
-        let prompt = build_system_prompt(dir.path());
+        let prompt = build_system_prompt(dir.path(), None);
 
         assert!(prompt.contains("AI coding assistant"));
         assert!(prompt.contains("Tool Usage Guidelines"));
@@ -80,7 +91,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("ASTRID.md"), "# Custom Rules\nDo X not Y.").unwrap();
 
-        let prompt = build_system_prompt(dir.path());
+        let prompt = build_system_prompt(dir.path(), None);
 
         assert!(prompt.contains("Project Instructions"));
         assert!(prompt.contains("Custom Rules"));
@@ -90,8 +101,55 @@ mod tests {
     #[test]
     fn test_build_system_prompt_includes_workspace_path() {
         let dir = TempDir::new().unwrap();
-        let prompt = build_system_prompt(dir.path());
+        let prompt = build_system_prompt(dir.path(), None);
 
         assert!(prompt.contains(&dir.path().display().to_string()));
+    }
+
+    #[test]
+    fn test_build_system_prompt_with_full_spark() {
+        let dir = TempDir::new().unwrap();
+        let spark = SparkConfig {
+            callsign: "Stellar".to_string(),
+            class: "navigator".to_string(),
+            aura: "calm".to_string(),
+            signal: "formal".to_string(),
+            core: "I value clarity.".to_string(),
+        };
+
+        let prompt = build_system_prompt(dir.path(), Some(&spark));
+
+        assert!(prompt.contains("You are Stellar, a navigator."));
+        assert!(prompt.contains("# Personality\ncalm"));
+        assert!(prompt.contains("# Communication Style\nformal"));
+        assert!(prompt.contains("# Core Directives\nI value clarity."));
+        assert!(prompt.contains("Tool Usage Guidelines"));
+        assert!(!prompt.contains("AI coding assistant"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_with_callsign_only() {
+        let dir = TempDir::new().unwrap();
+        let spark = SparkConfig {
+            callsign: "Orion".to_string(),
+            ..Default::default()
+        };
+
+        let prompt = build_system_prompt(dir.path(), Some(&spark));
+
+        assert!(prompt.contains("You are Orion."));
+        assert!(!prompt.contains("AI coding assistant"));
+        assert!(prompt.contains("Tool Usage Guidelines"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_with_empty_spark() {
+        let dir = TempDir::new().unwrap();
+        let spark = SparkConfig::default();
+
+        let prompt = build_system_prompt(dir.path(), Some(&spark));
+
+        // Empty spark should produce identical output to None
+        assert!(prompt.contains("AI coding assistant"));
     }
 }

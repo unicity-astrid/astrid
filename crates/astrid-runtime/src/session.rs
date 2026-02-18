@@ -47,6 +47,8 @@ pub struct AgentSession {
     pub workspace_path: Option<PathBuf>,
     /// Model used for this session (e.g. `"claude-sonnet-4-20250514"`).
     pub model: Option<String>,
+    /// Whether this session belongs to a sub-agent (skip spark preamble in `run_loop`).
+    pub is_subagent: bool,
 }
 
 impl AgentSession {
@@ -75,6 +77,7 @@ impl AgentSession {
             workspace_budget_tracker: None,
             workspace_path: None,
             model: None,
+            is_subagent: false,
         }
     }
 
@@ -103,6 +106,7 @@ impl AgentSession {
             workspace_budget_tracker: None,
             workspace_path: None,
             model: None,
+            is_subagent: false,
         }
     }
 
@@ -142,6 +146,7 @@ impl AgentSession {
             workspace_budget_tracker: None,
             workspace_path: None,
             model: None,
+            is_subagent: true,
         }
     }
 

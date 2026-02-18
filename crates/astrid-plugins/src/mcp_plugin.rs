@@ -195,39 +195,6 @@ impl McpPlugin {
     /// (they are simple kernel calls that don't allocate or lock).
     #[allow(unsafe_code)]
     fn build_command(&self) -> PluginResult<tokio::process::Command> {
-        // Env vars that could compromise sandbox integrity. A future
-        // elicitation flow will let users approve these at install time;
-        // until then, reject them with a warning.
-        const BLOCKED_ENV_KEYS: &[&str] = &[
-            // Core execution environment
-            "HOME",
-            "PATH",
-            "ASTRID_HOME",
-            // Library injection
-            "LD_PRELOAD",
-            "LD_LIBRARY_PATH",
-            "DYLD_INSERT_LIBRARIES",
-            "DYLD_LIBRARY_PATH",
-            // Node.js execution control
-            "NODE_OPTIONS",
-            "NODE_PATH",
-            // TLS/CA trust injection (MITM)
-            "NODE_EXTRA_CA_CERTS",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            // OpenSSL engine loading
-            "OPENSSL_CONF",
-            // Temp directory redirection
-            "TMPDIR",
-            "TEMP",
-            "TMP",
-            // Traffic interception via proxy
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "NO_PROXY",
-        ];
-
         let PluginEntryPoint::Mcp {
             command,
             args,
@@ -256,14 +223,7 @@ impl McpPlugin {
         }
 
         for (key, value) in env {
-            let dominated = BLOCKED_ENV_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key));
-            // Also block prefixes that grant broad override capability.
-            let lower = key.to_ascii_lowercase();
-            let prefix_blocked = lower.starts_with("npm_config_")
-                || lower.starts_with("ld_")
-                || lower.starts_with("dyld_");
-
-            if dominated || prefix_blocked {
+            if astrid_core::env_policy::is_blocked_spawn_env(key) {
                 warn!(
                     plugin_id = %self.manifest.id,
                     key = %key,
