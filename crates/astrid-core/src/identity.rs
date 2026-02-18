@@ -136,6 +136,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -325,32 +326,32 @@ impl FrontendType {
     ///
     /// Known variants return their static name; [`Custom`](Self::Custom) values
     /// are lowercased and, if they match a known variant, collapse to that
-    /// variant's key (e.g. `Custom("Telegram")` → `"telegram"`).
+    /// variant's key (e.g. `Custom("Telegram")` → `"telegram"`). Unknown
+    /// platforms are trimmed and lowercased.
     ///
     /// This should be used instead of raw `PartialEq` when comparing platform
     /// identity across trust boundaries (e.g. WASM guests, MCP plugins).
     #[must_use]
-    pub fn canonical_name(&self) -> &str {
+    pub fn canonical_name(&self) -> Cow<'_, str> {
         match self {
-            Self::Discord => "discord",
-            Self::WhatsApp => "whatsapp",
-            Self::Telegram => "telegram",
-            Self::Slack => "slack",
-            Self::Web => "web",
-            Self::Cli => "cli",
+            Self::Discord => Cow::Borrowed("discord"),
+            Self::WhatsApp => Cow::Borrowed("whatsapp"),
+            Self::Telegram => Cow::Borrowed("telegram"),
+            Self::Slack => Cow::Borrowed("slack"),
+            Self::Web => Cow::Borrowed("web"),
+            Self::Cli => Cow::Borrowed("cli"),
             Self::Custom(name) => {
                 // Collapse known aliases back to their canonical form.
-                // `.trim()` is a sub-slice of `name`, so the borrow is valid.
                 let trimmed = name.trim();
                 match trimmed {
-                    _ if trimmed.eq_ignore_ascii_case("discord") => "discord",
-                    _ if trimmed.eq_ignore_ascii_case("whatsapp") => "whatsapp",
-                    _ if trimmed.eq_ignore_ascii_case("whats_app") => "whatsapp",
-                    _ if trimmed.eq_ignore_ascii_case("telegram") => "telegram",
-                    _ if trimmed.eq_ignore_ascii_case("slack") => "slack",
-                    _ if trimmed.eq_ignore_ascii_case("web") => "web",
-                    _ if trimmed.eq_ignore_ascii_case("cli") => "cli",
-                    _ => trimmed,
+                    _ if trimmed.eq_ignore_ascii_case("discord") => Cow::Borrowed("discord"),
+                    _ if trimmed.eq_ignore_ascii_case("whatsapp") => Cow::Borrowed("whatsapp"),
+                    _ if trimmed.eq_ignore_ascii_case("whats_app") => Cow::Borrowed("whatsapp"),
+                    _ if trimmed.eq_ignore_ascii_case("telegram") => Cow::Borrowed("telegram"),
+                    _ if trimmed.eq_ignore_ascii_case("slack") => Cow::Borrowed("slack"),
+                    _ if trimmed.eq_ignore_ascii_case("web") => Cow::Borrowed("web"),
+                    _ if trimmed.eq_ignore_ascii_case("cli") => Cow::Borrowed("cli"),
+                    _ => Cow::Owned(trimmed.to_ascii_lowercase()),
                 }
             },
         }
@@ -371,8 +372,7 @@ impl FrontendType {
     /// ```
     #[must_use]
     pub fn is_same_platform(&self, other: &Self) -> bool {
-        self.canonical_name()
-            .eq_ignore_ascii_case(other.canonical_name())
+        self.canonical_name() == other.canonical_name()
     }
 }
 
@@ -795,19 +795,37 @@ mod tests {
     fn canonical_name_trims_whitespace() {
         // Leading/trailing whitespace is stripped before matching.
         assert_eq!(
-            FrontendType::Custom("  telegram  ".into()).canonical_name(),
+            FrontendType::Custom("  telegram  ".into())
+                .canonical_name()
+                .as_ref(),
             "telegram"
         );
         assert_eq!(
-            FrontendType::Custom("  matrix  ".into()).canonical_name(),
+            FrontendType::Custom("  matrix  ".into())
+                .canonical_name()
+                .as_ref(),
             "matrix"
         );
     }
 
     #[test]
-    fn canonical_name_preserves_unknown_custom() {
+    fn canonical_name_lowercases_unknown_custom() {
         assert_eq!(
-            FrontendType::Custom("matrix".into()).canonical_name(),
+            FrontendType::Custom("matrix".into())
+                .canonical_name()
+                .as_ref(),
+            "matrix"
+        );
+        assert_eq!(
+            FrontendType::Custom("MATRIX".into())
+                .canonical_name()
+                .as_ref(),
+            "matrix"
+        );
+        assert_eq!(
+            FrontendType::Custom("Matrix".into())
+                .canonical_name()
+                .as_ref(),
             "matrix"
         );
     }

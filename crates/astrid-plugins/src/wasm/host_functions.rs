@@ -602,6 +602,11 @@ fn astrid_register_connector_impl(
             name.len()
         )));
     }
+    if platform_str.trim().is_empty() {
+        return Err(Error::msg(
+            "platform name must not be empty or whitespace-only",
+        ));
+    }
     if platform_str.len() > MAX_STRING_LENGTH {
         return Err(Error::msg(format!(
             "platform string too long: {} bytes (max {MAX_STRING_LENGTH})",
@@ -615,8 +620,9 @@ fn astrid_register_connector_impl(
         )));
     }
 
-    // Validate inputs
-    let frontend_type = parse_frontend_type(&platform_str);
+    // Validate inputs — trim whitespace before parsing so the stored
+    // FrontendType never contains leading/trailing spaces.
+    let frontend_type = parse_frontend_type(platform_str.trim());
     let profile = parse_connector_profile(&profile_str)?;
 
     // First lock: read capability flag, security gate, and runtime handle
@@ -1530,5 +1536,30 @@ mod tests {
     #[test]
     fn max_inbound_message_bytes_constant_is_one_mb() {
         assert_eq!(MAX_INBOUND_MESSAGE_BYTES, 1_048_576);
+    }
+
+    #[test]
+    fn parse_frontend_type_with_whitespace_matches_known() {
+        use astrid_core::identity::FrontendType;
+
+        // After trimming at the call site, whitespace-padded known platforms
+        // should resolve to the correct variant.
+        assert_eq!(parse_frontend_type("telegram"), FrontendType::Telegram);
+        // Pre-trimmed input — caller is responsible for trimming.
+        assert_eq!(
+            parse_frontend_type("  telegram  "),
+            FrontendType::Custom("  telegram  ".into())
+        );
+    }
+
+    #[test]
+    fn parse_frontend_type_unknown_is_lowercased() {
+        use astrid_core::identity::FrontendType;
+
+        // Unknown platforms are lowercased by to_lowercase() in the match.
+        assert_eq!(
+            parse_frontend_type("MATRIX"),
+            FrontendType::Custom("matrix".into())
+        );
     }
 }
