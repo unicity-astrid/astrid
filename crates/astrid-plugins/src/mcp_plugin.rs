@@ -31,7 +31,12 @@ use serde_json::Value;
 use tracing::{debug, error, info, warn};
 
 use astrid_core::HookEvent;
-use astrid_mcp::{AstridClientHandler, CapabilitiesHandler, McpClient, ToolResult};
+use astrid_core::connector::{ConnectorCapabilities, ConnectorDescriptor, ConnectorSource};
+use astrid_core::identity::FrontendType;
+use astrid_mcp::{
+    AstridClientHandler, BridgeChannelInfo, CapabilitiesHandler, McpClient, ServerNotice,
+    ToolResult,
+};
 
 use crate::context::{PluginContext, PluginToolContext};
 use crate::error::{PluginError, PluginResult};
@@ -75,6 +80,10 @@ pub struct McpPlugin {
     /// Plugin install directory — used as `current_dir` when spawning the
     /// subprocess so that relative paths in `args` resolve correctly.
     plugin_dir: Option<PathBuf>,
+    /// Connectors registered by the bridge via `connectorRegistered` notification.
+    registered_connectors: Vec<ConnectorDescriptor>,
+    /// Receiver for server notices (connector registrations, tool refreshes).
+    notice_rx: Option<tokio::sync::mpsc::UnboundedReceiver<ServerNotice>>,
 }
 
 impl McpPlugin {
@@ -97,6 +106,8 @@ impl McpPlugin {
             peer: None,
             sandbox: None,
             plugin_dir: None,
+            registered_connectors: Vec::new(),
+            notice_rx: None,
         }
     }
 
@@ -183,6 +194,106 @@ impl McpPlugin {
         }
 
         alive
+    }
+
+    /// Drain pending connector notices and return the updated connector list.
+    ///
+    /// Lazily drains any pending connector registration notices that may have
+    /// arrived since the last call, ensuring callers always see the latest
+    /// state regardless of notification delivery timing.
+    ///
+    /// Use this over [`Plugin::connectors()`] when you have a `&mut` reference
+    /// and want to pick up late-arriving notifications.
+    pub fn refresh_connectors(&mut self) -> &[ConnectorDescriptor] {
+        self.drain_connector_notices();
+        &self.registered_connectors
+    }
+
+    /// Non-blockingly drain all pending `ConnectorsRegistered` notices from
+    /// the notice channel and convert them to `ConnectorDescriptor`s.
+    fn drain_connector_notices(&mut self) {
+        // Collect all channel infos first to avoid borrow conflict.
+        let mut all_channels = Vec::new();
+        if let Some(rx) = &mut self.notice_rx {
+            while let Ok(notice) = rx.try_recv() {
+                match notice {
+                    ServerNotice::ConnectorsRegistered { channels, .. } => {
+                        all_channels.extend(channels);
+                    },
+                    ServerNotice::ToolsRefreshed { server_name, .. } => {
+                        debug!(
+                            server = %server_name,
+                            "Discarded ToolsRefreshed notice during connector drain"
+                        );
+                    },
+                }
+            }
+        }
+        for ch in &all_channels {
+            if let Some(desc) = self.channel_to_descriptor(ch) {
+                // Deduplicate: skip if a connector with the same name is already registered.
+                if !self
+                    .registered_connectors
+                    .iter()
+                    .any(|d| d.name == desc.name)
+                {
+                    self.registered_connectors.push(desc);
+                }
+            }
+        }
+    }
+
+    /// Convert a `BridgeChannelInfo` to a `ConnectorDescriptor`.
+    ///
+    /// Capabilities are parsed from the plugin's definition. If no capabilities
+    /// are declared, defaults to `receive_only` (least privilege).
+    fn channel_to_descriptor(&self, ch: &BridgeChannelInfo) -> Option<ConnectorDescriptor> {
+        let frontend_type = match ch.name.to_lowercase().as_str() {
+            "telegram" => FrontendType::Telegram,
+            "discord" => FrontendType::Discord,
+            "slack" => FrontendType::Slack,
+            "whatsapp" => FrontendType::WhatsApp,
+            "web" => FrontendType::Web,
+            "cli" => FrontendType::Cli,
+            _ => FrontendType::Custom(ch.name.clone()),
+        };
+
+        let source = ConnectorSource::new_openclaw(self.id.as_str())
+            .map_err(|e| {
+                warn!(
+                    plugin_id = %self.id,
+                    channel = %ch.name,
+                    error = %e,
+                    "Failed to create ConnectorSource for channel"
+                );
+                e
+            })
+            .ok()?;
+
+        // Parse capabilities from the plugin's definition, defaulting to
+        // receive_only (least privilege) if none are declared.
+        let capabilities = ch
+            .definition
+            .as_ref()
+            .and_then(|d| d.capabilities.as_ref())
+            .map_or_else(ConnectorCapabilities::receive_only, |c| {
+                ConnectorCapabilities {
+                    can_receive: c.can_receive,
+                    can_send: c.can_send,
+                    can_approve: c.can_approve,
+                    can_elicit: c.can_elicit,
+                    supports_rich_media: c.supports_rich_media,
+                    supports_threads: c.supports_threads,
+                    supports_buttons: c.supports_buttons,
+                }
+            });
+
+        Some(
+            ConnectorDescriptor::builder(&ch.name, frontend_type)
+                .source(source)
+                .capabilities(capabilities)
+                .build(),
+        )
     }
 
     /// Build the `tokio::process::Command` from the manifest entry point,
@@ -348,14 +459,20 @@ impl Plugin for McpPlugin {
 
         // 4. MCP handshake
         let handler = Arc::new(CapabilitiesHandler::new());
-        let client_handler = AstridClientHandler::new(&self.server_name, handler);
+        let (notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        let client_handler =
+            AstridClientHandler::new(&self.server_name, handler).with_notice_tx(notice_tx);
+        self.notice_rx = Some(notice_rx);
 
-        let service = client_handler.serve(transport).await.map_err(|e| {
+        let service: PluginMcpService = client_handler.serve(transport).await.map_err(|e| {
             let err = PluginError::McpServerFailed {
                 plugin_id: self.id.clone(),
                 message: format!("MCP handshake failed: {e}"),
             };
             self.state = PluginState::Failed(err.to_string());
+            self.notice_rx = None;
+            self.registered_connectors.clear();
             err
         })?;
 
@@ -366,6 +483,8 @@ impl Plugin for McpPlugin {
                 message: format!("Failed to list tools: {e}"),
             };
             self.state = PluginState::Failed(err.to_string());
+            self.notice_rx = None;
+            self.registered_connectors.clear();
             err
         })?;
 
@@ -387,19 +506,25 @@ impl Plugin for McpPlugin {
             })
             .collect();
 
-        info!(
-            plugin_id = %self.id,
-            server_name = %self.server_name,
-            tool_count = tools.len(),
-            "MCP plugin loaded successfully"
-        );
-
         self.service = Some(service);
         self.peer = Some(peer.clone());
         self.tools = tools;
+
+        // 8. Drain any connector registration notices that arrived during
+        // the handshake (bridge sends them right after `initialized`).
+        self.drain_connector_notices();
+
+        info!(
+            plugin_id = %self.id,
+            server_name = %self.server_name,
+            tool_count = self.tools.len(),
+            connector_count = self.registered_connectors.len(),
+            "MCP plugin loaded successfully"
+        );
+
         self.state = PluginState::Ready;
 
-        // 8. Send plugin config as a post-init notification.
+        // 9. Send plugin config as a post-init notification.
         // The MCP handshake doesn't support custom initialization options,
         // so we deliver config via a custom notification. The bridge's
         // dispatch loop is already running at this point.
@@ -463,6 +588,8 @@ impl Plugin for McpPlugin {
         }
 
         self.service = None;
+        self.notice_rx = None;
+        self.registered_connectors.clear();
         self.state = PluginState::Unloaded;
 
         info!(plugin_id = %self.id, "MCP plugin unloaded");
@@ -472,6 +599,10 @@ impl Plugin for McpPlugin {
 
     fn tools(&self) -> &[Arc<dyn PluginTool>] {
         &self.tools
+    }
+
+    fn connectors(&self) -> &[ConnectorDescriptor] {
+        &self.registered_connectors
     }
 }
 

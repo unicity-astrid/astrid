@@ -350,6 +350,17 @@ async function handleToolsCall(id, params) {
 async function handleNotification(method, params) {
   if (method === "notifications/initialized") {
     log.info("MCP session initialized");
+    // Send all registered channels as a batch — post-handshake guarantees delivery
+    if (registeredChannels.size > 0) {
+      const channels = [];
+      for (const [, ch] of registeredChannels) {
+        channels.push({ name: ch.name, definition: ch.definition });
+      }
+      sendNotification("notifications/astrid.connectorRegistered", {
+        pluginId,
+        channels,
+      });
+    }
     return;
   }
   if (method === "notifications/astrid.setPluginConfig") {

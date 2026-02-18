@@ -396,11 +396,104 @@ use tracing::{info, warn};
 
 use crate::types::ToolDefinition;
 
+/// Maximum channels a single plugin can register (bounds memory from untrusted plugins).
+const MAX_CHANNELS_PER_PLUGIN: usize = 64;
+/// Maximum length of a channel name in bytes.
+const MAX_CHANNEL_NAME_LEN: usize = 128;
+
+/// Channel info as sent by the bridge's `connectorRegistered` notification.
+///
+/// # Trust boundary
+///
+/// This struct is deserialized from untrusted plugin subprocess output.
+/// All fields must be validated before use. The [`definition`](Self::definition)
+/// field is typed (not arbitrary JSON) to bound memory usage.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BridgeChannelInfo {
+    /// Channel name (e.g. "telegram", "discord").
+    pub name: String,
+    /// Optional channel definition metadata from the plugin.
+    /// Typed to bound memory — only known fields are retained.
+    #[serde(default)]
+    pub definition: Option<BridgeChannelDefinition>,
+}
+
+/// Typed subset of the bridge channel definition.
+///
+/// Only the fields we actually use are retained; unknown fields are
+/// silently discarded by serde, preventing unbounded memory allocation
+/// from a malicious plugin.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct BridgeChannelDefinition {
+    /// Capability hints declared by the plugin for this channel.
+    #[serde(default)]
+    pub capabilities: Option<BridgeChannelCapabilities>,
+}
+
+/// Capability flags as declared by the bridge plugin (camelCase JSON).
+///
+/// Maps to [`ConnectorCapabilities`](astrid_core::connector::ConnectorCapabilities)
+/// but uses camelCase field names matching the bridge's JSON format.
+/// All flags default to `false` (least privilege).
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
+pub struct BridgeChannelCapabilities {
+    /// Can receive inbound messages from users.
+    #[serde(default)]
+    pub can_receive: bool,
+    /// Can send outbound messages to users.
+    #[serde(default)]
+    pub can_send: bool,
+    /// Can present approval requests to a human.
+    #[serde(default)]
+    pub can_approve: bool,
+    /// Can present elicitation requests to a human.
+    #[serde(default)]
+    pub can_elicit: bool,
+    /// Supports rich media (images, embeds, etc.).
+    #[serde(default)]
+    pub supports_rich_media: bool,
+    /// Supports threaded conversations.
+    #[serde(default)]
+    pub supports_threads: bool,
+    /// Supports interactive buttons / action rows.
+    #[serde(default)]
+    pub supports_buttons: bool,
+}
+
+/// Params wrapper for the `connectorRegistered` notification.
+#[derive(Debug, Deserialize)]
+struct ConnectorRegisteredParams {
+    #[serde(rename = "pluginId")]
+    plugin_id: String,
+    channels: Vec<BridgeChannelInfo>,
+}
+
+/// Returns `true` if the channel name contains only safe characters.
+///
+/// Allowed: ASCII alphanumeric, hyphens, underscores. Must be non-empty.
+/// This prevents path traversal, null bytes, shell metacharacters, and
+/// Unicode lookalikes from reaching downstream code.
+fn is_valid_channel_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 /// Notification from a running MCP server about a state change.
 ///
 /// Sent over an internal channel from `AstridClientHandler` to `McpClient`
 /// so that tools caches and other state can be updated without polling.
-pub(crate) enum ServerNotice {
+///
+/// # Trust boundary
+///
+/// The [`ConnectorsRegistered`](Self::ConnectorsRegistered) variant carries
+/// data deserialized from an untrusted plugin subprocess. Consumers must
+/// validate channel names, capabilities, and counts before using the data
+/// for access-control decisions.
+pub enum ServerNotice {
     /// The server pushed `notifications/tools/list_changed`; the handler has
     /// already re-fetched the tool list and attached it here.
     ToolsRefreshed {
@@ -408,6 +501,14 @@ pub(crate) enum ServerNotice {
         server_name: String,
         /// Updated tool list (already converted to `ToolDefinition`).
         tools: Vec<ToolDefinition>,
+    },
+    /// The bridge sent `notifications/astrid.connectorRegistered` with a batch
+    /// of channel registrations after the MCP handshake completed.
+    ConnectorsRegistered {
+        /// Name of the MCP server (e.g. `"plugin:my-plugin"`).
+        server_name: String,
+        /// Channels registered by the plugin.
+        channels: Vec<BridgeChannelInfo>,
     },
 }
 
@@ -434,9 +535,10 @@ impl AstridClientHandler {
         }
     }
 
-    /// Attach a notice sender so that `on_tool_list_changed` can push
-    /// refreshed tools back to the `McpClient`.
-    pub(crate) fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
+    /// Attach a notice sender so that notifications (tool refreshes,
+    /// connector registrations) can be forwarded to the caller.
+    #[must_use]
+    pub fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
         self.notice_tx = Some(tx);
         self
     }
@@ -713,6 +815,73 @@ impl rmcp::ClientHandler for AstridClientHandler {
             });
         }
     }
+
+    async fn on_custom_notification(
+        &self,
+        notification: rmcp::model::CustomNotification,
+        _context: NotificationContext<RoleClient>,
+    ) {
+        match notification.method.as_str() {
+            "notifications/astrid.connectorRegistered" => {
+                if let Some(ref tx) = self.notice_tx {
+                    match notification.params_as::<ConnectorRegisteredParams>() {
+                        Ok(Some(params)) => {
+                            // Log if the plugin claims a different identity than expected.
+                            // server_name is "plugin:<id>"; strip the prefix for exact match.
+                            let expected_id = self
+                                .server_name
+                                .strip_prefix("plugin:")
+                                .unwrap_or(&self.server_name);
+                            if params.plugin_id != expected_id {
+                                warn!(
+                                    server = %self.server_name,
+                                    claimed_id = %params.plugin_id,
+                                    "connectorRegistered: pluginId mismatch"
+                                );
+                            }
+                            // Validate: cap channels, enforce name length + character set.
+                            let channels: Vec<_> = params
+                                .channels
+                                .into_iter()
+                                .take(MAX_CHANNELS_PER_PLUGIN)
+                                .filter(|ch| {
+                                    ch.name.len() <= MAX_CHANNEL_NAME_LEN
+                                        && is_valid_channel_name(&ch.name)
+                                })
+                                .collect();
+                            if channels.is_empty() {
+                                return;
+                            }
+                            let _ = tx.send(ServerNotice::ConnectorsRegistered {
+                                server_name: self.server_name.clone(),
+                                channels,
+                            });
+                        },
+                        Ok(None) => {
+                            warn!(
+                                server = %self.server_name,
+                                "connectorRegistered: missing params"
+                            );
+                        },
+                        Err(e) => {
+                            warn!(
+                                server = %self.server_name,
+                                error = %e,
+                                "connectorRegistered: failed to parse params"
+                            );
+                        },
+                    }
+                }
+            },
+            other => {
+                tracing::debug!(
+                    server = %self.server_name,
+                    method = %other,
+                    "Unhandled custom notification"
+                );
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -818,5 +987,43 @@ mod tests {
         assert!(!handler.has_roots());
         assert!(!handler.has_elicitation());
         assert!(!handler.has_url_elicitation());
+    }
+
+    #[test]
+    fn test_connector_registered_params_deserialization() {
+        let json = serde_json::json!({
+            "pluginId": "channel-echo",
+            "channels": [{
+                "name": "telegram",
+                "definition": {
+                    "description": "Telegram connector",
+                    "capabilities": { "canReceive": true, "canSend": true }
+                }
+            }]
+        });
+
+        let params: ConnectorRegisteredParams =
+            serde_json::from_value(json).expect("should parse ConnectorRegisteredParams");
+        assert_eq!(params.plugin_id, "channel-echo");
+        assert_eq!(params.channels.len(), 1);
+        assert_eq!(params.channels[0].name, "telegram");
+
+        let def = params.channels[0].definition.as_ref().expect("definition");
+        let caps = def.capabilities.as_ref().expect("capabilities");
+        assert!(caps.can_receive);
+        assert!(caps.can_send);
+        assert!(!caps.can_approve);
+    }
+
+    #[test]
+    fn test_channel_name_validation() {
+        assert!(is_valid_channel_name("telegram"));
+        assert!(is_valid_channel_name("my-channel"));
+        assert!(is_valid_channel_name("channel_2"));
+        assert!(!is_valid_channel_name(""));
+        assert!(!is_valid_channel_name("../etc/passwd"));
+        assert!(!is_valid_channel_name("name\0hidden"));
+        assert!(!is_valid_channel_name("has spaces"));
+        assert!(!is_valid_channel_name("has\nnewline"));
     }
 }

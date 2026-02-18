@@ -110,6 +110,14 @@ impl McpClient {
                             "Tools cache refreshed from server notification"
                         );
                     },
+                    ServerNotice::ConnectorsRegistered { server_name, .. } => {
+                        // Connector registrations are handled by McpPlugin
+                        // via its own notice channel. Log and move on.
+                        tracing::debug!(
+                            server = %server_name,
+                            "Ignoring ConnectorsRegistered in McpClient listener"
+                        );
+                    },
                 }
             }
         });
