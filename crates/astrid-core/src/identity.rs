@@ -340,19 +340,17 @@ impl FrontendType {
             Self::Cli => "cli",
             Self::Custom(name) => {
                 // Collapse known aliases back to their canonical form.
-                let lower = name.trim();
-                // We can't return a borrow of a temporary, so we match
-                // known names and fall through to the original string for
-                // truly custom platforms.  Case-insensitive matching is
-                // handled by `is_same_platform` instead.
-                match lower {
-                    _ if lower.eq_ignore_ascii_case("discord") => "discord",
-                    _ if lower.eq_ignore_ascii_case("whatsapp") => "whatsapp",
-                    _ if lower.eq_ignore_ascii_case("telegram") => "telegram",
-                    _ if lower.eq_ignore_ascii_case("slack") => "slack",
-                    _ if lower.eq_ignore_ascii_case("web") => "web",
-                    _ if lower.eq_ignore_ascii_case("cli") => "cli",
-                    _ => name.as_str(),
+                // `.trim()` is a sub-slice of `name`, so the borrow is valid.
+                let trimmed = name.trim();
+                match trimmed {
+                    _ if trimmed.eq_ignore_ascii_case("discord") => "discord",
+                    _ if trimmed.eq_ignore_ascii_case("whatsapp") => "whatsapp",
+                    _ if trimmed.eq_ignore_ascii_case("whats_app") => "whatsapp",
+                    _ if trimmed.eq_ignore_ascii_case("telegram") => "telegram",
+                    _ if trimmed.eq_ignore_ascii_case("slack") => "slack",
+                    _ if trimmed.eq_ignore_ascii_case("web") => "web",
+                    _ if trimmed.eq_ignore_ascii_case("cli") => "cli",
+                    _ => trimmed,
                 }
             },
         }
@@ -782,12 +780,32 @@ mod tests {
             FrontendType::Custom("DISCORD".into()).canonical_name(),
             "discord"
         );
+        // "whats_app" (underscore variant) also collapses to "whatsapp".
+        assert_eq!(
+            FrontendType::Custom("whats_app".into()).canonical_name(),
+            "whatsapp"
+        );
+        assert_eq!(
+            FrontendType::Custom("Whats_App".into()).canonical_name(),
+            "whatsapp"
+        );
+    }
+
+    #[test]
+    fn canonical_name_trims_whitespace() {
+        // Leading/trailing whitespace is stripped before matching.
+        assert_eq!(
+            FrontendType::Custom("  telegram  ".into()).canonical_name(),
+            "telegram"
+        );
+        assert_eq!(
+            FrontendType::Custom("  matrix  ".into()).canonical_name(),
+            "matrix"
+        );
     }
 
     #[test]
     fn canonical_name_preserves_unknown_custom() {
-        // Truly custom names are returned as-is (no lowercasing — comparison
-        // goes through `is_same_platform` which does case-insensitive compare).
         assert_eq!(
             FrontendType::Custom("matrix".into()).canonical_name(),
             "matrix"
@@ -799,6 +817,18 @@ mod tests {
         assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("telegram".into())));
         assert!(FrontendType::Telegram.is_same_platform(&FrontendType::Custom("Telegram".into())));
         assert!(FrontendType::Discord.is_same_platform(&FrontendType::Custom("DISCORD".into())));
+        assert!(FrontendType::WhatsApp.is_same_platform(&FrontendType::Custom("whats_app".into())));
+    }
+
+    #[test]
+    fn is_same_platform_whitespace_normalized() {
+        assert!(
+            FrontendType::Telegram.is_same_platform(&FrontendType::Custom("  telegram  ".into()))
+        );
+        assert!(
+            FrontendType::Custom("  matrix  ".into())
+                .is_same_platform(&FrontendType::Custom("matrix".into()))
+        );
     }
 
     #[test]
