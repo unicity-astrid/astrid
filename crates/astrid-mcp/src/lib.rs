@@ -83,8 +83,9 @@ pub use types::{
 
 // Re-exports from new modules
 pub use capabilities::{
-    AstridClientHandler, CapabilitiesHandler, ElicitationHandler, RootsHandler, RootsRequest,
-    RootsResponse, SamplingHandler, SamplingRequest, SamplingResponse, UrlElicitationHandler,
+    AstridClientHandler, BridgeChannelCapabilities, BridgeChannelDefinition, BridgeChannelInfo,
+    CapabilitiesHandler, ElicitationHandler, RootsHandler, RootsRequest, RootsResponse,
+    SamplingHandler, SamplingRequest, SamplingResponse, ServerNotice, UrlElicitationHandler,
 };
 
 // Re-export canonical elicitation types from astrid-core for convenience.
