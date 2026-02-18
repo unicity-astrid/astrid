@@ -390,14 +390,19 @@ use rmcp::model::{
 use rmcp::model::{CreateElicitationResult, ElicitationAction as RmcpElicitationAction};
 use rmcp::model::{ListRootsResult, Role};
 use rmcp::service::{NotificationContext, RequestContext, RoleClient};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
+
+use astrid_core::{
+    ConnectorCapabilities, ConnectorDescriptor, ConnectorId, ConnectorProfile, ConnectorSource,
+    FrontendType, InboundMessage, MAX_CONNECTORS_PER_PLUGIN,
+};
 
 use crate::types::ToolDefinition;
 
 /// Maximum channels a single plugin can register (bounds memory from untrusted plugins).
-const MAX_CHANNELS_PER_PLUGIN: usize = 64;
+const MAX_CHANNELS_PER_PLUGIN: usize = MAX_CONNECTORS_PER_PLUGIN;
 /// Maximum length of a channel name in bytes.
 const MAX_CHANNEL_NAME_LEN: usize = 128;
 
@@ -512,6 +517,21 @@ pub enum ServerNotice {
     },
 }
 
+/// Maximum payload size for custom notifications (1 MB).
+///
+/// Checked against re-serialized JSON, which may differ from wire size
+/// (e.g. due to Unicode escape compression). This is a best-effort
+/// post-parse heuristic; the true wire-level bound would require
+/// transport-layer enforcement.
+const MAX_NOTIFICATION_PAYLOAD_BYTES: usize = 1_024 * 1_024;
+
+/// Maximum length for a platform user ID (512 bytes, truncated at
+/// a valid UTF-8 character boundary).
+const MAX_PLATFORM_USER_ID_BYTES: usize = 512;
+
+/// Maximum size for the opaque context JSON payload in inbound messages (64 KB).
+const MAX_CONTEXT_BYTES: usize = 64 * 1024;
+
 /// Bridge between astrid capability handlers and the rmcp `ClientHandler` trait.
 ///
 /// This is the handler passed to `rmcp::ServiceExt::serve()` when connecting
@@ -523,6 +543,18 @@ pub struct AstridClientHandler {
     /// Channel for pushing notifications (tools changed, etc.) back to the
     /// `McpClient`. `None` if the caller does not care about notifications.
     notice_tx: Option<mpsc::UnboundedSender<ServerNotice>>,
+    /// Plugin ID for anti-spoofing validation on inbound notifications.
+    plugin_id: String,
+    /// Channel for inbound messages from the bridge.
+    /// Bounded to 256 (set by caller in `McpPlugin::load()`).
+    inbound_tx: Option<mpsc::Sender<InboundMessage>>,
+    /// Shared registered connectors for connector ID lookups on inbound messages.
+    ///
+    /// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because this is only
+    /// accessed in non-async `handle_inbound_message` and updated during
+    /// connector registration. The lock is never held across an `.await` point,
+    /// so a blocking mutex is correct and avoids the overhead of an async-aware mutex.
+    registered_connectors: Arc<Mutex<Vec<ConnectorDescriptor>>>,
 }
 
 impl AstridClientHandler {
@@ -532,6 +564,9 @@ impl AstridClientHandler {
             server_name: server_name.into(),
             inner,
             notice_tx: None,
+            plugin_id: String::new(),
+            inbound_tx: None,
+            registered_connectors: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -541,6 +576,197 @@ impl AstridClientHandler {
     pub fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
         self.notice_tx = Some(tx);
         self
+    }
+
+    /// Set the plugin ID for anti-spoofing validation on inbound notifications.
+    ///
+    /// **Required** when inbound message channels are configured — an empty plugin ID
+    /// causes the inbound message handler to reject all messages.
+    #[must_use]
+    pub fn with_plugin_id(mut self, plugin_id: &str) -> Self {
+        self.plugin_id = plugin_id.to_string();
+        self
+    }
+
+    /// Set the channel for inbound messages from the bridge.
+    #[must_use]
+    pub fn with_inbound_tx(mut self, tx: mpsc::Sender<InboundMessage>) -> Self {
+        self.inbound_tx = Some(tx);
+        self
+    }
+
+    /// Share the registered connectors state for connector ID lookups.
+    #[must_use]
+    pub fn with_shared_connectors(
+        mut self,
+        connectors: Arc<Mutex<Vec<ConnectorDescriptor>>>,
+    ) -> Self {
+        self.registered_connectors = connectors;
+        self
+    }
+
+    /// Handle a `notifications/astrid.inboundMessage` notification.
+    fn handle_inbound_message(&self, params: Option<Value>) {
+        let Some(ref tx) = self.inbound_tx else {
+            debug!("Ignoring inboundMessage: no inbound_tx configured");
+            return;
+        };
+
+        // Reject if no plugin_id is configured (prevents empty-string bypass)
+        if self.plugin_id.is_empty() {
+            warn!("inboundMessage: no plugin_id configured, rejecting");
+            return;
+        }
+
+        let Some(params) = params else {
+            warn!("inboundMessage: missing params");
+            return;
+        };
+
+        // Validate payload size (best-effort post-parse check)
+        if estimate_json_size(&params) > MAX_NOTIFICATION_PAYLOAD_BYTES {
+            warn!(
+                max = MAX_NOTIFICATION_PAYLOAD_BYTES,
+                "inboundMessage: payload too large, rejecting"
+            );
+            return;
+        }
+
+        // Extract and validate plugin_id BEFORE any content allocation (anti-spoofing)
+        let Some(plugin_id) = params.get("pluginId").and_then(Value::as_str) else {
+            warn!("inboundMessage: missing pluginId");
+            return;
+        };
+        if plugin_id != self.plugin_id {
+            warn!(
+                got = %plugin_id,
+                "inboundMessage: pluginId mismatch, rejecting"
+            );
+            return;
+        }
+
+        let Some(content) = extract_inbound_content(&params) else {
+            return;
+        };
+
+        let msg_context = params.get("context").cloned().unwrap_or(Value::Null);
+
+        // Post-serialization context size check guards against escape-amplification
+        // (control chars can expand up to 6x as \uNNNN when serialized).
+        let ctx_size = if msg_context.is_null() {
+            4
+        } else {
+            msg_context.to_string().len()
+        };
+        if ctx_size > MAX_CONTEXT_BYTES {
+            warn!(
+                max = MAX_CONTEXT_BYTES,
+                actual = ctx_size,
+                "inboundMessage: context payload too large, rejecting"
+            );
+            return;
+        }
+
+        // Extract platform_user_id with fallback chain
+        let platform_user_id = extract_platform_user_id(&msg_context);
+
+        // Extract channel name from context for connector lookup
+        let channel_name = msg_context
+            .get("channel")
+            .or_else(|| msg_context.get("channelName"))
+            .and_then(Value::as_str);
+
+        // Resolve connector_id and platform from registered connectors
+        let (connector_id, platform) = {
+            let connectors = self
+                .registered_connectors
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if let Some(desc) = channel_name.and_then(|ch| connectors.iter().find(|d| d.name == ch))
+            {
+                (desc.id, desc.frontend_type.clone())
+            } else if let Some(desc) = connectors.first() {
+                warn!(
+                    plugin_id = %plugin_id,
+                    channel = ?channel_name,
+                    fallback_connector = %desc.name,
+                    "inboundMessage: channel not found, falling back to first connector"
+                );
+                (desc.id, desc.frontend_type.clone())
+            } else {
+                warn!(
+                    plugin_id = %plugin_id,
+                    channel = ?channel_name,
+                    "inboundMessage: no connectors registered, using ephemeral ID"
+                );
+                (
+                    ConnectorId::new(),
+                    FrontendType::Custom(plugin_id.to_string()),
+                )
+            }
+        };
+
+        // Build inbound message
+        let message = InboundMessage::builder(connector_id, platform, platform_user_id, content)
+            .context(msg_context)
+            .build();
+
+        // Send via bounded channel
+        if let Err(e) = tx.try_send(message) {
+            warn!(
+                error = %e,
+                "inboundMessage: inbound channel full or closed, dropping"
+            );
+        }
+    }
+
+    /// Process validated channels from a `connectorRegistered` notification
+    /// and populate `registered_connectors` for inbound message lookups.
+    fn register_channels_locally(&self, plugin_id: &str, channels: &[BridgeChannelInfo]) {
+        let source = match ConnectorSource::new_openclaw(plugin_id) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(error = %e, "register_channels_locally: invalid plugin_id for ConnectorSource");
+                return;
+            },
+        };
+
+        let mut shared = self
+            .registered_connectors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+
+        for ch in channels {
+            // Skip duplicates
+            if shared.iter().any(|d| d.name == ch.name) {
+                continue;
+            }
+
+            // Map platform from channel name (best effort)
+            let frontend_type = map_platform_name(&ch.name);
+
+            // Map capabilities from typed definition
+            let capabilities = ch
+                .definition
+                .as_ref()
+                .and_then(|d| d.capabilities.as_ref())
+                .map_or_else(ConnectorCapabilities::receive_only, |caps| {
+                    ConnectorCapabilities {
+                        can_receive: caps.can_receive,
+                        can_send: caps.can_send,
+                        can_approve: caps.can_approve,
+                        ..ConnectorCapabilities::default()
+                    }
+                });
+
+            let descriptor = ConnectorDescriptor::builder(&ch.name, frontend_type)
+                .source(source.clone())
+                .profile(ConnectorProfile::Bridge)
+                .capabilities(capabilities)
+                .build();
+
+            shared.push(descriptor);
+        }
     }
 }
 
@@ -852,6 +1078,8 @@ impl rmcp::ClientHandler for AstridClientHandler {
                             if channels.is_empty() {
                                 return;
                             }
+                            // Also register locally for inbound message connector lookups
+                            self.register_channels_locally(expected_id, &channels);
                             let _ = tx.send(ServerNotice::ConnectorsRegistered {
                                 server_name: self.server_name.clone(),
                                 channels,
@@ -873,14 +1101,209 @@ impl rmcp::ClientHandler for AstridClientHandler {
                     }
                 }
             },
+            "notifications/astrid.inboundMessage" => {
+                self.handle_inbound_message(notification.params);
+            },
+            // Note: `notifications/astrid.configChanged` is sent by the bridge
+            // when plugin config is written. Currently informational only; a
+            // future phase may reload config or forward to the runtime.
             other => {
-                tracing::debug!(
+                debug!(
                     server = %self.server_name,
                     method = %other,
-                    "Unhandled custom notification"
+                    "Ignoring unknown custom notification"
                 );
             },
         }
+    }
+}
+
+/// Maximum length for a custom platform name (128 bytes).
+///
+/// Platform names that exceed this limit are truncated at a UTF-8 character
+/// boundary. Known platform names (discord, telegram, etc.) are never
+/// affected since they are matched before the custom fallback.
+const MAX_PLATFORM_NAME_BYTES: usize = 128;
+
+/// Map a platform name string to a [`FrontendType`].
+///
+/// Custom platform names are truncated to [`MAX_PLATFORM_NAME_BYTES`].
+fn map_platform_name(name: &str) -> FrontendType {
+    match name.to_lowercase().as_str() {
+        "telegram" => FrontendType::Telegram,
+        "discord" => FrontendType::Discord,
+        "slack" => FrontendType::Slack,
+        "whatsapp" => FrontendType::WhatsApp,
+        "web" => FrontendType::Web,
+        "cli" => FrontendType::Cli,
+        other => {
+            let truncated = if other.len() > MAX_PLATFORM_NAME_BYTES {
+                &other[..other.floor_char_boundary(MAX_PLATFORM_NAME_BYTES)]
+            } else {
+                other
+            };
+            FrontendType::Custom(truncated.to_string())
+        },
+    }
+}
+
+/// Parse connector capabilities from a channel definition JSON object.
+///
+/// Looks for `chatTypes` or `capabilities` arrays in the definition and maps
+/// known strings to capability flags. Falls back to `receive_only()`.
+///
+/// Recognized strings (case-insensitive):
+/// - `"receive"`, `"inbound"` → `can_receive`
+/// - `"send"`, `"outbound"` → `can_send`
+/// - `"chat"` → both `can_receive` and `can_send` (bidirectional)
+/// - `"approve"` → `can_approve`
+///
+/// Other strings and non-string array elements are silently ignored.
+/// Fields like `can_elicit`, `supports_rich_media`, `supports_threads`,
+/// and `supports_buttons` are not yet parsed from the bridge definition
+/// and default to `false`.
+#[cfg(test)]
+fn parse_connector_capabilities(definition: &Value) -> ConnectorCapabilities {
+    let caps_array = definition
+        .get("capabilities")
+        .or_else(|| definition.get("chatTypes"))
+        .and_then(Value::as_array);
+
+    let Some(arr) = caps_array else {
+        return ConnectorCapabilities::receive_only();
+    };
+
+    let lowered: Vec<String> = arr
+        .iter()
+        .take(64) // cap allocation against adversarial arrays
+        .filter_map(Value::as_str)
+        .map(str::to_lowercase)
+        .collect();
+    if lowered.is_empty() {
+        return ConnectorCapabilities::receive_only();
+    }
+
+    let can_receive = lowered
+        .iter()
+        .any(|s| s == "receive" || s == "inbound" || s == "chat");
+    let can_send = lowered
+        .iter()
+        .any(|s| s == "send" || s == "outbound" || s == "chat");
+    let can_approve = lowered.iter().any(|s| s == "approve");
+
+    // If we parsed something meaningful, build from flags; otherwise receive_only
+    if can_receive || can_send || can_approve {
+        ConnectorCapabilities {
+            can_receive,
+            can_send,
+            can_approve,
+            ..ConnectorCapabilities::default()
+        }
+    } else {
+        ConnectorCapabilities::receive_only()
+    }
+}
+
+/// Extract `platform_user_id` from an inbound message context JSON, with
+/// fallback chain: `context.from.id` → `context.senderId` → `context.userId`
+/// → `"unknown"`. Truncated to [`MAX_PLATFORM_USER_ID_BYTES`] at a valid
+/// UTF-8 character boundary.
+fn extract_platform_user_id(context: &Value) -> String {
+    let raw = context
+        .get("from")
+        .and_then(|f| f.get("id"))
+        .and_then(Value::as_str)
+        .or_else(|| context.get("senderId").and_then(Value::as_str))
+        .or_else(|| context.get("userId").and_then(Value::as_str))
+        .unwrap_or("unknown");
+
+    if raw.len() > MAX_PLATFORM_USER_ID_BYTES {
+        // Truncate at a valid UTF-8 character boundary to avoid panics
+        // on multi-byte characters that straddle the limit.
+        let boundary = raw.floor_char_boundary(MAX_PLATFORM_USER_ID_BYTES);
+        raw[..boundary].to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+/// Extract and validate the `content` field from inbound message params.
+///
+/// Returns `None` (with a warning) if content is missing, null, empty, or
+/// exceeds [`MAX_NOTIFICATION_PAYLOAD_BYTES`]. Non-string values are
+/// serialized to JSON with a post-serialization size check to guard against
+/// escape-amplification attacks.
+fn extract_inbound_content(params: &Value) -> Option<String> {
+    let Some(content_val) = params.get("content").filter(|v| !v.is_null()) else {
+        warn!("inboundMessage: missing or null content");
+        return None;
+    };
+    if let Some(s) = content_val.as_str() {
+        if s.is_empty() || s.len() > MAX_NOTIFICATION_PAYLOAD_BYTES {
+            warn!("inboundMessage: string content empty or exceeds size limit");
+            return None;
+        }
+        Some(s.to_string())
+    } else {
+        // Non-string content (objects, arrays) is serialized. Check the
+        // expanded size to guard against escape-amplification attacks
+        // (e.g. control chars expanding 1 byte → 6 bytes as \uNNNN).
+        let serialized = content_val.to_string();
+        if serialized.len() > MAX_NOTIFICATION_PAYLOAD_BYTES {
+            warn!("inboundMessage: serialized content exceeds limit after expansion");
+            return None;
+        }
+        Some(serialized)
+    }
+}
+
+/// Estimate the serialized JSON size of a [`Value`] by walking the parsed tree.
+///
+/// Counts bytes for keys, string values, structural characters, and numeric
+/// representations. **Known limitation:** strings containing JSON-escaped
+/// characters (control chars `\x00`–`\x1f`, backslashes, quotes) can expand
+/// up to 6× when re-serialized (e.g. `\x00` → `\u0000`). This means the
+/// estimate may *undercount* by up to 6× in adversarial payloads.
+///
+/// # Recursion safety
+///
+/// This function recurses into nested arrays and objects. Its stack depth is
+/// bounded by `serde_json`'s default recursion limit (128 levels), which is
+/// applied during parsing.
+fn estimate_json_size(value: &Value) -> usize {
+    match value {
+        Value::Null => 4, // "null"
+        Value::Bool(b) => {
+            if *b { 4 } else { 5 } // "true" / "false"
+        },
+        Value::Number(n) => {
+            // Allocates briefly for digit count; accurate for small numbers.
+            n.to_string().len()
+        },
+        Value::String(s) => {
+            // 2 for quotes + string length (ignoring escape expansion)
+            s.len().saturating_add(2)
+        },
+        Value::Array(arr) => {
+            // 2 for [] + commas + recursive sizes
+            let inner: usize = arr.iter().map(estimate_json_size).sum();
+            let commas = arr.len().saturating_sub(1);
+            inner.saturating_add(2).saturating_add(commas)
+        },
+        Value::Object(map) => {
+            // 2 for {} + commas + key/value pairs
+            let inner: usize = map
+                .iter()
+                .map(|(k, v)| {
+                    // key: 2 quotes + len + colon + value
+                    k.len()
+                        .saturating_add(3)
+                        .saturating_add(estimate_json_size(v))
+                })
+                .sum();
+            let commas = map.len().saturating_sub(1);
+            inner.saturating_add(2).saturating_add(commas)
+        },
     }
 }
 
@@ -1025,5 +1448,724 @@ mod tests {
         assert!(!is_valid_channel_name("name\0hidden"));
         assert!(!is_valid_channel_name("has spaces"));
         assert!(!is_valid_channel_name("has\nnewline"));
+    }
+
+    /// Helper: build a handler wired to inbound channel + shared connectors.
+    fn test_handler(
+        plugin_id: &str,
+    ) -> (
+        AstridClientHandler,
+        mpsc::Receiver<InboundMessage>,
+        Arc<Mutex<Vec<ConnectorDescriptor>>>,
+    ) {
+        let (inbound_tx, inbound_rx) = mpsc::channel(256);
+        let shared = Arc::new(Mutex::new(Vec::new()));
+        let handler = AstridClientHandler::new("test-server", Arc::new(CapabilitiesHandler::new()))
+            .with_plugin_id(plugin_id)
+            .with_inbound_tx(inbound_tx)
+            .with_shared_connectors(Arc::clone(&shared));
+        (handler, inbound_rx, shared)
+    }
+
+    /// Helper: register a connector in `shared_connectors` for inbound message
+    /// tests. This simulates what `register_channels_locally` does during
+    /// `on_custom_notification`.
+    fn register_test_connector(
+        shared: &Arc<Mutex<Vec<ConnectorDescriptor>>>,
+        name: &str,
+        platform: FrontendType,
+        plugin_id: &str,
+    ) -> ConnectorId {
+        let source = ConnectorSource::new_openclaw(plugin_id).expect("valid plugin_id");
+        let descriptor = ConnectorDescriptor::builder(name, platform)
+            .source(source)
+            .profile(ConnectorProfile::Bridge)
+            .capabilities(ConnectorCapabilities::receive_only())
+            .build();
+        let id = descriptor.id;
+        shared
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(descriptor);
+        id
+    }
+
+    #[test]
+    fn test_inbound_message_notification() {
+        let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
+
+        // Register a connector in shared state
+        let expected_id =
+            register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+
+        // Now send an inbound message
+        let msg_params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "Hello from Telegram",
+            "context": {
+                "channel": "telegram",
+                "from": { "id": "user-123" }
+            }
+        });
+        handler.handle_inbound_message(Some(msg_params));
+
+        let msg = inbound_rx.try_recv().expect("should receive message");
+        assert_eq!(msg.connector_id, expected_id);
+        assert!(matches!(msg.platform, FrontendType::Telegram));
+        assert_eq!(msg.platform_user_id, "user-123");
+        assert_eq!(msg.content, "Hello from Telegram");
+    }
+
+    #[test]
+    fn test_inbound_message_oversized_rejected() {
+        let (handler, mut rx, _) = test_handler("test-plugin");
+
+        // Build a payload > 1 MB
+        let big_content = "x".repeat(MAX_NOTIFICATION_PAYLOAD_BYTES + 100);
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": big_content,
+            "context": {}
+        });
+
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            rx.try_recv().is_err(),
+            "oversized message should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_full_channel_drops() {
+        // Create a handler with a channel of size 1
+        let (inbound_tx, mut inbound_rx) = mpsc::channel(1);
+        let handler = AstridClientHandler::new("test-server", Arc::new(CapabilitiesHandler::new()))
+            .with_plugin_id("test-plugin")
+            .with_inbound_tx(inbound_tx);
+
+        let make_params = || {
+            serde_json::json!({
+                "pluginId": "test-plugin",
+                "content": "msg",
+                "context": {}
+            })
+        };
+
+        // Fill the single-slot buffer
+        handler.handle_inbound_message(Some(make_params()));
+
+        // Channel is now full — this message should be dropped via try_send
+        handler.handle_inbound_message(Some(make_params()));
+
+        // Only one message should be in the buffer
+        assert!(
+            inbound_rx.try_recv().is_ok(),
+            "first message should be present"
+        );
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "second message should have been dropped"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_plugin_id_mismatch() {
+        let (handler, mut rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "evil-plugin",
+            "content": "hijack",
+            "context": {}
+        });
+
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            rx.try_recv().is_err(),
+            "mismatched plugin_id should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_map_platform_name() {
+        assert!(matches!(
+            map_platform_name("Telegram"),
+            FrontendType::Telegram
+        ));
+        assert!(matches!(
+            map_platform_name("DISCORD"),
+            FrontendType::Discord
+        ));
+        assert!(matches!(map_platform_name("slack"), FrontendType::Slack));
+        assert!(matches!(
+            map_platform_name("WhatsApp"),
+            FrontendType::WhatsApp
+        ));
+        assert!(matches!(map_platform_name("web"), FrontendType::Web));
+        assert!(matches!(map_platform_name("cli"), FrontendType::Cli));
+        assert!(matches!(
+            map_platform_name("matrix"),
+            FrontendType::Custom(_)
+        ));
+        if let FrontendType::Custom(name) = map_platform_name("Matrix") {
+            assert_eq!(name, "matrix");
+        }
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_chat() {
+        let def = serde_json::json!({ "capabilities": ["receive", "send", "approve"] });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_receive);
+        assert!(caps.can_send);
+        assert!(caps.can_approve);
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_fallback() {
+        let def = serde_json::json!({});
+        let caps = parse_connector_capabilities(&def);
+        assert_eq!(caps, ConnectorCapabilities::receive_only());
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_chat_types_key() {
+        let def = serde_json::json!({ "chatTypes": ["receive", "send"] });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_receive);
+        assert!(caps.can_send);
+        assert!(!caps.can_approve);
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_chat_bidirectional() {
+        let def = serde_json::json!({ "capabilities": ["chat"] });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_receive);
+        assert!(caps.can_send);
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_from_id() {
+        let ctx = serde_json::json!({ "from": { "id": "user-42" } });
+        assert_eq!(extract_platform_user_id(&ctx), "user-42");
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_sender_id() {
+        let ctx = serde_json::json!({ "senderId": "sender-99" });
+        assert_eq!(extract_platform_user_id(&ctx), "sender-99");
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_fallback() {
+        let ctx = serde_json::json!({});
+        assert_eq!(extract_platform_user_id(&ctx), "unknown");
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_truncated() {
+        let long_id = "x".repeat(MAX_PLATFORM_USER_ID_BYTES + 100);
+        let ctx = serde_json::json!({ "senderId": long_id });
+        let result = extract_platform_user_id(&ctx);
+        assert_eq!(result.len(), MAX_PLATFORM_USER_ID_BYTES);
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_multibyte_truncation() {
+        let emoji = "\u{1F600}"; // 4 bytes each
+        let count = MAX_PLATFORM_USER_ID_BYTES / emoji.len() + 5;
+        let long_id: String = emoji.repeat(count);
+        assert!(long_id.len() > MAX_PLATFORM_USER_ID_BYTES);
+
+        let ctx = serde_json::json!({ "senderId": long_id });
+        let result = extract_platform_user_id(&ctx);
+        assert!(result.len() <= MAX_PLATFORM_USER_ID_BYTES);
+        assert!(result.is_char_boundary(result.len()));
+    }
+
+    #[test]
+    fn test_inbound_message_no_connectors_fallback() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "orphan message",
+            "context": { "from": { "id": "user-1" } }
+        });
+        handler.handle_inbound_message(Some(params));
+
+        let msg = inbound_rx.try_recv().expect("should receive message");
+        assert_eq!(msg.content, "orphan message");
+        assert!(matches!(msg.platform, FrontendType::Custom(_)));
+    }
+
+    #[test]
+    fn test_inbound_message_non_matching_channel() {
+        let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
+
+        register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+
+        let msg_params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "wrong channel",
+            "context": { "channel": "discord" }
+        });
+        handler.handle_inbound_message(Some(msg_params));
+
+        let msg = inbound_rx.try_recv().expect("should receive message");
+        assert!(matches!(msg.platform, FrontendType::Telegram));
+    }
+
+    #[test]
+    fn test_inbound_message_empty_plugin_id_rejected() {
+        let (inbound_tx, mut inbound_rx) = mpsc::channel(256);
+        let handler = AstridClientHandler::new("test-server", Arc::new(CapabilitiesHandler::new()))
+            .with_plugin_id("")
+            .with_inbound_tx(inbound_tx);
+
+        let params = serde_json::json!({
+            "pluginId": "",
+            "content": "sneaky",
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "empty plugin_id should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_non_string_content() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": { "type": "image", "url": "https://example.com/pic.png" },
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+
+        let msg = inbound_rx.try_recv().expect("should receive message");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&msg.content).expect("content should be valid JSON");
+        assert_eq!(parsed["type"], "image");
+        assert_eq!(parsed["url"], "https://example.com/pic.png");
+    }
+
+    #[test]
+    fn test_inbound_message_oversized_context_rejected() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let big_context = "x".repeat(MAX_CONTEXT_BYTES + 100);
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "msg",
+            "context": { "data": big_context }
+        });
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "oversized context should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_estimate_json_size_primitives() {
+        assert_eq!(estimate_json_size(&Value::Null), 4);
+        assert_eq!(estimate_json_size(&Value::Bool(true)), 4);
+        assert_eq!(estimate_json_size(&Value::Bool(false)), 5);
+    }
+
+    #[test]
+    fn test_estimate_json_size_string() {
+        let val = Value::String("hello".to_string());
+        assert_eq!(estimate_json_size(&val), 7);
+    }
+
+    #[test]
+    fn test_estimate_json_size_object() {
+        let val = serde_json::json!({"a": 1});
+        let size = estimate_json_size(&val);
+        let actual = serde_json::to_string(&val).unwrap().len();
+        assert!(size > 0);
+        assert!(
+            (size as i64 - actual as i64).unsigned_abs() <= 1,
+            "estimate {size} should be within 1 of actual {actual}"
+        );
+    }
+
+    #[test]
+    fn test_estimate_json_size_large_payload() {
+        let big = "x".repeat(MAX_NOTIFICATION_PAYLOAD_BYTES + 100);
+        let val = serde_json::json!({ "data": big });
+        assert!(estimate_json_size(&val) > MAX_NOTIFICATION_PAYLOAD_BYTES);
+    }
+
+    #[test]
+    fn test_handlers_reject_missing_params() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+        handler.handle_inbound_message(None);
+        assert!(inbound_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_inbound_message_channel_name_fallback_key() {
+        let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
+
+        let expected_id =
+            register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+
+        let msg_params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "via channelName",
+            "context": {
+                "channelName": "telegram",
+                "from": { "id": "user-1" }
+            }
+        });
+        handler.handle_inbound_message(Some(msg_params));
+
+        let msg = inbound_rx.try_recv().expect("should receive message");
+        assert_eq!(msg.connector_id, expected_id);
+        assert_eq!(msg.content, "via channelName");
+    }
+
+    #[test]
+    fn test_inbound_message_null_content_rejected() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": null,
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "null content should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_non_string_elements_ignored() {
+        let def = serde_json::json!({
+            "capabilities": [42, true, null, "receive", "send"]
+        });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_receive);
+        assert!(caps.can_send);
+        assert!(!caps.can_approve);
+    }
+
+    #[test]
+    fn test_map_platform_name_empty_string() {
+        let ft = map_platform_name("");
+        assert!(matches!(ft, FrontendType::Custom(ref s) if s.is_empty()));
+    }
+
+    #[test]
+    fn test_handlers_accept_valid_payloads() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let msg_params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "dispatch test",
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(msg_params));
+        assert!(
+            inbound_rx.try_recv().is_ok(),
+            "inboundMessage should dispatch"
+        );
+    }
+
+    #[test]
+    fn test_handlers_no_channels_configured() {
+        let handler = AstridClientHandler::new("test-server", Arc::new(CapabilitiesHandler::new()));
+
+        handler.handle_inbound_message(Some(serde_json::json!({
+            "pluginId": "test",
+            "content": "msg",
+            "context": {}
+        })));
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_inbound_outbound_synonyms() {
+        let def = serde_json::json!({ "capabilities": ["inbound", "outbound"] });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_receive, "inbound should set can_receive");
+        assert!(caps.can_send, "outbound should set can_send");
+        assert!(!caps.can_approve);
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_unrecognized_strings_only() {
+        let def = serde_json::json!({ "capabilities": ["foo", "bar", "baz"] });
+        let caps = parse_connector_capabilities(&def);
+        assert_eq!(caps, ConnectorCapabilities::receive_only());
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_all_non_string_elements() {
+        let def = serde_json::json!({ "capabilities": [42, true, null, [1, 2]] });
+        let caps = parse_connector_capabilities(&def);
+        assert_eq!(caps, ConnectorCapabilities::receive_only());
+    }
+
+    #[test]
+    fn test_estimate_json_size_array() {
+        let val = serde_json::json!([1, 2, 3]);
+        let size = estimate_json_size(&val);
+        let actual = serde_json::to_string(&val).unwrap().len();
+        assert!(
+            (size as i64 - actual as i64).unsigned_abs() <= 1,
+            "array estimate {size} should be within 1 of actual {actual}"
+        );
+    }
+
+    #[test]
+    fn test_estimate_json_size_nested_array() {
+        let val = serde_json::json!([[1], [2, 3]]);
+        let size = estimate_json_size(&val);
+        let actual = serde_json::to_string(&val).unwrap().len();
+        assert!(
+            (size as i64 - actual as i64).unsigned_abs() <= 2,
+            "nested array estimate {size} should be within 2 of actual {actual}"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_empty_string_content_rejected() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "",
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "empty string content should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_missing_plugin_id_field() {
+        let (handler, mut rx, _) = test_handler("test-plugin");
+        let params = serde_json::json!({
+            "content": "msg",
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            rx.try_recv().is_err(),
+            "missing pluginId field should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_exactly_at_limit() {
+        let id_at_limit = "x".repeat(MAX_PLATFORM_USER_ID_BYTES);
+        let ctx = serde_json::json!({ "senderId": id_at_limit });
+        let result = extract_platform_user_id(&ctx);
+        assert_eq!(result.len(), MAX_PLATFORM_USER_ID_BYTES);
+        assert_eq!(result, id_at_limit);
+    }
+
+    #[test]
+    fn test_parse_connector_capabilities_capabilities_key_takes_priority() {
+        let def = serde_json::json!({
+            "capabilities": ["send"],
+            "chatTypes": ["receive"]
+        });
+        let caps = parse_connector_capabilities(&def);
+        assert!(caps.can_send, "capabilities key should take priority");
+        assert!(
+            !caps.can_receive,
+            "chatTypes should be ignored when capabilities is present"
+        );
+    }
+
+    #[test]
+    fn test_estimate_json_size_empty_containers() {
+        assert_eq!(estimate_json_size(&Value::String(String::new())), 2);
+        assert_eq!(estimate_json_size(&serde_json::json!([])), 2);
+        assert_eq!(estimate_json_size(&serde_json::json!({})), 2);
+    }
+
+    #[test]
+    fn test_inbound_message_oversized_non_string_content_rejected() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+        let big_array: Vec<String> = (0..50_000).map(|i| format!("item-{i:020}")).collect();
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": big_array,
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "oversized serialized content should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_non_string_plugin_id_rejected() {
+        let (handler, mut rx, _) = test_handler("test-plugin");
+        let params = serde_json::json!({
+            "pluginId": 42,
+            "content": "msg",
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+        assert!(
+            rx.try_recv().is_err(),
+            "non-string pluginId should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_extract_platform_user_id_userid_key() {
+        let ctx = serde_json::json!({ "userId": "user-from-userid" });
+        let id = extract_platform_user_id(&ctx);
+        assert_eq!(id, "user-from-userid");
+    }
+
+    #[test]
+    fn test_inbound_message_null_context() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "hello",
+            "context": null
+        });
+        handler.handle_inbound_message(Some(params));
+
+        let msg = inbound_rx.try_recv().expect("should handle null context");
+        assert_eq!(msg.content, "hello");
+        assert_eq!(msg.platform_user_id, "unknown");
+    }
+
+    #[test]
+    fn test_inbound_message_absent_context() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": "hello"
+        });
+        handler.handle_inbound_message(Some(params));
+
+        let msg = inbound_rx.try_recv().expect("should handle absent context");
+        assert_eq!(msg.content, "hello");
+        assert_eq!(msg.platform_user_id, "unknown");
+    }
+
+    #[test]
+    fn test_map_platform_name_long_custom_truncated() {
+        let long_name = "x".repeat(300);
+        let ft = map_platform_name(&long_name);
+        if let FrontendType::Custom(s) = ft {
+            assert!(
+                s.len() <= MAX_PLATFORM_NAME_BYTES,
+                "custom platform name should be truncated to {MAX_PLATFORM_NAME_BYTES}, got {}",
+                s.len()
+            );
+        } else {
+            panic!("expected Custom variant");
+        }
+    }
+
+    #[test]
+    fn test_inbound_message_string_content_size_limit() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let huge_string = "x".repeat(MAX_NOTIFICATION_PAYLOAD_BYTES + 1);
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "content": huge_string,
+            "context": {}
+        });
+        handler.handle_inbound_message(Some(params));
+
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "oversized string content should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_inbound_message_missing_content() {
+        let (handler, mut inbound_rx, _) = test_handler("test-plugin");
+
+        let params = serde_json::json!({
+            "pluginId": "test-plugin",
+            "context": { "from": { "id": "user-1" } }
+        });
+        handler.handle_inbound_message(Some(params));
+
+        assert!(
+            inbound_rx.try_recv().is_err(),
+            "missing content field should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_register_channels_locally() {
+        let handler =
+            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+
+        let channels = vec![
+            BridgeChannelInfo {
+                name: "telegram".to_string(),
+                definition: Some(BridgeChannelDefinition {
+                    capabilities: Some(BridgeChannelCapabilities {
+                        can_receive: true,
+                        can_send: true,
+                        ..Default::default()
+                    }),
+                }),
+            },
+            BridgeChannelInfo {
+                name: "discord".to_string(),
+                definition: None,
+            },
+        ];
+
+        handler.register_channels_locally("test-plugin", &channels);
+
+        let shared = handler
+            .registered_connectors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(shared.len(), 2);
+        assert_eq!(shared[0].name, "telegram");
+        assert_eq!(shared[1].name, "discord");
+    }
+
+    #[test]
+    fn test_register_channels_locally_deduplicates() {
+        let handler =
+            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+
+        let channels = vec![BridgeChannelInfo {
+            name: "telegram".to_string(),
+            definition: None,
+        }];
+
+        handler.register_channels_locally("test-plugin", &channels);
+        handler.register_channels_locally("test-plugin", &channels);
+
+        let shared = handler
+            .registered_connectors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(shared.len(), 1, "duplicate channel should be deduplicated");
     }
 }

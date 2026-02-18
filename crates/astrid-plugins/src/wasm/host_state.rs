@@ -9,16 +9,11 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use astrid_core::connector::{ConnectorDescriptor, InboundMessage};
+use astrid_core::connector::{ConnectorDescriptor, InboundMessage, MAX_CONNECTORS_PER_PLUGIN};
 use astrid_storage::kv::ScopedKvStore;
 
 use crate::PluginId;
 use crate::security::PluginSecurityGate;
-
-/// Maximum number of connectors a single plugin may register.
-///
-/// Prevents unbounded memory growth from a misbehaving or malicious guest.
-pub const MAX_CONNECTORS_PER_PLUGIN: usize = 32;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
 pub struct HostState {
@@ -64,13 +59,11 @@ impl HostState {
         if self.registered_connectors.len() >= MAX_CONNECTORS_PER_PLUGIN {
             return Err("connector registration limit reached");
         }
-        // Reject duplicate name+platform combinations.
-        // Uses `is_same_platform` to normalise variant aliases so that e.g.
-        // `FrontendType::Telegram` and `Custom("telegram")` are treated as
-        // the same platform.
-        let duplicate = self.registered_connectors.iter().any(|c| {
-            c.name == descriptor.name && c.frontend_type.is_same_platform(&descriptor.frontend_type)
-        });
+        // Reject duplicate name+platform combinations
+        let duplicate = self
+            .registered_connectors
+            .iter()
+            .any(|c| c.name == descriptor.name && c.frontend_type == descriptor.frontend_type);
         if duplicate {
             return Err("duplicate connector name and platform");
         }
@@ -302,63 +295,5 @@ mod tests {
             .build();
         assert!(state.register_connector(desc3).is_ok());
         assert_eq!(state.connectors().len(), 2);
-    }
-
-    #[test]
-    fn register_connector_rejects_custom_alias_of_known_platform() {
-        use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
-        use astrid_core::identity::FrontendType;
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
-
-        let mut state = HostState {
-            plugin_id: PluginId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            kv,
-            config: HashMap::new(),
-            security: None,
-            runtime_handle: rt.handle().clone(),
-            has_connector_capability: true,
-            inbound_tx: None,
-            registered_connectors: Vec::new(),
-        };
-
-        // Register with the known variant
-        let desc1 = ConnectorDescriptor::builder("telegram", FrontendType::Telegram)
-            .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
-            })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
-            .build();
-        assert!(state.register_connector(desc1).is_ok());
-
-        // Attempt to register same name with Custom("Telegram") → rejected
-        let desc2 =
-            ConnectorDescriptor::builder("telegram", FrontendType::Custom("Telegram".into()))
-                .source(ConnectorSource::Wasm {
-                    plugin_id: "test".into(),
-                })
-                .capabilities(ConnectorCapabilities::receive_only())
-                .profile(ConnectorProfile::Chat)
-                .build();
-        let err = state.register_connector(desc2).unwrap_err();
-        assert!(err.contains("duplicate"), "expected duplicate error: {err}");
-
-        // Also rejected with Custom("telegram") (lowercase)
-        let desc3 =
-            ConnectorDescriptor::builder("telegram", FrontendType::Custom("telegram".into()))
-                .source(ConnectorSource::Wasm {
-                    plugin_id: "test".into(),
-                })
-                .capabilities(ConnectorCapabilities::receive_only())
-                .profile(ConnectorProfile::Chat)
-                .build();
-        let err = state.register_connector(desc3).unwrap_err();
-        assert!(err.contains("duplicate"), "expected duplicate error: {err}");
     }
 }

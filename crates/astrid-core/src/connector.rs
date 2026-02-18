@@ -38,6 +38,16 @@ use crate::frontend::{
 use crate::identity::FrontendType;
 
 // ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+
+/// Maximum number of connectors a single plugin may register.
+///
+/// Enforced by the WASM host, the MCP notification handler, and the
+/// `McpPlugin` drain. All three must use this constant to stay in sync.
+pub const MAX_CONNECTORS_PER_PLUGIN: usize = 32;
+
+// ---------------------------------------------------------------------------
 // ConnectorId
 // ---------------------------------------------------------------------------
 

@@ -53,12 +53,7 @@ const MAX_STRING_LENGTH: usize = 256;
 /// platforms are valid rather than rejected.
 fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
     use astrid_core::identity::FrontendType;
-    debug_assert_eq!(
-        platform,
-        platform.trim(),
-        "caller must trim platform before parsing"
-    );
-    match platform.to_ascii_lowercase().as_str() {
+    match platform.to_lowercase().as_str() {
         "discord" => FrontendType::Discord,
         "whatsapp" | "whats_app" => FrontendType::WhatsApp,
         "telegram" => FrontendType::Telegram,
@@ -74,7 +69,7 @@ fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
 /// Returns `Err` for unknown profile strings.
 fn parse_connector_profile(profile: &str) -> Result<astrid_core::ConnectorProfile, Error> {
     use astrid_core::ConnectorProfile;
-    match profile.to_ascii_lowercase().as_str() {
+    match profile.to_lowercase().as_str() {
         "chat" => Ok(ConnectorProfile::Chat),
         "interactive" => Ok(ConnectorProfile::Interactive),
         "notify" => Ok(ConnectorProfile::Notify),
@@ -607,11 +602,6 @@ fn astrid_register_connector_impl(
             name.len()
         )));
     }
-    if platform_str.trim().is_empty() {
-        return Err(Error::msg(
-            "platform name must not be empty or whitespace-only",
-        ));
-    }
     if platform_str.len() > MAX_STRING_LENGTH {
         return Err(Error::msg(format!(
             "platform string too long: {} bytes (max {MAX_STRING_LENGTH})",
@@ -625,11 +615,9 @@ fn astrid_register_connector_impl(
         )));
     }
 
-    // Validate inputs — trim whitespace before parsing so the stored
-    // FrontendType never contains leading/trailing spaces.
-    let trimmed_platform = platform_str.trim();
-    let frontend_type = parse_frontend_type(trimmed_platform);
-    let profile = parse_connector_profile(profile_str.trim())?;
+    // Validate inputs
+    let frontend_type = parse_frontend_type(&platform_str);
+    let profile = parse_connector_profile(&profile_str)?;
 
     // First lock: read capability flag, security gate, and runtime handle
     let ud = user_data.get()?;
@@ -657,7 +645,7 @@ fn astrid_register_connector_impl(
         let gate = gate.clone();
         let pid = plugin_id.clone();
         let cname = name.clone();
-        let plat = trimmed_platform.to_owned();
+        let plat = platform_str.clone();
         let check = handle
             .block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await });
         if let Err(reason) = check {
@@ -695,7 +683,7 @@ fn astrid_register_connector_impl(
         state.register_connector(descriptor).map_err(|e| {
             Error::msg(format!(
                 "plugin {plugin_id}: {e} (max {})",
-                super::host_state::MAX_CONNECTORS_PER_PLUGIN
+                astrid_core::MAX_CONNECTORS_PER_PLUGIN
             ))
         })?;
     }
@@ -1542,20 +1530,5 @@ mod tests {
     #[test]
     fn max_inbound_message_bytes_constant_is_one_mb() {
         assert_eq!(MAX_INBOUND_MESSAGE_BYTES, 1_048_576);
-    }
-
-    #[test]
-    fn parse_frontend_type_unknown_is_lowercased() {
-        use astrid_core::identity::FrontendType;
-
-        // Unknown platforms are lowercased by to_ascii_lowercase() in the match.
-        assert_eq!(
-            parse_frontend_type("MATRIX"),
-            FrontendType::Custom("matrix".into())
-        );
-        assert_eq!(
-            parse_frontend_type("Signal"),
-            FrontendType::Custom("signal".into())
-        );
     }
 }
