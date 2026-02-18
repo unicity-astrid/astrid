@@ -329,6 +329,10 @@ impl FrontendType {
     /// variant's key (e.g. `Custom("Telegram")` → `"telegram"`). Unknown
     /// platforms are trimmed and lowercased.
     ///
+    /// Returns an empty `Cow::Owned("")` for [`Custom`](Self::Custom) values
+    /// that are empty or whitespace-only after trimming. Callers constructing
+    /// `Custom` directly should validate the inner string is non-empty.
+    ///
     /// This should be used instead of raw `PartialEq` when comparing platform
     /// identity across trust boundaries (e.g. WASM guests, MCP plugins).
     #[must_use]

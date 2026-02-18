@@ -52,8 +52,13 @@ const MAX_STRING_LENGTH: usize = 256;
 /// `FrontendType` has a `Custom` variant for extensibility, so unknown
 /// platforms are valid rather than rejected.
 fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
+    debug_assert_eq!(
+        platform,
+        platform.trim(),
+        "caller must trim platform before parsing"
+    );
     use astrid_core::identity::FrontendType;
-    match platform.to_lowercase().as_str() {
+    match platform.to_ascii_lowercase().as_str() {
         "discord" => FrontendType::Discord,
         "whatsapp" | "whats_app" => FrontendType::WhatsApp,
         "telegram" => FrontendType::Telegram,
@@ -69,7 +74,7 @@ fn parse_frontend_type(platform: &str) -> astrid_core::identity::FrontendType {
 /// Returns `Err` for unknown profile strings.
 fn parse_connector_profile(profile: &str) -> Result<astrid_core::ConnectorProfile, Error> {
     use astrid_core::ConnectorProfile;
-    match profile.to_lowercase().as_str() {
+    match profile.to_ascii_lowercase().as_str() {
         "chat" => Ok(ConnectorProfile::Chat),
         "interactive" => Ok(ConnectorProfile::Interactive),
         "notify" => Ok(ConnectorProfile::Notify),
@@ -651,7 +656,7 @@ fn astrid_register_connector_impl(
         let gate = gate.clone();
         let pid = plugin_id.clone();
         let cname = name.clone();
-        let plat = platform_str.clone();
+        let plat = platform_str.trim().to_owned();
         let check = handle
             .block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await });
         if let Err(reason) = check {
@@ -1539,17 +1544,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_frontend_type_with_whitespace_matches_known() {
+    fn parse_frontend_type_trimmed_input_matches_known() {
         use astrid_core::identity::FrontendType;
 
-        // After trimming at the call site, whitespace-padded known platforms
-        // should resolve to the correct variant.
+        // Callers must trim before calling parse_frontend_type (enforced by
+        // debug_assert). Pre-trimmed known platforms resolve to the correct variant.
         assert_eq!(parse_frontend_type("telegram"), FrontendType::Telegram);
-        // Pre-trimmed input — caller is responsible for trimming.
-        assert_eq!(
-            parse_frontend_type("  telegram  "),
-            FrontendType::Custom("  telegram  ".into())
-        );
+        assert_eq!(parse_frontend_type("discord"), FrontendType::Discord);
+        assert_eq!(parse_frontend_type("whatsapp"), FrontendType::WhatsApp);
     }
 
     #[test]
