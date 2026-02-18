@@ -208,7 +208,7 @@ impl PluginRegistry {
     ) -> Option<&ConnectorDescriptor> {
         self.connectors
             .values()
-            .find(|(_, desc)| desc.frontend_type.is_same_platform(platform))
+            .find(|(_, desc)| &desc.frontend_type == platform)
             .map(|(_, desc)| desc)
     }
 
@@ -939,37 +939,5 @@ mod tests {
         assert!(found.is_some());
         let name = &found.unwrap().name;
         assert!(name == "bot-a" || name == "bot-b");
-    }
-
-    #[test]
-    fn test_find_connector_by_platform_normalizes_custom_alias() {
-        let mut registry = PluginRegistry::new();
-        let telegram_desc = make_descriptor("telegram-bot", FrontendType::Telegram);
-
-        registry
-            .register(Box::new(TestPlugin::with_connectors(
-                "alpha",
-                vec![telegram_desc],
-            )))
-            .unwrap();
-
-        // Custom("telegram") should resolve to the Telegram connector.
-        let found = registry.find_connector_by_platform(&FrontendType::Custom("telegram".into()));
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().name, "telegram-bot");
-
-        // Custom("Telegram") (mixed case) should also resolve.
-        let found = registry.find_connector_by_platform(&FrontendType::Custom("Telegram".into()));
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().name, "telegram-bot");
-
-        // Custom("TELEGRAM") (uppercase) should also resolve.
-        let found = registry.find_connector_by_platform(&FrontendType::Custom("TELEGRAM".into()));
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().name, "telegram-bot");
-
-        // Unrelated Custom platform should not match.
-        let found = registry.find_connector_by_platform(&FrontendType::Custom("signal".into()));
-        assert!(found.is_none());
     }
 }

@@ -52,6 +52,6 @@ pub use version::{Version, VersionParseError, Versioned};
 pub use connector::{
     ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
     ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder, OutboundAdapter,
-    OutboundMessage, OutboundMessageBuilder,
+    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder,
+    MAX_CONNECTORS_PER_PLUGIN, OutboundAdapter, OutboundMessage, OutboundMessageBuilder,
 };

@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -28,11 +28,12 @@ use rmcp::model::{CallToolRequestParams, ClientNotification, CustomNotification}
 use rmcp::service::{Peer, RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde_json::Value;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use astrid_core::HookEvent;
 use astrid_core::connector::{ConnectorCapabilities, ConnectorDescriptor, ConnectorSource};
 use astrid_core::identity::FrontendType;
+use astrid_core::{HookEvent, InboundMessage};
 use astrid_mcp::{
     AstridClientHandler, BridgeChannelInfo, CapabilitiesHandler, McpClient, ServerNotice,
     ToolResult,
@@ -40,7 +41,7 @@ use astrid_mcp::{
 
 use crate::context::{PluginContext, PluginToolContext};
 use crate::error::{PluginError, PluginResult};
-use crate::manifest::{PluginEntryPoint, PluginManifest};
+use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::sandbox::SandboxProfile;
 use crate::tool::PluginTool;
@@ -84,6 +85,20 @@ pub struct McpPlugin {
     registered_connectors: Vec<ConnectorDescriptor>,
     /// Receiver for server notices (connector registrations, tool refreshes).
     notice_rx: Option<tokio::sync::mpsc::UnboundedReceiver<ServerNotice>>,
+    /// Keepalive clone of the inbound message sender — never used for
+    /// sending. Its sole purpose is to prevent the receiver from seeing EOF
+    /// until [`unload`] drops this clone. The active sender (the one that
+    /// calls `try_send`) lives in [`AstridClientHandler`]; when the MCP
+    /// session is closed, that sender is dropped first, and then this
+    /// keepalive is set to `None` in `unload()`.
+    inbound_tx: Option<mpsc::Sender<InboundMessage>>,
+    /// Receiver for inbound messages from the bridge.
+    inbound_rx: Option<mpsc::Receiver<InboundMessage>>,
+    /// Shared with `AstridClientHandler` for connector ID lookups on inbound messages.
+    ///
+    /// Uses `std::sync::Mutex` — see the matching doc on `AstridClientHandler`'s
+    /// field for rationale. Must not be held across `.await` boundaries.
+    shared_connectors: Arc<Mutex<Vec<ConnectorDescriptor>>>,
 }
 
 impl McpPlugin {
@@ -108,6 +123,9 @@ impl McpPlugin {
             plugin_dir: None,
             registered_connectors: Vec::new(),
             notice_rx: None,
+            inbound_tx: None,
+            inbound_rx: None,
+            shared_connectors: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -191,9 +209,33 @@ impl McpPlugin {
             self.state = PluginState::Failed(msg);
             self.peer = None;
             self.tools.clear();
+            // Drop the service to release the AstridClientHandler's Arc
+            // clone of shared_connectors, minimizing phantom entries from
+            // buffered notifications arriving after we clear state.
+            self.service = None;
+            // Clear connector state so stale connectors are not visible
+            self.registered_connectors.clear();
+            self.shared_connectors
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clear();
+            self.notice_rx = None;
+            self.inbound_tx = None;
+            self.inbound_rx = None;
         }
 
         alive
+    }
+
+    /// Take ownership of the inbound message receiver.
+    ///
+    /// This is a one-time transfer — subsequent calls return `None`.
+    /// Matches the WASM plugin pattern.
+    ///
+    /// Must be called **after** [`load()`] — the receiver is only created
+    /// during load when the manifest declares `PluginCapability::Connector`.
+    pub fn take_inbound_rx(&mut self) -> Option<mpsc::Receiver<InboundMessage>> {
+        self.inbound_rx.take()
     }
 
     /// Drain pending connector notices and return the updated connector list.
@@ -237,7 +279,15 @@ impl McpPlugin {
                     .iter()
                     .any(|d| d.name == desc.name)
                 {
-                    self.registered_connectors.push(desc);
+                    self.registered_connectors.push(desc.clone());
+                    // Also push to shared state for inbound message routing.
+                    let mut shared = self
+                        .shared_connectors
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    if !shared.iter().any(|d| d.name == desc.name) {
+                        shared.push(desc);
+                    }
                 }
             }
         }
@@ -294,6 +344,36 @@ impl McpPlugin {
                 .capabilities(capabilities)
                 .build(),
         )
+    }
+
+    /// Send plugin config as a post-init notification. The MCP handshake
+    /// doesn't support custom initialization options, so we deliver config
+    /// via a custom notification after the bridge's dispatch loop is running.
+    async fn send_plugin_config(&self, ctx: &PluginContext, peer: &Peer<RoleClient>) {
+        if ctx.config.is_empty() {
+            return;
+        }
+
+        let notification = CustomNotification::new(
+            "notifications/astrid.setPluginConfig",
+            Some(serde_json::json!({ "config": ctx.config })),
+        );
+        if let Err(e) = peer
+            .send_notification(ClientNotification::CustomNotification(notification))
+            .await
+        {
+            warn!(
+                plugin_id = %self.id,
+                error = %e,
+                "Failed to send plugin config notification"
+            );
+        } else {
+            debug!(
+                plugin_id = %self.id,
+                config_keys = ?ctx.config.keys().collect::<Vec<_>>(),
+                "Sent plugin config to bridge"
+            );
+        }
     }
 
     /// Build the `tokio::process::Command` from the manifest entry point,
@@ -441,6 +521,15 @@ impl Plugin for McpPlugin {
     async fn load(&mut self, ctx: &PluginContext) -> PluginResult<()> {
         self.state = PluginState::Loading;
 
+        // Defensive clear: ensure no stale state from a previous load attempt
+        // (e.g., handshake succeeded but tool discovery failed, leaving stale
+        // entries in shared_connectors from the previous handler).
+        self.registered_connectors.clear();
+        self.shared_connectors
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+
         // 1. Verify binary hash if configured
         if let Err(e) = self.verify_binary_hash() {
             self.state = PluginState::Failed(e.to_string());
@@ -467,12 +556,38 @@ impl Plugin for McpPlugin {
         })?;
 
         // 4. MCP handshake
+        let has_connector_cap = self
+            .manifest
+            .capabilities
+            .iter()
+            .any(|c| matches!(c, PluginCapability::Connector { .. }));
+
         let handler = Arc::new(CapabilitiesHandler::new());
+
+        // Notice channel: used for connector registrations (notice-based flow).
         let (notice_tx, notice_rx) =
             tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
-        let client_handler =
-            AstridClientHandler::new(&self.server_name, handler).with_notice_tx(notice_tx);
-        self.notice_rx = Some(notice_rx);
+
+        // Create inbound channel if this plugin declares the Connector capability.
+        // The tx side goes into AstridClientHandler; rx and keepalive tx are stored on
+        // `self` only AFTER the handshake succeeds (see below) so that failed load
+        // attempts do not leave stale channels on the plugin.
+        let inbound_channels = if has_connector_cap {
+            let (inbound_tx, inbound_rx) = mpsc::channel(256);
+            Some((inbound_tx, inbound_rx))
+        } else {
+            None
+        };
+
+        let mut client_handler = AstridClientHandler::new(&self.server_name, handler)
+            .with_notice_tx(notice_tx)
+            .with_plugin_id(self.id.as_str());
+
+        if let Some((ref inbound_tx, _)) = inbound_channels {
+            client_handler = client_handler
+                .with_inbound_tx(inbound_tx.clone())
+                .with_shared_connectors(Arc::clone(&self.shared_connectors));
+        }
 
         let service: PluginMcpService = client_handler.serve(transport).await.map_err(|e| {
             let err = PluginError::McpServerFailed {
@@ -480,10 +595,11 @@ impl Plugin for McpPlugin {
                 message: format!("MCP handshake failed: {e}"),
             };
             self.state = PluginState::Failed(err.to_string());
-            self.notice_rx = None;
-            self.registered_connectors.clear();
             err
         })?;
+
+        // Store notice_rx now that the handshake succeeded.
+        self.notice_rx = Some(notice_rx);
 
         // 5. Discover tools
         let rmcp_tools = service.list_all_tools().await.map_err(|e| {
@@ -519,7 +635,22 @@ impl Plugin for McpPlugin {
         self.peer = Some(peer.clone());
         self.tools = tools;
 
-        // 8. Drain any connector registration notices that arrived during
+        // Store inbound channels now that the connection is established.
+        if let Some((inbound_tx, inbound_rx)) = inbound_channels {
+            self.inbound_tx = Some(inbound_tx);
+            self.inbound_rx = Some(inbound_rx);
+        }
+
+        // 8. Send plugin config + drain connector registration notices.
+        // Config and drain happen BEFORE setting Ready so that connectors()
+        // is populated by the time the runtime queries it.
+        self.send_plugin_config(ctx, &peer).await;
+
+        // Yield to let the bridge process the config notification and
+        // fire any connectorRegistered notifications back to us.
+        tokio::task::yield_now().await;
+
+        // Drain any connector registration notices that arrived during
         // the handshake (bridge sends them right after `initialized`).
         self.drain_connector_notices();
 
@@ -533,44 +664,19 @@ impl Plugin for McpPlugin {
 
         self.state = PluginState::Ready;
 
-        // 9. Send plugin config as a post-init notification.
-        // The MCP handshake doesn't support custom initialization options,
-        // so we deliver config via a custom notification. The bridge's
-        // dispatch loop is already running at this point.
-        if !ctx.config.is_empty() {
-            let notification = CustomNotification::new(
-                "notifications/astrid.setPluginConfig",
-                Some(serde_json::json!({ "config": ctx.config })),
-            );
-            if let Err(e) = peer
-                .send_notification(ClientNotification::CustomNotification(notification))
-                .await
-            {
-                warn!(
-                    plugin_id = %self.id,
-                    error = %e,
-                    "Failed to send plugin config notification"
-                );
-            } else {
-                debug!(
-                    plugin_id = %self.id,
-                    config_keys = ?ctx.config.keys().collect::<Vec<_>>(),
-                    "Sent plugin config to bridge"
-                );
-            }
-        }
-
         Ok(())
     }
 
     async fn unload(&mut self) -> PluginResult<()> {
         self.state = PluginState::Unloading;
 
-        // Drop the peer handle first
+        // Drop the peer handle first so no new tool calls start
         self.peer = None;
         self.tools.clear();
 
-        // Gracefully close the MCP session
+        // Gracefully close the MCP session BEFORE clearing connector state
+        // so that in-flight notifications from the bridge can still be
+        // received and processed by the handler.
         if let Some(ref mut service) = self.service {
             match service.close_with_timeout(SHUTDOWN_TIMEOUT).await {
                 Ok(Some(reason)) => {
@@ -595,10 +701,21 @@ impl Plugin for McpPlugin {
                 },
             }
         }
-
         self.service = None;
-        self.notice_rx = None;
+
+        // Now clear connector state after the MCP session is closed
         self.registered_connectors.clear();
+        {
+            let mut shared = self
+                .shared_connectors
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            shared.clear();
+        }
+        self.notice_rx = None;
+        self.inbound_tx = None;
+        self.inbound_rx = None;
+
         self.state = PluginState::Unloaded;
 
         info!(plugin_id = %self.id, "MCP plugin unloaded");
@@ -869,6 +986,16 @@ mod tests {
         }
     }
 
+    fn connector_manifest(id: &str) -> PluginManifest {
+        let mut m = mcp_manifest(id);
+        m.name = format!("Test Connector Plugin {id}");
+        m.description = Some("Test connector plugin".into());
+        m.capabilities = vec![PluginCapability::Connector {
+            profile: astrid_core::ConnectorProfile::Bridge,
+        }];
+        m
+    }
+
     fn test_mcp_client() -> McpClient {
         McpClient::with_config(astrid_mcp::ServersConfig::default())
     }
@@ -1041,5 +1168,220 @@ mod tests {
             },
             other => panic!("Expected Response, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_connectors_returns_registered() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        // Initially empty
+        assert!(plugin.connectors().is_empty());
+
+        // Manually push descriptors (simulating drain)
+        let desc = ConnectorDescriptor::builder("telegram", FrontendType::Telegram)
+            .source(ConnectorSource::new_openclaw("test-conn").unwrap())
+            .profile(astrid_core::ConnectorProfile::Bridge)
+            .build();
+        plugin.registered_connectors.push(desc);
+
+        assert_eq!(plugin.connectors().len(), 1);
+        assert_eq!(plugin.connectors()[0].name, "telegram");
+        assert!(matches!(
+            plugin.connectors()[0].frontend_type,
+            FrontendType::Telegram
+        ));
+        assert!(matches!(
+            plugin.connectors()[0].profile,
+            astrid_core::ConnectorProfile::Bridge
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_take_inbound_rx() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        // Before load, no rx
+        assert!(plugin.take_inbound_rx().is_none());
+
+        // Manually set one up
+        let (tx, rx) = mpsc::channel(256);
+        plugin.inbound_rx = Some(rx);
+        plugin.inbound_tx = Some(tx);
+
+        // First take returns Some
+        assert!(plugin.take_inbound_rx().is_some());
+        // Second take returns None
+        assert!(plugin.take_inbound_rx().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_check_health_clears_connector_state() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        // Simulate a loaded plugin with connector state but no service
+        // (service = None simulates a dead child process)
+        plugin.state = PluginState::Ready;
+        let desc = ConnectorDescriptor::builder("telegram", FrontendType::Telegram)
+            .source(ConnectorSource::new_openclaw("test-conn").unwrap())
+            .build();
+        plugin.registered_connectors.push(desc.clone());
+        plugin.shared_connectors.lock().unwrap().push(desc);
+        let (tx, rx) = mpsc::channel(256);
+        plugin.inbound_tx = Some(tx);
+        plugin.inbound_rx = Some(rx);
+        let (_notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        plugin.notice_rx = Some(notice_rx);
+
+        // service is None -> not alive
+        assert!(!plugin.check_health());
+        assert!(matches!(plugin.state, PluginState::Failed(_)));
+        assert!(plugin.registered_connectors.is_empty());
+        assert!(plugin.shared_connectors.lock().unwrap().is_empty());
+        assert!(plugin.inbound_tx.is_none());
+        assert!(plugin.inbound_rx.is_none());
+        assert!(plugin.notice_rx.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_unload_clears_connector_state() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        // Populate connector state (no service to close)
+        plugin.state = PluginState::Ready;
+        let desc = ConnectorDescriptor::builder("discord", FrontendType::Discord)
+            .source(ConnectorSource::new_openclaw("test-conn").unwrap())
+            .build();
+        plugin.registered_connectors.push(desc.clone());
+        plugin.shared_connectors.lock().unwrap().push(desc);
+        let (tx, rx) = mpsc::channel(256);
+        plugin.inbound_tx = Some(tx);
+        plugin.inbound_rx = Some(rx);
+        let (_notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        plugin.notice_rx = Some(notice_rx);
+
+        plugin.unload().await.unwrap();
+
+        assert_eq!(plugin.state(), PluginState::Unloaded);
+        assert!(plugin.registered_connectors.is_empty());
+        assert!(plugin.shared_connectors.lock().unwrap().is_empty());
+        assert!(plugin.inbound_tx.is_none());
+        assert!(plugin.inbound_rx.is_none());
+        assert!(plugin.notice_rx.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_drain_connector_notices_no_rx() {
+        // When notice_rx is None, drain is a no-op
+        let manifest = mcp_manifest("test-no-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        assert!(plugin.notice_rx.is_none());
+        // Should not panic
+        plugin.drain_connector_notices();
+        assert!(plugin.connectors().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_drain_connector_notices_populates_shared() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        let (notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        plugin.notice_rx = Some(notice_rx);
+
+        // Send a ConnectorsRegistered notice
+        notice_tx
+            .send(ServerNotice::ConnectorsRegistered {
+                server_name: "plugin:test-conn".to_string(),
+                channels: vec![BridgeChannelInfo {
+                    name: "telegram".to_string(),
+                    definition: None,
+                }],
+            })
+            .unwrap();
+
+        plugin.drain_connector_notices();
+
+        assert_eq!(plugin.registered_connectors.len(), 1);
+        assert_eq!(plugin.registered_connectors[0].name, "telegram");
+
+        // shared_connectors should also be populated
+        let shared = plugin.shared_connectors.lock().unwrap();
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].name, "telegram");
+    }
+
+    #[tokio::test]
+    async fn test_drain_connector_notices_deduplicates() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        let (notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        plugin.notice_rx = Some(notice_rx);
+
+        // Send two notices with the same channel name
+        for _ in 0..2 {
+            notice_tx
+                .send(ServerNotice::ConnectorsRegistered {
+                    server_name: "plugin:test-conn".to_string(),
+                    channels: vec![BridgeChannelInfo {
+                        name: "telegram".to_string(),
+                        definition: None,
+                    }],
+                })
+                .unwrap();
+        }
+
+        plugin.drain_connector_notices();
+
+        // Should be deduplicated by name
+        assert_eq!(plugin.registered_connectors.len(), 1);
+        let shared = plugin.shared_connectors.lock().unwrap();
+        assert_eq!(shared.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_connectors() {
+        let manifest = connector_manifest("test-conn");
+        let client = test_mcp_client();
+        let mut plugin = McpPlugin::new(manifest, client);
+
+        let (notice_tx, notice_rx) =
+            tokio::sync::mpsc::unbounded_channel::<astrid_mcp::ServerNotice>();
+        plugin.notice_rx = Some(notice_rx);
+
+        // Initially empty
+        assert!(plugin.refresh_connectors().is_empty());
+
+        // Send a notice
+        notice_tx
+            .send(ServerNotice::ConnectorsRegistered {
+                server_name: "plugin:test-conn".to_string(),
+                channels: vec![BridgeChannelInfo {
+                    name: "discord".to_string(),
+                    definition: None,
+                }],
+            })
+            .unwrap();
+
+        // refresh_connectors drains and returns updated list
+        let connectors = plugin.refresh_connectors();
+        assert_eq!(connectors.len(), 1);
+        assert_eq!(connectors[0].name, "discord");
     }
 }

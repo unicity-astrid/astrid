@@ -43,8 +43,8 @@ if (!entryPath) {
   process.exit(1);
 }
 
-if (/[/\\]|\.\./.test(pluginId)) {
-  process.stderr.write("astrid_bridge: --plugin-id must not contain path separators or '..'\n");
+if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(pluginId)) {
+  process.stderr.write("astrid_bridge: --plugin-id must be lowercase alphanumeric + hyphens, no leading/trailing hyphens\n");
   process.exit(1);
 }
 
