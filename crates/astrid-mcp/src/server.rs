@@ -245,6 +245,16 @@ impl ServerManager {
         handler: Arc<CapabilitiesHandler>,
         notice_tx: Option<mpsc::UnboundedSender<ServerNotice>>,
     ) -> McpResult<()> {
+        // Block env vars that could inject code or libraries into MCP servers.
+        // servers.toml is user-authored but defense-in-depth still applies.
+        const BLOCKED_SERVER_ENV: &[&str] = &[
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH",
+            "NODE_OPTIONS",
+        ];
+
         let command = config.command.as_ref().ok_or_else(|| {
             McpError::ConfigError(format!("No command specified for stdio server {name}"))
         })?;
@@ -254,6 +264,17 @@ impl ServerManager {
         cmd.args(&config.args);
 
         for (key, value) in &config.env {
+            if BLOCKED_SERVER_ENV
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(key))
+            {
+                warn!(
+                    server = %name,
+                    key = %key,
+                    "Ignoring blocked env var from server config"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
 

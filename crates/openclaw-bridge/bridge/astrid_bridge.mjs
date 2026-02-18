@@ -52,7 +52,11 @@ if (/[/\\]|\.\./.test(pluginId)) {
 // HOME is used to build the plugin config directory. A manipulated HOME
 // (e.g. "/tmp/../etc") would cause path traversal via resolve().
 // Reject values containing ".." path segments and resolve once.
-const rawHome = process.env.HOME || "/tmp";
+const rawHome = process.env.HOME;
+if (!rawHome) {
+  process.stderr.write("astrid_bridge: HOME is not set — refusing to start\n");
+  process.exit(1);
+}
 if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(rawHome)) {
   process.stderr.write("astrid_bridge: HOME contains '..' path components — refusing to start\n");
   process.exit(1);

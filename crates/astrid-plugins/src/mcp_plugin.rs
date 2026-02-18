@@ -199,14 +199,30 @@ impl McpPlugin {
         // elicitation flow will let users approve these at install time;
         // until then, reject them with a warning.
         const BLOCKED_ENV_KEYS: &[&str] = &[
+            // Core execution environment
             "HOME",
             "PATH",
+            // Library injection
             "LD_PRELOAD",
             "LD_LIBRARY_PATH",
             "DYLD_INSERT_LIBRARIES",
             "DYLD_LIBRARY_PATH",
+            // Node.js execution control
             "NODE_OPTIONS",
             "NODE_PATH",
+            // TLS/CA trust injection (MITM)
+            "NODE_EXTRA_CA_CERTS",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            // Temp directory redirection
+            "TMPDIR",
+            "TEMP",
+            "TMP",
+            // Traffic interception via proxy
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
         ];
 
         let PluginEntryPoint::Mcp {

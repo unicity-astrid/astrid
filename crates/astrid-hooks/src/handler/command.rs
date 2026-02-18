@@ -127,8 +127,17 @@ impl CommandHandler {
             }
         }
 
-        // Add custom environment variables (from hook config)
+        // Add custom environment variables (from hook config).
+        // When sandboxed, prevent custom env from overriding the controlled
+        // allowlist vars (especially PATH, which was restricted to safe dirs).
         for (key, value) in env {
+            if self.sandboxed && ALLOWED_ENV_VARS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+                warn!(
+                    key = %key,
+                    "Ignoring hook env var that would override sandboxed allowlist"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
 
