@@ -202,6 +202,7 @@ impl McpPlugin {
             // Core execution environment
             "HOME",
             "PATH",
+            "ASTRID_HOME",
             // Library injection
             "LD_PRELOAD",
             "LD_LIBRARY_PATH",
@@ -214,6 +215,8 @@ impl McpPlugin {
             "NODE_EXTRA_CA_CERTS",
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
+            // OpenSSL engine loading
+            "OPENSSL_CONF",
             // Temp directory redirection
             "TMPDIR",
             "TEMP",
@@ -253,7 +256,14 @@ impl McpPlugin {
         }
 
         for (key, value) in env {
-            if BLOCKED_ENV_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+            let dominated = BLOCKED_ENV_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key));
+            // Also block prefixes that grant broad override capability.
+            let lower = key.to_ascii_lowercase();
+            let prefix_blocked = lower.starts_with("npm_config_")
+                || lower.starts_with("ld_")
+                || lower.starts_with("dyld_");
+
+            if dominated || prefix_blocked {
                 warn!(
                     plugin_id = %self.manifest.id,
                     key = %key,

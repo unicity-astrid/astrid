@@ -26,6 +26,39 @@ const ALLOWED_ENV_VARS: &[&str] = &[
     "TMPDIR", "TMP", "TEMP",
 ];
 
+/// Env vars that must never be set by hook configs in sandbox mode.
+/// These can inject code or libraries into the spawned process.
+const BLOCKED_HOOK_ENV: &[&str] = &[
+    // Library injection
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FRAMEWORK_PATH",
+    // Code injection via runtime flags
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PERL5LIB",
+    "RUBYLIB",
+    // Shell startup injection
+    "BASH_ENV",
+    "ENV",
+    // OpenSSL engine loading
+    "OPENSSL_CONF",
+];
+
+/// Returns true if `key` matches a blocked env var or a blocked prefix.
+fn is_blocked_hook_env(key: &str) -> bool {
+    if BLOCKED_HOOK_ENV.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+        return true;
+    }
+    // Block entire prefixes that grant broad override capability.
+    let lower = key.to_ascii_lowercase();
+    lower.starts_with("npm_config_") || lower.starts_with("ld_") || lower.starts_with("dyld_")
+}
+
 /// Safe directories to include in PATH for sandboxed execution.
 /// These are common system directories that contain safe utilities.
 #[cfg(unix)]
@@ -63,6 +96,56 @@ impl CommandHandler {
     /// Get the restricted PATH for sandboxed execution.
     fn safe_path() -> String {
         SAFE_PATH_DIRS.join(if cfg!(windows) { ";" } else { ":" })
+    }
+
+    /// Apply environment variables to a command, respecting sandbox policy.
+    ///
+    /// When sandboxed: clears env, re-adds safe allowlist, restricts PATH,
+    /// then filters custom env vars against both allowlist and dangerous-var
+    /// blocklist. When not sandboxed: applies custom env vars directly.
+    fn apply_env(
+        &self,
+        cmd: &mut Command,
+        custom_env: &std::collections::HashMap<String, String>,
+        context: &HookContext,
+    ) {
+        if self.sandboxed {
+            cmd.env_clear();
+
+            for var in ALLOWED_ENV_VARS {
+                if let Ok(value) = std::env::var(var) {
+                    if *var == "PATH" {
+                        cmd.env("PATH", Self::safe_path());
+                    } else {
+                        cmd.env(var, value);
+                    }
+                }
+            }
+        }
+
+        for (key, value) in custom_env {
+            if self.sandboxed {
+                if ALLOWED_ENV_VARS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
+                    warn!(
+                        key = %key,
+                        "Ignoring hook env var that would override sandboxed allowlist"
+                    );
+                    continue;
+                }
+                if is_blocked_hook_env(key) {
+                    warn!(
+                        key = %key,
+                        "Blocking dangerous env var in sandboxed hook"
+                    );
+                    continue;
+                }
+            }
+            cmd.env(key, value);
+        }
+
+        for (key, value) in context.to_env_vars() {
+            cmd.env(key, value);
+        }
     }
 
     /// Execute a command handler.
@@ -109,42 +192,8 @@ impl CommandHandler {
             cmd.current_dir(dir);
         }
 
-        // Apply sandboxing
-        if self.sandboxed {
-            // Clear all environment variables first
-            cmd.env_clear();
-
-            // Re-add only safe variables from the parent environment
-            for var in ALLOWED_ENV_VARS {
-                if let Ok(value) = std::env::var(var) {
-                    // Special handling for PATH - use restricted version
-                    if *var == "PATH" {
-                        cmd.env("PATH", Self::safe_path());
-                    } else {
-                        cmd.env(var, value);
-                    }
-                }
-            }
-        }
-
-        // Add custom environment variables (from hook config).
-        // When sandboxed, prevent custom env from overriding the controlled
-        // allowlist vars (especially PATH, which was restricted to safe dirs).
-        for (key, value) in env {
-            if self.sandboxed && ALLOWED_ENV_VARS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
-                warn!(
-                    key = %key,
-                    "Ignoring hook env var that would override sandboxed allowlist"
-                );
-                continue;
-            }
-            cmd.env(key, value);
-        }
-
-        // Add context as environment variables (Astrid-specific)
-        for (key, value) in context.to_env_vars() {
-            cmd.env(key, value);
-        }
+        // Apply sandboxing, custom env vars, and context env vars.
+        self.apply_env(&mut cmd, env, context);
 
         // Serialize context JSON for stdin delivery
         let context_json = context.to_json().to_string();

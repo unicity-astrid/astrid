@@ -367,6 +367,30 @@ mod tests {
     /// `set_var`/`remove_var` are process-wide and unsafe under concurrency.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
+    /// RAII guard that restores an env var on drop (even on panic unwind).
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn save(key: &'static str) -> Self {
+            Self {
+                key,
+                original: std::env::var(key).ok(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(val) => unsafe { std::env::set_var(self.key, val) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
     #[test]
     fn test_astrid_home_resolve_with_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
@@ -435,9 +459,10 @@ mod tests {
     #[test]
     fn test_astrid_home_rejects_traversal_in_home() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _home_guard = EnvGuard::save("HOME");
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::remove_var("ASTRID_HOME") };
-        let original_home = std::env::var("HOME").ok();
         unsafe { std::env::set_var("HOME", "/tmp/../etc") };
         let result = AstridHome::resolve();
         assert!(result.is_err());
@@ -446,11 +471,7 @@ mod tests {
             err.to_string().contains("'..'"),
             "expected path traversal error, got: {err}"
         );
-        if let Some(home) = original_home {
-            unsafe { std::env::set_var("HOME", home) };
-        } else {
-            unsafe { std::env::remove_var("HOME") };
-        }
+        // HOME and ASTRID_HOME restored automatically by EnvGuard drop
     }
 
     #[test]

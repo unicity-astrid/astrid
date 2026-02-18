@@ -245,14 +245,36 @@ impl ServerManager {
         handler: Arc<CapabilitiesHandler>,
         notice_tx: Option<mpsc::UnboundedSender<ServerNotice>>,
     ) -> McpResult<()> {
-        // Block env vars that could inject code or libraries into MCP servers.
-        // servers.toml is user-authored but defense-in-depth still applies.
+        // Block env vars that could inject code/libraries or compromise
+        // the security boundary. Aligned with the plugin blocklist.
         const BLOCKED_SERVER_ENV: &[&str] = &[
+            // Core execution environment
+            "HOME",
+            "PATH",
+            "ASTRID_HOME",
+            // Library injection
             "LD_PRELOAD",
             "LD_LIBRARY_PATH",
             "DYLD_INSERT_LIBRARIES",
             "DYLD_LIBRARY_PATH",
+            // Code injection via runtime flags
             "NODE_OPTIONS",
+            "NODE_PATH",
+            // TLS/CA trust injection (MITM)
+            "NODE_EXTRA_CA_CERTS",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            // OpenSSL engine loading
+            "OPENSSL_CONF",
+            // Temp directory redirection
+            "TMPDIR",
+            "TEMP",
+            "TMP",
+            // Traffic interception via proxy
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
         ];
 
         let command = config.command.as_ref().ok_or_else(|| {
