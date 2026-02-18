@@ -341,14 +341,19 @@ impl RpcImpl {
         // Collect handles under a brief read lock; do not hold the read lock
         // across per-session Mutex awaits — that would stall the entire session
         // map behind any slow LLM turn, violating the locking discipline.
+        //
+        // Connector-originated sessions (user_id.is_some()) are excluded: they
+        // have no outbound event path, so a caller who receives their ID and
+        // tries to send_input would run an LLM turn whose output goes nowhere.
         let handles: Vec<(SessionId, SessionHandle)> = {
             let sessions = self.sessions.read().await;
             sessions
                 .iter()
                 .filter(|(_, handle)| {
-                    workspace_path
-                        .as_ref()
-                        .is_none_or(|ws| handle.workspace.as_ref() == Some(ws))
+                    handle.user_id.is_none()
+                        && workspace_path
+                            .as_ref()
+                            .is_none_or(|ws| handle.workspace.as_ref() == Some(ws))
                 })
                 .map(|(id, handle)| (id.clone(), handle.clone()))
                 .collect()

@@ -38,13 +38,9 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::SessionHandle;
+use super::rpc::workspace::ws_ns;
 use crate::daemon_frontend::DaemonFrontend;
 use crate::rpc::DaemonEvent;
-
-/// Namespace helper: mirrors the one in `rpc/workspace.rs`.
-fn ws_ns(workspace_id: &Uuid, suffix: &str) -> String {
-    format!("ws:{workspace_id}:{suffix}")
-}
 
 // ---------------------------------------------------------------------------
 // Fan-in forwarder (one per plugin)
@@ -101,6 +97,15 @@ pub(super) struct InboundRouterCtx {
 ///
 /// Spawned once during daemon startup. Loops until the inbound channel closes
 /// or a shutdown signal is received.
+///
+/// # Shutdown behaviour
+///
+/// Uses a `biased` select that checks the shutdown signal before the inbound
+/// channel. On shutdown, any messages already buffered in the central channel
+/// (up to 256) are dropped without processing. This is acceptable for the
+/// current phase because there is no outbound reply path yet; once
+/// `OutboundAdapter` lands, consider a two-phase drain (flush remaining
+/// messages before breaking) to preserve at-least-once delivery.
 pub(super) async fn run_inbound_router(mut ctx: InboundRouterCtx) {
     loop {
         tokio::select! {
@@ -270,6 +275,14 @@ async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option
 /// - Spawns the turn in a background `tokio::task`.
 /// - Stores the `JoinHandle` in `handle.turn_handle` so `cancel_turn` works.
 /// - Auto-saves and persists workspace state after each turn.
+///
+/// # Concurrent messages
+///
+/// If a second message arrives from the same user before the first turn
+/// finishes, a second task is spawned. The per-session `AgentSession` Mutex
+/// serialises execution so the turns run sequentially in practice. The
+/// `turn_handle` will hold the most-recently-spawned handle; `cancel_turn`
+/// cancels whichever task is referenced at the time it is called.
 async fn run_connector_turn(ctx: &InboundRouterCtx, session_id: SessionId, input: String) {
     // Brief read lock to clone the handle.
     let handle = {
@@ -362,9 +375,10 @@ async fn run_connector_turn(ctx: &InboundRouterCtx, session_id: SessionId, input
     });
 
     // Store the join handle so cancel_turn can abort this task.
-    // Acquire the lock before checking is_finished() to close the window
-    // where the task could finish and clear turn_handle between spawn() and
-    // this assignment. If the task already finished, leave the handle as None.
+    // Both this code and the spawned task's cleanup share the same Mutex, so
+    // only one can run at a time: if the task finishes first it clears the
+    // handle and we see is_finished() == true here (leaving None); if we
+    // store first the task will clear it when it completes.
     {
         let mut guard = handle.turn_handle.lock().await;
         if !join_handle.is_finished() {
@@ -477,6 +491,10 @@ mod tests {
         use tokio::sync::mpsc;
 
         let (plugin_tx, plugin_rx) = mpsc::channel::<InboundMessage>(8);
+        // `_central_rx` is dropped at end of scope, closing the central channel.
+        // The forwarder exits via whichever path fires first: plugin sender
+        // drop (rx.recv() → None) or central channel close (tx.send → Err).
+        // Both are correct self-termination paths; the test verifies no panic.
         let (central_tx, _central_rx) = mpsc::channel(8);
 
         let handle = tokio::spawn(super::forward_inbound(

@@ -328,6 +328,14 @@ impl DaemonServer {
 
         // Register the native CLI connector in the plugin registry so the
         // approval fallback chain can find an interactive surface.
+        //
+        // Note: "native-cli" is intentionally registered without a matching
+        // plugin entry — it is a synthetic connector backed directly by the
+        // daemon's own DaemonFrontend, not by any loaded plugin. The
+        // register_connector API warns about orphaned connectors, but this
+        // one is permanent for the daemon's lifetime and cleaned up with the
+        // process. Use unregister_plugin_connectors("native-cli") if removal
+        // is ever needed.
         {
             let descriptor = crate::daemon_frontend::DaemonFrontend::native_connector_descriptor();
             let mut reg = plugin_registry.write().await;
