@@ -66,6 +66,11 @@ impl BuiltinTool for EditFileTool {
             .unwrap_or(false);
 
         let path = std::path::Path::new(file_path);
+        if !path.is_absolute() {
+            return Err(ToolError::InvalidArguments(
+                "file_path must be an absolute path".into(),
+            ));
+        }
         if !path.exists() {
             return Err(ToolError::PathNotFound(file_path.to_string()));
         }
@@ -110,7 +115,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn ctx() -> ToolContext {
-        ToolContext::new(std::env::temp_dir())
+        ToolContext::new(std::env::temp_dir(), None)
     }
 
     #[tokio::test]

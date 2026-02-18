@@ -45,6 +45,7 @@ pub fn from_unified_config(cfg: &astrid_config::Config) -> GatewayConfig {
         },
         system_prompt: Some(cfg.runtime.system_prompt.clone()),
         max_context_tokens: cfg.runtime.max_context_tokens,
+        spark: None,
     };
 
     let timeouts = TimeoutConfig {
@@ -85,4 +86,26 @@ fn default_state_dir() -> String {
         |_| "~/.astrid/state".into(),
         |home| home.state_dir().to_string_lossy().to_string(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    /// Verify that `astrid_gateway::config::SparkConfig` has the same field
+    /// set as `astrid_config::SparkSection`. If someone adds a field to one
+    /// but not the other, this test catches the mismatch.
+    #[test]
+    fn gateway_spark_matches_config_section() {
+        let section_json = serde_json::to_value(astrid_config::SparkSection::default()).unwrap();
+        let gateway_json = serde_json::to_value(crate::config::SparkConfig::default()).unwrap();
+
+        let section_keys: std::collections::BTreeSet<String> =
+            section_json.as_object().unwrap().keys().cloned().collect();
+        let gateway_keys: std::collections::BTreeSet<String> =
+            gateway_json.as_object().unwrap().keys().cloned().collect();
+
+        assert_eq!(
+            section_keys, gateway_keys,
+            "astrid_config::SparkSection and astrid_gateway::config::SparkConfig have divergent field sets"
+        );
+    }
 }

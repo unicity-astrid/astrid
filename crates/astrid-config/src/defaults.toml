@@ -444,6 +444,32 @@ allowed_user_ids = []
 embedded = true
 
 # ============================================================================
+# Spark (Agent Identity)
+# ============================================================================
+# Static seed for the agent's identity. These values are used as a fallback
+# when no living spark.toml exists yet (~/.astrid/spark.toml). Once the agent
+# evolves its spark via the built-in spark tool, spark.toml takes priority.
+#
+# All fields are optional. Leave empty for the default "AI coding assistant"
+# behavior, or set values here to seed a personality that the agent can evolve.
+
+[spark]
+# Agent's name (e.g. "Stellar", "Nova", "Orion")
+# callsign = ""
+
+# Role archetype (e.g. "navigator", "engineer", "sentinel")
+# class = ""
+
+# Personality energy (e.g. "calm", "sharp", "warm", "analytical")
+# aura = ""
+
+# Communication style (e.g. "formal", "concise", "casual", "poetic")
+# signal = ""
+
+# Soul/philosophy — free-form values, learned patterns, personality depth
+# core = ""
+
+# ============================================================================
 # Retry Configuration
 # ============================================================================
 # Controls retry behaviour for transient failures (LLM and MCP).

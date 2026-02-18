@@ -18,7 +18,7 @@ astrid-core = { workspace = true }
 astrid-gateway = { workspace = true }
 
 # Telegram
-teloxide = { version = "0.13", features = ["macros"] }
+teloxide = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }

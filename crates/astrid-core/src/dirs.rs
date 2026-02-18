@@ -36,8 +36,19 @@
 //! ```
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
+
+/// Reject paths containing `..` (parent directory) components.
+fn reject_parent_traversal(path: &Path, var_name: &str) -> io::Result<()> {
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{var_name} must not contain '..' path components"),
+        ));
+    }
+    Ok(())
+}
 
 /// Global Astrid home directory (`~/.astrid/` or `$ASTRID_HOME`).
 ///
@@ -64,6 +75,7 @@ impl AstridHome {
                     "ASTRID_HOME must be an absolute path",
                 ));
             }
+            reject_parent_traversal(&p, "ASTRID_HOME")?;
             p
         } else {
             let home = std::env::var("HOME").map_err(|_| {
@@ -72,7 +84,15 @@ impl AstridHome {
                     "neither ASTRID_HOME nor HOME environment variable is set",
                 )
             })?;
-            PathBuf::from(home).join(".astrid")
+            let home_path = PathBuf::from(&home);
+            if !home_path.is_absolute() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "HOME must be an absolute path",
+                ));
+            }
+            reject_parent_traversal(&home_path, "HOME")?;
+            home_path.join(".astrid")
         };
 
         Ok(Self { root })
@@ -202,6 +222,12 @@ impl AstridHome {
     #[must_use]
     pub fn state_dir(&self) -> PathBuf {
         self.root.join("state")
+    }
+
+    /// Path to the living spark identity file (`~/.astrid/spark.toml`).
+    #[must_use]
+    pub fn spark_path(&self) -> PathBuf {
+        self.root.join("spark.toml")
     }
 }
 
@@ -347,6 +373,30 @@ mod tests {
     /// `set_var`/`remove_var` are process-wide and unsafe under concurrency.
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
+    /// RAII guard that restores an env var on drop (even on panic unwind).
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn save(key: &'static str) -> Self {
+            Self {
+                key,
+                original: std::env::var(key).ok(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(val) => unsafe { std::env::set_var(self.key, val) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
     #[test]
     fn test_astrid_home_resolve_with_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
@@ -398,8 +448,42 @@ mod tests {
     }
 
     #[test]
+    fn test_astrid_home_rejects_traversal_in_astrid_home() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
+        // SAFETY: serialized by ENV_MUTEX
+        unsafe { std::env::set_var("ASTRID_HOME", "/tmp/../etc") };
+        let result = AstridHome::resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("'..'"),
+            "expected path traversal error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_astrid_home_rejects_traversal_in_home() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let _home_guard = EnvGuard::save("HOME");
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
+        // SAFETY: serialized by ENV_MUTEX
+        unsafe { std::env::remove_var("ASTRID_HOME") };
+        unsafe { std::env::set_var("HOME", "/tmp/../etc") };
+        let result = AstridHome::resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("'..'"),
+            "expected path traversal error, got: {err}"
+        );
+        // HOME and ASTRID_HOME restored automatically by EnvGuard drop
+    }
+
+    #[test]
     fn test_astrid_home_rejects_relative_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::set_var("ASTRID_HOME", "relative/path") };
         let result = AstridHome::resolve();
@@ -409,17 +493,33 @@ mod tests {
             err.to_string().contains("absolute"),
             "expected absolute path error, got: {err}"
         );
-        unsafe { std::env::remove_var("ASTRID_HOME") };
     }
 
     #[test]
     fn test_astrid_home_rejects_empty_env() {
         let _guard = ENV_MUTEX.lock().unwrap();
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
         // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::set_var("ASTRID_HOME", "") };
         let result = AstridHome::resolve();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_astrid_home_rejects_relative_home() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let _home_guard = EnvGuard::save("HOME");
+        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
+        // SAFETY: serialized by ENV_MUTEX
         unsafe { std::env::remove_var("ASTRID_HOME") };
+        unsafe { std::env::set_var("HOME", "relative/path") };
+        let result = AstridHome::resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("absolute"),
+            "expected absolute path error, got: {err}"
+        );
     }
 
     #[test]
@@ -474,6 +574,10 @@ mod tests {
             PathBuf::from("/tmp/test-astrid/gateway.toml")
         );
         assert_eq!(home.state_dir(), PathBuf::from("/tmp/test-astrid/state"));
+        assert_eq!(
+            home.spark_path(),
+            PathBuf::from("/tmp/test-astrid/spark.toml")
+        );
     }
 
     #[test]

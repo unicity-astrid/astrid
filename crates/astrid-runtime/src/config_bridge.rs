@@ -19,12 +19,32 @@ use astrid_mcp::{RestartPolicy, ServerConfig, ServersConfig, Transport};
 use astrid_telemetry::{LogConfig, LogFormat};
 use astrid_workspace::EscapePolicy;
 
+use astrid_tools::SparkConfig;
+
 use crate::{RuntimeConfig, WorkspaceConfig, WorkspaceMode};
 
 /// Convert config to [`RuntimeConfig`].
 #[must_use]
 pub fn to_runtime_config(cfg: &Config, workspace_root: &Path) -> RuntimeConfig {
     let workspace = to_workspace_config(cfg, workspace_root);
+
+    // Convert [spark] section to SparkConfig (None if all fields empty).
+    let spark_seed = if cfg.spark.is_empty() {
+        None
+    } else {
+        Some(SparkConfig {
+            callsign: cfg.spark.callsign.clone(),
+            class: cfg.spark.class.clone(),
+            aura: cfg.spark.aura.clone(),
+            signal: cfg.spark.signal.clone(),
+            core: cfg.spark.core.clone(),
+        })
+    };
+
+    // Resolve spark file path from AstridHome.
+    let spark_file = astrid_core::dirs::AstridHome::resolve()
+        .ok()
+        .map(|h| h.spark_path());
 
     RuntimeConfig {
         max_context_tokens: cfg.runtime.max_context_tokens,
@@ -35,6 +55,8 @@ pub fn to_runtime_config(cfg: &Config, workspace_root: &Path) -> RuntimeConfig {
         max_concurrent_subagents: cfg.subagents.max_concurrent,
         max_subagent_depth: cfg.subagents.max_depth,
         default_subagent_timeout: std::time::Duration::from_secs(cfg.subagents.timeout_secs),
+        spark_seed,
+        spark_file,
     }
 }
 
@@ -293,6 +315,48 @@ mod tests {
         assert_eq!(
             servers.servers["myserver"].restart_policy,
             RestartPolicy::OnFailure { max_retries: 5 }
+        );
+    }
+
+    #[test]
+    fn to_runtime_config_spark_seed_from_config() {
+        let mut cfg = Config::default();
+        cfg.spark.callsign = "Stellar".to_string();
+        cfg.spark.class = "navigator".to_string();
+
+        let rt = to_runtime_config(&cfg, Path::new("/tmp/test"));
+        let seed = rt.spark_seed.expect("spark_seed should be Some");
+        assert_eq!(seed.callsign, "Stellar");
+        assert_eq!(seed.class, "navigator");
+    }
+
+    #[test]
+    fn to_runtime_config_empty_spark_is_none() {
+        let cfg = Config::default();
+        let rt = to_runtime_config(&cfg, Path::new("/tmp/test"));
+        assert!(rt.spark_seed.is_none());
+    }
+
+    /// Verify that SparkSection (config) and SparkConfig (tools) produce the
+    /// same JSON keys when serialized from defaults. If someone adds a field
+    /// to one but not the other, this test catches the mismatch.
+    ///
+    /// NOTE: `astrid_gateway::config::SparkConfig` is a third mirror type.
+    /// The gateway config_bridge has its own parity test for that type.
+    /// The canonical field set is defined by `astrid_config::SparkSection`.
+    #[test]
+    fn spark_section_and_config_have_matching_fields() {
+        let section_json = serde_json::to_value(astrid_config::SparkSection::default()).unwrap();
+        let config_json = serde_json::to_value(SparkConfig::default()).unwrap();
+
+        let section_keys: std::collections::BTreeSet<String> =
+            section_json.as_object().unwrap().keys().cloned().collect();
+        let config_keys: std::collections::BTreeSet<String> =
+            config_json.as_object().unwrap().keys().cloned().collect();
+
+        assert_eq!(
+            section_keys, config_keys,
+            "SparkSection and SparkConfig have divergent field sets"
         );
     }
 

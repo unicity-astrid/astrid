@@ -334,6 +334,15 @@ impl McpPlugin {
         }
 
         for (key, value) in env {
+            if astrid_core::env_policy::is_blocked_spawn_env(key) {
+                warn!(
+                    plugin_id = %self.manifest.id,
+                    key = %key,
+                    "Ignoring blocked env var from plugin manifest \
+                     (may compromise sandbox isolation)"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
 

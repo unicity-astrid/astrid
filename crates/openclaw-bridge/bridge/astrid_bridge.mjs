@@ -22,7 +22,7 @@ console.debug = (...args) => process.stderr.write(args.join(" ") + "\n");
 
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, sep } from "node:path";
 import {
   writeFileSync,
   mkdirSync,
@@ -47,6 +47,22 @@ if (/[/\\]|\.\./.test(pluginId)) {
   process.stderr.write("astrid_bridge: --plugin-id must not contain path separators or '..'\n");
   process.exit(1);
 }
+
+// ── Validate HOME early ─────────────────────────────────────────────
+// HOME is used to build the plugin config directory. A manipulated HOME
+// (e.g. "/tmp/../etc") would cause path traversal via resolve().
+// Reject values containing ".." path segments and resolve once.
+const rawHome = process.env.HOME;
+if (!rawHome) {
+  process.stderr.write("astrid_bridge: HOME is not set — refusing to start\n");
+  process.exit(1);
+}
+if (/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(rawHome)) {
+  process.stderr.write("astrid_bridge: HOME contains '..' path components — refusing to start\n");
+  process.exit(1);
+}
+const resolvedHome = resolve(rawHome);
+const pluginConfigBase = resolve(resolvedHome, ".astrid", "plugins");
 
 // ── Logger (stderr only — stdout is MCP transport) ──────────────────
 const log = {
@@ -93,12 +109,12 @@ const pluginApi = {
     config: {
       loadConfig: () => pluginConfig,
       writeConfigFile: (data) => {
-        const configDir = resolve(
-          process.env.HOME || "/tmp",
-          ".astrid",
-          "plugins",
-          pluginId
-        );
+        const configDir = resolve(pluginConfigBase, pluginId);
+        // Defense in depth: verify resolved path is under the expected base
+        if (!configDir.startsWith(pluginConfigBase + sep)) {
+          log.error("writeConfigFile: path traversal detected — refusing to write");
+          return;
+        }
         try {
           mkdirSync(configDir, { recursive: true });
           const configPath = resolve(configDir, "config.json");

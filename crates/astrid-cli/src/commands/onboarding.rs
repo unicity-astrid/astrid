@@ -536,3 +536,88 @@ fn global_config_path() -> Option<PathBuf> {
         .ok()
         .map(|h| h.config_path())
 }
+
+// ---------------------------------------------------------------------------
+// Spark (identity) onboarding
+// ---------------------------------------------------------------------------
+
+/// Run the spark identity onboarding flow.
+///
+/// Checks if `~/.astrid/spark.toml` already exists — if so, skips.
+/// Otherwise, offers the user a chance to name their agent.
+pub(crate) fn run_spark_onboarding() {
+    let spark_path = match astrid_core::dirs::AstridHome::resolve() {
+        Ok(home) => home.spark_path(),
+        Err(_) => return,
+    };
+
+    // If spark.toml already exists with content, skip.
+    if spark_path.exists()
+        && let Ok(contents) = std::fs::read_to_string(&spark_path)
+        && !contents.trim().is_empty()
+    {
+        return;
+    }
+
+    println!();
+    let should_name = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Would you like to name your agent?")
+        .items(&["Yes", "Skip (agent starts without a name)"])
+        .default(0)
+        .interact();
+
+    let Ok(selection) = should_name else {
+        return;
+    };
+
+    if selection != 0 {
+        return;
+    }
+
+    let callsign = Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("  Agent name")
+        .default("Stellar".to_string())
+        .interact_text()
+        .unwrap_or_else(|_| "Stellar".to_string());
+
+    let class = Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("  Role (optional, e.g. navigator, engineer)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    let aura = Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("  Personality (optional, e.g. calm, sharp, warm)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    let signal = Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("  Communication style (optional, e.g. concise, formal)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    // Build and write spark.toml using proper TOML serialization (avoids injection)
+    let spark = astrid_runtime::SparkConfig {
+        callsign: callsign.trim().to_string(),
+        class: class.trim().to_string(),
+        aura: aura.trim().to_string(),
+        signal: signal.trim().to_string(),
+        core: String::new(),
+    };
+
+    match spark.save_to_file(&spark_path) {
+        Ok(()) => {
+            println!(
+                "\n  {} Agent identity saved to {}",
+                "✓".green().bold(),
+                "~/.astrid/spark.toml".cyan()
+            );
+            println!();
+        },
+        Err(e) => {
+            eprintln!("  {} Failed to save spark: {e}", "✗".red().bold());
+        },
+    }
+}

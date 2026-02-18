@@ -256,7 +256,7 @@ mod tests {
     use tempfile::{NamedTempFile, TempDir};
 
     fn ctx_with_root(root: &std::path::Path) -> ToolContext {
-        ToolContext::new(root.to_path_buf())
+        ToolContext::new(root.to_path_buf(), None)
     }
 
     #[tokio::test]

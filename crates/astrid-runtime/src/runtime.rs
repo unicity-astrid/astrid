@@ -20,7 +20,7 @@ use astrid_llm::{LlmProvider, LlmToolDefinition, Message, StreamEvent, ToolCall,
 use astrid_mcp::McpClient;
 use astrid_plugins::PluginRegistry;
 use astrid_storage::{KvStore, MemoryKvStore, ScopedKvStore};
-use astrid_tools::{ToolContext, ToolRegistry, truncate_output};
+use astrid_tools::{SparkConfig, ToolContext, ToolRegistry, truncate_output};
 use astrid_workspace::{
     EscapeDecision, EscapeRequest, PathCheck, WorkspaceBoundary, WorkspaceConfig,
 };
@@ -66,6 +66,16 @@ pub struct RuntimeConfig {
     pub max_subagent_depth: usize,
     /// Default sub-agent timeout.
     pub default_subagent_timeout: std::time::Duration,
+    /// Static spark seed from `[spark]` in config (fallback when spark.toml missing).
+    pub spark_seed: Option<SparkConfig>,
+    /// Path to the living spark file (`~/.astrid/spark.toml`).
+    ///
+    /// **Note:** When a spark identity is configured (either from this file or
+    /// from `spark_seed`), the spark preamble is prepended to the system prompt
+    /// on every LLM call for non-sub-agent sessions. If `system_prompt` is set
+    /// to a custom value, the spark preamble is still prepended. Sub-agent
+    /// sessions skip spark injection to avoid double-identity conflicts.
+    pub spark_file: Option<PathBuf>,
 }
 
 impl Default for RuntimeConfig {
@@ -80,6 +90,8 @@ impl Default for RuntimeConfig {
             max_concurrent_subagents: DEFAULT_MAX_CONCURRENT_SUBAGENTS,
             max_subagent_depth: DEFAULT_MAX_SUBAGENT_DEPTH,
             default_subagent_timeout: DEFAULT_SUBAGENT_TIMEOUT,
+            spark_seed: None,
+            spark_file: None,
         }
     }
 }
@@ -225,8 +237,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     pub fn create_session(&self, workspace_override: Option<&Path>) -> AgentSession {
         let workspace_root = workspace_override.unwrap_or(&self.config.workspace.root);
 
+        // Build the base system prompt WITHOUT spark identity.
+        // Spark is layered on each loop iteration for hot-reload support.
         let system_prompt = if self.config.system_prompt.is_empty() {
-            astrid_tools::build_system_prompt(workspace_root)
+            astrid_tools::build_system_prompt(workspace_root, None)
         } else {
             self.config.system_prompt.clone()
         };
@@ -346,6 +360,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         let tool_ctx = ToolContext::with_shared_cwd(
             self.config.workspace.root.clone(),
             Arc::clone(&self.shared_cwd),
+            self.config.spark_file.clone(),
         );
 
         // Inject sub-agent spawner (if self_arc is available)
@@ -408,6 +423,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         let tool_ctx = ToolContext::with_shared_cwd(
             self.config.workspace.root.clone(),
             Arc::clone(&self.shared_cwd),
+            self.config.spark_file.clone(),
         );
 
         // Inject sub-agent spawner for nested sub-agents
@@ -450,10 +466,25 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 }));
             }
 
+            // Re-read spark for hot-reload (cheap: ~1KB file read per loop iteration).
+            // Sub-agents skip this: their identity is baked into session.system_prompt
+            // by SubAgentExecutor to avoid contradictory double injection.
+            let effective_prompt = if session.is_subagent {
+                session.system_prompt.clone()
+            } else if let Some(spark) = self.read_effective_spark() {
+                if let Some(preamble) = spark.build_preamble() {
+                    format!("{preamble}\n\n{}", session.system_prompt)
+                } else {
+                    session.system_prompt.clone()
+                }
+            } else {
+                session.system_prompt.clone()
+            };
+
             // Stream from LLM
             let mut stream = self
                 .llm
-                .stream(&session.messages, &llm_tools, &session.system_prompt)
+                .stream(&session.messages, &llm_tools, &effective_prompt)
                 .await?;
 
             let mut response_text = String::new();
@@ -726,6 +757,32 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         *self.self_arc.write().await = Some(Arc::downgrade(self));
     }
 
+    /// Read the effective spark identity (hot-reload support).
+    ///
+    /// Priority: `spark.toml` (living document) > `[spark]` in config (static seed).
+    /// Returns `None` when no spark is configured or both sources are empty.
+    fn read_effective_spark(&self) -> Option<SparkConfig> {
+        // 1. Try spark.toml (living document, takes priority)
+        if let Some(ref path) = self.config.spark_file {
+            match SparkConfig::load_from_file(path) {
+                Some(spark) if !spark.is_empty() => return Some(spark),
+                None if path.exists() => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "spark.toml exists but failed to parse; falling back to config seed"
+                    );
+                },
+                Some(_) | None => { /* empty or missing, fall through to seed */ },
+            }
+        }
+        // 2. Fall back to [spark] from config (static seed)
+        self.config
+            .spark_seed
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
+    }
+
     /// Inject a `SubAgentExecutor` into the per-turn `ToolContext`.
     ///
     /// Does nothing if `set_self_arc` was never called (graceful degradation).
@@ -742,6 +799,15 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         };
 
         if let Some(runtime_arc) = self_arc {
+            // Read callsign from effective spark for sub-agent identity inheritance.
+            let parent_callsign = self.read_effective_spark().and_then(|s| {
+                if s.callsign.is_empty() {
+                    None
+                } else {
+                    Some(s.callsign)
+                }
+            });
+
             let executor = SubAgentExecutor::new(
                 runtime_arc,
                 Arc::clone(&self.subagent_pool),
@@ -753,6 +819,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 Arc::clone(&session.capabilities),
                 Arc::clone(&session.budget_tracker),
                 self.config.default_subagent_timeout,
+                parent_callsign,
             );
             tool_ctx
                 .set_subagent_spawner(Some(Arc::new(executor)))

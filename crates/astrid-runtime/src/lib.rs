@@ -79,4 +79,4 @@ pub use subagent_executor::SubAgentExecutor;
 pub use astrid_workspace::{self, WorkspaceBoundary, WorkspaceConfig, WorkspaceMode};
 
 // Re-export tools types for convenience
-pub use astrid_tools::{self, ToolContext, ToolRegistry, build_system_prompt};
+pub use astrid_tools::{self, SparkConfig, ToolContext, ToolRegistry, build_system_prompt};

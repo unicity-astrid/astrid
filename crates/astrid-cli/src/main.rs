@@ -395,6 +395,7 @@ async fn main() -> Result<()> {
             if !onboarding::has_api_key() {
                 onboarding::run_onboarding();
             }
+            onboarding::run_spark_onboarding();
             let workspace = std::env::current_dir().ok();
             chat::run_chat(session, workspace, output_format).await?;
         },
@@ -443,6 +444,7 @@ async fn main() -> Result<()> {
             if !onboarding::has_api_key() {
                 onboarding::run_onboarding();
             }
+            onboarding::run_spark_onboarding();
             let workspace = std::env::current_dir().ok();
             chat::run_chat(None, workspace, output_format).await?;
         },

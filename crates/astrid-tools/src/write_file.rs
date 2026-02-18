@@ -46,6 +46,11 @@ impl BuiltinTool for WriteFileTool {
             .ok_or_else(|| ToolError::InvalidArguments("content is required".into()))?;
 
         let path = std::path::Path::new(file_path);
+        if !path.is_absolute() {
+            return Err(ToolError::InvalidArguments(
+                "file_path must be an absolute path".into(),
+            ));
+        }
 
         // Create parent directories
         if let Some(parent) = path.parent() {
@@ -65,7 +70,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn ctx() -> ToolContext {
-        ToolContext::new(std::env::temp_dir())
+        ToolContext::new(std::env::temp_dir(), None)
     }
 
     #[tokio::test]

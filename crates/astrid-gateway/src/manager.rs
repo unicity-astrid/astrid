@@ -317,6 +317,7 @@ mod tests {
             timeouts: None,
             channels: vec![],
             auto_start: false,
+            spark: None,
         }
     }
 

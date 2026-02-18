@@ -14,6 +14,7 @@ astrid-llm = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
@@ -30,9 +31,12 @@ regex = { workspace = true }
 # Tracing
 tracing = { workspace = true }
 
+# Atomic file writes and locking
+tempfile = { workspace = true }
+fs2 = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tempfile = "3"
 
 [lints]
 workspace = true

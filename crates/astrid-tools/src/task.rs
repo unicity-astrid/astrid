@@ -99,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_without_spawner_returns_error() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let result = TaskTool
             .execute(
                 serde_json::json!({
@@ -121,7 +121,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_missing_description() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let result = TaskTool
             .execute(serde_json::json!({"prompt": "do something"}), &ctx)
             .await;
@@ -137,7 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_missing_prompt() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let result = TaskTool
             .execute(serde_json::json!({"description": "test"}), &ctx)
             .await;
@@ -159,7 +159,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_with_mock_spawner_success() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let spawner = Arc::new(MockSpawner {
             response: SubAgentResult {
                 success: true,
@@ -187,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_with_mock_spawner_failure() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let spawner = Arc::new(MockSpawner {
             response: SubAgentResult {
                 success: false,
@@ -220,7 +220,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_timeout_clamped_to_max() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         let spawner = Arc::new(MockSpawner {
             response: SubAgentResult {
                 success: true,
@@ -259,7 +259,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_spawn_error() {
-        let ctx = ToolContext::new(std::env::temp_dir());
+        let ctx = ToolContext::new(std::env::temp_dir(), None);
         ctx.set_subagent_spawner(Some(Arc::new(ErrorSpawner))).await;
 
         let result = TaskTool

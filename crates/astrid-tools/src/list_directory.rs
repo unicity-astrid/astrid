@@ -120,7 +120,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn ctx() -> ToolContext {
-        ToolContext::new(std::env::temp_dir())
+        ToolContext::new(std::env::temp_dir(), None)
     }
 
     #[tokio::test]

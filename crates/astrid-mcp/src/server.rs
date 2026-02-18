@@ -254,6 +254,14 @@ impl ServerManager {
         cmd.args(&config.args);
 
         for (key, value) in &config.env {
+            if astrid_core::env_policy::is_blocked_spawn_env(key) {
+                warn!(
+                    server = %name,
+                    key = %key,
+                    "Ignoring blocked env var from server config"
+                );
+                continue;
+            }
             cmd.env(key, value);
         }
 
