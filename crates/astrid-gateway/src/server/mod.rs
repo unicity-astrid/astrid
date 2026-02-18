@@ -69,8 +69,8 @@ struct SessionHandle {
     ///
     /// `None` for CLI-originated sessions (addressed by `SessionId` via RPC).
     /// `Some` for connector-originated sessions created by the inbound router.
-    /// Read by future RPC endpoints that expose per-user session info.
-    #[allow(dead_code)]
+    /// Used by the session cleanup loop to skip connector sessions (they have
+    /// no CLI subscribers and must not be evicted on idle).
     user_id: Option<Uuid>,
 }
 

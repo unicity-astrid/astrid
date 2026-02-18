@@ -105,7 +105,11 @@ pub(super) async fn run_inbound_router(mut ctx: InboundRouterCtx) {
     loop {
         tokio::select! {
             biased;
-            _ = ctx.shutdown_rx.recv() => {
+            result = ctx.shutdown_rx.recv() => {
+                // Treat all outcomes as shutdown: Ok(()) = signal received;
+                // Lagged = missed the signal (daemon already shutting down);
+                // Closed = sender dropped (daemon exiting). All mean: stop.
+                let _ = result;
                 info!("Inbound router received shutdown signal");
                 break;
             }
@@ -160,6 +164,20 @@ async fn handle_inbound(ctx: &InboundRouterCtx, msg: InboundMessage) {
 /// Stale entries in `connector_sessions` (where the referenced session has
 /// been cleaned up by the session cleanup loop) are treated identically to
 /// missing entries: a new session is created and the map is updated.
+///
+/// # Concurrency
+///
+/// This function is only called from the single inbound router task
+/// (`run_inbound_router`). Because the router processes messages
+/// sequentially (one `handle_inbound` completes before the next begins),
+/// the read-check-then-write pattern below is free of TOCTOU races. Do not
+/// call this from multiple concurrent tasks without adding a per-user lock.
+///
+/// # Workspace
+///
+/// Connector sessions are not scoped to a workspace (Phase 5 limitation).
+/// They operate at the top level. Per-user workspace assignment is a
+/// follow-up once the identity/pairing flow is complete.
 async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option<SessionId> {
     // Brief read — look for an existing, live session.
     {
@@ -343,8 +361,18 @@ async fn run_connector_turn(ctx: &InboundRouterCtx, session_id: SessionId, input
         *turn_handle.lock().await = None;
     });
 
-    // Store the handle so cancel_turn can abort this task.
-    *handle.turn_handle.lock().await = Some(join_handle);
+    // Store the join handle so cancel_turn can abort this task.
+    // Acquire the lock before checking is_finished() to close the window
+    // where the task could finish and clear turn_handle between spawn() and
+    // this assignment. If the task already finished, leave the handle as None.
+    {
+        let mut guard = handle.turn_handle.lock().await;
+        if !join_handle.is_finished() {
+            *guard = Some(join_handle);
+        }
+        // If already finished: the task cleared turn_handle itself; dropping
+        // the finished JoinHandle here is a no-op.
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +385,7 @@ mod tests {
     use std::sync::Arc;
 
     use astrid_core::FrontendType;
+    use astrid_core::connector::ConnectorId;
     use astrid_core::identity::{IdentityStore, InMemoryIdentityStore};
     use tokio::sync::RwLock;
     use uuid::Uuid;
@@ -381,6 +410,10 @@ mod tests {
         assert_eq!(resolved.map(|u| u.id), Some(user.id));
     }
 
+    /// Verifies the data-model invariant: a connector_sessions entry that
+    /// references a session not present in the sessions map is "stale".
+    /// The router's `find_or_create_session` detects this and creates a new
+    /// session rather than routing to a dead one.
     #[tokio::test]
     async fn connector_sessions_stale_entry_detected() {
         // Simulate: connector_sessions has user→session but sessions map is empty.
@@ -403,5 +436,59 @@ mod tests {
         let sid = cs.get(&user_id).unwrap();
         let live = sessions.read().await.contains_key(sid);
         assert!(!live, "stale session should not be in sessions map");
+    }
+
+    /// `forward_inbound` relays messages from a plugin's receiver to the
+    /// central inbound channel unchanged.
+    #[tokio::test]
+    async fn forward_inbound_relays_messages() {
+        use astrid_core::InboundMessage;
+        use tokio::sync::mpsc;
+
+        let (plugin_tx, plugin_rx) = mpsc::channel::<InboundMessage>(8);
+        let (central_tx, mut central_rx) = mpsc::channel(8);
+
+        tokio::spawn(super::forward_inbound(
+            "test-plugin".to_string(),
+            plugin_rx,
+            central_tx,
+        ));
+
+        let msg = InboundMessage::builder(
+            ConnectorId::new(),
+            FrontendType::Telegram,
+            "user-42",
+            "hello from connector",
+        )
+        .build();
+
+        plugin_tx.send(msg).await.unwrap();
+
+        let received = central_rx.recv().await.expect("message forwarded");
+        assert_eq!(received.content, "hello from connector");
+        assert_eq!(received.platform_user_id, "user-42");
+    }
+
+    /// `forward_inbound` exits cleanly when the plugin sender is dropped
+    /// (plugin unloaded), without blocking or panicking.
+    #[tokio::test]
+    async fn forward_inbound_exits_when_plugin_sender_drops() {
+        use astrid_core::InboundMessage;
+        use tokio::sync::mpsc;
+
+        let (plugin_tx, plugin_rx) = mpsc::channel::<InboundMessage>(8);
+        let (central_tx, _central_rx) = mpsc::channel(8);
+
+        let handle = tokio::spawn(super::forward_inbound(
+            "test-plugin".to_string(),
+            plugin_rx,
+            central_tx,
+        ));
+
+        // Drop the plugin sender — the forwarder task should exit cleanly.
+        drop(plugin_tx);
+        handle
+            .await
+            .expect("forwarder task should complete without panic");
     }
 }

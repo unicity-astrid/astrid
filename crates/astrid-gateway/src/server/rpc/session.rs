@@ -319,7 +319,17 @@ impl RpcImpl {
         });
 
         // Store the join handle so cancel_turn can abort it.
-        *handle.turn_handle.lock().await = Some(join_handle);
+        // Acquire the lock before checking is_finished() to close the window
+        // where the task could finish and clear turn_handle between spawn() and
+        // this assignment. If the task already finished, leave the handle as None.
+        {
+            let mut guard = handle.turn_handle.lock().await;
+            if !join_handle.is_finished() {
+                *guard = Some(join_handle);
+            }
+            // If already finished: the task cleared turn_handle itself; dropping
+            // the finished JoinHandle here is a no-op.
+        }
 
         Ok(())
     }
@@ -328,21 +338,28 @@ impl RpcImpl {
         &self,
         workspace_path: Option<PathBuf>,
     ) -> Result<Vec<SessionInfo>, ErrorObjectOwned> {
-        let sessions = self.sessions.read().await;
+        // Collect handles under a brief read lock; do not hold the read lock
+        // across per-session Mutex awaits — that would stall the entire session
+        // map behind any slow LLM turn, violating the locking discipline.
+        let handles: Vec<(SessionId, SessionHandle)> = {
+            let sessions = self.sessions.read().await;
+            sessions
+                .iter()
+                .filter(|(_, handle)| {
+                    workspace_path
+                        .as_ref()
+                        .is_none_or(|ws| handle.workspace.as_ref() == Some(ws))
+                })
+                .map(|(id, handle)| (id.clone(), handle.clone()))
+                .collect()
+        };
+
         let mut result = Vec::new();
-
-        for (id, handle) in sessions.iter() {
-            // Filter by workspace path if provided.
-            if let Some(ref ws) = workspace_path
-                && handle.workspace.as_ref() != Some(ws)
-            {
-                continue;
-            }
-
+        for (id, handle) in handles {
             let session = handle.session.lock().await;
             let pending_deferred_count = session.approval_manager.get_pending_resolutions().len();
             result.push(SessionInfo {
-                id: id.clone(),
+                id,
                 workspace: handle.workspace.clone(),
                 created_at: handle.created_at,
                 message_count: session.messages.len(),

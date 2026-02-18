@@ -126,8 +126,25 @@ impl DaemonServer {
                     let map = sessions.read().await;
                     let mut ids = Vec::new();
                     for (id, handle) in map.iter() {
+                        // Connector sessions have no CLI subscribers by design —
+                        // they are managed by the inbound router and must not be
+                        // evicted on idle. Evicting them destroys conversation
+                        // continuity between turns for the same user.
+                        if handle.user_id.is_some() {
+                            continue;
+                        }
+
                         let no_subscribers = handle.event_tx.receiver_count() == 0;
-                        let no_active_turn = handle.turn_handle.lock().await.is_none();
+
+                        // Use try_lock (non-blocking) instead of an async lock to
+                        // avoid holding the sessions read-lock across an await —
+                        // which violates the module's locking discipline. If the
+                        // Mutex is contended (a task is actively clearing it),
+                        // treat the session conservatively as having an active turn.
+                        let no_active_turn = handle.turn_handle.try_lock().ok().is_some_and(|g| {
+                            g.as_ref().is_none_or(tokio::task::JoinHandle::is_finished)
+                        });
+
                         if no_subscribers && no_active_turn {
                             ids.push(id.clone());
                         }

@@ -234,6 +234,10 @@ impl DaemonServer {
                     if let Some(rx) = rx {
                         let tx = inbound_tx.clone();
                         let pid = plugin_id_str.clone();
+                        // JoinHandle intentionally discarded: the forwarder task
+                        // is self-terminating — it exits when the plugin's sender
+                        // drops (plugin unloaded) or the central channel closes
+                        // (daemon shutdown). No cleanup tracking is needed.
                         tokio::spawn(async move {
                             super::inbound_router::forward_inbound(pid, rx, tx).await;
                         });

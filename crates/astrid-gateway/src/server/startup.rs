@@ -267,6 +267,9 @@ impl DaemonServer {
             Arc::new(RwLock::new(HashSet::new()));
 
         // Pre-clone fields needed by the inbound router before rpc_impl takes ownership.
+        // Note: `workspace_kv` is NOT listed here because rpc_impl takes
+        // `Arc::clone(&workspace_kv)` (not by move), so the original Arc survives
+        // and can be cloned again for the router context below.
         let router_deferred_kv = Arc::clone(&deferred_kv);
         let router_capabilities_store = Arc::clone(&capabilities_store);
         let router_workspace_budget = Arc::clone(&workspace_budget_tracker);
@@ -307,8 +310,17 @@ impl DaemonServer {
         // Identity store for resolving platform users → canonical AstridUserIds.
         // InMemoryIdentityStore is used for now; a persistent implementation can
         // be swapped in later without changing the routing logic.
+        //
+        // IMPORTANT: identity data is not persisted across restarts. All connector
+        // user mappings are lost when the daemon exits; linked users must re-link
+        // after each restart. A SurrealDB-backed implementation replaces this in
+        // a follow-up phase.
         let identity_store: Arc<dyn astrid_core::identity::IdentityStore> =
             Arc::new(InMemoryIdentityStore::new());
+        warn!(
+            "Identity store is in-memory only — connector user mappings are not \
+             persisted. Linked connector users must re-link after each daemon restart."
+        );
 
         // Reverse index: AstridUserId (UUID) → most recent active SessionId.
         let connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>> =
@@ -379,6 +391,9 @@ impl DaemonServer {
                         if let Some(rx) = plugin.take_inbound_rx() {
                             let tx = inbound_tx_for_autoload.clone();
                             let pid = plugin_id.as_str().to_string();
+                            // JoinHandle intentionally discarded: the forwarder
+                            // task is self-terminating — exits when the plugin
+                            // sender drops or the central channel closes.
                             tokio::spawn(async move {
                                 super::inbound_router::forward_inbound(pid, rx, tx).await;
                             });
