@@ -27,7 +27,7 @@ const MAX_SPARK_FILE_SIZE: u64 = 64 * 1024;
 /// Agent identity configuration.
 ///
 /// All fields default to empty strings. When all fields are empty, the agent
-/// uses the generic "AI coding assistant" identity (zero behavior change).
+/// uses the default "Astrid" identity (zero behavior change).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SparkConfig {
@@ -114,7 +114,7 @@ impl SparkConfig {
     /// Build the identity preamble for system prompt injection.
     ///
     /// When all fields are empty, returns `None` (caller should use the default
-    /// "AI coding assistant" opening). When at least one field is set, builds a
+    /// "Astrid" opening). When at least one field is set, builds a
     /// structured identity block.
     #[must_use]
     pub fn build_preamble(&self) -> Option<String> {

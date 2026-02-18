@@ -10,8 +10,8 @@ use crate::spark::SparkConfig;
 /// Assembles: identity (from spark) + workspace context + tool guidelines + project instructions.
 ///
 /// When `spark` is `Some` and non-empty, the spark preamble replaces the generic
-/// "You are an AI coding assistant" opening. When `None` or empty, the output is
-/// identical to the pre-spark behavior (zero behavior change).
+/// "You are Astrid" opening. When `None` or empty, the output uses
+/// the default Astrid identity.
 #[must_use]
 pub fn build_system_prompt(workspace_root: &Path, spark: Option<&SparkConfig>) -> String {
     let project_name = workspace_root.file_name().map_or_else(
@@ -25,7 +25,7 @@ pub fn build_system_prompt(workspace_root: &Path, spark: Option<&SparkConfig>) -
 
     // Build the opening line based on spark
     let opening = spark.and_then(SparkConfig::build_preamble).map_or_else(
-        || format!("You are an AI coding assistant working in the project \"{project_name}\"."),
+        || format!("You are Astrid, working in the project \"{project_name}\"."),
         |preamble| format!("{preamble}\n\nYou are working in the project \"{project_name}\"."),
     );
 
@@ -81,7 +81,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let prompt = build_system_prompt(dir.path(), None);
 
-        assert!(prompt.contains("AI coding assistant"));
+        assert!(prompt.contains("You are Astrid"));
         assert!(prompt.contains("Tool Usage Guidelines"));
         assert!(prompt.contains("File Operations"));
     }
@@ -150,6 +150,6 @@ mod tests {
         let prompt = build_system_prompt(dir.path(), Some(&spark));
 
         // Empty spark should produce identical output to None
-        assert!(prompt.contains("AI coding assistant"));
+        assert!(prompt.contains("You are Astrid"));
     }
 }
