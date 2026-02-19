@@ -136,6 +136,12 @@ impl RpcImpl {
         // connector_sessions maps AstridUserId → SessionId; a reverse lookup
         // detects sessions whose ID is still indexed (user hasn't sent a new
         // message since the session was evicted from the live map).
+        //
+        // TOCTOU note: between this check and the disk load below, the inbound
+        // router could concurrently create a live session for the same user. A
+        // write-time conflict check (or a per-session creation lock) would close
+        // this window but is out of scope for now — the race is narrow and
+        // requires the connector user to send a message at exactly this moment.
         {
             let cs = self.connector_sessions.read().await;
             if cs.values().any(|sid| sid == &session_id) {
