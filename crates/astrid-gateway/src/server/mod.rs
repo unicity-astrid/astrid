@@ -14,6 +14,7 @@
 //! LLM turn) blocks `approval_response` (needing a read lock to deliver the
 //! approval that the turn is waiting for).
 
+pub(super) mod config_apply;
 mod inbound_router;
 mod lifecycle;
 mod monitoring;

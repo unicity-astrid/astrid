@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use astrid_approval::budget::{WorkspaceBudgetSnapshot, WorkspaceBudgetTracker};
 use astrid_audit::AuditLog;
 use astrid_capabilities::CapabilityStore;
+use astrid_core::ConnectorSource;
 use astrid_core::SessionId;
 use astrid_core::identity::InMemoryIdentityStore;
 use astrid_crypto::KeyPair;
@@ -328,6 +329,10 @@ impl DaemonServer {
              persisted. Linked connector users must re-link after each daemon restart."
         );
 
+        // Apply pre-configured identity links from [[identity.links]] config.
+        // Idempotent: skips entries that are already linked.
+        super::config_apply::apply_identity_links(&cfg, &identity_store).await;
+
         // Register the native CLI connector in the plugin registry so the
         // approval fallback chain can find an interactive surface.
         //
@@ -358,6 +363,7 @@ impl DaemonServer {
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
             let inbound_tx_for_autoload = inbound_tx.clone();
+            let connectors_cfg = cfg.connectors.clone();
             tokio::spawn(async move {
                 // Collect IDs under a brief read lock.
                 let plugin_ids: Vec<PluginId> = {
@@ -413,6 +419,50 @@ impl DaemonServer {
                     // Put the plugin back (brief write lock).
                     let mut registry = registry_clone.write().await;
                     let _ = registry.register(plugin);
+                }
+
+                // Validate configured connectors after all plugins are auto-loaded.
+                // Best-effort: warns on mismatches, never fails startup.
+                {
+                    let registry = registry_clone.read().await;
+                    for conn_cfg in &connectors_cfg {
+                        if conn_cfg.plugin.is_empty() {
+                            continue;
+                        }
+                        let Ok(pid) = astrid_plugins::PluginId::new(conn_cfg.plugin.clone()) else {
+                            warn!(
+                                plugin = %conn_cfg.plugin,
+                                "[[connectors]] invalid plugin ID format"
+                            );
+                            continue;
+                        };
+                        if registry.get(&pid).is_none() {
+                            warn!(
+                                plugin = %conn_cfg.plugin,
+                                "[[connectors]] plugin not loaded"
+                            );
+                            continue;
+                        }
+                        let expected_profile =
+                            super::config_apply::parse_connector_profile(&conn_cfg.profile);
+                        let has_match = registry.all_connector_descriptors().iter().any(|d| {
+                            let from_plugin = match &d.source {
+                                ConnectorSource::Wasm { plugin_id }
+                                | ConnectorSource::OpenClaw { plugin_id } => {
+                                    plugin_id.as_str() == conn_cfg.plugin.as_str()
+                                },
+                                ConnectorSource::Native => false,
+                            };
+                            from_plugin && d.profile == expected_profile
+                        });
+                        if !has_match {
+                            warn!(
+                                plugin = %conn_cfg.plugin,
+                                profile = %conn_cfg.profile,
+                                "[[connectors]] plugin loaded but no connector with this profile found"
+                            );
+                        }
+                    }
                 }
             });
         }
