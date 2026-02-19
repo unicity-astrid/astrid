@@ -80,7 +80,7 @@
 //! the [`IdentityStore`] provides a verification flow:
 //!
 //! 1. User requests a link from the new platform (e.g., Telegram).
-//! 2. A 6-digit [`PendingLinkCode`] is generated (5-minute TTL).
+//! 2. A 9-digit [`PendingLinkCode`] is generated (5-minute TTL).
 //! 3. User enters that code on the already-verified platform (e.g., Discord).
 //! 4. If the code matches, a new [`FrontendLink`] is created, binding the
 //!    Telegram account to the same [`AstridUserId`].
@@ -522,12 +522,9 @@ impl InMemoryIdentityStore {
     }
 
     fn generate_code() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .subsec_nanos();
-        format!("{:06}", nanos % 1_000_000)
+        use rand::Rng;
+        let code: u32 = rand::rngs::OsRng.gen_range(0..1_000_000_000);
+        format!("{code:09}")
     }
 }
 
