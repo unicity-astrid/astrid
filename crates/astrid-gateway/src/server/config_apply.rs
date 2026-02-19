@@ -6,12 +6,14 @@
 
 use std::sync::Arc;
 
-use astrid_config::Config;
+use astrid_config::{Config, ConnectorConfig};
 use astrid_core::ConnectorProfile;
+use astrid_core::ConnectorSource;
 use astrid_core::error::SecurityError;
 use astrid_core::identity::{
     AstridUserId, FrontendLink, FrontendType, IdentityStore, LinkVerificationMethod,
 };
+use astrid_plugins::PluginRegistry;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -103,11 +105,20 @@ async fn resolve_astrid_user(
     }
 
     // 3. Mint a fresh identity.
+    // warn! (not info!) — creating an identity from config hints at a typo or
+    // a first-run bootstrap that ops must be able to observe and confirm.
     match identity_store
         .create_identity(FrontendType::Cli, astrid_user)
         .await
     {
-        Ok(id) => Some(id),
+        Ok(id) => {
+            warn!(
+                astrid_user = astrid_user,
+                "[[identity.links]] astrid_user not found in store; \
+                 created new identity (verify this is not a typo or misconfiguration)"
+            );
+            Some(id)
+        },
         Err(e) => {
             warn!(
                 astrid_user = astrid_user,
@@ -205,6 +216,63 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
             },
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// validate_connector_declarations
+// ---------------------------------------------------------------------------
+
+/// Validate `[[connectors]]` declarations against the loaded plugin registry.
+///
+/// Called synchronously after acquiring a read lock on the registry. Returns
+/// a `Vec<String>` of human-readable warning messages so the caller can log
+/// them — keeping this function pure and unit-testable without a live registry.
+///
+/// Checks (in order):
+/// 1. Plugin ID format is valid.
+/// 2. Plugin is present in the registry (i.e. loaded successfully).
+/// 3. The plugin exposes a connector with the declared profile.
+pub(super) fn validate_connector_declarations(
+    connectors: &[ConnectorConfig],
+    registry: &PluginRegistry,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for conn_cfg in connectors {
+        if conn_cfg.plugin.is_empty() {
+            continue;
+        }
+        let Ok(pid) = astrid_plugins::PluginId::new(conn_cfg.plugin.clone()) else {
+            warnings.push(format!(
+                "[[connectors]] invalid plugin ID format: {}",
+                conn_cfg.plugin
+            ));
+            continue;
+        };
+        if registry.get(&pid).is_none() {
+            warnings.push(format!(
+                "[[connectors]] plugin not loaded: {}",
+                conn_cfg.plugin
+            ));
+            continue;
+        }
+        let expected_profile = parse_connector_profile(&conn_cfg.profile);
+        let has_match = registry.all_connector_descriptors().iter().any(|d| {
+            let from_plugin = match &d.source {
+                ConnectorSource::Wasm { plugin_id } | ConnectorSource::OpenClaw { plugin_id } => {
+                    plugin_id.as_str() == conn_cfg.plugin.as_str()
+                },
+                ConnectorSource::Native => false,
+            };
+            from_plugin && d.profile == expected_profile
+        });
+        if !has_match {
+            warnings.push(format!(
+                "[[connectors]] plugin '{}' loaded but no connector with profile '{}' found",
+                conn_cfg.plugin, conn_cfg.profile
+            ));
+        }
+    }
+    warnings
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +402,178 @@ mod tests {
                 .resolve(&FrontendType::Telegram, "456")
                 .await
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_identity_links_uuid_resolution() {
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        // Pre-create an identity so we have a valid UUID to reference.
+        let existing = store
+            .create_identity(FrontendType::Cli, "known-user")
+            .await
+            .expect("create_identity");
+        let uuid_str = existing.id.to_string();
+
+        // Use the UUID string as astrid_user — should resolve via get_by_id.
+        let cfg = make_cfg(vec![make_link("telegram", "998", &uuid_str)]);
+        apply_identity_links(&cfg, &store).await;
+
+        let resolved = store.resolve(&FrontendType::Telegram, "998").await;
+        assert!(
+            resolved.is_some(),
+            "link should have been created via UUID lookup"
+        );
+        assert_eq!(
+            resolved.unwrap().id,
+            existing.id,
+            "should resolve to the pre-existing identity"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_identity_links_creates_new_user_with_warn() {
+        // "brand-new-user" is not in the store; resolve_astrid_user mints a fresh
+        // identity (step 3) and emits a warn! about possible misconfiguration.
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        let cfg = make_cfg(vec![make_link("discord", "555", "brand-new-user")]);
+        apply_identity_links(&cfg, &store).await;
+
+        // The new identity should be linked to discord/555.
+        let resolved = store.resolve(&FrontendType::Discord, "555").await;
+        assert!(
+            resolved.is_some(),
+            "new identity should have been created and linked"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_identity_links_two_platforms_same_user() {
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        let cfg = make_cfg(vec![
+            make_link("telegram", "111", "shared-user"),
+            make_link("discord", "222", "shared-user"),
+        ]);
+
+        apply_identity_links(&cfg, &store).await;
+
+        let telegram_id = store.resolve(&FrontendType::Telegram, "111").await;
+        let discord_id = store.resolve(&FrontendType::Discord, "222").await;
+        assert!(telegram_id.is_some(), "telegram link should exist");
+        assert!(discord_id.is_some(), "discord link should exist");
+        // Both should map to the same canonical Astrid identity.
+        assert_eq!(
+            telegram_id.unwrap().id,
+            discord_id.unwrap().id,
+            "both platforms must resolve to the same AstridUserId"
+        );
+    }
+
+    // --- validate_connector_declarations ---
+
+    // Minimal mock plugin for validate_connector_declarations tests.
+    struct MockPlugin {
+        id: astrid_plugins::PluginId,
+        manifest: astrid_plugins::PluginManifest,
+    }
+
+    impl MockPlugin {
+        fn new(id: &str) -> Self {
+            let plugin_id = astrid_plugins::PluginId::from_static(id);
+            Self {
+                manifest: astrid_plugins::PluginManifest {
+                    id: plugin_id.clone(),
+                    name: format!("Mock {id}"),
+                    version: "0.1.0".into(),
+                    description: None,
+                    author: None,
+                    entry_point: astrid_plugins::PluginEntryPoint::Wasm {
+                        path: "plugin.wasm".into(),
+                        hash: None,
+                    },
+                    capabilities: vec![],
+                    connectors: vec![],
+                    config: std::collections::HashMap::new(),
+                },
+                id: plugin_id,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl astrid_plugins::Plugin for MockPlugin {
+        fn id(&self) -> &astrid_plugins::PluginId {
+            &self.id
+        }
+
+        fn manifest(&self) -> &astrid_plugins::PluginManifest {
+            &self.manifest
+        }
+
+        fn state(&self) -> astrid_plugins::PluginState {
+            astrid_plugins::PluginState::Ready
+        }
+
+        async fn load(
+            &mut self,
+            _ctx: &astrid_plugins::PluginContext,
+        ) -> astrid_plugins::PluginResult<()> {
+            Ok(())
+        }
+
+        async fn unload(&mut self) -> astrid_plugins::PluginResult<()> {
+            Ok(())
+        }
+
+        fn tools(&self) -> &[Arc<dyn astrid_plugins::PluginTool>] {
+            &[]
+        }
+
+        fn connectors(&self) -> &[astrid_core::ConnectorDescriptor] {
+            &[]
+        }
+    }
+
+    #[test]
+    fn validate_connector_declarations_warns_missing() {
+        let registry = PluginRegistry::new();
+        let connectors = vec![ConnectorConfig {
+            plugin: "missing-plugin".to_owned(),
+            profile: "chat".to_owned(),
+        }];
+        let warnings = validate_connector_declarations(&connectors, &registry);
+        assert!(
+            !warnings.is_empty(),
+            "should warn when plugin is not loaded"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("missing-plugin")),
+            "warning should name the missing plugin"
+        );
+    }
+
+    #[test]
+    fn validate_connector_declarations_ok_known() {
+        let mut registry = PluginRegistry::new();
+        let plugin_id = astrid_plugins::PluginId::from_static("known-connector-plugin");
+        registry
+            .register(Box::new(MockPlugin::new("known-connector-plugin")))
+            .unwrap();
+        let descriptor =
+            astrid_core::ConnectorDescriptor::builder("My Connector", FrontendType::Telegram)
+                .source(ConnectorSource::new_wasm("known-connector-plugin").unwrap())
+                .profile(ConnectorProfile::Chat)
+                .build();
+        registry.register_connector(&plugin_id, descriptor).unwrap();
+
+        let connectors = vec![ConnectorConfig {
+            plugin: "known-connector-plugin".to_owned(),
+            profile: "chat".to_owned(),
+        }];
+        let warnings = validate_connector_declarations(&connectors, &registry);
+        assert!(
+            warnings.is_empty(),
+            "no warnings expected for a properly registered connector: {warnings:?}"
         );
     }
 }
