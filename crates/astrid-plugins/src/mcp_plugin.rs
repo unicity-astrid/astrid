@@ -730,6 +730,12 @@ impl Plugin for McpPlugin {
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &self.registered_connectors
     }
+
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        self.inbound_rx.take()
+    }
 }
 
 /// A tool provided by an MCP server, wrapped as a [`PluginTool`].

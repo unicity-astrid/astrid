@@ -88,14 +88,6 @@ impl WasmPlugin {
             inbound_rx: None,
         }
     }
-
-    /// Take the inbound message receiver, if any.
-    ///
-    /// This can only be called once — subsequent calls return `None`.
-    /// The gateway should call this after loading to consume inbound messages.
-    pub fn take_inbound_rx(&mut self) -> Option<mpsc::Receiver<InboundMessage>> {
-        self.inbound_rx.take()
-    }
 }
 
 #[async_trait]
@@ -144,6 +136,12 @@ impl Plugin for WasmPlugin {
 
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &self.connectors
+    }
+
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        self.inbound_rx.take()
     }
 }
 

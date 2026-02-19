@@ -14,6 +14,7 @@
 //! LLM turn) blocks `approval_response` (needing a read lock to deliver the
 //! approval that the turn is waiting for).
 
+mod inbound_router;
 mod lifecycle;
 mod monitoring;
 mod paths;
@@ -30,14 +31,17 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::time::{Duration, Instant};
 
+use astrid_core::InboundMessage;
 use astrid_core::SessionId;
+use astrid_core::identity::IdentityStore;
 use astrid_llm::LlmProvider;
 use astrid_mcp::McpClient;
 use astrid_plugins::{PluginId, PluginRegistry, WasmPluginLoader};
 use astrid_runtime::{AgentRuntime, AgentSession};
 use astrid_storage::KvStore;
 use chrono::{DateTime, Utc};
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+use uuid::Uuid;
 
 use crate::daemon_frontend::DaemonFrontend;
 use crate::rpc::DaemonEvent;
@@ -61,6 +65,13 @@ struct SessionHandle {
     created_at: DateTime<Utc>,
     /// Handle to the currently running turn task (if any).
     turn_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Canonical Astrid user ID bound to this session.
+    ///
+    /// `None` for CLI-originated sessions (addressed by `SessionId` via RPC).
+    /// `Some` for connector-originated sessions created by the inbound router.
+    /// Used by the session cleanup loop to skip connector sessions (they have
+    /// no CLI subscribers and must not be evicted on idle).
+    user_id: Option<Uuid>,
 }
 
 /// The daemon `WebSocket` server.
@@ -103,6 +114,21 @@ pub struct DaemonServer {
     /// The watcher skips these to avoid re-loading plugins the user
     /// intentionally stopped. Cleared when the user re-loads via RPC.
     user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>>,
+    /// Identity store for resolving platform users to canonical Astrid identities.
+    /// Stored here for future RPC endpoints (e.g. list/link identities).
+    #[allow(dead_code)]
+    identity_store: Arc<dyn IdentityStore>,
+    /// Sender side of the central inbound message channel.
+    ///
+    /// Cloned for each plugin that declares connector capability. The inbound
+    /// router task holds the receiver end and drains it to route messages.
+    inbound_tx: mpsc::Sender<InboundMessage>,
+    /// Maps `AstridUserId` (UUID) → most recent active `SessionId`.
+    ///
+    /// Shared with the session cleanup loop (periodic stale-entry sweep) and
+    /// reserved for future RPC endpoints. The inbound router holds its own
+    /// `Arc` clone and manages this map directly.
+    connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>>,
 }
 
 impl DaemonServer {

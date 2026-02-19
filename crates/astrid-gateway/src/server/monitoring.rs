@@ -111,9 +111,14 @@ impl DaemonServer {
     /// Periodically sweeps the session map looking for orphaned sessions
     /// (no event subscribers and no active turn). Orphaned sessions are
     /// saved to disk and removed from the in-memory map.
+    ///
+    /// Also sweeps `connector_sessions` to prune entries whose referenced
+    /// session no longer exists in the sessions map (e.g. after a direct
+    /// `end_session` RPC call on a connector session).
     #[must_use]
     pub fn spawn_session_cleanup_loop(&self) -> tokio::task::JoinHandle<()> {
         let sessions = Arc::clone(&self.sessions);
+        let connector_sessions = Arc::clone(&self.connector_sessions);
         let runtime = Arc::clone(&self.runtime);
         let interval = self.session_cleanup_interval;
 
@@ -126,8 +131,25 @@ impl DaemonServer {
                     let map = sessions.read().await;
                     let mut ids = Vec::new();
                     for (id, handle) in map.iter() {
+                        // Connector sessions have no CLI subscribers by design —
+                        // they are managed by the inbound router and must not be
+                        // evicted on idle. Evicting them destroys conversation
+                        // continuity between turns for the same user.
+                        if handle.user_id.is_some() {
+                            continue;
+                        }
+
                         let no_subscribers = handle.event_tx.receiver_count() == 0;
-                        let no_active_turn = handle.turn_handle.lock().await.is_none();
+
+                        // Use try_lock (non-blocking) instead of an async lock to
+                        // avoid holding the sessions read-lock across an await —
+                        // which violates the module's locking discipline. If the
+                        // Mutex is contended (a task is actively clearing it),
+                        // treat the session conservatively as having an active turn.
+                        let no_active_turn = handle.turn_handle.try_lock().ok().is_some_and(|g| {
+                            g.as_ref().is_none_or(tokio::task::JoinHandle::is_finished)
+                        });
+
                         if no_subscribers && no_active_turn {
                             ids.push(id.clone());
                         }
@@ -135,22 +157,33 @@ impl DaemonServer {
                     ids
                 };
 
-                if orphaned.is_empty() {
-                    continue;
+                if !orphaned.is_empty() {
+                    let mut map = sessions.write().await;
+                    for id in &orphaned {
+                        if let Some(handle) = map.remove(id) {
+                            let session = handle.session.lock().await;
+                            if let Err(e) = runtime.save_session(&session) {
+                                warn!(session_id = %id, error = %e, "Failed to save orphaned session");
+                            } else {
+                                info!(session_id = %id, "Cleaned up orphaned session");
+                            }
+                            // Evict plugin KV stores for this session (same as end_session).
+                            runtime.cleanup_plugin_kv_stores(id);
+                        }
+                    }
                 }
 
-                let mut map = sessions.write().await;
-                for id in &orphaned {
-                    if let Some(handle) = map.remove(id) {
-                        let session = handle.session.lock().await;
-                        if let Err(e) = runtime.save_session(&session) {
-                            warn!(session_id = %id, error = %e, "Failed to save orphaned session");
-                        } else {
-                            info!(session_id = %id, "Cleaned up orphaned session");
-                        }
-                        // Evict plugin KV stores for this session (same as end_session).
-                        runtime.cleanup_plugin_kv_stores(id);
-                    }
+                // Sweep connector_sessions for entries whose referenced session
+                // no longer exists. This handles the case where end_session_impl
+                // was called directly on a connector session (which removes it
+                // from `sessions` but has no access to `connector_sessions`).
+                // Lock ordering: read sessions first, write connector_sessions second.
+                {
+                    let live = sessions.read().await;
+                    connector_sessions
+                        .write()
+                        .await
+                        .retain(|_, sid| live.contains_key(sid));
                 }
             }
         })

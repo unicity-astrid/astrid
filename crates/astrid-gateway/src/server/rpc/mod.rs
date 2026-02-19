@@ -19,14 +19,14 @@ use std::time::Instant;
 
 use astrid_approval::budget::WorkspaceBudgetTracker;
 use astrid_capabilities::CapabilityStore;
-use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
+use astrid_core::{ApprovalDecision, ElicitationResponse, InboundMessage, SessionId};
 use astrid_llm::LlmProvider;
 use astrid_plugins::{PluginId, PluginRegistry};
 use astrid_runtime::AgentRuntime;
 use astrid_storage::KvStore;
 use jsonrpsee::PendingSubscriptionSink;
 use jsonrpsee::types::ErrorObjectOwned;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 use super::SessionHandle;
 use crate::rpc::{
@@ -70,6 +70,18 @@ pub(in crate::server) struct RpcImpl {
     pub(in crate::server) user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>>,
     /// Workspace root directory (consistent with watcher reload path).
     pub(in crate::server) workspace_root: PathBuf,
+    /// Sender side of the central inbound channel.
+    ///
+    /// Cloned for each connector plugin loaded via the `load_plugin` RPC so
+    /// that its inbound receiver is wired into the router, mirroring the
+    /// auto-load and hot-reload watcher paths.
+    pub(in crate::server) inbound_tx: mpsc::Sender<InboundMessage>,
+    /// Reverse index: `AstridUserId` → most recent active `SessionId`.
+    ///
+    /// Used by `resume_session_impl` to detect connector-originated sessions
+    /// when they have been saved to disk and are being re-loaded — the
+    /// `user_id` field on `SessionHandle` is only available for live sessions.
+    pub(in crate::server) connector_sessions: Arc<RwLock<HashMap<uuid::Uuid, SessionId>>>,
 }
 
 #[jsonrpsee::core::async_trait]

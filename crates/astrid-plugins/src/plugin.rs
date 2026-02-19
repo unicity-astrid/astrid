@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use astrid_core::ConnectorDescriptor;
+use astrid_core::{ConnectorDescriptor, InboundMessage};
 
 use crate::context::PluginContext;
 use crate::error::PluginResult;
@@ -169,6 +169,23 @@ pub trait Plugin: Send + Sync {
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &[]
     }
+
+    /// Take the inbound message receiver, if any.
+    ///
+    /// Returns `Some` exactly once — after `load()` succeeds — then `None` on
+    /// every subsequent call (single-subscriber). The gateway calls this after
+    /// loading to set up message forwarding to the central inbound channel.
+    ///
+    /// Default: `None` (plugins without connector capability skip this).
+    ///
+    /// # Implementation contract
+    ///
+    /// Implementations **must not block or perform async work** in this method.
+    /// It may be called while the caller holds a registry lock. The only correct
+    /// implementation is `self.inbound_rx.take()`.
+    fn take_inbound_rx(&mut self) -> Option<tokio::sync::mpsc::Receiver<InboundMessage>> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -239,5 +256,41 @@ mod tests {
         for state in &states {
             let _ = format!("{state:?}");
         }
+    }
+
+    #[test]
+    fn default_take_inbound_rx_returns_none() {
+        struct MinimalPlugin;
+
+        #[async_trait::async_trait]
+        impl Plugin for MinimalPlugin {
+            fn id(&self) -> &PluginId {
+                unimplemented!()
+            }
+            fn manifest(&self) -> &crate::manifest::PluginManifest {
+                unimplemented!()
+            }
+            fn state(&self) -> PluginState {
+                PluginState::Unloaded
+            }
+            async fn load(
+                &mut self,
+                _ctx: &crate::context::PluginContext,
+            ) -> crate::error::PluginResult<()> {
+                Ok(())
+            }
+            async fn unload(&mut self) -> crate::error::PluginResult<()> {
+                Ok(())
+            }
+            fn tools(&self) -> &[Arc<dyn crate::tool::PluginTool>] {
+                &[]
+            }
+        }
+
+        let mut p = MinimalPlugin;
+        assert!(
+            p.take_inbound_rx().is_none(),
+            "default impl must return None"
+        );
     }
 }

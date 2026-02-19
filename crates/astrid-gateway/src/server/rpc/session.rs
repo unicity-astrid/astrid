@@ -81,6 +81,7 @@ impl RpcImpl {
             workspace: workspace_path.clone(),
             created_at,
             turn_handle: Arc::new(Mutex::new(None)),
+            user_id: None,
         };
 
         {
@@ -100,6 +101,7 @@ impl RpcImpl {
         Ok(info)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) async fn resume_session_impl(
         &self,
         session_id: SessionId,
@@ -108,6 +110,15 @@ impl RpcImpl {
         {
             let sessions = self.sessions.read().await;
             if let Some(handle) = sessions.get(&session_id) {
+                // Connector sessions are managed by the inbound router; RPC
+                // callers must not re-enter them (no outbound event path).
+                if handle.user_id.is_some() {
+                    return Err(ErrorObjectOwned::owned(
+                        error_codes::INVALID_REQUEST,
+                        "session is managed by the inbound router and cannot be resumed via RPC",
+                        None::<()>,
+                    ));
+                }
                 let session = handle.session.lock().await;
                 let pending_deferred_count =
                     session.approval_manager.get_pending_resolutions().len();
@@ -118,6 +129,27 @@ impl RpcImpl {
                     message_count: session.messages.len(),
                     pending_deferred_count,
                 });
+            }
+        }
+
+        // Guard against resuming a connector session that was saved to disk.
+        // connector_sessions maps AstridUserId → SessionId; a reverse lookup
+        // detects sessions whose ID is still indexed (user hasn't sent a new
+        // message since the session was evicted from the live map).
+        //
+        // TOCTOU note: between this check and the disk load below, the inbound
+        // router could concurrently create a live session for the same user. A
+        // write-time conflict check (or a per-session creation lock) would close
+        // this window but is out of scope for now — the race is narrow and
+        // requires the connector user to send a message at exactly this moment.
+        {
+            let cs = self.connector_sessions.read().await;
+            if cs.values().any(|sid| sid == &session_id) {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be resumed via RPC",
+                    None::<()>,
+                ));
             }
         }
 
@@ -199,6 +231,7 @@ impl RpcImpl {
             workspace: workspace.clone(),
             created_at,
             turn_handle: Arc::new(Mutex::new(None)),
+            user_id: None,
         };
 
         {
@@ -232,6 +265,17 @@ impl RpcImpl {
             })?
         };
         // Map lock released here.
+
+        // Connector sessions are managed exclusively by the inbound router.
+        // Sending input via RPC would bypass identity resolution and produce
+        // turn output with no outbound path back to the connector user.
+        if handle.user_id.is_some() {
+            return Err(ErrorObjectOwned::owned(
+                error_codes::INVALID_REQUEST,
+                "session is managed by the inbound router and cannot be targeted via RPC",
+                None::<()>,
+            ));
+        }
 
         let runtime = Arc::clone(&self.runtime);
         let event_tx = handle.event_tx.clone();
@@ -317,7 +361,17 @@ impl RpcImpl {
         });
 
         // Store the join handle so cancel_turn can abort it.
-        *handle.turn_handle.lock().await = Some(join_handle);
+        // Acquire the lock before checking is_finished() to close the window
+        // where the task could finish and clear turn_handle between spawn() and
+        // this assignment. If the task already finished, leave the handle as None.
+        {
+            let mut guard = handle.turn_handle.lock().await;
+            if !join_handle.is_finished() {
+                *guard = Some(join_handle);
+            }
+            // If already finished: the task cleared turn_handle itself; dropping
+            // the finished JoinHandle here is a no-op.
+        }
 
         Ok(())
     }
@@ -326,21 +380,33 @@ impl RpcImpl {
         &self,
         workspace_path: Option<PathBuf>,
     ) -> Result<Vec<SessionInfo>, ErrorObjectOwned> {
-        let sessions = self.sessions.read().await;
+        // Collect handles under a brief read lock; do not hold the read lock
+        // across per-session Mutex awaits — that would stall the entire session
+        // map behind any slow LLM turn, violating the locking discipline.
+        //
+        // Connector-originated sessions (user_id.is_some()) are excluded: they
+        // have no outbound event path, so a caller who receives their ID and
+        // tries to send_input would run an LLM turn whose output goes nowhere.
+        let handles: Vec<(SessionId, SessionHandle)> = {
+            let sessions = self.sessions.read().await;
+            sessions
+                .iter()
+                .filter(|(_, handle)| {
+                    handle.user_id.is_none()
+                        && workspace_path
+                            .as_ref()
+                            .is_none_or(|ws| handle.workspace.as_ref() == Some(ws))
+                })
+                .map(|(id, handle)| (id.clone(), handle.clone()))
+                .collect()
+        };
+
         let mut result = Vec::new();
-
-        for (id, handle) in sessions.iter() {
-            // Filter by workspace path if provided.
-            if let Some(ref ws) = workspace_path
-                && handle.workspace.as_ref() != Some(ws)
-            {
-                continue;
-            }
-
+        for (id, handle) in handles {
             let session = handle.session.lock().await;
             let pending_deferred_count = session.approval_manager.get_pending_resolutions().len();
             result.push(SessionInfo {
-                id: id.clone(),
+                id,
                 workspace: handle.workspace.clone(),
                 created_at: handle.created_at,
                 message_count: session.messages.len(),

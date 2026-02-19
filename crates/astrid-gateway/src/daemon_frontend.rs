@@ -56,6 +56,21 @@ impl DaemonFrontend {
         }
     }
 
+    /// Create a [`ConnectorDescriptor`] for the native CLI connector.
+    ///
+    /// Registering this in the plugin registry allows the approval fallback chain to
+    /// find the CLI as an interactive surface when a connector-originated message needs
+    /// approval but its originating connector has no approval adapter.
+    #[must_use]
+    pub fn native_connector_descriptor() -> astrid_core::ConnectorDescriptor {
+        use astrid_core::{ConnectorCapabilities, ConnectorProfile, ConnectorSource, FrontendType};
+        astrid_core::ConnectorDescriptor::builder("native-cli", FrontendType::Cli)
+            .source(ConnectorSource::Native)
+            .capabilities(ConnectorCapabilities::full())
+            .profile(ConnectorProfile::Interactive)
+            .build()
+    }
+
     /// Resolve a pending approval request with the CLI's decision.
     ///
     /// Called by the RPC server when it receives an `approval_response` call from the CLI.
