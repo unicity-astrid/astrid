@@ -4,13 +4,12 @@ use crate::{BuiltinTool, ToolContext, ToolError, ToolResult};
 use serde_json::Value;
 use std::path::PathBuf;
 use tokio::process::Command;
+use uuid::Uuid;
 
 /// Default timeout in milliseconds (2 minutes).
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 /// Maximum timeout in milliseconds (10 minutes).
 const MAX_TIMEOUT_MS: u64 = 600_000;
-/// Sentinel used to extract the post-command working directory.
-const CWD_SENTINEL: &str = "__ASTRID_CWD__";
 
 /// Built-in tool for executing bash commands.
 pub struct BashTool;
@@ -58,9 +57,13 @@ impl BuiltinTool for BashTool {
 
         let cwd = ctx.cwd.read().await.clone();
 
-        // Wrap command with sentinel-based cwd tracking
+        // Use a per-invocation UUID as the CWD sentinel. A fixed sentinel string
+        // could be injected by command output (e.g. `echo __ASTRID_CWD__; echo /evil`),
+        // poisoning the shared `cwd`. A UUID is unguessable, so command output cannot
+        // replicate it and claim a false working directory.
+        let sentinel = Uuid::new_v4().to_string();
         let wrapped = format!(
-            "{command}\n__ASTRID_EXIT__=$?\necho \"{CWD_SENTINEL}\"\npwd\nexit $__ASTRID_EXIT__"
+            "{command}\n__ASTRID_EXIT__=$?\necho \"{sentinel}\"\npwd\nexit $__ASTRID_EXIT__"
         );
 
         let result = tokio::time::timeout(
@@ -72,7 +75,7 @@ impl BuiltinTool for BashTool {
         match result {
             Ok(Ok((stdout, stderr, exit_code))) => {
                 // Parse stdout: split on sentinel to get output and new cwd
-                let (output, new_cwd) = parse_sentinel_output(&stdout);
+                let (output, new_cwd) = parse_sentinel_output(&stdout, &sentinel);
 
                 // Update persistent cwd
                 if let Some(new_cwd) = new_cwd {
@@ -132,12 +135,16 @@ async fn run_bash(command: &str, cwd: &std::path::Path) -> std::io::Result<(Stri
 }
 
 /// Parse the sentinel from stdout to extract command output and new cwd.
-fn parse_sentinel_output(stdout: &str) -> (String, Option<PathBuf>) {
-    if let Some(sentinel_pos) = stdout.find(CWD_SENTINEL) {
+///
+/// `sentinel` must be the per-invocation UUID generated before the command ran.
+/// Because the sentinel is unguessable, only the line appended by our shell wrapper
+/// matches; any matching line produced by command output would require the process
+/// to have known the UUID in advance.
+fn parse_sentinel_output(stdout: &str, sentinel: &str) -> (String, Option<PathBuf>) {
+    if let Some(sentinel_pos) = stdout.find(sentinel) {
         let output = stdout[..sentinel_pos].trim_end().to_string();
-        // Safety: sentinel_pos comes from find() and CWD_SENTINEL.len() is within bounds
         #[allow(clippy::arithmetic_side_effects)]
-        let after_sentinel = &stdout[sentinel_pos + CWD_SENTINEL.len()..];
+        let after_sentinel = &stdout[sentinel_pos + sentinel.len()..];
         let new_cwd = after_sentinel
             .lines()
             .find(|l| !l.is_empty())
@@ -232,16 +239,31 @@ mod tests {
 
     #[test]
     fn test_parse_sentinel_output() {
-        let stdout = format!("hello world\n{CWD_SENTINEL}\n/tmp/test\n");
-        let (output, cwd) = parse_sentinel_output(&stdout);
+        let sentinel = "550e8400-e29b-41d4-a716-446655440000";
+        let stdout = format!("hello world\n{sentinel}\n/tmp/test\n");
+        let (output, cwd) = parse_sentinel_output(&stdout, sentinel);
         assert_eq!(output, "hello world");
         assert_eq!(cwd, Some(PathBuf::from("/tmp/test")));
     }
 
     #[test]
     fn test_parse_sentinel_no_sentinel() {
-        let (output, cwd) = parse_sentinel_output("hello world\n");
+        let sentinel = "550e8400-e29b-41d4-a716-446655440000";
+        let (output, cwd) = parse_sentinel_output("hello world\n", sentinel);
         assert_eq!(output, "hello world\n");
         assert!(cwd.is_none());
+    }
+
+    #[test]
+    fn test_parse_sentinel_injection_blocked() {
+        // Simulates a command that outputs the old static sentinel followed by a crafted path.
+        // With a per-invocation UUID, the injected string cannot match the real sentinel.
+        let sentinel = "550e8400-e29b-41d4-a716-446655440000";
+        let injected = "__ASTRID_CWD__";
+        let stdout = format!("{injected}\n/evil\n{sentinel}\n/actual/cwd\n");
+        let (output, cwd) = parse_sentinel_output(&stdout, sentinel);
+        // The injected sentinel appears in output (it's just text), not as the CWD.
+        assert!(output.contains(injected));
+        assert_eq!(cwd, Some(PathBuf::from("/actual/cwd")));
     }
 }
