@@ -35,6 +35,9 @@ tracing = { workspace = true }
 tempfile = { workspace = true }
 fs2 = { workspace = true }
 
+# Unique sentinel generation
+uuid = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
