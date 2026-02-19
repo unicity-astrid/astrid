@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -189,6 +190,20 @@ impl fmt::Display for ConnectorProfile {
             Self::Interactive => write!(f, "interactive"),
             Self::Notify => write!(f, "notify"),
             Self::Bridge => write!(f, "bridge"),
+        }
+    }
+}
+
+impl FromStr for ConnectorProfile {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().trim() {
+            "chat" => Ok(Self::Chat),
+            "interactive" => Ok(Self::Interactive),
+            "notify" => Ok(Self::Notify),
+            "bridge" => Ok(Self::Bridge),
+            other => Err(format!("unknown connector profile: {other}")),
         }
     }
 }
@@ -1038,5 +1053,45 @@ mod tests {
 
         let e = ConnectorError::InvalidPluginId("bad".into());
         assert_eq!(e.to_string(), "invalid plugin id: bad");
+    }
+
+    // --- ConnectorProfile::FromStr ---
+
+    #[test]
+    fn profile_from_str_all_variants() {
+        assert_eq!(
+            ConnectorProfile::from_str("chat").unwrap(),
+            ConnectorProfile::Chat
+        );
+        assert_eq!(
+            ConnectorProfile::from_str("interactive").unwrap(),
+            ConnectorProfile::Interactive
+        );
+        assert_eq!(
+            ConnectorProfile::from_str("notify").unwrap(),
+            ConnectorProfile::Notify
+        );
+        assert_eq!(
+            ConnectorProfile::from_str("bridge").unwrap(),
+            ConnectorProfile::Bridge
+        );
+    }
+
+    #[test]
+    fn profile_from_str_case_insensitive() {
+        assert_eq!(
+            ConnectorProfile::from_str("Chat").unwrap(),
+            ConnectorProfile::Chat
+        );
+        assert_eq!(
+            ConnectorProfile::from_str("NOTIFY").unwrap(),
+            ConnectorProfile::Notify
+        );
+    }
+
+    #[test]
+    fn profile_from_str_unknown_returns_error() {
+        let err = ConnectorProfile::from_str("bogus").unwrap_err();
+        assert!(err.contains("unknown connector profile"));
     }
 }

@@ -167,7 +167,7 @@ surrealkv = "0.18"
 chrono = { version = "0.4", features = ["serde"] }
 
 # UUID
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
 
 # Glob matching
 globset = "0.4"

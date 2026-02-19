@@ -4,6 +4,7 @@
 //! configuration — linking platform identities and validating connector
 //! plugins — without requiring manual operator interaction after each restart.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use astrid_config::{Config, ConnectorConfig};
@@ -18,47 +19,16 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
-// parse_frontend_type
+// config_admin_id
 // ---------------------------------------------------------------------------
 
-/// Map a platform string to the corresponding [`FrontendType`].
+/// Deterministic admin UUID for config-originated identity links.
 ///
-/// Comparison is case-insensitive. Unknown strings fall through to
-/// [`FrontendType::Custom`].
-pub(super) fn parse_frontend_type(platform: &str) -> FrontendType {
-    match platform.to_lowercase().as_str() {
-        "discord" => FrontendType::Discord,
-        "whatsapp" | "whats_app" => FrontendType::WhatsApp,
-        "telegram" => FrontendType::Telegram,
-        "slack" => FrontendType::Slack,
-        "web" => FrontendType::Web,
-        "cli" => FrontendType::Cli,
-        other => FrontendType::Custom(other.to_owned()),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// parse_connector_profile
-// ---------------------------------------------------------------------------
-
-/// Map a profile string to the corresponding [`ConnectorProfile`].
-///
-/// Comparison is case-insensitive. Unknown strings produce a `warn!` log and
-/// default to [`ConnectorProfile::Chat`].
-pub(super) fn parse_connector_profile(s: &str) -> ConnectorProfile {
-    match s.to_lowercase().as_str() {
-        "chat" => ConnectorProfile::Chat,
-        "interactive" => ConnectorProfile::Interactive,
-        "notify" => ConnectorProfile::Notify,
-        "bridge" => ConnectorProfile::Bridge,
-        other => {
-            warn!(
-                profile = other,
-                "[[connectors]] unknown profile, defaulting to \"chat\""
-            );
-            ConnectorProfile::Chat
-        },
-    }
+/// Computed via UUID v5 (SHA-1 namespace) so it is stable across restarts
+/// without requiring an identity store entry. Used only as audit metadata
+/// in [`LinkVerificationMethod::AdminLink`].
+fn config_admin_id() -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, b"astrid:config-admin")
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +43,7 @@ pub(super) fn parse_connector_profile(s: &str) -> ConnectorProfile {
 /// 2. Otherwise, try [`IdentityStore::resolve`] against the `cli` frontend
 ///    (display-name lookup).
 /// 3. If neither finds a match, mint a new identity via
-///    [`IdentityStore::create_identity`].
+///    [`IdentityStore::create_identity`] and set the display name.
 ///
 /// **Note on restart behaviour:** When a display name is supplied and the
 /// in-memory store is wiped on exit, a new `AstridUserId` is minted on each
@@ -92,7 +62,8 @@ async fn resolve_astrid_user(
         warn!(
             astrid_user = astrid_user,
             "[[identity.links]] UUID not found in identity store; \
-             will create a new identity"
+             will create a new identity using this UUID string as the display name. \
+             Note: The actual system identity ID will be a fresh random UUID."
         );
     }
 
@@ -104,14 +75,26 @@ async fn resolve_astrid_user(
         return Some(id);
     }
 
-    // 3. Mint a fresh identity.
-    // warn! (not info!) — creating an identity from config hints at a typo or
-    // a first-run bootstrap that ops must be able to observe and confirm.
+    // 3. Mint a fresh identity via CLI frontend (avoids double-linking — the
+    //    platform link is created separately in apply_identity_links).
     match identity_store
         .create_identity(FrontendType::Cli, astrid_user)
         .await
     {
         Ok(id) => {
+            // Set display name from the config's astrid_user field.
+            let updated = AstridUserId {
+                display_name: Some(astrid_user.to_string()),
+                ..id.clone()
+            };
+            if let Err(e) = identity_store.update_identity(updated).await {
+                warn!(
+                    astrid_user = astrid_user,
+                    error = %e,
+                    "[[identity.links]] created identity but failed to set display name"
+                );
+            }
+
             warn!(
                 astrid_user = astrid_user,
                 "[[identity.links]] astrid_user not found in store; \
@@ -139,6 +122,8 @@ async fn resolve_astrid_user(
 /// Called during daemon startup after the identity store is created. Each call
 /// is idempotent — if a link already exists it is silently skipped.
 pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn IdentityStore>) {
+    let admin_id = config_admin_id();
+
     for link_cfg in &cfg.identity.links {
         // Validate required fields.
         if link_cfg.platform.is_empty()
@@ -154,7 +139,18 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
             continue;
         }
 
-        let frontend = parse_frontend_type(&link_cfg.platform);
+        // Validate link method — only "admin" is currently supported.
+        if link_cfg.method != "admin" {
+            warn!(
+                platform = %link_cfg.platform,
+                method = %link_cfg.method,
+                "[[identity.links]] unsupported link method (only \"admin\" is supported); skipping"
+            );
+            continue;
+        }
+
+        // FrontendType::from_str is infallible — unknown strings become Custom.
+        let frontend = FrontendType::from_str(&link_cfg.platform).unwrap_or_else(|e| match e {});
 
         // Idempotency check: skip if the platform_user_id is already linked.
         if identity_store
@@ -176,15 +172,13 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
             continue;
         };
 
-        // Build the link. `Uuid::nil()` for admin_id signals "pre-configured
-        // by daemon config" rather than a real admin user performing the link.
+        // Build the link. config_admin_id() is a deterministic UUID v5 that
+        // signals "pre-configured by daemon config" in audit trails.
         let link = FrontendLink::new(
             astrid_id.id,
             frontend,
             &link_cfg.platform_user_id,
-            LinkVerificationMethod::AdminLink {
-                admin_id: Uuid::nil(),
-            },
+            LinkVerificationMethod::AdminLink { admin_id },
             false, // not primary — CLI link is primary
         );
 
@@ -230,8 +224,9 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
 ///
 /// Checks (in order):
 /// 1. Plugin ID format is valid.
-/// 2. Plugin is present in the registry (i.e. loaded successfully).
-/// 3. The plugin exposes a connector with the declared profile.
+/// 2. Connector profile string is valid.
+/// 3. Plugin is present in the registry (i.e. loaded successfully).
+/// 4. The plugin exposes a connector with the declared profile.
 pub(super) fn validate_connector_declarations(
     connectors: &[ConnectorConfig],
     registry: &PluginRegistry,
@@ -248,6 +243,16 @@ pub(super) fn validate_connector_declarations(
             ));
             continue;
         };
+        let expected_profile = match ConnectorProfile::from_str(&conn_cfg.profile) {
+            Ok(p) => p,
+            Err(e) => {
+                warnings.push(format!(
+                    "[[connectors]] plugin '{}': {}",
+                    conn_cfg.plugin, e
+                ));
+                continue;
+            },
+        };
         if registry.get(&pid).is_none() {
             warnings.push(format!(
                 "[[connectors]] plugin not loaded: {}",
@@ -255,7 +260,6 @@ pub(super) fn validate_connector_declarations(
             ));
             continue;
         }
-        let expected_profile = parse_connector_profile(&conn_cfg.profile);
         let has_match = registry.all_connector_descriptors().iter().any(|d| {
             let from_plugin = match &d.source {
                 ConnectorSource::Wasm { plugin_id } | ConnectorSource::OpenClaw { plugin_id } => {
@@ -286,55 +290,12 @@ mod tests {
 
     use super::*;
 
-    // --- parse_frontend_type ---
+    // --- config_admin_id ---
 
     #[test]
-    fn test_parse_frontend_type_known() {
-        assert_eq!(parse_frontend_type("discord"), FrontendType::Discord);
-        assert_eq!(parse_frontend_type("whatsapp"), FrontendType::WhatsApp);
-        assert_eq!(parse_frontend_type("whats_app"), FrontendType::WhatsApp);
-        assert_eq!(parse_frontend_type("telegram"), FrontendType::Telegram);
-        assert_eq!(parse_frontend_type("slack"), FrontendType::Slack);
-        assert_eq!(parse_frontend_type("web"), FrontendType::Web);
-        assert_eq!(parse_frontend_type("cli"), FrontendType::Cli);
-        // Case-insensitive.
-        assert_eq!(parse_frontend_type("TELEGRAM"), FrontendType::Telegram);
-        assert_eq!(parse_frontend_type("Discord"), FrontendType::Discord);
-    }
-
-    #[test]
-    fn test_parse_frontend_type_custom() {
-        assert_eq!(
-            parse_frontend_type("matrix"),
-            FrontendType::Custom("matrix".to_owned())
-        );
-        // Input is lowercased before storing in Custom.
-        assert_eq!(
-            parse_frontend_type("MyPlatform"),
-            FrontendType::Custom("myplatform".to_owned())
-        );
-    }
-
-    // --- parse_connector_profile ---
-
-    #[test]
-    fn test_parse_connector_profile_known() {
-        assert_eq!(parse_connector_profile("chat"), ConnectorProfile::Chat);
-        assert_eq!(
-            parse_connector_profile("interactive"),
-            ConnectorProfile::Interactive
-        );
-        assert_eq!(parse_connector_profile("notify"), ConnectorProfile::Notify);
-        assert_eq!(parse_connector_profile("bridge"), ConnectorProfile::Bridge);
-    }
-
-    #[test]
-    fn test_parse_connector_profile_unknown_warns() {
-        // Unknown string → defaults to Chat (warn! is a side-effect).
-        assert_eq!(
-            parse_connector_profile("unknown-profile"),
-            ConnectorProfile::Chat
-        );
+    fn config_admin_id_is_deterministic() {
+        assert_eq!(config_admin_id(), config_admin_id());
+        assert_ne!(config_admin_id(), Uuid::nil());
     }
 
     // --- apply_identity_links ---
@@ -363,6 +324,20 @@ mod tests {
 
         let resolved = store.resolve(&FrontendType::Telegram, "123456").await;
         assert!(resolved.is_some(), "link should have been created");
+    }
+
+    #[tokio::test]
+    async fn test_apply_identity_links_sets_display_name() {
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        let cfg = make_cfg(vec![make_link("telegram", "123456", "josh")]);
+
+        apply_identity_links(&cfg, &store).await;
+
+        // Resolve the linked identity and verify display name was set.
+        let resolved = store.resolve(&FrontendType::Telegram, "123456").await;
+        assert!(resolved.is_some());
+        let user = resolved.unwrap();
+        assert_eq!(user.display_name.as_deref(), Some("josh"));
     }
 
     #[tokio::test]
@@ -444,6 +419,27 @@ mod tests {
         assert!(
             resolved.is_some(),
             "new identity should have been created and linked"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_identity_links_skips_unsupported_method() {
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        let cfg = make_cfg(vec![IdentityLinkConfig {
+            platform: "telegram".to_owned(),
+            platform_user_id: "777".to_owned(),
+            astrid_user: "carol".to_owned(),
+            method: "oauth".to_owned(), // unsupported
+        }]);
+
+        apply_identity_links(&cfg, &store).await;
+
+        assert!(
+            store
+                .resolve(&FrontendType::Telegram, "777")
+                .await
+                .is_none(),
+            "link should NOT be created for unsupported method"
         );
     }
 
@@ -549,6 +545,22 @@ mod tests {
         assert!(
             warnings.iter().any(|w| w.contains("missing-plugin")),
             "warning should name the missing plugin"
+        );
+    }
+
+    #[test]
+    fn validate_connector_declarations_warns_invalid_profile() {
+        let registry = PluginRegistry::new();
+        let connectors = vec![ConnectorConfig {
+            plugin: "some-plugin".to_owned(),
+            profile: "bogus".to_owned(),
+        }];
+        let warnings = validate_connector_declarations(&connectors, &registry);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("unknown connector profile")),
+            "should warn about invalid profile: {warnings:?}"
         );
     }
 
