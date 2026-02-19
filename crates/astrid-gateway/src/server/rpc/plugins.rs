@@ -92,6 +92,7 @@ impl RpcImpl {
         let manifest = plugin.manifest();
         let name = manifest.name.clone();
 
+        let load_succeeded = load_result.is_ok();
         let (state_str, error, event) = match load_result {
             Ok(()) => (
                 "ready".to_string(),
@@ -121,7 +122,7 @@ impl RpcImpl {
         // Take the inbound receiver before re-registering, while we have
         // exclusive ownership of the plugin. Mirrors the auto-load and
         // hot-reload watcher paths. Only meaningful on successful load.
-        let inbound_rx = if state_str == "ready" {
+        let inbound_rx = if load_succeeded {
             plugin.take_inbound_rx()
         } else {
             None

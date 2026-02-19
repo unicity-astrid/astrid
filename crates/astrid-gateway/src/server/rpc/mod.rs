@@ -76,6 +76,12 @@ pub(in crate::server) struct RpcImpl {
     /// that its inbound receiver is wired into the router, mirroring the
     /// auto-load and hot-reload watcher paths.
     pub(in crate::server) inbound_tx: mpsc::Sender<InboundMessage>,
+    /// Reverse index: `AstridUserId` → most recent active `SessionId`.
+    ///
+    /// Used by `resume_session_impl` to detect connector-originated sessions
+    /// when they have been saved to disk and are being re-loaded — the
+    /// `user_id` field on `SessionHandle` is only available for live sessions.
+    pub(in crate::server) connector_sessions: Arc<RwLock<HashMap<uuid::Uuid, SessionId>>>,
 }
 
 #[jsonrpsee::core::async_trait]

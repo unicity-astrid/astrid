@@ -101,6 +101,7 @@ impl RpcImpl {
         Ok(info)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) async fn resume_session_impl(
         &self,
         session_id: SessionId,
@@ -109,6 +110,15 @@ impl RpcImpl {
         {
             let sessions = self.sessions.read().await;
             if let Some(handle) = sessions.get(&session_id) {
+                // Connector sessions are managed by the inbound router; RPC
+                // callers must not re-enter them (no outbound event path).
+                if handle.user_id.is_some() {
+                    return Err(ErrorObjectOwned::owned(
+                        error_codes::INVALID_REQUEST,
+                        "session is managed by the inbound router and cannot be resumed via RPC",
+                        None::<()>,
+                    ));
+                }
                 let session = handle.session.lock().await;
                 let pending_deferred_count =
                     session.approval_manager.get_pending_resolutions().len();
@@ -119,6 +129,21 @@ impl RpcImpl {
                     message_count: session.messages.len(),
                     pending_deferred_count,
                 });
+            }
+        }
+
+        // Guard against resuming a connector session that was saved to disk.
+        // connector_sessions maps AstridUserId → SessionId; a reverse lookup
+        // detects sessions whose ID is still indexed (user hasn't sent a new
+        // message since the session was evicted from the live map).
+        {
+            let cs = self.connector_sessions.read().await;
+            if cs.values().any(|sid| sid == &session_id) {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be resumed via RPC",
+                    None::<()>,
+                ));
             }
         }
 

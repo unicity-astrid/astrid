@@ -177,6 +177,12 @@ pub trait Plugin: Send + Sync {
     /// loading to set up message forwarding to the central inbound channel.
     ///
     /// Default: `None` (plugins without connector capability skip this).
+    ///
+    /// # Implementation contract
+    ///
+    /// Implementations **must not block or perform async work** in this method.
+    /// It may be called while the caller holds a registry lock. The only correct
+    /// implementation is `self.inbound_rx.take()`.
     fn take_inbound_rx(&mut self) -> Option<tokio::sync::mpsc::Receiver<InboundMessage>> {
         None
     }

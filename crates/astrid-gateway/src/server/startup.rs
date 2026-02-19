@@ -269,6 +269,10 @@ impl DaemonServer {
         // Central inbound message channel: all connector plugin receivers fan in here.
         let (inbound_tx, inbound_rx) = mpsc::channel::<astrid_core::InboundMessage>(256);
 
+        // Reverse index: AstridUserId (UUID) → most recent active SessionId.
+        let connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+
         // Pre-clone fields needed by the inbound router before rpc_impl takes ownership.
         // Note: `workspace_kv` is NOT listed here because rpc_impl takes
         // `Arc::clone(&workspace_kv)` (not by move), so the original Arc survives
@@ -295,6 +299,7 @@ impl DaemonServer {
             user_unloaded_plugins: Arc::clone(&user_unloaded_plugins),
             workspace_root: cwd.clone(),
             inbound_tx: inbound_tx.clone(),
+            connector_sessions: Arc::clone(&connector_sessions),
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -322,10 +327,6 @@ impl DaemonServer {
             "Identity store is in-memory only — connector user mappings are not \
              persisted. Linked connector users must re-link after each daemon restart."
         );
-
-        // Reverse index: AstridUserId (UUID) → most recent active SessionId.
-        let connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>> =
-            Arc::new(RwLock::new(HashMap::new()));
 
         // Register the native CLI connector in the plugin registry so the
         // approval fallback chain can find an interactive surface.
