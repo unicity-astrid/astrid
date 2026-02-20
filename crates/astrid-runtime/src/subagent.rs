@@ -913,7 +913,7 @@ mod tests {
             .spawn("grandchild", Some(child.id.clone()))
             .await
             .unwrap();
-        let _sibling = pool.spawn("sibling", None).await.unwrap();
+        let sibling = pool.spawn("sibling", None).await.unwrap();
 
         let cancelled = pool.cancel_subtree(&root.id).await;
         assert_eq!(cancelled, 2); // child + grandchild
@@ -924,7 +924,7 @@ mod tests {
         assert!(pool.get(&child.id).await.is_none());
         assert!(pool.get(&grandchild.id).await.is_none());
         // Sibling should still be active
-        assert!(pool.get(&_sibling.id).await.is_some());
+        assert!(pool.get(&sibling.id).await.is_some());
     }
 
     #[tokio::test]

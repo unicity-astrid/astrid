@@ -144,8 +144,6 @@ impl McpPlugin {
         self
     }
 
-
-
     /// Get the MCP server name for this plugin.
     #[must_use]
     pub fn server_name(&self) -> &str {

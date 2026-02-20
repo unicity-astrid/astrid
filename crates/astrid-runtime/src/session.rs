@@ -49,8 +49,8 @@ pub struct AgentSession {
     pub model: Option<String>,
     /// Whether this session belongs to a sub-agent (skip spark preamble in `run_loop`).
     pub is_subagent: bool,
-    /// Whether plugin-provided context has been collected for this session yet.
-    pub plugin_context_collected: bool,
+    /// Plugin-provided context (fetched dynamically per subagent/session, not persisted).
+    pub plugin_context: Option<String>,
 }
 
 impl AgentSession {
@@ -80,7 +80,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
-            plugin_context_collected: false,
+            plugin_context: None,
         }
     }
 
@@ -110,7 +110,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
-            plugin_context_collected: false,
+            plugin_context: None,
         }
     }
 
@@ -151,7 +151,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: true,
-            plugin_context_collected: false,
+            plugin_context: None,
         }
     }
 
@@ -330,9 +330,6 @@ pub struct SerializableSession {
     /// Git state placeholder (branch, commit hash) for future worktree support.
     #[serde(default)]
     pub git_state: Option<GitState>,
-    /// Whether plugin-provided context has been collected for this session yet.
-    #[serde(default)]
-    pub plugin_context_collected: bool,
 }
 
 /// Git repository state snapshot.
@@ -433,7 +430,6 @@ impl From<&AgentSession> for SerializableSession {
                 .workspace_path
                 .as_ref()
                 .and_then(|p| GitState::capture(p)),
-            plugin_context_collected: session.plugin_context_collected,
         }
     }
 }
@@ -478,7 +474,6 @@ impl SerializableSession {
         session.metadata = self.metadata.clone();
         session.workspace_path = self.workspace_path.as_ref().map(PathBuf::from);
         session.model.clone_from(&self.model);
-        session.plugin_context_collected = self.plugin_context_collected;
 
         // Restore session allowances
         if !self.allowances.is_empty() {
@@ -623,6 +618,6 @@ mod tests {
         let session = serializable.to_session();
         assert_eq!(session.system_prompt, "Test");
         assert!(session.workspace_path.is_none());
-        assert_eq!(session.budget_tracker.spent(), 0.0);
+        assert!((session.budget_tracker.spent() - 0.0_f64).abs() < f64::EPSILON);
     }
 }

@@ -368,6 +368,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 Arc::clone(&session.budget_tracker),
                 self.config.default_subagent_timeout,
                 parent_callsign,
+                session.plugin_context.clone(),
             );
             tool_ctx
                 .set_subagent_spawner(Some(Arc::new(executor)))

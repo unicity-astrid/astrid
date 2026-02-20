@@ -42,6 +42,8 @@ pub struct SubAgentExecutor<P: LlmProvider, F: Frontend + 'static> {
     default_timeout: Duration,
     /// Parent agent's callsign (inherited for sub-agent identity).
     parent_callsign: Option<String>,
+    /// Parent plugin context (inherited by child sessions for security rules).
+    parent_plugin_context: Option<String>,
 }
 
 impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
@@ -59,6 +61,7 @@ impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
         parent_budget_tracker: Arc<astrid_approval::budget::BudgetTracker>,
         default_timeout: Duration,
         parent_callsign: Option<String>,
+        parent_plugin_context: Option<String>,
     ) -> Self {
         Self {
             runtime,
@@ -72,6 +75,7 @@ impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
             parent_budget_tracker,
             default_timeout,
             parent_callsign,
+            parent_plugin_context,
         }
     }
 }
@@ -137,6 +141,7 @@ impl<P: LlmProvider + 'static, F: Frontend + 'static> SubAgentSpawner for SubAge
             Arc::clone(&self.parent_capabilities),
             Arc::clone(&self.parent_budget_tracker),
         );
+        session.plugin_context = self.parent_plugin_context.clone();
 
         // 4. Audit: sub-agent spawned (parent→child linkage)
         {
