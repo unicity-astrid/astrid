@@ -30,13 +30,10 @@ method = "admin"
 "#;
         std::fs::write(&config_path, config_content).unwrap();
 
-        // Change to the temp workspace dir
-        let original_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(temp_ws.path()).unwrap();
-
         // Start the daemon
         let (daemon, _handle, _addr, _cfg) = DaemonServer::start(DaemonStartOptions {
             ephemeral: true,
+            workspace_root: Some(temp_ws.path().to_path_buf()),
             ..Default::default()
         }, Some(home)).await.expect("Failed to start daemon");
 
@@ -64,9 +61,6 @@ method = "admin"
         // Resolve josh's identity to compare UUIDs
         let josh = daemon.identity_store.resolve(&FrontendType::Cli, "josh").await.expect("josh should exist");
         assert_eq!(session_handle.user_id, Some(josh.id));
-
-        // Cleanup
-        std::env::set_current_dir(original_cwd).unwrap();
     }
 
     #[tokio::test]
@@ -120,13 +114,10 @@ profile = "chat"
 "#;
         std::fs::write(&config_path, config_content).unwrap();
 
-        // Change to the temp workspace dir
-        let original_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(temp_ws.path()).unwrap();
-
         // Start the daemon
         let (_daemon, _handle, _addr, cfg) = DaemonServer::start(DaemonStartOptions {
             ephemeral: true,
+            workspace_root: Some(temp_ws.path().to_path_buf()),
             ..Default::default()
         }, Some(home)).await.expect("Failed to start daemon");
 
@@ -139,8 +130,5 @@ profile = "chat"
         // We can't easily capture the log warnings here, but we've verified
         // the config is loaded and passed through.
         // The pure validation logic is already unit-tested in config_apply.rs.
-
-        // Cleanup
-        std::env::set_current_dir(original_cwd).unwrap();
     }
 }

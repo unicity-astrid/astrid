@@ -41,6 +41,9 @@ pub struct DaemonStartOptions {
     /// Override for the idle-shutdown grace period (seconds). Falls back to
     /// `gateway.idle_shutdown_secs` from the config.
     pub grace_period_secs: Option<u64>,
+    /// Optional workspace root directory override. If not provided, the
+    /// daemon detects the workspace from the current working directory.
+    pub workspace_root: Option<PathBuf>,
 }
 
 impl DaemonServer {
@@ -76,7 +79,11 @@ impl DaemonServer {
             ))
         })?;
 
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let cwd = if let Some(ref ws) = options.workspace_root {
+            ws.clone()
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
         let ws = astrid_core::dirs::WorkspaceDir::detect(&cwd);
         // Ensure workspace dir and generate workspace ID (idempotent).
         ws.ensure().map_err(|e| {

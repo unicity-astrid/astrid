@@ -82,8 +82,8 @@ pub fn load(
     // 3. User config.
     let user_config = if let Some(h) = astrid_home_override {
         // When overridden, treat the path as the .astrid directory itself.
-        try_load_file(&h.join("config.toml"))?
-            .map(|overlay| (overlay, h.join("config.toml")))
+        let path = h.join("config.toml");
+        try_load_file(&path)?.map(|overlay| (overlay, path))
     } else {
         // Standard discovery: ~/.astrid/config.toml then ASTRID_HOME/config.toml
         let user_path = home_dir.join(".astrid").join("config.toml");
