@@ -19,6 +19,7 @@ mod spark_tool;
 mod subagent_spawner;
 mod system_prompt;
 mod task;
+mod truncate;
 mod write_file;
 
 pub use bash::BashTool;
@@ -33,6 +34,7 @@ pub use spark_tool::SparkTool;
 pub use subagent_spawner::{SubAgentRequest, SubAgentResult, SubAgentSpawner};
 pub use system_prompt::build_system_prompt;
 pub use task::TaskTool;
+pub use truncate::truncate_at_char_boundary;
 pub use write_file::WriteFileTool;
 
 use astrid_llm::LlmToolDefinition;
