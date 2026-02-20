@@ -97,6 +97,73 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             }
         }
 
+        // Fire SessionStart hook and collect agent context from plugins.
+        // Happens once per session before the first agentic loop.
+        if !session.plugin_context_collected {
+            if let Some(ref registry_lock) = self.plugin_registry {
+                let mut combined_context = String::new();
+                let active_plugins: Vec<astrid_plugins::PluginId> = {
+                    let registry = registry_lock.read().await;
+                    registry.list().into_iter().cloned().collect()
+                };
+
+                for plugin_id in active_plugins {
+                    // 1. Send SessionStart hook to the plugin
+                    {
+                        let registry = registry_lock.read().await;
+                        if let Some(plugin) = registry.get(&plugin_id) {
+                            plugin.send_hook_event(HookEvent::SessionStart, serde_json::Value::Null).await;
+                        }
+                    }
+
+                    // 2. Discover if it exposes the context tool
+                    let (tool_arc, tool_config) = {
+                        let registry = registry_lock.read().await;
+                        let tool_name = format!("plugin:{}:__astrid_get_agent_context", plugin_id);
+                        match registry.find_tool(&tool_name) {
+                            Some((plugin, t)) => (Some(t), plugin.manifest().config.clone()),
+                            None => (None, std::collections::HashMap::new()),
+                        }
+                    };
+
+                    // 3. Execute the tool if present
+                    if let Some(tool) = tool_arc {
+                        let plugin_kv = {
+                            let kv_key = format!("{}:plugin:{}", session.id, plugin_id);
+                            let mut stores = self.plugin_kv_stores.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                            Arc::clone(stores.entry(kv_key).or_insert_with(|| Arc::new(astrid_storage::MemoryKvStore::new())))
+                        };
+
+                        let scoped_name = format!("plugin-tool:plugin:{}", plugin_id);
+                        if let Ok(scoped_kv) = astrid_storage::ScopedKvStore::new(plugin_kv, scoped_name) {
+                            let user_uuid = Self::user_uuid(session.user_id);
+                            let tool_ctx = astrid_plugins::PluginToolContext::new(
+                                plugin_id.clone(),
+                                self.config.workspace.root.clone(),
+                                scoped_kv,
+                            )
+                            .with_config(tool_config)
+                            .with_session(session.id.clone())
+                            .with_user(user_uuid);
+
+                            if let Ok(ctx_result) = tool.execute(serde_json::Value::Object(Default::default()), &tool_ctx).await {
+                                let trimmed = ctx_result.trim();
+                                if !trimmed.is_empty() {
+                                    combined_context.push_str(trimmed);
+                                    combined_context.push_str("\n\n");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !combined_context.is_empty() {
+                    session.system_prompt = format!("{}{}", combined_context, session.system_prompt);
+                }
+                session.plugin_context_collected = true;
+            }
+        }
+
         // Create per-turn ToolContext (shares cwd, owns its own spawner slot)
         let tool_ctx = ToolContext::with_shared_cwd(
             self.config.workspace.root.clone(),

@@ -608,3 +608,74 @@ async fn test_mcp_plugin_connector_registration() {
 
     plugin.unload().await.expect("plugin unload");
 }
+
+// ---------------------------------------------------------------------------
+// Hook context fixture helpers & tests
+// ---------------------------------------------------------------------------
+
+/// Path to the hook-context fixture plugin source.
+fn hook_context_index_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hook-context/index.mjs")
+}
+
+/// Write the bridge script and hook-context fixture into a temp directory.
+fn prepare_hook_context_dir(dir: &Path) {
+    openclaw_bridge::node_bridge::write_bridge_script(dir).expect("write bridge script");
+    let fixture_src = hook_context_index_path();
+    std::fs::copy(&fixture_src, dir.join("index.mjs")).expect("copy hook-context index.mjs");
+}
+
+/// Raw JSON-RPC test: verify the bridge correctly translates `notifications/astrid.hookEvent`
+/// to a plugin `api.on("session_start")` handler, and its effect can be observed via tool execution.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_bridge_hook_context_delivery() {
+    if !node_available() {
+        eprintln!("SKIP: node not found on $PATH");
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    prepare_hook_context_dir(tmp.path());
+
+    let mut bridge = RawBridge::spawn_with(tmp.path(), "hook-context").await;
+    bridge.handshake().await;
+
+    // Send the hookEvent notification for 'session_start'.
+    bridge
+        .send(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/astrid.hookEvent",
+            "params": {
+                "event": "session_start",
+                "data": null
+            }
+        }))
+        .await;
+
+    // Give the bridge a moment to process the async event handler.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Call get-hook-state to verify state mutation.
+    bridge
+        .send(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": "get-hook-state", "arguments": {} }
+        }))
+        .await;
+
+    let resp = bridge.recv().await;
+    assert_eq!(resp["id"], 1);
+
+    let text = resp["result"]["content"][0]["text"]
+        .as_str()
+        .expect("should return text context");
+
+    assert_eq!(
+        text, "Injected system identity context.",
+        "context was not mutated efficiently by hook event"
+    );
+
+    bridge.shutdown().await;
+}

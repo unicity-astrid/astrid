@@ -144,40 +144,7 @@ impl McpPlugin {
         self
     }
 
-    /// Send a hook event notification to the MCP server.
-    ///
-    /// Sends a custom MCP notification with method
-    /// `notifications/astrid.hookEvent`. This is fire-and-forget;
-    /// errors are logged but do not propagate.
-    pub async fn send_hook_event(&self, event: HookEvent, data: Value) {
-        let Some(peer) = &self.peer else {
-            debug!(
-                plugin_id = %self.id,
-                "Cannot send hook event: no peer connection"
-            );
-            return;
-        };
 
-        let notification = CustomNotification::new(
-            "notifications/astrid.hookEvent",
-            Some(serde_json::json!({
-                "event": event.to_string(),
-                "data": data,
-            })),
-        );
-
-        if let Err(e) = peer
-            .send_notification(ClientNotification::CustomNotification(notification))
-            .await
-        {
-            warn!(
-                plugin_id = %self.id,
-                event = %event,
-                error = %e,
-                "Failed to send hook event to plugin MCP server"
-            );
-        }
-    }
 
     /// Get the MCP server name for this plugin.
     #[must_use]
@@ -729,6 +696,41 @@ impl Plugin for McpPlugin {
 
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &self.registered_connectors
+    }
+
+    /// Send a hook event notification to the MCP server.
+    ///
+    /// Sends a custom MCP notification with method
+    /// `notifications/astrid.hookEvent`. This is fire-and-forget;
+    /// errors are logged but do not propagate.
+    async fn send_hook_event(&self, event: HookEvent, data: Value) {
+        let Some(peer) = &self.peer else {
+            debug!(
+                plugin_id = %self.id,
+                "Cannot send hook event: no peer connection"
+            );
+            return;
+        };
+
+        let notification = CustomNotification::new(
+            "notifications/astrid.hookEvent",
+            Some(serde_json::json!({
+                "event": event.to_string(),
+                "data": data,
+            })),
+        );
+
+        if let Err(e) = peer
+            .send_notification(ClientNotification::CustomNotification(notification))
+            .await
+        {
+            warn!(
+                plugin_id = %self.id,
+                event = %event,
+                error = %e,
+                "Failed to send hook event to plugin MCP server"
+            );
+        }
     }
 
     fn take_inbound_rx(

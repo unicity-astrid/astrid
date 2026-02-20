@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use astrid_core::{ConnectorDescriptor, InboundMessage};
+use astrid_core::{ConnectorDescriptor, HookEvent, InboundMessage};
 
 use crate::context::PluginContext;
 use crate::error::PluginResult;
@@ -169,6 +169,12 @@ pub trait Plugin: Send + Sync {
     fn connectors(&self) -> &[ConnectorDescriptor] {
         &[]
     }
+
+    /// Send a hook event to the plugin.
+    ///
+    /// The default implementation does nothing. Plugins that need to react to
+    /// hook events (e.g. MCP plugins) should override this method.
+    async fn send_hook_event(&self, _event: HookEvent, _data: serde_json::Value) {}
 
     /// Take the inbound message receiver, if any.
     ///
