@@ -77,9 +77,9 @@ impl Config {
     /// configuration fails validation.
     pub fn load_with_home(
         workspace_root: Option<&std::path::Path>,
-        home_dir: &std::path::Path,
+        astrid_home: &std::path::Path,
     ) -> ConfigResult<ResolvedConfig> {
-        loader::load(workspace_root, Some(home_dir))
+        loader::load(workspace_root, Some(astrid_home))
     }
 
     /// Load configuration from a single file (no layering).

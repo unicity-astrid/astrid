@@ -279,6 +279,21 @@ pub(super) fn validate_connector_declarations(
                 continue;
             },
         };
+
+        // Special case: "native-cli" is a synthetic connector registered by the
+        // daemon directly, not via a plugin in the registry.
+        if conn_cfg.plugin == "native-cli" {
+            // "native-cli" is Interactive; if user declares it as something else
+            // (like Bridge), warn them about the mismatch.
+            if expected_profile != ConnectorProfile::Interactive {
+                warnings.push(format!(
+                    "[[connectors]] plugin 'native-cli' has fixed profile 'interactive' (config declared '{}')",
+                    conn_cfg.profile
+                ));
+            }
+            continue;
+        }
+
         if registry.get(&pid).is_none() {
             warnings.push(format!(
                 "[[connectors]] plugin not loaded: {}",
@@ -632,6 +647,30 @@ mod tests {
         assert!(
             warnings.is_empty(),
             "no warnings expected for a properly registered connector: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn validate_connector_declarations_native_cli() {
+        let registry = PluginRegistry::new();
+
+        // Valid: native-cli with interactive profile.
+        let connectors = vec![ConnectorConfig {
+            plugin: "native-cli".to_owned(),
+            profile: "interactive".to_owned(),
+        }];
+        let warnings = validate_connector_declarations(&connectors, &registry);
+        assert!(warnings.is_empty());
+
+        // Invalid: native-cli with wrong profile.
+        let connectors = vec![ConnectorConfig {
+            plugin: "native-cli".to_owned(),
+            profile: "chat".to_owned(),
+        }];
+        let warnings = validate_connector_declarations(&connectors, &registry);
+        assert!(
+            warnings.iter().any(|w| w.contains("fixed profile")),
+            "should warn about fixed profile mismatch: {warnings:?}"
         );
     }
 }

@@ -33,7 +33,7 @@ const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 /// `workspace_root` is the root of the current project (e.g. the git
 /// repo root or `cwd`). If `None`, the workspace layer is skipped.
 ///
-/// `home_dir_override` provides an alternate home directory for user-level
+/// `astrid_home_override` provides an alternate home directory for user-level
 /// config discovery, bypassing the default search logic and `ASTRID_HOME`.
 ///
 /// # Errors
@@ -43,10 +43,10 @@ const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 #[allow(clippy::too_many_lines)]
 pub fn load(
     workspace_root: Option<&Path>,
-    home_dir_override: Option<&Path>,
+    astrid_home_override: Option<&Path>,
 ) -> ConfigResult<ResolvedConfig> {
     let env_vars = collect_env_vars();
-    let home_dir = if let Some(h) = home_dir_override {
+    let home_dir = if let Some(h) = astrid_home_override {
         h.to_path_buf()
     } else {
         home_directory()?
@@ -80,7 +80,7 @@ pub fn load(
     }
 
     // 3. User config.
-    let user_config = if let Some(h) = home_dir_override {
+    let user_config = if let Some(h) = astrid_home_override {
         // When overridden, treat the path as the .astrid directory itself.
         try_load_file(&h.join("config.toml"))?
             .map(|overlay| (overlay, h.join("config.toml")))
