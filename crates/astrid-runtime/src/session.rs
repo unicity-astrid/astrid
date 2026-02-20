@@ -49,6 +49,8 @@ pub struct AgentSession {
     pub model: Option<String>,
     /// Whether this session belongs to a sub-agent (skip spark preamble in `run_loop`).
     pub is_subagent: bool,
+    /// Plugin-provided context (fetched dynamically per subagent/session, not persisted).
+    pub plugin_context: Option<String>,
 }
 
 impl AgentSession {
@@ -78,6 +80,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
+            plugin_context: None,
         }
     }
 
@@ -107,6 +110,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
+            plugin_context: None,
         }
     }
 
@@ -147,6 +151,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: true,
+            plugin_context: None,
         }
     }
 
@@ -613,6 +618,6 @@ mod tests {
         let session = serializable.to_session();
         assert_eq!(session.system_prompt, "Test");
         assert!(session.workspace_path.is_none());
-        assert_eq!(session.budget_tracker.spent(), 0.0);
+        assert!((session.budget_tracker.spent() - 0.0_f64).abs() < f64::EPSILON);
     }
 }

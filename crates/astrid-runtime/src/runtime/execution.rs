@@ -97,6 +97,86 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             }
         }
 
+        // Collect agent context from plugins if not already collected this turn.
+        // It is held in session.plugin_context and dynamically injected into the prompt.
+        #[allow(clippy::collapsible_if)]
+        if session.plugin_context.is_none() {
+            if let Some(ref registry_lock) = self.plugin_registry {
+                let mut combined_context = String::new();
+                let active_plugins: Vec<astrid_plugins::PluginId> = {
+                    let registry = registry_lock.read().await;
+                    registry.list().into_iter().cloned().collect()
+                };
+
+                for plugin_id in active_plugins {
+                    // Discover if it exposes the context tool
+                    let (tool_arc, tool_config) = {
+                        let registry = registry_lock.read().await;
+                        let tool_name = format!("plugin:{plugin_id}:__astrid_get_agent_context");
+                        match registry.find_tool(&tool_name) {
+                            Some((plugin, t)) => (Some(t), plugin.manifest().config.clone()),
+                            None => (None, std::collections::HashMap::new()),
+                        }
+                    };
+
+                    // Execute the tool if present with a 5-second timeout
+                    if let Some(tool) = tool_arc {
+                        let plugin_kv =
+                            {
+                                let kv_key = format!("{}:plugin:{plugin_id}", session.id);
+                                let mut stores = self
+                                    .plugin_kv_stores
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                Arc::clone(stores.entry(kv_key).or_insert_with(|| {
+                                    Arc::new(astrid_storage::MemoryKvStore::new())
+                                }))
+                            };
+
+                        let scoped_name = format!("plugin-tool:plugin:{plugin_id}");
+                        if let Ok(scoped_kv) =
+                            astrid_storage::ScopedKvStore::new(plugin_kv, scoped_name)
+                        {
+                            let user_uuid = Self::user_uuid(session.user_id);
+                            let tool_ctx = astrid_plugins::PluginToolContext::new(
+                                plugin_id.clone(),
+                                self.config.workspace.root.clone(),
+                                scoped_kv,
+                            )
+                            .with_config(tool_config)
+                            .with_session(session.id.clone())
+                            .with_user(user_uuid);
+
+                            let execute_future = tool.execute(
+                                serde_json::Value::Object(serde_json::Map::default()),
+                                &tool_ctx,
+                            );
+                            if let Ok(Ok(ctx_result)) = tokio::time::timeout(
+                                std::time::Duration::from_secs(5),
+                                execute_future,
+                            )
+                            .await
+                            {
+                                let trimmed = ctx_result.trim();
+                                if !trimmed.is_empty() {
+                                    combined_context.push_str(trimmed);
+                                    combined_context.push_str("\n\n");
+                                }
+                            } else {
+                                tracing::warn!(%plugin_id, "Context tool execution timed out or failed");
+                            }
+                        }
+                    }
+                }
+
+                if combined_context.is_empty() {
+                    session.plugin_context = Some(String::new()); // Mark as collected but empty
+                } else {
+                    session.plugin_context = Some(combined_context);
+                }
+            }
+        }
+
         // Create per-turn ToolContext (shares cwd, owns its own spawner slot)
         let tool_ctx = ToolContext::with_shared_cwd(
             self.config.workspace.root.clone(),
@@ -210,7 +290,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             // Re-read spark for hot-reload (cheap: ~1KB file read per loop iteration).
             // Sub-agents skip this: their identity is baked into session.system_prompt
             // by SubAgentExecutor to avoid contradictory double injection.
-            let effective_prompt = if session.is_subagent {
+            let mut effective_prompt = if session.is_subagent {
                 session.system_prompt.clone()
             } else if let Some(spark) = self.read_effective_spark() {
                 if let Some(preamble) = spark.build_preamble() {
@@ -221,6 +301,11 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             } else {
                 session.system_prompt.clone()
             };
+
+            // Inject dynamic plugin context if present
+            if let Some(ctx) = session.plugin_context.as_ref().filter(|c| !c.is_empty()) {
+                effective_prompt = format!("{ctx}\n\n{effective_prompt}");
+            }
 
             // Stream from LLM
             let mut stream = self

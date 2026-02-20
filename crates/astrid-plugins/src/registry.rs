@@ -292,6 +292,10 @@ impl PluginRegistry {
                 continue;
             }
             for tool in plugin.tools() {
+                // Do not expose internal tools (must not be callable by the LLM).
+                if tool.name().starts_with("__astrid_") {
+                    continue;
+                }
                 defs.push(PluginToolDefinition {
                     name: qualified_tool_name(plugin_id, tool.name()),
                     description: tool.description().to_string(),

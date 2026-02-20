@@ -239,7 +239,7 @@ mod tests {
         session.token_count = 500;
 
         let stats = manager.stats(&session);
-        assert_eq!(stats.utilization, 0.5);
-        assert_eq!(stats.utilization_percent(), 50.0);
+        assert!((stats.utilization - 0.5_f32).abs() < f32::EPSILON);
+        assert!((stats.utilization_percent() - 50.0_f32).abs() < f32::EPSILON);
     }
 }
