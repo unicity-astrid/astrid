@@ -7,7 +7,7 @@ use crate::subagent::{SubAgentId, SubAgentPool};
 use astrid_audit::{AuditAction, AuditOutcome, AuthorizationProof};
 use astrid_core::{Frontend, SessionId};
 use astrid_llm::{LlmProvider, Message, MessageContent, MessageRole};
-use astrid_tools::{SubAgentRequest, SubAgentResult, SubAgentSpawner};
+use astrid_tools::{SubAgentRequest, SubAgentResult, SubAgentSpawner, truncate_at_char_boundary};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -117,7 +117,10 @@ impl<P: LlmProvider + 'static, F: Frontend + 'static> SubAgentSpawner for SubAge
         // Truncate description in the system prompt to limit prompt injection surface.
         // The full description is still logged/audited separately.
         let safe_description = if request.description.len() > 200 {
-            format!("{}...", &request.description[..200])
+            format!(
+                "{}...",
+                truncate_at_char_boundary(&request.description, 200)
+            )
         } else {
             request.description.clone()
         };
@@ -367,5 +370,59 @@ mod tests {
             extract_last_assistant_text(&messages),
             "(sub-agent produced no text output)"
         );
+    }
+
+    /// Helper that mirrors the production truncation logic in `spawn()`.
+    fn safe_description(desc: &str) -> String {
+        if desc.len() > 200 {
+            format!("{}...", truncate_at_char_boundary(desc, 200))
+        } else {
+            desc.to_string()
+        }
+    }
+
+    /// Regression test for issue #74: must not panic when a 4-byte emoji
+    /// straddles the 200-byte boundary.
+    #[test]
+    fn test_safe_description_multibyte_4byte_emoji() {
+        let mut desc = "x".repeat(198);
+        desc.push('🦀'); // 4 bytes → total 202
+        assert!(desc.len() > 200);
+
+        let safe = safe_description(&desc);
+        assert_eq!(safe, format!("{}...", "x".repeat(198)));
+    }
+
+    /// Must not panic when a 3-byte char sits at the boundary.
+    #[test]
+    fn test_safe_description_multibyte_3byte_char() {
+        let mut desc = "x".repeat(199);
+        desc.push('€'); // 3 bytes → total 202
+        assert!(desc.len() > 200);
+
+        let safe = safe_description(&desc);
+        assert_eq!(safe, format!("{}...", "x".repeat(199)));
+    }
+
+    /// Must not panic when a 2-byte char sits at the boundary.
+    #[test]
+    fn test_safe_description_multibyte_2byte_char() {
+        let mut desc = "x".repeat(199);
+        desc.push('ñ'); // 2 bytes → total 201
+        assert!(desc.len() > 200);
+
+        let safe = safe_description(&desc);
+        assert_eq!(safe, format!("{}...", "x".repeat(199)));
+    }
+
+    #[test]
+    fn test_safe_description_short_passes_through() {
+        assert_eq!(safe_description("short"), "short");
+    }
+
+    #[test]
+    fn test_safe_description_exact_200_bytes() {
+        let desc = "x".repeat(200);
+        assert_eq!(safe_description(&desc), desc);
     }
 }

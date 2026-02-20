@@ -247,17 +247,7 @@ pub(crate) fn acquire_spark_lock(spark_path: &Path) -> Result<SparkLockGuard, To
     })
 }
 
-/// Truncate a string at the nearest char boundary at or before `max_bytes`.
-fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end = end.saturating_sub(1);
-    }
-    s[..end].to_string()
-}
+use super::truncate::truncate_at_char_boundary;
 
 #[cfg(test)]
 mod tests {
