@@ -16,9 +16,14 @@ impl DaemonPaths {
     /// Returns an error if the home directory cannot be resolved.
     pub fn default_dir() -> Result<Self, std::io::Error> {
         let home = astrid_core::dirs::AstridHome::resolve()?;
-        Ok(Self {
-            base_dir: home.root().to_path_buf(),
-        })
+        Ok(Self::from_dir(home.root()))
+    }
+
+    /// Create paths from an explicit directory.
+    pub fn from_dir(path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            base_dir: path.into(),
+        }
     }
 
     /// PID file path.

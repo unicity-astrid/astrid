@@ -60,10 +60,6 @@ impl DaemonServer {
         options: DaemonStartOptions,
         home_override: Option<astrid_core::dirs::AstridHome>,
     ) -> Result<(Self, ServerHandle, SocketAddr, astrid_config::Config), crate::GatewayError> {
-        let paths = DaemonPaths::default_dir().map_err(|e| {
-            crate::GatewayError::Runtime(format!("Failed to resolve daemon paths: {e}"))
-        })?;
-
         // Resolve and ensure directory structures.
         let home = if let Some(h) = home_override {
             h
@@ -78,6 +74,8 @@ impl DaemonServer {
                 home.root().display()
             ))
         })?;
+
+        let paths = DaemonPaths::from_dir(home.root());
 
         let cwd = if let Some(ref ws) = options.workspace_root {
             ws.clone()
