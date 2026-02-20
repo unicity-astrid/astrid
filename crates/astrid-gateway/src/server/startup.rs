@@ -328,6 +328,10 @@ impl DaemonServer {
              persisted. Linked connector users must re-link after each daemon restart."
         );
 
+        // Apply pre-configured identity links from [[identity.links]] config.
+        // Idempotent: skips entries that are already linked.
+        super::config_apply::apply_identity_links(&cfg, &identity_store).await;
+
         // Register the native CLI connector in the plugin registry so the
         // approval fallback chain can find an interactive surface.
         //
@@ -358,6 +362,7 @@ impl DaemonServer {
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
             let inbound_tx_for_autoload = inbound_tx.clone();
+            let connectors_cfg = cfg.connectors.clone();
             tokio::spawn(async move {
                 // Collect IDs under a brief read lock.
                 let plugin_ids: Vec<PluginId> = {
@@ -413,6 +418,18 @@ impl DaemonServer {
                     // Put the plugin back (brief write lock).
                     let mut registry = registry_clone.write().await;
                     let _ = registry.register(plugin);
+                }
+
+                // Validate configured connectors after all plugins are auto-loaded.
+                // Best-effort: warns on mismatches, never fails startup.
+                {
+                    let registry = registry_clone.read().await;
+                    for warning in super::config_apply::validate_connector_declarations(
+                        &connectors_cfg,
+                        &registry,
+                    ) {
+                        warn!("{}", warning);
+                    }
                 }
             });
         }

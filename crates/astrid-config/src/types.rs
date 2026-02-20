@@ -60,6 +60,10 @@ pub struct Config {
     pub telegram: TelegramSection,
     /// Agent identity seed (static fallback for spark.toml).
     pub spark: SparkSection,
+    /// Pre-declared connector plugins to validate at startup.
+    pub connectors: Vec<ConnectorConfig>,
+    /// Pre-configured platform identity links applied at every startup.
+    pub identity: IdentitySection,
 }
 
 // ---------------------------------------------------------------------------
@@ -883,6 +887,65 @@ impl SparkSection {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ConnectorConfig
+// ---------------------------------------------------------------------------
+
+/// Pre-declared connector plugin entry.
+///
+/// Entries in `[[connectors]]` declare which connector plugins should be
+/// available and which behavioural profile they should expose. At startup, the
+/// daemon validates that each declared plugin is loaded and exposes a connector
+/// with the expected profile.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ConnectorConfig {
+    /// Plugin ID (e.g. `"openclaw-telegram"`).
+    pub plugin: String,
+    /// Expected connector profile: `"chat"`, `"interactive"`, `"notify"`, or
+    /// `"bridge"`. Unknown values are logged and default to `"chat"`.
+    pub profile: String,
+}
+
+// ---------------------------------------------------------------------------
+// IdentitySection
+// ---------------------------------------------------------------------------
+
+/// Pre-configured platform identity links.
+///
+/// Entries in `[[identity.links]]` are applied on every daemon startup, making
+/// config-driven identity links effectively persistent across restarts without
+/// requiring manual re-pairing.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IdentitySection {
+    /// Identity links to apply on startup.
+    pub links: Vec<IdentityLinkConfig>,
+}
+
+/// A single pre-configured identity link.
+///
+/// Maps a platform-specific user ID to a canonical Astrid user identity.
+/// Applied at daemon startup via admin linking.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IdentityLinkConfig {
+    /// Platform identifier (e.g. `"telegram"`, `"discord"`).
+    pub platform: String,
+    /// Platform-specific user ID (e.g. a Telegram numeric ID as a string).
+    pub platform_user_id: String,
+    /// Astrid user to link — UUID string or display name.
+    pub astrid_user: String,
+    /// Link verification method. Only `"admin"` is currently supported.
+    /// Defaults to `"admin"` when omitted.
+    #[serde(default = "default_link_method")]
+    pub method: String,
+}
+
+fn default_link_method() -> String {
+    "admin".to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1002,5 +1065,62 @@ core = "I value clarity."
         let toml = "[model]\nprovider = \"claude\"\n";
         let cfg: Config = toml::from_str(toml).unwrap();
         assert!(cfg.spark.is_empty());
+    }
+
+    #[test]
+    fn test_connectors_parse() {
+        let toml = r#"
+[[connectors]]
+plugin = "openclaw-telegram"
+profile = "chat"
+
+[[connectors]]
+plugin = "openclaw-discord"
+profile = "bridge"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.connectors.len(), 2);
+        assert_eq!(cfg.connectors[0].plugin, "openclaw-telegram");
+        assert_eq!(cfg.connectors[0].profile, "chat");
+        assert_eq!(cfg.connectors[1].plugin, "openclaw-discord");
+        assert_eq!(cfg.connectors[1].profile, "bridge");
+    }
+
+    #[test]
+    fn test_identity_links_parse() {
+        let toml = r#"
+[[identity.links]]
+platform = "telegram"
+platform_user_id = "123456"
+astrid_user = "josh"
+method = "admin"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.identity.links.len(), 1);
+        let link = &cfg.identity.links[0];
+        assert_eq!(link.platform, "telegram");
+        assert_eq!(link.platform_user_id, "123456");
+        assert_eq!(link.astrid_user, "josh");
+        assert_eq!(link.method, "admin");
+    }
+
+    #[test]
+    fn test_backward_compat_no_new_sections() {
+        let toml = "[model]\nprovider = \"claude\"\n";
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert!(cfg.connectors.is_empty());
+        assert!(cfg.identity.links.is_empty());
+    }
+
+    #[test]
+    fn test_default_link_method() {
+        let toml = r#"
+[[identity.links]]
+platform = "discord"
+platform_user_id = "999"
+astrid_user = "alice"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.identity.links[0].method, "admin");
     }
 }

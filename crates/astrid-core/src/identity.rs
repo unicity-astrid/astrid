@@ -139,6 +139,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -391,6 +392,22 @@ impl fmt::Display for FrontendType {
             Self::Cli => write!(f, "cli"),
             Self::Custom(name) => write!(f, "custom:{name}"),
         }
+    }
+}
+
+impl FromStr for FrontendType {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().trim() {
+            "discord" => Self::Discord,
+            "telegram" => Self::Telegram,
+            "whatsapp" | "whats_app" => Self::WhatsApp,
+            "slack" => Self::Slack,
+            "web" => Self::Web,
+            "cli" => Self::Cli,
+            other => Self::Custom(other.to_string()),
+        })
     }
 }
 
@@ -968,5 +985,65 @@ mod tests {
             result,
             Err(SecurityError::FrontendAlreadyLinked { .. })
         ));
+    }
+
+    // --- FrontendType::FromStr ---
+
+    #[test]
+    fn frontend_type_from_str_known_variants() {
+        assert_eq!(
+            FrontendType::from_str("discord").unwrap(),
+            FrontendType::Discord
+        );
+        assert_eq!(
+            FrontendType::from_str("telegram").unwrap(),
+            FrontendType::Telegram
+        );
+        assert_eq!(
+            FrontendType::from_str("whatsapp").unwrap(),
+            FrontendType::WhatsApp
+        );
+        assert_eq!(
+            FrontendType::from_str("whats_app").unwrap(),
+            FrontendType::WhatsApp
+        );
+        assert_eq!(
+            FrontendType::from_str("slack").unwrap(),
+            FrontendType::Slack
+        );
+        assert_eq!(FrontendType::from_str("web").unwrap(), FrontendType::Web);
+        assert_eq!(FrontendType::from_str("cli").unwrap(), FrontendType::Cli);
+    }
+
+    #[test]
+    fn frontend_type_from_str_case_insensitive() {
+        assert_eq!(
+            FrontendType::from_str("Discord").unwrap(),
+            FrontendType::Discord
+        );
+        assert_eq!(
+            FrontendType::from_str("TELEGRAM").unwrap(),
+            FrontendType::Telegram
+        );
+        assert_eq!(
+            FrontendType::from_str("WhatsApp").unwrap(),
+            FrontendType::WhatsApp
+        );
+    }
+
+    #[test]
+    fn frontend_type_from_str_custom_fallback() {
+        let ft = FrontendType::from_str("matrix").unwrap();
+        assert_eq!(ft, FrontendType::Custom("matrix".to_string()));
+    }
+
+    #[test]
+    fn frontend_type_from_str_trims_whitespace() {
+        assert_eq!(
+            FrontendType::from_str("  discord  ").unwrap(),
+            FrontendType::Discord
+        );
+        let ft = FrontendType::from_str("  matrix  ").unwrap();
+        assert_eq!(ft, FrontendType::Custom("matrix".to_string()));
     }
 }
