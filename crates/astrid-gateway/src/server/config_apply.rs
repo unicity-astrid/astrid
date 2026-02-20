@@ -19,6 +19,17 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Get the current OS username.
+fn get_os_username() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "root".to_string())
+}
+
+// ---------------------------------------------------------------------------
 // config_admin_id
 // ---------------------------------------------------------------------------
 
@@ -42,7 +53,8 @@ fn config_admin_id() -> Uuid {
 ///    [`IdentityStore::get_by_id`].
 /// 2. Otherwise, try [`IdentityStore::resolve`] against the `cli` frontend
 ///    (display-name lookup).
-/// 3. If neither finds a match, mint a new identity via
+/// 3. If "root" is specified, try resolving via the current OS username.
+/// 4. If neither finds a match, mint a new identity via
 ///    [`IdentityStore::create_identity`] and set the display name.
 ///
 /// **Note on restart behaviour:** When a display name is supplied and the
@@ -75,16 +87,30 @@ async fn resolve_astrid_user(
         return Some(id);
     }
 
-    // 3. Mint a fresh identity via CLI frontend (avoids double-linking — the
+    // 3. Root user resolution (OS username fallback).
+    if astrid_user == "root" {
+        let os_user = get_os_username();
+        if let Some(id) = identity_store.resolve(&FrontendType::Cli, &os_user).await {
+            return Some(id);
+        }
+    }
+
+    // 4. Mint a fresh identity via CLI frontend (avoids double-linking — the
     //    platform link is created separately in apply_identity_links).
+    let final_username = if astrid_user == "root" {
+        get_os_username()
+    } else {
+        astrid_user.to_string()
+    };
+
     match identity_store
-        .create_identity(FrontendType::Cli, astrid_user)
+        .create_identity(FrontendType::Cli, &final_username)
         .await
     {
         Ok(id) => {
             // Set display name from the config's astrid_user field.
             let updated = AstridUserId {
-                display_name: Some(astrid_user.to_string()),
+                display_name: Some(final_username),
                 ..id.clone()
             };
             if let Err(e) = identity_store.update_identity(updated).await {
@@ -463,6 +489,26 @@ mod tests {
             discord_id.unwrap().id,
             "both platforms must resolve to the same AstridUserId"
         );
+    }
+
+    #[tokio::test]
+    async fn apply_identity_links_root_user_resolution() {
+        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
+        let os_user = get_os_username();
+
+        // config uses "root"
+        let cfg = make_cfg(vec![make_link("telegram", "888", "root")]);
+        apply_identity_links(&cfg, &store).await;
+
+        let resolved = store.resolve(&FrontendType::Telegram, "888").await;
+        assert!(resolved.is_some());
+        let user = resolved.unwrap();
+
+        // Identity should be created with OS username as CLI platform ID.
+        let cli_id = store.resolve(&FrontendType::Cli, &os_user).await;
+        assert!(cli_id.is_some());
+        assert_eq!(user.id, cli_id.unwrap().id);
+        assert_eq!(user.display_name.as_deref(), Some(os_user.as_str()));
     }
 
     // --- validate_connector_declarations ---
