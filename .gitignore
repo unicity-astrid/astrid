@@ -33,6 +33,7 @@ packages/*/node_modules/
 packages/*/dist/
 
 # AI
-.claude
 .astrid
+.claude
+.gemini
 .mcp.json
