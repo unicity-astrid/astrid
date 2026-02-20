@@ -15,7 +15,7 @@ pub(crate) async fn run_daemon_with_mode(ephemeral: bool, grace_period: Option<u
         grace_period_secs: grace_period,
     };
 
-    let (daemon, handle, addr, cfg) = DaemonServer::start(options).await?;
+    let (daemon, handle, addr, cfg) = DaemonServer::start(options, None).await?;
 
     let mode_label = if daemon.is_ephemeral() {
         "ephemeral"

@@ -66,7 +66,20 @@ impl Config {
     /// Returns a [`ConfigError`] if any config file is malformed or the final
     /// configuration fails validation.
     pub fn load(workspace_root: Option<&std::path::Path>) -> ConfigResult<ResolvedConfig> {
-        loader::load(workspace_root)
+        loader::load(workspace_root, None)
+    }
+
+    /// Load configuration with an explicit home directory override.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ConfigError`] if any config file is malformed or the final
+    /// configuration fails validation.
+    pub fn load_with_home(
+        workspace_root: Option<&std::path::Path>,
+        home_dir: &std::path::Path,
+    ) -> ConfigResult<ResolvedConfig> {
+        loader::load(workspace_root, Some(home_dir))
     }
 
     /// Load configuration from a single file (no layering).
