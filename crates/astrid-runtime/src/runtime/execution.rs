@@ -191,9 +191,11 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         // Run the agentic loop (tool_ctx is dropped at turn end — no cleanup needed)
         let loop_result = self.run_loop(session, &*frontend, &tool_ctx).await;
 
-        loop_result?;
+        let save_result = self.sessions.save(session);
 
-        self.sessions.save(session)?;
+        loop_result?;
+        save_result?;
+
         Ok(())
     }
 
