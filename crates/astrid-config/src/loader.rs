@@ -33,14 +33,24 @@ const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 /// `workspace_root` is the root of the current project (e.g. the git
 /// repo root or `cwd`). If `None`, the workspace layer is skipped.
 ///
+/// `astrid_home_override` provides an alternate home directory for user-level
+/// config discovery, bypassing the default search logic and `ASTRID_HOME`.
+///
 /// # Errors
 ///
 /// Returns a [`ConfigError`] if any config file is malformed, or if the
 /// final merged configuration fails validation.
 #[allow(clippy::too_many_lines)]
-pub fn load(workspace_root: Option<&Path>) -> ConfigResult<ResolvedConfig> {
+pub fn load(
+    workspace_root: Option<&Path>,
+    astrid_home_override: Option<&Path>,
+) -> ConfigResult<ResolvedConfig> {
     let env_vars = collect_env_vars();
-    let home_dir = home_directory()?;
+    let home_dir = if let Some(h) = astrid_home_override {
+        h.to_path_buf()
+    } else {
+        home_directory()?
+    };
 
     // 1. Parse embedded defaults.
     let mut merged: toml::Value =
@@ -69,9 +79,34 @@ pub fn load(workspace_root: Option<&Path>) -> ConfigResult<ResolvedConfig> {
         info!(path = %system_path.display(), "loaded system config");
     }
 
-    // 3. User config (~/.astrid/config.toml).
-    let user_path = home_dir.join(".astrid").join("config.toml");
-    if let Some(overlay) = try_load_file(&user_path)? {
+    // 3. User config.
+    let user_config = if let Some(h) = astrid_home_override {
+        // When overridden, treat the path as the .astrid directory itself.
+        let path = h.join("config.toml");
+        try_load_file(&path)?.map(|overlay| (overlay, path))
+    } else {
+        // Standard discovery: ~/.astrid/config.toml then ASTRID_HOME/config.toml
+        let user_path = home_dir.join(".astrid").join("config.toml");
+        if let Some(overlay) = try_load_file(&user_path)? {
+            Some((overlay, user_path))
+        } else if let Some(astrid_home) = env_vars.get("ASTRID_HOME") {
+            let validated = validate_astrid_home(astrid_home, &home_dir);
+            if let Some(canonical) = validated {
+                let alt_path = canonical.join("config.toml");
+                try_load_file(&alt_path)?.map(|overlay| (overlay, alt_path))
+            } else {
+                tracing::warn!(
+                    path = astrid_home,
+                    "ASTRID_HOME is not a valid directory owned by current user; ignoring"
+                );
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some((overlay, path)) = user_config {
         deep_merge_tracking(
             &mut merged,
             &overlay,
@@ -79,35 +114,8 @@ pub fn load(workspace_root: Option<&Path>) -> ConfigResult<ResolvedConfig> {
             &ConfigLayer::User,
             &mut field_sources,
         );
-        loaded_files.push(user_path.display().to_string());
-        info!(path = %user_path.display(), "loaded user config");
-    } else if let Some(astrid_home) = env_vars.get("ASTRID_HOME") {
-        // ASTRID_HOME provides an alternate user-level config directory.
-        // We canonicalize the path to resolve symlinks and verify it's a
-        // directory owned by the current user before trusting it at User level.
-        // This prevents an attacker from setting ASTRID_HOME to a directory
-        // they control to inject config at the trusted User level.
-        let validated = validate_astrid_home(astrid_home, &home_dir);
-
-        if let Some(canonical) = validated {
-            let alt_path = canonical.join("config.toml");
-            if let Some(overlay) = try_load_file(&alt_path)? {
-                deep_merge_tracking(
-                    &mut merged,
-                    &overlay,
-                    "",
-                    &ConfigLayer::User,
-                    &mut field_sources,
-                );
-                loaded_files.push(alt_path.display().to_string());
-                info!(path = %alt_path.display(), "loaded user config from ASTRID_HOME");
-            }
-        } else {
-            tracing::warn!(
-                path = astrid_home,
-                "ASTRID_HOME is not a valid directory owned by current user; ignoring"
-            );
-        }
+        loaded_files.push(path.display().to_string());
+        info!(path = %path.display(), "loaded user config");
     }
 
     // 4. Workspace config ({workspace}/.astrid/config.toml).

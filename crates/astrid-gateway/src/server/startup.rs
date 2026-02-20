@@ -41,6 +41,9 @@ pub struct DaemonStartOptions {
     /// Override for the idle-shutdown grace period (seconds). Falls back to
     /// `gateway.idle_shutdown_secs` from the config.
     pub grace_period_secs: Option<u64>,
+    /// Optional workspace root directory override. If not provided, the
+    /// daemon detects the workspace from the current working directory.
+    pub workspace_root: Option<PathBuf>,
 }
 
 impl DaemonServer {
@@ -55,15 +58,16 @@ impl DaemonServer {
     #[allow(clippy::too_many_lines)]
     pub async fn start(
         options: DaemonStartOptions,
+        home_override: Option<astrid_core::dirs::AstridHome>,
     ) -> Result<(Self, ServerHandle, SocketAddr, astrid_config::Config), crate::GatewayError> {
-        let paths = DaemonPaths::default_dir().map_err(|e| {
-            crate::GatewayError::Runtime(format!("Failed to resolve daemon paths: {e}"))
-        })?;
-
         // Resolve and ensure directory structures.
-        let home = astrid_core::dirs::AstridHome::resolve().map_err(|e| {
-            crate::GatewayError::Runtime(format!("Failed to resolve home directory: {e}"))
-        })?;
+        let home = if let Some(h) = home_override {
+            h
+        } else {
+            astrid_core::dirs::AstridHome::resolve().map_err(|e| {
+                crate::GatewayError::Runtime(format!("Failed to resolve home directory: {e}"))
+            })?
+        };
         home.ensure().map_err(|e| {
             crate::GatewayError::Runtime(format!(
                 "Failed to create home directory {}: {e}",
@@ -71,7 +75,13 @@ impl DaemonServer {
             ))
         })?;
 
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let paths = DaemonPaths::from_dir(home.root());
+
+        let cwd = if let Some(ref ws) = options.workspace_root {
+            ws.clone()
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
         let ws = astrid_core::dirs::WorkspaceDir::detect(&cwd);
         // Ensure workspace dir and generate workspace ID (idempotent).
         ws.ensure().map_err(|e| {
@@ -85,7 +95,7 @@ impl DaemonServer {
         })?;
 
         // Load unified configuration.
-        let cfg = match astrid_config::Config::load(Some(&cwd)) {
+        let cfg = match astrid_config::Config::load_with_home(Some(&cwd), home.root()) {
             Ok(r) => r.config,
             Err(e) => {
                 warn!(error = %e, "Failed to load config; falling back to defaults");

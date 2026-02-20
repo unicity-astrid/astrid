@@ -54,9 +54,10 @@ async fn main() -> Result<()> {
     let options = DaemonStartOptions {
         ephemeral: args.ephemeral,
         grace_period_secs: args.grace_period,
+        workspace_root: None,
     };
 
-    let (daemon, handle, addr, cfg) = DaemonServer::start(options).await?;
+    let (daemon, handle, addr, cfg) = DaemonServer::start(options, None).await?;
 
     let mode_label = if daemon.is_ephemeral() {
         "ephemeral"

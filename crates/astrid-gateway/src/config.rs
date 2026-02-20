@@ -31,6 +31,36 @@ pub struct GatewayConfig {
     /// Session configuration.
     #[serde(default)]
     pub sessions: SessionConfig,
+
+    /// Pre-declared connector plugins to validate at startup.
+    #[serde(default)]
+    pub connectors: Vec<ConnectorConfig>,
+
+    /// Pre-configured platform identity links applied at every startup.
+    #[serde(default)]
+    pub identity_links: Vec<IdentityLinkConfig>,
+}
+
+/// Pre-declared connector plugin entry.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConnectorConfig {
+    /// Plugin ID (e.g. "openclaw-telegram").
+    pub plugin: String,
+    /// Expected connector profile: "chat", "interactive", "notify", or "bridge".
+    pub profile: String,
+}
+
+/// A single pre-configured identity link.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IdentityLinkConfig {
+    /// Platform identifier (e.g. "telegram", "discord").
+    pub platform: String,
+    /// Platform-specific user ID.
+    pub platform_user_id: String,
+    /// Astrid user to link — UUID string or display name.
+    pub astrid_user: String,
+    /// Link verification method. Only "admin" is currently supported.
+    pub method: String,
 }
 
 /// Retry settings for the gateway.

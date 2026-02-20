@@ -71,6 +71,27 @@ pub fn from_unified_config(cfg: &astrid_config::Config) -> GatewayConfig {
         persist: cfg.sessions.persist,
     };
 
+    let connectors = cfg
+        .connectors
+        .iter()
+        .map(|c| crate::config::ConnectorConfig {
+            plugin: c.plugin.clone(),
+            profile: c.profile.clone(),
+        })
+        .collect();
+
+    let identity_links = cfg
+        .identity
+        .links
+        .iter()
+        .map(|l| crate::config::IdentityLinkConfig {
+            platform: l.platform.clone(),
+            platform_user_id: l.platform_user_id.clone(),
+            astrid_user: l.astrid_user.clone(),
+            method: l.method.clone(),
+        })
+        .collect();
+
     GatewayConfig {
         gateway,
         defaults,
@@ -78,6 +99,8 @@ pub fn from_unified_config(cfg: &astrid_config::Config) -> GatewayConfig {
         timeouts,
         retry,
         sessions,
+        connectors,
+        identity_links,
     }
 }
 
