@@ -325,7 +325,7 @@ mod tests {
         let subscriber = FilterSubscriber::new("security_only", move |_event| {
             received_clone.fetch_add(1, Ordering::SeqCst);
         })
-        .with_filter(|e| e.is_security_event());
+        .with_filter(super::super::event::AstridEvent::is_security_event);
 
         let registry = SubscriberRegistry::new();
         registry.register(Arc::new(subscriber));

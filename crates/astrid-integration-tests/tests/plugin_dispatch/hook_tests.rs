@@ -1,4 +1,4 @@
-//! Hook interaction tests: PreToolCall blocking, PostToolCall and ToolError firing.
+//! Hook interaction tests: `PreToolCall` blocking, `PostToolCall` and `ToolError` firing.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 
 use super::fixtures::{FailingTool, TestPlugin, make_plugin};
 
-/// A PreToolCall hook that outputs "block: <reason>" prevents the plugin tool
+/// A `PreToolCall` hook that outputs "block: <reason>" prevents the plugin tool
 /// from executing and returns a graceful error.
 #[tokio::test]
 async fn test_pre_tool_call_hook_blocks_plugin_tool() {
@@ -95,8 +95,8 @@ async fn test_pre_tool_call_hook_blocks_plugin_tool() {
     }
 }
 
-/// After a successful plugin tool call, the PostToolCall hook fires (not ToolError).
-/// We verify this by checking that a PostToolCall command hook ran successfully —
+/// After a successful plugin tool call, the `PostToolCall` hook fires (not `ToolError`).
+/// We verify this by checking that a `PostToolCall` command hook ran successfully —
 /// the echo command produces stdout which the hook system parses as Continue.
 #[tokio::test]
 async fn test_post_tool_call_hook_fires_on_success() {
@@ -173,7 +173,7 @@ async fn test_post_tool_call_hook_fires_on_success() {
     );
 }
 
-/// After a failing plugin tool call, the ToolError hook fires (not PostToolCall).
+/// After a failing plugin tool call, the `ToolError` hook fires (not `PostToolCall`).
 #[tokio::test]
 async fn test_tool_error_hook_fires_on_failure() {
     let ws = tempfile::tempdir().unwrap();

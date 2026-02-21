@@ -76,6 +76,13 @@ struct SessionHandle {
     user_id: Option<Uuid>,
 }
 
+impl SessionHandle {
+    /// Returns true if this session is managed by the inbound router (i.e. a connector session).
+    pub(crate) fn is_connector(&self) -> bool {
+        self.user_id.is_some()
+    }
+}
+
 /// The daemon `WebSocket` server.
 pub struct DaemonServer {
     /// The agent runtime (shared, immutable reference).

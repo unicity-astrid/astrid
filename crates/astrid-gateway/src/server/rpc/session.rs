@@ -438,7 +438,7 @@ impl RpcImpl {
             // First get a reference to check user_id before removing.
             let is_connector = sessions
                 .get(&session_id)
-                .is_some_and(|h| h.user_id.is_some());
+                .is_some_and(super::super::SessionHandle::is_connector);
             if is_connector {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,
@@ -503,7 +503,7 @@ impl RpcImpl {
                 )
             })?;
 
-            if h.user_id.is_some() {
+            if h.is_connector() {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,
                     "session is managed by the inbound router and cannot be saved via RPC",

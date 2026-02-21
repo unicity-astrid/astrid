@@ -337,12 +337,12 @@ mod tests {
         assert!(rt.spark_seed.is_none());
     }
 
-    /// Verify that SparkSection (config) and SparkConfig (tools) produce the
+    /// Verify that `SparkSection` (config) and `SparkConfig` (tools) produce the
     /// same JSON keys when serialized from defaults. If someone adds a field
     /// to one but not the other, this test catches the mismatch.
     ///
     /// NOTE: `astrid_gateway::config::SparkConfig` is a third mirror type.
-    /// The gateway config_bridge has its own parity test for that type.
+    /// The gateway `config_bridge` has its own parity test for that type.
     /// The canonical field set is defined by `astrid_config::SparkSection`.
     #[test]
     fn spark_section_and_config_have_matching_fields() {

@@ -425,10 +425,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl PluginTool for EchoTool {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "echo"
         }
-        fn description(&self) -> &str {
+        fn description(&self) -> &'static str {
             "Echoes the input"
         }
         fn input_schema(&self) -> serde_json::Value {
@@ -510,7 +510,7 @@ mod tests {
             .unwrap();
 
         let mut ids: Vec<&str> = registry.list().iter().map(|id| id.as_str()).collect();
-        ids.sort();
+        ids.sort_unstable();
         assert_eq!(ids, vec!["alpha", "beta"]);
     }
 
@@ -651,10 +651,10 @@ mod tests {
 
         #[async_trait::async_trait]
         impl PluginTool for ColonTool {
-            fn name(&self) -> &str {
+            fn name(&self) -> &'static str {
                 "name:with:colons"
             }
-            fn description(&self) -> &str {
+            fn description(&self) -> &'static str {
                 "A tool with colons in the name"
             }
             fn input_schema(&self) -> serde_json::Value {

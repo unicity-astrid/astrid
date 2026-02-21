@@ -26,7 +26,7 @@ impl RpcImpl {
                 )
             })?;
 
-            if h.user_id.is_some() {
+            if h.is_connector() {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,
                     "session is managed by the inbound router and cannot be managed via RPC",
@@ -68,7 +68,7 @@ impl RpcImpl {
                 )
             })?;
 
-            if h.user_id.is_some() {
+            if h.is_connector() {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,
                     "session is managed by the inbound router and cannot be managed via RPC",
@@ -107,7 +107,7 @@ impl RpcImpl {
                 )
             })?;
 
-            if h.user_id.is_some() {
+            if h.is_connector() {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,
                     "session is managed by the inbound router and cannot be managed via RPC",

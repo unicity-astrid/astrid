@@ -1128,7 +1128,7 @@ mod tests {
         }
     }
 
-    /// Verify that bad inputSchema types cause CustomResult fallthrough.
+    /// Verify that bad inputSchema types cause `CustomResult` fallthrough.
     /// This documents the failure mode we're guarding against in the bridge.
     #[test]
     fn test_array_input_schema_falls_to_custom_result() {
@@ -1153,7 +1153,7 @@ mod tests {
         }
     }
 
-    /// Verify that non-string description causes CustomResult fallthrough.
+    /// Verify that non-string description causes `CustomResult` fallthrough.
     #[test]
     fn test_numeric_description_falls_to_custom_result() {
         use rmcp::model::*;

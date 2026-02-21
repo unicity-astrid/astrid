@@ -77,10 +77,10 @@ pub struct EchoTool;
 
 #[async_trait::async_trait]
 impl PluginTool for EchoTool {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "echo"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Echoes the input message"
     }
     fn input_schema(&self) -> serde_json::Value {
@@ -112,10 +112,10 @@ pub struct FailingTool;
 
 #[async_trait::async_trait]
 impl PluginTool for FailingTool {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "fail"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Always fails"
     }
     fn input_schema(&self) -> serde_json::Value {
@@ -140,10 +140,10 @@ pub struct UpperTool;
 
 #[async_trait::async_trait]
 impl PluginTool for UpperTool {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "upper"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Uppercases the input"
     }
     fn input_schema(&self) -> serde_json::Value {

@@ -5,12 +5,12 @@
 //! and hooks correctly.
 //!
 //! Tests are organized into focused submodules:
-//! - `fixtures`      — shared test plugin types (TestPlugin, EchoTool, etc.)
+//! - `fixtures`      — shared test plugin types (`TestPlugin`, `EchoTool`, etc.)
 //! - `helpers`       — runtime builder helpers
 //! - `dispatch_tests`     — core dispatch, not-found, and registry builder tests
 //! - `security_tests`     — security interceptor denial and workspace boundary
 //! - `error_multi_tests`  — error propagation and multi-plugin dispatch
-//! - `hook_tests`         — PreToolCall blocking, PostToolCall, and ToolError hooks
+//! - `hook_tests`         — `PreToolCall` blocking, `PostToolCall`, and `ToolError` hooks
 //! - `hot_reload_tests`   — plugin unloaded/failed mid-turn race conditions
 //! - `audit_tests`        — audit log entry verification
 //! - `tool_name_tests`    — special characters and colon-containing tool names

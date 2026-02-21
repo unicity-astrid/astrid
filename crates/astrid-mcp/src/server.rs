@@ -845,7 +845,11 @@ mod tests {
             server.restart_count = 1;
             // 60 seconds ago — the required delay for attempt 1 is 30s, so this
             // is well past the cooldown.
-            server.last_restart_attempt = Some(Instant::now() - std::time::Duration::from_secs(60));
+            server.last_restart_attempt = Some(
+                Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(60))
+                    .unwrap(),
+            );
             running.insert("srv".to_string(), server);
         }
 

@@ -714,7 +714,6 @@ mod tests {
         let config = WatcherConfig {
             watch_paths: vec![dir.path().to_path_buf()],
             debounce: Duration::from_millis(50),
-            ..Default::default()
         };
         let (mut watcher, mut events) = PluginWatcher::new(config).unwrap();
 
@@ -748,7 +747,7 @@ mod tests {
         assert!(event.is_ok(), "Changed content should emit a new event");
     }
 
-    /// Test that resolve_plugin_dir correctly identifies plugin roots.
+    /// Test that `resolve_plugin_dir` correctly identifies plugin roots.
     #[test]
     fn test_resolve_plugin_dir() {
         let dir = TempDir::new().unwrap();
@@ -778,7 +777,7 @@ mod tests {
         assert!(resolved.is_none());
     }
 
-    /// Test that resolve_plugin_dir finds OpenClaw plugins too.
+    /// Test that `resolve_plugin_dir` finds `OpenClaw` plugins too.
     #[test]
     fn test_resolve_plugin_dir_openclaw() {
         let dir = TempDir::new().unwrap();
@@ -821,7 +820,6 @@ mod tests {
         let config = WatcherConfig {
             watch_paths: vec![dir.path().to_path_buf()],
             debounce: Duration::from_millis(100),
-            ..Default::default()
         };
 
         let (watcher, mut events) = PluginWatcher::new(config).unwrap();

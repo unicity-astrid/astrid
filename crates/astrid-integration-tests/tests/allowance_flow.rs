@@ -3,6 +3,8 @@
 //! Tests that "Allow Session" creates an allowance that auto-approves
 //! subsequent identical actions without re-prompting the user.
 
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::sync::Arc;
 
 use astrid_approval::deferred::DeferredResolutionStore;
@@ -127,7 +129,7 @@ async fn test_session_approval_flow() {
     );
 }
 
-/// Test that the ApprovalManager's allowance-based approval works when
+/// Test that the `ApprovalManager`'s allowance-based approval works when
 /// allowances are pre-populated in the store.
 #[tokio::test]
 async fn test_preexisting_allowance_auto_approves() {
@@ -208,7 +210,7 @@ impl ApprovalHandler for WorkspaceThenDenyHandler {
     }
 }
 
-/// "Allow Workspace" creates a workspace allowance (session_only=false) that
+/// "Allow Workspace" creates a workspace allowance (`session_only=false`) that
 /// survives `clear_session_allowances()`.
 #[tokio::test]
 async fn test_workspace_approval_survives_session_clear() {
@@ -279,7 +281,7 @@ async fn test_workspace_approval_survives_session_clear() {
 }
 
 /// A workspace allowance created in `/project-a` must NOT match actions
-/// when the interceptor's workspace_root is `/project-b`.
+/// when the interceptor's `workspace_root` is `/project-b`.
 #[tokio::test]
 async fn test_workspace_allowance_does_not_match_different_workspace() {
     let allowance_store = Arc::new(AllowanceStore::new());

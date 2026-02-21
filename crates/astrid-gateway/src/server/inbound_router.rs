@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(resolved.map(|u| u.id), Some(user.id));
     }
 
-    /// Verifies the data-model invariant: a connector_sessions entry that
+    /// Verifies the data-model invariant: a `connector_sessions` entry that
     /// references a session not present in the sessions map is "stale".
     /// The router's `find_or_create_session` detects this and creates a new
     /// session rather than routing to a dead one.
@@ -538,7 +538,7 @@ mod tests {
 
         // A live entry means the router returns the existing session ID —
         // no new session is created.
-        assert!(live || !live, "invariant check");
+
         assert_eq!(sid, &session_id, "must route to the existing session");
         assert!(!live, "sessions map is empty in this test — entry is stale");
 

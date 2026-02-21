@@ -11,7 +11,7 @@ use super::fixtures::TestPlugin;
 use super::helpers::build_runtime_with_plugins_and_approval;
 
 /// Security interceptor denial returns a graceful tool error (not a hard failure).
-/// We configure the SecurityPolicy to block the plugin tool, so the interceptor
+/// We configure the `SecurityPolicy` to block the plugin tool, so the interceptor
 /// rejects it before execution — regardless of approval settings.
 #[tokio::test]
 async fn test_security_interceptor_denial() {
@@ -86,7 +86,7 @@ async fn test_security_interceptor_denial() {
     }
 }
 
-/// Plugin tool call with a file_path argument outside the workspace is blocked.
+/// Plugin tool call with a `file_path` argument outside the workspace is blocked.
 #[tokio::test]
 async fn test_plugin_workspace_boundary_rejection() {
     let outside_dir = tempfile::tempdir().unwrap();

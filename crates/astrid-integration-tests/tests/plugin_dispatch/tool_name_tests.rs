@@ -11,8 +11,8 @@ use astrid_test::{MockLlmTurn, MockToolCall};
 use super::fixtures::make_plugin;
 use super::helpers::build_runtime_with_plugins;
 
-/// Invalid plugin ID format (uppercase, spaces) is rejected by is_plugin_tool
-/// at the routing level, so it never reaches execute_plugin_tool.
+/// Invalid plugin ID format (uppercase, spaces) is rejected by `is_plugin_tool`
+/// at the routing level, so it never reaches `execute_plugin_tool`.
 /// Verify these names are correctly identified as non-plugin tools at the unit level.
 #[test]
 fn test_special_character_tool_names_rejected() {
@@ -53,10 +53,10 @@ async fn test_tool_name_with_colons_resolves_correctly() {
 
     #[async_trait::async_trait]
     impl PluginTool for ColonTool {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "name:with:colons"
         }
-        fn description(&self) -> &str {
+        fn description(&self) -> &'static str {
             "A tool with colons in the name"
         }
         fn input_schema(&self) -> serde_json::Value {

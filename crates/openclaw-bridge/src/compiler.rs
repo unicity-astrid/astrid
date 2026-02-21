@@ -224,7 +224,7 @@ mod tests {
     fn plugin_exports_are_sorted() {
         // The export names must be alphabetically sorted for QuickJS index mapping
         let mut sorted = PLUGIN_EXPORTS.to_vec();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(
             PLUGIN_EXPORTS,
             &sorted[..],

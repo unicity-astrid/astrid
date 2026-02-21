@@ -342,9 +342,10 @@ mod tests {
     // --- apply_identity_links ---
 
     fn make_cfg(links: Vec<IdentityLinkConfig>) -> Config {
-        let mut cfg = Config::default();
-        cfg.identity = IdentitySection { links };
-        cfg
+        Config {
+            identity: IdentitySection { links },
+            ..Default::default()
+        }
     }
 
     fn make_link(platform: &str, platform_user_id: &str, astrid_user: &str) -> IdentityLinkConfig {

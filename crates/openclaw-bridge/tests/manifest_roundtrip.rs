@@ -102,5 +102,5 @@ fn output_manifest_round_trips_through_toml() {
     assert_eq!(table["version"].as_str().unwrap(), "2.0.0");
 
     let config_table = table["config"].as_table().unwrap();
-    assert_eq!(config_table["debug"].as_bool().unwrap(), true);
+    assert!(config_table["debug"].as_bool().unwrap());
 }
