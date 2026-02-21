@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [main, stream-*]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
+    paths:
+      - '**.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/**'
 
 env:
   CARGO_TERM_COLOR: always
