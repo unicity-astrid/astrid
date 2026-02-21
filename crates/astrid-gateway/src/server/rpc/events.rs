@@ -24,7 +24,7 @@ impl RpcImpl {
                 jsonrpsee::core::StringError::from(format!("Session not found: {session_id}"))
             })?;
 
-            if h.user_id.is_some() {
+            if h.is_connector() {
                 return Err(jsonrpsee::core::StringError::from(
                     "session is managed by the inbound router and its events cannot be subscribed to via RPC",
                 ));
