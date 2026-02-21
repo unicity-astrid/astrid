@@ -20,13 +20,16 @@ impl RpcImpl {
         // Look up the session handle (brief read lock).
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
-                ErrorObjectOwned::owned(
-                    error_codes::SESSION_NOT_FOUND,
-                    format!("Session not found: {session_id}"),
-                    None::<()>,
-                )
-            })?
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
+                jsonrpsee::core::StringError::from(format!("Session not found: {session_id}"))
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(jsonrpsee::core::StringError::from(
+                    "session is managed by the inbound router and its events cannot be subscribed to via RPC",
+                ));
+            }
+            h
         };
 
         let mut event_rx = handle.event_tx.subscribe();

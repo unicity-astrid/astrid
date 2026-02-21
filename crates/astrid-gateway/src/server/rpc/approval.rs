@@ -18,13 +18,22 @@ impl RpcImpl {
         // No session mutex needed -- the frontend's pending_approvals has its own lock.
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
                     format!("Session not found: {session_id}"),
                     None::<()>,
                 )
-            })?
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be managed via RPC",
+                    None::<()>,
+                ));
+            }
+            h
         };
 
         if !handle
@@ -51,13 +60,22 @@ impl RpcImpl {
         // Look up the session handle (brief read lock).
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
                     format!("Session not found: {session_id}"),
                     None::<()>,
                 )
-            })?
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be managed via RPC",
+                    None::<()>,
+                ));
+            }
+            h
         };
 
         if !handle
@@ -81,13 +99,22 @@ impl RpcImpl {
     ) -> Result<(), ErrorObjectOwned> {
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
                     format!("Session not found: {session_id}"),
                     None::<()>,
                 )
-            })?
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be managed via RPC",
+                    None::<()>,
+                ));
+            }
+            h
         };
 
         // Take the turn handle (if a turn is running) and abort it.

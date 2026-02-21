@@ -152,4 +152,101 @@ profile = "chat"
         // the config is loaded and passed through.
         // The pure validation logic is already unit-tested in config_apply.rs.
     }
+
+    #[tokio::test]
+    async fn test_connector_session_rpc_isolation() {
+        use crate::rpc::AstridRpcClient;
+        use jsonrpsee::core::client::Error as JsonRpcError;
+        use jsonrpsee::ws_client::WsClientBuilder;
+
+        let temp_home = TempDir::new().unwrap();
+        let temp_ws = TempDir::new().unwrap();
+
+        let home = AstridHome::from_path(temp_home.path());
+        let config_path = home.config_path();
+        let config_content = r#"
+[model]
+provider = "openai-compat"
+api_url = "http://localhost:1234/v1"
+api_key = "test-key"
+
+[[identity.links]]
+platform = "telegram"
+platform_user_id = "tg-isolation-test"
+astrid_user = "isolation-tester"
+method = "admin"
+"#;
+        std::fs::write(&config_path, config_content).unwrap();
+
+        let (daemon, _handle, addr, _cfg) = DaemonServer::start(
+            DaemonStartOptions {
+                ephemeral: true,
+                workspace_root: Some(temp_ws.path().to_path_buf()),
+                ..Default::default()
+            },
+            Some(home.clone()),
+        )
+        .await
+        .expect("Failed to start daemon");
+
+        // 1. Send an inbound message to create a connector session.
+        let msg = InboundMessage::builder(
+            ConnectorId::new(),
+            FrontendType::Telegram,
+            "tg-isolation-test",
+            "Hello isolation!",
+        )
+        .build();
+
+        daemon.inbound_tx.send(msg).await.unwrap();
+
+        // Give it a moment to process and create the session by polling.
+        let mut session_id = None;
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let sessions = daemon.sessions.read().await;
+            if sessions.len() == 1 {
+                let (id, handle) = sessions.iter().next().unwrap();
+                assert!(
+                    handle.user_id.is_some(),
+                    "Expected session to have a user ID (connector session)"
+                );
+                session_id = Some(id.clone());
+                break;
+            }
+        }
+
+        let session_id = session_id
+            .expect("Expected exactly one connector session to be created within the timeout");
+
+        // 2. Connect a mock CLI RPC client.
+        let url = format!("ws://{}", addr);
+        let client = WsClientBuilder::default()
+            .build(&url)
+            .await
+            .expect("Failed to connect via RPC");
+
+        // 3. Attempt to cancel the connector session's turn via RPC.
+        // This should fail with INVALID_REQUEST because the session belongs to a connector.
+        let cancel_res = client.cancel_turn(session_id.clone()).await;
+        let err = cancel_res.expect_err("cancel_turn on a connector session should fail");
+        match err {
+            JsonRpcError::Call(e) => {
+                assert_eq!(e.code(), crate::rpc::error_codes::INVALID_REQUEST);
+                assert!(e.message().contains("managed by the inbound router"));
+            },
+            _ => panic!("Expected Call error, got {:?}", err),
+        }
+
+        // 4. Attempt to save the connector session via RPC.
+        let save_res = client.save_session(session_id.clone()).await;
+        let err = save_res.expect_err("save_session on a connector session should fail");
+        match err {
+            JsonRpcError::Call(e) => {
+                assert_eq!(e.code(), crate::rpc::error_codes::INVALID_REQUEST);
+                assert!(e.message().contains("managed by the inbound router"));
+            },
+            _ => panic!("Expected Call error, got {:?}", err),
+        }
+    }
 }

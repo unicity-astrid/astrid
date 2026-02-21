@@ -172,6 +172,16 @@ impl RpcImpl {
                 )
             })?;
 
+        // Guard against resuming a connector session from disk.
+        // Connector sessions are tagged at creation in `inbound_router::find_or_create_session`.
+        if session.metadata.custom.contains_key("connector_user_id") {
+            return Err(ErrorObjectOwned::owned(
+                error_codes::INVALID_REQUEST,
+                "session is managed by the inbound router and cannot be resumed via RPC",
+                None::<()>,
+            ));
+        }
+
         // Wire persistent capability store for the resumed session.
         let session = session.with_capability_store(Arc::clone(&self.capabilities_store));
 
@@ -421,9 +431,22 @@ impl RpcImpl {
         &self,
         session_id: SessionId,
     ) -> Result<(), ErrorObjectOwned> {
-        // Remove the session from the map (brief write lock).
+        // Remove the session from the map if it belongs to a CLI user (brief write lock).
         let handle = {
             let mut sessions = self.sessions.write().await;
+
+            // First get a reference to check user_id before removing.
+            let is_connector = sessions
+                .get(&session_id)
+                .is_some_and(|h| h.user_id.is_some());
+            if is_connector {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be ended via RPC",
+                    None::<()>,
+                ));
+            }
+
             sessions.remove(&session_id).ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
@@ -472,13 +495,22 @@ impl RpcImpl {
     ) -> Result<(), ErrorObjectOwned> {
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
                     format!("Session not found: {session_id}"),
                     None::<()>,
                 )
-            })?
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and cannot be saved via RPC",
+                    None::<()>,
+                ));
+            }
+            h
         };
 
         let session = handle.session.lock().await;
