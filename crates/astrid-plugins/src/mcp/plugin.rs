@@ -17,14 +17,13 @@
 //! [`McpPlugin::send_hook_event()`], which sends a custom notification
 //! (`notifications/astrid.hookEvent`) over the MCP connection.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, ClientNotification, CustomNotification};
+use rmcp::model::{ClientNotification, CustomNotification};
 use rmcp::service::{Peer, RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde_json::Value;
@@ -36,12 +35,12 @@ use astrid_core::identity::FrontendType;
 use astrid_core::{HookEvent, InboundMessage};
 use astrid_mcp::{
     AstridClientHandler, BridgeChannelInfo, CapabilitiesHandler, McpClient, ServerNotice,
-    ToolResult,
 };
 
-use crate::context::{PluginContext, PluginToolContext};
+use crate::context::PluginContext;
 use crate::error::{PluginError, PluginResult};
 use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
+use crate::mcp::tool::McpPluginTool;
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::sandbox::SandboxProfile;
 use crate::tool::PluginTool;
@@ -403,7 +402,7 @@ impl McpPlugin {
         // Only raw Landlock syscalls run inside the pre_exec closure.
         #[cfg(target_os = "linux")]
         if let Some(sandbox) = &self.sandbox {
-            let prepared = prepare_landlock_rules(&sandbox.landlock_rules());
+            let prepared = crate::mcp::platform::prepare_landlock_rules(&sandbox.landlock_rules());
             let mut prepared = Some(prepared);
             let rlimits = sandbox.resource_limits.clone();
             // SAFETY: pre_exec runs between fork() and exec(). The closure
@@ -420,13 +419,13 @@ impl McpPlugin {
                     let rules = prepared.take().ok_or_else(|| {
                         std::io::Error::other("Landlock pre_exec called more than once")
                     })?;
-                    enforce_landlock_rules(rules).map_err(|e| {
+                    crate::mcp::platform::enforce_landlock_rules(rules).map_err(|e| {
                         std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.clone())
                     })?;
 
                     // Apply resource limits if configured
                     if let Some(ref limits) = rlimits {
-                        apply_resource_limits(limits)?;
+                        crate::mcp::platform::apply_resource_limits(limits)?;
                     }
 
                     Ok(())
@@ -730,225 +729,6 @@ impl Plugin for McpPlugin {
             );
         }
     }
-
-    fn take_inbound_rx(
-        &mut self,
-    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
-        self.inbound_rx.take()
-    }
-}
-
-/// A tool provided by an MCP server, wrapped as a [`PluginTool`].
-///
-/// Tool calls are forwarded directly to the MCP server via the stored
-/// [`Peer`] handle. Security is enforced at the runtime layer (before
-/// `execute()` is called), not here.
-struct McpPluginTool {
-    name: String,
-    description: String,
-    input_schema: Value,
-    #[allow(dead_code)]
-    server_name: String,
-    peer: Peer<RoleClient>,
-}
-
-#[async_trait]
-impl PluginTool for McpPluginTool {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        &self.description
-    }
-
-    fn input_schema(&self) -> Value {
-        self.input_schema.clone()
-    }
-
-    async fn execute(&self, args: Value, _ctx: &PluginToolContext) -> PluginResult<String> {
-        let arguments = match args {
-            Value::Object(map) => Some(map),
-            Value::Null => None,
-            other => {
-                let mut map = serde_json::Map::new();
-                map.insert("value".to_string(), other);
-                Some(map)
-            },
-        };
-
-        let params = CallToolRequestParams {
-            meta: None,
-            name: Cow::Owned(self.name.clone()),
-            arguments,
-            task: None,
-        };
-
-        let result = self
-            .peer
-            .call_tool(params)
-            .await
-            .map_err(|e| PluginError::ExecutionFailed(format!("MCP tool call failed: {e}")))?;
-
-        // Convert to our ToolResult and extract text content
-        let tool_result = ToolResult::from(result);
-        if tool_result.is_error {
-            return Err(PluginError::ExecutionFailed(
-                tool_result
-                    .error
-                    .unwrap_or_else(|| "Unknown MCP tool error".into()),
-            ));
-        }
-
-        Ok(tool_result.text_content())
-    }
-}
-
-/// Create a plugin from a manifest, choosing the appropriate implementation
-/// based on the entry point type.
-///
-/// # Errors
-///
-/// - [`PluginError::McpClientRequired`] if the entry point is `Mcp` but
-///   no `McpClient` was provided.
-/// - [`PluginError::UnsupportedEntryPoint`] if the entry point type is
-///   not supported (e.g. `Wasm` — handled by a different subsystem).
-pub fn create_plugin(
-    manifest: PluginManifest,
-    mcp_client: Option<McpClient>,
-    plugin_dir: Option<PathBuf>,
-) -> PluginResult<Box<dyn Plugin>> {
-    match &manifest.entry_point {
-        PluginEntryPoint::Wasm { .. } => Err(PluginError::UnsupportedEntryPoint("wasm".into())),
-        PluginEntryPoint::Mcp { .. } => {
-            let client = mcp_client.ok_or(PluginError::McpClientRequired)?;
-            let mut plugin = McpPlugin::new(manifest, client);
-            if let Some(dir) = plugin_dir {
-                plugin = plugin.with_plugin_dir(dir);
-            }
-            Ok(Box::new(plugin))
-        },
-    }
-}
-
-/// A pre-opened Landlock rule ready for enforcement inside `pre_exec`.
-///
-/// File descriptors are opened in the parent process (where allocation is
-/// safe) and consumed inside the `pre_exec` closure (where only
-/// async-signal-safe operations are permitted).
-#[cfg(target_os = "linux")]
-struct PreparedLandlockRules {
-    /// Pre-opened `(PathFd, read, write)` tuples.
-    rules: Vec<(landlock::PathFd, bool, bool)>,
-}
-
-/// Phase 1 (parent process): open file descriptors and compute access flags.
-///
-/// This runs before `fork()`, so heap allocation and filesystem access are
-/// safe. Paths that don't exist are silently skipped.
-#[cfg(target_os = "linux")]
-fn prepare_landlock_rules(rules: &[crate::sandbox::LandlockPathRule]) -> PreparedLandlockRules {
-    use landlock::PathFd;
-
-    let mut prepared = Vec::with_capacity(rules.len());
-
-    for rule in rules {
-        if !rule.read && !rule.write {
-            continue;
-        }
-
-        // Open the path FD now (heap allocation happens here, safely)
-        if let Ok(fd) = PathFd::new(&rule.path) {
-            prepared.push((fd, rule.read, rule.write));
-        }
-    }
-
-    PreparedLandlockRules { rules: prepared }
-}
-
-/// Phase 2 (child process, inside `pre_exec`): create ruleset and enforce.
-///
-/// Only Landlock syscalls are invoked here — no heap allocation, no
-/// filesystem access. All file descriptors were pre-opened in phase 1.
-#[cfg(target_os = "linux")]
-fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String> {
-    use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, Ruleset, RulesetAttr,
-        RulesetCreatedAttr, RulesetStatus,
-    };
-
-    let abi = ABI::V5;
-
-    let mut ruleset = Ruleset::default()
-        .set_compatibility(CompatLevel::BestEffort)
-        .handle_access(AccessFs::from_all(abi))
-        .map_err(|e| format!("failed to create Landlock ruleset: {e}"))?
-        .create()
-        .map_err(|e| format!("failed to create Landlock ruleset: {e}"))?;
-
-    for (fd, read, write) in prepared.rules {
-        let access = match (read, write) {
-            (true, true) => AccessFs::from_all(abi),
-            (true, false) => AccessFs::from_read(abi),
-            (false, true) => AccessFs::from_write(abi),
-            (false, false) => continue,
-        };
-        let path_beneath = PathBeneath::new(fd, access);
-        ruleset = ruleset
-            .add_rule(path_beneath)
-            .map_err(|e| format!("failed to add Landlock rule: {e}"))?;
-    }
-
-    let status = ruleset
-        .restrict_self()
-        .map_err(|e| format!("failed to enforce Landlock ruleset: {e}"))?;
-
-    match status.ruleset {
-        RulesetStatus::FullyEnforced
-        | RulesetStatus::PartiallyEnforced
-        | RulesetStatus::NotEnforced => {
-            // NotEnforced: kernel doesn't support Landlock — not a fatal error
-        },
-    }
-
-    Ok(())
-}
-
-/// Apply resource limits via `setrlimit` inside a `pre_exec` closure.
-///
-/// Uses only async-signal-safe operations: `setrlimit` is a direct syscall,
-/// and `Error::last_os_error()` reads `errno` without heap allocation.
-#[cfg(target_os = "linux")]
-#[allow(unsafe_code)]
-fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), std::io::Error> {
-    // RLIMIT_NPROC — max processes/threads (per-UID, not per-process)
-    let nproc = libc::rlimit {
-        rlim_cur: limits.max_processes,
-        rlim_max: limits.max_processes,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    // RLIMIT_AS — max virtual address space
-    let address_space = libc::rlimit {
-        rlim_cur: limits.max_memory_bytes,
-        rlim_max: limits.max_memory_bytes,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_AS, &raw const address_space) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    // RLIMIT_NOFILE — max open file descriptors
-    let nofile = libc::rlimit {
-        rlim_cur: limits.max_open_files,
-        rlim_max: limits.max_open_files,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const nofile) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1389,5 +1169,32 @@ mod tests {
         let connectors = plugin.refresh_connectors();
         assert_eq!(connectors.len(), 1);
         assert_eq!(connectors[0].name, "discord");
+    }
+}
+
+/// Create a plugin from a manifest, choosing the appropriate implementation
+/// based on the entry point type.
+///
+/// # Errors
+///
+/// - [`PluginError::McpClientRequired`] if the entry point is `Mcp` but
+///   no `McpClient` was provided.
+/// - [`PluginError::UnsupportedEntryPoint`] if the entry point type is
+///   not supported (e.g. `Wasm` — handled by a different subsystem).
+pub fn create_plugin(
+    manifest: PluginManifest,
+    mcp_client: Option<McpClient>,
+    plugin_dir: Option<PathBuf>,
+) -> PluginResult<Box<dyn Plugin>> {
+    match &manifest.entry_point {
+        PluginEntryPoint::Wasm { .. } => Err(PluginError::UnsupportedEntryPoint("wasm".into())),
+        PluginEntryPoint::Mcp { .. } => {
+            let client = mcp_client.ok_or(PluginError::McpClientRequired)?;
+            let mut plugin = McpPlugin::new(manifest, client);
+            if let Some(dir) = plugin_dir {
+                plugin = plugin.with_plugin_dir(dir);
+            }
+            Ok(Box::new(plugin))
+        },
     }
 }

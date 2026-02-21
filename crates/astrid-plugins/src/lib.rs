@@ -35,7 +35,7 @@ pub mod error;
 pub mod git_install;
 pub mod lockfile;
 pub mod manifest;
-pub mod mcp_plugin;
+pub mod mcp;
 #[cfg(feature = "http")]
 pub mod npm;
 pub mod plugin;
@@ -55,7 +55,7 @@ pub use error::{PluginError, PluginResult};
 pub use git_install::GitSource;
 pub use lockfile::{IntegrityViolation, LockedPlugin, PluginLockfile, PluginSource};
 pub use manifest::{ManifestConnector, PluginCapability, PluginEntryPoint, PluginManifest};
-pub use mcp_plugin::{McpPlugin, create_plugin};
+pub use mcp::{McpPlugin, create_plugin};
 pub use plugin::{Plugin, PluginId, PluginState};
 pub use registry::{PluginRegistry, PluginToolDefinition};
 pub use sandbox::SandboxProfile;
