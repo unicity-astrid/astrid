@@ -16,11 +16,11 @@
 //!    - If high-risk and no capability -> request approval
 //! 5. **Audit** — log the decision
 
+use crate::error::{ApprovalError, ApprovalResult};
 use astrid_audit::{
     AuditAction, AuditEntryId, AuditLog, AuditOutcome, AuthorizationProof as AuditAuthProof,
 };
 use astrid_capabilities::{CapabilityStore, CapabilityToken, ResourcePattern, TokenScope};
-use astrid_core::error::{SecurityError, SecurityResult};
 use astrid_core::types::{Permission, SessionId, TokenId};
 use astrid_crypto::KeyPair;
 use chrono::Duration;
@@ -164,7 +164,7 @@ impl SecurityInterceptor {
     ///
     /// # Errors
     ///
-    /// Returns `SecurityError` if the action is denied by policy, budget,
+    /// Returns `ApprovalError` if the action is denied by policy, budget,
     /// or user decision.
     #[allow(clippy::too_many_lines)]
     pub async fn intercept(
@@ -172,12 +172,12 @@ impl SecurityInterceptor {
         action: &SensitiveAction,
         context: &str,
         estimated_cost: Option<f64>,
-    ) -> SecurityResult<InterceptResult> {
+    ) -> ApprovalResult<InterceptResult> {
         // Step 1: Policy check (hard boundaries)
         let policy_result = self.policy.check(action);
         if let PolicyResult::Blocked { reason } = &policy_result {
             self.audit_denied(action, reason);
-            return Err(SecurityError::McpToolRejected {
+            return Err(ApprovalError::PolicyBlocked {
                 tool: action.action_type().to_string(),
                 reason: reason.clone(),
             });
@@ -201,7 +201,7 @@ impl SecurityInterceptor {
                         "budget exceeded ({reason}): requested ${requested:.2}, available ${available:.2}"
                     );
                     self.audit_denied(action, &deny_reason);
-                    return Err(SecurityError::ApprovalDenied {
+                    return Err(ApprovalError::Denied {
                         reason: deny_reason,
                     });
                 }
@@ -244,7 +244,7 @@ impl SecurityInterceptor {
                         "budget exceeded ({reason}): requested ${requested:.2}, available ${available:.2}"
                     );
                     self.audit_denied(action, &deny_reason);
-                    return Err(SecurityError::ApprovalDenied {
+                    return Err(ApprovalError::Denied {
                         reason: deny_reason,
                     });
                 },
@@ -314,7 +314,7 @@ impl SecurityInterceptor {
             },
             ApprovalOutcome::Denied { reason } => {
                 self.audit_denied(action, &reason);
-                Err(SecurityError::ApprovalDenied { reason })
+                Err(ApprovalError::Denied { reason })
             },
             ApprovalOutcome::Deferred {
                 resolution_id,
@@ -323,7 +323,7 @@ impl SecurityInterceptor {
                 let reason =
                     format!("action deferred (resolution: {resolution_id}, fallback: {fallback})");
                 self.audit_deferred(action, &reason);
-                Err(SecurityError::ApprovalTimeout { timeout_ms: 0 })
+                Err(ApprovalError::Timeout { timeout_ms: 0 })
             },
         }
     }
@@ -335,20 +335,19 @@ impl SecurityInterceptor {
     /// 3. Create `CapabilityToken` (persistent, 1h TTL, signed by runtime key)
     /// 4. Store in `CapabilityStore`
     /// 5. Return `InterceptProof::CapabilityCreated`
-    fn handle_allow_always(&self, action: &SensitiveAction) -> SecurityResult<InterceptResult> {
+    fn handle_allow_always(&self, action: &SensitiveAction) -> ApprovalResult<InterceptResult> {
         // Step 1: Determine resource pattern and permission for the token
         let (resource_str, permission) =
-            action_to_resource_permission(action).ok_or_else(|| SecurityError::ApprovalDenied {
+            action_to_resource_permission(action).ok_or_else(|| ApprovalError::Denied {
                 reason: format!(
                     "cannot create 'Allow Always' capability for {}: no resource mapping",
                     action.action_type()
                 ),
             })?;
 
-        let resource =
-            ResourcePattern::new(&resource_str).map_err(|e| SecurityError::ApprovalDenied {
-                reason: format!("invalid resource pattern for capability: {e}"),
-            })?;
+        let resource = ResourcePattern::new(&resource_str).map_err(|e| ApprovalError::Denied {
+            reason: format!("invalid resource pattern for capability: {e}"),
+        })?;
 
         // Step 2: Log the approval to audit → get the chain-link audit_id
         let approval_audit_id = {
@@ -418,7 +417,7 @@ impl SecurityInterceptor {
 
     /// Check the workspace budget atomically. Returns a budget warning if
     /// applicable, or an error if the budget is exceeded.
-    fn check_workspace_budget(&self, cost: f64) -> Result<Option<BudgetWarning>, SecurityError> {
+    fn check_workspace_budget(&self, cost: f64) -> Result<Option<BudgetWarning>, ApprovalError> {
         let Some(ref ws_budget) = self.workspace_budget_tracker else {
             return Ok(None);
         };
@@ -427,7 +426,7 @@ impl SecurityInterceptor {
                 reason,
                 requested,
                 available,
-            } => Err(SecurityError::ApprovalDenied {
+            } => Err(ApprovalError::Denied {
                 reason: format!(
                     "budget exceeded ({reason}): requested ${requested:.2}, available ${available:.2}"
                 ),

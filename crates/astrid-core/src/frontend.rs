@@ -31,11 +31,43 @@ use std::collections::HashMap;
 use std::fmt;
 use uuid::Uuid;
 
-use crate::error::SecurityResult;
 use crate::identity::{AstridUserId, FrontendType};
 use crate::input::{ContextIdentifier, MessageId, TaggedMessage};
 use crate::types::{RiskLevel, SessionId};
 use crate::verification::{VerificationRequest, VerificationResponse};
+
+/// Errors that can occur during frontend operations.
+#[derive(Debug, thiserror::Error)]
+pub enum FrontendError {
+    /// Approval was denied by the user
+    #[error("approval denied: {reason}")]
+    ApprovalDenied {
+        /// Reason for denial
+        reason: String,
+    },
+
+    /// Approval request timed out
+    #[error("approval timeout after {timeout_ms}ms")]
+    ApprovalTimeout {
+        /// Timeout duration in milliseconds
+        timeout_ms: u64,
+    },
+
+    /// MCP elicitation failed
+    #[error("elicitation failed: {0}")]
+    ElicitationFailed(String),
+
+    /// Internal frontend error
+    #[error("internal frontend error: {0}")]
+    Internal(String),
+
+    /// Underlying security error
+    #[error(transparent)]
+    Security(#[from] crate::error::SecurityError),
+}
+
+/// Result type for frontend operations.
+pub type FrontendResult<T> = Result<T, FrontendError>;
 
 /// The main frontend trait that all UI implementations must implement.
 ///
@@ -52,7 +84,7 @@ pub trait Frontend: Send + Sync {
     ///
     /// This is used when an MCP server needs information from the user,
     /// such as API keys, preferences, or other configuration.
-    async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse>;
+    async fn elicit(&self, request: ElicitationRequest) -> FrontendResult<ElicitationResponse>;
 
     /// URL-mode elicitation - OAuth, payments, etc.
     ///
@@ -61,13 +93,13 @@ pub trait Frontend: Send + Sync {
     async fn elicit_url(
         &self,
         request: UrlElicitationRequest,
-    ) -> SecurityResult<UrlElicitationResponse>;
+    ) -> FrontendResult<UrlElicitationResponse>;
 
     /// Request approval for sensitive operations.
     ///
     /// This is used for operations that require explicit user consent,
     /// such as file deletion, network access, or cost-incurring operations.
-    async fn request_approval(&self, request: ApprovalRequest) -> SecurityResult<ApprovalDecision>;
+    async fn request_approval(&self, request: ApprovalRequest) -> FrontendResult<ApprovalDecision>;
 
     /// Display a status message to the user.
     fn show_status(&self, message: &str);
@@ -110,12 +142,12 @@ pub trait Frontend: Send + Sync {
         &self,
         user_id: &str,
         request: VerificationRequest,
-    ) -> SecurityResult<VerificationResponse>;
+    ) -> FrontendResult<VerificationResponse>;
 
     /// Send an identity link code to a user.
     ///
     /// Used for cross-frontend identity linking.
-    async fn send_link_code(&self, user_id: &str, code: &str) -> SecurityResult<()>;
+    async fn send_link_code(&self, user_id: &str, code: &str) -> FrontendResult<()>;
 
     /// Get the frontend type.
     fn frontend_type(&self) -> FrontendType;
@@ -784,7 +816,7 @@ impl<T: Frontend + ?Sized> crate::connector::ApprovalAdapter for T {
     ) -> crate::connector::ConnectorResult<ApprovalDecision> {
         Frontend::request_approval(self, request)
             .await
-            .map_err(crate::connector::ConnectorError::from)
+            .map_err(|e| crate::connector::ConnectorError::Internal(e.to_string()))
     }
 }
 
@@ -796,7 +828,7 @@ impl<T: Frontend + ?Sized> crate::connector::ElicitationAdapter for T {
     ) -> crate::connector::ConnectorResult<ElicitationResponse> {
         Frontend::elicit(self, request)
             .await
-            .map_err(crate::connector::ConnectorError::from)
+            .map_err(|e| crate::connector::ConnectorError::Internal(e.to_string()))
     }
 }
 
@@ -888,21 +920,21 @@ mod tests {
             )
         }
 
-        async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse> {
+        async fn elicit(&self, request: ElicitationRequest) -> FrontendResult<ElicitationResponse> {
             Ok(ElicitationResponse::cancel(request.request_id))
         }
 
         async fn elicit_url(
             &self,
             request: UrlElicitationRequest,
-        ) -> SecurityResult<UrlElicitationResponse> {
+        ) -> FrontendResult<UrlElicitationResponse> {
             Ok(UrlElicitationResponse::not_completed(request.request_id))
         }
 
         async fn request_approval(
             &self,
             request: ApprovalRequest,
-        ) -> SecurityResult<ApprovalDecision> {
+        ) -> FrontendResult<ApprovalDecision> {
             Ok(ApprovalDecision::new(
                 request.request_id,
                 ApprovalOption::AllowOnce,
@@ -928,13 +960,11 @@ mod tests {
             &self,
             _user_id: &str,
             _request: VerificationRequest,
-        ) -> SecurityResult<VerificationResponse> {
-            Err(crate::SecurityError::Internal(
-                "stub: not implemented".into(),
-            ))
+        ) -> FrontendResult<VerificationResponse> {
+            Err(FrontendError::Internal("stub: not implemented".into()))
         }
 
-        async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+        async fn send_link_code(&self, _user_id: &str, _code: &str) -> FrontendResult<()> {
             Ok(())
         }
 
@@ -984,24 +1014,22 @@ mod tests {
         async fn elicit(
             &self,
             _request: ElicitationRequest,
-        ) -> SecurityResult<ElicitationResponse> {
-            Err(crate::SecurityError::McpElicitationFailed(
-                "stub error".into(),
-            ))
+        ) -> FrontendResult<ElicitationResponse> {
+            Err(FrontendError::ElicitationFailed("stub error".into()))
         }
 
         async fn elicit_url(
             &self,
             request: UrlElicitationRequest,
-        ) -> SecurityResult<UrlElicitationResponse> {
+        ) -> FrontendResult<UrlElicitationResponse> {
             Ok(UrlElicitationResponse::not_completed(request.request_id))
         }
 
         async fn request_approval(
             &self,
             _request: ApprovalRequest,
-        ) -> SecurityResult<ApprovalDecision> {
-            Err(crate::SecurityError::ApprovalDenied {
+        ) -> FrontendResult<ApprovalDecision> {
+            Err(FrontendError::ApprovalDenied {
                 reason: "stub denied".into(),
             })
         }
@@ -1025,11 +1053,11 @@ mod tests {
             &self,
             _user_id: &str,
             _request: VerificationRequest,
-        ) -> SecurityResult<VerificationResponse> {
-            Err(crate::SecurityError::Internal("not implemented".into()))
+        ) -> FrontendResult<VerificationResponse> {
+            Err(FrontendError::Internal("not implemented".into()))
         }
 
-        async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+        async fn send_link_code(&self, _user_id: &str, _code: &str) -> FrontendResult<()> {
             Ok(())
         }
 
@@ -1046,7 +1074,7 @@ mod tests {
             crate::connector::ApprovalAdapter::request_approval(&stub, req).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, crate::connector::ConnectorError::Security(_)));
+        assert!(matches!(err, crate::connector::ConnectorError::Internal(_)));
     }
 
     #[tokio::test]
@@ -1057,6 +1085,6 @@ mod tests {
             crate::connector::ElicitationAdapter::elicit(&stub, req).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, crate::connector::ConnectorError::Security(_)));
+        assert!(matches!(err, crate::connector::ConnectorError::Internal(_)));
     }
 }

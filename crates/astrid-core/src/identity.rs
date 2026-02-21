@@ -143,7 +143,41 @@ use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::{SecurityError, SecurityResult};
+/// Errors that can occur during identity operations.
+#[derive(Debug, thiserror::Error)]
+pub enum IdentityError {
+    /// Identity not found
+    #[error("identity not found: {0}")]
+    NotFound(String),
+
+    /// Identity verification failed
+    #[error("identity verification failed: {0}")]
+    VerificationFailed(String),
+
+    /// Frontend link already exists
+    #[error("frontend already linked: {frontend} -> {existing_id}")]
+    FrontendAlreadyLinked {
+        /// The frontend type
+        frontend: String,
+        /// The existing linked identity
+        existing_id: String,
+    },
+
+    /// Verification request expired
+    #[error("verification expired")]
+    VerificationExpired,
+
+    /// Verification was cancelled
+    #[error("verification cancelled")]
+    VerificationCancelled,
+
+    /// Internal identity error
+    #[error("internal identity error: {0}")]
+    Internal(String),
+}
+
+/// Result type for identity operations.
+pub type IdentityResult<T> = Result<T, IdentityError>;
 
 /// Astrid-native user identity (spans all frontends).
 ///
@@ -542,23 +576,23 @@ pub trait IdentityStore: Send + Sync {
         &self,
         frontend: FrontendType,
         frontend_user_id: &str,
-    ) -> SecurityResult<AstridUserId>;
+    ) -> IdentityResult<AstridUserId>;
 
     /// Create a link between a frontend account and an existing identity.
-    async fn create_link(&self, link: FrontendLink) -> SecurityResult<()>;
+    async fn create_link(&self, link: FrontendLink) -> IdentityResult<()>;
 
     /// Remove a link between a frontend account and an identity.
     async fn remove_link(
         &self,
         frontend: &FrontendType,
         frontend_user_id: &str,
-    ) -> SecurityResult<()>;
+    ) -> IdentityResult<()>;
 
     /// Get all links for an identity.
     async fn get_links(&self, astrid_id: Uuid) -> Vec<FrontendLink>;
 
     /// Update an identity.
-    async fn update_identity(&self, identity: AstridUserId) -> SecurityResult<()>;
+    async fn update_identity(&self, identity: AstridUserId) -> IdentityResult<()>;
 
     /// Generate a link verification code.
     async fn generate_link_code(
@@ -566,14 +600,14 @@ pub trait IdentityStore: Send + Sync {
         astrid_id: Uuid,
         requesting_frontend: FrontendType,
         requesting_user_id: &str,
-    ) -> SecurityResult<String>;
+    ) -> IdentityResult<String>;
 
     /// Verify a link code and create the link.
     async fn verify_link_code(
         &self,
         code: &str,
         verified_via: FrontendType,
-    ) -> SecurityResult<FrontendLink>;
+    ) -> IdentityResult<FrontendLink>;
 }
 
 /// In-memory identity store for testing and simple deployments.
@@ -627,7 +661,7 @@ impl IdentityStore for InMemoryIdentityStore {
         &self,
         frontend: FrontendType,
         frontend_user_id: &str,
-    ) -> SecurityResult<AstridUserId> {
+    ) -> IdentityResult<AstridUserId> {
         let frontend = frontend.normalize();
 
         // Check if already linked
@@ -635,9 +669,9 @@ impl IdentityStore for InMemoryIdentityStore {
             let links = self
                 .links
                 .read()
-                .map_err(|e| SecurityError::Internal(format!("Failed to read links: {e}")))?;
+                .map_err(|e| IdentityError::Internal(format!("Failed to read links: {e}")))?;
             if links.contains_key(&(frontend.clone(), frontend_user_id.to_string())) {
-                return Err(SecurityError::FrontendAlreadyLinked {
+                return Err(IdentityError::FrontendAlreadyLinked {
                     frontend: frontend.to_string(),
                     existing_id: "unknown".to_string(),
                 });
@@ -652,7 +686,7 @@ impl IdentityStore for InMemoryIdentityStore {
             let mut identities = self
                 .identities
                 .write()
-                .map_err(|e| SecurityError::Internal(format!("Failed to write identities: {e}")))?;
+                .map_err(|e| IdentityError::Internal(format!("Failed to write identities: {e}")))?;
             identities.insert(id, identity.clone());
         }
 
@@ -669,23 +703,23 @@ impl IdentityStore for InMemoryIdentityStore {
             let mut links = self
                 .links
                 .write()
-                .map_err(|e| SecurityError::Internal(format!("Failed to write links: {e}")))?;
+                .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
             links.insert((frontend, frontend_user_id.to_string()), link);
         }
 
         Ok(identity)
     }
 
-    async fn create_link(&self, link: FrontendLink) -> SecurityResult<()> {
+    async fn create_link(&self, link: FrontendLink) -> IdentityResult<()> {
         let mut links = self
             .links
             .write()
-            .map_err(|e| SecurityError::Internal(format!("Failed to write links: {e}")))?;
+            .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
 
         let normalized_frontend = link.frontend.clone().normalize();
         let key = (normalized_frontend, link.frontend_user_id.clone());
         if links.contains_key(&key) {
-            return Err(SecurityError::FrontendAlreadyLinked {
+            return Err(IdentityError::FrontendAlreadyLinked {
                 frontend: link.frontend.to_string(),
                 existing_id: link.astrid_id.to_string(),
             });
@@ -699,18 +733,16 @@ impl IdentityStore for InMemoryIdentityStore {
         &self,
         frontend: &FrontendType,
         frontend_user_id: &str,
-    ) -> SecurityResult<()> {
+    ) -> IdentityResult<()> {
         let mut links = self
             .links
             .write()
-            .map_err(|e| SecurityError::Internal(format!("Failed to write links: {e}")))?;
+            .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
 
         let normalized = frontend.clone().normalize();
         let key = (normalized, frontend_user_id.to_string());
         links.remove(&key).ok_or_else(|| {
-            SecurityError::IdentityNotFound(format!(
-                "No link found for {frontend}:{frontend_user_id}"
-            ))
+            IdentityError::NotFound(format!("No link found for {frontend}:{frontend_user_id}"))
         })?;
 
         Ok(())
@@ -728,14 +760,14 @@ impl IdentityStore for InMemoryIdentityStore {
             .collect()
     }
 
-    async fn update_identity(&self, identity: AstridUserId) -> SecurityResult<()> {
+    async fn update_identity(&self, identity: AstridUserId) -> IdentityResult<()> {
         let mut identities = self
             .identities
             .write()
-            .map_err(|e| SecurityError::Internal(format!("Failed to write identities: {e}")))?;
+            .map_err(|e| IdentityError::Internal(format!("Failed to write identities: {e}")))?;
 
         if !identities.contains_key(&identity.id) {
-            return Err(SecurityError::IdentityNotFound(identity.id.to_string()));
+            return Err(IdentityError::NotFound(identity.id.to_string()));
         }
 
         identities.insert(identity.id, identity);
@@ -747,7 +779,7 @@ impl IdentityStore for InMemoryIdentityStore {
         astrid_id: Uuid,
         requesting_frontend: FrontendType,
         requesting_user_id: &str,
-    ) -> SecurityResult<String> {
+    ) -> IdentityResult<String> {
         let code = Self::generate_code();
 
         let pending = PendingLinkCode {
@@ -763,7 +795,7 @@ impl IdentityStore for InMemoryIdentityStore {
         let mut codes = self
             .pending_codes
             .write()
-            .map_err(|e| SecurityError::Internal(format!("Failed to write pending codes: {e}")))?;
+            .map_err(|e| IdentityError::Internal(format!("Failed to write pending codes: {e}")))?;
         codes.insert(code.clone(), pending);
 
         Ok(code)
@@ -773,21 +805,19 @@ impl IdentityStore for InMemoryIdentityStore {
         &self,
         code: &str,
         verified_via: FrontendType,
-    ) -> SecurityResult<FrontendLink> {
+    ) -> IdentityResult<FrontendLink> {
         // Get and remove the pending code
         let pending = {
             let mut codes = self.pending_codes.write().map_err(|e| {
-                SecurityError::Internal(format!("Failed to write pending codes: {e}"))
+                IdentityError::Internal(format!("Failed to write pending codes: {e}"))
             })?;
-            codes
-                .remove(code)
-                .ok_or(SecurityError::IdentityVerificationFailed(
-                    "Invalid or expired code".to_string(),
-                ))?
+            codes.remove(code).ok_or(IdentityError::VerificationFailed(
+                "Invalid or expired code".to_string(),
+            ))?
         };
 
         if pending.is_expired() {
-            return Err(SecurityError::VerificationExpired);
+            return Err(IdentityError::VerificationExpired);
         }
 
         // Create the link
@@ -1051,7 +1081,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(SecurityError::FrontendAlreadyLinked { .. })
+            Err(IdentityError::FrontendAlreadyLinked { .. })
         ));
     }
 
@@ -1303,7 +1333,7 @@ mod tests {
             .create_identity(FrontendType::Custom("telegram".into()), "123")
             .await;
         assert!(
-            matches!(result, Err(SecurityError::FrontendAlreadyLinked { .. })),
+            matches!(result, Err(IdentityError::FrontendAlreadyLinked { .. })),
             "duplicate through Custom alias should be rejected"
         );
     }
@@ -1352,7 +1382,7 @@ mod tests {
         );
         let result = store.create_link(link).await;
         assert!(
-            matches!(result, Err(SecurityError::FrontendAlreadyLinked { .. })),
+            matches!(result, Err(IdentityError::FrontendAlreadyLinked { .. })),
             "duplicate link through Custom alias should be rejected"
         );
     }

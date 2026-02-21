@@ -9,13 +9,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use astrid_core::frontend::ChannelInfo;
+use astrid_core::frontend::{FrontendError, FrontendResult};
 use astrid_core::identity::AstridUserId;
 use astrid_core::input::{ContextIdentifier, MessageId, TaggedMessage};
 use astrid_core::verification::{VerificationRequest, VerificationResponse};
 use astrid_core::{
     ApprovalDecision, ApprovalRequest, ElicitationRequest, ElicitationResponse, Frontend,
-    FrontendContext, FrontendSessionInfo, FrontendType, FrontendUser, SecurityError,
-    SecurityResult, UrlElicitationRequest, UrlElicitationResponse, UserInput,
+    FrontendContext, FrontendSessionInfo, FrontendType, FrontendUser, UrlElicitationRequest,
+    UrlElicitationResponse, UserInput,
 };
 use async_trait::async_trait;
 use tokio::sync::{Mutex, broadcast, oneshot};
@@ -126,7 +127,7 @@ impl Frontend for DaemonFrontend {
         )
     }
 
-    async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse> {
+    async fn elicit(&self, request: ElicitationRequest) -> FrontendResult<ElicitationResponse> {
         let request_id = request.request_id.to_string();
 
         // Create a oneshot channel to receive the CLI's response.
@@ -146,14 +147,14 @@ impl Frontend for DaemonFrontend {
 
         // Wait for the CLI to respond.
         rx.await.map_err(|_| {
-            SecurityError::McpElicitationFailed("CLI disconnected before responding".to_string())
+            FrontendError::ElicitationFailed("CLI disconnected before responding".to_string())
         })
     }
 
     async fn elicit_url(
         &self,
         request: UrlElicitationRequest,
-    ) -> SecurityResult<UrlElicitationResponse> {
+    ) -> FrontendResult<UrlElicitationResponse> {
         // URL elicitation is not yet supported over IPC.
         // For now, return a "not completed" response.
         warn!(
@@ -163,7 +164,7 @@ impl Frontend for DaemonFrontend {
         Ok(UrlElicitationResponse::not_completed(request.request_id))
     }
 
-    async fn request_approval(&self, request: ApprovalRequest) -> SecurityResult<ApprovalDecision> {
+    async fn request_approval(&self, request: ApprovalRequest) -> FrontendResult<ApprovalDecision> {
         let request_id = request.request_id.to_string();
 
         // Create a oneshot channel to receive the CLI's decision.
@@ -182,7 +183,7 @@ impl Frontend for DaemonFrontend {
         debug!(request_id, "Waiting for approval response from CLI");
 
         // Wait for the CLI to respond.
-        rx.await.map_err(|_| SecurityError::ApprovalDenied {
+        rx.await.map_err(|_| FrontendError::ApprovalDenied {
             reason: "CLI disconnected before responding".to_string(),
         })
     }
@@ -229,13 +230,13 @@ impl Frontend for DaemonFrontend {
         &self,
         _user_id: &str,
         _request: VerificationRequest,
-    ) -> SecurityResult<VerificationResponse> {
-        Err(SecurityError::IdentityVerificationFailed(
+    ) -> FrontendResult<VerificationResponse> {
+        Err(FrontendError::Internal(
             "Verification not supported over daemon IPC".to_string(),
         ))
     }
 
-    async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+    async fn send_link_code(&self, _user_id: &str, _code: &str) -> FrontendResult<()> {
         Ok(())
     }
 

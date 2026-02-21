@@ -56,6 +56,8 @@ pub mod action;
 pub mod allowance;
 pub mod budget;
 pub mod deferred;
+/// Error types and results for the approval module.
+pub mod error;
 pub mod interceptor;
 pub mod manager;
 pub mod policy;
@@ -70,6 +72,7 @@ pub use deferred::{
     ActionContext, DeferredResolution, DeferredResolutionStore, FallbackBehavior, PendingAction,
     Priority, ResolutionId,
 };
+pub use error::{ApprovalError, ApprovalResult};
 pub use interceptor::{BudgetWarning, InterceptProof, InterceptResult, SecurityInterceptor};
 pub use manager::{ApprovalHandler, ApprovalManager, ApprovalOutcome, ApprovalProof};
 pub use policy::{PolicyResult, SecurityPolicy};

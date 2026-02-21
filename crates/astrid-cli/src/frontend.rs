@@ -1,13 +1,14 @@
 //! CLI Frontend implementation.
 
 use astrid_core::frontend::ChannelInfo;
+use astrid_core::frontend::{FrontendError, FrontendResult};
 use astrid_core::identity::AstridUserId;
 use astrid_core::input::{ContextIdentifier, MessageId, TaggedMessage};
 use astrid_core::verification::{VerificationRequest, VerificationResponse};
 use astrid_core::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationRequest, ElicitationResponse,
     ElicitationSchema, Frontend, FrontendContext, FrontendSessionInfo, FrontendType, FrontendUser,
-    SecurityError, SecurityResult, UrlElicitationRequest, UrlElicitationResponse, UserInput,
+    UrlElicitationRequest, UrlElicitationResponse, UserInput,
 };
 use async_trait::async_trait;
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
@@ -88,7 +89,7 @@ impl Frontend for CliFrontend {
         )
     }
 
-    async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse> {
+    async fn elicit(&self, request: ElicitationRequest) -> FrontendResult<ElicitationResponse> {
         println!("\n{}", Theme::separator());
         println!("{}", Theme::header("Input Required"));
         println!("From: {}", request.server_name.cyan());
@@ -109,12 +110,12 @@ impl Frontend for CliFrontend {
 
                 let text = input
                     .interact_text()
-                    .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+                    .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
                 if let Some(max) = max_length
                     && text.len() > max
                 {
-                    return Err(SecurityError::InvalidInput(format!(
+                    return Err(FrontendError::ElicitationFailed(format!(
                         "Input exceeds max length of {max}"
                     )));
                 }
@@ -126,7 +127,7 @@ impl Frontend for CliFrontend {
                 let secret = Password::with_theme(&theme)
                     .with_prompt(&prompt)
                     .interact()
-                    .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+                    .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
                 serde_json::Value::String(secret)
             },
@@ -138,7 +139,7 @@ impl Frontend for CliFrontend {
                     let selections = dialoguer::MultiSelect::with_theme(&theme)
                         .items(&labels)
                         .interact()
-                        .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+                        .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
                     let values: Vec<_> = selections
                         .iter()
@@ -151,7 +152,7 @@ impl Frontend for CliFrontend {
                         .items(&labels)
                         .default(0)
                         .interact()
-                        .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+                        .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
                     serde_json::Value::String(options[selection].value.clone())
                 }
@@ -161,7 +162,7 @@ impl Frontend for CliFrontend {
                     .with_prompt("Confirm?")
                     .default(default)
                     .interact()
-                    .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+                    .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
                 serde_json::Value::Bool(confirmed)
             },
@@ -173,7 +174,7 @@ impl Frontend for CliFrontend {
     async fn elicit_url(
         &self,
         request: UrlElicitationRequest,
-    ) -> SecurityResult<UrlElicitationResponse> {
+    ) -> FrontendResult<UrlElicitationResponse> {
         println!("\n{}", Theme::separator());
         println!("{}", Theme::header("External Authentication Required"));
         println!("{}", request.message);
@@ -190,7 +191,7 @@ impl Frontend for CliFrontend {
             .with_prompt("Press Enter when complete")
             .default(true)
             .interact()
-            .map_err(|e| SecurityError::McpElicitationFailed(e.to_string()))?;
+            .map_err(|e| FrontendError::ElicitationFailed(e.to_string()))?;
 
         println!("{}", Theme::separator());
 
@@ -201,7 +202,7 @@ impl Frontend for CliFrontend {
         }
     }
 
-    async fn request_approval(&self, request: ApprovalRequest) -> SecurityResult<ApprovalDecision> {
+    async fn request_approval(&self, request: ApprovalRequest) -> FrontendResult<ApprovalDecision> {
         println!("\n{}", Theme::separator());
         println!("{}", Theme::header("Approval Required"));
         println!("Action: {}", request.operation.cyan());
@@ -218,7 +219,7 @@ impl Frontend for CliFrontend {
             .items(&options)
             .default(0)
             .interact()
-            .map_err(|e| SecurityError::ApprovalDenied {
+            .map_err(|e| FrontendError::ApprovalDenied {
                 reason: e.to_string(),
             })?;
 
@@ -277,7 +278,7 @@ impl Frontend for CliFrontend {
         &self,
         _user_id: &str,
         request: VerificationRequest,
-    ) -> SecurityResult<VerificationResponse> {
+    ) -> FrontendResult<VerificationResponse> {
         // CLI verification is immediate
         println!("\n{}", Theme::separator());
         println!("{}", Theme::header("Verification Required"));
@@ -288,16 +289,18 @@ impl Frontend for CliFrontend {
             .with_prompt("Approve?")
             .default(false)
             .interact()
-            .map_err(|e| SecurityError::IdentityVerificationFailed(e.to_string()))?;
+            .map_err(|e| FrontendError::Internal(e.to_string()))?;
 
         if confirmed {
             Ok(VerificationResponse::confirmed(request.request_id))
         } else {
-            Err(SecurityError::VerificationCancelled)
+            Err(FrontendError::ApprovalDenied {
+                reason: "verification cancelled".into(),
+            })
         }
     }
 
-    async fn send_link_code(&self, _user_id: &str, code: &str) -> SecurityResult<()> {
+    async fn send_link_code(&self, _user_id: &str, code: &str) -> FrontendResult<()> {
         println!("\n{}", Theme::info(&format!("Link code: {}", code.bold())));
         Ok(())
     }

@@ -10,9 +10,8 @@ use std::sync::Arc;
 use astrid_config::{Config, ConnectorConfig};
 use astrid_core::ConnectorProfile;
 use astrid_core::ConnectorSource;
-use astrid_core::error::SecurityError;
 use astrid_core::identity::{
-    AstridUserId, FrontendLink, FrontendType, IdentityStore, LinkVerificationMethod,
+    AstridUserId, FrontendLink, FrontendType, IdentityError, IdentityStore, LinkVerificationMethod,
 };
 use astrid_plugins::PluginRegistry;
 use tracing::{debug, info, warn};
@@ -217,7 +216,7 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
                     "Pre-configured identity link applied"
                 );
             },
-            Err(SecurityError::FrontendAlreadyLinked { .. }) => {
+            Err(IdentityError::FrontendAlreadyLinked { .. }) => {
                 // Race between the idempotency check above and create_link; harmless.
                 debug!(
                     platform = %link_cfg.platform,

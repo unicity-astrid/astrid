@@ -26,6 +26,9 @@ serde = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 
+# Error
+thiserror = { workspace = true }
+
 # Glob matching (for AllowancePattern::FilePattern)
 globset = { workspace = true }
 
