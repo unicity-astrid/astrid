@@ -6,7 +6,9 @@ use astrid_core::ApprovalOption;
 use astrid_mcp::{McpClient, ServersConfig};
 use astrid_plugins::Plugin;
 use astrid_plugins::mcp_plugin::McpPlugin;
-use astrid_plugins::{PluginContext, PluginEntryPoint, PluginId, PluginManifest, PluginRegistry};
+use astrid_plugins::{
+    PluginContext, PluginEntryPoint, PluginId, PluginManifest, PluginRegistry, PluginToolContext,
+};
 use astrid_storage::kv::ScopedKvStore;
 use astrid_test::{MockLlmTurn, MockToolCall};
 
@@ -18,10 +20,13 @@ fn node_available() -> bool {
 }
 
 /// Path to the config-echo fixture plugin source.
+///
+/// This depends on the fixture at `astrid-plugins/tests/fixtures/config-echo/index.mjs`.
+/// If that file is moved or renamed, this path must be updated.
 fn fixture_index_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .unwrap()
+        .expect("CARGO_MANIFEST_DIR always has a parent")
         .join("astrid-plugins/tests/fixtures/config-echo/index.mjs")
 }
 
@@ -36,6 +41,7 @@ fn prepare_bridge_dir(dir: &Path) {
 async fn test_mcp_plugin_e2e_dispatch() {
     if !node_available() {
         eprintln!("SKIP: node not found on $PATH");
+        println!("SKIP: node not found on $PATH — skipping MCP E2E test");
         return;
     }
 
@@ -75,18 +81,52 @@ async fn test_mcp_plugin_e2e_dispatch() {
     let mut plugin = McpPlugin::new(manifest, mcp_client).with_plugin_dir(dir.to_path_buf());
 
     let store = Arc::new(astrid_storage::MemoryKvStore::new());
-    let kv = ScopedKvStore::new(store, "plugin:config-echo").expect("create scoped KV store");
-    let ctx = PluginContext::new(std::env::temp_dir(), kv, config);
+    let kv =
+        ScopedKvStore::new(store.clone(), "plugin:config-echo").expect("create scoped KV store");
+    let ctx = PluginContext::new(dir.to_path_buf(), kv, config.clone());
 
-    // Wait for the plugin to start and establish MCP handshakes
+    // Load the plugin (spawns Node.js subprocess + MCP handshake)
     plugin.load(&ctx).await.expect("plugin load");
 
-    // Wait for the async `astrid.setPluginConfig` notification to be processed by Node.
-    // We use a generous 500ms timeout here to prevent flakiness on slower CI runners.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Poll until the async `astrid.setPluginConfig` notification has been processed
+    // and the `get-config` tool returns config with the "network" key present.
+    let tool = plugin
+        .tools()
+        .iter()
+        .find(|t| t.name() == "get-config")
+        .expect("get-config tool should be discovered after load")
+        .clone();
+
+    let tool_kv =
+        ScopedKvStore::new(store, "plugin:config-echo").expect("create tool scoped KV store");
+    let tool_ctx = PluginToolContext::new(
+        PluginId::from_static("config-echo"),
+        dir.to_path_buf(),
+        tool_kv,
+    )
+    .with_config(config.clone());
+
+    let mut config_ready = false;
+    for _ in 0..20 {
+        if let Ok(result) = tool.execute(serde_json::json!({}), &tool_ctx).await {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
+                if parsed.get("network").is_some() {
+                    config_ready = true;
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(
+        config_ready,
+        "config-echo plugin did not receive config within 1s"
+    );
 
     let mut registry = PluginRegistry::new();
     registry.register(Box::new(plugin)).unwrap();
+
+    let registry = Arc::new(tokio::sync::RwLock::new(registry));
 
     let mut harness = RuntimeTestHarness::with_approval(
         vec![
@@ -98,7 +138,7 @@ async fn test_mcp_plugin_e2e_dispatch() {
         ],
         ApprovalOption::AllowOnce,
     )
-    .with_plugin_registry(registry);
+    .with_plugin_registry_arc(Arc::clone(&registry));
 
     harness
         .run_turn("trigger the MCP config-echo tool")
@@ -130,4 +170,7 @@ async fn test_mcp_plugin_e2e_dispatch() {
 
     let last = harness.session.messages.last().unwrap();
     assert_eq!(last.text(), Some("Config loaded correctly"));
+
+    // Gracefully shut down the Node.js subprocess
+    registry.write().await.unload_all().await;
 }

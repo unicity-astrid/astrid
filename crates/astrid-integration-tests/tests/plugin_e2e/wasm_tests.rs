@@ -10,11 +10,15 @@ use super::super::common::RuntimeTestHarness;
 
 static BUILD_FIXTURE: Once = Once::new();
 
-/// Build the `test-plugin-guest` crate to WASM and copy to the fixtures directory.
+/// Build the `test-plugin-guest` crate to WASM and copy the artifact into
+/// the integration-tests fixtures directory so the test does not depend on
+/// a cross-crate build output path at runtime.
 fn build_fixture() {
     BUILD_FIXTURE.call_once(|| {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let workspace_dir = manifest_dir.parent().unwrap();
+        let workspace_dir = manifest_dir
+            .parent()
+            .expect("CARGO_MANIFEST_DIR always has a parent");
         let guest_dir = workspace_dir.join("test-plugin-guest");
 
         let status = std::process::Command::new("cargo")
@@ -28,14 +32,19 @@ fn build_fixture() {
             status.success(),
             "failed to compile test-plugin-guest to WASM"
         );
+
+        // Copy the compiled .wasm into the integration-tests fixtures directory
+        let src = workspace_dir
+            .join("test-plugin-guest/target/wasm32-unknown-unknown/release/test_plugin_guest.wasm");
+        let fixtures_dir = manifest_dir.join("tests/fixtures");
+        std::fs::create_dir_all(&fixtures_dir).expect("create fixtures dir");
+        std::fs::copy(&src, fixtures_dir.join("test_plugin_guest.wasm"))
+            .expect("copy wasm fixture");
     });
 }
 
 fn wasm_fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("test-plugin-guest/target/wasm32-unknown-unknown/release/test_plugin_guest.wasm")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_plugin_guest.wasm")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -62,11 +71,16 @@ async fn test_wasm_plugin_e2e_dispatch() {
         .with_require_hash(false);
     let mut plugin = loader.create_plugin(manifest);
 
+    // Use a local tempdir for the workspace root so cleanup is deterministic.
+    // Note: the runtime internally resolves its own workspace root, so this
+    // path is only used by the plugin context during load.
+    let plugin_tmp = tempfile::tempdir().expect("create temp dir for WASM plugin context");
+
     let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
     let scoped_kv =
         astrid_storage::kv::ScopedKvStore::new(kv_store, "plugin:test-all-endpoints").unwrap();
     let ctx = PluginContext::new(
-        std::env::temp_dir(),
+        plugin_tmp.path().to_path_buf(),
         scoped_kv,
         std::collections::HashMap::new(),
     );

@@ -75,6 +75,18 @@ impl RuntimeTestHarness {
         self
     }
 
+    /// Attach a pre-wrapped plugin registry Arc to the agent runtime.
+    ///
+    /// Use when you need to retain a handle for post-test cleanup
+    /// (e.g. calling `unload_all()` on MCP plugins).
+    pub fn with_plugin_registry_arc(
+        mut self,
+        registry: std::sync::Arc<tokio::sync::RwLock<astrid_plugins::PluginRegistry>>,
+    ) -> Self {
+        self.runtime = self.runtime.with_plugin_registry(registry);
+        self
+    }
+
     /// Convenience: run a single turn with the given user input.
     pub async fn run_turn(&mut self, input: &str) -> Result<(), astrid_runtime::RuntimeError> {
         self.runtime
