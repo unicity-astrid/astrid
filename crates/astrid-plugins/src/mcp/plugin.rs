@@ -28,7 +28,7 @@ use rmcp::service::{Peer, RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde_json::Value;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use astrid_core::connector::{ConnectorCapabilities, ConnectorDescriptor, ConnectorSource};
 use astrid_core::identity::FrontendType;
@@ -40,6 +40,8 @@ use astrid_mcp::{
 use crate::context::PluginContext;
 use crate::error::{PluginError, PluginResult};
 use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
+use crate::mcp::protocol::McpProtocolConnection;
+use crate::mcp::state::McpConnection;
 use crate::mcp::tool::McpPluginTool;
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::sandbox::SandboxProfile;
@@ -71,10 +73,8 @@ pub struct McpPlugin {
     server_name: String,
     /// Injected at construction — used for hook forwarding and lifecycle.
     mcp_client: McpClient,
-    /// Running MCP service (owns the child process).
-    service: Option<PluginMcpService>,
-    /// Lightweight, cloneable RPC handle for tool calls + notifications.
-    peer: Option<Peer<RoleClient>>,
+    /// The active connection state for the MCP server.
+    connection: Option<McpConnection>,
     /// Optional sandbox profile applied to the child process.
     sandbox: Option<SandboxProfile>,
     /// Plugin install directory — used as `current_dir` when spawning the
@@ -116,8 +116,7 @@ impl McpPlugin {
             tools: Vec::new(),
             server_name,
             mcp_client,
-            service: None,
-            peer: None,
+            connection: None,
             sandbox: None,
             plugin_dir: None,
             registered_connectors: Vec::new(),
@@ -165,18 +164,20 @@ impl McpPlugin {
             return false;
         }
 
-        let alive = self.service.as_ref().is_some_and(|s| !s.is_closed());
+        let alive = self
+            .connection
+            .as_ref()
+            .is_some_and(super::state::McpConnection::is_alive);
 
         if !alive {
             let msg = "MCP server process exited unexpectedly".to_string();
             warn!(plugin_id = %self.id, "{msg}");
             self.state = PluginState::Failed(msg);
-            self.peer = None;
             self.tools.clear();
-            // Drop the service to release the AstridClientHandler's Arc
+            // Drop the connection to release the AstridClientHandler's Arc
             // clone of shared_connectors, minimizing phantom entries from
             // buffered notifications arriving after we clear state.
-            self.service = None;
+            self.connection = None;
             // Clear connector state so stale connectors are not visible
             self.registered_connectors.clear();
             self.shared_connectors
@@ -595,8 +596,7 @@ impl Plugin for McpPlugin {
             })
             .collect();
 
-        self.service = Some(service);
-        self.peer = Some(peer.clone());
+        self.connection = Some(McpConnection::new(self.id.clone(), service, peer.clone()));
         self.tools = tools;
 
         // Store inbound channels now that the connection is established.
@@ -634,38 +634,14 @@ impl Plugin for McpPlugin {
     async fn unload(&mut self) -> PluginResult<()> {
         self.state = PluginState::Unloading;
 
-        // Drop the peer handle first so no new tool calls start
-        self.peer = None;
         self.tools.clear();
 
         // Gracefully close the MCP session BEFORE clearing connector state
         // so that in-flight notifications from the bridge can still be
         // received and processed by the handler.
-        if let Some(ref mut service) = self.service {
-            match service.close_with_timeout(SHUTDOWN_TIMEOUT).await {
-                Ok(Some(reason)) => {
-                    info!(
-                        plugin_id = %self.id,
-                        ?reason,
-                        "Plugin MCP session closed gracefully"
-                    );
-                },
-                Ok(None) => {
-                    warn!(
-                        plugin_id = %self.id,
-                        "Plugin MCP session close timed out; dropping"
-                    );
-                },
-                Err(e) => {
-                    error!(
-                        plugin_id = %self.id,
-                        error = %e,
-                        "Plugin MCP session close join error"
-                    );
-                },
-            }
+        if let Some(mut connection) = self.connection.take() {
+            let _ = connection.close(SHUTDOWN_TIMEOUT).await;
         }
-        self.service = None;
 
         // Now clear connector state after the MCP session is closed
         self.registered_connectors.clear();
@@ -701,31 +677,12 @@ impl Plugin for McpPlugin {
     /// `notifications/astrid.hookEvent`. This is fire-and-forget;
     /// errors are logged but do not propagate.
     async fn send_hook_event(&self, event: HookEvent, data: Value) {
-        let Some(peer) = &self.peer else {
+        if let Some(connection) = &self.connection {
+            connection.send_hook_event(event, data).await;
+        } else {
             debug!(
                 plugin_id = %self.id,
                 "Cannot send hook event: no peer connection"
-            );
-            return;
-        };
-
-        let notification = CustomNotification::new(
-            "notifications/astrid.hookEvent",
-            Some(serde_json::json!({
-                "event": event.to_string(),
-                "data": data,
-            })),
-        );
-
-        if let Err(e) = peer
-            .send_notification(ClientNotification::CustomNotification(notification))
-            .await
-        {
-            warn!(
-                plugin_id = %self.id,
-                event = %event,
-                error = %e,
-                "Failed to send hook event to plugin MCP server"
             );
         }
     }
