@@ -123,10 +123,7 @@ impl SecurityInterceptor {
         if let Some(proof) = self.capability_validator.check_capability(action) {
             let mut cap_budget_warning = None;
             if let Some(cost) = estimated_cost {
-                cap_budget_warning = self.budget_validator.check_workspace_budget(cost)?;
-                if let Some(warning) = self.budget_validator.check_session_budget(cost)? {
-                    cap_budget_warning = Some(warning);
-                }
+                cap_budget_warning = self.budget_validator.check_and_reserve(cost)?;
             }
             let audit_id = self.audit_allowed(action, &proof);
             return Ok(InterceptResult {
@@ -139,10 +136,7 @@ impl SecurityInterceptor {
         // Step 3: Budget check (atomic check + reserve)
         let mut budget_warning = None;
         if let Some(cost) = estimated_cost {
-            budget_warning = self.budget_validator.check_workspace_budget(cost)?;
-            if let Some(warning) = self.budget_validator.check_session_budget(cost)? {
-                budget_warning = Some(warning);
-            }
+            budget_warning = self.budget_validator.check_and_reserve(cost)?;
         }
 
         // Step 4: Risk assessment / Approval
@@ -619,6 +613,29 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("budget exceeded"));
+    }
+
+    #[tokio::test]
+    async fn test_budget_rollback_on_dual_budget_denial() {
+        // Workspace budget is large, session budget is small.
+        let ws_tracker = Arc::new(WorkspaceBudgetTracker::new(Some(100.0), 80));
+        let session_tracker = Arc::new(BudgetTracker::new(BudgetConfig::new(10.0, 50.0)));
+        let budget_validator = BudgetValidator::new(session_tracker, Some(ws_tracker.clone()));
+
+        // Cost is 50. This is fine for workspace (limit 100), but exceeds session limit (10).
+        // It's also within per_action limit of session_tracker (50).
+        let cost = 50.0;
+
+        let result = budget_validator.check_and_reserve(cost);
+
+        // Should fail because of session budget.
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("budget exceeded (session budget)"));
+
+        // Critically, the workspace budget should STILL BE 100.0 (not deducted).
+        assert_eq!(ws_tracker.spent(), 0.0);
+        assert_eq!(ws_tracker.remaining(), Some(100.0));
     }
 
     // -----------------------------------------------------------------------
