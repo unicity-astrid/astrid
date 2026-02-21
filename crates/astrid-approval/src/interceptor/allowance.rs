@@ -49,11 +49,7 @@ impl AllowanceValidator {
 
         let allowance_id = AllowanceId::new();
         let signature = self.runtime_key.sign(allowance_id.0.as_bytes());
-        let ws_root = if session_only {
-            None
-        } else {
-            self.workspace_root.clone()
-        };
+        let ws_root = self.workspace_root.clone();
 
         let allowance = Allowance {
             id: allowance_id.clone(),
