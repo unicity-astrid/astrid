@@ -1,9 +1,8 @@
-use std::time::Duration;
 use super::{
-    DemoScenario, DemoStep, ToolRisk, ApprovalChoice, View, 
-    NexusCategoryDemo, SidebarState, TaskStatus, FileStatus,
-    AgentStatusDemo, AuditOutcomeDemo, HealthStatusDemo, ThreatLevelDemo
+    AgentStatusDemo, AuditOutcomeDemo, DemoScenario, DemoStep,
+    HealthStatusDemo, ThreatLevelDemo, ToolRisk, View,
 };
+use std::time::Duration;
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn build() -> DemoScenario {

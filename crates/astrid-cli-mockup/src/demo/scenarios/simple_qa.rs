@@ -1,9 +1,7 @@
-use std::time::Duration;
 use super::{
-    DemoScenario, DemoStep, ToolRisk, ApprovalChoice, View, 
-    NexusCategoryDemo, SidebarState, TaskStatus, FileStatus,
-    AgentStatusDemo, AuditOutcomeDemo, HealthStatusDemo, ThreatLevelDemo
+    DemoScenario, DemoStep,
 };
+use std::time::Duration;
 
 pub(super) fn build() -> DemoScenario {
     DemoScenario {

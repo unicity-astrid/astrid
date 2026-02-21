@@ -1,12 +1,12 @@
 //! MCP state machine and connection management.
 
-use std::time::Duration;
-use rmcp::service::{Peer, RoleClient, RunningService};
 use astrid_mcp::AstridClientHandler;
+use rmcp::service::{Peer, RoleClient, RunningService};
 use serde_json::Value;
+use std::time::Duration;
 
-use crate::error::PluginResult;
 use super::protocol::McpProtocolConnection;
+use crate::error::PluginResult;
 
 /// Type alias for the running MCP service backing a plugin.
 pub type PluginMcpService = RunningService<RoleClient, AstridClientHandler>;
@@ -19,18 +19,22 @@ pub struct McpConnection {
 }
 
 impl McpConnection {
-    pub fn new(plugin_id: crate::plugin::PluginId, service: PluginMcpService, peer: Peer<RoleClient>) -> Self {
+    pub fn new(
+        plugin_id: crate::plugin::PluginId,
+        service: PluginMcpService,
+        peer: Peer<RoleClient>,
+    ) -> Self {
         Self {
             plugin_id,
             service: Some(service),
             peer: Some(peer),
         }
     }
-    
+
     pub fn is_alive(&self) -> bool {
         self.service.as_ref().is_some_and(|s| !s.is_closed())
     }
-    
+
     pub fn take_service(&mut self) -> Option<PluginMcpService> {
         self.service.take()
     }
@@ -51,7 +55,12 @@ impl McpProtocolConnection for McpConnection {
             })),
         );
 
-        if let Err(e) = peer.send_notification(rmcp::model::ClientNotification::CustomNotification(notification)).await {
+        if let Err(e) = peer
+            .send_notification(rmcp::model::ClientNotification::CustomNotification(
+                notification,
+            ))
+            .await
+        {
             tracing::warn!(
                 plugin_id = %self.plugin_id,
                 event = %event,

@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use astrid_mcp::{McpClient, ServersConfig};
+use astrid_plugins::McpPlugin;
 use astrid_plugins::context::{PluginContext, PluginToolContext};
 use astrid_plugins::manifest::{PluginEntryPoint, PluginManifest};
-use astrid_plugins::mcp_plugin::McpPlugin;
 use astrid_plugins::plugin::{Plugin, PluginId, PluginState};
 use astrid_storage::kv::ScopedKvStore;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

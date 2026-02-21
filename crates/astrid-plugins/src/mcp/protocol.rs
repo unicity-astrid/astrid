@@ -12,10 +12,10 @@ use crate::error::{PluginError, PluginResult};
 pub trait McpProtocolConnection: Send + Sync {
     /// Send a custom hook event to the server
     async fn send_hook_event(&self, event: astrid_core::HookEvent, data: Value);
-    
+
     /// Get the underlying peer to call tools
     fn peer(&self) -> Option<Peer<RoleClient>>;
-    
+
     /// Close the connection gracefully
     async fn close(&mut self, timeout: std::time::Duration) -> PluginResult<()>;
 }
