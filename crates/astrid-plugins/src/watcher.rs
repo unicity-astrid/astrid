@@ -802,10 +802,10 @@ mod tests {
     }
 
     /// Integration test: verify the watcher detects real filesystem changes.
-    /// Marked `#[ignore]` because FSEvents/inotify latency makes it flaky in
+    /// Marked `#[ignore = "flaky on CI due to filesystem timing"]` because FSEvents/inotify latency makes it flaky in
     /// CI and sandboxed environments. Run manually with `--ignored`.
     #[tokio::test]
-    #[ignore]
+    #[ignore = "flaky on CI due to filesystem timing"]
     async fn test_watcher_integration_real_fs() {
         let dir = TempDir::new().unwrap();
         let plugin_dir = dir.path().join("my-plugin");

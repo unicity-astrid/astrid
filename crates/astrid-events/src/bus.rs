@@ -197,8 +197,8 @@ mod tests {
         let count = bus.publish(event);
         assert_eq!(count, 1);
 
-        let received = receiver.recv().await.unwrap();
-        assert_eq!(received.event_type(), "runtime_started");
+        let msg = receiver.recv().await.unwrap();
+        assert_eq!(msg.event_type(), "runtime_started");
     }
 
     #[tokio::test]
@@ -215,11 +215,11 @@ mod tests {
         let count = bus.publish(event);
         assert_eq!(count, 2);
 
-        let received1 = receiver1.recv().await.unwrap();
-        let received2 = receiver2.recv().await.unwrap();
+        let obj1 = receiver1.recv().await.unwrap();
+        let obj2 = receiver2.recv().await.unwrap();
 
-        assert_eq!(received1.event_type(), "runtime_started");
-        assert_eq!(received2.event_type(), "runtime_started");
+        assert_eq!(obj1.event_type(), "runtime_started");
+        assert_eq!(obj2.event_type(), "runtime_started");
     }
 
     #[tokio::test]
@@ -265,13 +265,13 @@ mod tests {
         let bus = EventBus::new();
         assert_eq!(bus.subscriber_count(), 0);
 
-        let _receiver1 = bus.subscribe();
+        let receiver1 = bus.subscribe();
         assert_eq!(bus.subscriber_count(), 1);
 
         let _receiver2 = bus.subscribe();
         assert_eq!(bus.subscriber_count(), 2);
 
-        drop(_receiver1);
+        drop(receiver1);
         // Note: subscriber count may not immediately reflect dropped receivers
     }
 }

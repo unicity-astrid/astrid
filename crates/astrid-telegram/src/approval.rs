@@ -44,6 +44,8 @@ impl Default for ApprovalManager {
 }
 
 impl ApprovalManager {
+    /// Create a new, empty approval manager.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pending: Arc::new(RwLock::new(HashMap::new())),

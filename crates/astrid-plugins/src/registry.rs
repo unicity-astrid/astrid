@@ -642,32 +642,32 @@ mod tests {
         assert!(!PluginRegistry::is_plugin_tool("plugin:alpha:"));
     }
 
+    // Create a plugin with a tool whose name contains colons.
+    struct ColonTool;
+
+    #[async_trait::async_trait]
+    impl PluginTool for ColonTool {
+        fn name(&self) -> &'static str {
+            "name:with:colons"
+        }
+        fn description(&self) -> &'static str {
+            "A tool with colons in the name"
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object" })
+        }
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &PluginToolContext,
+        ) -> PluginResult<String> {
+            Ok("ok".to_string())
+        }
+    }
+
     #[test]
     fn test_find_tool_with_colons_in_tool_name() {
         let mut registry = PluginRegistry::new();
-
-        // Create a plugin with a tool whose name contains colons.
-        struct ColonTool;
-
-        #[async_trait::async_trait]
-        impl PluginTool for ColonTool {
-            fn name(&self) -> &'static str {
-                "name:with:colons"
-            }
-            fn description(&self) -> &'static str {
-                "A tool with colons in the name"
-            }
-            fn input_schema(&self) -> serde_json::Value {
-                serde_json::json!({ "type": "object" })
-            }
-            async fn execute(
-                &self,
-                _args: serde_json::Value,
-                _ctx: &PluginToolContext,
-            ) -> PluginResult<String> {
-                Ok("ok".to_string())
-            }
-        }
 
         let mut plugin = TestPlugin::new("alpha");
         plugin.tools = vec![Arc::new(ColonTool)];

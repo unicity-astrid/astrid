@@ -49,7 +49,9 @@ pub(crate) fn render_snapshot(app: &App, width: u16, height: u16) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("mockup error");
 
-    terminal.draw(|frame| render_frame(frame, app)).expect("mockup error");
+    terminal
+        .draw(|frame| render_frame(frame, app))
+        .expect("mockup error");
 
     // Convert buffer to string with ANSI escape codes for colors
     // Only emit color codes when color changes to reduce verbosity

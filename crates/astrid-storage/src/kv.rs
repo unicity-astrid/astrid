@@ -730,14 +730,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoped_json_round_trip() {
-        let store = Arc::new(MemoryKvStore::new());
-        let scoped = ScopedKvStore::new(store, "ns").unwrap();
-
         #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
         struct Config {
             name: String,
             retries: u32,
         }
+
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
 
         let cfg = Config {
             name: "my-plugin".into(),

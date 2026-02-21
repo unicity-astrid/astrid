@@ -48,6 +48,8 @@ impl Default for ElicitationManager {
 }
 
 impl ElicitationManager {
+    /// Create a new, empty elicitation manager.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pending_callbacks: Arc::new(RwLock::new(HashMap::new())),

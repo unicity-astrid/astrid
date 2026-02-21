@@ -174,8 +174,8 @@ async fn test_budget_within_limits_allowed() {
 async fn test_budget_tracking_accumulates() {
     let tracker = BudgetTracker::new(BudgetConfig::new(10.0, 5.0));
 
-    assert_eq!(tracker.spent(), 0.0);
-    assert_eq!(tracker.remaining(), 10.0);
+    assert!(tracker.spent().abs() < f64::EPSILON);
+    assert!((tracker.remaining() - 10.0).abs() < f64::EPSILON);
 
     tracker.record_cost(3.0);
     assert!((tracker.spent() - 3.0).abs() < f64::EPSILON);

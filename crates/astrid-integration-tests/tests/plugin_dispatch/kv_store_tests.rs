@@ -64,21 +64,21 @@ async fn test_kv_store_session_isolation() {
     );
 
     // Session 1
-    let mut session1 = runtime.create_session(None);
+    let mut s1 = runtime.create_session(None);
     runtime
-        .run_turn_streaming(&mut session1, "Call plugin s1", Arc::clone(&frontend))
+        .run_turn_streaming(&mut s1, "Call plugin s1", Arc::clone(&frontend))
         .await
         .unwrap();
 
     // Session 2
-    let mut session2 = runtime.create_session(None);
+    let mut s2 = runtime.create_session(None);
     runtime
-        .run_turn_streaming(&mut session2, "Call plugin s2", Arc::clone(&frontend))
+        .run_turn_streaming(&mut s2, "Call plugin s2", Arc::clone(&frontend))
         .await
         .unwrap();
 
     // Verify each session only contains its own data (basic isolation).
-    let s1_results: Vec<_> = session1
+    let s1_results: Vec<_> = s1
         .messages
         .iter()
         .filter_map(|m| {
@@ -90,7 +90,7 @@ async fn test_kv_store_session_isolation() {
         })
         .collect();
 
-    let s2_results: Vec<_> = session2
+    let s2_results: Vec<_> = s2
         .messages
         .iter()
         .filter_map(|m| {
@@ -112,10 +112,7 @@ async fn test_kv_store_session_isolation() {
     );
 
     // Verify the sessions have distinct IDs (basic sanity).
-    assert_ne!(
-        session1.id, session2.id,
-        "sessions should have different IDs"
-    );
+    assert_ne!(s1.id, s2.id, "sessions should have different IDs");
 }
 
 /// `cleanup_plugin_kv_stores` removes entries for the given session only.
@@ -171,21 +168,21 @@ async fn test_cleanup_plugin_kv_stores() {
     );
 
     // Run session 1
-    let mut session1 = runtime.create_session(None);
+    let mut s1 = runtime.create_session(None);
     runtime
-        .run_turn_streaming(&mut session1, "s1", Arc::clone(&frontend))
+        .run_turn_streaming(&mut s1, "s1", Arc::clone(&frontend))
         .await
         .unwrap();
 
     // Run session 2
-    let mut session2 = runtime.create_session(None);
+    let mut s2 = runtime.create_session(None);
     runtime
-        .run_turn_streaming(&mut session2, "s2", Arc::clone(&frontend))
+        .run_turn_streaming(&mut s2, "s2", Arc::clone(&frontend))
         .await
         .unwrap();
 
     // Cleanup session 1 — session 2's stores should remain.
-    runtime.cleanup_plugin_kv_stores(&session1.id);
+    runtime.cleanup_plugin_kv_stores(&s1.id);
 
     // Session 2 tool call should still work after cleanup of session 1.
     // (The KV store for session 2 was not evicted.)
@@ -193,8 +190,8 @@ async fn test_cleanup_plugin_kv_stores() {
     // doesn't panic and session 2 data is unaffected by re-running (if we had
     // more turns). Instead, verify that cleanup of an already-cleaned session
     // is a no-op.
-    runtime.cleanup_plugin_kv_stores(&session1.id); // should not panic
+    runtime.cleanup_plugin_kv_stores(&s1.id); // should not panic
 
     // Cleanup session 2.
-    runtime.cleanup_plugin_kv_stores(&session2.id);
+    runtime.cleanup_plugin_kv_stores(&s2.id);
 }

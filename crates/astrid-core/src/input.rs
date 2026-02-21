@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(cli.frontend, "cli");
         assert_eq!(cli.id, "seq_42");
 
-        let discord = MessageId::discord(123456789);
+        let discord = MessageId::discord(123_456_789);
         assert_eq!(discord.frontend, "discord");
         assert_eq!(discord.id, "123456789");
     }

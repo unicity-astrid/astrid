@@ -198,6 +198,7 @@ pub(super) fn estimate_json_size(value: &Value) -> usize {
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_possible_wrap)]
 mod tests {
     use super::*;
     use crate::capabilities::client::notice::MAX_PLATFORM_USER_ID_BYTES;

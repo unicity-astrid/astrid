@@ -38,6 +38,7 @@ fn prepare_bridge_dir(dir: &Path) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[allow(clippy::too_many_lines)]
 async fn test_mcp_plugin_e2e_dispatch() {
     if !node_available() {
         eprintln!("SKIP: node not found on $PATH");
@@ -110,9 +111,10 @@ async fn test_mcp_plugin_e2e_dispatch() {
         loop {
             if let Ok(result) = tool.execute(serde_json::json!({}), &tool_ctx).await
                 && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result)
-                    && parsed.get("network").is_some() {
-                        return true;
-                    }
+                && parsed.get("network").is_some()
+            {
+                return true;
+            }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
     })

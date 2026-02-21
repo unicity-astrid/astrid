@@ -252,9 +252,9 @@ mod tests {
         let key_id1 = verifier.add_trusted_key(keypair1.export_public_key());
         let key_id2 = verifier.add_trusted_key(keypair2.export_public_key());
 
-        let key_ids = verifier.trusted_key_ids();
-        assert_eq!(key_ids.len(), 2);
-        assert!(key_ids.contains(&key_id1));
-        assert!(key_ids.contains(&key_id2));
+        let active_keys = verifier.trusted_key_ids();
+        assert_eq!(active_keys.len(), 2);
+        assert!(active_keys.contains(&key_id1));
+        assert!(active_keys.contains(&key_id2));
     }
 }

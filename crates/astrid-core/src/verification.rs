@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_verification_request_creation() {
-        let msg_id = MessageId::discord(123456789);
+        let msg_id = MessageId::discord(123_456_789);
         let req = VerificationRequest::new(
             msg_id.clone(),
             VerificationType::MemoryGrant {

@@ -1413,7 +1413,7 @@ mod tests {
 
         // Verify count matches constants
         assert_eq!(
-            expected_order.len() as i32,
+            i32::try_from(expected_order.len()).unwrap(),
             NUM_HOST_FNS,
             "NUM_HOST_FNS doesn't match expected function count"
         );

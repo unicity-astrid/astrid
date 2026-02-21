@@ -58,7 +58,7 @@ async fn test_state_persistence() {
             last_activity: Some(chrono::Utc::now()),
             request_count: 42,
             error_count: 3,
-            metadata: Default::default(),
+            metadata: std::collections::HashMap::default(),
         },
     );
 
@@ -98,7 +98,7 @@ async fn test_pending_approvals() {
         expires_at: None,
         risk_level: "high".into(),
         tool_name: Some("execute".into()),
-        context: Default::default(),
+        context: std::collections::HashMap::default(),
     });
 
     assert_eq!(state.pending_approvals.len(), 1);

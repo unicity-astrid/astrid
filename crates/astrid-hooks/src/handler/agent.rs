@@ -132,6 +132,6 @@ mod tests {
     fn test_agent_config_default() {
         let config = AgentConfig::default();
         assert_eq!(config.max_tokens, 1024);
-        assert_eq!(config.temperature, 0.0);
+        assert!(config.temperature.abs() < f64::EPSILON);
     }
 }

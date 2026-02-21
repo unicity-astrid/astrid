@@ -689,8 +689,8 @@ mod tests {
             &keypair,
             None,
         );
-        let token2_id = token2.id.clone();
+        let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
-        assert!(disk_store.get(&token2_id).unwrap().is_some());
+        assert!(disk_store.get(&other_token_id).unwrap().is_some());
     }
 }
