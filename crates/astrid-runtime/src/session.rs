@@ -214,11 +214,11 @@ impl AgentSession {
     pub async fn with_persistent_deferred_queue(
         mut self,
         store: astrid_storage::ScopedKvStore,
-    ) -> Result<Self, astrid_core::error::SecurityError> {
+    ) -> Result<Self, crate::error::RuntimeError> {
         let deferred_queue = Arc::new(
             DeferredResolutionStore::with_persistence(store)
                 .await
-                .map_err(|e| astrid_core::error::SecurityError::StorageError(e.to_string()))?,
+                .map_err(|e| crate::error::RuntimeError::StorageError(e.to_string()))?,
         );
         self.approval_manager = Arc::new(ApprovalManager::new(
             Arc::clone(&self.allowance_store),
