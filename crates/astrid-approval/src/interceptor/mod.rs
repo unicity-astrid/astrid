@@ -176,12 +176,34 @@ impl SecurityInterceptor {
                     ApprovalProof::OneTimeApproval => InterceptProof::UserApproval {
                         approval_audit_id: AuditEntryId::new(),
                     },
-                    ApprovalProof::SessionApproval { .. } => self
-                        .allowance_validator
-                        .create_allowance_for_action(action, true),
-                    ApprovalProof::WorkspaceApproval { .. } => self
-                        .allowance_validator
-                        .create_allowance_for_action(action, false),
+                    ApprovalProof::SessionApproval { .. } => {
+                        let audit_action = sensitive_action_to_audit(action);
+                        let _ = self.audit_log.append(
+                            self.session_id.clone(),
+                            audit_action,
+                            AuditAuthProof::UserApproval {
+                                user_id: self.capability_validator.runtime_key.key_id(),
+                                approval_entry_id: AuditEntryId::new(),
+                            },
+                            AuditOutcome::success(),
+                        );
+                        self.allowance_validator
+                            .create_allowance_for_action(action, true)
+                    },
+                    ApprovalProof::WorkspaceApproval { .. } => {
+                        let audit_action = sensitive_action_to_audit(action);
+                        let _ = self.audit_log.append(
+                            self.session_id.clone(),
+                            audit_action,
+                            AuditAuthProof::UserApproval {
+                                user_id: self.capability_validator.runtime_key.key_id(),
+                                approval_entry_id: AuditEntryId::new(),
+                            },
+                            AuditOutcome::success(),
+                        );
+                        self.allowance_validator
+                            .create_allowance_for_action(action, false)
+                    },
                     ApprovalProof::AlwaysAllow => {
                         let audit_action = sensitive_action_to_audit(action);
                         let approval_audit_id = self
