@@ -34,6 +34,8 @@ fn build_fixture() {
         let fixture_dir = manifest_dir.join("tests/fixtures");
 
         let status = std::process::Command::new("cargo")
+            .env_remove("RUSTFLAGS")
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
             .current_dir(&guest_dir)
             .status()
