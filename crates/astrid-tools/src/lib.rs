@@ -220,13 +220,17 @@ impl Default for ToolRegistry {
 ///
 /// If `output` exceeds [`MAX_OUTPUT_CHARS`], it is truncated and a notice is appended.
 #[must_use]
-pub fn truncate_output(output: String) -> String {
+pub fn truncate_output(mut output: String) -> String {
     if output.len() <= MAX_OUTPUT_CHARS {
         return output;
     }
-    let mut truncated = truncate_at_char_boundary(&output, MAX_OUTPUT_CHARS);
-    truncated.push_str("\n\n... (output truncated — exceeded 30000 character limit)");
-    truncated
+    let mut end = MAX_OUTPUT_CHARS;
+    while end > 0 && !output.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    output.truncate(end);
+    output.push_str("\n\n... (output truncated — exceeded 30000 character limit)");
+    output
 }
 
 #[cfg(test)]
