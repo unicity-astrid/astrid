@@ -102,6 +102,22 @@ impl PluginRegistry {
         Ok(plugin)
     }
 
+    /// Unload and remove all plugins from the registry.
+    ///
+    /// Calls [`Plugin::unload()`] on each plugin, logging errors without
+    /// short-circuiting. Connectors are cleaned up as each plugin is removed.
+    pub async fn unload_all(&mut self) {
+        let ids: Vec<PluginId> = self.plugins.keys().cloned().collect();
+        for id in ids {
+            if let Some(mut plugin) = self.plugins.remove(&id) {
+                self.unregister_plugin_connectors(&id);
+                if let Err(e) = plugin.unload().await {
+                    tracing::warn!(plugin_id = %id, error = %e, "Plugin unload error during unload_all");
+                }
+            }
+        }
+    }
+
     /// Get a reference to a plugin by ID.
     #[must_use]
     pub fn get(&self, id: &PluginId) -> Option<&dyn Plugin> {
@@ -943,5 +959,28 @@ mod tests {
         assert!(found.is_some());
         let name = &found.unwrap().name;
         assert!(name == "bot-a" || name == "bot-b");
+    }
+
+    #[tokio::test]
+    async fn test_unload_all() {
+        let mut registry = PluginRegistry::new();
+        let desc = make_descriptor("bot", FrontendType::Discord);
+
+        registry
+            .register(Box::new(TestPlugin::with_connectors("alpha", vec![desc])))
+            .unwrap();
+        registry
+            .register(Box::new(TestPlugin::new("beta")))
+            .unwrap();
+        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.all_connector_descriptors().len(), 1);
+
+        registry.unload_all().await;
+
+        assert!(registry.is_empty(), "all plugins should be removed");
+        assert!(
+            registry.all_connector_descriptors().is_empty(),
+            "all connectors should be cleaned up"
+        );
     }
 }
