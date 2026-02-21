@@ -303,7 +303,7 @@ impl FrontendLink {
 }
 
 /// Supported frontend platforms.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FrontendType {
     /// Discord bot integration
@@ -378,6 +378,65 @@ impl FrontendType {
     #[must_use]
     pub fn is_same_platform(&self, other: &Self) -> bool {
         self.canonical_name() == other.canonical_name()
+    }
+
+    /// Normalize this `FrontendType` to its canonical variant.
+    ///
+    /// Collapses any [`Custom`](Self::Custom) alias of a known variant back to
+    /// the concrete enum variant. Unknown custom names are trimmed and
+    /// lowercased. Known variants are returned unchanged.
+    ///
+    /// Use this at trust boundaries (identity stores, deserialization from
+    /// external sources) to ensure stored values use the canonical variant.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use astrid_core::identity::FrontendType;
+    ///
+    /// assert!(matches!(FrontendType::Custom("telegram".into()).normalize(), FrontendType::Telegram));
+    /// assert!(matches!(FrontendType::Custom("DISCORD".into()).normalize(), FrontendType::Discord));
+    /// assert!(matches!(FrontendType::Telegram.normalize(), FrontendType::Telegram));
+    /// ```
+    #[must_use]
+    pub fn normalize(self) -> Self {
+        match self {
+            Self::Custom(ref name) => {
+                let trimmed = name.trim();
+                if trimmed.eq_ignore_ascii_case("discord") {
+                    Self::Discord
+                } else if trimmed.eq_ignore_ascii_case("whatsapp")
+                    || trimmed.eq_ignore_ascii_case("whats_app")
+                {
+                    Self::WhatsApp
+                } else if trimmed.eq_ignore_ascii_case("telegram") {
+                    Self::Telegram
+                } else if trimmed.eq_ignore_ascii_case("slack") {
+                    Self::Slack
+                } else if trimmed.eq_ignore_ascii_case("web") {
+                    Self::Web
+                } else if trimmed.eq_ignore_ascii_case("cli") {
+                    Self::Cli
+                } else {
+                    Self::Custom(trimmed.to_ascii_lowercase())
+                }
+            },
+            known => known,
+        }
+    }
+}
+
+impl PartialEq for FrontendType {
+    fn eq(&self, other: &Self) -> bool {
+        self.canonical_name() == other.canonical_name()
+    }
+}
+
+impl Eq for FrontendType {}
+
+impl std::hash::Hash for FrontendType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.canonical_name().hash(state);
     }
 }
 
@@ -552,8 +611,9 @@ impl IdentityStore for InMemoryIdentityStore {
         frontend: &FrontendType,
         frontend_user_id: &str,
     ) -> Option<AstridUserId> {
+        let normalized = frontend.clone().normalize();
         let links = self.links.read().ok()?;
-        let link = links.get(&(frontend.clone(), frontend_user_id.to_string()))?;
+        let link = links.get(&(normalized, frontend_user_id.to_string()))?;
         let identities = self.identities.read().ok()?;
         identities.get(&link.astrid_id).cloned()
     }
@@ -568,6 +628,8 @@ impl IdentityStore for InMemoryIdentityStore {
         frontend: FrontendType,
         frontend_user_id: &str,
     ) -> SecurityResult<AstridUserId> {
+        let frontend = frontend.normalize();
+
         // Check if already linked
         {
             let links = self
@@ -620,7 +682,8 @@ impl IdentityStore for InMemoryIdentityStore {
             .write()
             .map_err(|e| SecurityError::Internal(format!("Failed to write links: {e}")))?;
 
-        let key = (link.frontend.clone(), link.frontend_user_id.clone());
+        let normalized_frontend = link.frontend.clone().normalize();
+        let key = (normalized_frontend, link.frontend_user_id.clone());
         if links.contains_key(&key) {
             return Err(SecurityError::FrontendAlreadyLinked {
                 frontend: link.frontend.to_string(),
@@ -642,7 +705,8 @@ impl IdentityStore for InMemoryIdentityStore {
             .write()
             .map_err(|e| SecurityError::Internal(format!("Failed to write links: {e}")))?;
 
-        let key = (frontend.clone(), frontend_user_id.to_string());
+        let normalized = frontend.clone().normalize();
+        let key = (normalized, frontend_user_id.to_string());
         links.remove(&key).ok_or_else(|| {
             SecurityError::IdentityNotFound(format!(
                 "No link found for {frontend}:{frontend_user_id}"
@@ -1045,5 +1109,247 @@ mod tests {
         );
         let ft = FrontendType::from_str("  matrix  ").unwrap();
         assert_eq!(ft, FrontendType::Custom("matrix".to_string()));
+    }
+
+    // --- FrontendType PartialEq / Hash normalization ---
+
+    #[test]
+    fn frontend_type_eq_normalized_known_vs_custom() {
+        // Known variant equals Custom alias of the same platform.
+        assert_eq!(
+            FrontendType::Telegram,
+            FrontendType::Custom("telegram".into())
+        );
+        assert_eq!(
+            FrontendType::Telegram,
+            FrontendType::Custom("Telegram".into())
+        );
+        assert_eq!(
+            FrontendType::Telegram,
+            FrontendType::Custom("TELEGRAM".into())
+        );
+        assert_eq!(
+            FrontendType::Discord,
+            FrontendType::Custom("discord".into())
+        );
+        assert_eq!(
+            FrontendType::Discord,
+            FrontendType::Custom("DISCORD".into())
+        );
+        assert_eq!(
+            FrontendType::WhatsApp,
+            FrontendType::Custom("whatsapp".into())
+        );
+        assert_eq!(
+            FrontendType::WhatsApp,
+            FrontendType::Custom("whats_app".into())
+        );
+        assert_eq!(FrontendType::Slack, FrontendType::Custom("slack".into()));
+        assert_eq!(FrontendType::Web, FrontendType::Custom("web".into()));
+        assert_eq!(FrontendType::Cli, FrontendType::Custom("cli".into()));
+    }
+
+    #[test]
+    fn frontend_type_eq_different_platforms() {
+        assert_ne!(FrontendType::Telegram, FrontendType::Discord);
+        assert_ne!(
+            FrontendType::Custom("matrix".into()),
+            FrontendType::Custom("signal".into())
+        );
+        assert_ne!(
+            FrontendType::Custom("matrix".into()),
+            FrontendType::Telegram
+        );
+    }
+
+    #[test]
+    fn frontend_type_hash_normalized() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn compute_hash(ft: &FrontendType) -> u64 {
+            let mut hasher = DefaultHasher::new();
+            ft.hash(&mut hasher);
+            hasher.finish()
+        }
+
+        // Known variant and Custom alias must produce identical hashes.
+        assert_eq!(
+            compute_hash(&FrontendType::Telegram),
+            compute_hash(&FrontendType::Custom("telegram".into()))
+        );
+        assert_eq!(
+            compute_hash(&FrontendType::Telegram),
+            compute_hash(&FrontendType::Custom("TELEGRAM".into()))
+        );
+        assert_eq!(
+            compute_hash(&FrontendType::Discord),
+            compute_hash(&FrontendType::Custom("discord".into()))
+        );
+        assert_eq!(
+            compute_hash(&FrontendType::WhatsApp),
+            compute_hash(&FrontendType::Custom("whats_app".into()))
+        );
+        // Custom case-insensitive
+        assert_eq!(
+            compute_hash(&FrontendType::Custom("matrix".into())),
+            compute_hash(&FrontendType::Custom("MATRIX".into()))
+        );
+    }
+
+    // --- FrontendType::normalize ---
+
+    #[test]
+    fn normalize_collapses_known_aliases() {
+        assert!(matches!(
+            FrontendType::Custom("telegram".into()).normalize(),
+            FrontendType::Telegram
+        ));
+        assert!(matches!(
+            FrontendType::Custom("Telegram".into()).normalize(),
+            FrontendType::Telegram
+        ));
+        assert!(matches!(
+            FrontendType::Custom("DISCORD".into()).normalize(),
+            FrontendType::Discord
+        ));
+        assert!(matches!(
+            FrontendType::Custom("whatsapp".into()).normalize(),
+            FrontendType::WhatsApp
+        ));
+        assert!(matches!(
+            FrontendType::Custom("whats_app".into()).normalize(),
+            FrontendType::WhatsApp
+        ));
+        assert!(matches!(
+            FrontendType::Custom("Whats_App".into()).normalize(),
+            FrontendType::WhatsApp
+        ));
+        assert!(matches!(
+            FrontendType::Custom("slack".into()).normalize(),
+            FrontendType::Slack
+        ));
+        assert!(matches!(
+            FrontendType::Custom("web".into()).normalize(),
+            FrontendType::Web
+        ));
+        assert!(matches!(
+            FrontendType::Custom("cli".into()).normalize(),
+            FrontendType::Cli
+        ));
+    }
+
+    #[test]
+    fn normalize_lowercases_and_trims_unknown() {
+        let ft = FrontendType::Custom("  MATRIX  ".into()).normalize();
+        assert!(matches!(ft, FrontendType::Custom(ref s) if s == "matrix"));
+    }
+
+    #[test]
+    fn normalize_known_variants_pass_through() {
+        assert!(matches!(
+            FrontendType::Telegram.normalize(),
+            FrontendType::Telegram
+        ));
+        assert!(matches!(
+            FrontendType::Discord.normalize(),
+            FrontendType::Discord
+        ));
+        assert!(matches!(
+            FrontendType::WhatsApp.normalize(),
+            FrontendType::WhatsApp
+        ));
+    }
+
+    // --- InMemoryIdentityStore cross-variant normalization ---
+
+    #[tokio::test]
+    async fn test_resolve_with_custom_alias() {
+        let store = InMemoryIdentityStore::new();
+
+        // Create identity via concrete variant
+        let user = store
+            .create_identity(FrontendType::Telegram, "123")
+            .await
+            .unwrap();
+
+        // Resolve via Custom alias — must find the same identity
+        let resolved = store
+            .resolve(&FrontendType::Custom("telegram".into()), "123")
+            .await;
+        assert!(
+            resolved.is_some(),
+            "Custom alias should resolve to the same identity"
+        );
+        assert_eq!(resolved.unwrap().id, user.id);
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_detection_cross_variant() {
+        let store = InMemoryIdentityStore::new();
+
+        // Create identity via concrete variant
+        store
+            .create_identity(FrontendType::Telegram, "123")
+            .await
+            .unwrap();
+
+        // Attempt to create again via Custom alias — must be rejected
+        let result = store
+            .create_identity(FrontendType::Custom("telegram".into()), "123")
+            .await;
+        assert!(
+            matches!(result, Err(SecurityError::FrontendAlreadyLinked { .. })),
+            "duplicate through Custom alias should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_link_cross_variant() {
+        let store = InMemoryIdentityStore::new();
+
+        // Create identity via concrete variant
+        store
+            .create_identity(FrontendType::Telegram, "123")
+            .await
+            .unwrap();
+
+        // Remove via Custom alias — must succeed
+        let result = store
+            .remove_link(&FrontendType::Custom("telegram".into()), "123")
+            .await;
+        assert!(
+            result.is_ok(),
+            "remove_link via Custom alias should succeed"
+        );
+
+        // Verify it's actually gone
+        let resolved = store.resolve(&FrontendType::Telegram, "123").await;
+        assert!(resolved.is_none(), "link should be removed");
+    }
+
+    #[tokio::test]
+    async fn test_create_link_cross_variant_duplicate_rejected() {
+        let store = InMemoryIdentityStore::new();
+
+        // Create identity via concrete variant
+        let user = store
+            .create_identity(FrontendType::Discord, "456")
+            .await
+            .unwrap();
+
+        // Attempt to create a link with Custom alias of the same platform + user
+        let link = FrontendLink::new(
+            user.id,
+            FrontendType::Custom("discord".into()),
+            "456",
+            LinkVerificationMethod::InitialCreation,
+            false,
+        );
+        let result = store.create_link(link).await;
+        assert!(
+            matches!(result, Err(SecurityError::FrontendAlreadyLinked { .. })),
+            "duplicate link through Custom alias should be rejected"
+        );
     }
 }
