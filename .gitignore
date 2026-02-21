@@ -33,7 +33,6 @@ packages/*/node_modules/
 packages/*/dist/
 
 # AI
-.agents
 .astrid
 .claude
 .gemini

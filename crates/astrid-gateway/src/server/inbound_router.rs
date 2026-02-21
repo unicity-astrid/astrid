@@ -240,6 +240,13 @@ async fn find_or_create_session(ctx: &InboundRouterCtx, user_id: Uuid) -> Option
     };
     let mut session = session.with_workspace_budget(Arc::clone(&ctx.workspace_budget_tracker));
 
+    // Tag the session as belonging to a connector user.
+    // This allows `resume_session` to reject CLI access even after disk serialization.
+    session
+        .metadata
+        .custom
+        .insert("connector_user_id".to_string(), user_id.to_string());
+
     // Load workspace-scoped allowances.
     let ns_allowances = ws_ns(&ctx.workspace_id, "allowances");
     if let Ok(Some(data)) = ctx.workspace_kv.get(&ns_allowances, "all").await

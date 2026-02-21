@@ -14,13 +14,22 @@ impl RpcImpl {
     ) -> Result<BudgetInfo, ErrorObjectOwned> {
         let handle = {
             let sessions = self.sessions.read().await;
-            sessions.get(&session_id).cloned().ok_or_else(|| {
+            let h = sessions.get(&session_id).cloned().ok_or_else(|| {
                 ErrorObjectOwned::owned(
                     error_codes::SESSION_NOT_FOUND,
                     format!("Session not found: {session_id}"),
                     None::<()>,
                 )
-            })?
+            })?;
+
+            if h.user_id.is_some() {
+                return Err(ErrorObjectOwned::owned(
+                    error_codes::INVALID_REQUEST,
+                    "session is managed by the inbound router and its budget cannot be queried via RPC",
+                    None::<()>,
+                ));
+            }
+            h
         };
 
         let session = handle.session.lock().await;
