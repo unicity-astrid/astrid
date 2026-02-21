@@ -18,6 +18,8 @@ fn build_fixture() {
         let guest_dir = workspace_dir.join("test-plugin-guest");
 
         let status = std::process::Command::new("cargo")
+            .env_remove("RUSTFLAGS")
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
             .current_dir(&guest_dir)
             .status()
@@ -56,7 +58,6 @@ async fn test_wasm_plugin_e2e_dispatch() {
     };
 
     let loader = WasmPluginLoader::new()
-        .with_memory_limit(64 * 1024 * 1024)
         .with_timeout(std::time::Duration::from_secs(30))
         .with_require_hash(false);
     let mut plugin = loader.create_plugin(manifest);

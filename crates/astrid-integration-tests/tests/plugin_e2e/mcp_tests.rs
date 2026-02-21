@@ -81,8 +81,9 @@ async fn test_mcp_plugin_e2e_dispatch() {
     // Wait for the plugin to start and establish MCP handshakes
     plugin.load(&ctx).await.expect("plugin load");
 
-    // Wait for the async `astrid.setPluginConfig` notification to be processed by Node
-    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    // Wait for the async `astrid.setPluginConfig` notification to be processed by Node.
+    // We use a generous 500ms timeout here to prevent flakiness on slower CI runners.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let mut registry = PluginRegistry::new();
     registry.register(Box::new(plugin)).unwrap();
