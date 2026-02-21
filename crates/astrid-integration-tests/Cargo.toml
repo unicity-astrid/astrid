@@ -26,5 +26,9 @@ serde_json.workspace = true
 futures.workspace = true
 chrono.workspace = true
 
+[dev-dependencies]
+openclaw-bridge.workspace = true
+which.workspace = true
+
 [lints]
 workspace = true

@@ -67,6 +67,14 @@ impl RuntimeTestHarness {
         }
     }
 
+    /// Attach a plugin registry to the agent runtime.
+    pub fn with_plugin_registry(mut self, registry: astrid_plugins::PluginRegistry) -> Self {
+        self.runtime = self
+            .runtime
+            .with_plugin_registry(std::sync::Arc::new(tokio::sync::RwLock::new(registry)));
+        self
+    }
+
     /// Convenience: run a single turn with the given user input.
     pub async fn run_turn(&mut self, input: &str) -> Result<(), astrid_runtime::RuntimeError> {
         self.runtime
