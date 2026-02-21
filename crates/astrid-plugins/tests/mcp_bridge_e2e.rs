@@ -107,12 +107,12 @@ struct RawBridge {
 
 impl RawBridge {
     /// Spawn the bridge subprocess in the given directory.
-    async fn spawn(dir: &Path) -> Self {
-        Self::spawn_with(dir, "config-echo").await
+    fn spawn(dir: &Path) -> Self {
+        Self::spawn_with(dir, "config-echo")
     }
 
     /// Spawn the bridge subprocess with a custom plugin id.
-    async fn spawn_with(dir: &Path, plugin_id: &str) -> Self {
+    fn spawn_with(dir: &Path, plugin_id: &str) -> Self {
         let mut child = tokio::process::Command::new("node")
             .args([
                 "astrid_bridge.mjs",
@@ -215,7 +215,7 @@ async fn test_bridge_config_delivery() {
     let tmp = tempfile::tempdir().expect("create temp dir");
     prepare_bridge_dir(tmp.path());
 
-    let mut bridge = RawBridge::spawn(tmp.path()).await;
+    let mut bridge = RawBridge::spawn(tmp.path());
     bridge.handshake().await;
 
     // Send the config notification.
@@ -272,7 +272,7 @@ async fn test_bridge_empty_config() {
     let tmp = tempfile::tempdir().expect("create temp dir");
     prepare_bridge_dir(tmp.path());
 
-    let mut bridge = RawBridge::spawn(tmp.path()).await;
+    let mut bridge = RawBridge::spawn(tmp.path());
     bridge.handshake().await;
 
     // Give the bridge a moment for startServices() to complete.
@@ -489,7 +489,7 @@ async fn test_bridge_connector_registered_notification() {
     let tmp = tempfile::tempdir().expect("create temp dir");
     prepare_channel_echo_dir(tmp.path());
 
-    let mut bridge = RawBridge::spawn_with(tmp.path(), "channel-echo").await;
+    let mut bridge = RawBridge::spawn_with(tmp.path(), "channel-echo");
 
     // Send initialize request.
     bridge
@@ -637,7 +637,7 @@ async fn test_bridge_hook_context_delivery() {
     let tmp = tempfile::tempdir().expect("create temp dir");
     prepare_hook_context_dir(tmp.path());
 
-    let mut bridge = RawBridge::spawn_with(tmp.path(), "hook-context").await;
+    let mut bridge = RawBridge::spawn_with(tmp.path(), "hook-context");
     bridge.handshake().await;
 
     // Send the hookEvent notification for 'session_start'.

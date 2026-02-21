@@ -6,6 +6,12 @@
 //! This crate can be used as a library (embedded in the daemon) or as a
 //! standalone binary (`astrid-telegram`).
 
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 // These are pre-existing pedantic lints on items that became public API when
 // the crate was split into lib + bin. Suppress at the crate level to avoid
 // bloating the diff — they can be addressed in a dedicated cleanup pass.

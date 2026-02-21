@@ -14,6 +14,7 @@ use tempfile::TempDir;
 ///
 /// Owns a `TempDir` that acts as the workspace root and session store.
 /// The tempdir is cleaned up when the harness is dropped.
+#[allow(dead_code)]
 pub struct RuntimeTestHarness {
     /// The agent runtime.
     pub runtime: AgentRuntime<MockLlmProvider>,
@@ -25,6 +26,7 @@ pub struct RuntimeTestHarness {
     _workspace_dir: TempDir,
 }
 
+#[allow(dead_code)]
 impl RuntimeTestHarness {
     /// Build a new harness with the given LLM turns and default `AllowOnce` approval.
     pub fn new(turns: Vec<MockLlmTurn>) -> Self {

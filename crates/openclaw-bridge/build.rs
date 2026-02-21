@@ -9,8 +9,8 @@
 use std::path::Path;
 
 fn main() {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
 
     let kernel_src = Path::new(&manifest_dir).join("kernel/engine.wasm");
     let kernel_dst = Path::new(&out_dir).join("engine.wasm");

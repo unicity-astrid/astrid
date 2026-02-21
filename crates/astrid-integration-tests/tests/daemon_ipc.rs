@@ -16,13 +16,14 @@
 // Full daemon IPC tests are deferred until the gateway crate is refactored
 // to accept a generic LlmProvider.
 
+use astrid_core::SessionId;
+
 #[test]
 fn test_daemon_types_compile() {
     // Verify that the key daemon types exist and are accessible
     use astrid_mcp::ServersConfig;
     let _config = ServersConfig::default();
 
-    // SessionId can be created
-    use astrid_core::SessionId;
+    // SessionId can be created    let msg = DaemonMessage::Response {
     let _id = SessionId::new();
 }

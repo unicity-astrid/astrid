@@ -3,6 +3,13 @@
 //! Connects to a running `astridd` daemon via `WebSocket` JSON-RPC and
 //! exposes the agent through a Telegram bot interface.
 
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]

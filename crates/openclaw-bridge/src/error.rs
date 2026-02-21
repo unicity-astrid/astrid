@@ -11,7 +11,12 @@ pub enum BridgeError {
 
     /// The `OpenClaw` plugin ID could not be converted to a valid Astrid `PluginId`.
     #[error("invalid plugin id '{original}': {reason}")]
-    InvalidId { original: String, reason: String },
+    InvalidId {
+        /// The original ID string that could not be parsed.
+        original: String,
+        /// The precise reason parsing failed.
+        reason: String,
+    },
 
     /// The plugin entry point file was not found.
     #[error("entry point not found: {0}")]
@@ -46,4 +51,5 @@ pub enum BridgeError {
     Io(#[from] std::io::Error),
 }
 
+/// Standard `Result` alias for bridge operations.
 pub type BridgeResult<T> = Result<T, BridgeError>;

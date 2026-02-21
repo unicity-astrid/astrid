@@ -7,6 +7,7 @@
 //! `cargo build --target wasm32-unknown-unknown` on the guest crate.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
 
@@ -54,7 +55,7 @@ fn build_fixture() {
 
 /// Build an Extism plugin from the test fixture with all host functions registered.
 fn build_test_plugin(
-    workspace_root: &PathBuf,
+    workspace_root: &Path,
     config: HashMap<String, serde_json::Value>,
 ) -> extism::Plugin {
     let wasm_bytes = std::fs::read(wasm_fixture_path()).expect("read WASM fixture");
@@ -65,7 +66,7 @@ fn build_test_plugin(
 
     let host_state = HostState {
         plugin_id: PluginId::from_static("test-all-endpoints"),
-        workspace_root: workspace_root.clone(),
+        workspace_root: workspace_root.to_path_buf(),
         kv,
         config,
         security: None,
@@ -88,7 +89,7 @@ fn build_test_plugin(
 ///
 /// Returns the plugin and the receiver end of the inbound message channel.
 fn build_connector_plugin(
-    workspace_root: &PathBuf,
+    workspace_root: &Path,
 ) -> (
     extism::Plugin,
     mpsc::Receiver<astrid_core::connector::InboundMessage>,
@@ -102,7 +103,7 @@ fn build_connector_plugin(
 
     let host_state = HostState {
         plugin_id: PluginId::from_static("test-connector"),
-        workspace_root: workspace_root.clone(),
+        workspace_root: workspace_root.to_path_buf(),
         kv,
         config: HashMap::new(),
         security: None,
@@ -140,7 +141,7 @@ fn describe_tools(plugin: &mut extism::Plugin) -> Vec<ToolDefinition> {
 ///
 /// Uses `block_in_place` because host functions may call `handle.block_on()`
 /// for async KV operations, which panics if called from a tokio worker thread.
-fn execute_tool(plugin: &mut extism::Plugin, name: &str, args: serde_json::Value) -> ToolOutput {
+fn execute_tool(plugin: &mut extism::Plugin, name: &str, args: &serde_json::Value) -> ToolOutput {
     let input = ToolInput {
         name: name.to_string(),
         arguments: serde_json::to_string(&args).unwrap(),
@@ -161,7 +162,7 @@ fn execute_tool(plugin: &mut extism::Plugin, name: &str, args: serde_json::Value
 fn try_execute_tool(
     plugin: &mut extism::Plugin,
     name: &str,
-    args: serde_json::Value,
+    args: &serde_json::Value,
 ) -> Result<ToolOutput, String> {
     let input = ToolInput {
         name: name.to_string(),
@@ -236,7 +237,7 @@ async fn host_log_all_levels() {
     let output = execute_tool(
         &mut plugin,
         "test-log",
-        serde_json::json!({ "message": "hello from e2e" }),
+        &serde_json::json!({ "message": "hello from e2e" }),
     );
 
     assert!(!output.is_error, "test-log should succeed");
@@ -264,7 +265,7 @@ async fn host_config_reads_baked_value() {
     let output = execute_tool(
         &mut plugin,
         "test-config",
-        serde_json::json!({ "key": "api_key" }),
+        &serde_json::json!({ "key": "api_key" }),
     );
     assert!(!output.is_error);
     let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
@@ -275,7 +276,7 @@ async fn host_config_reads_baked_value() {
     let output = execute_tool(
         &mut plugin,
         "test-config",
-        serde_json::json!({ "key": "nonexistent" }),
+        &serde_json::json!({ "key": "nonexistent" }),
     );
     assert!(!output.is_error);
     let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
@@ -295,7 +296,7 @@ async fn host_kv_set_and_get() {
     let output = execute_tool(
         &mut plugin,
         "test-kv",
-        serde_json::json!({ "key": "greeting", "value": "hello world" }),
+        &serde_json::json!({ "key": "greeting", "value": "hello world" }),
     );
 
     assert!(!output.is_error, "test-kv should succeed");
@@ -320,7 +321,7 @@ async fn host_file_write_and_read() {
     let output = execute_tool(
         &mut plugin,
         "test-file-write",
-        serde_json::json!({ "path": "test-output.txt", "content": "written by WASM plugin" }),
+        &serde_json::json!({ "path": "test-output.txt", "content": "written by WASM plugin" }),
     );
     assert!(!output.is_error, "test-file-write should succeed");
 
@@ -334,7 +335,7 @@ async fn host_file_write_and_read() {
     let output = execute_tool(
         &mut plugin,
         "test-file-read",
-        serde_json::json!({ "path": "test-output.txt" }),
+        &serde_json::json!({ "path": "test-output.txt" }),
     );
     assert!(!output.is_error, "test-file-read should succeed");
     let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
@@ -361,7 +362,7 @@ async fn host_kv_roundtrip_structured_data() {
     let output = execute_tool(
         &mut plugin,
         "test-roundtrip",
-        serde_json::json!({ "data": test_data }),
+        &serde_json::json!({ "data": test_data }),
     );
 
     assert!(!output.is_error, "test-roundtrip should succeed");
@@ -383,7 +384,7 @@ async fn unknown_tool_returns_error() {
     let _ = std::fs::create_dir_all(&workspace);
     let mut plugin = build_test_plugin(&workspace, HashMap::new());
 
-    let output = execute_tool(&mut plugin, "nonexistent-tool", serde_json::json!({}));
+    let output = execute_tool(&mut plugin, "nonexistent-tool", &serde_json::json!({}));
 
     assert!(output.is_error, "unknown tool should return error");
     assert!(
@@ -410,7 +411,7 @@ async fn host_register_connector_returns_uuid() {
     let output = execute_tool(
         &mut plugin,
         "test-register-connector",
-        serde_json::json!({ "name": "my-discord-bot", "platform": "discord", "profile": "chat" }),
+        &serde_json::json!({ "name": "my-discord-bot", "platform": "discord", "profile": "chat" }),
     );
 
     assert!(
@@ -444,7 +445,7 @@ async fn host_channel_send_delivers_message() {
     let output = execute_tool(
         &mut plugin,
         "test-channel-send",
-        serde_json::json!({
+        &serde_json::json!({
             "connector_name": "test-bot",
             "platform": "telegram",
             "user_id": "user-42",
@@ -484,7 +485,7 @@ async fn host_register_connector_rejected_without_capability() {
     let result = try_execute_tool(
         &mut plugin,
         "test-register-connector",
-        serde_json::json!({ "name": "bad-conn", "platform": "discord", "profile": "chat" }),
+        &serde_json::json!({ "name": "bad-conn", "platform": "discord", "profile": "chat" }),
     );
 
     // The host function rejects at the Extism level (before the guest can return ToolOutput).

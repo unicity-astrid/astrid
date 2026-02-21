@@ -163,7 +163,10 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         },
         (KeyCode::Right, _) => {
             if app.cursor_pos < app.input.len() {
-                let (_, c) = app.input[app.cursor_pos..].char_indices().next().unwrap();
+                let (_, c) = app.input[app.cursor_pos..]
+                    .char_indices()
+                    .next()
+                    .expect("cursor_pos < len guarantees a char");
                 app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
             }
         },

@@ -20,8 +20,8 @@ use std::sync::RwLock;
 /// use astrid_approval::budget::BudgetConfig;
 ///
 /// let config = BudgetConfig::new(100.0, 10.0);
-/// assert_eq!(config.session_max_usd, 100.0);
-/// assert_eq!(config.per_action_max_usd, 10.0);
+/// assert!((config.session_max_usd - 100.0).abs() < f64::EPSILON);
+/// assert!((config.per_action_max_usd - 10.0).abs() < f64::EPSILON);
 /// assert_eq!(config.warn_at_percent, 80);
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -585,8 +585,8 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let config = BudgetConfig::default();
-        assert_eq!(config.session_max_usd, 100.0);
-        assert_eq!(config.per_action_max_usd, 10.0);
+        assert!((config.session_max_usd - 100.0).abs() < f64::EPSILON);
+        assert!((config.per_action_max_usd - 10.0).abs() < f64::EPSILON);
         assert_eq!(config.warn_at_percent, 80);
     }
 
@@ -610,7 +610,7 @@ mod tests {
         let config = BudgetConfig::new(100.0, 10.0).with_warn_at_percent(75);
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: BudgetConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.session_max_usd, 100.0);
+        assert!((deserialized.session_max_usd - 100.0).abs() < f64::EPSILON);
         assert_eq!(deserialized.warn_at_percent, 75);
     }
 
@@ -730,41 +730,41 @@ mod tests {
     #[test]
     fn test_tracker_record_and_remaining() {
         let tracker = make_tracker(100.0, 10.0);
-        assert_eq!(tracker.remaining(), 100.0);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
+        assert!(tracker.spent().abs() < f64::EPSILON);
 
         tracker.record_cost(30.0);
-        assert_eq!(tracker.remaining(), 70.0);
-        assert_eq!(tracker.spent(), 30.0);
+        assert!((tracker.remaining() - 70.0).abs() < f64::EPSILON);
+        assert!((tracker.spent() - 30.0).abs() < f64::EPSILON);
 
         tracker.record_cost(50.0);
-        assert_eq!(tracker.remaining(), 20.0);
-        assert_eq!(tracker.spent(), 80.0);
+        assert!((tracker.remaining() - 20.0).abs() < f64::EPSILON);
+        assert!((tracker.spent() - 80.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_tracker_remaining_never_negative() {
         let tracker = make_tracker(10.0, 10.0);
         tracker.record_cost(15.0); // overspend
-        assert_eq!(tracker.remaining(), 0.0);
+        assert!(tracker.remaining().abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_tracker_reset() {
         let tracker = make_tracker(100.0, 10.0);
         tracker.record_cost(50.0);
-        assert_eq!(tracker.spent(), 50.0);
+        assert!((tracker.spent() - 50.0).abs() < f64::EPSILON);
 
         tracker.reset();
-        assert_eq!(tracker.spent(), 0.0);
-        assert_eq!(tracker.remaining(), 100.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_tracker_default() {
         let tracker = BudgetTracker::default();
-        assert_eq!(tracker.config().session_max_usd, 100.0);
-        assert_eq!(tracker.remaining(), 100.0);
+        assert!((tracker.config().session_max_usd - 100.0).abs() < f64::EPSILON);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -812,8 +812,8 @@ mod tests {
 
         let snapshot = tracker.snapshot();
         assert!((snapshot.session_spent_usd - 42.5).abs() < f64::EPSILON);
-        assert_eq!(snapshot.config.session_max_usd, 100.0);
-        assert_eq!(snapshot.config.per_action_max_usd, 10.0);
+        assert!((snapshot.config.session_max_usd - 100.0).abs() < f64::EPSILON);
+        assert!((snapshot.config.per_action_max_usd - 10.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -826,8 +826,8 @@ mod tests {
 
         assert!((restored.spent() - 17.5).abs() < f64::EPSILON);
         assert!((restored.remaining() - 32.5).abs() < f64::EPSILON);
-        assert_eq!(restored.config().session_max_usd, 50.0);
-        assert_eq!(restored.config().per_action_max_usd, 5.0);
+        assert!((restored.config().session_max_usd - 50.0).abs() < f64::EPSILON);
+        assert!((restored.config().per_action_max_usd - 5.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -840,7 +840,7 @@ mod tests {
         let deserialized: BudgetSnapshot = serde_json::from_str(&json).unwrap();
 
         assert!((deserialized.session_spent_usd - 25.0).abs() < f64::EPSILON);
-        assert_eq!(deserialized.config.session_max_usd, 100.0);
+        assert!((deserialized.config.session_max_usd - 100.0).abs() < f64::EPSILON);
     }
 
     // -----------------------------------------------------------------------
@@ -856,8 +856,8 @@ mod tests {
         };
         let tracker = BudgetTracker::restore(snapshot);
         // Negative spend should be clamped to 0, giving full budget
-        assert_eq!(tracker.spent(), 0.0);
-        assert_eq!(tracker.remaining(), 100.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -868,8 +868,8 @@ mod tests {
             last_updated: chrono::Utc::now(),
         };
         let tracker = BudgetTracker::restore(snapshot);
-        assert_eq!(tracker.spent(), 0.0);
-        assert_eq!(tracker.remaining(), 100.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -880,29 +880,29 @@ mod tests {
             last_updated: chrono::Utc::now(),
         };
         let tracker = BudgetTracker::restore(snapshot);
-        assert_eq!(tracker.spent(), 0.0);
-        assert_eq!(tracker.remaining(), 100.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
+        assert!((tracker.remaining() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_record_cost_rejects_negative() {
         let tracker = make_tracker(100.0, 10.0);
         tracker.record_cost(-50.0);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_record_cost_rejects_nan() {
         let tracker = make_tracker(100.0, 10.0);
         tracker.record_cost(f64::NAN);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_record_cost_rejects_infinity() {
         let tracker = make_tracker(100.0, 10.0);
         tracker.record_cost(f64::INFINITY);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]
@@ -957,11 +957,11 @@ mod tests {
     #[test]
     fn test_workspace_tracker_record_and_remaining() {
         let tracker = WorkspaceBudgetTracker::new(Some(100.0), 80);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
         assert_eq!(tracker.remaining(), Some(100.0));
 
         tracker.record_cost(30.0);
-        assert_eq!(tracker.spent(), 30.0);
+        assert!((tracker.spent() - 30.0).abs() < f64::EPSILON);
         assert_eq!(tracker.remaining(), Some(70.0));
     }
 
@@ -985,7 +985,7 @@ mod tests {
             last_updated: chrono::Utc::now(),
         };
         let tracker = WorkspaceBudgetTracker::restore(&snapshot, Some(50.0), 80);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
         assert_eq!(tracker.remaining(), Some(50.0));
     }
 
@@ -996,7 +996,7 @@ mod tests {
             last_updated: chrono::Utc::now(),
         };
         let tracker = WorkspaceBudgetTracker::restore(&snapshot, Some(50.0), 80);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1006,7 +1006,7 @@ mod tests {
             last_updated: chrono::Utc::now(),
         };
         let tracker = WorkspaceBudgetTracker::restore(&snapshot, Some(50.0), 80);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1015,7 +1015,7 @@ mod tests {
         tracker.record_cost(-10.0);
         tracker.record_cost(f64::NAN);
         tracker.record_cost(f64::INFINITY);
-        assert_eq!(tracker.spent(), 0.0);
+        assert!(tracker.spent().abs() < f64::EPSILON);
     }
 
     #[test]

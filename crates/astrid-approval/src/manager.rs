@@ -645,9 +645,8 @@ mod tests {
         let outcome = manager.check_approval(&action, "cleanup", None).await;
 
         // Get the resolution ID
-        let resolution_id = match outcome {
-            ApprovalOutcome::Deferred { resolution_id, .. } => resolution_id,
-            _ => panic!("expected deferred"),
+        let ApprovalOutcome::Deferred { resolution_id, .. } = outcome else {
+            panic!("expected deferred");
         };
 
         // Resolve it
@@ -690,15 +689,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_approve_with_custom_allowance() {
-        let allowance_store = Arc::new(AllowanceStore::new());
-        let deferred_queue = Arc::new(DeferredResolutionStore::new());
-        let manager = ApprovalManager::new(Arc::clone(&allowance_store), deferred_queue);
-
-        // Handler that approves with a custom allowance
         struct AllowanceHandler;
 
         #[async_trait]
         impl ApprovalHandler for AllowanceHandler {
+            fn is_available(&self) -> bool {
+                true
+            }
+
             async fn request_approval(&self, request: ApprovalRequest) -> Option<ApprovalResponse> {
                 let keypair = KeyPair::generate();
                 let allowance = Allowance {
@@ -719,11 +717,11 @@ mod tests {
                     ApprovalDecision::ApproveWithAllowance(allowance),
                 ))
             }
-
-            fn is_available(&self) -> bool {
-                true
-            }
         }
+
+        let allowance_store = Arc::new(AllowanceStore::new());
+        let deferred_queue = Arc::new(DeferredResolutionStore::new());
+        let manager = ApprovalManager::new(Arc::clone(&allowance_store), deferred_queue);
 
         manager.register_handler(Arc::new(AllowanceHandler)).await;
 

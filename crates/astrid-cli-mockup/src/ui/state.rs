@@ -1070,7 +1070,7 @@ impl App {
         // Advance demo player if running
         if self.demo_player.is_some() {
             // Take ownership to avoid borrow conflict
-            let mut player = self.demo_player.take().unwrap();
+            let mut player = self.demo_player.take().expect("mockup error");
             let complete = player.advance(self);
             if complete {
                 // Demo complete

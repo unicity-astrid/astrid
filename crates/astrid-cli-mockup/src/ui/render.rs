@@ -66,7 +66,7 @@ pub(super) fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> 
         // Safety: trimmed is a suffix of line, so line.len() >= trimmed.len()
         #[allow(clippy::arithmetic_side_effects)]
         let indent = &line[..line.len() - trimmed.len()];
-        let num_char = trimmed.chars().next().unwrap();
+        let num_char = trimmed.chars().next().expect("mockup error");
         spans.push(Span::styled(
             format!("{indent}{num_char}. "),
             Style::default().fg(theme.tool),

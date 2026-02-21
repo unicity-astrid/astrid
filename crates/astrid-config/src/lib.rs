@@ -1,7 +1,3 @@
-#![deny(unsafe_code)]
-#![warn(missing_docs)]
-#![deny(clippy::all)]
-#![warn(unreachable_pub)]
 //! Unified configuration system for the Astrid runtime.
 //!
 //! This crate provides a single [`Config`] type that consolidates all
@@ -35,6 +31,13 @@
 //! depends on `serde`, `toml`, `thiserror`, `tracing`, and `directories`.
 //! Conversion from config types to domain types happens at the integration
 //! boundary (CLI startup, gateway init) via bridge modules.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 /// Environment variable fallback resolution.
 pub mod env;

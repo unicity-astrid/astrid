@@ -41,35 +41,35 @@ fn test_special_character_tool_names_rejected() {
     assert!(PluginRegistry::is_plugin_tool("plugin:my-plugin:read-file"));
 }
 
+// Create a plugin with a tool whose name contains colons
+struct ColonTool;
+
+#[async_trait::async_trait]
+impl PluginTool for ColonTool {
+    fn name(&self) -> &'static str {
+        "name:with:colons"
+    }
+    fn description(&self) -> &'static str {
+        "A tool with colons in the name"
+    }
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+        _ctx: &PluginToolContext,
+    ) -> PluginResult<String> {
+        Ok("colon-tool-executed".to_string())
+    }
+}
+
 /// Tool name with extra colons (e.g. "plugin:test:name:with:colons") should
 /// only split on the first colon after the plugin ID, so "name:with:colons"
 /// is treated as the tool name.
 #[tokio::test]
 async fn test_tool_name_with_colons_resolves_correctly() {
     let ws = tempfile::tempdir().unwrap();
-
-    // Create a plugin with a tool whose name contains colons
-    struct ColonTool;
-
-    #[async_trait::async_trait]
-    impl PluginTool for ColonTool {
-        fn name(&self) -> &'static str {
-            "name:with:colons"
-        }
-        fn description(&self) -> &'static str {
-            "A tool with colons in the name"
-        }
-        fn input_schema(&self) -> serde_json::Value {
-            serde_json::json!({ "type": "object" })
-        }
-        async fn execute(
-            &self,
-            _args: serde_json::Value,
-            _ctx: &PluginToolContext,
-        ) -> PluginResult<String> {
-            Ok("colon-tool-executed".to_string())
-        }
-    }
 
     let mut registry = PluginRegistry::new();
     registry

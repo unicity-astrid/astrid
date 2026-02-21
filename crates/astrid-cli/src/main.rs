@@ -1,12 +1,15 @@
-#![deny(unsafe_code)]
-#![warn(missing_docs)]
-#![deny(clippy::all)]
-#![warn(unreachable_pub)]
 //! Astrid CLI - Secure Agent Runtime
 //!
 //! A production-grade secure agent runtime with proper security from day one.
 //! The CLI is a thin client: it connects to the daemon (auto-starting if needed),
 //! creates/resumes sessions, and renders streaming events.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

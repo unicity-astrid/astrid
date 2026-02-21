@@ -262,7 +262,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "echo".to_string(),
             args: vec!["continue".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::SessionStart);
@@ -284,7 +284,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "sh".to_string(),
             args: vec!["-c".to_string(), "echo $ASTRID_HOOK_EVENT".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::PreToolCall);
@@ -305,7 +305,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "sleep".to_string(),
             args: vec!["10".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::SessionStart);
@@ -324,7 +324,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "sh".to_string(),
             args: vec!["-c".to_string(), "exit 1".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::SessionStart);
@@ -344,7 +344,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "sh".to_string(),
             args: vec!["-c".to_string(), "echo $HOME".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::SessionStart);
@@ -369,7 +369,7 @@ mod tests {
         let hook_handler = HookHandler::Command {
             command: "echo".to_string(),
             args: vec!["continue".to_string()],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::SessionStart);
@@ -419,7 +419,7 @@ mod tests {
                 // Read stdin fully, then extract the event field with basic shell tools
                 r#"INPUT=$(cat); echo "$INPUT" | grep -o '"event":"[^"]*"' | head -1"#.to_string(),
             ],
-            env: Default::default(),
+            env: std::collections::HashMap::default(),
             working_dir: None,
         };
         let context = HookContext::new(HookEvent::PreToolCall)

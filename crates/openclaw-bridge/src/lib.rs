@@ -14,6 +14,11 @@
 //! All stages are pure Rust — no external tools required.
 
 #![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 /// Bridge crate version, used for compilation cache invalidation.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

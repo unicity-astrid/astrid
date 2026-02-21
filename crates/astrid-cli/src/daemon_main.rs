@@ -1,5 +1,3 @@
-#![deny(unsafe_code)]
-#![deny(clippy::all)]
 //! `astridd` — standalone daemon binary for the Astrid secure agent runtime.
 //!
 //! This is a thin entry point that runs the daemon server directly using
@@ -9,6 +7,13 @@
 //! By default the daemon runs in **persistent** mode (stays running until
 //! explicitly stopped). Pass `--ephemeral` to enable auto-shutdown when all
 //! clients disconnect.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::Result;
 use clap::Parser;

@@ -19,10 +19,15 @@ use crate::session::{SessionMap, TurnStartResult};
 /// Shared bot state passed to all handlers.
 #[derive(Clone)]
 pub struct BotState {
+    /// The connected daemon proxy client.
     pub daemon: Arc<DaemonClient>,
+    /// Active Telegram sessions mapping.
     pub sessions: SessionMap,
+    /// Telegram bot configuration details.
     pub config: Arc<TelegramConfig>,
+    /// Flow manager for pending human approvals.
     pub approvals: ApprovalManager,
+    /// Flow manager for pending human elicitations.
     pub elicitations: ElicitationManager,
 }
 

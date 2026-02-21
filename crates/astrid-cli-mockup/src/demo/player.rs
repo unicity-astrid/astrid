@@ -103,7 +103,7 @@ impl DemoPlayer {
                     };
                     if chars_to_show > self.typing_index && self.typing_index < text.len() {
                         // Add next character to input
-                        let next_char = text.chars().nth(self.typing_index).unwrap();
+                        let next_char = text.chars().nth(self.typing_index).expect("mockup error");
                         app.input.push(next_char);
                         app.cursor_pos = app.input.len();
                         self.typing_index = self.typing_index.saturating_add(1);
@@ -301,7 +301,7 @@ impl DemoPlayer {
                             expanded: false,
                         });
                         app.state = UiState::ToolRunning {
-                            tool_name: app.running_tools.last().unwrap().name.clone(),
+                            tool_name: app.running_tools.last().expect("mockup error").name.clone(),
                             start_time: Instant::now(),
                         };
                     }

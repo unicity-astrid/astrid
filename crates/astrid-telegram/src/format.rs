@@ -25,16 +25,19 @@ pub fn html_escape(text: &str) -> String {
 /// `<pre>`, `<a href="...">`.
 pub fn md_to_telegram_html(md: &str) -> String {
     static CODE_BLOCK: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"```(\w*)\n?([\s\S]*?)```").unwrap());
-    static INLINE_CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([^`]+)`").unwrap());
-    static BOLD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\*\*(.+?)\*\*").unwrap());
+        LazyLock::new(|| Regex::new(r"```(\w*)\n?([\s\S]*?)```").expect("invalid regex"));
+    static INLINE_CODE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"`([^`]+)`").expect("invalid regex"));
+    static BOLD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\*\*(.+?)\*\*").expect("invalid regex"));
     // Simple italic: single * not preceded/followed by *. We capture the
     // surrounding characters so we can preserve them in the replacement.
     static ITALIC: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"([^*]|^)\*([^*]+)\*([^*]|$)").unwrap());
+        LazyLock::new(|| Regex::new(r"([^*]|^)\*([^*]+)\*([^*]|$)").expect("invalid regex"));
     static LINK: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap());
-    static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#{1,6}\s+(.+)$").unwrap());
+        LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").expect("invalid regex"));
+    static HEADING: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?m)^#{1,6}\s+(.+)$").expect("invalid regex"));
 
     // First pass: extract code blocks to protect them from other transforms.
     let mut protected: Vec<String> = Vec::new();
@@ -190,7 +193,8 @@ pub(crate) fn find_safe_html_boundary(html: &str, max_len: usize) -> usize {
 pub(crate) fn close_open_tags(html: &str) -> String {
     use std::fmt::Write as _;
 
-    static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(/?)(\w+)[^>]*>").unwrap());
+    static TAG_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<(/?)(\w+)[^>]*>").expect("invalid regex"));
 
     let mut open_tags: Vec<String> = Vec::new();
     for cap in TAG_RE.captures_iter(html) {

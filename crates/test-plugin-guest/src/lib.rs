@@ -20,6 +20,13 @@
 //! exports with Rust identifier names (underscores), we use `#[export_name]`
 //! on raw `extern "C"` functions that call into the Extism input/output API.
 
+#![allow(unsafe_code)]
+#![allow(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use extism_pdk::*;
 use serde::{Deserialize, Serialize};
 
@@ -30,7 +37,11 @@ use serde::{Deserialize, Serialize};
 
 #[host_fn]
 extern "ExtismHost" {
-    fn astrid_channel_send(connector_id: String, platform_user_id: String, content: String) -> String;
+    fn astrid_channel_send(
+        connector_id: String,
+        platform_user_id: String,
+        content: String,
+    ) -> String;
     fn astrid_log(level: String, message: String);
     fn astrid_get_config(key: String) -> String;
     fn astrid_kv_get(key: String) -> String;
@@ -148,7 +159,7 @@ pub extern "C" fn execute_tool() -> i32 {
             };
             output(&serde_json::to_string(&err).unwrap()).unwrap();
             return 0;
-        }
+        },
     };
 
     let args: serde_json::Value = match serde_json::from_str(&tool_input.arguments) {
@@ -160,7 +171,7 @@ pub extern "C" fn execute_tool() -> i32 {
             };
             output(&serde_json::to_string(&err).unwrap()).unwrap();
             return 0;
-        }
+        },
     };
 
     let result = match tool_input.name.as_str() {
@@ -321,9 +332,8 @@ fn handle_test_register_connector(args: &serde_json::Value) -> Result<ToolOutput
     let platform = args["platform"].as_str().unwrap_or("");
     let profile = args["profile"].as_str().unwrap_or("chat");
 
-    let connector_id = unsafe {
-        astrid_register_connector(name.into(), platform.into(), profile.into())?
-    };
+    let connector_id =
+        unsafe { astrid_register_connector(name.into(), platform.into(), profile.into())? };
 
     let result = serde_json::json!({
         "registered": true,
@@ -351,13 +361,12 @@ fn handle_test_channel_send(args: &serde_json::Value) -> Result<ToolOutput, Erro
     };
 
     // Then send a message through it
-    let send_result = unsafe {
-        astrid_channel_send(connector_id.clone(), user_id.into(), message.into())?
-    };
+    let send_result =
+        unsafe { astrid_channel_send(connector_id.clone(), user_id.into(), message.into())? };
 
     // Parse the send result
-    let send_parsed: serde_json::Value = serde_json::from_str(&send_result)
-        .unwrap_or(serde_json::json!({"raw": send_result}));
+    let send_parsed: serde_json::Value =
+        serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
 
     let result = serde_json::json!({
         "connector_id": connector_id,

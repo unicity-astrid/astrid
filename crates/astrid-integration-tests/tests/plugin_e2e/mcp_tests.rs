@@ -38,6 +38,7 @@ fn prepare_bridge_dir(dir: &Path) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[allow(clippy::too_many_lines)]
 async fn test_mcp_plugin_e2e_dispatch() {
     if !node_available() {
         eprintln!("SKIP: node not found on $PATH");
@@ -106,21 +107,23 @@ async fn test_mcp_plugin_e2e_dispatch() {
     )
     .with_config(config.clone());
 
-    let mut config_ready = false;
-    for _ in 0..20 {
-        if let Ok(result) = tool.execute(serde_json::json!({}), &tool_ctx).await {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
-                if parsed.get("network").is_some() {
-                    config_ready = true;
-                    break;
-                }
+    let config_ready = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(result) = tool.execute(serde_json::json!({}), &tool_ctx).await
+                && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result)
+                && parsed.get("network").is_some()
+            {
+                return true;
             }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    })
+    .await
+    .unwrap_or(false);
+
     assert!(
         config_ready,
-        "config-echo plugin did not receive config within 1s"
+        "config-echo plugin did not receive config within 5s"
     );
 
     let mut registry = PluginRegistry::new();
@@ -149,24 +152,24 @@ async fn test_mcp_plugin_e2e_dispatch() {
         .session
         .messages
         .iter()
-        .find(|m| matches!(m.role, astrid_llm::MessageRole::Tool));
-    assert!(tool_result_msg.is_some(), "should have a tool result");
+        .find(|m| matches!(m.role, astrid_llm::MessageRole::Tool))
+        .expect("should have a tool result");
 
-    if let astrid_llm::MessageContent::ToolResult(ref result) = tool_result_msg.unwrap().content {
-        assert!(
-            !result.is_error,
-            "tool result should not be an error: {}",
-            result.content
-        );
-
-        let parsed: serde_json::Value =
-            serde_json::from_str(&result.content).expect("should return strict JSON output");
-
-        assert_eq!(parsed["network"], "testnet", "network config should match");
-        assert_eq!(parsed["owner"], "0xABC", "owner config should match");
-    } else {
+    let astrid_llm::MessageContent::ToolResult(ref result) = tool_result_msg.content else {
         panic!("expected ToolResult content");
-    }
+    };
+
+    assert!(
+        !result.is_error,
+        "tool result should not be an error: {}",
+        result.content
+    );
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result.content).expect("should return strict JSON output");
+
+    assert_eq!(parsed["network"], "testnet", "network config should match");
+    assert_eq!(parsed["owner"], "0xABC", "owner config should match");
 
     let last = harness.session.messages.last().unwrap();
     assert_eq!(last.text(), Some("Config loaded correctly"));

@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn test_coerce_float() {
         let v = coerce_to_toml_value("budget.session_max_usd", "50.0");
-        assert_eq!(v.as_float().unwrap(), 50.0);
+        assert!((v.as_float().unwrap() - 50.0).abs() < f64::EPSILON);
     }
 
     #[test]

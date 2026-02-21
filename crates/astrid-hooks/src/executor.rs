@@ -369,7 +369,7 @@ mod tests {
             .with_handler(HookHandler::Command {
                 command: "echo".to_string(),
                 args: vec!["continue".to_string()],
-                env: Default::default(),
+                env: std::collections::HashMap::default(),
                 working_dir: None,
             })
             .with_timeout(5);

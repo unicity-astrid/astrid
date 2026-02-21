@@ -108,23 +108,23 @@ async fn test_wasm_plugin_e2e_dispatch() {
         .session
         .messages
         .iter()
-        .find(|m| matches!(m.role, astrid_llm::MessageRole::Tool));
+        .find(|m| matches!(m.role, astrid_llm::MessageRole::Tool))
+        .expect("should have a tool result");
 
-    assert!(tool_result_msg.is_some(), "should have a tool result");
-    if let astrid_llm::MessageContent::ToolResult(ref result) = tool_result_msg.unwrap().content {
-        assert!(
-            !result.is_error,
-            "tool result should not be an error: {}",
-            result.content
-        );
-        assert!(
-            result.content.contains("hello from inside wasm E2E"),
-            "expected echo response, got: {}",
-            result.content
-        );
-    } else {
+    let astrid_llm::MessageContent::ToolResult(ref result) = tool_result_msg.content else {
         panic!("expected ToolResult content");
-    }
+    };
+
+    assert!(
+        !result.is_error,
+        "tool result should not be an error: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("hello from inside wasm E2E"),
+        "expected echo response, got: {}",
+        result.content
+    );
 
     let last = harness.session.messages.last().unwrap();
     assert_eq!(last.text(), Some("WASM tool executed successfully"));

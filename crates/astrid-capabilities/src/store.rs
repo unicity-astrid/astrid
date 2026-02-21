@@ -30,7 +30,11 @@ where
     F::Output: Send,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => std::thread::scope(|s| s.spawn(|| handle.block_on(f)).join().unwrap()),
+        Ok(handle) => std::thread::scope(|s| {
+            s.spawn(|| handle.block_on(f))
+                .join()
+                .expect("async thread panicked")
+        }),
         Err(_) => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -685,8 +689,8 @@ mod tests {
             &keypair,
             None,
         );
-        let token2_id = token2.id.clone();
+        let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
-        assert!(disk_store.get(&token2_id).unwrap().is_some());
+        assert!(disk_store.get(&other_token_id).unwrap().is_some());
     }
 }

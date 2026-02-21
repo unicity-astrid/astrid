@@ -88,7 +88,7 @@ impl SecureMcpClient {
         if result.is_authorized() {
             // Log the authorized access
             let audit_id = {
-                let token = result.token().unwrap();
+                let token = result.token().expect("authorization implies token exists");
                 self.audit
                     .append(
                         self.session_id.clone(),

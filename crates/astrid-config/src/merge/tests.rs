@@ -109,8 +109,8 @@ fn test_enforce_restrictions_budget_clamp() {
     enforce_restrictions(&mut merged, &baseline, &workspace);
 
     let budget = merged["budget"].as_table().unwrap();
-    assert_eq!(budget["session_max_usd"].as_float().unwrap(), 100.0);
-    assert_eq!(budget["per_action_max_usd"].as_float().unwrap(), 5.0);
+    assert!((budget["session_max_usd"].as_float().unwrap() - 100.0).abs() < f64::EPSILON);
+    assert!((budget["per_action_max_usd"].as_float().unwrap() - 5.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -164,10 +164,7 @@ fn test_restrictions_work_without_user_config() {
     deep_merge(&mut merged, &workspace);
     enforce_restrictions(&mut merged, &baseline, &workspace);
 
-    assert_eq!(
-        merged["budget"]["session_max_usd"].as_float().unwrap(),
-        100.0
-    );
+    assert!((merged["budget"]["session_max_usd"].as_float().unwrap() - 100.0).abs() < f64::EPSILON);
 }
 
 #[test]

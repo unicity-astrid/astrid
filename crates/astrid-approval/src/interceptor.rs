@@ -1206,13 +1206,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_capability_check() {
+        use astrid_capabilities::{
+            AuditEntryId as CapAuditId, CapabilityToken, ResourcePattern, TokenScope,
+        };
         let keypair = KeyPair::generate();
         let capability_store = Arc::new(CapabilityStore::in_memory());
 
         // Add a capability token for the tool
-        use astrid_capabilities::{
-            AuditEntryId as CapAuditId, CapabilityToken, ResourcePattern, TokenScope,
-        };
         let pattern = ResourcePattern::new("mcp://filesystem:read_file").unwrap();
         let token = CapabilityToken::create(
             pattern,

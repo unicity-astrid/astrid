@@ -47,6 +47,8 @@
 #![warn(missing_docs)]
 #![deny(clippy::all)]
 #![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod prelude;
 

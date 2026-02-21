@@ -848,7 +848,7 @@ mod tests {
             server.last_restart_attempt = Some(
                 Instant::now()
                     .checked_sub(std::time::Duration::from_secs(60))
-                    .unwrap(),
+                    .expect("failed to sub 60s from Instant"),
             );
             running.insert("srv".to_string(), server);
         }
