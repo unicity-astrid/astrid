@@ -225,6 +225,16 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
         }
 
         // Strip the first directory component (GitHub's `{org}-{repo}-{sha}/`)
+        // Flat archives are rejected because stripping the first component would result
+        // in an empty path and attempt to unpack a file over the dest directory itself.
+        if entry_path.components().count() <= 1 && entry_type != tar::EntryType::Directory {
+            return Err(PluginError::ExtractionError {
+                message: format!(
+                    "invalid archive format: expected root directory, found flat entry '{}'",
+                    entry_path.display()
+                ),
+            });
+        }
         let stripped = strip_first_component(&entry_path);
         let target = dest.join(stripped);
 
