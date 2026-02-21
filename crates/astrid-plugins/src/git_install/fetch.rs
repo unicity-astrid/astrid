@@ -1,7 +1,7 @@
 use super::source::GitSource;
 use crate::error::{PluginError, PluginResult};
 use std::path::PathBuf;
-use std::process::Command;
+use tokio::process::Command;
 
 const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024;
 
@@ -23,13 +23,13 @@ pub async fn fetch_git_source(source: &GitSource) -> PluginResult<(tempfile::Tem
             fetch_github_tarball(org, repo, git_ref.as_deref()).await
         },
         GitSource::GitUrl { url, git_ref } => {
-            // Run blocking git clone on a dedicated thread with a timeout
-            // to avoid blocking the Tokio runtime and prevent indefinite hangs.
+            // Run async git clone with a timeout to prevent indefinite hangs.
+            // When the timeout future drops, tokio::process::Command kills the child.
             let url = url.clone();
             let git_ref = git_ref.clone();
             tokio::time::timeout(
                 GIT_CLONE_TIMEOUT,
-                tokio::task::spawn_blocking(move || clone_git_repo(&url, git_ref.as_deref())),
+                clone_git_repo(&url, git_ref.as_deref()),
             )
             .await
             .map_err(|_| {
@@ -38,7 +38,6 @@ pub async fn fetch_git_source(source: &GitSource) -> PluginResult<(tempfile::Tem
                     GIT_CLONE_TIMEOUT.as_secs()
                 ))
             })?
-            .map_err(|e| PluginError::ExecutionFailed(format!("git clone task panicked: {e}")))?
         },
     }
 }
@@ -299,7 +298,7 @@ pub fn strip_first_component(path: &std::path::Path) -> PathBuf {
 ///
 /// Suppresses interactive credential prompts and pipes stdin to null
 /// to prevent hanging if authentication is required.
-fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::TempDir, PathBuf)> {
+async fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::TempDir, PathBuf)> {
     let tmp = tempfile::tempdir()
         .map_err(|e| PluginError::ExecutionFailed(format!("failed to create temp dir: {e}")))?;
 
@@ -323,6 +322,7 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
     cmd.stdin(std::process::Stdio::null());
+    cmd.kill_on_drop(true); // Ensure timeout cancellation kills the child process
 
     cmd.args(["clone", "--depth=1"]);
 
@@ -335,6 +335,7 @@ fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::T
 
     let output = cmd
         .output()
+        .await
         .map_err(|e| PluginError::ExecutionFailed(format!("failed to run git clone: {e}")))?;
 
     if !output.status.success() {
