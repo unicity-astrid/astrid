@@ -178,31 +178,53 @@ impl SecurityInterceptor {
                     },
                     ApprovalProof::SessionApproval { .. } => {
                         let audit_action = sensitive_action_to_audit(action);
-                        let _ = self.audit_log.append(
-                            self.session_id.clone(),
-                            audit_action,
-                            AuditAuthProof::UserApproval {
-                                user_id: self.capability_validator.runtime_key.key_id(),
-                                approval_entry_id: AuditEntryId::new(),
-                            },
-                            AuditOutcome::success(),
+                        let approval_audit_id = self
+                            .audit_log
+                            .append(
+                                self.session_id.clone(),
+                                audit_action,
+                                AuditAuthProof::UserApproval {
+                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    approval_entry_id: None,
+                                },
+                                AuditOutcome::success(),
+                            )
+                            .unwrap_or_default();
+                        let proof = self.allowance_validator.create_allowance_for_action(
+                            action,
+                            true,
+                            approval_audit_id.clone(),
                         );
-                        self.allowance_validator
-                            .create_allowance_for_action(action, true)
+                        return Ok(InterceptResult {
+                            proof,
+                            audit_id: approval_audit_id,
+                            budget_warning,
+                        });
                     },
                     ApprovalProof::WorkspaceApproval { .. } => {
                         let audit_action = sensitive_action_to_audit(action);
-                        let _ = self.audit_log.append(
-                            self.session_id.clone(),
-                            audit_action,
-                            AuditAuthProof::UserApproval {
-                                user_id: self.capability_validator.runtime_key.key_id(),
-                                approval_entry_id: AuditEntryId::new(),
-                            },
-                            AuditOutcome::success(),
+                        let approval_audit_id = self
+                            .audit_log
+                            .append(
+                                self.session_id.clone(),
+                                audit_action,
+                                AuditAuthProof::UserApproval {
+                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    approval_entry_id: None,
+                                },
+                                AuditOutcome::success(),
+                            )
+                            .unwrap_or_default();
+                        let proof = self.allowance_validator.create_allowance_for_action(
+                            action,
+                            false,
+                            approval_audit_id.clone(),
                         );
-                        self.allowance_validator
-                            .create_allowance_for_action(action, false)
+                        return Ok(InterceptResult {
+                            proof,
+                            audit_id: approval_audit_id,
+                            budget_warning,
+                        });
                     },
                     ApprovalProof::AlwaysAllow => {
                         let audit_action = sensitive_action_to_audit(action);
@@ -213,7 +235,7 @@ impl SecurityInterceptor {
                                 audit_action,
                                 AuditAuthProof::UserApproval {
                                     user_id: self.capability_validator.runtime_key.key_id(),
-                                    approval_entry_id: AuditEntryId::new(),
+                                    approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
                             )
@@ -350,7 +372,7 @@ mod tests {
     use crate::request::{ApprovalDecision, ApprovalRequest, ApprovalResponse};
     use astrid_crypto::KeyPair;
 
-    /// Auto-approve handler for tests.
+    /// Auto-approve handler for tests (one-time approval).
     struct AutoApproveHandler;
 
     #[async_trait::async_trait]
@@ -381,10 +403,49 @@ mod tests {
         }
     }
 
-    async fn make_interceptor(
+    /// Session-scoped approval handler for tests.
+    struct SessionApproveHandler;
+
+    #[async_trait::async_trait]
+    impl ApprovalHandler for SessionApproveHandler {
+        async fn request_approval(&self, request: ApprovalRequest) -> Option<ApprovalResponse> {
+            Some(ApprovalResponse::new(
+                request.id,
+                ApprovalDecision::ApproveSession,
+            ))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    /// Workspace-scoped approval handler for tests.
+    struct WorkspaceApproveHandler;
+
+    #[async_trait::async_trait]
+    impl ApprovalHandler for WorkspaceApproveHandler {
+        async fn request_approval(&self, request: ApprovalRequest) -> Option<ApprovalResponse> {
+            Some(ApprovalResponse::new(
+                request.id,
+                ApprovalDecision::ApproveWorkspace,
+            ))
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    /// Build result holding the interceptor plus shared handles for test assertions.
+    struct TestInterceptor {
+        interceptor: SecurityInterceptor,
+        audit_log: Arc<AuditLog>,
+        session_id: SessionId,
+    }
+
+    async fn make_interceptor_with_audit(
         policy: SecurityPolicy,
         handler: Option<Arc<dyn ApprovalHandler>>,
-    ) -> SecurityInterceptor {
+    ) -> TestInterceptor {
         let audit_keypair = KeyPair::generate();
         let runtime_key = Arc::new(KeyPair::generate());
         let capability_store = Arc::new(CapabilityStore::in_memory());
@@ -403,9 +464,9 @@ mod tests {
             approval_manager,
             policy,
             budget_tracker,
-            audit_log,
+            Arc::clone(&audit_log),
             runtime_key,
-            session_id,
+            session_id.clone(),
             allowance_store,
             None,
             None,
@@ -415,7 +476,20 @@ mod tests {
             interceptor.approval_manager.register_handler(h).await;
         }
 
-        interceptor
+        TestInterceptor {
+            interceptor,
+            audit_log,
+            session_id,
+        }
+    }
+
+    async fn make_interceptor(
+        policy: SecurityPolicy,
+        handler: Option<Arc<dyn ApprovalHandler>>,
+    ) -> SecurityInterceptor {
+        make_interceptor_with_audit(policy, handler)
+            .await
+            .interceptor
     }
 
     // -----------------------------------------------------------------------
@@ -516,5 +590,112 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("budget exceeded"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Session approval — creates audit entry and allowance
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_session_approval_creates_audit_entry() {
+        let t = make_interceptor_with_audit(
+            SecurityPolicy::default(),
+            Some(Arc::new(SessionApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::FileDelete {
+            path: "/home/user/file.txt".to_string(),
+        };
+
+        let result = t.interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_ok());
+
+        let ok = result.unwrap();
+        assert!(
+            matches!(ok.proof, InterceptProof::SessionApproval { .. }),
+            "expected SessionApproval proof, got {:?}",
+            ok.proof
+        );
+
+        // Exactly one audit entry should exist for this session
+        let count = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count, 1,
+            "session approval should create exactly one audit entry"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Workspace approval — creates audit entry and allowance
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_workspace_approval_creates_audit_entry() {
+        let t = make_interceptor_with_audit(
+            SecurityPolicy::default(),
+            Some(Arc::new(WorkspaceApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::FileDelete {
+            path: "/home/user/file.txt".to_string(),
+        };
+
+        let result = t.interceptor.intercept(&action, "test", None).await;
+        assert!(result.is_ok());
+
+        let ok = result.unwrap();
+        assert!(
+            matches!(ok.proof, InterceptProof::WorkspaceApproval { .. }),
+            "expected WorkspaceApproval proof, got {:?}",
+            ok.proof
+        );
+
+        // Exactly one audit entry should exist for this session
+        let count = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count, 1,
+            "workspace approval should create exactly one audit entry"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Session approval — no duplicate audit entries
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_session_approval_no_duplicate_audit_entry() {
+        let t = make_interceptor_with_audit(
+            SecurityPolicy::default(),
+            Some(Arc::new(SessionApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::McpToolCall {
+            server: "test".to_string(),
+            tool: "read".to_string(),
+        };
+
+        // First call — should create one audit entry
+        let result1 = t.interceptor.intercept(&action, "test", None).await;
+        assert!(result1.is_ok());
+
+        let count_after_first = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count_after_first, 1,
+            "first session approval should create exactly one audit entry"
+        );
+
+        // Second call for same action — allowance should match, creating
+        // another audit entry for the allowance-based authorization
+        let result2 = t.interceptor.intercept(&action, "test", None).await;
+        assert!(result2.is_ok());
+
+        let count_after_second = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count_after_second, 2,
+            "second call should add one more audit entry (allowance-based)"
+        );
     }
 }
