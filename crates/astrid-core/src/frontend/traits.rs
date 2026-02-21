@@ -108,7 +108,7 @@ impl<T: Frontend + ?Sized> crate::connector::ApprovalAdapter for T {
     ) -> crate::connector::ConnectorResult<ApprovalDecision> {
         Frontend::request_approval(self, request)
             .await
-            .map_err(|e| crate::connector::ConnectorError::Internal(e.to_string()))
+            .map_err(frontend_error_to_connector)
     }
 }
 
@@ -120,7 +120,20 @@ impl<T: Frontend + ?Sized> crate::connector::ElicitationAdapter for T {
     ) -> crate::connector::ConnectorResult<ElicitationResponse> {
         Frontend::elicit(self, request)
             .await
-            .map_err(|e| crate::connector::ConnectorError::Internal(e.to_string()))
+            .map_err(frontend_error_to_connector)
+    }
+}
+
+/// Maps frontend errors to their semantically appropriate connector error variants.
+fn frontend_error_to_connector(e: super::error::FrontendError) -> crate::connector::ConnectorError {
+    match e {
+        super::error::FrontendError::ApprovalDenied { reason } => {
+            crate::connector::ConnectorError::ApprovalDenied { reason }
+        },
+        super::error::FrontendError::ApprovalTimeout { timeout_ms } => {
+            crate::connector::ConnectorError::ApprovalTimeout { timeout_ms }
+        },
+        other => crate::connector::ConnectorError::Internal(other.to_string()),
     }
 }
 
@@ -363,18 +376,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn blanket_approval_adapter_propagates_security_error() {
+    async fn blanket_approval_adapter_maps_denial_to_approval_denied() {
         let stub = ErrorStubFrontend;
         let req = ApprovalRequest::new("op", "denied test");
         let result: crate::connector::ConnectorResult<ApprovalDecision> =
             crate::connector::ApprovalAdapter::request_approval(&stub, req).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, crate::connector::ConnectorError::Internal(_)));
+        assert!(matches!(
+            err,
+            crate::connector::ConnectorError::ApprovalDenied { .. }
+        ));
     }
 
     #[tokio::test]
-    async fn blanket_elicitation_adapter_propagates_security_error() {
+    async fn blanket_elicitation_adapter_maps_failure_to_internal() {
         let stub = ErrorStubFrontend;
         let req = ElicitationRequest::new("srv", "fail test");
         let result: crate::connector::ConnectorResult<ElicitationResponse> =

@@ -1,4 +1,7 @@
-use super::validate::{validate_github_component, validate_git_ref, validate_url_scheme, validate_ssh_host, validate_ssh_path};
+use super::validate::{
+    validate_git_ref, validate_github_component, validate_ssh_host, validate_ssh_path,
+    validate_url_scheme,
+};
 use crate::error::{PluginError, PluginResult};
 
 /// Parsed git source specifier.
@@ -229,7 +232,7 @@ impl GitSource {
 /// Split a git repository URL from an optional `@ref` suffix.
 ///
 /// Ensures we do not split on `@` symbols belonging to credentials (e.g. `ssh://git@host`).
-#[must_use] 
+#[must_use]
 pub fn split_ref(s: &str) -> (String, Option<String>) {
     // For URLs containing "://", only look for "@" in the path portion
     // (after the authority), not in user@host.

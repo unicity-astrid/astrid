@@ -24,6 +24,10 @@ pub enum ApprovalError {
         reason: String,
     },
 
+    /// Storage backend error (lock poisoned, persistence failed, etc.).
+    #[error("storage error: {0}")]
+    Storage(String),
+
     /// Internal approval system error.
     #[error("internal approval error: {0}")]
     Internal(String),

@@ -11,11 +11,11 @@ use crate::allowance::{Allowance, AllowanceId, AllowancePattern, AllowanceStore}
 /// Validates if an action is permitted by a given workspace allowance.
 pub struct AllowanceValidator {
     /// The backing allowance store definition mappings.
-    pub store: Arc<AllowanceStore>,
+    pub(crate) store: Arc<AllowanceStore>,
     /// The runtime verification keys for token validation.
-    pub runtime_key: Arc<KeyPair>,
+    pub(crate) runtime_key: Arc<KeyPair>,
     /// Optional workspace root restriction for allowances.
-    pub workspace_root: Option<PathBuf>,
+    pub(crate) workspace_root: Option<PathBuf>,
 }
 
 impl AllowanceValidator {
@@ -33,15 +33,18 @@ impl AllowanceValidator {
     }
 
     /// Creates a new allowance token based on a specific action intent.
+    ///
+    /// The `approval_audit_id` links this allowance back to the audit entry
+    /// that recorded the user's approval decision, maintaining the chain-link
+    /// proof in the audit trail.
     pub fn create_allowance_for_action(
         &self,
         action: &SensitiveAction,
         session_only: bool,
+        approval_audit_id: AuditEntryId,
     ) -> InterceptProof {
         let Some(pattern) = action_to_allowance_pattern(action) else {
-            return InterceptProof::UserApproval {
-                approval_audit_id: AuditEntryId::new(), // To be replaced in caller if needed
-            };
+            return InterceptProof::UserApproval { approval_audit_id };
         };
 
         let allowance_id = AllowanceId::new();
@@ -66,9 +69,7 @@ impl AllowanceValidator {
 
         if let Err(e) = self.store.add_allowance(allowance) {
             tracing::warn!("failed to store allowance: {e}");
-            return InterceptProof::UserApproval {
-                approval_audit_id: AuditEntryId::new(),
-            };
+            return InterceptProof::UserApproval { approval_audit_id };
         }
 
         if session_only {
@@ -80,7 +81,7 @@ impl AllowanceValidator {
 }
 
 /// Extracts the exact resource permission and pattern required to execute a specific action.
-#[must_use] 
+#[must_use]
 pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<AllowancePattern> {
     match action {
         SensitiveAction::McpToolCall { server, tool } => Some(AllowancePattern::ExactTool {

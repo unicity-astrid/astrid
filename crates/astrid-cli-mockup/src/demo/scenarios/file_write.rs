@@ -1,6 +1,4 @@
-use super::{
-    ApprovalChoice, DemoScenario, DemoStep, ToolRisk,
-};
+use super::{ApprovalChoice, DemoScenario, DemoStep, ToolRisk};
 use std::time::Duration;
 
 pub(super) fn build() -> DemoScenario {

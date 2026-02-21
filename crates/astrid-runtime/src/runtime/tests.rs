@@ -109,7 +109,7 @@ fn test_intercept_proof_to_auth_proof_user_approval() {
             approval_entry_id,
         } => {
             assert_eq!(user_id, [2; 8]);
-            assert_eq!(approval_entry_id, audit_id);
+            assert_eq!(approval_entry_id, Some(audit_id));
         },
         other => panic!("expected UserApproval, got {other:?}"),
     }
@@ -217,7 +217,7 @@ fn test_intercept_proof_to_auth_proof_capability_created() {
             approval_entry_id,
         } => {
             assert_eq!(user_id, [7; 8]);
-            assert_eq!(approval_entry_id, audit_id);
+            assert_eq!(approval_entry_id, Some(audit_id));
         },
         other => panic!("expected UserApproval for CapabilityCreated, got {other:?}"),
     }

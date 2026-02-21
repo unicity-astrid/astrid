@@ -11,9 +11,9 @@ use crate::error::{ApprovalError, ApprovalResult};
 /// Enforces that agents only execute requests they explicitly have tokens to authorize.
 pub struct CapabilityValidator {
     /// Active storage matching tokens to resources.
-    pub store: Arc<CapabilityStore>,
+    pub(crate) store: Arc<CapabilityStore>,
     /// Global keypair validating token authenticity.
-    pub runtime_key: Arc<KeyPair>,
+    pub(crate) runtime_key: Arc<KeyPair>,
 }
 
 impl CapabilityValidator {

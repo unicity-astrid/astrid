@@ -1,5 +1,3 @@
-use crate::error::SecurityError;
-
 // ConnectorError
 // ---------------------------------------------------------------------------
 
@@ -27,9 +25,19 @@ pub enum ConnectorError {
     #[error("serialization error: {0}")]
     Serialization(String),
 
-    /// An underlying security error.
-    #[error(transparent)]
-    Security(#[from] SecurityError),
+    /// An approval request was denied by the user.
+    #[error("approval denied: {reason}")]
+    ApprovalDenied {
+        /// The reason for denial.
+        reason: String,
+    },
+
+    /// An approval request timed out before the user responded.
+    #[error("approval timeout after {timeout_ms}ms")]
+    ApprovalTimeout {
+        /// Timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
 
     /// Catch-all for internal errors.
     #[error("internal connector error: {0}")]

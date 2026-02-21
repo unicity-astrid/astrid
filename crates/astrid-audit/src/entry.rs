@@ -475,8 +475,10 @@ pub enum AuthorizationProof {
     UserApproval {
         /// User ID (key ID).
         user_id: [u8; 8],
-        /// Approval audit entry ID.
-        approval_entry_id: AuditEntryId,
+        /// Audit entry ID of the prior approval decision that authorized this
+        /// action. `None` when this entry IS the root approval decision
+        /// (i.e. the user just said "yes" — there is no earlier entry).
+        approval_entry_id: Option<AuditEntryId>,
     },
     /// No authorization required (low-risk operation).
     NotRequired {

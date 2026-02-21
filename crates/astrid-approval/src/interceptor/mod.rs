@@ -173,8 +173,27 @@ impl SecurityInterceptor {
                     | ApprovalProof::CustomAllowance { allowance_id } => {
                         InterceptProof::Allowance { allowance_id }
                     },
-                    ApprovalProof::OneTimeApproval => InterceptProof::UserApproval {
-                        approval_audit_id: AuditEntryId::new(),
+                    ApprovalProof::OneTimeApproval => {
+                        let audit_action = sensitive_action_to_audit(action);
+                        let approval_audit_id = self
+                            .audit_log
+                            .append(
+                                self.session_id.clone(),
+                                audit_action,
+                                AuditAuthProof::UserApproval {
+                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    approval_entry_id: None,
+                                },
+                                AuditOutcome::success(),
+                            )
+                            .unwrap_or_default();
+                        return Ok(InterceptResult {
+                            proof: InterceptProof::UserApproval {
+                                approval_audit_id: approval_audit_id.clone(),
+                            },
+                            audit_id: approval_audit_id,
+                            budget_warning,
+                        });
                     },
                     ApprovalProof::SessionApproval { .. } => {
                         let audit_action = sensitive_action_to_audit(action);
@@ -328,7 +347,7 @@ impl SecurityInterceptor {
             AuditAuthProof::Denied {
                 reason: reason.to_string(),
             },
-            AuditOutcome::failure(format!("deferred: {reason}")),
+            AuditOutcome::failure(reason),
         ) {
             tracing::error!("failed to audit deferred action: {e}");
         }
@@ -505,7 +524,11 @@ mod tests {
             args: vec![],
         };
         let result = interceptor.intercept(&action, "test", None).await;
-        assert!(result.is_err());
+        let err = result.expect_err("should be blocked by policy");
+        assert!(
+            matches!(err, ApprovalError::PolicyBlocked { .. }),
+            "expected PolicyBlocked, got {err:?}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -539,18 +562,24 @@ mod tests {
     #[tokio::test]
     async fn test_requires_approval_approved() {
         let handler = Arc::new(AutoApproveHandler);
-        let interceptor = make_interceptor(SecurityPolicy::default(), Some(handler)).await;
+        let t = make_interceptor_with_audit(SecurityPolicy::default(), Some(handler)).await;
 
         let action = SensitiveAction::FileDelete {
             path: "/home/user/file.txt".to_string(),
         };
 
-        let result = interceptor.intercept(&action, "test", None).await;
+        let result = t.interceptor.intercept(&action, "test", None).await;
         assert!(result.is_ok());
 
         let ok = result.unwrap();
-        // AutoApproveHandler gives OneTimeApproval by default since it intercepts before allowance UI
+        // AutoApproveHandler gives OneTimeApproval — creates exactly one audit entry
         assert!(matches!(ok.proof, InterceptProof::UserApproval { .. }));
+
+        let count = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count, 1,
+            "one-time approval should create exactly one audit entry"
+        );
     }
 
     // -----------------------------------------------------------------------

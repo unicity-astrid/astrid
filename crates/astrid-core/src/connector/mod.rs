@@ -41,7 +41,6 @@ pub use types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::SecurityError;
     use crate::identity::FrontendType;
     use std::str::FromStr;
     use uuid::Uuid;
@@ -345,13 +344,6 @@ mod tests {
     }
 
     // -- ConnectorError --
-
-    #[test]
-    fn error_from_security_error() {
-        let sec = SecurityError::Internal("boom".into());
-        let conn: ConnectorError = ConnectorError::from(sec);
-        assert!(matches!(conn, ConnectorError::Security(_)));
-    }
 
     #[test]
     fn error_display() {

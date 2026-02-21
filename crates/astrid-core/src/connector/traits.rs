@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::frontend::{ApprovalDecision, ApprovalRequest, ElicitationRequest, ElicitationResponse};
-use super::types::{InboundMessage, OutboundMessage};
 use super::error::ConnectorResult;
+use super::types::{InboundMessage, OutboundMessage};
+use crate::frontend::{ApprovalDecision, ApprovalRequest, ElicitationRequest, ElicitationResponse};
 
 // Adapter traits
 // ---------------------------------------------------------------------------

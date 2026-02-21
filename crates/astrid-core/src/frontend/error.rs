@@ -22,10 +22,6 @@ pub enum FrontendError {
     /// Internal frontend error
     #[error("internal frontend error: {0}")]
     Internal(String),
-
-    /// Underlying security error
-    #[error(transparent)]
-    Security(#[from] crate::error::SecurityError),
 }
 
 /// Result type for frontend operations.

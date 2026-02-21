@@ -1,13 +1,13 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
-use std::collections::HashMap;
-use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
-use crate::identity::FrontendType;
-use crate::frontend::Attachment;
 use super::error::{ConnectorError, ConnectorResult};
+use crate::frontend::Attachment;
+use crate::identity::FrontendType;
 
 // Limits
 // ---------------------------------------------------------------------------

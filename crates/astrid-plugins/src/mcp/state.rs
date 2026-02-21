@@ -20,7 +20,7 @@ pub struct McpConnection {
 
 impl McpConnection {
     /// Initializes a new `OpenMcpConnection` tracker.
-    #[must_use] 
+    #[must_use]
     pub fn new(
         plugin_id: crate::plugin::PluginId,
         service: PluginMcpService,
@@ -34,7 +34,7 @@ impl McpConnection {
     }
 
     /// Evaluates if the task running the connection loop is still active.
-    #[must_use] 
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         self.service.as_ref().is_some_and(|s| !s.is_closed())
     }

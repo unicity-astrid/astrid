@@ -1,6 +1,4 @@
-use super::{
-    DemoScenario, DemoStep,
-};
+use super::{DemoScenario, DemoStep};
 use std::time::Duration;
 
 pub(super) fn build() -> DemoScenario {

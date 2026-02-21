@@ -6,9 +6,9 @@ use std::sync::Arc;
 /// Ensures actions that charge money fall within configured user and workspace budgets.
 pub struct BudgetValidator {
     /// Global or local session tracker for current spending limits.
-    pub tracker: Arc<BudgetTracker>,
+    pub(crate) tracker: Arc<BudgetTracker>,
     /// Global or local workspace tracker for organizational limits.
-    pub workspace_tracker: Option<Arc<WorkspaceBudgetTracker>>,
+    pub(crate) workspace_tracker: Option<Arc<WorkspaceBudgetTracker>>,
 }
 
 impl BudgetValidator {

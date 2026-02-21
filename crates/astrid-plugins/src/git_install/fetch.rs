@@ -278,7 +278,7 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
 }
 
 /// Strip the first path component (e.g., `org-repo-sha/src/main.js` → `src/main.js`).
-#[must_use] 
+#[must_use]
 pub fn strip_first_component(path: &std::path::Path) -> PathBuf {
     let mut components = path.components();
     components.next(); // skip first

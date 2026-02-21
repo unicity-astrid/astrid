@@ -1,6 +1,6 @@
 use super::{
-    AgentStatusDemo, AuditOutcomeDemo, DemoScenario, DemoStep,
-    HealthStatusDemo, ThreatLevelDemo, ToolRisk, View,
+    AgentStatusDemo, AuditOutcomeDemo, DemoScenario, DemoStep, HealthStatusDemo, ThreatLevelDemo,
+    ToolRisk, View,
 };
 use std::time::Duration;
 
