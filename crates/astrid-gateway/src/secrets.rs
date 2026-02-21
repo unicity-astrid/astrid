@@ -191,6 +191,7 @@ impl Secrets {
 
 #[cfg(test)]
 #[allow(unsafe_code)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

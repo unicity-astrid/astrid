@@ -810,7 +810,7 @@ mod tests {
         let json = serde_json::to_string(&policy).unwrap();
         let deserialized: SecurityPolicy = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.blocked_tools.len(), policy.blocked_tools.len());
-        assert_eq!(deserialized.require_approval_for_delete, true);
+        assert!(deserialized.require_approval_for_delete);
         assert!(deserialized.blocked_plugins.is_empty());
     }
 

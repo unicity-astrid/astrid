@@ -81,7 +81,7 @@ async fn test_hot_reload_race_plugin_unloaded_mid_turn() {
 }
 
 /// Simulates a plugin transitioning to Failed state between tool listing and
-/// execution. The find_tool Ready-state check should reject it.
+/// execution. The `find_tool` Ready-state check should reject it.
 #[tokio::test]
 async fn test_hot_reload_race_plugin_failed_mid_turn() {
     let ws = tempfile::tempdir().unwrap();

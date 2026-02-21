@@ -246,7 +246,7 @@ mod tests {
         let escaped = escape_json_string(malicious);
 
         // The escaped string should be safe to include in JSON
-        let json = format!(r#"{{"data": "{}"}}"#, escaped);
+        let json = format!(r#"{{"data": "{escaped}"}}"#);
 
         // Should parse as valid JSON with escaped data
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

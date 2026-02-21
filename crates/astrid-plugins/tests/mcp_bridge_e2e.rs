@@ -537,7 +537,7 @@ async fn test_bridge_connector_registered_notification() {
     bridge.shutdown().await;
 }
 
-/// McpPlugin test: verify connectors are populated after `load()`.
+/// `McpPlugin` test: verify connectors are populated after `load()`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_plugin_connector_registration() {
     if !node_available() {

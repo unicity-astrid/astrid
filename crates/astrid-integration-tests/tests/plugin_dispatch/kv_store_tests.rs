@@ -118,7 +118,7 @@ async fn test_kv_store_session_isolation() {
     );
 }
 
-/// cleanup_plugin_kv_stores removes entries for the given session only.
+/// `cleanup_plugin_kv_stores` removes entries for the given session only.
 #[tokio::test]
 async fn test_cleanup_plugin_kv_stores() {
     let ws = tempfile::tempdir().unwrap();

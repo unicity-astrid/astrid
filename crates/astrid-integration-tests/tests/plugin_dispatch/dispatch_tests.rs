@@ -112,7 +112,7 @@ async fn test_plugin_tool_not_found_graceful_error() {
     }
 }
 
-/// with_plugin_registry builder correctly sets the field.
+/// `with_plugin_registry` builder correctly sets the field.
 #[tokio::test]
 async fn test_with_plugin_registry_builder() {
     let ws = tempfile::tempdir().unwrap();

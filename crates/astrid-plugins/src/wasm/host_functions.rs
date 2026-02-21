@@ -1430,7 +1430,7 @@ mod tests {
 
         // Verify the list is actually sorted
         let mut sorted = expected_order;
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(
             expected_order, sorted,
             "host function names must be alphabetically sorted"
@@ -1521,6 +1521,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn max_string_length_constant_is_reasonable() {
         // Sanity check: MAX_STRING_LENGTH shouldn't be 0 or absurdly large
         assert!(MAX_STRING_LENGTH >= 64, "MAX_STRING_LENGTH too small");

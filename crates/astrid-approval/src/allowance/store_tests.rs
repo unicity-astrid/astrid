@@ -163,12 +163,12 @@ fn test_store_consume_use_limited() {
     store.add_allowance(allowance).unwrap();
 
     // 3 uses: consume down to 2, 1, 0
-    assert_eq!(store.consume_use(&id).unwrap(), true); // 2 remaining
-    assert_eq!(store.consume_use(&id).unwrap(), true); // 1 remaining
-    assert_eq!(store.consume_use(&id).unwrap(), false); // 0 remaining (last use)
+    assert!(store.consume_use(&id).unwrap()); // 2 remaining
+    assert!(store.consume_use(&id).unwrap()); // 1 remaining
+    assert!(!store.consume_use(&id).unwrap()); // 0 remaining (last use)
 
     // Saturates at 0
-    assert_eq!(store.consume_use(&id).unwrap(), false);
+    assert!(!store.consume_use(&id).unwrap());
 }
 
 #[test]
@@ -185,8 +185,8 @@ fn test_store_consume_use_unlimited() {
     store.add_allowance(allowance).unwrap();
 
     // Unlimited: always returns true
-    assert_eq!(store.consume_use(&id).unwrap(), true);
-    assert_eq!(store.consume_use(&id).unwrap(), true);
+    assert!(store.consume_use(&id).unwrap());
+    assert!(store.consume_use(&id).unwrap());
 }
 
 #[test]

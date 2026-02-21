@@ -436,7 +436,7 @@ impl RpcImpl {
             let mut sessions = self.sessions.write().await;
 
             // First get a reference to check user_id before removing.
-            let is_connector = sessions.get(&session_id).is_some_and(|h| h.is_connector());
+            let is_connector = sessions.get(&session_id).is_some_and(super::super::SessionHandle::is_connector);
             if is_connector {
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INVALID_REQUEST,

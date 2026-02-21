@@ -13,10 +13,10 @@ fn test_deep_merge_scalars() {
     .unwrap();
 
     let overlay: toml::Value = toml::from_str(
-        r#"
+        r"
         [model]
         max_tokens = 8192
-    "#,
+    ",
     )
     .unwrap();
 
@@ -68,10 +68,10 @@ fn test_deep_merge_tracking() {
     .unwrap();
 
     let overlay: toml::Value = toml::from_str(
-        r#"
+        r"
         [model]
         max_tokens = 8192
-    "#,
+    ",
     )
     .unwrap();
 
@@ -87,20 +87,20 @@ fn test_deep_merge_tracking() {
 #[test]
 fn test_enforce_restrictions_budget_clamp() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         session_max_usd = 100.0
         per_action_max_usd = 10.0
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         session_max_usd = 200.0
         per_action_max_usd = 5.0
-    "#,
+    ",
     )
     .unwrap();
 
@@ -116,18 +116,18 @@ fn test_enforce_restrictions_budget_clamp() {
 #[test]
 fn test_enforce_restrictions_bool_only_true() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [security.policy]
         require_approval_for_delete = true
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [security.policy]
         require_approval_for_delete = false
-    "#,
+    ",
     )
     .unwrap();
 
@@ -145,18 +145,18 @@ fn test_enforce_restrictions_bool_only_true() {
 fn test_restrictions_work_without_user_config() {
     // Baseline includes defaults (no user file).
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         session_max_usd = 100.0
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         session_max_usd = 999.0
-    "#,
+    ",
     )
     .unwrap();
 
@@ -341,18 +341,18 @@ fn test_never_allow_union() {
 #[test]
 fn test_require_signatures_cannot_disable() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [security]
         require_signatures = true
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [security]
         require_signatures = false
-    "#,
+    ",
     )
     .unwrap();
 
@@ -366,18 +366,18 @@ fn test_require_signatures_cannot_disable() {
 #[test]
 fn test_approval_timeout_cannot_increase() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [security]
         approval_timeout_secs = 300
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [security]
         approval_timeout_secs = 9999
-    "#,
+    ",
     )
     .unwrap();
 
@@ -456,10 +456,10 @@ fn test_allowed_paths_cannot_expand() {
 #[test]
 fn test_allowed_hosts_cannot_expand() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [security.policy]
         allowed_hosts = []
-    "#,
+    ",
     )
     .unwrap();
 
@@ -535,18 +535,18 @@ fn test_api_url_cannot_be_overridden_by_workspace() {
 #[test]
 fn test_allow_wasm_hooks_cannot_enable() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_wasm_hooks = false
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_wasm_hooks = true
-    "#,
+    ",
     )
     .unwrap();
 
@@ -560,18 +560,18 @@ fn test_allow_wasm_hooks_cannot_enable() {
 #[test]
 fn test_allow_agent_hooks_cannot_enable() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_agent_hooks = false
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_agent_hooks = true
-    "#,
+    ",
     )
     .unwrap();
 
@@ -585,20 +585,20 @@ fn test_allow_agent_hooks_cannot_enable() {
 #[test]
 fn test_rate_limits_cannot_increase() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [rate_limits]
         elicitation_per_server_per_min = 10
         max_pending_requests = 50
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [rate_limits]
         elicitation_per_server_per_min = 100
         max_pending_requests = 500
-    "#,
+    ",
     )
     .unwrap();
 
@@ -623,18 +623,18 @@ fn test_rate_limits_cannot_increase() {
 #[test]
 fn test_warn_at_percent_cannot_increase() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         warn_at_percent = 80
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [budget]
         warn_at_percent = 99
-    "#,
+    ",
     )
     .unwrap();
 
@@ -793,10 +793,10 @@ fn test_workspace_cannot_change_baseline_server_trusted() {
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [servers.mydb]
         trusted = true
-    "#,
+    ",
     )
     .unwrap();
 
@@ -843,10 +843,10 @@ fn test_workspace_can_add_non_protected_fields_to_baseline_server() {
 #[test]
 fn test_auto_allow_write_cannot_expand() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [workspace]
         auto_allow_write = []
-    "#,
+    ",
     )
     .unwrap();
 
@@ -899,18 +899,18 @@ fn test_auto_allow_read_cannot_expand() {
 #[test]
 fn test_idle_secs_cannot_increase() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [timeouts]
         idle_secs = 3600
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [timeouts]
         idle_secs = 86400
-    "#,
+    ",
     )
     .unwrap();
 
@@ -924,18 +924,18 @@ fn test_idle_secs_cannot_increase() {
 #[test]
 fn test_idle_secs_can_decrease() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [timeouts]
         idle_secs = 3600
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [timeouts]
         idle_secs = 600
-    "#,
+    ",
     )
     .unwrap();
 
@@ -949,18 +949,18 @@ fn test_idle_secs_can_decrease() {
 #[test]
 fn test_allow_http_hooks_cannot_enable() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_http_hooks = false
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_http_hooks = true
-    "#,
+    ",
     )
     .unwrap();
 
@@ -974,18 +974,18 @@ fn test_allow_http_hooks_cannot_enable() {
 #[test]
 fn test_allow_command_hooks_cannot_enable() {
     let baseline: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_command_hooks = false
-    "#,
+    ",
     )
     .unwrap();
 
     let workspace: toml::Value = toml::from_str(
-        r#"
+        r"
         [hooks]
         allow_command_hooks = true
-    "#,
+    ",
     )
     .unwrap();
 

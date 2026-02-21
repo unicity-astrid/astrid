@@ -17,7 +17,7 @@ use tempfile::TempDir;
 pub struct RuntimeTestHarness {
     /// The agent runtime.
     pub runtime: AgentRuntime<MockLlmProvider>,
-    /// The mock frontend (shared via Arc for run_turn_streaming).
+    /// The mock frontend (shared via Arc for `run_turn_streaming`).
     pub frontend: Arc<MockFrontend>,
     /// A fresh session.
     pub session: AgentSession,
@@ -26,7 +26,7 @@ pub struct RuntimeTestHarness {
 }
 
 impl RuntimeTestHarness {
-    /// Build a new harness with the given LLM turns and default AllowOnce approval.
+    /// Build a new harness with the given LLM turns and default `AllowOnce` approval.
     pub fn new(turns: Vec<MockLlmTurn>) -> Self {
         Self::with_approval(turns, ApprovalOption::AllowOnce)
     }

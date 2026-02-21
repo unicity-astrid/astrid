@@ -9,7 +9,7 @@ use super::fixtures::{FailingTool, TestPlugin, make_plugin};
 use super::helpers::build_runtime_with_plugins;
 
 /// After a successful plugin tool call, verify that the audit log contains a
-/// `PluginToolCall` entry with the correct plugin_id and tool name.
+/// `PluginToolCall` entry with the correct `plugin_id` and tool name.
 #[tokio::test]
 async fn test_audit_entry_contains_plugin_tool_call() {
     let ws = tempfile::tempdir().unwrap();

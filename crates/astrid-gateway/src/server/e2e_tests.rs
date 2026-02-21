@@ -220,7 +220,7 @@ method = "admin"
             .expect("Expected exactly one connector session to be created within the timeout");
 
         // 2. Connect a mock CLI RPC client.
-        let url = format!("ws://{}", addr);
+        let url = format!("ws://{addr}");
         let client = WsClientBuilder::default()
             .build(&url)
             .await
@@ -235,7 +235,7 @@ method = "admin"
                 assert_eq!(e.code(), crate::rpc::error_codes::INVALID_REQUEST);
                 assert!(e.message().contains("managed by the inbound router"));
             },
-            _ => panic!("Expected Call error, got {:?}", err),
+            _ => panic!("Expected Call error, got {err:?}"),
         }
 
         // 4. Attempt to save the connector session via RPC.
@@ -246,7 +246,7 @@ method = "admin"
                 assert_eq!(e.code(), crate::rpc::error_codes::INVALID_REQUEST);
                 assert!(e.message().contains("managed by the inbound router"));
             },
-            _ => panic!("Expected Call error, got {:?}", err),
+            _ => panic!("Expected Call error, got {err:?}"),
         }
     }
 }

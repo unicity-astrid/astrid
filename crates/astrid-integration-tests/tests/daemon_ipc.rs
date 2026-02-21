@@ -1,7 +1,7 @@
-//! Integration tests for daemon WebSocket IPC.
+//! Integration tests for daemon `WebSocket` IPC.
 //!
 //! These tests verify basic connectivity between the daemon server and
-//! client over JSON-RPC 2.0 WebSocket. They are deferred because the
+//! client over JSON-RPC 2.0 `WebSocket`. They are deferred because the
 //! daemon currently uses `ClaudeProvider` directly rather than a generic
 //! `LlmProvider`, so injecting a mock LLM requires refactoring.
 //!

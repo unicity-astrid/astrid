@@ -371,9 +371,11 @@ mod tests {
     #[test]
     fn test_model_config_debug_redacts_api_key() {
         use crate::types::ModelConfig;
-        let mut cfg = ModelConfig::default();
-        cfg.api_key = Some("sk-secret-12345".to_owned());
-        cfg.api_url = Some("https://my-proxy.example.com".to_owned());
+        let cfg = ModelConfig {
+            api_key: Some("sk-secret-12345".to_owned()),
+            api_url: Some("https://my-proxy.example.com".to_owned()),
+            ..Default::default()
+        };
 
         let debug_str = format!("{cfg:?}");
         assert!(
@@ -391,9 +393,11 @@ mod tests {
     #[test]
     fn test_model_config_serialize_omits_api_key() {
         use crate::types::ModelConfig;
-        let mut cfg = ModelConfig::default();
-        cfg.api_key = Some("sk-secret-12345".to_owned());
-        cfg.api_url = Some("https://my-proxy.example.com".to_owned());
+        let cfg = ModelConfig {
+            api_key: Some("sk-secret-12345".to_owned()),
+            api_url: Some("https://my-proxy.example.com".to_owned()),
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(

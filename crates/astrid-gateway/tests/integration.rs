@@ -158,14 +158,14 @@ async fn test_config_hot_reload() {
     // Initial config
     std::fs::write(
         &config_path,
-        r#"
+        r"
         [gateway]
         hot_reload = true
         health_interval_secs = 30
 
         [timeouts]
         request_secs = 60
-        "#,
+        ",
     )
     .unwrap();
 
@@ -181,14 +181,14 @@ async fn test_config_hot_reload() {
     // Update config
     std::fs::write(
         &config_path,
-        r#"
+        r"
         [gateway]
         hot_reload = true
         health_interval_secs = 30
 
         [timeouts]
         request_secs = 120
-        "#,
+        ",
     )
     .unwrap();
 

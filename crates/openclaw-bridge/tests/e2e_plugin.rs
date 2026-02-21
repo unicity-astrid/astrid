@@ -3,7 +3,7 @@
 //! Verifies that the shim wraps the plugin code correctly and includes
 //! all host function bindings needed for the 6 registered tools.
 //!
-//! The WASM compilation test requires the QuickJS kernel to be built.
+//! The WASM compilation test requires the `QuickJS` kernel to be built.
 //! If the kernel is a placeholder stub, the compile test is skipped.
 
 use std::collections::HashMap;
@@ -168,7 +168,7 @@ fn transpile_js_fixture_passthrough() {
 
 /// Compile the shimmed JS to WASM via the embedded Wizer + kernel.
 ///
-/// This test requires the real QuickJS kernel (not the placeholder stub).
+/// This test requires the real `QuickJS` kernel (not the placeholder stub).
 /// It is skipped if the kernel is too small to be real.
 #[test]
 fn compile_test_plugin_to_wasm() {
@@ -230,7 +230,7 @@ fn compile_test_plugin_to_wasm() {
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }
 
-/// Test transpiling a TypeScript plugin source.
+/// Test transpiling a `TypeScript` plugin source.
 #[test]
 fn transpile_typescript_plugin() {
     let ts_source = r#"

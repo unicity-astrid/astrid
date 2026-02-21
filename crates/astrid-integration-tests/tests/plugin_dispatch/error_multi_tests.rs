@@ -8,8 +8,8 @@ use astrid_test::{MockLlmTurn, MockToolCall};
 use super::fixtures::{FailingTool, TestPlugin, UpperTool, make_plugin};
 use super::helpers::build_runtime_with_plugins;
 
-/// Plugin tool that returns Err(...) from execute() produces a ToolCallResult
-/// with is_error = true and the error message in content.
+/// Plugin tool that returns Err(...) from `execute()` produces a `ToolCallResult`
+/// with `is_error` = true and the error message in content.
 #[tokio::test]
 async fn test_plugin_tool_error_propagation() {
     let ws = tempfile::tempdir().unwrap();

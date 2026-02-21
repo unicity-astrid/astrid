@@ -516,11 +516,11 @@ mod tests {
         // Create initial config
         std::fs::write(
             &config_path,
-            r#"
+            r"
             [gateway]
             hot_reload = true
             health_interval_secs = 30
-            "#,
+            ",
         )
         .unwrap();
 
@@ -533,11 +533,11 @@ mod tests {
         // Update config file
         std::fs::write(
             &config_path,
-            r#"
+            r"
             [gateway]
             hot_reload = true
             health_interval_secs = 60
-            "#,
+            ",
         )
         .unwrap();
 

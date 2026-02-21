@@ -5,7 +5,7 @@
 //! - Race condition in budget check+reserve (now atomic)
 //! - Workspace budget bypass via capability-authorized actions
 //! - Missing audit trail for session/workspace allowance creation
-//! - String-splitting path traversal check (now uses Path::components)
+//! - String-splitting path traversal check (now uses `Path::components`)
 //! - Expired allowance cleanup during atomic lookup
 //! - Race condition in workspace budget check+reserve (now atomic)
 

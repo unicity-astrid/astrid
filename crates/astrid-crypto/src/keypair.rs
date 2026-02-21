@@ -473,7 +473,7 @@ mod tests {
         let path = dir.path().join("bad.key");
 
         // Write wrong-length file
-        std::fs::write(&path, &[0u8; 16]).unwrap();
+        std::fs::write(&path, [0u8; 16]).unwrap();
 
         let result = KeyPair::load_or_generate(&path);
         assert!(matches!(result, Err(CryptoError::InvalidKeyLength { .. })));
