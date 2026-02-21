@@ -224,7 +224,7 @@ pub fn truncate_output(output: String) -> String {
     if output.len() <= MAX_OUTPUT_CHARS {
         return output;
     }
-    let mut truncated = output[..MAX_OUTPUT_CHARS].to_string();
+    let mut truncated = truncate_at_char_boundary(&output, MAX_OUTPUT_CHARS);
     truncated.push_str("\n\n... (output truncated — exceeded 30000 character limit)");
     truncated
 }
@@ -277,6 +277,20 @@ mod tests {
         let large = "x".repeat(40_000);
         let result = truncate_output(large);
         assert!(result.len() < 40_000);
+        assert!(result.contains("output truncated"));
+    }
+
+    #[test]
+    fn test_truncate_output_multibyte_boundary() {
+        let mut s = "x".repeat(MAX_OUTPUT_CHARS - 2);
+        s.push('🦀');
+        s.push_str("y".repeat(100).as_str());
+        // Length is initially: 29998 (x's) + 4 (crab) + 100 (y's) = 30102 bytes
+        // The truncation boundary (30000) falls inside the 4-byte crab emoji.
+        let result = truncate_output(s);
+        // Ensure no panic, and it truncates before the crab.
+        assert!(result.len() < MAX_OUTPUT_CHARS + 100);
+        assert!(result.starts_with(&"x".repeat(MAX_OUTPUT_CHARS - 2)));
         assert!(result.contains("output truncated"));
     }
 }
