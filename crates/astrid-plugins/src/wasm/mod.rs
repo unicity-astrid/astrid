@@ -28,7 +28,7 @@
 //!
 //! All tests must use `#[tokio::test(flavor = "multi_thread")]`.
 
-pub mod host_functions;
+pub mod host;
 pub mod host_state;
 pub mod loader;
 pub mod plugin;
