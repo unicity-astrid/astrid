@@ -39,7 +39,9 @@ pub async fn run_event_loop(
 ) {
     let mut state = TurnState {
         text_buffer: String::new(),
-        last_edit: Instant::now().checked_sub(EDIT_THROTTLE).unwrap(),
+        last_edit: Instant::now()
+            .checked_sub(EDIT_THROTTLE)
+            .expect("EDIT_THROTTLE underflow"),
         current_msg_id: placeholder_msg_id,
         finalized_text: false,
     };

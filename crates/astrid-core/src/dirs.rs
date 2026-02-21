@@ -364,8 +364,7 @@ impl WorkspaceDir {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code)]
-#[allow(clippy::disallowed_methods)]
+#[allow(unsafe_code, clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use std::sync::Mutex;

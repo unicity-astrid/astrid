@@ -179,7 +179,7 @@ fn validate_name_component(name: &str, kind: &str) -> PluginResult<()> {
     }
 
     let mut chars = name.chars();
-    let first = chars.next().unwrap();
+    let first = chars.next().expect("checked is_empty above");
 
     if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
         return Err(PluginError::InvalidPackageName {

@@ -1,7 +1,3 @@
-#![deny(unsafe_code)]
-#![warn(missing_docs)]
-#![deny(clippy::all)]
-#![warn(unreachable_pub)]
 //! Astrid CLI Mockup - UI/UX prototype for the interactive experience.
 //!
 //! This is a self-contained mockup for designing and testing the CLI experience.
@@ -14,6 +10,13 @@
 //!
 //! Or capture snapshots without interactive mode:
 //! `cargo run -p astrid-cli-mockup -- --snapshot showcase --steps 5`
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::io;
 
@@ -104,7 +107,7 @@ fn run_snapshot_mode(scenario: &str, snapshots: usize) {
 
         while advanced_this_round < advances_per_snapshot && total_advances < max_advances {
             if app.demo_player.is_some() {
-                let mut player = app.demo_player.take().unwrap();
+                let mut player = app.demo_player.take().expect("mockup error");
                 let complete = player.advance(&mut app);
                 if complete {
                     println!("\n=== Demo Complete (total advances: {total_advances}) ===\n");

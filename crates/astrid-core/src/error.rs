@@ -217,6 +217,7 @@ mod tests {
 
     #[test]
     fn test_result_type() {
+        #[allow(clippy::unnecessary_wraps)]
         fn returns_ok() -> SecurityResult<i32> {
             Ok(42)
         }

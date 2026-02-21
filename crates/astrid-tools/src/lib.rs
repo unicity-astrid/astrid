@@ -1,11 +1,14 @@
-#![deny(unsafe_code)]
-#![warn(missing_docs)]
-#![deny(clippy::all)]
-#![warn(unreachable_pub)]
 //! Built-in coding tools for the Astrid agent runtime.
 //!
 //! Provides 9 tools as direct Rust function calls (not MCP) for the hot-path
 //! coding operations: read, write, edit, search, execute, and identity.
+
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+#![deny(clippy::all)]
+#![warn(unreachable_pub)]
+#![deny(clippy::unwrap_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod bash;
 mod edit_file;

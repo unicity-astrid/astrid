@@ -320,7 +320,7 @@ mod tests {
         let config: Config = toml::from_str(DEFAULTS_TOML).unwrap();
         assert_eq!(config.model.provider, "claude");
         assert_eq!(config.model.max_tokens, 4096);
-        assert_eq!(config.budget.session_max_usd, 100.0);
+        assert!((config.budget.session_max_usd - 100.0).abs() < f64::EPSILON);
         assert_eq!(config.timeouts.request_secs, 120);
     }
 
@@ -374,7 +374,7 @@ mod tests {
         let cfg = ModelConfig {
             api_key: Some("sk-secret-12345".to_owned()),
             api_url: Some("https://my-proxy.example.com".to_owned()),
-            ..Default::default()
+            ..ModelConfig::default()
         };
 
         let debug_str = format!("{cfg:?}");
@@ -396,7 +396,7 @@ mod tests {
         let cfg = ModelConfig {
             api_key: Some("sk-secret-12345".to_owned()),
             api_url: Some("https://my-proxy.example.com".to_owned()),
-            ..Default::default()
+            ..ModelConfig::default()
         };
 
         let json = serde_json::to_string(&cfg).unwrap();

@@ -107,7 +107,11 @@ where
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
             // Inside a tokio runtime — use a scoped thread to avoid panic.
-            std::thread::scope(|s| s.spawn(|| handle.block_on(f)).join().unwrap())
+            std::thread::scope(|s| {
+                s.spawn(|| handle.block_on(f))
+                    .join()
+                    .expect("async thread panicked")
+            })
         },
         Err(_) => {
             // No runtime — create a lightweight current-thread runtime.

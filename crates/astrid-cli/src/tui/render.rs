@@ -50,7 +50,7 @@ fn markdown_to_spans<'a>(line: &str, theme: &Theme) -> Vec<Span<'a>> {
         .and_then(|s| s.strip_prefix(". "))
     {
         let indent = &line[..line.len().saturating_sub(trimmed.len())];
-        let num_char = trimmed.chars().next().unwrap();
+        let num_char = trimmed.chars().next().expect("trimmed matched a digit");
         spans.push(Span::styled(
             format!("{indent}{num_char}. "),
             Style::default().fg(theme.tool),

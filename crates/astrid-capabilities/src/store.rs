@@ -30,7 +30,11 @@ where
     F::Output: Send,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => std::thread::scope(|s| s.spawn(|| handle.block_on(f)).join().unwrap()),
+        Ok(handle) => std::thread::scope(|s| {
+            s.spawn(|| handle.block_on(f))
+                .join()
+                .expect("async thread panicked")
+        }),
         Err(_) => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
