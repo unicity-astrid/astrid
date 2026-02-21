@@ -956,9 +956,13 @@ mod tests {
     fn is_same_platform_empty_custom_values_are_equal() {
         // Two empty/whitespace-only Custom values both canonical to "" and compare equal.
         // The WASM boundary rejects these, but the public API should have defined behavior.
-        assert!(FrontendType::Custom(String::new()).is_same_platform(&FrontendType::Custom(String::new())));
         assert!(
-            FrontendType::Custom(String::new()).is_same_platform(&FrontendType::Custom("   ".into()))
+            FrontendType::Custom(String::new())
+                .is_same_platform(&FrontendType::Custom(String::new()))
+        );
+        assert!(
+            FrontendType::Custom(String::new())
+                .is_same_platform(&FrontendType::Custom("   ".into()))
         );
     }
 
