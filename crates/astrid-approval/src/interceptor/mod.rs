@@ -16,10 +16,15 @@
 //!    - If high-risk and no capability -> request approval
 //! 5. **Audit** — log the decision
 
+/// Workspace sandboxing allowances.
 pub mod allowance;
+/// Audit logging integrations.
 pub mod audit;
+/// Budget enforcement integrations.
 pub mod budget;
+/// Capability token verification.
 pub mod capability;
+/// Types shared across interceptors.
 pub mod types;
 
 pub use allowance::AllowanceValidator;
@@ -192,10 +197,10 @@ impl SecurityInterceptor {
                             )
                             .unwrap_or_default();
 
-                        let mut result = self
+                        let result = self
                             .capability_validator
                             .handle_allow_always(action, approval_audit_id.clone());
-                        if let Ok(mut r) = result {
+                        if let Ok(r) = result {
                             let audit_id = self.audit_allowed(action, &r);
                             return Ok(InterceptResult {
                                 proof: r,

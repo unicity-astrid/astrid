@@ -24,9 +24,11 @@
 //! }
 //! ```
 
-
+/// Error types for frontends.
 pub mod error;
+/// Trait definitions for frontends.
 pub mod traits;
+/// Core types for frontends.
 pub mod types;
 
 pub use error::{FrontendError, FrontendResult};

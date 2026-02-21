@@ -731,6 +731,33 @@ impl Plugin for McpPlugin {
     }
 }
 
+/// Create a plugin from a manifest, choosing the appropriate implementation
+/// based on the entry point type.
+///
+/// # Errors
+///
+/// - [`PluginError::McpClientRequired`] if the entry point is `Mcp` but
+///   no `McpClient` was provided.
+/// - [`PluginError::UnsupportedEntryPoint`] if the entry point type is
+///   not supported (e.g. `Wasm` — handled by a different subsystem).
+pub fn create_plugin(
+    manifest: PluginManifest,
+    mcp_client: Option<McpClient>,
+    plugin_dir: Option<PathBuf>,
+) -> PluginResult<Box<dyn Plugin>> {
+    match &manifest.entry_point {
+        PluginEntryPoint::Wasm { .. } => Err(PluginError::UnsupportedEntryPoint("wasm".into())),
+        PluginEntryPoint::Mcp { .. } => {
+            let client = mcp_client.ok_or(PluginError::McpClientRequired)?;
+            let mut plugin = McpPlugin::new(manifest, client);
+            if let Some(dir) = plugin_dir {
+                plugin = plugin.with_plugin_dir(dir);
+            }
+            Ok(Box::new(plugin))
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1169,32 +1196,5 @@ mod tests {
         let connectors = plugin.refresh_connectors();
         assert_eq!(connectors.len(), 1);
         assert_eq!(connectors[0].name, "discord");
-    }
-}
-
-/// Create a plugin from a manifest, choosing the appropriate implementation
-/// based on the entry point type.
-///
-/// # Errors
-///
-/// - [`PluginError::McpClientRequired`] if the entry point is `Mcp` but
-///   no `McpClient` was provided.
-/// - [`PluginError::UnsupportedEntryPoint`] if the entry point type is
-///   not supported (e.g. `Wasm` — handled by a different subsystem).
-pub fn create_plugin(
-    manifest: PluginManifest,
-    mcp_client: Option<McpClient>,
-    plugin_dir: Option<PathBuf>,
-) -> PluginResult<Box<dyn Plugin>> {
-    match &manifest.entry_point {
-        PluginEntryPoint::Wasm { .. } => Err(PluginError::UnsupportedEntryPoint("wasm".into())),
-        PluginEntryPoint::Mcp { .. } => {
-            let client = mcp_client.ok_or(PluginError::McpClientRequired)?;
-            let mut plugin = McpPlugin::new(manifest, client);
-            if let Some(dir) = plugin_dir {
-                plugin = plugin.with_plugin_dir(dir);
-            }
-            Ok(Box::new(plugin))
-        },
     }
 }

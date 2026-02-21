@@ -20,37 +20,6 @@ use crate::theme::Theme;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Best-effort daemon notification. Prints a warning on failure, never fails the command.
-
-/// Show detailed information about an installed plugin.
-
-/// List installed plugins with state information.
-///
-/// Connects to the daemon via JSON-RPC if running (live state),
-/// falls back to manifest scan (static) otherwise.
-
-/// Compile a plugin without loading it.
-
-/// Remove an installed plugin.
-
-/// Install a plugin from a local path, registry, or git source.
-
-/// Install from the `OpenClaw` npm registry.
-///
-/// Uses a staging directory for atomicity: compile into a temp dir on the
-/// same filesystem, rename into place, then update lockfile. If the lockfile
-/// update fails, the rename is rolled back.
-
-/// Install from a git repository (GitHub shorthand or generic git URL).
-///
-/// Fetches the repository, detects the plugin type, compiles if needed,
-/// and installs atomically.
-
-/// Install from a local path.
-///
-/// Uses a staging directory for atomicity: copy/compile into a temp dir,
-/// rename into place, then update lockfile. If the lockfile update fails,
-/// the rename is rolled back.
 use super::helpers::{notify_daemon, resolve_lockfile_path, resolve_target_dir};
 pub(crate) async fn install_plugin(
     source: &str,

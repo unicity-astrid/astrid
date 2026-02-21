@@ -134,8 +134,11 @@
 // Allow "WhatsApp" in docs - it's a product name, not code
 #![allow(clippy::doc_markdown)]
 
+/// Error types for identity management.
 pub mod error;
+/// Trait definitions for identity storage.
 pub mod store;
+/// Core identity types.
 pub mod types;
 
 pub use error::{IdentityError, IdentityResult};

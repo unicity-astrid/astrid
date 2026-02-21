@@ -1,33 +1,54 @@
+/// Channel communications with host capabilities.
 pub mod channel;
+/// File system operations for plugins.
 pub mod fs;
+/// HTTP network executions for plugins.
 pub mod http;
+/// Key-Value persistent storage primitives.
 pub mod kv;
+/// `QuickJS` ABI definitions.
 pub mod shim;
+/// System configuration primitives.
 pub mod sys;
 
 use crate::wasm::host_state::HostState;
 use extism::{PluginBuilder, UserData, ValType};
 
+/// Registry of explicitly supported capability functions exposed to the WASM Runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WasmHostFunction {
+    /// Send a capability message over a shared pipeline.
     ChannelSend,
+    /// Predict existence of a filepath.
     FsExists,
+    /// Create a new directory.
     FsMkdir,
+    /// Read contents of a directory.
     FsReaddir,
+    /// Request metadata status of a file.
     FsStat,
+    /// Unlink (Delete) a file.
     FsUnlink,
+    /// Retrieve system execution config.
     GetConfig,
+    /// Execute an HTTP request payload.
     HttpRequest,
+    /// Retrieve a persistence KV.
     KvGet,
+    /// Write a persistence KV.
     KvSet,
+    /// Output standard log statements.
     Log,
+    /// Open and read a filesystem file.
     ReadFile,
+    /// Register a custom system connector to the host.
     RegisterConnector,
+    /// Mutate a filesystem file.
     WriteFile,
 }
 
 impl WasmHostFunction {
-    /// Ordered precisely as expected by the QuickJS shim kernel.
+    /// Ordered precisely as expected by the `QuickJS` shim kernel.
     pub const ALL: [Self; 14] = [
         Self::ChannelSend,
         Self::FsExists,
@@ -45,10 +66,14 @@ impl WasmHostFunction {
         Self::WriteFile,
     ];
 
+    /// Convert a raw integer index mapping back to a strongly typed enum variant.
+    #[must_use]
     pub fn from_index(idx: usize) -> Option<Self> {
         Self::ALL.get(idx).copied()
     }
 
+    /// Retrieve the universally bound identifier string used across the extension ABI.
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Self::ChannelSend => "astrid_channel_send",
@@ -68,46 +93,44 @@ impl WasmHostFunction {
         }
     }
 
-    pub fn arg_count(self) -> i32 {
+    /// Compute the number of strongly typed arguments required for this WASM function.
+    #[must_use]
+    pub fn arg_count(self) -> usize {
         match self {
-            Self::ChannelSend => 3,
-            Self::FsExists => 1,
-            Self::FsMkdir => 1,
-            Self::FsReaddir => 1,
-            Self::FsStat => 1,
-            Self::FsUnlink => 1,
-            Self::GetConfig => 1,
-            Self::HttpRequest => 1,
-            Self::KvGet => 1,
-            Self::KvSet => 2,
-            Self::Log => 2,
-            Self::ReadFile => 1,
-            Self::RegisterConnector => 3,
-            Self::WriteFile => 2,
+            Self::FsExists
+            | Self::FsMkdir
+            | Self::FsReaddir
+            | Self::FsStat
+            | Self::FsUnlink
+            | Self::GetConfig
+            | Self::HttpRequest
+            | Self::KvGet
+            | Self::ReadFile => 1,
+            Self::KvSet | Self::Log | Self::WriteFile => 2,
+            Self::ChannelSend | Self::RegisterConnector => 3,
         }
     }
 
+    /// Defines the low-level expected ABI return integer block type.
+    #[must_use]
     pub fn return_type(self) -> i32 {
         use shim::{TYPE_I64, TYPE_VOID};
         match self {
-            Self::ChannelSend => TYPE_I64,
-            Self::FsExists => TYPE_I64,
-            Self::FsMkdir => TYPE_VOID,
-            Self::FsReaddir => TYPE_I64,
-            Self::FsStat => TYPE_I64,
-            Self::FsUnlink => TYPE_VOID,
-            Self::GetConfig => TYPE_I64,
-            Self::HttpRequest => TYPE_I64,
-            Self::KvGet => TYPE_I64,
-            Self::KvSet => TYPE_VOID,
-            Self::Log => TYPE_VOID,
-            Self::ReadFile => TYPE_I64,
-            Self::RegisterConnector => TYPE_I64,
-            Self::WriteFile => TYPE_VOID,
+            Self::FsMkdir | Self::FsUnlink | Self::KvSet | Self::Log | Self::WriteFile => TYPE_VOID,
+            Self::ChannelSend
+            | Self::FsExists
+            | Self::FsReaddir
+            | Self::FsStat
+            | Self::GetConfig
+            | Self::HttpRequest
+            | Self::KvGet
+            | Self::ReadFile
+            | Self::RegisterConnector => TYPE_I64,
         }
     }
 }
 
+/// Hydrates an isolated WASM Extism Runtime with capabilities bound securely to the `HostState` lifecycle environment.
 pub fn register_host_functions(
     mut builder: PluginBuilder,
     user_data: UserData<HostState>,
@@ -115,7 +138,7 @@ pub fn register_host_functions(
     for func in WasmHostFunction::ALL {
         let ud = user_data.clone();
 
-        let args = vec![extism::PTR; func.arg_count() as usize];
+        let args = vec![extism::PTR; func.arg_count()];
         let rets = if func.return_type() == shim::TYPE_I64 {
             vec![extism::PTR]
         } else {

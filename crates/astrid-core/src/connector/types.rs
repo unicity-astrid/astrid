@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 use crate::identity::FrontendType;
-use crate::frontend::{Attachment, ElicitationRequest, ElicitationResponse, ApprovalRequest, ApprovalDecision};
+use crate::frontend::Attachment;
 use super::error::{ConnectorError, ConnectorResult};
 
 // Limits

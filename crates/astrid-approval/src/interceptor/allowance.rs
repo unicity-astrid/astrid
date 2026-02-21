@@ -7,15 +7,19 @@ use std::sync::Arc;
 use super::types::InterceptProof;
 use crate::action::SensitiveAction;
 use crate::allowance::{Allowance, AllowanceId, AllowancePattern, AllowanceStore};
-use crate::error::ApprovalResult;
 
+/// Validates if an action is permitted by a given workspace allowance.
 pub struct AllowanceValidator {
+    /// The backing allowance store definition mappings.
     pub store: Arc<AllowanceStore>,
+    /// The runtime verification keys for token validation.
     pub runtime_key: Arc<KeyPair>,
+    /// Optional workspace root restriction for allowances.
     pub workspace_root: Option<PathBuf>,
 }
 
 impl AllowanceValidator {
+    /// Creates a new `AllowanceValidator`.
     pub fn new(
         store: Arc<AllowanceStore>,
         runtime_key: Arc<KeyPair>,
@@ -28,6 +32,7 @@ impl AllowanceValidator {
         }
     }
 
+    /// Creates a new allowance token based on a specific action intent.
     pub fn create_allowance_for_action(
         &self,
         action: &SensitiveAction,
@@ -74,6 +79,8 @@ impl AllowanceValidator {
     }
 }
 
+/// Extracts the exact resource permission and pattern required to execute a specific action.
+#[must_use] 
 pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<AllowancePattern> {
     match action {
         SensitiveAction::McpToolCall { server, tool } => Some(AllowancePattern::ExactTool {

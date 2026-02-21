@@ -28,6 +28,7 @@
 //!
 //! All tests must use `#[tokio::test(flavor = "multi_thread")]`.
 
+/// Host capability bindings exposed to the Extism runtime.
 pub mod host;
 pub mod host_state;
 pub mod loader;

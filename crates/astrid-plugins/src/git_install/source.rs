@@ -1,6 +1,7 @@
+use super::validate::{validate_github_component, validate_git_ref, validate_url_scheme, validate_ssh_host, validate_ssh_path};
 use crate::error::{PluginError, PluginResult};
-use super::validate::*;
 
+/// Parsed git source specifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitSource {
     /// GitHub shorthand: `github:org/repo[@ref]`.
@@ -225,7 +226,11 @@ impl GitSource {
 /// For git URLs, the `@` delimiter is only recognized in the path portion
 /// (after the first `/` past `://`) to avoid splitting on `@` in the
 /// authority of SSH URLs like `ssh://git@github.com/...`.
-fn split_ref(s: &str) -> (String, Option<String>) {
+/// Split a git repository URL from an optional `@ref` suffix.
+///
+/// Ensures we do not split on `@` symbols belonging to credentials (e.g. `ssh://git@host`).
+#[must_use] 
+pub fn split_ref(s: &str) -> (String, Option<String>) {
     // For URLs containing "://", only look for "@" in the path portion
     // (after the authority), not in user@host.
     if let Some(scheme_end) = s.find("://") {

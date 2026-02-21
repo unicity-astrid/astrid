@@ -3,6 +3,8 @@ use crate::action::SensitiveAction;
 use astrid_audit::{AuditAction, AuthorizationProof as AuditAuthProof};
 use astrid_core::types::Permission;
 
+/// Converts a generic sensitive action struct to an exact auditable string map payload.
+#[must_use] 
 pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
     match action {
         SensitiveAction::McpToolCall { server, tool } => AuditAction::McpToolCall {
@@ -67,6 +69,8 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
     }
 }
 
+/// Converts an internal intercept proof into a serializable authorization proof format for the global audit log.
+#[must_use] 
 pub fn intercept_proof_to_audit(proof: &InterceptProof) -> AuditAuthProof {
     match proof {
         InterceptProof::Capability { token_id }

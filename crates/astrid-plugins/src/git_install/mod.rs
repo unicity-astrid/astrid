@@ -8,14 +8,15 @@
 //! returned for the caller to detect the plugin type and route to the
 //! appropriate install pipeline.
 
-
-
-pub mod source;
-pub mod validate;
+/// Network retrieval and unpacking primitives.
 pub mod fetch;
+/// Git source definitions and primitives.
+pub mod source;
 #[cfg(test)]
-pub mod tests;
+mod tests;
+/// Security validation utilities for strings.
+pub mod validate;
 
-pub use source::GitSource;
 #[cfg(feature = "http")]
 pub use fetch::fetch_git_source;
+pub use source::GitSource;

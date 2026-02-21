@@ -15,16 +15,16 @@ pub(crate) fn shim_get_function_arg_type(
     let func_idx = inputs[0].unwrap_i32();
     let arg_idx = inputs[1].unwrap_i32();
 
-    #[allow(clippy::cast_sign_loss)]
-    let type_code = if let Some(func) = WasmHostFunction::from_index(func_idx as usize) {
-        if (0..func.arg_count()).contains(&arg_idx) {
-            TYPE_I64
-        } else {
-            TYPE_VOID
-        }
-    } else {
-        TYPE_VOID
-    };
+    let type_code = usize::try_from(func_idx)
+        .ok()
+        .and_then(WasmHostFunction::from_index)
+        .map_or(TYPE_VOID, |func| {
+            if usize::try_from(arg_idx).is_ok_and(|idx| idx < func.arg_count()) {
+                TYPE_I64
+            } else {
+                TYPE_VOID
+            }
+        });
 
     outputs[0] = Val::I32(type_code);
     Ok(())
@@ -39,12 +39,10 @@ pub(crate) fn shim_get_function_return_type(
 ) -> Result<(), Error> {
     let func_idx = inputs[0].unwrap_i32();
 
-    #[allow(clippy::cast_sign_loss)]
-    let type_code = if let Some(func) = WasmHostFunction::from_index(func_idx as usize) {
-        func.return_type()
-    } else {
-        TYPE_VOID
-    };
+    let type_code = usize::try_from(func_idx)
+        .ok()
+        .and_then(WasmHostFunction::from_index)
+        .map_or(TYPE_VOID, WasmHostFunction::return_type);
 
     outputs[0] = Val::I32(type_code);
     Ok(())
@@ -60,15 +58,18 @@ pub(crate) fn shim_invoke_host_func(
     let func_idx = inputs[0].unwrap_i32();
     let args = &inputs[1..];
 
-    let Some(func) = WasmHostFunction::from_index(func_idx as usize) else {
+    let Some(func) = usize::try_from(func_idx)
+        .ok()
+        .and_then(WasmHostFunction::from_index)
+    else {
         outputs[0] = Val::I64(0);
         return Ok(());
     };
 
-    let arg_count = func.arg_count() as usize;
+    let arg_count = func.arg_count();
     let mut fn_inputs = Vec::with_capacity(arg_count);
-    for i in 0..arg_count {
-        fn_inputs.push(Val::I64(args[i].unwrap_i64()));
+    for arg in args.iter().take(arg_count) {
+        fn_inputs.push(Val::I64(arg.unwrap_i64()));
     }
 
     let mut fn_outputs = if func.return_type() == TYPE_VOID {
@@ -139,7 +140,12 @@ pub(crate) fn shim_invoke_host_func(
             user_data,
         )?,
         WasmHostFunction::Log => {
-            crate::wasm::host::sys::astrid_log_impl(plugin, &fn_inputs, &mut fn_outputs, user_data)?
+            crate::wasm::host::sys::astrid_log_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?;
         },
         WasmHostFunction::ReadFile => crate::wasm::host::fs::astrid_read_file_impl(
             plugin,
@@ -153,7 +159,7 @@ pub(crate) fn shim_invoke_host_func(
                 &fn_inputs,
                 &mut fn_outputs,
                 user_data,
-            )?
+            )?;
         },
         WasmHostFunction::WriteFile => crate::wasm::host::fs::astrid_write_file_impl(
             plugin,
@@ -163,10 +169,10 @@ pub(crate) fn shim_invoke_host_func(
         )?,
     }
 
-    if !fn_outputs.is_empty() {
-        outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
-    } else {
+    if fn_outputs.is_empty() {
         outputs[0] = Val::I64(0);
+    } else {
+        outputs[0] = Val::I64(fn_outputs[0].unwrap_i64());
     }
 
     Ok(())

@@ -1,11 +1,9 @@
 //! MCP protocol communication abstractions.
 
-use rmcp::model::{CallToolRequestParams, ClientNotification, CustomNotification};
-use rmcp::service::{Peer, RoleClient, RunningService};
-use rmcp::transport::TokioChildProcess;
+use rmcp::service::{Peer, RoleClient};
 use serde_json::Value;
 
-use crate::error::{PluginError, PluginResult};
+use crate::error::PluginResult;
 
 /// Trait to define how Astrid communicates with an MCP Server process.
 #[async_trait::async_trait]

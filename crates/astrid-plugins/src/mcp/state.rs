@@ -19,6 +19,8 @@ pub struct McpConnection {
 }
 
 impl McpConnection {
+    /// Initializes a new `OpenMcpConnection` tracker.
+    #[must_use] 
     pub fn new(
         plugin_id: crate::plugin::PluginId,
         service: PluginMcpService,
@@ -31,10 +33,13 @@ impl McpConnection {
         }
     }
 
+    /// Evaluates if the task running the connection loop is still active.
+    #[must_use] 
     pub fn is_alive(&self) -> bool {
         self.service.as_ref().is_some_and(|s| !s.is_closed())
     }
 
+    /// Acquires and removes the sender channel to the running MCP service, if still attached.
     pub fn take_service(&mut self) -> Option<PluginMcpService> {
         self.service.take()
     }

@@ -22,7 +22,7 @@
 //! to the namespace `plugin:{plugin_id}`. Plugins cannot access each other's data.
 
 #![deny(unsafe_code)]
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 #![deny(clippy::all)]
 #![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used)]

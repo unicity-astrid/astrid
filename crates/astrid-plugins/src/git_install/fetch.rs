@@ -1,7 +1,7 @@
+use super::source::GitSource;
+use crate::error::{PluginError, PluginResult};
 use std::path::PathBuf;
 use std::process::Command;
-use crate::error::{PluginError, PluginResult};
-use super::source::GitSource;
 
 const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024;
 
@@ -278,7 +278,8 @@ fn extract_github_tarball(data: &[u8], dest: &std::path::Path) -> PluginResult<P
 }
 
 /// Strip the first path component (e.g., `org-repo-sha/src/main.js` → `src/main.js`).
-fn strip_first_component(path: &std::path::Path) -> PathBuf {
+#[must_use] 
+pub fn strip_first_component(path: &std::path::Path) -> PathBuf {
     let mut components = path.components();
     components.next(); // skip first
     components.as_path().to_path_buf()

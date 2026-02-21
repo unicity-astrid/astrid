@@ -1,6 +1,5 @@
 use astrid_capabilities::{CapabilityStore, CapabilityToken, ResourcePattern, TokenScope};
 use astrid_core::types::Permission;
-use astrid_core::types::TokenId;
 use astrid_crypto::KeyPair;
 use std::sync::Arc;
 
@@ -9,22 +8,33 @@ use super::types::InterceptProof;
 use crate::action::SensitiveAction;
 use crate::error::{ApprovalError, ApprovalResult};
 
+/// Enforces that agents only execute requests they explicitly have tokens to authorize.
 pub struct CapabilityValidator {
+    /// Active storage matching tokens to resources.
     pub store: Arc<CapabilityStore>,
+    /// Global keypair validating token authenticity.
     pub runtime_key: Arc<KeyPair>,
 }
 
 impl CapabilityValidator {
+    /// Creates a new `CapabilityValidator`.
     pub fn new(store: Arc<CapabilityStore>, runtime_key: Arc<KeyPair>) -> Self {
         Self { store, runtime_key }
     }
 
+    /// Cross-references a requested sensitive action against actively issued capability tokens.
+    #[must_use]
     pub fn check_capability(&self, action: &SensitiveAction) -> Option<InterceptProof> {
         let (resource, permission) = action_to_resource_permission(action)?;
         let token = self.store.find_capability(&resource, permission)?;
         Some(InterceptProof::Capability { token_id: token.id })
     }
 
+    /// Commits an "allow always" ruling by generating a capability token and storing it for future bypasses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the action cannot be mapped to a resource, or if the resource pattern is invalid.
     pub fn handle_allow_always(
         &self,
         action: &SensitiveAction,
@@ -66,6 +76,8 @@ impl CapabilityValidator {
     }
 }
 
+/// Computes the exact pattern matching definition and intent for a generic `SensitiveAction`.
+#[must_use]
 pub fn action_to_resource_permission(action: &SensitiveAction) -> Option<(String, Permission)> {
     match action {
         SensitiveAction::McpToolCall { server, tool } => {
