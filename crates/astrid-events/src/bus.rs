@@ -139,8 +139,7 @@ impl Clone for EventBus {
 pub struct EventReceiver {
     receiver: broadcast::Receiver<Arc<AstridEvent>>,
     /// Optional topic pattern. If specified, only `AstridEvent::Ipc` messages matching
-    /// this pattern will be yielded (along with non-IPC events if desired, but typically
-    /// IPC receivers only want IPC messages).
+    /// this pattern will be yielded (non-IPC events will be strictly filtered out).
     topic_pattern: Option<String>,
 }
 

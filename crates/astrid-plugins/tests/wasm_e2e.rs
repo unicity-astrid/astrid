@@ -65,7 +65,7 @@ fn build_test_plugin(
         ScopedKvStore::new(store, "plugin:test-all-endpoints").expect("create scoped KV store");
 
     let host_state = HostState {
-        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test-all-endpoints".as_bytes()),
+        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test-all-endpoints".as_bytes()),
         plugin_id: PluginId::from_static("test-all-endpoints"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
@@ -107,7 +107,7 @@ fn build_connector_plugin(
     let (tx, rx) = mpsc::channel(256);
 
     let host_state = HostState {
-        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test-connector".as_bytes()),
+        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test-connector".as_bytes()),
         plugin_id: PluginId::from_static("test-connector"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
@@ -534,6 +534,7 @@ async fn host_ipc_publish_and_subscribe() {
     assert_eq!(parsed["topic"], "test.topic.123");
     assert_eq!(parsed["payload"], "hello ipc");
     assert!(parsed["subscription_handle"].as_str().is_some());
+    assert_eq!(parsed["unsubscribed"], true);
 
     let _ = std::fs::remove_dir_all(&workspace);
 }

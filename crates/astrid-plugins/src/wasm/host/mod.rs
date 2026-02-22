@@ -39,6 +39,8 @@ pub enum WasmHostFunction {
     IpcPublish,
     /// Subscribe to IPC events via the host event bus.
     IpcSubscribe,
+    /// Unsubscribe from an IPC event subscription.
+    IpcUnsubscribe,
     /// Retrieve a persistence KV.
     KvGet,
     /// Write a persistence KV.
@@ -55,7 +57,7 @@ pub enum WasmHostFunction {
 
 impl WasmHostFunction {
     /// Ordered precisely as expected by the `QuickJS` shim kernel.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::ChannelSend,
         Self::FsExists,
         Self::FsMkdir,
@@ -66,6 +68,7 @@ impl WasmHostFunction {
         Self::HttpRequest,
         Self::IpcPublish,
         Self::IpcSubscribe,
+        Self::IpcUnsubscribe,
         Self::KvGet,
         Self::KvSet,
         Self::Log,
@@ -94,6 +97,7 @@ impl WasmHostFunction {
             Self::HttpRequest => "astrid_http_request",
             Self::IpcPublish => "astrid_ipc_publish",
             Self::IpcSubscribe => "astrid_ipc_subscribe",
+            Self::IpcUnsubscribe => "astrid_ipc_unsubscribe",
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::Log => "astrid_log",
@@ -115,6 +119,7 @@ impl WasmHostFunction {
             | Self::GetConfig
             | Self::HttpRequest
             | Self::IpcSubscribe
+            | Self::IpcUnsubscribe
             | Self::KvGet
             | Self::ReadFile => 1,
             Self::KvSet | Self::Log | Self::WriteFile | Self::IpcPublish => 2,
@@ -130,6 +135,7 @@ impl WasmHostFunction {
             Self::FsMkdir
             | Self::FsUnlink
             | Self::IpcPublish
+            | Self::IpcUnsubscribe
             | Self::KvSet
             | Self::Log
             | Self::WriteFile => TYPE_VOID,
@@ -148,6 +154,7 @@ impl WasmHostFunction {
 }
 
 /// Hydrates an isolated WASM Extism Runtime with capabilities bound securely to the `HostState` lifecycle environment.
+#[allow(clippy::too_many_lines)]
 pub fn register_host_functions(
     mut builder: PluginBuilder,
     user_data: UserData<HostState>,
@@ -196,6 +203,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::IpcSubscribe => {
                 builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_subscribe_impl)
+            },
+            WasmHostFunction::IpcUnsubscribe => {
+                builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_unsubscribe_impl)
             },
             WasmHostFunction::KvGet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_get_impl)

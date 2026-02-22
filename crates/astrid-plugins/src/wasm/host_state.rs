@@ -119,7 +119,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -154,7 +154,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -194,7 +194,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -230,7 +230,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -284,7 +284,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,

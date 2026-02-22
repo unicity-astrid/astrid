@@ -66,6 +66,12 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
+    let topic_pattern_ptr = inputs[0].unwrap_i64();
+    let topic_pattern_len = plugin.memory_length(topic_pattern_ptr.cast_unsigned())?;
+    if topic_pattern_len > 256 {
+        return Err(Error::msg("Topic pattern exceeds maximum allowed length (256 bytes)"));
+    }
+
     let topic_pattern: String = plugin.memory_get_val(&inputs[0])?;
 
     let ud = user_data.get()?;
@@ -90,5 +96,29 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     let handle_str = handle_id.to_string();
     let mem = plugin.memory_new(&handle_str)?;
     outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_ipc_unsubscribe_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    _outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let handle_str: String = plugin.memory_get_val(&inputs[0])?;
+    let handle_id: u64 = handle_str
+        .parse()
+        .map_err(|_| Error::msg("Invalid subscription handle format"))?;
+
+    let ud = user_data.get()?;
+    let mut state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if state.subscriptions.remove(&handle_id).is_none() {
+        return Err(Error::msg("Subscription handle not found"));
+    }
+
     Ok(())
 }

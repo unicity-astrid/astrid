@@ -52,6 +52,7 @@ extern "ExtismHost" {
     fn astrid_http_request(request_json: String) -> String;
     fn astrid_ipc_publish(topic: String, payload: String);
     fn astrid_ipc_subscribe(topic: String) -> String;
+    fn astrid_ipc_unsubscribe(handle: String);
 }
 
 // ---------------------------------------------------------------------------
@@ -398,11 +399,15 @@ fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     
     // Publish
     unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
+    
+    // Unsubscribe
+    unsafe { astrid_ipc_unsubscribe(handle_id.clone())? };
 
     let result = serde_json::json!({
         "topic": topic,
         "payload": payload,
-        "subscription_handle": handle_id
+        "subscription_handle": handle_id,
+        "unsubscribed": true
     });
 
     Ok(ToolOutput {
