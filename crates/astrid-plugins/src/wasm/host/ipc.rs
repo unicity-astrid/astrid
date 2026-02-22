@@ -38,11 +38,11 @@ pub(crate) fn astrid_ipc_publish_impl(
     // Attempt to deserialize payload. If it fails, wrap it in Custom.
     let payload = if let Ok(p) = serde_json::from_slice::<IpcPayload>(&payload_bytes) {
         p
-    } else {
+    } else if let Ok(data) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
         // Fallback to custom unstructured data
-        let data = serde_json::from_slice::<serde_json::Value>(&payload_bytes)
-            .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(&payload_bytes).into_owned()));
         IpcPayload::Custom { data }
+    } else {
+        return Err(Error::msg("IPC payload is neither a recognized schema nor valid JSON"));
     };
 
     let message = IpcMessage::new(topic, payload, state.plugin_uuid);

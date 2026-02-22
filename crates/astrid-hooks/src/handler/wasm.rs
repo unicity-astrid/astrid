@@ -182,7 +182,7 @@ impl WasmHandler {
         };
 
         let host_state = HostState {
-            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, "hook-wasm".as_bytes()),
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("hook-wasm"),
             workspace_root: self.workspace_root.clone(),
             kv,
