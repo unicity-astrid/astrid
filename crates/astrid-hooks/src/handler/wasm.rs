@@ -181,10 +181,20 @@ impl WasmHandler {
                 .map_err(|e| HandlerError::WasmFailed(format!("failed to create KV store: {e}")))?
         };
 
+        let vfs = astrid_vfs::HostVfs::new();
+        let root_handle = astrid_capabilities::DirHandle::new();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(vfs.register_dir(root_handle.clone(), self.workspace_root.clone()));
+        });
+
         let host_state = HostState {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("hook-wasm"),
             workspace_root: self.workspace_root.clone(),
+            vfs: Arc::new(vfs),
+            vfs_root_handle: root_handle,
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),

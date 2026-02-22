@@ -29,13 +29,16 @@ pub(crate) fn astrid_ipc_publish_impl(
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
     // Check rate limit and quotas using the length *before* allocating the memory
-    state
-        .ipc_limiter
-        .check_quota(
-            state.plugin_uuid,
-            payload_len.try_into().unwrap_or(usize::MAX),
-        )
-        .map_err(|err| Error::msg(format!("IPC rate limit exceeded: {err}")))?;
+    let quota_code = state.ipc_limiter.check_quota(
+        state.plugin_uuid,
+        payload_len.try_into().unwrap_or(usize::MAX),
+    );
+
+    if quota_code == -2 {
+        return Err(Error::msg("Payload exceeds maximum IPC size (5MB)"));
+    } else if quota_code == -1 {
+        return Err(Error::msg("IPC rate limit exceeded (10MB/sec)"));
+    }
 
     let topic: String = plugin.memory_get_val(&inputs[0])?;
     let payload_bytes: Vec<u8> = plugin.memory_get_val(&inputs[1])?;

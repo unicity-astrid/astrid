@@ -57,12 +57,14 @@
 pub mod prelude;
 
 mod error;
+mod handle;
 mod pattern;
 mod store;
 mod token;
 mod validator;
 
 pub use error::{CapabilityError, CapabilityResult};
+pub use handle::{DirHandle, FileHandle};
 pub use pattern::{ResourcePattern, ResourceUri};
 pub use store::CapabilityStore;
 pub use token::{AuditEntryId, CapabilityToken, TokenBuilder, TokenScope};
