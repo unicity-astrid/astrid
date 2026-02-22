@@ -60,6 +60,7 @@ pub struct SecurityInterceptor {
     policy: SecurityPolicy,
     audit_log: Arc<AuditLog>,
     session_id: SessionId,
+    user_id: [u8; 8],
 }
 
 impl SecurityInterceptor {
@@ -79,6 +80,7 @@ impl SecurityInterceptor {
         workspace_budget_tracker: Option<Arc<WorkspaceBudgetTracker>>,
     ) -> Self {
         Self {
+            user_id: runtime_key.key_id(),
             capability_validator: CapabilityValidator::new(capability_store, runtime_key.clone()),
             budget_validator: BudgetValidator::new(budget_tracker, workspace_budget_tracker),
             allowance_validator: AllowanceValidator::new(
@@ -175,7 +177,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -197,7 +199,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -222,7 +224,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -247,7 +249,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -301,7 +303,7 @@ impl SecurityInterceptor {
     /// Log an allowed action to the audit trail.
     fn audit_allowed(&self, action: &SensitiveAction, proof: &InterceptProof) -> AuditEntryId {
         let audit_action = sensitive_action_to_audit(action);
-        let auth_proof = intercept_proof_to_audit(proof);
+        let auth_proof = intercept_proof_to_audit(proof, self.user_id);
 
         match self.audit_log.append(
             self.session_id.clone(),
@@ -574,6 +576,15 @@ mod tests {
             count, 1,
             "one-time approval should create exactly one audit entry"
         );
+
+        let entries = t.audit_log.get_session_entries(&t.session_id).unwrap();
+        let entry = entries.first().unwrap();
+        match &entry.authorization {
+            astrid_audit::AuthorizationProof::UserApproval { user_id, .. } => {
+                assert_eq!(user_id, &t.interceptor.user_id);
+            },
+            _ => panic!("Expected UserApproval authorization proof"),
+        }
     }
 
     // -----------------------------------------------------------------------
