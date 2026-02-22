@@ -90,11 +90,14 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     // For Phase 1, we store the receiver in HostState to keep the subscription alive.
     // We use a simple counter for handle IDs.
     let handle_id = state.next_subscription_id;
+    let handle_str = handle_id.to_string();
+    
+    // Allocate memory in guest FIRST to avoid leaking the receiver on failure
+    let mem = plugin.memory_new(&handle_str)?;
+
     state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
     state.subscriptions.insert(handle_id, receiver);
 
-    let handle_str = handle_id.to_string();
-    let mem = plugin.memory_new(&handle_str)?;
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
