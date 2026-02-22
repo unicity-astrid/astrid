@@ -203,6 +203,7 @@ impl LlmProvider for ClaudeProvider {
         &self.config.model
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn stream(
         &self,
         messages: &[Message],
@@ -220,10 +221,14 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Starting Claude stream");
 
+        let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+        api_key_header.set_sensitive(true);
+
         let response = self
             .client
             .post(url)
-            .header("x-api-key", &self.config.api_key)
+            .header("x-api-key", api_key_header)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&request_body)
@@ -344,10 +349,14 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Sending Claude request");
 
+        let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+        api_key_header.set_sensitive(true);
+
         let response = self
             .client
             .post(url)
-            .header("x-api-key", &self.config.api_key)
+            .header("x-api-key", api_key_header)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&request_body)
@@ -458,6 +467,25 @@ struct DeltaUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_invalid_api_key_characters() {
+        let config = ProviderConfig::new("invalid\nkey", "claude-3-sonnet");
+        let provider = ClaudeProvider::new(config);
+        let Err(err_complete) = provider.complete(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_complete, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+        );
+
+        let Err(err_stream) = provider.stream(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_stream, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+        );
+    }
 
     #[test]
     fn test_build_request() {

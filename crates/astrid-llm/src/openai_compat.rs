@@ -297,7 +297,12 @@ impl LlmProvider for OpenAiCompatProvider {
 
         // Add auth header if API key is present
         if let Some(ref api_key) = self.api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
+            let mut auth_value = reqwest::header::HeaderValue::try_from(format!(
+                "Bearer {api_key}"
+            ))
+            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
         }
 
         let response = request
@@ -320,7 +325,7 @@ impl LlmProvider for OpenAiCompatProvider {
         let stream = try_stream! {
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
-            let mut current_tool_call: Option<PartialToolCall> = None;
+            let mut current_tool_call: Option<String> = None;
 
             use futures::StreamExt;
 
@@ -340,10 +345,9 @@ impl LlmProvider for OpenAiCompatProvider {
                     for line in event_data.lines() {
                         if let Some(data) = line.strip_prefix("data: ") {
                             if data.trim() == "[DONE]" {
-                                if let Some(tc) = current_tool_call.take() {
-                                    yield StreamEvent::ToolCallEnd { id: tc.id };
-                                }
-                                yield StreamEvent::Done;
+                                                                 if let Some(tc_id) = current_tool_call.take() {
+                                                                     yield StreamEvent::ToolCallEnd { id: tc_id };
+                                                                 }                                yield StreamEvent::Done;
                                 return;
                             }
 
@@ -363,8 +367,8 @@ impl LlmProvider for OpenAiCompatProvider {
                                                 // Check if this is a new tool call
                                                 if tc.id.is_some() || current_tool_call.is_none() {
                                                     // End previous tool call if exists
-                                                    if let Some(prev) = current_tool_call.take() {
-                                                        yield StreamEvent::ToolCallEnd { id: prev.id };
+                                                    if let Some(prev_id) = current_tool_call.take() {
+                                                        yield StreamEvent::ToolCallEnd { id: prev_id };
                                                     }
 
                                                     // Start new tool call
@@ -376,19 +380,14 @@ impl LlmProvider for OpenAiCompatProvider {
                                                         name: name.clone(),
                                                     };
 
-                                                    current_tool_call = Some(PartialToolCall {
-                                                        id,
-                                                        name,
-                                                        arguments: String::new(),
-                                                    });
+                                                    current_tool_call = Some(id);
                                                 }
 
                                                 // Append arguments
                                                 if let Some(args) = &function.arguments {
-                                                    if let Some(ref mut tc) = current_tool_call {
-                                                        tc.arguments.push_str(args);
+                                                    if let Some(ref tc_id) = current_tool_call {
                                                         yield StreamEvent::ToolCallDelta {
-                                                            id: tc.id.clone(),
+                                                            id: tc_id.clone(),
                                                             args_delta: args.clone(),
                                                         };
                                                     }
@@ -399,8 +398,8 @@ impl LlmProvider for OpenAiCompatProvider {
 
                                     // Handle finish reason
                                     if let Some(ref reason) = choice.finish_reason {
-                                        if let Some(tc) = current_tool_call.take() {
-                                            yield StreamEvent::ToolCallEnd { id: tc.id };
+                                        if let Some(tc_id) = current_tool_call.take() {
+                                            yield StreamEvent::ToolCallEnd { id: tc_id };
                                         }
 
                                         // Send usage if available
@@ -423,10 +422,9 @@ impl LlmProvider for OpenAiCompatProvider {
             }
 
             // Handle any remaining tool call
-            if let Some(tc) = current_tool_call.take() {
-                yield StreamEvent::ToolCallEnd { id: tc.id };
-            }
-            yield StreamEvent::Done;
+                                             if let Some(tc_id) = current_tool_call.take() {
+                                                 yield StreamEvent::ToolCallEnd { id: tc_id };
+                                             }            yield StreamEvent::Done;
         };
 
         Ok(Box::pin(stream))
@@ -458,7 +456,12 @@ impl LlmProvider for OpenAiCompatProvider {
             .header("Content-Type", "application/json");
 
         if let Some(ref api_key) = self.api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
+            let mut auth_value = reqwest::header::HeaderValue::try_from(format!(
+                "Bearer {api_key}"
+            ))
+            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
         }
 
         let response = request
@@ -490,18 +493,18 @@ impl LlmProvider for OpenAiCompatProvider {
         // Build message content and check for tool calls
         let (content, has_tool_calls) = match &choice.message.tool_calls {
             Some(tool_calls) if !tool_calls.is_empty() => {
-                let calls: Vec<ToolCall> = tool_calls
-                    .iter()
-                    .map(|tc| {
-                        let arguments: Value = serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(Value::Object(serde_json::Map::new()));
-                        ToolCall {
-                            id: tc.id.clone(),
-                            name: tc.function.name.clone(),
-                            arguments,
-                        }
-                    })
-                    .collect();
+                let mut calls = Vec::new();
+                for tc in tool_calls {
+                    let arguments: Value =
+                        serde_json::from_str(&tc.function.arguments).map_err(|e| {
+                            LlmError::InvalidResponse(format!("Invalid tool arguments JSON: {e}"))
+                        })?;
+                    calls.push(ToolCall {
+                        id: tc.id.clone(),
+                        name: tc.function.name.clone(),
+                        arguments,
+                    });
+                }
                 (MessageContent::ToolCalls(calls), true)
             },
             _ => (
@@ -545,15 +548,6 @@ impl std::fmt::Debug for OpenAiCompatProvider {
             .field("max_context", &self.max_context)
             .finish_non_exhaustive()
     }
-}
-
-// Helper struct for tracking partial tool calls during streaming
-struct PartialToolCall {
-    id: String,
-    #[allow(dead_code)]
-    name: String,
-    #[allow(dead_code)]
-    arguments: String,
 }
 
 // OpenAI API response types
@@ -666,6 +660,24 @@ mod tests {
         assert_eq!(
             provider.base_url,
             "http://my-server:8080/v1/chat/completions"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_api_key_characters() {
+        let provider = OpenAiCompatProvider::openai("invalid\nkey", "gpt-4");
+        let Err(err_complete) = provider.complete(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_complete, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+        );
+
+        let Err(err_stream) = provider.stream(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_stream, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
         );
     }
 
