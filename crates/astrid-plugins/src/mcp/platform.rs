@@ -3,7 +3,7 @@
 #![allow(unsafe_code)]
 
 #[cfg(target_os = "linux")]
-struct PreparedLandlockRules {
+pub(crate) struct PreparedLandlockRules {
     /// Pre-opened `(PathFd, read, write)` tuples.
     rules: Vec<(landlock::PathFd, bool, bool)>,
 }
