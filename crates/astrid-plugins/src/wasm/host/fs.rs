@@ -19,11 +19,8 @@ fn lexical_absolute(workspace_root: &Path, requested: &str) -> Result<PathBuf, E
         .unwrap_or_else(|_| workspace_root.to_path_buf());
 
     let requested_path = Path::new(requested);
-    let joined = if requested_path.is_absolute() {
-        requested_path.to_path_buf()
-    } else {
-        canonical_root.join(requested_path)
-    };
+    let relative_requested = requested_path.strip_prefix("/").unwrap_or(requested_path);
+    let joined = canonical_root.join(relative_requested);
 
     let mut components = Vec::new();
     for component in joined.components() {
@@ -172,9 +169,16 @@ pub(crate) fn astrid_fs_readdir_impl(
         .map_err(|e| Error::msg(format!("readdir failed ({absolute_str}): {e}")))?;
 
     let mut entries = Vec::new();
-    for entry in iter.take(MAX_READDIR_ENTRIES).flatten() {
-        if let Ok(name) = entry.file_name().into_string() {
-            entries.push(name);
+    for entry_res in iter.take(MAX_READDIR_ENTRIES) {
+        match entry_res {
+            Ok(entry) => {
+                if let Ok(name) = entry.file_name().into_string() {
+                    entries.push(name);
+                }
+            },
+            Err(e) => {
+                tracing::warn!(plugin = %plugin_id, "readdir entry error: {e}");
+            },
         }
     }
 

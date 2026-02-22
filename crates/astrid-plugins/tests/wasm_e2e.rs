@@ -399,6 +399,55 @@ async fn host_file_write_and_read() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_file_read_write_absolute_paths() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-file-abs");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    // Write a file using a WASI-style absolute path
+    let output = execute_tool(
+        &mut plugin,
+        "test-file-write",
+        &serde_json::json!({ "path": "/test-output-abs.txt", "content": "written by WASM plugin using absolute path" }),
+    );
+    assert!(
+        !output.is_error,
+        "test-file-write with absolute path should succeed: {}",
+        output.content
+    );
+
+    // Verify file exists on disk (it should be placed relative to the workspace root)
+    let written_path = workspace.join("test-output-abs.txt");
+    assert!(
+        written_path.exists(),
+        "file should exist on disk at correct path"
+    );
+    let disk_content = std::fs::read_to_string(&written_path).unwrap();
+    assert_eq!(disk_content, "written by WASM plugin using absolute path");
+
+    // Read it back via the plugin using the absolute path
+    let output = execute_tool(
+        &mut plugin,
+        "test-file-read",
+        &serde_json::json!({ "path": "/test-output-abs.txt" }),
+    );
+    assert!(
+        !output.is_error,
+        "test-file-read with absolute path should succeed: {}",
+        output.content
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(
+        parsed["content"],
+        "written by WASM plugin using absolute path"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_kv_roundtrip_structured_data() {
     build_fixture();
 
