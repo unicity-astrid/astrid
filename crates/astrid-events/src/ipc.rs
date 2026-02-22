@@ -101,30 +101,33 @@ impl IpcRateLimiter {
         if size_bytes > 5 * 1024 * 1024 {
             return Err("Payload exceeds maximum IPC size (5MB)");
         }
-        
-        let mut state = self.state.lock().map_err(|_| "Rate limiter lock poisoned")?;
+
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "Rate limiter lock poisoned")?;
         let now = std::time::Instant::now();
-        
+
         // Lazy prune stale entries to prevent memory leaks when shared globally
         if state.len() > 1000 {
             state.retain(|_, v| now.duration_since(v.0).as_secs() < 1);
         }
-        
+
         let entry = state.entry(source_id).or_insert((now, 0));
-        
+
         // Reset window if more than 1 second has passed
         if now.duration_since(entry.0).as_secs() >= 1 {
             entry.0 = now;
             entry.1 = 0;
         }
-        
+
         // Hard limit on total bytes per second (10MB)
         if entry.1.saturating_add(size_bytes) > 10 * 1024 * 1024 {
             return Err("Payload exceeds rate limit (10MB/sec)");
         }
-        
+
         entry.1 = entry.1.saturating_add(size_bytes);
-        
+
         Ok(())
     }
 }
@@ -158,7 +161,7 @@ mod tests {
 
         // First 4 MB is fine
         assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
-        
+
         // Second 4 MB is fine (8 MB total in < 1 sec)
         assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
 
@@ -170,8 +173,11 @@ mod tests {
     fn test_ipc_message_signature() {
         let msg = IpcMessage::new(
             "test.topic",
-            IpcPayload::AgentResponse { text: "hello".into(), is_final: true },
-            Uuid::new_v4()
+            IpcPayload::AgentResponse {
+                text: "hello".into(),
+                is_final: true,
+            },
+            Uuid::new_v4(),
         );
         assert!(msg.signature.is_none());
 

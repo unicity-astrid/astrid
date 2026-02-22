@@ -147,8 +147,14 @@ pub struct EventReceiver {
 
 impl EventReceiver {
     /// Create a new receiver with an optional topic filter.
-    pub(crate) fn new(receiver: broadcast::Receiver<Arc<AstridEvent>>, topic_pattern: Option<String>) -> Self {
-        Self { receiver, topic_pattern }
+    pub(crate) fn new(
+        receiver: broadcast::Receiver<Arc<AstridEvent>>,
+        topic_pattern: Option<String>,
+    ) -> Self {
+        Self {
+            receiver,
+            topic_pattern,
+        }
     }
 
     /// Check if an event matches our topic pattern.
@@ -186,7 +192,7 @@ impl EventReceiver {
                     if skipped.is_multiple_of(100) {
                         tokio::task::yield_now().await;
                     }
-                }
+                },
                 Err(broadcast::error::RecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
                     // Continue receiving
@@ -207,7 +213,7 @@ impl EventReceiver {
                     if self.matches(&event) {
                         return Some(event);
                     }
-                }
+                },
                 Err(broadcast::error::TryRecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
                     // Continue receiving
@@ -470,7 +476,10 @@ mod tests {
 
         let msg = crate::ipc::IpcMessage::new(
             "astrid.cli.input",
-            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            crate::ipc::IpcPayload::UserInput {
+                text: "hello".into(),
+                context: None,
+            },
             uuid::Uuid::new_v4(),
         );
 
@@ -487,7 +496,10 @@ mod tests {
         // Publish to a different topic
         let msg2 = crate::ipc::IpcMessage::new(
             "astrid.telegram.input",
-            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            crate::ipc::IpcPayload::UserInput {
+                text: "hello".into(),
+                context: None,
+            },
             uuid::Uuid::new_v4(),
         );
 
@@ -510,7 +522,10 @@ mod tests {
 
         let msg1 = crate::ipc::IpcMessage::new(
             "astrid.cli.input",
-            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            crate::ipc::IpcPayload::UserInput {
+                text: "hello".into(),
+                context: None,
+            },
             uuid::Uuid::new_v4(),
         );
         let event1 = AstridEvent::Ipc {
@@ -520,7 +535,10 @@ mod tests {
 
         let msg2 = crate::ipc::IpcMessage::new(
             "system.log",
-            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            crate::ipc::IpcPayload::UserInput {
+                text: "hello".into(),
+                context: None,
+            },
             uuid::Uuid::new_v4(),
         );
         let event2 = AstridEvent::Ipc {

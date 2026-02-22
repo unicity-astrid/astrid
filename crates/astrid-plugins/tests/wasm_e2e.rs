@@ -555,7 +555,7 @@ async fn host_ipc_limits() {
             "test_type": "publish_large"
         }),
     );
-    
+
     assert!(output1.is_err(), "large publish should fail");
     let err_str = output1.unwrap_err().clone();
     assert!(
@@ -571,7 +571,7 @@ async fn host_ipc_limits() {
             "test_type": "subscribe_loop"
         }),
     );
-    
+
     assert!(output2.is_err(), "subscribe loop past 128 should fail");
     let err_str2 = output2.unwrap_err().clone();
     assert!(

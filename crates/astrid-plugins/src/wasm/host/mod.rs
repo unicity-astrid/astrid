@@ -204,9 +204,13 @@ pub fn register_host_functions(
             WasmHostFunction::IpcSubscribe => {
                 builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_subscribe_impl)
             },
-            WasmHostFunction::IpcUnsubscribe => {
-                builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_unsubscribe_impl)
-            },
+            WasmHostFunction::IpcUnsubscribe => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                ipc::astrid_ipc_unsubscribe_impl,
+            ),
             WasmHostFunction::KvGet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_get_impl)
             },
