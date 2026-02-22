@@ -668,12 +668,30 @@ async fn test_http_restricted_headers_filtered() {
             let req = String::from_utf8_lossy(&buf[..n]);
 
             // reqwest uses lowercase header keys
-            assert!(!req.to_lowercase().contains("host: malicious.com"), "host header injected!");
-            assert!(!req.to_lowercase().contains("connection: upgrade"), "connection header injected!");
-            assert!(!req.to_lowercase().contains("upgrade: websocket"), "upgrade header injected!");
-            assert!(!req.to_lowercase().contains("content-length: 999"), "content-length header injected!");
-            assert!(!req.to_lowercase().contains("transfer-encoding: chunked"), "transfer-encoding header injected!");
-            assert!(req.to_lowercase().contains("x-custom-header: allowed"), "custom header missing!");
+            assert!(
+                !req.to_lowercase().contains("host: malicious.com"),
+                "host header injected!"
+            );
+            assert!(
+                !req.to_lowercase().contains("connection: upgrade"),
+                "connection header injected!"
+            );
+            assert!(
+                !req.to_lowercase().contains("upgrade: websocket"),
+                "upgrade header injected!"
+            );
+            assert!(
+                !req.to_lowercase().contains("content-length: 999"),
+                "content-length header injected!"
+            );
+            assert!(
+                !req.to_lowercase().contains("transfer-encoding: chunked"),
+                "transfer-encoding header injected!"
+            );
+            assert!(
+                req.to_lowercase().contains("x-custom-header: allowed"),
+                "custom header missing!"
+            );
 
             let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
             let _ = socket.write_all(response.as_bytes()).await;
@@ -704,8 +722,14 @@ async fn test_http_restricted_headers_filtered() {
     assert!(result.is_ok(), "http request should succeed");
     let out = result.unwrap();
     assert!(!out.is_error, "http tool error: {}", out.content);
-    assert!(out.content.contains("\"status\":200"), "response should be 200 OK");
-    assert!(out.content.contains("\"body\":\"OK\""), "response body should be OK");
+    assert!(
+        out.content.contains("\"status\":200"),
+        "response should be 200 OK"
+    );
+    assert!(
+        out.content.contains("\"body\":\"OK\""),
+        "response body should be OK"
+    );
 
     server_handle.await.expect("Server task panicked");
     let _ = std::fs::remove_dir_all(&workspace);
