@@ -185,6 +185,8 @@ impl WasmHandler {
             plugin_id: PluginId::from_static("hook-wasm"),
             workspace_root: self.workspace_root.clone(),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: tokio::runtime::Handle::current(),

@@ -4,6 +4,8 @@ pub mod channel;
 pub mod fs;
 /// HTTP network executions for plugins.
 pub mod http;
+/// Inter-Process Communication bus.
+pub mod ipc;
 /// Key-Value persistent storage primitives.
 pub mod kv;
 /// `QuickJS` ABI definitions.
@@ -33,6 +35,10 @@ pub enum WasmHostFunction {
     GetConfig,
     /// Execute an HTTP request payload.
     HttpRequest,
+    /// Publish an IPC message to the host event bus.
+    IpcPublish,
+    /// Subscribe to IPC events via the host event bus.
+    IpcSubscribe,
     /// Retrieve a persistence KV.
     KvGet,
     /// Write a persistence KV.
@@ -49,7 +55,7 @@ pub enum WasmHostFunction {
 
 impl WasmHostFunction {
     /// Ordered precisely as expected by the `QuickJS` shim kernel.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::ChannelSend,
         Self::FsExists,
         Self::FsMkdir,
@@ -58,6 +64,8 @@ impl WasmHostFunction {
         Self::FsUnlink,
         Self::GetConfig,
         Self::HttpRequest,
+        Self::IpcPublish,
+        Self::IpcSubscribe,
         Self::KvGet,
         Self::KvSet,
         Self::Log,
@@ -84,6 +92,8 @@ impl WasmHostFunction {
             Self::FsUnlink => "astrid_fs_unlink",
             Self::GetConfig => "astrid_get_config",
             Self::HttpRequest => "astrid_http_request",
+            Self::IpcPublish => "astrid_ipc_publish",
+            Self::IpcSubscribe => "astrid_ipc_subscribe",
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::Log => "astrid_log",
@@ -104,9 +114,10 @@ impl WasmHostFunction {
             | Self::FsUnlink
             | Self::GetConfig
             | Self::HttpRequest
+            | Self::IpcSubscribe
             | Self::KvGet
             | Self::ReadFile => 1,
-            Self::KvSet | Self::Log | Self::WriteFile => 2,
+            Self::KvSet | Self::Log | Self::WriteFile | Self::IpcPublish => 2,
             Self::ChannelSend | Self::RegisterConnector => 3,
         }
     }
@@ -123,6 +134,8 @@ impl WasmHostFunction {
             | Self::FsStat
             | Self::GetConfig
             | Self::HttpRequest
+            | Self::IpcPublish
+            | Self::IpcSubscribe
             | Self::KvGet
             | Self::ReadFile
             | Self::RegisterConnector => TYPE_I64,
@@ -173,6 +186,12 @@ pub fn register_host_functions(
             },
             WasmHostFunction::HttpRequest => {
                 builder.with_function(func.name(), args, rets, ud, http::astrid_http_request_impl)
+            },
+            WasmHostFunction::IpcPublish => {
+                builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_publish_impl)
+            },
+            WasmHostFunction::IpcSubscribe => {
+                builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_subscribe_impl)
             },
             WasmHostFunction::KvGet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_get_impl)

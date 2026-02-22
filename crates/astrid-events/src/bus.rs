@@ -84,9 +84,16 @@ impl EventBus {
     /// Returns a receiver that will receive all published events.
     #[must_use]
     pub fn subscribe(&self) -> EventReceiver {
-        EventReceiver {
-            receiver: self.sender.subscribe(),
-        }
+        EventReceiver::new(self.sender.subscribe(), None)
+    }
+
+    /// Subscribe to IPC events matching a specific topic pattern.
+    ///
+    /// The pattern can be an exact match (e.g. `astrid.cli.input`)
+    /// or a wildcard suffix (e.g. `astrid.*`).
+    #[must_use]
+    pub fn subscribe_topic(&self, topic_pattern: impl Into<String>) -> EventReceiver {
+        EventReceiver::new(self.sender.subscribe(), Some(topic_pattern.into()))
     }
 
     /// Get the synchronous subscriber registry.
@@ -131,9 +138,37 @@ impl Clone for EventBus {
 /// Receiver for events from the event bus.
 pub struct EventReceiver {
     receiver: broadcast::Receiver<Arc<AstridEvent>>,
+    /// Optional topic pattern. If specified, only `AstridEvent::Ipc` messages matching
+    /// this pattern will be yielded (along with non-IPC events if desired, but typically
+    /// IPC receivers only want IPC messages).
+    topic_pattern: Option<String>,
 }
 
 impl EventReceiver {
+    /// Create a new receiver with an optional topic filter.
+    pub(crate) fn new(receiver: broadcast::Receiver<Arc<AstridEvent>>, topic_pattern: Option<String>) -> Self {
+        Self { receiver, topic_pattern }
+    }
+
+    /// Check if an event matches our topic pattern.
+    fn matches(&self, event: &AstridEvent) -> bool {
+        let Some(pattern) = &self.topic_pattern else {
+            return true;
+        };
+
+        if let AstridEvent::Ipc { message, .. } = event {
+            // Simple wildcard matching: if pattern ends with '*', check prefix.
+            if let Some(prefix) = pattern.strip_suffix('*') {
+                message.topic.starts_with(prefix)
+            } else {
+                message.topic == *pattern
+            }
+        } else {
+            // If a topic pattern is set, we ONLY care about matching IPC events.
+            false
+        }
+    }
+
     /// Receive the next event.
     ///
     /// Returns `None` if the channel is closed or if events were dropped
@@ -141,7 +176,11 @@ impl EventReceiver {
     pub async fn recv(&mut self) -> Option<Arc<AstridEvent>> {
         loop {
             match self.receiver.recv().await {
-                Ok(event) => return Some(event),
+                Ok(event) => {
+                    if self.matches(&event) {
+                        return Some(event);
+                    }
+                }
                 Err(broadcast::error::RecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
                     // Continue receiving
@@ -158,7 +197,11 @@ impl EventReceiver {
     pub fn try_recv(&mut self) -> Option<Arc<AstridEvent>> {
         loop {
             match self.receiver.try_recv() {
-                Ok(event) => return Some(event),
+                Ok(event) => {
+                    if self.matches(&event) {
+                        return Some(event);
+                    }
+                }
                 Err(broadcast::error::TryRecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
                     // Continue receiving
@@ -413,5 +456,83 @@ mod tests {
 
         // This shouldn't deadlock
         bus.registry().unregister(id);
+    #[tokio::test]
+    async fn test_topic_subscription_exact() {
+        let bus = EventBus::new();
+        let mut all_receiver = bus.subscribe();
+        let mut specific_receiver = bus.subscribe_topic("astrid.cli.input");
+
+        let msg = crate::ipc::IpcMessage::new(
+            "astrid.cli.input",
+            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            uuid::Uuid::new_v4(),
+        );
+
+        let event = AstridEvent::Ipc {
+            metadata: EventMetadata::new("test"),
+            message: msg,
+        };
+
+        bus.publish(event);
+
+        assert!(all_receiver.try_recv().is_some());
+        assert!(specific_receiver.try_recv().is_some());
+
+        // Publish to a different topic
+        let msg2 = crate::ipc::IpcMessage::new(
+            "astrid.telegram.input",
+            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            uuid::Uuid::new_v4(),
+        );
+
+        let event2 = AstridEvent::Ipc {
+            metadata: EventMetadata::new("test"),
+            message: msg2,
+        };
+
+        bus.publish(event2);
+
+        assert!(all_receiver.try_recv().is_some());
+        // Specific receiver should ignore this
+        assert!(specific_receiver.try_recv().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_topic_subscription_wildcard() {
+        let bus = EventBus::new();
+        let mut wildcard_receiver = bus.subscribe_topic("astrid.*");
+
+        let msg1 = crate::ipc::IpcMessage::new(
+            "astrid.cli.input",
+            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            uuid::Uuid::new_v4(),
+        );
+        let event1 = AstridEvent::Ipc {
+            metadata: EventMetadata::new("test"),
+            message: msg1,
+        };
+
+        let msg2 = crate::ipc::IpcMessage::new(
+            "system.log",
+            crate::ipc::IpcPayload::UserInput { text: "hello".into(), context: None },
+            uuid::Uuid::new_v4(),
+        );
+        let event2 = AstridEvent::Ipc {
+            metadata: EventMetadata::new("test"),
+            message: msg2,
+        };
+
+        bus.publish(event1);
+        bus.publish(event2);
+
+        // Should receive the matching one, but not the non-matching one
+        let received = wildcard_receiver.try_recv().unwrap();
+        if let AstridEvent::Ipc { message, .. } = &*received {
+            assert_eq!(message.topic, "astrid.cli.input");
+        } else {
+            panic!("Expected IPC event");
+        }
+
+        assert!(wildcard_receiver.try_recv().is_none());
     }
 }

@@ -203,6 +203,8 @@ impl WasmPlugin {
             plugin_id: self.id.clone(),
             workspace_root: ctx.workspace_root.clone(),
             kv: ctx.kv.clone(),
+            event_bus: astrid_events::EventBus::new(), // TODO: pass actual bus instance down from runtime
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: ctx.config.clone(),
             security: self.config.security.clone(),
             runtime_handle: tokio::runtime::Handle::current(),

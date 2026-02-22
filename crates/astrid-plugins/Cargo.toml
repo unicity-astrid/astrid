@@ -10,6 +10,7 @@ description = "Plugin trait and registry for the Astrid secure agent runtime"
 [dependencies]
 astrid-core.workspace = true
 astrid-crypto.workspace = true
+astrid-events.workspace = true
 astrid-mcp.workspace = true
 astrid-storage.workspace = true
 

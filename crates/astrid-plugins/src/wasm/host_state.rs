@@ -23,6 +23,10 @@ pub struct HostState {
     pub workspace_root: PathBuf,
     /// Plugin-scoped KV store (`plugin:{plugin_id}` namespace).
     pub kv: ScopedKvStore,
+    /// System Event Bus for IPC publish/subscribe.
+    pub event_bus: astrid_events::EventBus,
+    /// Rate limiter for IPC message publishing.
+    pub ipc_limiter: astrid_events::ipc::IpcRateLimiter,
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
     /// Optional security gate for gated operations (HTTP, file I/O).
@@ -112,6 +116,8 @@ mod tests {
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -142,6 +148,8 @@ mod tests {
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -177,6 +185,8 @@ mod tests {
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -208,6 +218,8 @@ mod tests {
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -257,6 +269,8 @@ mod tests {
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::new(),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
