@@ -7,7 +7,7 @@ This document breaks down the transition from the current "Fat Core" to the WASM
 ## Phase 1: The IPC Message Bus (Foundation)
 Before plugins can replace native frontends, they need a way to communicate asynchronously.
 - [ ] **Define the IPC Schema (`astrid-events`):** Standardize the event payload schemas (e.g., `UserInput`, `AgentResponse`, `ApprovalRequired`) using a format like Protobuf, MessagePack, or JSON.
-- [ ] **Build the Message Broker (`astrid-core` or new `astrid-broker`):** Implement a central pub/sub broker in the daemon that can route messages between subscribers based on topics.
+- [ ] **Expand the Message Broker (`astrid-events`):** Enhance the existing `EventBus` to handle topic-based routing and serialization/deserialization across the WASM boundary.
 - [ ] **WASM IPC Host Functions (`astrid-plugins`):** 
   - Expose `astrid_publish(topic, payload)`.
   - Expose `astrid_subscribe(topic)` (yielding a stream or polling mechanism for the WASM guest).
