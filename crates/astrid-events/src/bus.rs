@@ -466,10 +466,12 @@ mod tests {
             .registry()
             .register(Arc::new(DroppingSubscriber { bus: bus.clone() }));
 
-        // This shouldn't deadlock
-        bus.registry().unregister(id);
-    #[tokio::test]
-    async fn test_topic_subscription_exact() {
+                // This shouldn't deadlock
+                bus.registry().unregister(id);
+            }
+        
+            #[tokio::test]
+            async fn test_topic_subscription_exact() {
         let bus = EventBus::new();
         let mut all_receiver = bus.subscribe();
         let mut specific_receiver = bus.subscribe_topic("astrid.cli.input");
