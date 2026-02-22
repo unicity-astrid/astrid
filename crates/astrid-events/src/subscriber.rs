@@ -58,7 +58,7 @@ impl SubscriberId {
 /// Registry for managing synchronous event subscribers.
 #[derive(Default)]
 pub struct SubscriberRegistry {
-    subscribers: RwLock<HashMap<SubscriberId, Arc<dyn EventSubscriber>>>,
+    subscribers: RwLock<Arc<HashMap<SubscriberId, Arc<dyn EventSubscriber>>>>,
 }
 
 impl std::fmt::Debug for SubscriberRegistry {
@@ -75,7 +75,7 @@ impl SubscriberRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            subscribers: RwLock::new(HashMap::new()),
+            subscribers: RwLock::new(Arc::new(HashMap::new())),
         }
     }
 
@@ -91,7 +91,9 @@ impl SubscriberRegistry {
         let name = subscriber.name().to_string();
 
         let mut subs = self.subscribers.write().expect("lock poisoned");
-        subs.insert(id, subscriber);
+        let mut new_map = HashMap::clone(&subs);
+        new_map.insert(id, subscriber);
+        *subs = Arc::new(new_map);
 
         debug!(subscriber_name = %name, "Subscriber registered");
         id
@@ -105,8 +107,17 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn unregister(&self, id: SubscriberId) -> bool {
-        let mut subs = self.subscribers.write().expect("lock poisoned");
-        let removed = subs.remove(&id).is_some();
+        let removed = {
+            let mut subs = self.subscribers.write().expect("lock poisoned");
+            if subs.contains_key(&id) {
+                let mut new_map = HashMap::clone(&subs);
+                new_map.remove(&id);
+                *subs = Arc::new(new_map);
+                true
+            } else {
+                false
+            }
+        };
 
         if removed {
             debug!("Subscriber unregistered");
@@ -121,15 +132,9 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn notify(&self, event: &AstridEvent) {
-        let subs = {
-            let guard = self.subscribers.read().expect("lock poisoned");
-            guard
-                .iter()
-                .map(|(id, sub)| (*id, Arc::clone(sub)))
-                .collect::<Vec<_>>()
-        };
+        let subs = Arc::clone(&self.subscribers.read().expect("lock poisoned"));
 
-        for (id, subscriber) in &subs {
+        for (id, subscriber) in subs.iter() {
             if subscriber.accepts(event) {
                 trace!(
                     subscriber_name = %subscriber.name(),
@@ -180,8 +185,12 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn clear(&self) {
-        let mut subs = self.subscribers.write().expect("lock poisoned");
-        subs.clear();
+        let _removed = {
+            let mut subs = self.subscribers.write().expect("lock poisoned");
+            let old = Arc::clone(&subs);
+            *subs = Arc::new(HashMap::new());
+            old
+        };
         debug!("All subscribers cleared");
     }
 }
