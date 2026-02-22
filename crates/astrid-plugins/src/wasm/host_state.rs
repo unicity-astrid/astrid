@@ -19,6 +19,8 @@ use crate::security::PluginSecurityGate;
 pub struct HostState {
     /// The plugin this state belongs to.
     pub plugin_id: PluginId,
+    /// The deterministic UUID of the plugin.
+    pub plugin_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
     pub workspace_root: PathBuf,
     /// Plugin-scoped KV store (`plugin:{plugin_id}` namespace).
@@ -117,6 +119,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -151,6 +154,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -190,6 +194,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -225,6 +230,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
@@ -278,6 +284,7 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test".as_bytes()),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,

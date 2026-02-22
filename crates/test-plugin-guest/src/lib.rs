@@ -50,6 +50,8 @@ extern "ExtismHost" {
     fn astrid_register_connector(name: String, platform: String, profile: String) -> String;
     fn astrid_write_file(path: String, content: String);
     fn astrid_http_request(request_json: String) -> String;
+    fn astrid_ipc_publish(topic: String, payload: String);
+    fn astrid_ipc_subscribe(topic: String) -> String;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +142,11 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Register a connector, then send a message through it".into(),
             input_schema: r#"{"type":"object","properties":{"connector_name":{"type":"string"},"platform":{"type":"string"},"user_id":{"type":"string"},"message":{"type":"string"}},"required":["connector_name","platform","user_id","message"]}"#.into(),
         },
+        ToolDefinition {
+            name: "test-ipc".into(),
+            description: "Subscribe to an IPC topic and publish a message".into(),
+            input_schema: r#"{"type":"object","properties":{"topic":{"type":"string"},"payload":{"type":"string"}},"required":["topic","payload"]}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -183,6 +190,7 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-roundtrip" => handle_test_roundtrip(&args),
         "test-register-connector" => handle_test_register_connector(&args),
         "test-channel-send" => handle_test_channel_send(&args),
+        "test-ipc" => handle_test_ipc(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -373,6 +381,28 @@ fn handle_test_channel_send(args: &serde_json::Value) -> Result<ToolOutput, Erro
         "send_result": send_parsed,
         "user_id": user_id,
         "message": message
+    });
+
+    Ok(ToolOutput {
+        content: serde_json::to_string(&result)?,
+        is_error: false,
+    })
+}
+
+fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let topic = args["topic"].as_str().unwrap_or("");
+    let payload = args["payload"].as_str().unwrap_or("");
+
+    // Subscribe
+    let handle_id = unsafe { astrid_ipc_subscribe(topic.into())? };
+    
+    // Publish
+    unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
+
+    let result = serde_json::json!({
+        "topic": topic,
+        "payload": payload,
+        "subscription_handle": handle_id
     });
 
     Ok(ToolOutput {

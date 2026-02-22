@@ -127,14 +127,18 @@ impl WasmHostFunction {
     pub fn return_type(self) -> i32 {
         use shim::{TYPE_I64, TYPE_VOID};
         match self {
-            Self::FsMkdir | Self::FsUnlink | Self::KvSet | Self::Log | Self::WriteFile => TYPE_VOID,
+            Self::FsMkdir
+            | Self::FsUnlink
+            | Self::IpcPublish
+            | Self::KvSet
+            | Self::Log
+            | Self::WriteFile => TYPE_VOID,
             Self::ChannelSend
             | Self::FsExists
             | Self::FsReaddir
             | Self::FsStat
             | Self::GetConfig
             | Self::HttpRequest
-            | Self::IpcPublish
             | Self::IpcSubscribe
             | Self::KvGet
             | Self::ReadFile

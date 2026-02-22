@@ -200,6 +200,7 @@ impl WasmPlugin {
         // 5. Build HostState
         let has_connector = self.has_connector_capability();
         let host_state = HostState {
+            plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, self.id.as_str().as_bytes()),
             plugin_id: self.id.clone(),
             workspace_root: ctx.workspace_root.clone(),
             kv: ctx.kv.clone(),

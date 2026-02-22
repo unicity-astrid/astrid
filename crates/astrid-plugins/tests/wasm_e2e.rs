@@ -65,6 +65,7 @@ fn build_test_plugin(
         ScopedKvStore::new(store, "plugin:test-all-endpoints").expect("create scoped KV store");
 
     let host_state = HostState {
+        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test-all-endpoints".as_bytes()),
         plugin_id: PluginId::from_static("test-all-endpoints"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
@@ -106,6 +107,7 @@ fn build_connector_plugin(
     let (tx, rx) = mpsc::channel(256);
 
     let host_state = HostState {
+        plugin_uuid: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, "test-connector".as_bytes()),
         plugin_id: PluginId::from_static("test-connector"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
@@ -190,7 +192,7 @@ fn try_execute_tool(
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn discover_all_eight_tools() {
+async fn discover_all_tools() {
     build_fixture();
 
     let workspace = std::env::temp_dir().join("e2e-wasm-discover");
@@ -226,8 +228,8 @@ async fn discover_all_eight_tools() {
 
     assert_eq!(
         tools.len(),
-        8,
-        "expected exactly 8 tools, got {}",
+        9,
+        "expected exactly 9 tools, got {}",
         tools.len()
     );
 
@@ -502,6 +504,36 @@ async fn host_register_connector_rejected_without_capability() {
         result.is_err(),
         "register-connector without capability should fail"
     );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_ipc_publish_and_subscribe() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-ipc");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    let output = execute_tool(
+        &mut plugin,
+        "test-ipc",
+        &serde_json::json!({
+            "topic": "test.topic.123",
+            "payload": "hello ipc"
+        }),
+    );
+
+    assert!(
+        !output.is_error,
+        "ipc test should succeed: {}",
+        output.content
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(parsed["topic"], "test.topic.123");
+    assert_eq!(parsed["payload"], "hello ipc");
+    assert!(parsed["subscription_handle"].as_str().is_some());
 
     let _ = std::fs::remove_dir_all(&workspace);
 }
