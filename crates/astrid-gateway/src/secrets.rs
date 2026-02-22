@@ -55,12 +55,13 @@ impl Secrets {
     /// Returns an error if the file cannot be read or parsed.
     pub fn load<P: AsRef<Path>>(path: P) -> GatewayResult<Self> {
         let path = path.as_ref();
+        let mut file = std::fs::File::open(path)?;
 
         // Check file permissions (should be 0600 or 0400)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let metadata = std::fs::metadata(path)?;
+            let metadata = file.metadata()?;
             let mode = metadata.permissions().mode();
             if mode & 0o077 != 0 {
                 return Err(GatewayError::Secret(format!(
@@ -71,7 +72,8 @@ impl Secrets {
             }
         }
 
-        let contents = std::fs::read_to_string(path)?;
+        let mut contents = String::new();
+        std::io::Read::read_to_string(&mut file, &mut contents)?;
         let secrets: HashMap<String, String> = toml::from_str(&contents)?;
         Ok(Self {
             inner: Arc::new(RwLock::new(secrets)),
@@ -113,6 +115,14 @@ impl Secrets {
     ///
     /// Returns an error if a referenced secret or required env var is missing.
     pub fn expand(&self, input: &str) -> GatewayResult<String> {
+        self.expand_with_env(input, |var| std::env::var(var).ok())
+    }
+
+    /// Internal expander that takes a custom environment resolver for testing.
+    fn expand_with_env<F>(&self, input: &str, env_resolver: F) -> GatewayResult<String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         let mut result = String::with_capacity(input.len());
         let mut chars = input.chars().peekable();
 
@@ -149,26 +159,18 @@ impl Secrets {
                 let value = if let Some(key) = var_name.strip_prefix("secrets.") {
                     // ${secrets.key} — resolve from secrets store
                     self.get(key)
-                        .or(default_value.clone())
+                        .or(default_value)
                         .ok_or_else(|| GatewayError::Secret(format!("secret not found: {key}")))?
                 } else if let Some(env_var) = var_name.strip_prefix("env:") {
                     // ${env:VAR} — explicit env var syntax
-                    std::env::var(env_var)
-                        .ok()
-                        .or(default_value)
-                        .ok_or_else(|| {
-                            GatewayError::Secret(format!("environment variable not set: {env_var}"))
-                        })?
+                    env_resolver(env_var).or(default_value).ok_or_else(|| {
+                        GatewayError::Secret(format!("environment variable not set: {env_var}"))
+                    })?
                 } else {
                     // ${VAR} — shorthand env var syntax
-                    std::env::var(&var_name)
-                        .ok()
-                        .or(default_value)
-                        .ok_or_else(|| {
-                            GatewayError::Secret(format!(
-                                "environment variable not set: {var_name}"
-                            ))
-                        })?
+                    env_resolver(&var_name).or(default_value).ok_or_else(|| {
+                        GatewayError::Secret(format!("environment variable not set: {var_name}"))
+                    })?
                 };
 
                 result.push_str(&value);
@@ -216,28 +218,32 @@ mod tests {
 
     #[test]
     fn test_expand_env_var() {
-        // SAFETY: This test runs in isolation and doesn't race with other env var access
-        unsafe { std::env::set_var("TEST_VAR_FOR_SECRETS", "test_value") };
-
         let secrets = Secrets::new();
-        let result = secrets.expand("Value: ${TEST_VAR_FOR_SECRETS}").unwrap();
+        let result = secrets
+            .expand_with_env("Value: ${TEST_VAR_FOR_SECRETS}", |var| {
+                if var == "TEST_VAR_FOR_SECRETS" {
+                    Some("test_value".to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         assert_eq!(result, "Value: test_value");
-
-        // SAFETY: Cleanup of test env var
-        unsafe { std::env::remove_var("TEST_VAR_FOR_SECRETS") };
     }
 
     #[test]
     fn test_expand_env_prefix() {
-        // SAFETY: This test runs in isolation and doesn't race with other env var access
-        unsafe { std::env::set_var("TEST_ENV_PREFIX_VAR", "prefixed_value") };
-
         let secrets = Secrets::new();
-        let result = secrets.expand("Value: ${env:TEST_ENV_PREFIX_VAR}").unwrap();
+        let result = secrets
+            .expand_with_env("Value: ${env:TEST_ENV_PREFIX_VAR}", |var| {
+                if var == "TEST_ENV_PREFIX_VAR" {
+                    Some("prefixed_value".to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         assert_eq!(result, "Value: prefixed_value");
-
-        // SAFETY: Cleanup of test env var
-        unsafe { std::env::remove_var("TEST_ENV_PREFIX_VAR") };
     }
 
     #[test]
@@ -265,17 +271,19 @@ mod tests {
 
     #[test]
     fn test_expand_mixed() {
-        // SAFETY: This test runs in isolation and doesn't race with other env var access
-        unsafe { std::env::set_var("TEST_PREFIX", "prefix") };
-
         let secrets = Secrets::new();
         secrets.set("suffix", "suffix");
 
-        let result = secrets.expand("${TEST_PREFIX}-${secrets.suffix}").unwrap();
+        let result = secrets
+            .expand_with_env("${TEST_PREFIX}-${secrets.suffix}", |var| {
+                if var == "TEST_PREFIX" {
+                    Some("prefix".to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
         assert_eq!(result, "prefix-suffix");
-
-        // SAFETY: Cleanup of test env var
-        unsafe { std::env::remove_var("TEST_PREFIX") };
     }
 
     #[test]
