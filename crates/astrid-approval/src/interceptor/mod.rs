@@ -265,7 +265,9 @@ impl SecurityInterceptor {
                             });
                         }
                         // Fall back to one-time approval if creation fails
-                        let proof = InterceptProof::UserApproval { approval_audit_id: approval_audit_id.clone() };
+                        let proof = InterceptProof::UserApproval {
+                            approval_audit_id: approval_audit_id.clone(),
+                        };
                         return Ok(InterceptResult {
                             proof,
                             audit_id: approval_audit_id,

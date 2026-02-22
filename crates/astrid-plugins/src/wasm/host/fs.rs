@@ -11,7 +11,10 @@ fn lexical_normalize(path: &Path) -> Result<PathBuf, Error> {
         match component {
             std::path::Component::ParentDir => {
                 if let Some(last) = components.last() {
-                    if matches!(last, std::path::Component::RootDir | std::path::Component::Prefix(_)) {
+                    if matches!(
+                        last,
+                        std::path::Component::RootDir | std::path::Component::Prefix(_)
+                    ) {
                         return Err(Error::msg("path traversal attempts to escape root"));
                     }
                     components.pop();

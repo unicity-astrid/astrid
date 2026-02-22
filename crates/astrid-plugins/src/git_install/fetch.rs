@@ -27,17 +27,14 @@ pub async fn fetch_git_source(source: &GitSource) -> PluginResult<(tempfile::Tem
             // When the timeout future drops, tokio::process::Command kills the child.
             let url = url.clone();
             let git_ref = git_ref.clone();
-            tokio::time::timeout(
-                GIT_CLONE_TIMEOUT,
-                clone_git_repo(&url, git_ref.as_deref()),
-            )
-            .await
-            .map_err(|_| {
-                PluginError::ExecutionFailed(format!(
-                    "git clone timed out after {}s",
-                    GIT_CLONE_TIMEOUT.as_secs()
-                ))
-            })?
+            tokio::time::timeout(GIT_CLONE_TIMEOUT, clone_git_repo(&url, git_ref.as_deref()))
+                .await
+                .map_err(|_| {
+                    PluginError::ExecutionFailed(format!(
+                        "git clone timed out after {}s",
+                        GIT_CLONE_TIMEOUT.as_secs()
+                    ))
+                })?
         },
     }
 }
@@ -298,7 +295,10 @@ pub fn strip_first_component(path: &std::path::Path) -> PathBuf {
 ///
 /// Suppresses interactive credential prompts and pipes stdin to null
 /// to prevent hanging if authentication is required.
-async fn clone_git_repo(url: &str, git_ref: Option<&str>) -> PluginResult<(tempfile::TempDir, PathBuf)> {
+async fn clone_git_repo(
+    url: &str,
+    git_ref: Option<&str>,
+) -> PluginResult<(tempfile::TempDir, PathBuf)> {
     let tmp = tempfile::tempdir()
         .map_err(|e| PluginError::ExecutionFailed(format!("failed to create temp dir: {e}")))?;
 
