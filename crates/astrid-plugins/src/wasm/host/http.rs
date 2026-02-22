@@ -105,6 +105,15 @@ async fn perform_http_request(
     };
 
     for kv in headers {
+        if kv.key.eq_ignore_ascii_case("host")
+            || kv.key.eq_ignore_ascii_case("connection")
+            || kv.key.eq_ignore_ascii_case("upgrade")
+            || kv.key.eq_ignore_ascii_case("content-length")
+            || kv.key.eq_ignore_ascii_case("transfer-encoding")
+        {
+            tracing::warn!("WASM plugin attempted to set restricted header: {}", kv.key);
+            continue;
+        }
         builder = builder.header(&kv.key, &kv.value);
     }
 
