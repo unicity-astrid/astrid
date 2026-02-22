@@ -249,7 +249,7 @@ async fn test_host_rejects_huge_log() {
     // It should return an error because the host function traps on limit violation
     assert!(result.is_err(), "host function must reject oversized log");
     let err = result.unwrap_err();
-    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(err.contains("wasm backtrace"), "unexpected error: {err}");
     assert!(err.contains("astrid_log"), "should fail in astrid_log");
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -271,7 +271,7 @@ async fn test_host_rejects_huge_kv() {
         "host function must reject oversized KV payload"
     );
     let err = result.unwrap_err();
-    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(err.contains("wasm backtrace"), "unexpected error: {err}");
     assert!(
         err.contains("astrid_kv_set"),
         "should fail in astrid_kv_set"
