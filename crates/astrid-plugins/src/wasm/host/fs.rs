@@ -11,51 +11,78 @@ use crate::wasm::host_state::HostState;
 /// Maximum number of directory entries allowed to be read by `readdir`
 const MAX_READDIR_ENTRIES: usize = 10_000;
 
-/// Compute a lexically normalized absolute path for the security gate.
-/// This does not hit the filesystem.
-fn lexical_absolute(workspace_root: &Path, requested: &str) -> Result<PathBuf, Error> {
+/// Strip any leading absolute slashes or prefixes (e.g. C:\) from the requested path
+/// so that `cap_std` can open it relative to the directory capability.
+fn make_relative(requested: &str) -> &Path {
+    let path = Path::new(requested);
+    let mut components = path.components();
+    while let Some(c) = components.clone().next() {
+        if matches!(c, Component::RootDir | Component::Prefix(_)) {
+            components.next(); // consume it
+        } else {
+            break;
+        }
+    }
+    components.as_path()
+}
+
+/// Compute the true physical absolute path for the security gate by canonicalizing on the host filesystem.
+/// Returns both the absolute path and a sanitized relative path safe for capability use.
+/// This prevents symlink bypass attacks where a lexical path passes the gate but cap-std follows a symlink.
+fn resolve_physical_absolute(
+    workspace_root: &Path,
+    requested: &str,
+) -> Result<(PathBuf, PathBuf), Error> {
     let canonical_root = workspace_root
         .canonicalize()
         .unwrap_or_else(|_| workspace_root.to_path_buf());
 
-    let requested_path = Path::new(requested);
-    let relative_requested = requested_path.strip_prefix("/").unwrap_or(requested_path);
+    let relative_requested = make_relative(requested);
     let joined = canonical_root.join(relative_requested);
 
-    let mut components = Vec::new();
-    for component in joined.components() {
-        match component {
-            Component::ParentDir => {
-                if let Some(last) = components.last() {
-                    if matches!(last, Component::RootDir | Component::Prefix(_)) {
-                        return Err(Error::msg("path traversal attempts to escape root"));
-                    }
-                    components.pop();
-                } else {
-                    return Err(Error::msg("path traversal attempts to escape root"));
-                }
-            },
-            Component::CurDir => {},
-            other => components.push(other),
+    // Find the deepest existing ancestor to canonicalize to resolve any symlinks
+    let mut current = joined.clone();
+    let mut non_existent_components = Vec::new();
+
+    while !current.exists() {
+        if let Some(parent) = current.parent() {
+            if let Some(file_name) = current.file_name() {
+                non_existent_components.push(file_name.to_os_string());
+            }
+            current = parent.to_path_buf();
+        } else {
+            break;
         }
     }
 
-    let absolute: PathBuf = components.into_iter().collect();
-    if !absolute.starts_with(&canonical_root) {
+    // Canonicalize the existing part to resolve symlinks
+    let mut resolved = current.canonicalize().unwrap_or_else(|_| current.clone());
+
+    // Re-attach the non-existent components, applying `..` and `.` lexically
+    for comp in non_existent_components.into_iter().rev() {
+        if comp == ".." {
+            resolved.pop();
+        } else if comp != "." {
+            resolved.push(comp);
+        }
+    }
+
+    if !resolved.starts_with(&canonical_root) {
         return Err(Error::msg(format!(
             "path escapes workspace boundary: {requested} resolves to {}",
-            absolute.display()
+            resolved.display()
         )));
     }
 
-    Ok(absolute)
-}
+    let mut safe_relative = resolved
+        .strip_prefix(&canonical_root)
+        .unwrap_or(Path::new(""))
+        .to_path_buf();
+    if safe_relative.as_os_str().is_empty() {
+        safe_relative = PathBuf::from(".");
+    }
 
-/// Strip any leading absolute slashes from the requested path so that `cap_std` can open it
-/// relative to the directory capability.
-fn make_relative(requested: &str) -> &Path {
-    let path = Path::new(requested);
-    path.strip_prefix("/").unwrap_or(path)
+    Ok((resolved, safe_relative))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -74,11 +101,12 @@ pub(crate) fn astrid_fs_exists_impl(
     let workspace_root = state.workspace_root.clone();
     drop(state);
 
+    let (_, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
-    let exists = dir.exists(relative_path);
+    let exists = dir.exists(&safe_relative);
 
     let result = if exists { "true" } else { "false" };
     let mem = plugin.memory_new(result)?;
@@ -105,7 +133,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -121,8 +149,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
-    dir.create_dir_all(relative_path)
+    dir.create_dir_all(&safe_relative)
         .map_err(|e| Error::msg(format!("mkdir failed ({absolute_str}): {e}")))?;
 
     Ok(())
@@ -147,7 +174,7 @@ pub(crate) fn astrid_fs_readdir_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -163,13 +190,17 @@ pub(crate) fn astrid_fs_readdir_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
     let iter = dir
-        .read_dir(relative_path)
+        .read_dir(&safe_relative)
         .map_err(|e| Error::msg(format!("readdir failed ({absolute_str}): {e}")))?;
 
     let mut entries = Vec::new();
-    for entry_res in iter.take(MAX_READDIR_ENTRIES) {
+    for (count, entry_res) in iter.enumerate() {
+        if count >= MAX_READDIR_ENTRIES {
+            return Err(Error::msg(format!(
+                "directory listing exceeds maximum entries limit ({MAX_READDIR_ENTRIES})"
+            )));
+        }
         match entry_res {
             Ok(entry) => {
                 if let Ok(name) = entry.file_name().into_string() {
@@ -209,7 +240,7 @@ pub(crate) fn astrid_fs_stat_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -225,9 +256,8 @@ pub(crate) fn astrid_fs_stat_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
     let metadata = dir
-        .metadata(relative_path)
+        .metadata(&safe_relative)
         .map_err(|e| Error::msg(format!("stat failed ({absolute_str}): {e}")))?;
 
     let mtime = metadata
@@ -268,7 +298,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -284,8 +314,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
-    dir.remove_file(relative_path)
+    dir.remove_file(&safe_relative)
         .map_err(|e| Error::msg(format!("unlink failed ({absolute_str}): {e}")))?;
 
     Ok(())
@@ -310,7 +339,7 @@ pub(crate) fn astrid_read_file_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -326,9 +355,8 @@ pub(crate) fn astrid_read_file_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
     let file = dir
-        .open(relative_path)
+        .open(&safe_relative)
         .map_err(|e| Error::msg(format!("failed to open file ({absolute_str}): {e}")))?;
 
     let mut bytes = Vec::new();
@@ -370,7 +398,7 @@ pub(crate) fn astrid_write_file_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let absolute = lexical_absolute(&workspace_root, &path)?;
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
     let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
@@ -386,8 +414,7 @@ pub(crate) fn astrid_write_file_impl(
     let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
         .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
 
-    let relative_path = make_relative(&path);
-    dir.write(relative_path, content.as_bytes())
+    dir.write(&safe_relative, content.as_bytes())
         .map_err(|e| Error::msg(format!("write_file failed ({absolute_str}): {e}")))?;
 
     Ok(())
