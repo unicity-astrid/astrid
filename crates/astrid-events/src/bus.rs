@@ -14,12 +14,18 @@ pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 ///
 /// The event bus uses a broadcast channel to deliver events to all
 /// connected receivers. Events are delivered asynchronously and in order.
+///
+/// **WARNING:** Synchronous subscribers (`SubscriberRegistry`) are shared
+/// across clones. Storing a cloned `EventBus` inside a synchronous subscriber
+/// will create a memory leak via an `Arc` reference cycle. If a synchronous
+/// subscriber needs to publish events, store a `std::sync::Weak<EventBus>`
+/// or communicate via a separate channel.
 #[derive(Debug)]
 pub struct EventBus {
     /// Sender for broadcasting events.
     sender: broadcast::Sender<Arc<AstridEvent>>,
     /// Registry for synchronous subscribers.
-    registry: SubscriberRegistry,
+    registry: Arc<SubscriberRegistry>,
     /// Channel capacity.
     capacity: usize,
 }
@@ -37,7 +43,7 @@ impl EventBus {
         let (sender, _) = broadcast::channel(capacity);
         Self {
             sender,
-            registry: SubscriberRegistry::new(),
+            registry: Arc::new(SubscriberRegistry::new()),
             capacity,
         }
     }
@@ -53,22 +59,24 @@ impl EventBus {
 
         trace!(event_type = %event.event_type(), "Publishing event");
 
-        // Notify synchronous subscribers
-        self.registry.notify(&event);
-
-        // Broadcast to async subscribers
-        if let Ok(count) = self.sender.send(Arc::clone(&event)) {
+        // Broadcast to async subscribers first so they don't wait for synchronous subscribers
+        let count = if let Ok(c) = self.sender.send(Arc::clone(&event)) {
             debug!(
                 event_type = %event.event_type(),
-                receiver_count = count,
+                receiver_count = c,
                 "Event published"
             );
-            count
+            c
         } else {
             // No receivers - this is fine
             trace!(event_type = %event.event_type(), "No receivers for event");
             0
-        }
+        };
+
+        // Notify synchronous subscribers
+        self.registry.notify(&event, self);
+
+        count
     }
 
     /// Subscribe to events.
@@ -87,15 +95,12 @@ impl EventBus {
         &self.registry
     }
 
-    /// Get a mutable reference to the subscriber registry.
-    pub fn registry_mut(&mut self) -> &mut SubscriberRegistry {
-        &mut self.registry
-    }
-
-    /// Get the current number of active subscribers.
+    /// Get the current number of active subscribers (both async and synchronous).
     #[must_use]
     pub fn subscriber_count(&self) -> usize {
-        self.sender.receiver_count()
+        self.sender
+            .receiver_count()
+            .saturating_add(self.registry.len())
     }
 
     /// Get the channel capacity.
@@ -114,10 +119,10 @@ impl Default for EventBus {
 impl Clone for EventBus {
     fn clone(&self) -> Self {
         // Create a new bus that shares the same sender
-        // but has its own registry
+        // and the same subscriber registry
         Self {
             sender: self.sender.clone(),
-            registry: SubscriberRegistry::new(),
+            registry: Arc::clone(&self.registry),
             capacity: self.capacity,
         }
     }
@@ -273,5 +278,140 @@ mod tests {
 
         drop(receiver1);
         // Note: subscriber count may not immediately reflect dropped receivers
+    }
+
+    #[tokio::test]
+    async fn test_cloned_bus_synchronous_subscriber() {
+        use crate::subscriber::FilterSubscriber;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let bus = EventBus::new();
+        let cloned_bus = bus.clone();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let subscriber = FilterSubscriber::new("test_sync", move |_| {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Register on the cloned bus
+        cloned_bus.registry().register(Arc::new(subscriber));
+
+        // Publish on the original bus
+        let event = AstridEvent::RuntimeStarted {
+            metadata: EventMetadata::new("test"),
+            version: "0.1.0".to_string(),
+        };
+        bus.publish(event);
+
+        // The subscriber registered on the cloned bus should have received it
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_drop_cleans_up_registry() {
+        use crate::subscriber::FilterSubscriber;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct DropNotify(Arc<AtomicUsize>);
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_count_clone = Arc::clone(&drop_count);
+
+        let notifier = DropNotify(drop_count_clone);
+        let bus = EventBus::new();
+
+        let subscriber = FilterSubscriber::new("test_drop", move |_| {
+            let _ = &notifier; // Capture notifier so it drops when the subscriber drops
+        });
+
+        bus.registry().register(Arc::new(subscriber));
+
+        // The subscriber shouldn't drop until the bus drops
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+
+        drop(bus);
+
+        // Dropping the bus should drop the registry, dropping the subscriber, triggering DropNotify
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_reentrancy_unregister_from_on_event() {
+        use crate::subscriber::{EventSubscriber, SubscriberId};
+        use std::sync::Mutex;
+
+        struct UnregisteringSubscriber {
+            my_id: Mutex<Option<SubscriberId>>,
+        }
+
+        impl EventSubscriber for UnregisteringSubscriber {
+            fn on_event(&self, _event: &AstridEvent, bus: &EventBus) {
+                let id = self.my_id.lock().unwrap().expect("id not set");
+                // This shouldn't deadlock against notify's read lock
+                bus.registry().unregister(id);
+            }
+        }
+
+        let bus = EventBus::new();
+
+        let subscriber = Arc::new(UnregisteringSubscriber {
+            my_id: Mutex::new(None),
+        });
+
+        let id = bus
+            .registry()
+            .register(Arc::clone(&subscriber) as Arc<dyn EventSubscriber>);
+        *subscriber.my_id.lock().unwrap() = Some(id);
+
+        let event = AstridEvent::RuntimeStarted {
+            metadata: EventMetadata::new("test"),
+            version: "0.1.0".to_string(),
+        };
+
+        // This will trigger on_event, which calls unregister.
+        bus.publish(event);
+
+        assert_eq!(bus.registry().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_drop_deadlock_publish_from_drop() {
+        use crate::subscriber::EventSubscriber;
+
+        struct DroppingSubscriber {
+            bus: EventBus,
+        }
+
+        impl EventSubscriber for DroppingSubscriber {
+            fn on_event(&self, _event: &AstridEvent, _bus: &EventBus) {}
+        }
+
+        impl Drop for DroppingSubscriber {
+            fn drop(&mut self) {
+                let event = AstridEvent::RuntimeStarted {
+                    metadata: EventMetadata::new("test"),
+                    version: "0.1.0".to_string(),
+                };
+                // If unregister holds the write lock while dropping us, this will deadlock
+                // when notify tries to get the read lock.
+                self.bus.publish(event);
+            }
+        }
+
+        let bus = EventBus::new();
+
+        let id = bus
+            .registry()
+            .register(Arc::new(DroppingSubscriber { bus: bus.clone() }));
+
+        // This shouldn't deadlock
+        bus.registry().unregister(id);
     }
 }
