@@ -17,7 +17,9 @@ pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 ///
 /// **WARNING:** Synchronous subscribers (`SubscriberRegistry`) are shared
 /// across clones. Storing a cloned `EventBus` inside a synchronous subscriber
-/// will create a memory leak via an `Arc` reference cycle.
+/// will create a memory leak via an `Arc` reference cycle. If a synchronous
+/// subscriber needs to publish events, store a `std::sync::Weak<EventBus>`
+/// or communicate via a separate channel.
 #[derive(Debug)]
 pub struct EventBus {
     /// Sender for broadcasting events.
@@ -338,5 +340,80 @@ mod tests {
 
         // Dropping the bus should drop the registry, dropping the subscriber, triggering DropNotify
         assert_eq!(drop_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_reentrancy_unregister_from_on_event() {
+        use crate::subscriber::{EventSubscriber, SubscriberId};
+        use std::sync::Mutex;
+
+        struct UnregisteringSubscriber {
+            bus: EventBus,
+            my_id: Mutex<Option<SubscriberId>>,
+        }
+
+        impl EventSubscriber for UnregisteringSubscriber {
+            fn on_event(&self, _event: &AstridEvent) {
+                let id = self.my_id.lock().unwrap().expect("id not set");
+                // This shouldn't deadlock against notify's read lock
+                self.bus.registry().unregister(id);
+            }
+        }
+
+        let bus = EventBus::new();
+
+        let subscriber = Arc::new(UnregisteringSubscriber {
+            bus: bus.clone(),
+            my_id: Mutex::new(None),
+        });
+
+        let id = bus
+            .registry()
+            .register(Arc::clone(&subscriber) as Arc<dyn EventSubscriber>);
+        *subscriber.my_id.lock().unwrap() = Some(id);
+
+        let event = AstridEvent::RuntimeStarted {
+            metadata: EventMetadata::new("test"),
+            version: "0.1.0".to_string(),
+        };
+
+        // This will trigger on_event, which calls unregister.
+        bus.publish(event);
+
+        assert_eq!(bus.registry().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_drop_deadlock_publish_from_drop() {
+        use crate::subscriber::EventSubscriber;
+
+        struct DroppingSubscriber {
+            bus: EventBus,
+        }
+
+        impl EventSubscriber for DroppingSubscriber {
+            fn on_event(&self, _event: &AstridEvent) {}
+        }
+
+        impl Drop for DroppingSubscriber {
+            fn drop(&mut self) {
+                let event = AstridEvent::RuntimeStarted {
+                    metadata: EventMetadata::new("test"),
+                    version: "0.1.0".to_string(),
+                };
+                // If unregister holds the write lock while dropping us, this will deadlock
+                // when notify tries to get the read lock.
+                self.bus.publish(event);
+            }
+        }
+
+        let bus = EventBus::new();
+
+        let id = bus
+            .registry()
+            .register(Arc::new(DroppingSubscriber { bus: bus.clone() }));
+
+        // This shouldn't deadlock
+        bus.registry().unregister(id);
     }
 }

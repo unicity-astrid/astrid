@@ -90,10 +90,12 @@ impl SubscriberRegistry {
         let id = SubscriberId::new();
         let name = subscriber.name().to_string();
 
-        let mut subs = self.subscribers.write().expect("lock poisoned");
-        let mut new_map = HashMap::clone(&subs);
-        new_map.insert(id, subscriber);
-        *subs = Arc::new(new_map);
+        let _old_map = {
+            let mut subs = self.subscribers.write().expect("lock poisoned");
+            let mut new_map = HashMap::clone(&subs);
+            new_map.insert(id, subscriber);
+            std::mem::replace(&mut *subs, Arc::new(new_map))
+        };
 
         debug!(subscriber_name = %name, "Subscriber registered");
         id
@@ -107,15 +109,15 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn unregister(&self, id: SubscriberId) -> bool {
-        let removed = {
+        let (removed, _old_map) = {
             let mut subs = self.subscribers.write().expect("lock poisoned");
             if subs.contains_key(&id) {
                 let mut new_map = HashMap::clone(&subs);
                 new_map.remove(&id);
-                *subs = Arc::new(new_map);
-                true
+                let old = std::mem::replace(&mut *subs, Arc::new(new_map));
+                (true, Some(old))
             } else {
-                false
+                (false, None)
             }
         };
 
@@ -132,7 +134,10 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn notify(&self, event: &AstridEvent) {
-        let subs = Arc::clone(&self.subscribers.read().expect("lock poisoned"));
+        let subs = {
+            let guard = self.subscribers.read().expect("lock poisoned");
+            Arc::clone(&*guard)
+        };
 
         for (id, subscriber) in subs.iter() {
             if subscriber.accepts(event) {
@@ -148,10 +153,16 @@ impl SubscriberRegistry {
                 }));
 
                 if let Err(e) = result {
+                    let panic_msg = if let Some(s) = e.downcast_ref::<&str>() {
+                        Some(s.to_string())
+                    } else {
+                        e.downcast_ref::<String>().cloned()
+                    };
+
                     warn!(
                         subscriber_id = ?id,
                         subscriber_name = %subscriber.name(),
-                        error = ?e,
+                        panic_msg = ?panic_msg,
                         "Subscriber panicked"
                     );
                 }
@@ -187,9 +198,7 @@ impl SubscriberRegistry {
     pub fn clear(&self) {
         let _removed = {
             let mut subs = self.subscribers.write().expect("lock poisoned");
-            let old = Arc::clone(&subs);
-            *subs = Arc::new(HashMap::new());
-            old
+            std::mem::replace(&mut *subs, Arc::new(HashMap::new()))
         };
         debug!("All subscribers cleared");
     }
