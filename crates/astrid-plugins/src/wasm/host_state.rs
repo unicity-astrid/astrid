@@ -23,6 +23,12 @@ pub struct HostState {
     pub plugin_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
     pub workspace_root: PathBuf,
+    /// The Virtual File System (VFS) instance for this plugin.
+    pub vfs: Arc<dyn astrid_vfs::Vfs>,
+    /// The root capability handle for the VFS.
+    pub vfs_root_handle: astrid_capabilities::DirHandle,
+    /// Reference to the ephemeral upper directory to keep it alive for the session.
+    pub upper_dir: Option<Arc<tempfile::TempDir>>,
     /// Plugin-scoped KV store (`plugin:{plugin_id}` namespace).
     pub kv: ScopedKvStore,
     /// System Event Bus for IPC publish/subscribe.
@@ -98,6 +104,7 @@ impl std::fmt::Debug for HostState {
         f.debug_struct("HostState")
             .field("plugin_id", &self.plugin_id)
             .field("workspace_root", &self.workspace_root)
+            .field("vfs_root_handle", &self.vfs_root_handle)
             .field("has_security", &self.security.is_some())
             .field("has_connector_capability", &self.has_connector_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
@@ -122,6 +129,9 @@ mod tests {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
+            vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -157,6 +167,9 @@ mod tests {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
+            vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -197,6 +210,9 @@ mod tests {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
+            vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -233,6 +249,9 @@ mod tests {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
+            vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -287,6 +306,9 @@ mod tests {
             plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
+            vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),

@@ -8,7 +8,7 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 pub(crate) fn astrid_ipc_publish_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
-    _outputs: &mut [Val],
+    outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     // Prevent IPC topic abuse
@@ -29,13 +29,16 @@ pub(crate) fn astrid_ipc_publish_impl(
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
     // Check rate limit and quotas using the length *before* allocating the memory
-    state
-        .ipc_limiter
-        .check_quota(
-            state.plugin_uuid,
-            payload_len.try_into().unwrap_or(usize::MAX),
-        )
-        .map_err(|err| Error::msg(format!("IPC rate limit exceeded: {err}")))?;
+    let quota_code = state.ipc_limiter.check_quota(
+        state.plugin_uuid,
+        payload_len.try_into().unwrap_or(usize::MAX),
+    );
+
+    if quota_code < 0 {
+        let mem = plugin.memory_new(quota_code.to_string())?;
+        outputs[0] = plugin.memory_to_val(mem);
+        return Ok(());
+    }
 
     let topic: String = plugin.memory_get_val(&inputs[0])?;
     let payload_bytes: Vec<u8> = plugin.memory_get_val(&inputs[1])?;
@@ -71,6 +74,8 @@ pub(crate) fn astrid_ipc_publish_impl(
     // Publish to the event bus
     state.event_bus.publish(event);
 
+    let mem = plugin.memory_new("0")?;
+    outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
 

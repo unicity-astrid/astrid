@@ -42,7 +42,7 @@ members = [
     # Frontends
     "crates/astrid-cli",
     "crates/astrid-cli-mockup",  # UI/UX prototype
-    "crates/astrid-telegram",
+    "crates/astrid-telegram", "crates/astrid-vfs",
     # "crates/astrid-discord",  # Phase 7
     # "crates/astrid-web",      # Phase 7
 

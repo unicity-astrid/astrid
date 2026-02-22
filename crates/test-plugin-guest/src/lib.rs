@@ -50,7 +50,7 @@ extern "ExtismHost" {
     fn astrid_register_connector(name: String, platform: String, profile: String) -> String;
     fn astrid_write_file(path: String, content: String);
     fn astrid_http_request(request_json: String) -> String;
-    fn astrid_ipc_publish(topic: String, payload: String);
+    fn astrid_ipc_publish(topic: String, payload: String) -> String;
     fn astrid_ipc_subscribe(topic: String) -> String;
     fn astrid_ipc_unsubscribe(handle: String);
 }
@@ -404,7 +404,7 @@ fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let handle_id = unsafe { astrid_ipc_subscribe(topic.into())? };
     
     // Publish
-    unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
+    let _ = unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
     
     // Unsubscribe
     unsafe { astrid_ipc_unsubscribe(handle_id.clone())? };
@@ -432,7 +432,10 @@ fn handle_test_ipc_limits(args: &serde_json::Value) -> Result<ToolOutput, Error>
             let result = unsafe { astrid_ipc_publish("test.large".into(), large_payload) };
             Ok(ToolOutput {
                 content: format!("{:?}", result),
-                is_error: result.is_err(),
+                is_error: match &result {
+                    Ok(code_str) => code_str.parse::<i64>().unwrap_or(0) < 0,
+                    Err(_) => true,
+                },
             })
         },
         "subscribe_loop" => {

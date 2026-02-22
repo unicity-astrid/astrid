@@ -28,6 +28,7 @@ uuid = { workspace = true }
 
 # Tracing
 tracing = { workspace = true }
+dashmap = "6.1.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

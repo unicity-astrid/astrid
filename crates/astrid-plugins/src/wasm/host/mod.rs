@@ -134,7 +134,6 @@ impl WasmHostFunction {
         match self {
             Self::FsMkdir
             | Self::FsUnlink
-            | Self::IpcPublish
             | Self::IpcUnsubscribe
             | Self::KvSet
             | Self::Log
@@ -145,6 +144,7 @@ impl WasmHostFunction {
             | Self::FsStat
             | Self::GetConfig
             | Self::HttpRequest
+            | Self::IpcPublish
             | Self::IpcSubscribe
             | Self::KvGet
             | Self::ReadFile

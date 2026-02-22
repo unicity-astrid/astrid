@@ -68,6 +68,18 @@ fn build_test_plugin(
         plugin_uuid: uuid::Uuid::new_v4(),
         plugin_id: PluginId::from_static("test-all-endpoints"),
         workspace_root: workspace_root.to_path_buf(),
+        vfs: std::sync::Arc::new({
+            let v = astrid_vfs::HostVfs::new();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(v.register_dir(
+                    astrid_capabilities::DirHandle::new(),
+                    workspace_root.to_path_buf(),
+                ));
+            });
+            v
+        }),
+        vfs_root_handle: astrid_capabilities::DirHandle::new(),
+        upper_dir: None,
         kv,
         event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -110,6 +122,18 @@ fn build_connector_plugin(
         plugin_uuid: uuid::Uuid::new_v4(),
         plugin_id: PluginId::from_static("test-connector"),
         workspace_root: workspace_root.to_path_buf(),
+        vfs: std::sync::Arc::new({
+            let v = astrid_vfs::HostVfs::new();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(v.register_dir(
+                    astrid_capabilities::DirHandle::new(),
+                    workspace_root.to_path_buf(),
+                ));
+            });
+            v
+        }),
+        vfs_root_handle: astrid_capabilities::DirHandle::new(),
+        upper_dir: None,
         kv,
         event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -548,7 +572,7 @@ async fn host_ipc_limits() {
     let mut plugin = build_test_plugin(&workspace, std::collections::HashMap::new());
 
     // Test 1: Publish large payload
-    let output1 = try_execute_tool(
+    let output1 = execute_tool(
         &mut plugin,
         "test-ipc-limits",
         &serde_json::json!({
@@ -556,11 +580,14 @@ async fn host_ipc_limits() {
         }),
     );
 
-    assert!(output1.is_err(), "large publish should fail");
-    let err_str = output1.unwrap_err().clone();
     assert!(
-        err_str.contains("Payload exceeds maximum IPC size (5MB)"),
-        "unexpected error message: {err_str}"
+        output1.is_error,
+        "large publish should fail gracefully and report error"
+    );
+    assert!(
+        output1.content.contains("Ok(\"-2\")"),
+        "unexpected output content: {}",
+        output1.content
     );
 
     // Test 2: Subscribe loop

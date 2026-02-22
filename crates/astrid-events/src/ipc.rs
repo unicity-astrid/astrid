@@ -79,7 +79,8 @@ pub enum IpcPayload {
 /// Simple token-bucket rate limiter for IPC publish events.
 #[derive(Debug)]
 pub struct IpcRateLimiter {
-    state: std::sync::Mutex<std::collections::HashMap<Uuid, (std::time::Instant, usize)>>,
+    state: dashmap::DashMap<Uuid, (std::time::Instant, usize)>,
+    last_prune: std::sync::atomic::AtomicU64,
 }
 
 impl IpcRateLimiter {
@@ -87,33 +88,57 @@ impl IpcRateLimiter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            state: std::sync::Mutex::new(std::collections::HashMap::new()),
+            state: dashmap::DashMap::new(),
+            last_prune: std::sync::atomic::AtomicU64::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            ),
         }
     }
 
     /// Check if a plugin (`source_id`) is allowed to publish a payload of `size_bytes`.
     ///
-    /// # Errors
+    /// # Returns
     ///
-    /// Returns an error if the quota is exceeded or the payload is too large.
-    pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> Result<(), &'static str> {
+    /// Returns an integer code:
+    /// - `0` for success
+    /// - `-1` for rate-limited (too frequent)
+    /// - `-2` for payload too large
+    #[must_use]
+    pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> i64 {
         // Hard limit on payload size to prevent OOM
         if size_bytes > 5 * 1024 * 1024 {
-            return Err("Payload exceeds maximum IPC size (5MB)");
+            return -2;
         }
 
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "Rate limiter lock poisoned")?;
         let now = std::time::Instant::now();
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
-        // Lazy prune stale entries to prevent memory leaks when shared globally
-        if state.len() > 1000 {
-            state.retain(|_, v| now.duration_since(v.0).as_secs() < 1);
+        // Lazy prune stale entries to prevent memory leaks when shared globally.
+        // Debounce pruning to at most once per minute to avoid O(N) locking contention.
+        let last = self.last_prune.load(std::sync::atomic::Ordering::Relaxed);
+        if self.state.len() > 1000
+            && now_unix.saturating_sub(last) > 60
+            && self
+                .last_prune
+                .compare_exchange(
+                    last,
+                    now_unix,
+                    std::sync::atomic::Ordering::Acquire,
+                    std::sync::atomic::Ordering::Relaxed,
+                )
+                .is_ok()
+        {
+            self.state
+                .retain(|_, v| now.duration_since(v.0).as_secs() < 1);
         }
 
-        let entry = state.entry(source_id).or_insert((now, 0));
+        let mut entry = self.state.entry(source_id).or_insert((now, 0));
 
         // Reset window if more than 1 second has passed
         if now.duration_since(entry.0).as_secs() >= 1 {
@@ -123,12 +148,12 @@ impl IpcRateLimiter {
 
         // Hard limit on total bytes per second (10MB)
         if entry.1.saturating_add(size_bytes) > 10 * 1024 * 1024 {
-            return Err("Payload exceeds rate limit (10MB/sec)");
+            return -1;
         }
 
         entry.1 = entry.1.saturating_add(size_bytes);
 
-        Ok(())
+        0
     }
 }
 
@@ -148,10 +173,10 @@ mod tests {
         let source_id = Uuid::new_v4();
 
         // 1 MB is fine
-        assert!(limiter.check_quota(source_id, 1024 * 1024).is_ok());
+        assert_eq!(limiter.check_quota(source_id, 1024 * 1024), 0);
 
-        // 6 MB is rejected
-        assert!(limiter.check_quota(source_id, 6 * 1024 * 1024).is_err());
+        // 6 MB is rejected (-2 for payload too large)
+        assert_eq!(limiter.check_quota(source_id, 6 * 1024 * 1024), -2);
     }
 
     #[test]
@@ -160,13 +185,13 @@ mod tests {
         let source_id = Uuid::new_v4();
 
         // First 4 MB is fine
-        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
+        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), 0);
 
         // Second 4 MB is fine (8 MB total in < 1 sec)
-        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
+        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), 0);
 
-        // Third 4 MB is rejected (12 MB total > 10MB limit)
-        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_err());
+        // Third 4 MB is rejected (12 MB total > 10MB limit) -> -1 for rate-limited
+        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), -1);
     }
 
     #[test]
