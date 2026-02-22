@@ -258,19 +258,17 @@ impl SecurityInterceptor {
                             .capability_validator
                             .handle_allow_always(action, approval_audit_id.clone());
                         if let Ok(r) = result {
-                            let audit_id = self.audit_allowed(action, &r);
                             return Ok(InterceptResult {
                                 proof: r,
-                                audit_id,
+                                audit_id: approval_audit_id,
                                 budget_warning,
                             });
                         }
                         // Fall back to one-time approval if creation fails
-                        let proof = InterceptProof::UserApproval { approval_audit_id };
-                        let audit_id = self.audit_allowed(action, &proof);
+                        let proof = InterceptProof::UserApproval { approval_audit_id: approval_audit_id.clone() };
                         return Ok(InterceptResult {
                             proof,
-                            audit_id,
+                            audit_id: approval_audit_id,
                             budget_warning,
                         });
                     },
@@ -293,7 +291,7 @@ impl SecurityInterceptor {
                 let reason =
                     format!("action deferred (resolution: {resolution_id}, fallback: {fallback})");
                 self.audit_deferred(action, &reason);
-                Err(ApprovalError::Timeout { timeout_ms: 0 })
+                Err(ApprovalError::Deferred)
             },
         }
     }

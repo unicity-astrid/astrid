@@ -15,6 +15,10 @@ pub enum ApprovalError {
         timeout_ms: u64,
     },
 
+    /// The action has been deferred for asynchronous approval.
+    #[error("action deferred for asynchronous approval")]
+    Deferred,
+
     /// The action is blocked by security policy.
     #[error("blocked by policy: {tool} - {reason}")]
     PolicyBlocked {

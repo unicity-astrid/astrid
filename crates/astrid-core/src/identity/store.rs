@@ -120,10 +120,10 @@ impl IdentityStore for InMemoryIdentityStore {
                 .links
                 .read()
                 .map_err(|e| IdentityError::Internal(format!("Failed to read links: {e}")))?;
-            if links.contains_key(&(frontend.clone(), frontend_user_id.to_string())) {
+            if let Some(existing) = links.get(&(frontend.clone(), frontend_user_id.to_string())) {
                 return Err(IdentityError::FrontendAlreadyLinked {
                     frontend: frontend.to_string(),
-                    existing_id: "unknown".to_string(),
+                    existing_id: existing.astrid_id.to_string(),
                 });
             }
         }
