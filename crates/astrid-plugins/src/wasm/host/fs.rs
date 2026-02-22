@@ -5,20 +5,25 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 use crate::wasm::host_state::HostState;
 
 /// Lexically normalize a path (resolve `.` and `..` without filesystem access).
-fn lexical_normalize(path: &Path) -> PathBuf {
+fn lexical_normalize(path: &Path) -> Result<PathBuf, Error> {
     let mut components = Vec::new();
     for component in path.components() {
         match component {
             std::path::Component::ParentDir => {
-                if !components.is_empty() {
+                if let Some(last) = components.last() {
+                    if matches!(last, std::path::Component::RootDir | std::path::Component::Prefix(_)) {
+                        return Err(Error::msg("path traversal attempts to escape root"));
+                    }
                     components.pop();
+                } else {
+                    return Err(Error::msg("path traversal attempts to escape root"));
                 }
             },
             std::path::Component::CurDir => {},
             other => components.push(other),
         }
     }
-    components.iter().collect()
+    Ok(components.iter().collect())
 }
 
 /// Resolve a plugin-provided path relative to the workspace root and verify
@@ -54,7 +59,7 @@ pub(crate) fn resolve_within_workspace(
                 None => canonical_parent,
             }
         } else {
-            lexical_normalize(&joined)
+            lexical_normalize(&joined)?
         }
     };
 
