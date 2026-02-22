@@ -13,7 +13,9 @@ pub(crate) struct PreparedLandlockRules {
 /// This runs before `fork()`, so heap allocation and filesystem access are
 /// safe. Paths that don't exist are silently skipped.
 #[cfg(target_os = "linux")]
-pub(crate) fn prepare_landlock_rules(rules: &[crate::sandbox::LandlockPathRule]) -> PreparedLandlockRules {
+pub(crate) fn prepare_landlock_rules(
+    rules: &[crate::sandbox::LandlockPathRule],
+) -> PreparedLandlockRules {
     use landlock::PathFd;
 
     let mut prepared = Vec::with_capacity(rules.len());
@@ -86,7 +88,9 @@ pub(crate) fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<
 /// and `Error::last_os_error()` reads `errno` without heap allocation.
 #[cfg(target_os = "linux")]
 #[allow(unsafe_code)]
-pub(crate) fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), std::io::Error> {
+pub(crate) fn apply_resource_limits(
+    limits: &crate::sandbox::ResourceLimits,
+) -> Result<(), std::io::Error> {
     // RLIMIT_NPROC — max processes/threads (per-UID, not per-process)
     let nproc = libc::rlimit {
         rlim_cur: limits.max_processes,
