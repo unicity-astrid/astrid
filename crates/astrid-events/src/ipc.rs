@@ -79,16 +79,16 @@ pub enum IpcPayload {
 /// Simple token-bucket rate limiter for IPC publish events.
 #[derive(Debug)]
 pub struct IpcRateLimiter {
-    // We would use std::sync::RwLock or tokio::sync::RwLock and keep track of timestamps.
-    // For now, this serves as a foundation for Phase 1.
-    // A production implementation would track publish frequency and payload sizes per source.
+    state: std::sync::Mutex<std::collections::HashMap<Uuid, (std::time::Instant, usize)>>,
 }
 
 impl IpcRateLimiter {
     /// Create a new IPC rate limiter.
     #[must_use]
     pub fn new() -> Self {
-        Self {}
+        Self {
+            state: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
     }
 
     /// Check if a plugin (`source_id`) is allowed to publish a payload of `size_bytes`.
@@ -97,14 +97,28 @@ impl IpcRateLimiter {
     ///
     /// Returns an error if the quota is exceeded or the payload is too large.
     pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> Result<(), &'static str> {
-        let _ = source_id; // unused
-        
         // Hard limit on payload size to prevent OOM
         if size_bytes > 5 * 1024 * 1024 {
             return Err("Payload exceeds maximum IPC size (5MB)");
         }
         
-        // TODO: Implement token bucket tracking for rate limiting (messages/sec)
+        let mut state = self.state.lock().map_err(|_| "Rate limiter lock poisoned")?;
+        let now = std::time::Instant::now();
+        
+        let entry = state.entry(source_id).or_insert((now, 0));
+        
+        // Reset window if more than 1 second has passed
+        if now.duration_since(entry.0).as_secs() >= 1 {
+            entry.0 = now;
+            entry.1 = 0;
+        }
+        
+        // Hard limit on total bytes per second (10MB)
+        if entry.1.saturating_add(size_bytes) > 10 * 1024 * 1024 {
+            return Err("Payload exceeds rate limit (10MB/sec)");
+        }
+        
+        entry.1 = entry.1.saturating_add(size_bytes);
         
         Ok(())
     }

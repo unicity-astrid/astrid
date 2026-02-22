@@ -90,6 +90,10 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     // For Phase 1, we store the receiver in HostState to keep the subscription alive.
     // We use a simple counter for handle IDs.
     let handle_id = state.next_subscription_id;
+    if state.subscriptions.contains_key(&handle_id) {
+        return Err(Error::msg("Subscription handle ID collision due to wraparound"));
+    }
+    
     let handle_str = handle_id.to_string();
     
     // Allocate memory in guest FIRST to avoid leaking the receiver on failure

@@ -182,7 +182,7 @@ fn try_execute_tool(
     let result = tokio::task::block_in_place(|| {
         plugin
             .call::<&str, String>("execute-tool", &input_json)
-            .map_err(|e| e.to_string())
+            .map_err(|e| format!("{e:?}"))
     })?;
     serde_json::from_str(&result).map_err(|e| format!("parse ToolOutput: {e}\nraw: {result}"))
 }
@@ -228,8 +228,8 @@ async fn discover_all_tools() {
 
     assert_eq!(
         tools.len(),
-        9,
-        "expected exactly 9 tools, got {}",
+        10,
+        "expected exactly 10 tools, got {}",
         tools.len()
     );
 
@@ -535,6 +535,51 @@ async fn host_ipc_publish_and_subscribe() {
     assert_eq!(parsed["payload"], "{\"msg\":\"hello ipc\"}");
     assert!(parsed["subscription_handle"].as_str().is_some());
     assert_eq!(parsed["unsubscribed"], true);
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_ipc_limits() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-ipc-limits");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, std::collections::HashMap::new());
+
+    // Test 1: Publish large payload
+    let output1 = try_execute_tool(
+        &mut plugin,
+        "test-ipc-limits",
+        &serde_json::json!({
+            "test_type": "publish_large"
+        }),
+    );
+    
+    assert!(output1.is_err(), "large publish should fail");
+    let err_str = output1.unwrap_err().to_string();
+    assert!(
+        err_str.contains("Payload exceeds maximum IPC size (5MB)"),
+        "unexpected error message: {}",
+        err_str
+    );
+
+    // Test 2: Subscribe loop
+    let output2 = try_execute_tool(
+        &mut plugin,
+        "test-ipc-limits",
+        &serde_json::json!({
+            "test_type": "subscribe_loop"
+        }),
+    );
+    
+    assert!(output2.is_err(), "subscribe loop past 128 should fail");
+    let err_str2 = output2.unwrap_err().to_string();
+    assert!(
+        err_str2.contains("Subscription limit reached"),
+        "unexpected error message: {}",
+        err_str2
+    );
 
     let _ = std::fs::remove_dir_all(&workspace);
 }
