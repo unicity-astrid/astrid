@@ -125,7 +125,13 @@ impl SecurityInterceptor {
         if let Some(proof) = self.capability_validator.check_capability(action) {
             let mut cap_budget_warning = None;
             if let Some(cost) = estimated_cost {
-                cap_budget_warning = self.budget_validator.check_and_reserve(cost)?;
+                match self.budget_validator.check_and_reserve(cost) {
+                    Ok(warning) => cap_budget_warning = warning,
+                    Err(e) => {
+                        self.audit_denied(action, &e.to_string());
+                        return Err(e);
+                    }
+                }
             }
             let audit_id = self.audit_allowed(action, &proof);
             return Ok(InterceptResult {
@@ -138,7 +144,13 @@ impl SecurityInterceptor {
         // Step 3: Budget check (atomic check + reserve)
         let mut budget_warning = None;
         if let Some(cost) = estimated_cost {
-            budget_warning = self.budget_validator.check_and_reserve(cost)?;
+            match self.budget_validator.check_and_reserve(cost) {
+                Ok(warning) => budget_warning = warning,
+                Err(e) => {
+                    self.audit_denied(action, &e.to_string());
+                    return Err(e);
+                }
+            }
         }
 
         // Step 4: Risk assessment / Approval
@@ -624,6 +636,77 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("budget exceeded"));
+    }
+
+    #[tokio::test]
+    async fn test_budget_exceeded_creates_audit_entry() {
+        let handler = Arc::new(AutoApproveHandler);
+        let t = make_interceptor_with_audit(SecurityPolicy::default(), Some(handler)).await;
+
+        let action = SensitiveAction::McpToolCall {
+            server: "financial".to_string(),
+            tool: "transfer".to_string(),
+        };
+
+        let result = t.interceptor.intercept(&action, "test", Some(15.0)).await;
+
+        assert!(result.is_err());
+
+        let count = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count, 1,
+            "budget denied action should create exactly one audit entry"
+        );
+
+        let entries = t.audit_log.get_session_entries(&t.session_id).unwrap();
+        let entry = entries.first().unwrap();
+        match &entry.authorization {
+            astrid_audit::AuthorizationProof::Denied { reason } => {
+                assert!(reason.contains("budget exceeded"));
+            },
+            _ => panic!("Expected Denied authorization proof"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_capability_budget_exceeded_creates_audit_entry() {
+        let t = make_interceptor_with_audit(
+            SecurityPolicy::default(),
+            Some(Arc::new(SessionApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::McpToolCall {
+            server: "test".to_string(),
+            tool: "expensive_read".to_string(),
+        };
+
+        // First call — establishes the capability (allowance) for the session.
+        // The cost is 5.0, which is well within the 10.0 per-action limit.
+        let result1 = t.interceptor.intercept(&action, "test", Some(5.0)).await;
+        assert!(result1.is_ok());
+
+        // Second call — the capability exists, but now the cost exceeds the per-action limit (15.0 > 10.0).
+        let result2 = t.interceptor.intercept(&action, "test", Some(15.0)).await;
+        assert!(result2.is_err());
+
+        // There should be 2 audit entries:
+        // 1. The initial session approval
+        // 2. The budget denial on the second attempt
+        let count = t.audit_log.count_session(&t.session_id).unwrap();
+        assert_eq!(
+            count, 2,
+            "expected two audit entries: initial approval, followed by budget denial"
+        );
+
+        let entries = t.audit_log.get_session_entries(&t.session_id).unwrap();
+        let last_entry = entries.last().unwrap();
+        match &last_entry.authorization {
+            astrid_audit::AuthorizationProof::Denied { reason } => {
+                assert!(reason.contains("budget exceeded"));
+            },
+            _ => panic!("Expected Denied authorization proof for the second call"),
+        }
     }
 
     #[tokio::test]
