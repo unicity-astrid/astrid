@@ -205,6 +205,8 @@ impl WasmPlugin {
             kv: ctx.kv.clone(),
             event_bus: astrid_events::EventBus::new(), // TODO: pass actual bus instance down from runtime
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: std::collections::HashMap::new(),
+            next_subscription_id: 1,
             config: ctx.config.clone(),
             security: self.config.security.clone(),
             runtime_handle: tokio::runtime::Handle::current(),

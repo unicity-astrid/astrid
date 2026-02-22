@@ -187,6 +187,8 @@ impl WasmHandler {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: tokio::runtime::Handle::current(),

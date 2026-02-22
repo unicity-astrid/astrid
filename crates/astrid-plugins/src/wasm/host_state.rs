@@ -27,6 +27,10 @@ pub struct HostState {
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
     pub ipc_limiter: astrid_events::ipc::IpcRateLimiter,
+    /// Active event bus subscriptions for IPC events.
+    pub subscriptions: HashMap<u64, astrid_events::EventReceiver>,
+    /// Counter for issuing subscription handle IDs.
+    pub next_subscription_id: u64,
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
     /// Optional security gate for gated operations (HTTP, file I/O).
@@ -118,6 +122,8 @@ mod tests {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -150,6 +156,8 @@ mod tests {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -187,6 +195,8 @@ mod tests {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -220,6 +230,8 @@ mod tests {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -271,6 +283,8 @@ mod tests {
             kv,
             event_bus: astrid_events::EventBus::new(),
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),

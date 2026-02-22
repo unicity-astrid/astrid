@@ -11,6 +11,13 @@ pub(crate) fn astrid_ipc_publish_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
+    // Prevent IPC topic abuse
+    let topic_ptr = inputs[0].unwrap_i64();
+    let topic_len = plugin.memory_length(topic_ptr.cast_unsigned())?;
+    if topic_len > 256 {
+        return Err(Error::msg("Topic exceeds maximum allowed length (256 bytes)"));
+    }
+
     let topic: String = plugin.memory_get_val(&inputs[0])?;
     let payload_bytes: Vec<u8> = plugin.memory_get_val(&inputs[1])?;
 
@@ -61,16 +68,19 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     let topic_pattern: String = plugin.memory_get_val(&inputs[0])?;
 
     let ud = user_data.get()?;
-    let state = ud
+    let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
     // In a full implementation, we would register this receiver in HostState
     // and provide an `astrid_ipc_poll` function to read from it.
-    let _receiver = state.event_bus.subscribe_topic(topic_pattern);
+    let receiver = state.event_bus.subscribe_topic(topic_pattern);
     
-    // For Phase 1, we just return a dummy subscription handle (1).
-    let handle_id = 1_u64;
+    // For Phase 1, we store the receiver in HostState to keep the subscription alive.
+    // We use a simple counter for handle IDs.
+    let handle_id = state.next_subscription_id;
+    state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
+    state.subscriptions.insert(handle_id, receiver);
 
     outputs[0] = Val::I64(handle_id.cast_signed());
     Ok(())
