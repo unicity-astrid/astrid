@@ -124,9 +124,13 @@ impl SecurityInterceptor {
         // Step 2: Capability check
         if let Some(proof) = self.capability_validator.check_capability(action) {
             let mut cap_budget_warning = None;
+            let mut reservation = None;
             if let Some(cost) = estimated_cost {
                 match self.budget_validator.check_and_reserve(cost) {
-                    Ok(warning) => cap_budget_warning = warning,
+                    Ok(res) => {
+                        cap_budget_warning = res.warning().cloned();
+                        reservation = Some(res);
+                    },
                     Err(e) => {
                         self.audit_denied(action, &e.to_string());
                         return Err(e);
@@ -134,6 +138,9 @@ impl SecurityInterceptor {
                 }
             }
             let audit_id = self.audit_allowed(action, &proof);
+            if let Some(res) = reservation {
+                res.commit();
+            }
             return Ok(InterceptResult {
                 proof,
                 audit_id,
@@ -143,9 +150,13 @@ impl SecurityInterceptor {
 
         // Step 3: Budget check (atomic check + reserve)
         let mut budget_warning = None;
+        let mut budget_reservation = None;
         if let Some(cost) = estimated_cost {
             match self.budget_validator.check_and_reserve(cost) {
-                Ok(warning) => budget_warning = warning,
+                Ok(res) => {
+                    budget_warning = res.warning().cloned();
+                    budget_reservation = Some(res);
+                },
                 Err(e) => {
                     self.audit_denied(action, &e.to_string());
                     return Err(e);
@@ -157,6 +168,9 @@ impl SecurityInterceptor {
         if matches!(policy_result, PolicyResult::Allowed) {
             let proof = InterceptProof::PolicyAllowed;
             let audit_id = self.audit_allowed(action, &proof);
+            if let Some(res) = budget_reservation {
+                res.commit();
+            }
             return Ok(InterceptResult {
                 proof,
                 audit_id,
@@ -290,6 +304,9 @@ impl SecurityInterceptor {
                     },
                 };
                 let audit_id = self.audit_allowed(action, &intercept_proof);
+                if let Some(res) = budget_reservation {
+                    res.commit();
+                }
                 Ok(InterceptResult {
                     proof: intercept_proof,
                     audit_id,
@@ -297,9 +314,6 @@ impl SecurityInterceptor {
                 })
             },
             ApprovalOutcome::Denied { reason } => {
-                if let Some(cost) = estimated_cost {
-                    self.budget_validator.refund(cost);
-                }
                 self.audit_denied(action, &reason);
                 Err(ApprovalError::Denied { reason })
             },
@@ -307,9 +321,6 @@ impl SecurityInterceptor {
                 resolution_id,
                 fallback,
             } => {
-                if let Some(cost) = estimated_cost {
-                    self.budget_validator.refund(cost);
-                }
                 let reason =
                     format!("action deferred (resolution: {resolution_id}, fallback: {fallback})");
                 self.audit_deferred(action, &reason);
@@ -641,6 +652,45 @@ mod tests {
         let result = interceptor.intercept(&action, "test", Some(5.0)).await;
         assert!(result.is_err());
 
+        // Assert budget spent is back to 0
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(interceptor.budget_tracker().spent(), 0.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_budget_refunded_on_async_cancellation() {
+        // A handler that never returns, so we can cancel the future
+        struct HangingHandler;
+        #[async_trait::async_trait]
+        impl ApprovalHandler for HangingHandler {
+            async fn request_approval(&self, _request: ApprovalRequest) -> Option<ApprovalResponse> {
+                std::future::pending().await
+            }
+            fn is_available(&self) -> bool { true }
+        }
+
+        let handler = Arc::new(HangingHandler);
+        let interceptor = make_interceptor(SecurityPolicy::default(), Some(handler)).await;
+
+        let action = SensitiveAction::FileDelete {
+            path: "/home/user/file.txt".to_string(),
+        };
+
+        // Assert budget spent is 0
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(interceptor.budget_tracker().spent(), 0.0);
+        }
+
+        // Start intercept task
+        let fut = interceptor.intercept(&action, "test", Some(5.0));
+        
+        // Let it run for a moment so it hits the pending await point and reserves budget
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
+
+        // The timeout drops the future, which drops the budget reservation guard.
         // Assert budget spent is back to 0
         #[allow(clippy::float_cmp)]
         {
