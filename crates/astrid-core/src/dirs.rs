@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_astrid_home_rejects_empty_env() {
-        let result = AstridHome::resolve_with_env(Some("".to_string()), None);
+        let result = AstridHome::resolve_with_env(Some(String::new()), None);
         assert!(result.is_err());
     }
 
