@@ -203,7 +203,7 @@ impl WasmPlugin {
             plugin_id: self.id.clone(),
             workspace_root: ctx.workspace_root.clone(),
             kv: ctx.kv.clone(),
-            event_bus: astrid_events::EventBus::new(), // TODO: pass actual bus instance down from runtime
+            event_bus: astrid_events::EventBus::new(), // TODO (Phase 2): pass actual bus instance down from runtime
             ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
             subscriptions: std::collections::HashMap::new(),
             next_subscription_id: 1,
