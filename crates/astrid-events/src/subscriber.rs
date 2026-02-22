@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
+use crate::bus::EventBus;
 use crate::event::AstridEvent;
 
 /// Filter function type for event subscribers.
@@ -16,16 +17,21 @@ pub type EventFilter = Box<dyn Fn(&AstridEvent) -> bool + Send + Sync>;
 /// subscribers should not perform heavy work in the `on_event` method
 /// as it blocks the event bus.
 ///
-/// **WARNING:** Do not store a strong clone of `EventBus` inside your
-/// synchronous subscriber. This will create an `Arc` reference cycle
-/// (`EventBus` -> `SubscriberRegistry` -> `EventSubscriber` -> `EventBus`)
-/// preventing the bus and the subscriber from ever being dropped.
+/// **WARNING:** Synchronous subscribers (`SubscriberRegistry`) are shared
+/// across clones. Storing a cloned `EventBus` inside a synchronous subscriber
+/// will create a memory leak via an `Arc` reference cycle. If a synchronous
+/// subscriber needs to publish events, store a `std::sync::Weak<EventBus>`
+/// or communicate via a separate channel.
 pub trait EventSubscriber: Send + Sync {
     /// Called when an event is published.
     ///
     /// This method should return quickly. For heavy processing,
     /// consider using async subscribers via `EventReceiver` instead.
-    fn on_event(&self, event: &AstridEvent);
+    ///
+    /// A reference to the broadcasting `EventBus` is provided to allow
+    /// publishing derivative events without storing a strong clone of the
+    /// bus (which would create an `Arc` reference cycle memory leak).
+    fn on_event(&self, event: &AstridEvent, bus: &EventBus);
 
     /// Optional filter for event types.
     ///
@@ -79,6 +85,26 @@ impl SubscriberRegistry {
         }
     }
 
+    /// Internal helper to safely update the registry and drop old elements outside the lock.
+    fn update_registry<F>(&self, update_fn: F) -> bool
+    where
+        F: FnOnce(&mut HashMap<SubscriberId, Arc<dyn EventSubscriber>>) -> bool,
+    {
+        let (changed, _old_map) = {
+            let mut subs = self.subscribers.write().expect("lock poisoned");
+            let mut new_map = HashMap::clone(&subs);
+
+            if update_fn(&mut new_map) {
+                let old = std::mem::replace(&mut *subs, Arc::new(new_map));
+                (true, Some(old))
+            } else {
+                (false, None)
+            }
+        };
+        // The old map Arc is dropped safely here, outside the RwLock guard.
+        changed
+    }
+
     /// Register a subscriber.
     ///
     /// Returns a handle that can be used to unregister the subscriber.
@@ -90,12 +116,10 @@ impl SubscriberRegistry {
         let id = SubscriberId::new();
         let name = subscriber.name().to_string();
 
-        let _old_map = {
-            let mut subs = self.subscribers.write().expect("lock poisoned");
-            let mut new_map = HashMap::clone(&subs);
-            new_map.insert(id, subscriber);
-            std::mem::replace(&mut *subs, Arc::new(new_map))
-        };
+        self.update_registry(|map| {
+            map.insert(id, subscriber);
+            true
+        });
 
         debug!(subscriber_name = %name, "Subscriber registered");
         id
@@ -109,17 +133,7 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn unregister(&self, id: SubscriberId) -> bool {
-        let (removed, _old_map) = {
-            let mut subs = self.subscribers.write().expect("lock poisoned");
-            if subs.contains_key(&id) {
-                let mut new_map = HashMap::clone(&subs);
-                new_map.remove(&id);
-                let old = std::mem::replace(&mut *subs, Arc::new(new_map));
-                (true, Some(old))
-            } else {
-                (false, None)
-            }
-        };
+        let removed = self.update_registry(|map| map.remove(&id).is_some());
 
         if removed {
             debug!("Subscriber unregistered");
@@ -133,7 +147,7 @@ impl SubscriberRegistry {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub fn notify(&self, event: &AstridEvent) {
+    pub fn notify(&self, event: &AstridEvent, bus: &EventBus) {
         let subs = {
             let guard = self.subscribers.read().expect("lock poisoned");
             Arc::clone(&*guard)
@@ -149,7 +163,7 @@ impl SubscriberRegistry {
 
                 // Catch panics to prevent one subscriber from affecting others
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    subscriber.on_event(event);
+                    subscriber.on_event(event, bus);
                 }));
 
                 if let Err(e) = result {
@@ -196,10 +210,14 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn clear(&self) {
-        let _removed = {
-            let mut subs = self.subscribers.write().expect("lock poisoned");
-            std::mem::replace(&mut *subs, Arc::new(HashMap::new()))
-        };
+        self.update_registry(|map| {
+            if map.is_empty() {
+                false
+            } else {
+                map.clear();
+                true
+            }
+        });
         debug!("All subscribers cleared");
     }
 }
@@ -242,7 +260,7 @@ impl<F> EventSubscriber for FilterSubscriber<F>
 where
     F: Fn(&AstridEvent) + Send + Sync,
 {
-    fn on_event(&self, event: &AstridEvent) {
+    fn on_event(&self, event: &AstridEvent, _bus: &EventBus) {
         (self.handler)(event);
     }
 
@@ -283,7 +301,7 @@ mod tests {
     }
 
     impl EventSubscriber for CountingSubscriber {
-        fn on_event(&self, _event: &AstridEvent) {
+        fn on_event(&self, _event: &AstridEvent, _bus: &EventBus) {
             self.count.fetch_add(1, Ordering::SeqCst);
         }
 
@@ -310,7 +328,8 @@ mod tests {
 
     #[test]
     fn test_registry_notify() {
-        let registry = SubscriberRegistry::new();
+        let bus = EventBus::new();
+        let registry = bus.registry();
         let subscriber = Arc::new(CountingSubscriber::new("test"));
         registry.register(Arc::clone(&subscriber) as Arc<dyn EventSubscriber>);
 
@@ -319,16 +338,17 @@ mod tests {
             version: "0.1.0".to_string(),
         };
 
-        registry.notify(&event);
+        registry.notify(&event, &bus);
         assert_eq!(subscriber.count(), 1);
 
-        registry.notify(&event);
+        registry.notify(&event, &bus);
         assert_eq!(subscriber.count(), 2);
     }
 
     #[test]
     fn test_registry_multiple_subscribers() {
-        let registry = SubscriberRegistry::new();
+        let bus = EventBus::new();
+        let registry = bus.registry();
         let sub1 = Arc::new(CountingSubscriber::new("sub1"));
         let sub2 = Arc::new(CountingSubscriber::new("sub2"));
 
@@ -340,7 +360,7 @@ mod tests {
             version: "0.1.0".to_string(),
         };
 
-        registry.notify(&event);
+        registry.notify(&event, &bus);
 
         assert_eq!(sub1.count(), 1);
         assert_eq!(sub2.count(), 1);
@@ -356,7 +376,8 @@ mod tests {
         })
         .with_filter(super::super::event::AstridEvent::is_security_event);
 
-        let registry = SubscriberRegistry::new();
+        let bus = EventBus::new();
+        let registry = bus.registry();
         registry.register(Arc::new(subscriber));
 
         // Non-security event should be filtered
@@ -364,7 +385,7 @@ mod tests {
             metadata: EventMetadata::new("test"),
             version: "0.1.0".to_string(),
         };
-        registry.notify(&event1);
+        registry.notify(&event1, &bus);
         assert_eq!(received.load(Ordering::SeqCst), 0);
 
         // Security event should be received
@@ -374,7 +395,7 @@ mod tests {
             resource: "test".to_string(),
             action: "execute".to_string(),
         };
-        registry.notify(&event2);
+        registry.notify(&event2, &bus);
         assert_eq!(received.load(Ordering::SeqCst), 1);
     }
 

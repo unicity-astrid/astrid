@@ -74,7 +74,7 @@ impl EventBus {
         };
 
         // Notify synchronous subscribers
-        self.registry.notify(&event);
+        self.registry.notify(&event, self);
 
         count
     }
@@ -348,22 +348,20 @@ mod tests {
         use std::sync::Mutex;
 
         struct UnregisteringSubscriber {
-            bus: EventBus,
             my_id: Mutex<Option<SubscriberId>>,
         }
 
         impl EventSubscriber for UnregisteringSubscriber {
-            fn on_event(&self, _event: &AstridEvent) {
+            fn on_event(&self, _event: &AstridEvent, bus: &EventBus) {
                 let id = self.my_id.lock().unwrap().expect("id not set");
                 // This shouldn't deadlock against notify's read lock
-                self.bus.registry().unregister(id);
+                bus.registry().unregister(id);
             }
         }
 
         let bus = EventBus::new();
 
         let subscriber = Arc::new(UnregisteringSubscriber {
-            bus: bus.clone(),
             my_id: Mutex::new(None),
         });
 
@@ -392,7 +390,7 @@ mod tests {
         }
 
         impl EventSubscriber for DroppingSubscriber {
-            fn on_event(&self, _event: &AstridEvent) {}
+            fn on_event(&self, _event: &AstridEvent, _bus: &EventBus) {}
         }
 
         impl Drop for DroppingSubscriber {
