@@ -127,6 +127,24 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::IpcPublish => crate::wasm::host::ipc::astrid_ipc_publish_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
+        WasmHostFunction::IpcSubscribe => crate::wasm::host::ipc::astrid_ipc_subscribe_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
+        WasmHostFunction::IpcUnsubscribe => crate::wasm::host::ipc::astrid_ipc_unsubscribe_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
         WasmHostFunction::KvGet => crate::wasm::host::kv::astrid_kv_get_impl(
             plugin,
             &fn_inputs,

@@ -586,6 +586,15 @@ pub enum AstridEvent {
         stack_trace: Option<String>,
     },
 
+    // ========== IPC Events ==========
+    /// An IPC message routed from a WASM guest or host.
+    Ipc {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// The decoded IPC message.
+        message: crate::ipc::IpcMessage,
+    },
+
     // ========== Custom Events ==========
     /// Custom event for extensions.
     Custom {
@@ -650,6 +659,7 @@ impl AstridEvent {
             | Self::HealthCheckCompleted { metadata, .. }
             | Self::AuditEntryCreated { metadata, .. }
             | Self::ErrorOccurred { metadata, .. }
+            | Self::Ipc { metadata, .. }
             | Self::Custom { metadata, .. } => metadata,
         }
     }
@@ -719,6 +729,8 @@ impl AstridEvent {
             Self::AuditEntryCreated { .. } => "audit_entry_created",
             // Error
             Self::ErrorOccurred { .. } => "error_occurred",
+            // IPC
+            Self::Ipc { .. } => "ipc",
             // Custom
             Self::Custom { .. } => "custom",
         }

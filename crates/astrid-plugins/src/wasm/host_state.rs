@@ -19,10 +19,20 @@ use crate::security::PluginSecurityGate;
 pub struct HostState {
     /// The plugin this state belongs to.
     pub plugin_id: PluginId,
+    /// The unique session UUID for this plugin's execution state.
+    pub plugin_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
     pub workspace_root: PathBuf,
     /// Plugin-scoped KV store (`plugin:{plugin_id}` namespace).
     pub kv: ScopedKvStore,
+    /// System Event Bus for IPC publish/subscribe.
+    pub event_bus: astrid_events::EventBus,
+    /// Rate limiter for IPC message publishing.
+    pub ipc_limiter: astrid_events::ipc::IpcRateLimiter,
+    /// Active event bus subscriptions for IPC events.
+    pub subscriptions: HashMap<u64, astrid_events::EventReceiver>,
+    /// Counter for issuing subscription handle IDs.
+    pub next_subscription_id: u64,
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
     /// Optional security gate for gated operations (HTTP, file I/O).
@@ -109,9 +119,14 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -139,9 +154,14 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -174,9 +194,14 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -205,9 +230,14 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),
@@ -254,9 +284,14 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: rt.handle().clone(),

@@ -51,10 +51,12 @@ pub mod prelude;
 
 mod bus;
 mod event;
+pub mod ipc;
 mod subscriber;
 
 pub use bus::{DEFAULT_CHANNEL_CAPACITY, EventBus, EventReceiver};
 pub use event::{AstridEvent, EventMetadata};
+pub use ipc::{IpcMessage, IpcPayload, IpcRateLimiter};
 pub use subscriber::{
     EventFilter, EventSubscriber, FilterSubscriber, SubscriberId, SubscriberRegistry,
 };

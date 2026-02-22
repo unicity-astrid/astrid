@@ -182,9 +182,14 @@ impl WasmHandler {
         };
 
         let host_state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: PluginId::from_static("hook-wasm"),
             workspace_root: self.workspace_root.clone(),
             kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
             runtime_handle: tokio::runtime::Handle::current(),

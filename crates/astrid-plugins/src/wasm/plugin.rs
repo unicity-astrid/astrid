@@ -200,9 +200,14 @@ impl WasmPlugin {
         // 5. Build HostState
         let has_connector = self.has_connector_capability();
         let host_state = HostState {
+            plugin_uuid: uuid::Uuid::new_v4(),
             plugin_id: self.id.clone(),
             workspace_root: ctx.workspace_root.clone(),
             kv: ctx.kv.clone(),
+            event_bus: astrid_events::EventBus::with_capacity(128), // TODO (Phase 2): pass actual bus instance down from runtime
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: std::collections::HashMap::new(),
+            next_subscription_id: 1,
             config: ctx.config.clone(),
             security: self.config.security.clone(),
             runtime_handle: tokio::runtime::Handle::current(),

@@ -50,6 +50,9 @@ extern "ExtismHost" {
     fn astrid_register_connector(name: String, platform: String, profile: String) -> String;
     fn astrid_write_file(path: String, content: String);
     fn astrid_http_request(request_json: String) -> String;
+    fn astrid_ipc_publish(topic: String, payload: String);
+    fn astrid_ipc_subscribe(topic: String) -> String;
+    fn astrid_ipc_unsubscribe(handle: String);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +143,16 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Register a connector, then send a message through it".into(),
             input_schema: r#"{"type":"object","properties":{"connector_name":{"type":"string"},"platform":{"type":"string"},"user_id":{"type":"string"},"message":{"type":"string"}},"required":["connector_name","platform","user_id","message"]}"#.into(),
         },
+        ToolDefinition {
+            name: "test-ipc".into(),
+            description: "Subscribe to an IPC topic and publish a message".into(),
+            input_schema: r#"{"type":"object","properties":{"topic":{"type":"string"},"payload":{"type":"string"}},"required":["topic","payload"]}"#.into(),
+        },
+        ToolDefinition {
+            name: "test-ipc-limits".into(),
+            description: "Test IPC host function limits (publish and subscribe)".into(),
+            input_schema: r#"{"type":"object","properties":{"test_type":{"type":"string"}},"required":["test_type"]}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -183,6 +196,8 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-roundtrip" => handle_test_roundtrip(&args),
         "test-register-connector" => handle_test_register_connector(&args),
         "test-channel-send" => handle_test_channel_send(&args),
+        "test-ipc" => handle_test_ipc(&args),
+        "test-ipc-limits" => handle_test_ipc_limits(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -379,4 +394,71 @@ fn handle_test_channel_send(args: &serde_json::Value) -> Result<ToolOutput, Erro
         content: serde_json::to_string(&result)?,
         is_error: false,
     })
+}
+
+fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let topic = args["topic"].as_str().unwrap_or("");
+    let payload = args["payload"].as_str().unwrap_or("");
+
+    // Subscribe
+    let handle_id = unsafe { astrid_ipc_subscribe(topic.into())? };
+    
+    // Publish
+    unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
+    
+    // Unsubscribe
+    unsafe { astrid_ipc_unsubscribe(handle_id.clone())? };
+
+    let result = serde_json::json!({
+        "topic": topic,
+        "payload": payload,
+        "subscription_handle": handle_id,
+        "unsubscribed": true
+    });
+
+    Ok(ToolOutput {
+        content: serde_json::to_string(&result)?,
+        is_error: false,
+    })
+}
+
+fn handle_test_ipc_limits(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let test_type = args["test_type"].as_str().unwrap_or("");
+    
+    match test_type {
+        "publish_large" => {
+            // Test 1: Publish a large payload (> 5MB)
+            let large_payload = "a".repeat(5 * 1024 * 1024 + 1024);
+            let result = unsafe { astrid_ipc_publish("test.large".into(), large_payload) };
+            Ok(ToolOutput {
+                content: format!("{:?}", result),
+                is_error: result.is_err(),
+            })
+        },
+        "subscribe_loop" => {
+            // Test 2: Exhaust the subscription limit (128)
+            let mut handles = Vec::new();
+            for _ in 0..128 {
+                match unsafe { astrid_ipc_subscribe("test.loop".into()) } {
+                    Ok(h) => handles.push(h),
+                    Err(e) => return Ok(ToolOutput {
+                        content: format!("failed before 128: {:?}", e),
+                        is_error: true,
+                    }),
+                }
+            }
+            
+            // 129th should fail
+            let result = unsafe { astrid_ipc_subscribe("test.loop".into()) };
+            
+            Ok(ToolOutput {
+                content: format!("handles_created: {}, 129th_result: {:?}", handles.len(), result),
+                is_error: result.is_err(), // Will be marked as error in test if it matches Err
+            })
+        },
+        _ => Ok(ToolOutput {
+            content: "unknown test_type".into(),
+            is_error: true,
+        }),
+    }
 }
