@@ -4,7 +4,16 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 use astrid_core::plugin_abi::HttpResponse;
 use astrid_core::plugin_abi::KeyValuePair;
 
+use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
+
+#[cfg(feature = "http")]
+static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("failed to build global HTTP client")
+});
 
 #[allow(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_http_request_impl(
@@ -24,7 +33,8 @@ pub(crate) fn astrid_http_request_impl(
         body: Option<String>,
     }
 
-    let request_json: String = plugin.memory_get_val(&inputs[0])?;
+    let request_json: String =
+        util::get_safe_string(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
 
     let req: HttpRequest = serde_json::from_str(&request_json)
         .map_err(|e| Error::msg(format!("invalid HTTP request JSON: {e}")))?;
@@ -80,7 +90,8 @@ async fn perform_http_request(
     headers: &[KeyValuePair],
     body: Option<&str>,
 ) -> Result<HttpResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = HTTP_CLIENT.clone();
+
     let mut builder = match method.to_uppercase().as_str() {
         "GET" => client.get(url),
         "POST" => client.post(url),
@@ -101,7 +112,7 @@ async fn perform_http_request(
         builder = builder.body(b.to_string());
     }
 
-    let resp = builder
+    let mut resp = builder
         .send()
         .await
         .map_err(|e| Error::msg(format!("HTTP request failed: {e}")))?;
@@ -115,10 +126,30 @@ async fn perform_http_request(
             value: v.to_str().unwrap_or("").to_string(),
         })
         .collect();
-    let resp_body = resp
-        .text()
+
+    let content_length = resp.content_length().unwrap_or(0);
+    if content_length > util::MAX_GUEST_PAYLOAD_LEN {
+        return Err(Error::msg(
+            "HTTP response body exceeds maximum allowed guest payload limit",
+        ));
+    }
+
+    let mut resp_bytes = Vec::new();
+
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| Error::msg(format!("failed to read HTTP response body: {e}")))?;
+        .map_err(|e| Error::msg(format!("failed to read chunk: {e}")))?
+    {
+        if resp_bytes.len().saturating_add(chunk.len()) as u64 > util::MAX_GUEST_PAYLOAD_LEN {
+            return Err(Error::msg(
+                "HTTP response body exceeds maximum allowed guest payload limit",
+            ));
+        }
+        resp_bytes.extend_from_slice(&chunk);
+    }
+
+    let resp_body = String::from_utf8_lossy(&resp_bytes).into_owned();
 
     Ok(HttpResponse {
         status,

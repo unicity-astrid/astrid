@@ -228,9 +228,53 @@ async fn discover_all_tools() {
 
     assert_eq!(
         tools.len(),
-        10,
-        "expected exactly 10 tools, got {}",
+        12,
+        "expected exactly 12 tools, got {}",
         tools.len()
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_rejects_huge_log() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-malicious-log");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    let result = try_execute_tool(&mut plugin, "test-malicious-log", &serde_json::json!({}));
+
+    // It should return an error because the host function traps on limit violation
+    assert!(result.is_err(), "host function must reject oversized log");
+    let err = result.unwrap_err();
+    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(err.contains("astrid_log"), "should fail in astrid_log");
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_rejects_huge_kv() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-malicious-kv");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    let result = try_execute_tool(&mut plugin, "test-malicious-kv", &serde_json::json!({}));
+
+    // It should return an error because the host function traps on limit violation
+    assert!(
+        result.is_err(),
+        "host function must reject oversized KV payload"
+    );
+    let err = result.unwrap_err();
+    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(
+        err.contains("astrid_kv_set"),
+        "should fail in astrid_kv_set"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);

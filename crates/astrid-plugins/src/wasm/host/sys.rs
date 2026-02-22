@@ -1,6 +1,7 @@
 use astrid_core::plugin_abi::LogLevel;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
+use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
 
 #[allow(clippy::needless_pass_by_value)]
@@ -10,8 +11,8 @@ pub(crate) fn astrid_log_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let level: String = plugin.memory_get_val(&inputs[0])?;
-    let message: String = plugin.memory_get_val(&inputs[1])?;
+    let level: String = util::get_safe_string(plugin, &inputs[0], 64)?;
+    let message: String = util::get_safe_string(plugin, &inputs[1], util::MAX_LOG_MESSAGE_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -20,8 +21,13 @@ pub(crate) fn astrid_log_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     drop(state);
 
-    let parsed_level: LogLevel =
-        serde_json::from_str(&format!("\"{level}\"")).unwrap_or(LogLevel::Info);
+    let parsed_level: LogLevel = match level.to_lowercase().as_str() {
+        "trace" => LogLevel::Trace,
+        "debug" => LogLevel::Debug,
+        "warn" | "warning" => LogLevel::Warn,
+        "error" | "err" => LogLevel::Error,
+        _ => LogLevel::Info,
+    };
 
     match parsed_level {
         LogLevel::Trace => tracing::trace!(plugin = %plugin_id, "{message}"),
@@ -41,7 +47,7 @@ pub(crate) fn astrid_get_config_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let key: String = plugin.memory_get_val(&inputs[0])?;
+    let key: String = util::get_safe_string(plugin, &inputs[0], util::MAX_KEY_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud

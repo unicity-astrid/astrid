@@ -153,6 +153,16 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Test IPC host function limits (publish and subscribe)".into(),
             input_schema: r#"{"type":"object","properties":{"test_type":{"type":"string"}},"required":["test_type"]}"#.into(),
         },
+        ToolDefinition {
+            name: "test-malicious-log".into(),
+            description: "Attempt to log a message that exceeds the maximum log length limit".into(),
+            input_schema: r#"{"type":"object","properties":{}}"#.into(),
+        },
+        ToolDefinition {
+            name: "test-malicious-kv".into(),
+            description: "Attempt to set a KV pair that exceeds the 10MB limit".into(),
+            input_schema: r#"{"type":"object","properties":{}}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -198,6 +208,8 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-channel-send" => handle_test_channel_send(&args),
         "test-ipc" => handle_test_ipc(&args),
         "test-ipc-limits" => handle_test_ipc_limits(&args),
+        "test-malicious-log" => handle_test_malicious_log(&args),
+        "test-malicious-kv" => handle_test_malicious_kv(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -250,6 +262,37 @@ fn handle_test_log(args: &serde_json::Value) -> Result<ToolOutput, Error> {
         is_error: false,
     })
 }
+
+fn handle_test_malicious_log(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    // Generate a string larger than MAX_LOG_MESSAGE_LEN (64KB)
+    let huge_message = "A".repeat(65 * 1024);
+    
+    // Attempting to log this should fail due to host memory limits
+    unsafe {
+        astrid_log("info".into(), huge_message)?;
+    }
+
+    Ok(ToolOutput {
+        content: "log succeeded unexpectedly".to_string(),
+        is_error: false,
+    })
+}
+
+fn handle_test_malicious_kv(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    // Generate a string larger than MAX_GUEST_PAYLOAD_LEN (10MB)
+    let huge_message = "A".repeat(11 * 1024 * 1024);
+    
+    // Attempting to store this should fail due to host memory limits
+    unsafe {
+        astrid_kv_set("huge_key".into(), huge_message)?;
+    }
+
+    Ok(ToolOutput {
+        content: "kv set succeeded unexpectedly".to_string(),
+        is_error: false,
+    })
+}
+
 
 fn handle_test_config(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let key = args["key"].as_str().unwrap_or("");

@@ -1,3 +1,4 @@
+use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
@@ -8,7 +9,7 @@ pub(crate) fn astrid_kv_get_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let key: String = plugin.memory_get_val(&inputs[0])?;
+    let key: String = util::get_safe_string(plugin, &inputs[0], util::MAX_KEY_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -21,7 +22,14 @@ pub(crate) fn astrid_kv_get_impl(
     let result = handle.block_on(async { kv.get(&key).await });
 
     let value = match result {
-        Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+        Ok(Some(bytes)) => {
+            if bytes.len() as u64 > util::MAX_GUEST_PAYLOAD_LEN {
+                return Err(Error::msg(
+                    "KV value exceeds maximum allowed guest payload limit",
+                ));
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        },
         Ok(None) => String::new(),
         Err(e) => return Err(Error::msg(format!("kv_get failed: {e}"))),
     };
@@ -38,8 +46,8 @@ pub(crate) fn astrid_kv_set_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let key: String = plugin.memory_get_val(&inputs[0])?;
-    let value: String = plugin.memory_get_val(&inputs[1])?;
+    let key: String = util::get_safe_string(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let value: String = util::get_safe_string(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud

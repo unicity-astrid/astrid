@@ -2,6 +2,7 @@ use astrid_core::ConnectorProfile;
 use astrid_core::identity::FrontendType;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
+use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
 
 pub(crate) const MAX_INBOUND_MESSAGE_BYTES: usize = 1_048_576;
@@ -40,9 +41,10 @@ pub(crate) fn astrid_channel_send_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let connector_id_str: String = plugin.memory_get_val(&inputs[0])?;
-    let platform_user_id: String = plugin.memory_get_val(&inputs[1])?;
-    let content: String = plugin.memory_get_val(&inputs[2])?;
+    let connector_id_str: String = util::get_safe_string(plugin, &inputs[0], 128)?;
+    let platform_user_id: String = util::get_safe_string(plugin, &inputs[1], 512)?;
+    let content: String =
+        util::get_safe_string(plugin, &inputs[2], MAX_INBOUND_MESSAGE_BYTES as u64)?;
 
     if connector_id_str.len() > 64 {
         return Err(Error::msg("connector_id too long"));
@@ -131,9 +133,9 @@ pub(crate) fn astrid_register_connector_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let name: String = plugin.memory_get_val(&inputs[0])?;
-    let platform_str: String = plugin.memory_get_val(&inputs[1])?;
-    let profile_str: String = plugin.memory_get_val(&inputs[2])?;
+    let name: String = util::get_safe_string(plugin, &inputs[0], 512)?;
+    let platform_str: String = util::get_safe_string(plugin, &inputs[1], 512)?;
+    let profile_str: String = util::get_safe_string(plugin, &inputs[2], 512)?;
 
     if name.is_empty() {
         return Err(Error::msg("connector name must not be empty"));

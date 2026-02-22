@@ -1,7 +1,9 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use extism::{CurrentPlugin, Error, UserData, Val};
 
+use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
 
 /// Lexically normalize a path (resolve `.` and `..` without filesystem access).
@@ -83,7 +85,7 @@ pub(crate) fn astrid_fs_exists_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -108,7 +110,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -146,7 +148,7 @@ pub(crate) fn astrid_fs_readdir_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -192,7 +194,7 @@ pub(crate) fn astrid_fs_stat_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -245,7 +247,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -283,7 +285,7 @@ pub(crate) fn astrid_read_file_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -308,8 +310,22 @@ pub(crate) fn astrid_read_file_impl(
         }
     }
 
-    let content = std::fs::read_to_string(&resolved)
+    let file = std::fs::File::open(&resolved)
+        .map_err(|e| Error::msg(format!("failed to open file ({resolved_str}): {e}")))?;
+
+    let mut bytes = Vec::new();
+    file.take(util::MAX_GUEST_PAYLOAD_LEN + 1)
+        .read_to_end(&mut bytes)
         .map_err(|e| Error::msg(format!("read_file failed ({resolved_str}): {e}")))?;
+
+    if bytes.len() as u64 > util::MAX_GUEST_PAYLOAD_LEN {
+        return Err(Error::msg(
+            "file size exceeds maximum allowed guest payload limit",
+        ));
+    }
+
+    let content = String::from_utf8(bytes)
+        .map_err(|e| Error::msg(format!("file content is not valid UTF-8: {e}")))?;
 
     let mem = plugin.memory_new(&content)?;
     outputs[0] = plugin.memory_to_val(mem);
@@ -323,8 +339,8 @@ pub(crate) fn astrid_write_file_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let path: String = plugin.memory_get_val(&inputs[0])?;
-    let content: String = plugin.memory_get_val(&inputs[1])?;
+    let path: String = util::get_safe_string(plugin, &inputs[0], util::MAX_PATH_LEN)?;
+    let content: String = util::get_safe_string(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;
 
     let ud = user_data.get()?;
     let state = ud
