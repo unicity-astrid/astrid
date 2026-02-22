@@ -168,6 +168,11 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Attempt to trigger host panic with invalid HTTP headers".into(),
             input_schema: r#"{"type":"object","properties":{}}"#.into(),
         },
+        ToolDefinition {
+            name: "test-http".into(),
+            description: "Make an HTTP request via host function".into(),
+            input_schema: r#"{"type":"object","properties":{"request":{"type":"string"}},"required":["request"]}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -216,6 +221,7 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-malicious-log" => handle_test_malicious_log(&args),
         "test-malicious-kv" => handle_test_malicious_kv(&args),
         "test-malicious-http-headers" => handle_test_malicious_http_headers(&args),
+        "test-http" => handle_test_http(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -532,4 +538,17 @@ fn handle_test_ipc_limits(args: &serde_json::Value) -> Result<ToolOutput, Error>
             is_error: true,
         }),
     }
+}
+
+fn handle_test_http(args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let req = args
+        .get("request")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::msg("missing 'request' string arg"))?;
+
+    let output_str = unsafe { astrid_http_request(req.into()) }?;
+    Ok(ToolOutput {
+        content: output_str,
+        is_error: false,
+    })
 }

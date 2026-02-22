@@ -228,8 +228,8 @@ async fn discover_all_tools() {
 
     assert_eq!(
         tools.len(),
-        13,
-        "expected exactly 13 tools, got {}",
+        14,
+        "expected exactly 14 tools, got {}",
         tools.len()
     );
 
@@ -648,5 +648,65 @@ async fn test_host_rejects_invalid_http_headers() {
     let err = result.unwrap_err();
     assert!(err.contains("invalid header"), "unexpected error: {err}");
 
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_http_restricted_headers_filtered() {
+    build_fixture();
+    let workspace = std::env::temp_dir().join("e2e-wasm-http-headers");
+    let _ = std::fs::create_dir_all(&workspace);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server_handle = tokio::spawn(async move {
+        if let Ok((mut socket, _)) = listener.accept().await {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let mut buf = [0; 4096];
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+
+            // reqwest uses lowercase header keys
+            assert!(!req.to_lowercase().contains("host: malicious.com"), "host header injected!");
+            assert!(!req.to_lowercase().contains("connection: upgrade"), "connection header injected!");
+            assert!(!req.to_lowercase().contains("upgrade: websocket"), "upgrade header injected!");
+            assert!(!req.to_lowercase().contains("content-length: 999"), "content-length header injected!");
+            assert!(!req.to_lowercase().contains("transfer-encoding: chunked"), "transfer-encoding header injected!");
+            assert!(req.to_lowercase().contains("x-custom-header: allowed"), "custom header missing!");
+
+            let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+    });
+
+    let mut plugin = build_test_plugin(&workspace, std::collections::HashMap::new());
+
+    let request_json = serde_json::json!({
+        "method": "GET",
+        "url": format!("http://127.0.0.1:{}/test", port),
+        "headers": [
+            {"key": "Host", "value": "malicious.com"},
+            {"key": "Connection", "value": "upgrade"},
+            {"key": "Upgrade", "value": "websocket"},
+            {"key": "Content-Length", "value": "999"},
+            {"key": "Transfer-Encoding", "value": "chunked"},
+            {"key": "X-Custom-Header", "value": "allowed"}
+        ]
+    });
+
+    let result = try_execute_tool(
+        &mut plugin,
+        "test-http",
+        &serde_json::json!({ "request": serde_json::to_string(&request_json).unwrap() }),
+    );
+
+    assert!(result.is_ok(), "http request should succeed");
+    let out = result.unwrap();
+    assert!(!out.is_error, "http tool error: {}", out.content);
+    assert!(out.content.contains("\"status\":200"), "response should be 200 OK");
+    assert!(out.content.contains("\"body\":\"OK\""), "response body should be OK");
+
+    server_handle.await.expect("Server task panicked");
     let _ = std::fs::remove_dir_all(&workspace);
 }
