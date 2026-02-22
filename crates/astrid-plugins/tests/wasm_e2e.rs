@@ -69,7 +69,7 @@ fn build_test_plugin(
         plugin_id: PluginId::from_static("test-all-endpoints"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
-        event_bus: astrid_events::EventBus::new(),
+        event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
         subscriptions: std::collections::HashMap::new(),
         next_subscription_id: 1,
@@ -111,7 +111,7 @@ fn build_connector_plugin(
         plugin_id: PluginId::from_static("test-connector"),
         workspace_root: workspace_root.to_path_buf(),
         kv,
-        event_bus: astrid_events::EventBus::new(),
+        event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
         subscriptions: std::collections::HashMap::new(),
         next_subscription_id: 1,
@@ -557,11 +557,10 @@ async fn host_ipc_limits() {
     );
     
     assert!(output1.is_err(), "large publish should fail");
-    let err_str = output1.unwrap_err().to_string();
+    let err_str = output1.unwrap_err().clone();
     assert!(
         err_str.contains("Payload exceeds maximum IPC size (5MB)"),
-        "unexpected error message: {}",
-        err_str
+        "unexpected error message: {err_str}"
     );
 
     // Test 2: Subscribe loop
@@ -574,11 +573,10 @@ async fn host_ipc_limits() {
     );
     
     assert!(output2.is_err(), "subscribe loop past 128 should fail");
-    let err_str2 = output2.unwrap_err().to_string();
+    let err_str2 = output2.unwrap_err().clone();
     assert!(
         err_str2.contains("Subscription limit reached"),
-        "unexpected error message: {}",
-        err_str2
+        "unexpected error message: {err_str2}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);

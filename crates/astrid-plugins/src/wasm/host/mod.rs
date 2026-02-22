@@ -66,15 +66,15 @@ impl WasmHostFunction {
         Self::FsUnlink,
         Self::GetConfig,
         Self::HttpRequest,
-        Self::IpcPublish,
-        Self::IpcSubscribe,
-        Self::IpcUnsubscribe,
         Self::KvGet,
         Self::KvSet,
         Self::Log,
         Self::ReadFile,
         Self::RegisterConnector,
         Self::WriteFile,
+        Self::IpcPublish,
+        Self::IpcSubscribe,
+        Self::IpcUnsubscribe,
     ];
 
     /// Convert a raw integer index mapping back to a strongly typed enum variant.

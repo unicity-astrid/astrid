@@ -105,6 +105,9 @@ impl IpcRateLimiter {
         let mut state = self.state.lock().map_err(|_| "Rate limiter lock poisoned")?;
         let now = std::time::Instant::now();
         
+        // Lazy prune stale entries to prevent memory leaks when shared globally
+        state.retain(|_, v| now.duration_since(v.0).as_secs() < 1);
+        
         let entry = state.entry(source_id).or_insert((now, 0));
         
         // Reset window if more than 1 second has passed
@@ -144,6 +147,21 @@ mod tests {
 
         // 6 MB is rejected
         assert!(limiter.check_quota(source_id, 6 * 1024 * 1024).is_err());
+    }
+
+    #[test]
+    fn test_ipc_rate_limiter_frequency() {
+        let limiter = IpcRateLimiter::new();
+        let source_id = Uuid::new_v4();
+
+        // First 4 MB is fine
+        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
+        
+        // Second 4 MB is fine (8 MB total in < 1 sec)
+        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_ok());
+
+        // Third 4 MB is rejected (12 MB total > 10MB limit)
+        assert!(limiter.check_quota(source_id, 4 * 1024 * 1024).is_err());
     }
 
     #[test]

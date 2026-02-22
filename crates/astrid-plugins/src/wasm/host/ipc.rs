@@ -35,14 +35,24 @@ pub(crate) fn astrid_ipc_publish_impl(
     let topic: String = plugin.memory_get_val(&inputs[0])?;
     let payload_bytes: Vec<u8> = plugin.memory_get_val(&inputs[1])?;
 
-    // Attempt to deserialize payload. If it fails, wrap it in Custom.
-    let payload = if let Ok(p) = serde_json::from_slice::<IpcPayload>(&payload_bytes) {
-        p
-    } else if let Ok(data) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
-        // Fallback to custom unstructured data
-        IpcPayload::Custom { data }
-    } else {
-        return Err(Error::msg("IPC payload is neither a recognized schema nor valid JSON"));
+    // Parse as raw JSON Value first
+    let payload = match serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
+        Ok(data) => {
+            // Check if it declares a standard payload type
+            if let Some(type_str) = data.get("type").and_then(|t| t.as_str()) {
+                if type_str == "custom" {
+                    IpcPayload::Custom { data }
+                } else {
+                    // Try to strictly parse as IpcPayload to catch schema typos
+                    serde_json::from_value::<IpcPayload>(data)
+                        .map_err(|e| Error::msg(format!("Invalid standard IPC schema: {e}")))?
+                }
+            } else {
+                // Fallback for missing type
+                IpcPayload::Custom { data }
+            }
+        }
+        Err(_) => return Err(Error::msg("IPC payload is not valid JSON")),
     };
 
     let message = IpcMessage::new(topic, payload, state.plugin_uuid);

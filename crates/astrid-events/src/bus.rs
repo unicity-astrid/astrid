@@ -90,7 +90,9 @@ impl EventBus {
     /// Subscribe to IPC events matching a specific topic pattern.
     ///
     /// The pattern can be an exact match (e.g. `astrid.cli.input`)
-    /// or a wildcard suffix (e.g. `astrid.*`).
+    /// or a trailing wildcard suffix (e.g. `astrid.*`). Middle wildcards
+    /// (e.g. `astrid.*.event`) are not currently supported and will be
+    /// treated as exact literal string matches.
     #[must_use]
     pub fn subscribe_topic(&self, topic_pattern: impl Into<String>) -> EventReceiver {
         EventReceiver::new(self.sender.subscribe(), Some(topic_pattern.into()))
