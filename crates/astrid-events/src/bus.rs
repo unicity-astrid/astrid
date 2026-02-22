@@ -14,6 +14,10 @@ pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 ///
 /// The event bus uses a broadcast channel to deliver events to all
 /// connected receivers. Events are delivered asynchronously and in order.
+///
+/// **WARNING:** Synchronous subscribers (`SubscriberRegistry`) are shared
+/// across clones. Storing a cloned `EventBus` inside a synchronous subscriber
+/// will create a memory leak via an `Arc` reference cycle.
 #[derive(Debug)]
 pub struct EventBus {
     /// Sender for broadcasting events.
@@ -53,22 +57,24 @@ impl EventBus {
 
         trace!(event_type = %event.event_type(), "Publishing event");
 
-        // Notify synchronous subscribers
-        self.registry.notify(&event);
-
-        // Broadcast to async subscribers
-        if let Ok(count) = self.sender.send(Arc::clone(&event)) {
+        // Broadcast to async subscribers first so they don't wait for synchronous subscribers
+        let count = if let Ok(c) = self.sender.send(Arc::clone(&event)) {
             debug!(
                 event_type = %event.event_type(),
-                receiver_count = count,
+                receiver_count = c,
                 "Event published"
             );
-            count
+            c
         } else {
             // No receivers - this is fine
             trace!(event_type = %event.event_type(), "No receivers for event");
             0
-        }
+        };
+
+        // Notify synchronous subscribers
+        self.registry.notify(&event);
+
+        count
     }
 
     /// Subscribe to events.
@@ -87,10 +93,12 @@ impl EventBus {
         &self.registry
     }
 
-    /// Get the current number of active subscribers.
+    /// Get the current number of active subscribers (both async and synchronous).
     #[must_use]
     pub fn subscriber_count(&self) -> usize {
-        self.sender.receiver_count()
+        self.sender
+            .receiver_count()
+            .saturating_add(self.registry.len())
     }
 
     /// Get the channel capacity.
@@ -297,5 +305,38 @@ mod tests {
 
         // The subscriber registered on the cloned bus should have received it
         assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_drop_cleans_up_registry() {
+        use crate::subscriber::FilterSubscriber;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct DropNotify(Arc<AtomicUsize>);
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let drop_count = Arc::new(AtomicUsize::new(0));
+        let drop_count_clone = Arc::clone(&drop_count);
+
+        let notifier = DropNotify(drop_count_clone);
+        let bus = EventBus::new();
+
+        let subscriber = FilterSubscriber::new("test_drop", move |_| {
+            let _ = &notifier; // Capture notifier so it drops when the subscriber drops
+        });
+
+        bus.registry().register(Arc::new(subscriber));
+
+        // The subscriber shouldn't drop until the bus drops
+        assert_eq!(drop_count.load(Ordering::SeqCst), 0);
+
+        drop(bus);
+
+        // Dropping the bus should drop the registry, dropping the subscriber, triggering DropNotify
+        assert_eq!(drop_count.load(Ordering::SeqCst), 1);
     }
 }

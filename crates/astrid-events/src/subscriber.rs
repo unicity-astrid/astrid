@@ -15,6 +15,11 @@ pub type EventFilter = Box<dyn Fn(&AstridEvent) -> bool + Send + Sync>;
 /// Implement this trait to receive events synchronously. Note that
 /// subscribers should not perform heavy work in the `on_event` method
 /// as it blocks the event bus.
+///
+/// **WARNING:** Do not store a strong clone of `EventBus` inside your
+/// synchronous subscriber. This will create an `Arc` reference cycle
+/// (`EventBus` -> `SubscriberRegistry` -> `EventSubscriber` -> `EventBus`)
+/// preventing the bus and the subscriber from ever being dropped.
 pub trait EventSubscriber: Send + Sync {
     /// Called when an event is published.
     ///
@@ -116,9 +121,15 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     pub fn notify(&self, event: &AstridEvent) {
-        let subs = self.subscribers.read().expect("lock poisoned");
+        let subs = {
+            let guard = self.subscribers.read().expect("lock poisoned");
+            guard
+                .iter()
+                .map(|(id, sub)| (*id, Arc::clone(sub)))
+                .collect::<Vec<_>>()
+        };
 
-        for (id, subscriber) in subs.iter() {
+        for (id, subscriber) in &subs {
             if subscriber.accepts(event) {
                 trace!(
                     subscriber_name = %subscriber.name(),
