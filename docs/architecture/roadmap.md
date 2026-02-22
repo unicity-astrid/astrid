@@ -8,6 +8,8 @@ This document breaks down the transition from the current "Fat Core" to the WASM
 Before plugins can replace native frontends, they need a way to communicate asynchronously.
 - [ ] **Define the IPC Schema (`astrid-events`):** Standardize the event payload schemas (e.g., `UserInput`, `AgentResponse`, `ApprovalRequired`) using a format like Protobuf, MessagePack, or JSON.
 - [ ] **Expand the Message Broker (`astrid-events`):** Enhance the existing `EventBus` to handle topic-based routing and serialization/deserialization across the WASM boundary.
+  - *Security Task:* Enforce rate limits and message quotas on `astrid_publish` to prevent IPC Denial-of-Service (OOM) attacks from malfunctioning or malicious plugins.
+  - *Security Task:* Embed cryptographic signatures within the standardized payload schemas to allow stateless verification of messages across distributed swarm nodes.
 - [ ] **WASM IPC Host Functions (`astrid-plugins`):** 
   - Expose `astrid_publish(topic, payload)`.
   - Expose `astrid_subscribe(topic)` (yielding a stream or polling mechanism for the WASM guest).
@@ -23,6 +25,7 @@ Abstract away the physical filesystem to support the Overlayfs and secure sandbo
 ## Phase 3: The Overlay & Storage Layer
 Protect the host and provide state isolation.
 - [ ] **Overlay VFS Driver (`astrid-vfs`):** Implement the Copy-on-Write overlay. Reads fall through to `LowerDir`, writes go to `UpperDir`.
+  - *Security Task:* Mathematically reject hardlink creation (`link()`) that attempts to cross boundary layers, and enforce strict checks against symlink resolutions attempting to escape the mount root.
 - [ ] **Key-Value Host Functions (`astrid-plugins`):** Expose `astrid_kv_get` and `astrid_kv_set` host functions, wired directly into the native SurrealDB instance.
 
 ## Phase 4: Sandboxing the Telegram Frontend
@@ -35,6 +38,7 @@ Migrate the first native frontend into a WASM plugin as a proof-of-concept.
 ## Phase 5: Sandboxing the CLI Frontend
 Migrate the primary terminal interface into a WASM plugin.
 - [ ] **WASI Terminal Support:** Ensure the WASM runtime (Extism/Wasmtime) is configured to pass `stdin`, `stdout`, and `stderr` through to the `astrid-cli.wasm` plugin.
+  - *Security Task:* Implement an ANSI sequence sanitizer in the daemon to strip executable or terminal-querying escape sequences (e.g., DCS) emitted by the WASI guest, preventing host terminal emulator hijacking.
 - [ ] **State Decoupling:** Refactor the CLI codebase to remove direct dependencies on `astrid-storage`, `astrid-audit`, and `astrid-config`. It must query the daemon via the IPC bus for all state.
 - [ ] **The CLI WASM Plugin:** Compile the refactored CLI to `wasm32-wasip1`.
 - [ ] **The Native Shim:** Reduce the main `astrid` binary to a tiny shim that boots the WASM engine, loads `astrid-cli.wasm`, and connects the TTY.
