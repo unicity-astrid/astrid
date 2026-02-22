@@ -12,6 +12,8 @@ pub mod kv;
 pub mod shim;
 /// System configuration primitives.
 pub mod sys;
+/// Utility functions for WASM host implementations.
+pub mod util;
 
 use crate::wasm::host_state::HostState;
 use extism::{PluginBuilder, UserData, ValType};
