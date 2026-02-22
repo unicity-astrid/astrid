@@ -71,7 +71,7 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
 
 /// Converts an internal intercept proof into a serializable authorization proof format for the global audit log.
 #[must_use]
-pub fn intercept_proof_to_audit(proof: &InterceptProof) -> AuditAuthProof {
+pub fn intercept_proof_to_audit(proof: &InterceptProof, user_id: [u8; 8]) -> AuditAuthProof {
     match proof {
         InterceptProof::Capability { token_id }
         | InterceptProof::CapabilityCreated { token_id, .. } => AuditAuthProof::Capability {
@@ -86,7 +86,7 @@ pub fn intercept_proof_to_audit(proof: &InterceptProof) -> AuditAuthProof {
         InterceptProof::UserApproval {
             approval_audit_id, ..
         } => AuditAuthProof::UserApproval {
-            user_id: [0u8; 8], // TODO: wire in actual user ID (see #120)
+            user_id,
             approval_entry_id: Some(approval_audit_id.clone()),
         },
         InterceptProof::PolicyAllowed => AuditAuthProof::NotRequired {

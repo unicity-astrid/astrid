@@ -60,6 +60,7 @@ pub struct SecurityInterceptor {
     policy: SecurityPolicy,
     audit_log: Arc<AuditLog>,
     session_id: SessionId,
+    user_id: [u8; 8],
 }
 
 impl SecurityInterceptor {
@@ -79,6 +80,7 @@ impl SecurityInterceptor {
         workspace_budget_tracker: Option<Arc<WorkspaceBudgetTracker>>,
     ) -> Self {
         Self {
+            user_id: runtime_key.key_id(),
             capability_validator: CapabilityValidator::new(capability_store, runtime_key.clone()),
             budget_validator: BudgetValidator::new(budget_tracker, workspace_budget_tracker),
             allowance_validator: AllowanceValidator::new(
@@ -301,7 +303,7 @@ impl SecurityInterceptor {
     /// Log an allowed action to the audit trail.
     fn audit_allowed(&self, action: &SensitiveAction, proof: &InterceptProof) -> AuditEntryId {
         let audit_action = sensitive_action_to_audit(action);
-        let auth_proof = intercept_proof_to_audit(proof);
+        let auth_proof = intercept_proof_to_audit(proof, self.user_id);
 
         match self.audit_log.append(
             self.session_id.clone(),
