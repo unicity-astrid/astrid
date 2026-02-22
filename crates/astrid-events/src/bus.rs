@@ -175,11 +175,16 @@ impl EventReceiver {
     /// Returns `None` if the channel is closed or if events were dropped
     /// due to the receiver being too slow.
     pub async fn recv(&mut self) -> Option<Arc<AstridEvent>> {
+        let mut skipped: usize = 0;
         loop {
             match self.receiver.recv().await {
                 Ok(event) => {
                     if self.matches(&event) {
                         return Some(event);
+                    }
+                    skipped = skipped.wrapping_add(1);
+                    if skipped.is_multiple_of(100) {
+                        tokio::task::yield_now().await;
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(count)) => {

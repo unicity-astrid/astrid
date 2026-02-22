@@ -106,7 +106,9 @@ impl IpcRateLimiter {
         let now = std::time::Instant::now();
         
         // Lazy prune stale entries to prevent memory leaks when shared globally
-        state.retain(|_, v| now.duration_since(v.0).as_secs() < 1);
+        if state.len() > 1000 {
+            state.retain(|_, v| now.duration_since(v.0).as_secs() < 1);
+        }
         
         let entry = state.entry(source_id).or_insert((now, 0));
         

@@ -40,12 +40,13 @@ pub(crate) fn astrid_ipc_publish_impl(
         Ok(data) => {
             // Check if it declares a standard payload type
             if let Some(type_str) = data.get("type").and_then(|t| t.as_str()) {
-                if type_str == "custom" {
-                    IpcPayload::Custom { data }
-                } else {
-                    // Try to strictly parse as IpcPayload to catch schema typos
-                    serde_json::from_value::<IpcPayload>(data)
-                        .map_err(|e| Error::msg(format!("Invalid standard IPC schema: {e}")))?
+                match type_str {
+                    "user_input" | "agent_response" | "approval_required" | "custom" => {
+                        // Try to strictly parse as IpcPayload to catch schema typos
+                        serde_json::from_value::<IpcPayload>(data)
+                            .map_err(|e| Error::msg(format!("Invalid standard IPC schema: {e}")))?
+                    }
+                    _ => IpcPayload::Custom { data },
                 }
             } else {
                 // Fallback for missing type
