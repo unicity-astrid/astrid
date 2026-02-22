@@ -174,70 +174,73 @@ impl WasmPlugin {
             ctx.workspace_root.join(&wasm_path)
         };
 
-        // 2. Read WASM bytes
-        let wasm_bytes = std::fs::read(&resolved_path).map_err(|e| PluginError::LoadFailed {
-            plugin_id: self.id.clone(),
-            message: format!("failed to read WASM file {}: {e}", resolved_path.display()),
+        // 2. Read WASM bytes, 3. Verify Hash, 7. Build Extism Plugin, 8. Discover tools
+        // We wrap these synchronous and CPU-bound operations in `block_in_place` to avoid blocking
+        // the Tokio worker thread. Crucially, `discover_tools` executes a WASM export,
+        // which may invoke host functions that call `Handle::block_on`. If executed directly
+        // on a Tokio worker thread, this causes a panic.
+        let (_wasm_bytes, plugin_arc, tools, user_data_ref) = tokio::task::block_in_place(|| {
+            let wasm_bytes = std::fs::read(&resolved_path).map_err(|e| PluginError::LoadFailed {
+                plugin_id: self.id.clone(),
+                message: format!("failed to read WASM file {}: {e}", resolved_path.display()),
+            })?;
+
+            verify_hash(
+                &wasm_bytes,
+                expected_hash.as_deref(),
+                &self.id,
+                self.config.require_hash,
+            )?;
+
+            // 4. Create inbound channel if this plugin declares Connector capability
+            let inbound_tx = if self.has_connector_capability() {
+                let (tx, rx) = mpsc::channel(INBOUND_CHANNEL_CAPACITY);
+                self.inbound_rx = Some(rx);
+                Some(tx)
+            } else {
+                None
+            };
+
+            // 5. Build HostState
+            let has_connector = self.has_connector_capability();
+            let host_state = HostState {
+                plugin_uuid: uuid::Uuid::new_v4(),
+                plugin_id: self.id.clone(),
+                workspace_root: ctx.workspace_root.clone(),
+                kv: ctx.kv.clone(),
+                event_bus: astrid_events::EventBus::with_capacity(128), // TODO (Phase 2): pass actual bus instance down from runtime
+                ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+                subscriptions: std::collections::HashMap::new(),
+                next_subscription_id: 1,
+                config: ctx.config.clone(),
+                security: self.config.security.clone(),
+                runtime_handle: tokio::runtime::Handle::current(),
+                has_connector_capability: has_connector,
+                inbound_tx,
+                registered_connectors: Vec::new(),
+            };
+            let user_data = UserData::new(host_state);
+            // Keep a reference to extract registered connectors after plugin build
+            let user_data_ref = user_data.clone();
+
+            // 6. Build Extism Manifest
+            let extism_wasm = Wasm::data(wasm_bytes.clone());
+            let mut extism_manifest = Manifest::new([extism_wasm]);
+            extism_manifest = extism_manifest.with_timeout(self.config.max_execution_time);
+            // WASM pages are 64KB each; cap at u32::MAX pages if the byte limit is very large
+            let pages = self.config.max_memory_bytes / (64 * 1024);
+            let max_pages = u32::try_from(pages).unwrap_or(u32::MAX);
+            extism_manifest = extism_manifest.with_memory_max(max_pages);
+
+            let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
+            let builder = register_host_functions(builder, user_data);
+            let mut plugin = builder
+                .build()
+                .map_err(|e| PluginError::WasmError(format!("failed to build Extism plugin: {e}")))?;
+
+            let tools = discover_tools(&mut plugin)?;
+            Ok::<_, PluginError>((wasm_bytes, Arc::new(Mutex::new(plugin)), tools, user_data_ref))
         })?;
-
-        // 3. Hash verification
-        verify_hash(
-            &wasm_bytes,
-            expected_hash.as_deref(),
-            &self.id,
-            self.config.require_hash,
-        )?;
-
-        // 4. Create inbound channel if this plugin declares Connector capability
-        let inbound_tx = if self.has_connector_capability() {
-            let (tx, rx) = mpsc::channel(INBOUND_CHANNEL_CAPACITY);
-            self.inbound_rx = Some(rx);
-            Some(tx)
-        } else {
-            None
-        };
-
-        // 5. Build HostState
-        let has_connector = self.has_connector_capability();
-        let host_state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: self.id.clone(),
-            workspace_root: ctx.workspace_root.clone(),
-            kv: ctx.kv.clone(),
-            event_bus: astrid_events::EventBus::with_capacity(128), // TODO (Phase 2): pass actual bus instance down from runtime
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: std::collections::HashMap::new(),
-            next_subscription_id: 1,
-            config: ctx.config.clone(),
-            security: self.config.security.clone(),
-            runtime_handle: tokio::runtime::Handle::current(),
-            has_connector_capability: has_connector,
-            inbound_tx,
-            registered_connectors: Vec::new(),
-        };
-        let user_data = UserData::new(host_state);
-        // Keep a reference to extract registered connectors after plugin build
-        let user_data_ref = user_data.clone();
-
-        // 6. Build Extism Manifest
-        let extism_wasm = Wasm::data(wasm_bytes);
-        let mut extism_manifest = Manifest::new([extism_wasm]);
-        extism_manifest = extism_manifest.with_timeout(self.config.max_execution_time);
-        // WASM pages are 64KB each; cap at u32::MAX pages if the byte limit is very large
-        let pages = self.config.max_memory_bytes / (64 * 1024);
-        let max_pages = u32::try_from(pages).unwrap_or(u32::MAX);
-        extism_manifest = extism_manifest.with_memory_max(max_pages);
-
-        // 7. Build Extism Plugin
-        let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
-        let builder = register_host_functions(builder, user_data);
-        let mut plugin = builder
-            .build()
-            .map_err(|e| PluginError::WasmError(format!("failed to build Extism plugin: {e}")))?;
-
-        // 8. Discover tools via `describe-tools` export
-        let tools = discover_tools(&mut plugin)?;
-        let plugin_arc = Arc::new(Mutex::new(plugin));
 
         let wasm_tools: Vec<Arc<dyn PluginTool>> = tools
             .into_iter()
