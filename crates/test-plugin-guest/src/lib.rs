@@ -163,6 +163,11 @@ pub extern "C" fn describe_tools() -> i32 {
             description: "Attempt to set a KV pair that exceeds the 10MB limit".into(),
             input_schema: r#"{"type":"object","properties":{}}"#.into(),
         },
+        ToolDefinition {
+            name: "test-malicious-http-headers".into(),
+            description: "Attempt to trigger host panic with invalid HTTP headers".into(),
+            input_schema: r#"{"type":"object","properties":{}}"#.into(),
+        },
     ];
 
     let json = serde_json::to_string(&tools).unwrap();
@@ -210,6 +215,7 @@ pub extern "C" fn execute_tool() -> i32 {
         "test-ipc-limits" => handle_test_ipc_limits(&args),
         "test-malicious-log" => handle_test_malicious_log(&args),
         "test-malicious-kv" => handle_test_malicious_kv(&args),
+        "test-malicious-http-headers" => handle_test_malicious_http_headers(&args),
         other => Ok(ToolOutput {
             content: format!("unknown tool: {other}"),
             is_error: true,
@@ -289,6 +295,28 @@ fn handle_test_malicious_kv(_args: &serde_json::Value) -> Result<ToolOutput, Err
 
     Ok(ToolOutput {
         content: "kv set succeeded unexpectedly".to_string(),
+        is_error: false,
+    })
+}
+
+fn handle_test_malicious_http_headers(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
+    let req_json = serde_json::json!({
+        "method": "GET",
+        "url": "http://example.com",
+        "headers": [
+            { "key": "Bad\nHeader", "value": "value" },
+            { "key": "Valid-Header", "value": "Bad\r\nValue" }
+        ],
+        "body": null
+    });
+    
+    // Attempting to send this should fail due to invalid headers
+    unsafe {
+        astrid_http_request(req_json.to_string())?;
+    }
+
+    Ok(ToolOutput {
+        content: "http request succeeded unexpectedly".to_string(),
         is_error: false,
     })
 }

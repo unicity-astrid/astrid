@@ -228,8 +228,8 @@ async fn discover_all_tools() {
 
     assert_eq!(
         tools.len(),
-        12,
-        "expected exactly 12 tools, got {}",
+        13,
+        "expected exactly 13 tools, got {}",
         tools.len()
     );
 
@@ -249,7 +249,7 @@ async fn test_host_rejects_huge_log() {
     // It should return an error because the host function traps on limit violation
     assert!(result.is_err(), "host function must reject oversized log");
     let err = result.unwrap_err();
-    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(err.contains("wasm backtrace"), "unexpected error: {err}");
     assert!(err.contains("astrid_log"), "should fail in astrid_log");
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -271,7 +271,7 @@ async fn test_host_rejects_huge_kv() {
         "host function must reject oversized KV payload"
     );
     let err = result.unwrap_err();
-    assert!(err.contains("wasm backtrace"), "unexpected error: {}", err);
+    assert!(err.contains("wasm backtrace"), "unexpected error: {err}");
     assert!(
         err.contains("astrid_kv_set"),
         "should fail in astrid_kv_set"
@@ -622,6 +622,31 @@ async fn host_ipc_limits() {
         err_str2.contains("Subscription limit reached"),
         "unexpected error message: {err_str2}"
     );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_rejects_invalid_http_headers() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-malicious-http");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, std::collections::HashMap::new());
+
+    let result = try_execute_tool(
+        &mut plugin,
+        "test-malicious-http-headers",
+        &serde_json::json!({}),
+    );
+
+    // It should return an error because the host function rejects invalid headers gracefully
+    assert!(
+        result.is_err(),
+        "host function must reject invalid HTTP headers"
+    );
+    let err = result.unwrap_err();
+    assert!(err.contains("invalid header"), "unexpected error: {err}");
 
     let _ = std::fs::remove_dir_all(&workspace);
 }
