@@ -67,7 +67,18 @@ impl AstridHome {
     ///
     /// Returns an error if neither `$ASTRID_HOME` nor `$HOME` is set.
     pub fn resolve() -> io::Result<Self> {
-        let root = if let Ok(custom) = std::env::var("ASTRID_HOME") {
+        let astrid_home = std::env::var("ASTRID_HOME").ok();
+        let home = if astrid_home.is_none() {
+            std::env::var("HOME").ok()
+        } else {
+            None
+        };
+        Self::resolve_with_env(astrid_home, home)
+    }
+
+    /// Internal resolver used to mock environment variables in tests securely.
+    fn resolve_with_env(astrid_home: Option<String>, home: Option<String>) -> io::Result<Self> {
+        let root = if let Some(custom) = astrid_home {
             let p = PathBuf::from(&custom);
             if !p.is_absolute() {
                 return Err(io::Error::new(
@@ -78,7 +89,7 @@ impl AstridHome {
             reject_parent_traversal(&p, "ASTRID_HOME")?;
             p
         } else {
-            let home = std::env::var("HOME").map_err(|_| {
+            let home = home.ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
                     "neither ASTRID_HOME nor HOME environment variable is set",
@@ -364,59 +375,24 @@ impl WorkspaceDir {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code, clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    /// Mutex to serialize tests that mutate the `ASTRID_HOME` env var.
-    /// `set_var`/`remove_var` are process-wide and unsafe under concurrency.
-    static ENV_MUTEX: Mutex<()> = Mutex::new(());
-
-    /// RAII guard that restores an env var on drop (even on panic unwind).
-    struct EnvGuard {
-        key: &'static str,
-        original: Option<String>,
-    }
-
-    impl EnvGuard {
-        fn save(key: &'static str) -> Self {
-            Self {
-                key,
-                original: std::env::var(key).ok(),
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            match &self.original {
-                Some(val) => unsafe { std::env::set_var(self.key, val) },
-                None => unsafe { std::env::remove_var(self.key) },
-            }
-        }
-    }
 
     #[test]
     fn test_astrid_home_resolve_with_env() {
-        let _guard = ENV_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_path_buf();
+        let path_str = path.to_string_lossy().to_string();
 
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::set_var("ASTRID_HOME", &path) };
-        let home = AstridHome::resolve().unwrap();
+        let home = AstridHome::resolve_with_env(Some(path_str), None).unwrap();
         assert_eq!(home.root(), path);
-        unsafe { std::env::remove_var("ASTRID_HOME") };
     }
 
     #[test]
     fn test_astrid_home_resolve_default() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::remove_var("ASTRID_HOME") };
-        let home = AstridHome::resolve().unwrap();
-        let expected = PathBuf::from(std::env::var("HOME").unwrap()).join(".astrid");
+        let home_val = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let home = AstridHome::resolve_with_env(None, Some(home_val.clone())).unwrap();
+        let expected = PathBuf::from(home_val).join(".astrid");
         assert_eq!(home.root(), expected);
     }
 
@@ -449,11 +425,7 @@ mod tests {
 
     #[test]
     fn test_astrid_home_rejects_traversal_in_astrid_home() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::set_var("ASTRID_HOME", "/tmp/../etc") };
-        let result = AstridHome::resolve();
+        let result = AstridHome::resolve_with_env(Some("/tmp/../etc".to_string()), None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -464,29 +436,18 @@ mod tests {
 
     #[test]
     fn test_astrid_home_rejects_traversal_in_home() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let _home_guard = EnvGuard::save("HOME");
-        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::remove_var("ASTRID_HOME") };
-        unsafe { std::env::set_var("HOME", "/tmp/../etc") };
-        let result = AstridHome::resolve();
+        let result = AstridHome::resolve_with_env(None, Some("/tmp/../etc".to_string()));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
             err.to_string().contains("'..'"),
             "expected path traversal error, got: {err}"
         );
-        // HOME and ASTRID_HOME restored automatically by EnvGuard drop
     }
 
     #[test]
     fn test_astrid_home_rejects_relative_env() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::set_var("ASTRID_HOME", "relative/path") };
-        let result = AstridHome::resolve();
+        let result = AstridHome::resolve_with_env(Some("relative/path".to_string()), None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -497,23 +458,13 @@ mod tests {
 
     #[test]
     fn test_astrid_home_rejects_empty_env() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::set_var("ASTRID_HOME", "") };
-        let result = AstridHome::resolve();
+        let result = AstridHome::resolve_with_env(Some("".to_string()), None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_astrid_home_rejects_relative_home() {
-        let _guard = ENV_MUTEX.lock().unwrap();
-        let _home_guard = EnvGuard::save("HOME");
-        let _astrid_guard = EnvGuard::save("ASTRID_HOME");
-        // SAFETY: serialized by ENV_MUTEX
-        unsafe { std::env::remove_var("ASTRID_HOME") };
-        unsafe { std::env::set_var("HOME", "relative/path") };
-        let result = AstridHome::resolve();
+        let result = AstridHome::resolve_with_env(None, Some("relative/path".to_string()));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
