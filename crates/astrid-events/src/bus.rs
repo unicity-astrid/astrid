@@ -19,7 +19,7 @@ pub struct EventBus {
     /// Sender for broadcasting events.
     sender: broadcast::Sender<Arc<AstridEvent>>,
     /// Registry for synchronous subscribers.
-    registry: SubscriberRegistry,
+    registry: Arc<SubscriberRegistry>,
     /// Channel capacity.
     capacity: usize,
 }
@@ -37,7 +37,7 @@ impl EventBus {
         let (sender, _) = broadcast::channel(capacity);
         Self {
             sender,
-            registry: SubscriberRegistry::new(),
+            registry: Arc::new(SubscriberRegistry::new()),
             capacity,
         }
     }
@@ -87,11 +87,6 @@ impl EventBus {
         &self.registry
     }
 
-    /// Get a mutable reference to the subscriber registry.
-    pub fn registry_mut(&mut self) -> &mut SubscriberRegistry {
-        &mut self.registry
-    }
-
     /// Get the current number of active subscribers.
     #[must_use]
     pub fn subscriber_count(&self) -> usize {
@@ -114,10 +109,10 @@ impl Default for EventBus {
 impl Clone for EventBus {
     fn clone(&self) -> Self {
         // Create a new bus that shares the same sender
-        // but has its own registry
+        // and the same subscriber registry
         Self {
             sender: self.sender.clone(),
-            registry: SubscriberRegistry::new(),
+            registry: Arc::clone(&self.registry),
             capacity: self.capacity,
         }
     }
@@ -273,5 +268,34 @@ mod tests {
 
         drop(receiver1);
         // Note: subscriber count may not immediately reflect dropped receivers
+    }
+
+    #[tokio::test]
+    async fn test_cloned_bus_synchronous_subscriber() {
+        use crate::subscriber::FilterSubscriber;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let bus = EventBus::new();
+        let cloned_bus = bus.clone();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let subscriber = FilterSubscriber::new("test_sync", move |_| {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Register on the cloned bus
+        cloned_bus.registry().register(Arc::new(subscriber));
+
+        // Publish on the original bus
+        let event = AstridEvent::RuntimeStarted {
+            metadata: EventMetadata::new("test"),
+            version: "0.1.0".to_string(),
+        };
+        bus.publish(event);
+
+        // The subscriber registered on the cloned bus should have received it
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

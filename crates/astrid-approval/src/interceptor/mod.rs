@@ -634,8 +634,11 @@ mod tests {
         assert!(err_msg.contains("budget exceeded (session budget)"));
 
         // Critically, the workspace budget should STILL BE 100.0 (not deducted).
-        assert_eq!(ws_tracker.spent(), 0.0);
-        assert_eq!(ws_tracker.remaining(), Some(100.0));
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(ws_tracker.spent(), 0.0);
+            assert_eq!(ws_tracker.remaining(), Some(100.0));
+        }
     }
 
     // -----------------------------------------------------------------------
