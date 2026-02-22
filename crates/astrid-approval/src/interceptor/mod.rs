@@ -130,7 +130,7 @@ impl SecurityInterceptor {
                     Err(e) => {
                         self.audit_denied(action, &e.to_string());
                         return Err(e);
-                    }
+                    },
                 }
             }
             let audit_id = self.audit_allowed(action, &proof);
@@ -149,7 +149,7 @@ impl SecurityInterceptor {
                 Err(e) => {
                     self.audit_denied(action, &e.to_string());
                     return Err(e);
-                }
+                },
             }
         }
 
