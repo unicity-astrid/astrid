@@ -1,6 +1,6 @@
 //! In-memory store for active allowances.
 
-use astrid_core::error::{SecurityError, SecurityResult};
+use crate::error::{ApprovalError, ApprovalResult};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -40,11 +40,11 @@ impl AllowanceStore {
     /// # Errors
     ///
     /// Returns a storage error if the internal lock is poisoned.
-    pub fn add_allowance(&self, allowance: Allowance) -> SecurityResult<()> {
+    pub fn add_allowance(&self, allowance: Allowance) -> ApprovalResult<()> {
         let mut store = self
             .allowances
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         store.insert(allowance.id.clone(), allowance);
         Ok(())
     }
@@ -139,14 +139,14 @@ impl AllowanceStore {
     /// # Errors
     ///
     /// Returns an error if the allowance is not found or the lock is poisoned.
-    pub fn consume_use(&self, allowance_id: &AllowanceId) -> SecurityResult<bool> {
+    pub fn consume_use(&self, allowance_id: &AllowanceId) -> ApprovalResult<bool> {
         let mut store = self
             .allowances
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
 
         let allowance = store.get_mut(allowance_id).ok_or_else(|| {
-            SecurityError::StorageError(format!("allowance not found: {allowance_id}"))
+            ApprovalError::Storage(format!("allowance not found: {allowance_id}"))
         })?;
 
         if let Some(remaining) = &mut allowance.uses_remaining {

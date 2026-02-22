@@ -171,7 +171,7 @@ pub(super) fn intercept_proof_to_auth_proof(
             approval_audit_id, ..
         } => AuthorizationProof::UserApproval {
             user_id,
-            approval_entry_id: approval_audit_id.clone(),
+            approval_entry_id: Some(approval_audit_id.clone()),
         },
         InterceptProof::SessionApproval { allowance_id } => AuthorizationProof::NotRequired {
             reason: format!("session-scoped allowance {allowance_id}: {context}"),

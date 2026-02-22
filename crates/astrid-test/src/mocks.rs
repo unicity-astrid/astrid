@@ -8,9 +8,9 @@ use uuid::Uuid;
 use astrid_core::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, AstridUserId, ElicitationRequest,
     ElicitationResponse, Frontend, FrontendContext, FrontendSessionInfo, FrontendType,
-    FrontendUser, MessageId, SecurityResult, TaggedMessage, UrlElicitationRequest,
-    UrlElicitationResponse, UserInput, VerificationRequest, VerificationResponse,
-    frontend::{ChannelInfo, ChannelType},
+    FrontendUser, MessageId, TaggedMessage, UrlElicitationRequest, UrlElicitationResponse,
+    UserInput, VerificationRequest, VerificationResponse,
+    frontend::{ChannelInfo, ChannelType, FrontendResult},
     input::ContextIdentifier,
 };
 
@@ -162,7 +162,7 @@ impl Frontend for MockFrontend {
         self.context.clone()
     }
 
-    async fn elicit(&self, request: ElicitationRequest) -> SecurityResult<ElicitationResponse> {
+    async fn elicit(&self, request: ElicitationRequest) -> FrontendResult<ElicitationResponse> {
         let response = self
             .elicitation_responses
             .lock()
@@ -179,11 +179,11 @@ impl Frontend for MockFrontend {
     async fn elicit_url(
         &self,
         request: UrlElicitationRequest,
-    ) -> SecurityResult<UrlElicitationResponse> {
+    ) -> FrontendResult<UrlElicitationResponse> {
         Ok(UrlElicitationResponse::completed(request.request_id))
     }
 
-    async fn request_approval(&self, request: ApprovalRequest) -> SecurityResult<ApprovalDecision> {
+    async fn request_approval(&self, request: ApprovalRequest) -> FrontendResult<ApprovalDecision> {
         let option = self
             .approval_responses
             .lock()
@@ -221,11 +221,11 @@ impl Frontend for MockFrontend {
         &self,
         _user_id: &str,
         request: VerificationRequest,
-    ) -> SecurityResult<VerificationResponse> {
+    ) -> FrontendResult<VerificationResponse> {
         Ok(VerificationResponse::confirmed(request.request_id))
     }
 
-    async fn send_link_code(&self, _user_id: &str, _code: &str) -> SecurityResult<()> {
+    async fn send_link_code(&self, _user_id: &str, _code: &str) -> FrontendResult<()> {
         Ok(())
     }
 

@@ -17,31 +17,32 @@
 //! [`McpPlugin::send_hook_event()`], which sends a custom notification
 //! (`notifications/astrid.hookEvent`) over the MCP connection.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, ClientNotification, CustomNotification};
+use rmcp::model::{ClientNotification, CustomNotification};
 use rmcp::service::{Peer, RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde_json::Value;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use astrid_core::connector::{ConnectorCapabilities, ConnectorDescriptor, ConnectorSource};
 use astrid_core::identity::FrontendType;
 use astrid_core::{HookEvent, InboundMessage};
 use astrid_mcp::{
     AstridClientHandler, BridgeChannelInfo, CapabilitiesHandler, McpClient, ServerNotice,
-    ToolResult,
 };
 
-use crate::context::{PluginContext, PluginToolContext};
+use crate::context::PluginContext;
 use crate::error::{PluginError, PluginResult};
 use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
+use crate::mcp::protocol::McpProtocolConnection;
+use crate::mcp::state::McpConnection;
+use crate::mcp::tool::McpPluginTool;
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::sandbox::SandboxProfile;
 use crate::tool::PluginTool;
@@ -72,10 +73,8 @@ pub struct McpPlugin {
     server_name: String,
     /// Injected at construction — used for hook forwarding and lifecycle.
     mcp_client: McpClient,
-    /// Running MCP service (owns the child process).
-    service: Option<PluginMcpService>,
-    /// Lightweight, cloneable RPC handle for tool calls + notifications.
-    peer: Option<Peer<RoleClient>>,
+    /// The active connection state for the MCP server.
+    connection: Option<McpConnection>,
     /// Optional sandbox profile applied to the child process.
     sandbox: Option<SandboxProfile>,
     /// Plugin install directory — used as `current_dir` when spawning the
@@ -117,8 +116,7 @@ impl McpPlugin {
             tools: Vec::new(),
             server_name,
             mcp_client,
-            service: None,
-            peer: None,
+            connection: None,
             sandbox: None,
             plugin_dir: None,
             registered_connectors: Vec::new(),
@@ -166,18 +164,20 @@ impl McpPlugin {
             return false;
         }
 
-        let alive = self.service.as_ref().is_some_and(|s| !s.is_closed());
+        let alive = self
+            .connection
+            .as_ref()
+            .is_some_and(super::state::McpConnection::is_alive);
 
         if !alive {
             let msg = "MCP server process exited unexpectedly".to_string();
             warn!(plugin_id = %self.id, "{msg}");
             self.state = PluginState::Failed(msg);
-            self.peer = None;
             self.tools.clear();
-            // Drop the service to release the AstridClientHandler's Arc
+            // Drop the connection to release the AstridClientHandler's Arc
             // clone of shared_connectors, minimizing phantom entries from
             // buffered notifications arriving after we clear state.
-            self.service = None;
+            self.connection = None;
             // Clear connector state so stale connectors are not visible
             self.registered_connectors.clear();
             self.shared_connectors
@@ -403,7 +403,7 @@ impl McpPlugin {
         // Only raw Landlock syscalls run inside the pre_exec closure.
         #[cfg(target_os = "linux")]
         if let Some(sandbox) = &self.sandbox {
-            let prepared = prepare_landlock_rules(&sandbox.landlock_rules());
+            let prepared = crate::mcp::platform::prepare_landlock_rules(&sandbox.landlock_rules());
             let mut prepared = Some(prepared);
             let rlimits = sandbox.resource_limits.clone();
             // SAFETY: pre_exec runs between fork() and exec(). The closure
@@ -420,13 +420,13 @@ impl McpPlugin {
                     let rules = prepared.take().ok_or_else(|| {
                         std::io::Error::other("Landlock pre_exec called more than once")
                     })?;
-                    enforce_landlock_rules(rules).map_err(|e| {
+                    crate::mcp::platform::enforce_landlock_rules(rules).map_err(|e| {
                         std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.clone())
                     })?;
 
                     // Apply resource limits if configured
                     if let Some(ref limits) = rlimits {
-                        apply_resource_limits(limits)?;
+                        crate::mcp::platform::apply_resource_limits(limits)?;
                     }
 
                     Ok(())
@@ -596,8 +596,7 @@ impl Plugin for McpPlugin {
             })
             .collect();
 
-        self.service = Some(service);
-        self.peer = Some(peer.clone());
+        self.connection = Some(McpConnection::new(self.id.clone(), service, peer.clone()));
         self.tools = tools;
 
         // Store inbound channels now that the connection is established.
@@ -635,38 +634,14 @@ impl Plugin for McpPlugin {
     async fn unload(&mut self) -> PluginResult<()> {
         self.state = PluginState::Unloading;
 
-        // Drop the peer handle first so no new tool calls start
-        self.peer = None;
         self.tools.clear();
 
         // Gracefully close the MCP session BEFORE clearing connector state
         // so that in-flight notifications from the bridge can still be
         // received and processed by the handler.
-        if let Some(ref mut service) = self.service {
-            match service.close_with_timeout(SHUTDOWN_TIMEOUT).await {
-                Ok(Some(reason)) => {
-                    info!(
-                        plugin_id = %self.id,
-                        ?reason,
-                        "Plugin MCP session closed gracefully"
-                    );
-                },
-                Ok(None) => {
-                    warn!(
-                        plugin_id = %self.id,
-                        "Plugin MCP session close timed out; dropping"
-                    );
-                },
-                Err(e) => {
-                    error!(
-                        plugin_id = %self.id,
-                        error = %e,
-                        "Plugin MCP session close join error"
-                    );
-                },
-            }
+        if let Some(mut connection) = self.connection.take() {
+            let _ = connection.close(SHUTDOWN_TIMEOUT).await;
         }
-        self.service = None;
 
         // Now clear connector state after the MCP session is closed
         self.registered_connectors.clear();
@@ -702,105 +677,14 @@ impl Plugin for McpPlugin {
     /// `notifications/astrid.hookEvent`. This is fire-and-forget;
     /// errors are logged but do not propagate.
     async fn send_hook_event(&self, event: HookEvent, data: Value) {
-        let Some(peer) = &self.peer else {
+        if let Some(connection) = &self.connection {
+            connection.send_hook_event(event, data).await;
+        } else {
             debug!(
                 plugin_id = %self.id,
                 "Cannot send hook event: no peer connection"
             );
-            return;
-        };
-
-        let notification = CustomNotification::new(
-            "notifications/astrid.hookEvent",
-            Some(serde_json::json!({
-                "event": event.to_string(),
-                "data": data,
-            })),
-        );
-
-        if let Err(e) = peer
-            .send_notification(ClientNotification::CustomNotification(notification))
-            .await
-        {
-            warn!(
-                plugin_id = %self.id,
-                event = %event,
-                error = %e,
-                "Failed to send hook event to plugin MCP server"
-            );
         }
-    }
-
-    fn take_inbound_rx(
-        &mut self,
-    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
-        self.inbound_rx.take()
-    }
-}
-
-/// A tool provided by an MCP server, wrapped as a [`PluginTool`].
-///
-/// Tool calls are forwarded directly to the MCP server via the stored
-/// [`Peer`] handle. Security is enforced at the runtime layer (before
-/// `execute()` is called), not here.
-struct McpPluginTool {
-    name: String,
-    description: String,
-    input_schema: Value,
-    #[allow(dead_code)]
-    server_name: String,
-    peer: Peer<RoleClient>,
-}
-
-#[async_trait]
-impl PluginTool for McpPluginTool {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn description(&self) -> &str {
-        &self.description
-    }
-
-    fn input_schema(&self) -> Value {
-        self.input_schema.clone()
-    }
-
-    async fn execute(&self, args: Value, _ctx: &PluginToolContext) -> PluginResult<String> {
-        let arguments = match args {
-            Value::Object(map) => Some(map),
-            Value::Null => None,
-            other => {
-                let mut map = serde_json::Map::new();
-                map.insert("value".to_string(), other);
-                Some(map)
-            },
-        };
-
-        let params = CallToolRequestParams {
-            meta: None,
-            name: Cow::Owned(self.name.clone()),
-            arguments,
-            task: None,
-        };
-
-        let result = self
-            .peer
-            .call_tool(params)
-            .await
-            .map_err(|e| PluginError::ExecutionFailed(format!("MCP tool call failed: {e}")))?;
-
-        // Convert to our ToolResult and extract text content
-        let tool_result = ToolResult::from(result);
-        if tool_result.is_error {
-            return Err(PluginError::ExecutionFailed(
-                tool_result
-                    .error
-                    .unwrap_or_else(|| "Unknown MCP tool error".into()),
-            ));
-        }
-
-        Ok(tool_result.text_content())
     }
 }
 
@@ -829,126 +713,6 @@ pub fn create_plugin(
             Ok(Box::new(plugin))
         },
     }
-}
-
-/// A pre-opened Landlock rule ready for enforcement inside `pre_exec`.
-///
-/// File descriptors are opened in the parent process (where allocation is
-/// safe) and consumed inside the `pre_exec` closure (where only
-/// async-signal-safe operations are permitted).
-#[cfg(target_os = "linux")]
-struct PreparedLandlockRules {
-    /// Pre-opened `(PathFd, read, write)` tuples.
-    rules: Vec<(landlock::PathFd, bool, bool)>,
-}
-
-/// Phase 1 (parent process): open file descriptors and compute access flags.
-///
-/// This runs before `fork()`, so heap allocation and filesystem access are
-/// safe. Paths that don't exist are silently skipped.
-#[cfg(target_os = "linux")]
-fn prepare_landlock_rules(rules: &[crate::sandbox::LandlockPathRule]) -> PreparedLandlockRules {
-    use landlock::PathFd;
-
-    let mut prepared = Vec::with_capacity(rules.len());
-
-    for rule in rules {
-        if !rule.read && !rule.write {
-            continue;
-        }
-
-        // Open the path FD now (heap allocation happens here, safely)
-        if let Ok(fd) = PathFd::new(&rule.path) {
-            prepared.push((fd, rule.read, rule.write));
-        }
-    }
-
-    PreparedLandlockRules { rules: prepared }
-}
-
-/// Phase 2 (child process, inside `pre_exec`): create ruleset and enforce.
-///
-/// Only Landlock syscalls are invoked here — no heap allocation, no
-/// filesystem access. All file descriptors were pre-opened in phase 1.
-#[cfg(target_os = "linux")]
-fn enforce_landlock_rules(prepared: PreparedLandlockRules) -> Result<(), String> {
-    use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, Ruleset, RulesetAttr,
-        RulesetCreatedAttr, RulesetStatus,
-    };
-
-    let abi = ABI::V5;
-
-    let mut ruleset = Ruleset::default()
-        .set_compatibility(CompatLevel::BestEffort)
-        .handle_access(AccessFs::from_all(abi))
-        .map_err(|e| format!("failed to create Landlock ruleset: {e}"))?
-        .create()
-        .map_err(|e| format!("failed to create Landlock ruleset: {e}"))?;
-
-    for (fd, read, write) in prepared.rules {
-        let access = match (read, write) {
-            (true, true) => AccessFs::from_all(abi),
-            (true, false) => AccessFs::from_read(abi),
-            (false, true) => AccessFs::from_write(abi),
-            (false, false) => continue,
-        };
-        let path_beneath = PathBeneath::new(fd, access);
-        ruleset = ruleset
-            .add_rule(path_beneath)
-            .map_err(|e| format!("failed to add Landlock rule: {e}"))?;
-    }
-
-    let status = ruleset
-        .restrict_self()
-        .map_err(|e| format!("failed to enforce Landlock ruleset: {e}"))?;
-
-    match status.ruleset {
-        RulesetStatus::FullyEnforced
-        | RulesetStatus::PartiallyEnforced
-        | RulesetStatus::NotEnforced => {
-            // NotEnforced: kernel doesn't support Landlock — not a fatal error
-        },
-    }
-
-    Ok(())
-}
-
-/// Apply resource limits via `setrlimit` inside a `pre_exec` closure.
-///
-/// Uses only async-signal-safe operations: `setrlimit` is a direct syscall,
-/// and `Error::last_os_error()` reads `errno` without heap allocation.
-#[cfg(target_os = "linux")]
-#[allow(unsafe_code)]
-fn apply_resource_limits(limits: &crate::sandbox::ResourceLimits) -> Result<(), std::io::Error> {
-    // RLIMIT_NPROC — max processes/threads (per-UID, not per-process)
-    let nproc = libc::rlimit {
-        rlim_cur: limits.max_processes,
-        rlim_max: limits.max_processes,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &raw const nproc) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    // RLIMIT_AS — max virtual address space
-    let address_space = libc::rlimit {
-        rlim_cur: limits.max_memory_bytes,
-        rlim_max: limits.max_memory_bytes,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_AS, &raw const address_space) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    // RLIMIT_NOFILE — max open file descriptors
-    let nofile = libc::rlimit {
-        rlim_cur: limits.max_open_files,
-        rlim_max: limits.max_open_files,
-    };
-    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &raw const nofile) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

@@ -21,7 +21,7 @@ use crate::manifest::{PluginCapability, PluginEntryPoint, PluginManifest};
 use crate::plugin::{Plugin, PluginId, PluginState};
 use crate::security::PluginSecurityGate;
 use crate::tool::PluginTool;
-use crate::wasm::host_functions::register_host_functions;
+use crate::wasm::host::register_host_functions;
 use crate::wasm::host_state::HostState;
 use crate::wasm::tool::WasmPluginTool;
 

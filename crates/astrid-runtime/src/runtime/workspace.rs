@@ -1,7 +1,6 @@
 //! Workspace boundary enforcement and path extraction helpers.
 
 use astrid_audit::{AuditAction, AuditOutcome, AuthorizationProof};
-use astrid_capabilities::AuditEntryId;
 use astrid_core::{ApprovalOption, ApprovalRequest, Frontend, RiskLevel};
 use astrid_llm::{LlmProvider, ToolCall, ToolCallResult};
 use astrid_workspace::{EscapeDecision, EscapeRequest, PathCheck};
@@ -145,7 +144,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             },
                             AuthorizationProof::UserApproval {
                                 user_id: session.user_id,
-                                approval_entry_id: AuditEntryId::new(),
+                                approval_entry_id: None,
                             },
                             AuditOutcome::success(),
                         );
@@ -163,7 +162,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             },
                             AuthorizationProof::UserApproval {
                                 user_id: session.user_id,
-                                approval_entry_id: AuditEntryId::new(),
+                                approval_entry_id: None,
                             },
                             AuditOutcome::failure("user denied workspace escape"),
                         );

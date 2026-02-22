@@ -5,7 +5,7 @@
 //! creates/resumes sessions, and renders streaming events.
 
 #![deny(unsafe_code)]
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 #![deny(clippy::all)]
 #![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used)]

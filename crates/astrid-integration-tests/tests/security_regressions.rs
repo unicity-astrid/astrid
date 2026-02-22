@@ -272,11 +272,13 @@ async fn test_allowance_creation_produces_audit_entry() {
     let result = interceptor.intercept(&action, "reading data", None).await;
     assert!(result.is_ok(), "intercept should succeed");
 
-    // There should be audit entries for the allowance creation + the allowed action
+    // Session approval creates exactly one audit entry (the approval decision).
+    // The allowance-based authorization does NOT create a second entry — the
+    // early return in the Session/Workspace path prevents double-logging.
     let count = audit_log.count_session(&session_id).unwrap();
-    assert!(
-        count >= 2,
-        "should have at least 2 audit entries (allowance creation + allowed action), got {count}"
+    assert_eq!(
+        count, 1,
+        "session approval should create exactly one audit entry, got {count}"
     );
 }
 

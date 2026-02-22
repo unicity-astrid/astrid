@@ -13,7 +13,7 @@ use std::sync::{Arc, Once};
 
 use astrid_core::plugin_abi::{ToolDefinition, ToolInput, ToolOutput};
 use astrid_plugins::PluginId;
-use astrid_plugins::wasm::host_functions::register_host_functions;
+use astrid_plugins::wasm::host::register_host_functions;
 use astrid_plugins::wasm::host_state::HostState;
 use astrid_storage::kv::ScopedKvStore;
 use extism::{Manifest, PluginBuilder, UserData, Wasm};

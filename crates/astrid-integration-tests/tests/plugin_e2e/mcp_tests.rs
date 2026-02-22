@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use astrid_core::ApprovalOption;
 use astrid_mcp::{McpClient, ServersConfig};
+use astrid_plugins::McpPlugin;
 use astrid_plugins::Plugin;
-use astrid_plugins::mcp_plugin::McpPlugin;
 use astrid_plugins::{
     PluginContext, PluginEntryPoint, PluginId, PluginManifest, PluginRegistry, PluginToolContext,
 };

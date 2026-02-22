@@ -288,6 +288,16 @@ impl BudgetTracker {
         }
     }
 
+    /// Refund a previously recorded cost (e.g., if an action fails or a subsequent check fails).
+    pub fn refund_cost(&self, actual_cost: f64) {
+        if actual_cost > 0.0
+            && actual_cost.is_finite()
+            && let Ok(mut spent) = self.session_spent.write()
+        {
+            *spent = (*spent - actual_cost).max(0.0);
+        }
+    }
+
     /// Get the remaining session budget.
     #[must_use]
     pub fn remaining(&self) -> f64 {
@@ -429,6 +439,16 @@ impl WorkspaceBudgetTracker {
             && let Ok(mut spent) = self.total_spent.write()
         {
             *spent += cost;
+        }
+    }
+
+    /// Refund a previously recorded cost against the workspace budget.
+    pub fn refund_cost(&self, cost: f64) {
+        if cost > 0.0
+            && cost.is_finite()
+            && let Ok(mut spent) = self.total_spent.write()
+        {
+            *spent = (*spent - cost).max(0.0);
         }
     }
 

@@ -7,7 +7,7 @@
 //! The [`DeferredResolutionStore`] holds pending resolutions in memory and
 //! supports queuing, retrieval, resolution, and age-based cleanup.
 
-use astrid_core::error::{SecurityError, SecurityResult};
+use crate::error::{ApprovalError, ApprovalResult};
 use astrid_core::types::{Permission, Timestamp};
 use astrid_storage::ScopedKvStore;
 use chrono::Duration;
@@ -291,7 +291,7 @@ impl DeferredResolutionStore {
     /// # Errors
     ///
     /// Returns a storage error if loading from the persistent store fails.
-    pub async fn with_persistence(store: ScopedKvStore) -> SecurityResult<Self> {
+    pub async fn with_persistence(store: ScopedKvStore) -> ApprovalResult<Self> {
         let mut s = Self {
             resolutions: RwLock::new(HashMap::new()),
             persistent_store: Some(store),
@@ -310,14 +310,14 @@ impl DeferredResolutionStore {
     ///
     /// Items older than [`MAX_LOAD_AGE`](Self::MAX_LOAD_AGE) are discarded
     /// and removed from the persistent store to prevent stale replay.
-    async fn load_from_store(&mut self) -> SecurityResult<()> {
+    async fn load_from_store(&mut self) -> ApprovalResult<()> {
         let Some(store) = &self.persistent_store else {
             return Ok(());
         };
         let keys = store
             .list_keys()
             .await
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
 
         // Collect loaded resolutions first (avoiding holding MutexGuard across await)
         let mut loaded = Vec::new();
@@ -346,7 +346,7 @@ impl DeferredResolutionStore {
         let mut resolutions = self
             .resolutions
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         for resolution in loaded {
             resolutions.insert(resolution.id.clone(), resolution);
         }
@@ -360,12 +360,12 @@ impl DeferredResolutionStore {
     /// # Errors
     ///
     /// Returns a storage error if the internal lock is poisoned.
-    pub fn queue(&self, resolution: DeferredResolution) -> SecurityResult<ResolutionId> {
+    pub fn queue(&self, resolution: DeferredResolution) -> ApprovalResult<ResolutionId> {
         let id = resolution.id.clone();
         let mut store = self
             .resolutions
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         store.insert(id.clone(), resolution);
         Ok(id)
     }
@@ -389,14 +389,14 @@ impl DeferredResolutionStore {
     /// # Errors
     ///
     /// Returns a storage error if the resolution is not found or the lock is poisoned.
-    pub fn resolve(&self, id: &ResolutionId) -> SecurityResult<DeferredResolution> {
+    pub fn resolve(&self, id: &ResolutionId) -> ApprovalResult<DeferredResolution> {
         let mut store = self
             .resolutions
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         store
             .remove(id)
-            .ok_or_else(|| SecurityError::StorageError(format!("resolution not found: {id}")))
+            .ok_or_else(|| ApprovalError::Storage(format!("resolution not found: {id}")))
     }
 
     /// Remove all resolutions older than the given duration.
@@ -421,7 +421,7 @@ impl DeferredResolutionStore {
     pub async fn queue_persistent(
         &self,
         resolution: DeferredResolution,
-    ) -> SecurityResult<ResolutionId> {
+    ) -> ApprovalResult<ResolutionId> {
         let id = resolution.id.clone();
 
         // Persist first (fail fast)
@@ -429,14 +429,14 @@ impl DeferredResolutionStore {
             store
                 .set_json(&id.0.to_string(), &resolution)
                 .await
-                .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+                .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         }
 
         // Then add to memory
         let mut resolutions = self
             .resolutions
             .write()
-            .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+            .map_err(|e| ApprovalError::Storage(e.to_string()))?;
         resolutions.insert(id.clone(), resolution);
         Ok(id)
     }
@@ -452,16 +452,16 @@ impl DeferredResolutionStore {
     pub async fn resolve_persistent(
         &self,
         id: &ResolutionId,
-    ) -> SecurityResult<DeferredResolution> {
+    ) -> ApprovalResult<DeferredResolution> {
         // Remove from memory
         let resolution = {
             let mut store = self
                 .resolutions
                 .write()
-                .map_err(|e| SecurityError::StorageError(e.to_string()))?;
+                .map_err(|e| ApprovalError::Storage(e.to_string()))?;
             store
                 .remove(id)
-                .ok_or_else(|| SecurityError::StorageError(format!("resolution not found: {id}")))?
+                .ok_or_else(|| ApprovalError::Storage(format!("resolution not found: {id}")))?
         };
 
         // Remove from persistent store
@@ -469,7 +469,7 @@ impl DeferredResolutionStore {
             let _ = store
                 .delete(&id.0.to_string())
                 .await
-                .map_err(|e| SecurityError::StorageError(e.to_string()));
+                .map_err(|e| ApprovalError::Storage(e.to_string()));
         }
 
         Ok(resolution)
