@@ -107,6 +107,15 @@ async fn perform_http_request(
     let mut builder = client.request(req_method, url);
 
     for kv in headers {
+        if kv.key.eq_ignore_ascii_case("host")
+            || kv.key.eq_ignore_ascii_case("connection")
+            || kv.key.eq_ignore_ascii_case("upgrade")
+            || kv.key.eq_ignore_ascii_case("content-length")
+            || kv.key.eq_ignore_ascii_case("transfer-encoding")
+        {
+            tracing::warn!("WASM plugin attempted to set restricted header: {}", kv.key);
+            continue;
+        }
         let h_name = reqwest::header::HeaderName::try_from(kv.key.as_str())
             .map_err(|e| Error::msg(format!("invalid header name '{}': {e}", kv.key)))?;
         let h_value = reqwest::header::HeaderValue::try_from(kv.value.as_str())
