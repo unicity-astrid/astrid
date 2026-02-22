@@ -297,6 +297,9 @@ impl SecurityInterceptor {
                 })
             },
             ApprovalOutcome::Denied { reason } => {
+                if let Some(cost) = estimated_cost {
+                    self.budget_validator.refund(cost);
+                }
                 self.audit_denied(action, &reason);
                 Err(ApprovalError::Denied { reason })
             },
@@ -304,6 +307,9 @@ impl SecurityInterceptor {
                 resolution_id,
                 fallback,
             } => {
+                if let Some(cost) = estimated_cost {
+                    self.budget_validator.refund(cost);
+                }
                 let reason =
                     format!("action deferred (resolution: {resolution_id}, fallback: {fallback})");
                 self.audit_deferred(action, &reason);
@@ -614,6 +620,32 @@ mod tests {
 
         let result = interceptor.intercept(&action, "test", None).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_budget_refunded_on_denial() {
+        let handler = Arc::new(AutoDenyHandler);
+        let interceptor = make_interceptor(SecurityPolicy::default(), Some(handler)).await;
+
+        let action = SensitiveAction::FileDelete {
+            path: "/home/user/file.txt".to_string(),
+        };
+
+        // Assert budget spent is 0
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(interceptor.budget_tracker().spent(), 0.0);
+        }
+
+        // Pass a cost of 5.0. It should be reserved, but then refunded when denied.
+        let result = interceptor.intercept(&action, "test", Some(5.0)).await;
+        assert!(result.is_err());
+
+        // Assert budget spent is back to 0
+        #[allow(clippy::float_cmp)]
+        {
+            assert_eq!(interceptor.budget_tracker().spent(), 0.0);
+        }
     }
 
     // -----------------------------------------------------------------------

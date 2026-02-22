@@ -124,4 +124,12 @@ impl BudgetValidator {
             BudgetResult::Allowed => Ok(warning),
         }
     }
+
+    /// Refunds a previously reserved cost to both workspace and session budgets.
+    pub fn refund(&self, cost: f64) {
+        if let Some(ref ws_budget) = self.workspace_tracker {
+            ws_budget.refund_cost(cost);
+        }
+        self.tracker.refund_cost(cost);
+    }
 }
