@@ -109,8 +109,14 @@ pub(crate) fn astrid_ipc_unsubscribe_impl(
     _outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let handle_str: String = plugin.memory_get_val(&inputs[0])?;
-    let handle_id: u64 = handle_str
+    let handle_ptr = inputs[0].unwrap_i64();
+    let handle_len = plugin.memory_length(handle_ptr.cast_unsigned())?;
+    if handle_len > 32 {
+        return Err(Error::msg("Subscription handle exceeds maximum allowed length"));
+    }
+
+    let handle_id_str: String = plugin.memory_get_val(&inputs[0])?;
+    let handle_id: u64 = handle_id_str
         .parse()
         .map_err(|_| Error::msg("Invalid subscription handle format"))?;
 

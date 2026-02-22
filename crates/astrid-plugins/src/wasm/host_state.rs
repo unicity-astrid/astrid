@@ -19,7 +19,7 @@ use crate::security::PluginSecurityGate;
 pub struct HostState {
     /// The plugin this state belongs to.
     pub plugin_id: PluginId,
-    /// The deterministic UUID of the plugin.
+    /// The unique session UUID for this plugin's execution state.
     pub plugin_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
     pub workspace_root: PathBuf,

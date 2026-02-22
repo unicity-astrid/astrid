@@ -534,4 +534,21 @@ mod tests {
 
         assert!(wildcard_receiver.try_recv().is_none());
     }
+
+    #[tokio::test]
+    async fn test_topic_subscription_ignores_non_ipc() {
+        let bus = EventBus::new();
+        let mut specific_receiver = bus.subscribe_topic("astrid.cli.input");
+
+        // Publish a non-IPC event
+        let event = AstridEvent::RuntimeStarted {
+            metadata: EventMetadata::new("test"),
+            version: "0.1.0".into(),
+        };
+
+        bus.publish(event);
+
+        // Specific receiver should strictly ignore non-IPC events
+        assert!(specific_receiver.try_recv().is_none());
+    }
 }
