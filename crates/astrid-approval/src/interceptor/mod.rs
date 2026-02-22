@@ -177,7 +177,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -199,7 +199,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -224,7 +224,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -249,7 +249,7 @@ impl SecurityInterceptor {
                                 self.session_id.clone(),
                                 audit_action,
                                 AuditAuthProof::UserApproval {
-                                    user_id: self.capability_validator.runtime_key.key_id(),
+                                    user_id: self.user_id,
                                     approval_entry_id: None,
                                 },
                                 AuditOutcome::success(),
@@ -576,6 +576,15 @@ mod tests {
             count, 1,
             "one-time approval should create exactly one audit entry"
         );
+
+        let entries = t.audit_log.get_session_entries(&t.session_id).unwrap();
+        let entry = entries.first().unwrap();
+        match &entry.authorization {
+            astrid_audit::AuthorizationProof::UserApproval { user_id, .. } => {
+                assert_eq!(user_id, &t.interceptor.user_id);
+            }
+            _ => panic!("Expected UserApproval authorization proof"),
+        }
     }
 
     // -----------------------------------------------------------------------
