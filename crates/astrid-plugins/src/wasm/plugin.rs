@@ -180,10 +180,11 @@ impl WasmPlugin {
         // which may invoke host functions that call `Handle::block_on`. If executed directly
         // on a Tokio worker thread, this causes a panic.
         let (_wasm_bytes, plugin_arc, tools, user_data_ref) = tokio::task::block_in_place(|| {
-            let wasm_bytes = std::fs::read(&resolved_path).map_err(|e| PluginError::LoadFailed {
-                plugin_id: self.id.clone(),
-                message: format!("failed to read WASM file {}: {e}", resolved_path.display()),
-            })?;
+            let wasm_bytes =
+                std::fs::read(&resolved_path).map_err(|e| PluginError::LoadFailed {
+                    plugin_id: self.id.clone(),
+                    message: format!("failed to read WASM file {}: {e}", resolved_path.display()),
+                })?;
 
             verify_hash(
                 &wasm_bytes,
@@ -234,12 +235,17 @@ impl WasmPlugin {
 
             let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
             let builder = register_host_functions(builder, user_data);
-            let mut plugin = builder
-                .build()
-                .map_err(|e| PluginError::WasmError(format!("failed to build Extism plugin: {e}")))?;
+            let mut plugin = builder.build().map_err(|e| {
+                PluginError::WasmError(format!("failed to build Extism plugin: {e}"))
+            })?;
 
             let tools = discover_tools(&mut plugin)?;
-            Ok::<_, PluginError>((wasm_bytes, Arc::new(Mutex::new(plugin)), tools, user_data_ref))
+            Ok::<_, PluginError>((
+                wasm_bytes,
+                Arc::new(Mutex::new(plugin)),
+                tools,
+                user_data_ref,
+            ))
         })?;
 
         let wasm_tools: Vec<Arc<dyn PluginTool>> = tools
