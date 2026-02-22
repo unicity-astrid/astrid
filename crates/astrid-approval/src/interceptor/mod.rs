@@ -665,10 +665,15 @@ mod tests {
         struct HangingHandler;
         #[async_trait::async_trait]
         impl ApprovalHandler for HangingHandler {
-            async fn request_approval(&self, _request: ApprovalRequest) -> Option<ApprovalResponse> {
+            async fn request_approval(
+                &self,
+                _request: ApprovalRequest,
+            ) -> Option<ApprovalResponse> {
                 std::future::pending().await
             }
-            fn is_available(&self) -> bool { true }
+            fn is_available(&self) -> bool {
+                true
+            }
         }
 
         let handler = Arc::new(HangingHandler);
@@ -686,7 +691,7 @@ mod tests {
 
         // Start intercept task
         let fut = interceptor.intercept(&action, "test", Some(5.0));
-        
+
         // Let it run for a moment so it hits the pending await point and reserves budget
         let _ = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
 
