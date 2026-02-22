@@ -582,7 +582,7 @@ mod tests {
         match &entry.authorization {
             astrid_audit::AuthorizationProof::UserApproval { user_id, .. } => {
                 assert_eq!(user_id, &t.interceptor.user_id);
-            }
+            },
             _ => panic!("Expected UserApproval authorization proof"),
         }
     }
