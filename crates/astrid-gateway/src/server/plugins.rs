@@ -293,15 +293,19 @@ impl DaemonServer {
     /// the appropriate events.
     pub(super) async fn swap_and_load_plugin(
         plugin_id: &PluginId,
-        new_plugin: Box<dyn astrid_plugins::Plugin>,
+        mut new_plugin: Box<dyn astrid_plugins::Plugin>,
         plugin_registry: &Arc<RwLock<PluginRegistry>>,
         workspace_kv: &Arc<dyn KvStore>,
         workspace_root: &std::path::Path,
     ) -> (bool, Result<(), String>) {
-        let mut registry = plugin_registry.write().await;
+        // Unregister the old plugin under a brief lock.
+        let old_plugin_opt = {
+            let mut registry = plugin_registry.write().await;
+            registry.unregister(plugin_id).ok()
+        };
 
-        // Unload existing plugin (best-effort). Track if it was loaded.
-        let was_loaded = if let Some(existing) = registry.get_mut(plugin_id) {
+        // Unload existing plugin (best-effort) without holding the registry lock.
+        let was_loaded = if let Some(mut existing) = old_plugin_opt {
             let loaded = existing.state() == PluginState::Ready;
             if loaded && let Err(e) = existing.unload().await {
                 warn!(plugin = %plugin_id, error = %e, "Error unloading plugin before reload");
@@ -311,27 +315,24 @@ impl DaemonServer {
             false
         };
 
-        // Remove and re-register to pick up new manifest/code.
-        let _ = registry.unregister(plugin_id);
-        if let Err(e) = registry.register(new_plugin) {
-            return (was_loaded, Err(e.to_string()));
-        }
-
-        // Load the freshly registered plugin.
-        let Some(plugin) = registry.get_mut(plugin_id) else {
-            return (
-                was_loaded,
-                Err("plugin disappeared after register".to_string()),
-            );
-        };
+        // Create the execution context for the new plugin.
         let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
             Ok(kv) => kv,
             Err(e) => return (was_loaded, Err(e.to_string())),
         };
-        let config = plugin.manifest().config.clone();
+        let config = new_plugin.manifest().config.clone();
         let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
-        let result = plugin.load(&ctx).await.map_err(|e| e.to_string());
-        (was_loaded, result)
+
+        // Load the new plugin without holding the registry lock.
+        let load_result = new_plugin.load(&ctx).await.map_err(|e| e.to_string());
+
+        // Now register the fully loaded plugin back into the registry.
+        let mut registry = plugin_registry.write().await;
+        if let Err(e) = registry.register(new_plugin) {
+            return (was_loaded, Err(e.to_string()));
+        }
+
+        (was_loaded, load_result)
     }
 
     /// Broadcast an event to all connected sessions.

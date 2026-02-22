@@ -209,11 +209,19 @@ impl LlmProvider for ZaiProvider {
 
         debug!(model = %self.config.model, url = %url, "Starting Z.AI stream");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json");
+
+        if let Ok(mut auth_value) =
+            reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
+        {
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
+        }
+
+        let response = request
             .json(&request_body)
             .send()
             .await
@@ -369,11 +377,19 @@ impl LlmProvider for ZaiProvider {
 
         debug!(model = %self.config.model, url = %url, "Making Z.AI completion request");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json");
+
+        if let Ok(mut auth_value) =
+            reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
+        {
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
+        }
+
+        let response = request
             .json(&request_body)
             .send()
             .await

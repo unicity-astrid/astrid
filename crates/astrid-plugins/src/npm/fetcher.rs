@@ -68,6 +68,8 @@ impl NpmFetcher {
             .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(concat!("astrid/", env!("CARGO_PKG_VERSION")))
+            .no_proxy()
+            .dns_resolver(std::sync::Arc::new(astrid_core::http::SafeDnsResolver))
             .build()
             .map_err(|e| PluginError::RegistryError {
                 message: format!("failed to build HTTP client: {e}"),
@@ -105,6 +107,8 @@ impl NpmFetcher {
             .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(concat!("astrid/", env!("CARGO_PKG_VERSION")))
+            .no_proxy()
+            .dns_resolver(std::sync::Arc::new(astrid_core::http::SafeDnsResolver))
             .build()
             .map_err(|e| PluginError::RegistryError {
                 message: format!("failed to build HTTP client: {e}"),
@@ -263,6 +267,21 @@ impl NpmFetcher {
             url::Url::parse(&self.registry_url).map_err(|e| PluginError::RegistryError {
                 message: format!("invalid registry URL: {e}"),
             })?;
+
+        if let Some(host) = tarball.host() {
+            let ip_to_check = match host {
+                url::Host::Ipv4(ipv4) => Some(std::net::IpAddr::V4(ipv4)),
+                url::Host::Ipv6(ipv6) => Some(std::net::IpAddr::V6(ipv6)),
+                url::Host::Domain(_) => None,
+            };
+            if let Some(ip) = ip_to_check
+                && !astrid_core::http::is_safe_ip(ip)
+            {
+                return Err(PluginError::SsrfBlocked {
+                    url: tarball_url.to_string(),
+                });
+            }
+        }
 
         if tarball.host_str() != registry.host_str()
             || tarball.port_or_known_default() != registry.port_or_known_default()

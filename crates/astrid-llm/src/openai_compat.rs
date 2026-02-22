@@ -296,8 +296,12 @@ impl LlmProvider for OpenAiCompatProvider {
             .header("Content-Type", "application/json");
 
         // Add auth header if API key is present
-        if let Some(ref api_key) = self.api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
+        if let Some(ref api_key) = self.api_key
+            && let Ok(mut auth_value) =
+                reqwest::header::HeaderValue::try_from(format!("Bearer {api_key}"))
+        {
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
         }
 
         let response = request
@@ -457,8 +461,12 @@ impl LlmProvider for OpenAiCompatProvider {
             .post(&self.base_url)
             .header("Content-Type", "application/json");
 
-        if let Some(ref api_key) = self.api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
+        if let Some(ref api_key) = self.api_key
+            && let Ok(mut auth_value) =
+                reqwest::header::HeaderValue::try_from(format!("Bearer {api_key}"))
+        {
+            auth_value.set_sensitive(true);
+            request = request.header("Authorization", auth_value);
         }
 
         let response = request

@@ -203,6 +203,7 @@ impl LlmProvider for ClaudeProvider {
         &self.config.model
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn stream(
         &self,
         messages: &[Message],
@@ -220,15 +221,18 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Starting Claude stream");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
-            .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
-            .json(&request_body)
-            .send()
-            .await?;
+            .header("content-type", "application/json");
+
+        if let Ok(mut key_val) = reqwest::header::HeaderValue::try_from(&self.config.api_key) {
+            key_val.set_sensitive(true);
+            request = request.header("x-api-key", key_val);
+        }
+
+        let response = request.json(&request_body).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -344,15 +348,18 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Sending Claude request");
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
-            .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
-            .json(&request_body)
-            .send()
-            .await?;
+            .header("content-type", "application/json");
+
+        if let Ok(mut key_val) = reqwest::header::HeaderValue::try_from(&self.config.api_key) {
+            key_val.set_sensitive(true);
+            request = request.header("x-api-key", key_val);
+        }
+
+        let response = request.json(&request_body).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();

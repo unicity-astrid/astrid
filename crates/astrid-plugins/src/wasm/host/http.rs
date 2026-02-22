@@ -88,6 +88,8 @@ static HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .dns_resolver(std::sync::Arc::new(astrid_core::http::SafeDnsResolver))
         .build()
         .expect("failed to build global HTTP client")
 });
@@ -104,7 +106,24 @@ async fn perform_http_request(
     let req_method = reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
         .map_err(|_| Error::msg(format!("invalid HTTP method: {method}")))?;
 
-    let mut builder = client.request(req_method, url);
+    let parsed_url = url::Url::parse(url).map_err(|e| Error::msg(format!("invalid URL: {e}")))?;
+
+    if let Some(host) = parsed_url.host() {
+        let ip_to_check = match host {
+            url::Host::Ipv4(ipv4) => Some(std::net::IpAddr::V4(ipv4)),
+            url::Host::Ipv6(ipv6) => Some(std::net::IpAddr::V6(ipv6)),
+            url::Host::Domain(_) => None,
+        };
+        if let Some(ip) = ip_to_check
+            && !astrid_core::http::is_safe_ip(ip)
+        {
+            return Err(Error::msg(
+                "URL host is an unauthorized private or local IP address",
+            ));
+        }
+    }
+
+    let mut builder = client.request(req_method, parsed_url.as_str());
 
     for kv in headers {
         if kv.key.eq_ignore_ascii_case("host")
@@ -112,6 +131,11 @@ async fn perform_http_request(
             || kv.key.eq_ignore_ascii_case("upgrade")
             || kv.key.eq_ignore_ascii_case("content-length")
             || kv.key.eq_ignore_ascii_case("transfer-encoding")
+            || kv.key.eq_ignore_ascii_case("x-forwarded-host")
+            || kv.key.eq_ignore_ascii_case("x-forwarded-for")
+            || kv.key.eq_ignore_ascii_case("x-forwarded-proto")
+            || kv.key.eq_ignore_ascii_case("forwarded")
+            || kv.key.eq_ignore_ascii_case("via")
         {
             tracing::warn!("WASM plugin attempted to set restricted header: {}", kv.key);
             continue;
