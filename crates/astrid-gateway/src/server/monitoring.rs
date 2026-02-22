@@ -158,18 +158,23 @@ impl DaemonServer {
                 };
 
                 if !orphaned.is_empty() {
-                    let mut map = sessions.write().await;
-                    for id in &orphaned {
-                        if let Some(handle) = map.remove(id) {
-                            let session = handle.session.lock().await;
-                            if let Err(e) = runtime.save_session(&session) {
-                                warn!(session_id = %id, error = %e, "Failed to save orphaned session");
-                            } else {
-                                info!(session_id = %id, "Cleaned up orphaned session");
-                            }
-                            // Evict plugin KV stores for this session (same as end_session).
-                            runtime.cleanup_plugin_kv_stores(id);
+                    let to_save: Vec<_> = {
+                        let mut map = sessions.write().await;
+                        orphaned
+                            .iter()
+                            .filter_map(|id| map.remove(id).map(|h| (id.clone(), h)))
+                            .collect()
+                    };
+
+                    for (id, handle) in to_save {
+                        let session = handle.session.lock().await;
+                        if let Err(e) = runtime.save_session(&session) {
+                            warn!(session_id = %id, error = %e, "Failed to save orphaned session");
+                        } else {
+                            info!(session_id = %id, "Cleaned up orphaned session");
                         }
+                        // Evict plugin KV stores for this session (same as end_session).
+                        runtime.cleanup_plugin_kv_stores(&id);
                     }
                 }
 
