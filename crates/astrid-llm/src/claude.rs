@@ -227,10 +227,10 @@ impl LlmProvider for ClaudeProvider {
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json");
 
-        if let Ok(mut key_val) = reqwest::header::HeaderValue::try_from(&self.config.api_key) {
-            key_val.set_sensitive(true);
-            request = request.header("x-api-key", key_val);
-        }
+        let mut key_val = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
+        key_val.set_sensitive(true);
+        request = request.header("x-api-key", key_val);
 
         let response = request.json(&request_body).send().await?;
 
@@ -354,10 +354,10 @@ impl LlmProvider for ClaudeProvider {
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json");
 
-        if let Ok(mut key_val) = reqwest::header::HeaderValue::try_from(&self.config.api_key) {
-            key_val.set_sensitive(true);
-            request = request.header("x-api-key", key_val);
-        }
+        let mut key_val = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
+        key_val.set_sensitive(true);
+        request = request.header("x-api-key", key_val);
 
         let response = request.json(&request_body).send().await?;
 

@@ -41,6 +41,11 @@ pub fn is_safe_ip(mut ip: std::net::IpAddr) -> bool {
         return true;
     }
 
+    // Global escape hatch for deployments that require plugins to access internal network services
+    if std::env::var("ASTRID_ALLOW_LOCAL_IPS").is_ok() {
+        return true;
+    }
+
     if let std::net::IpAddr::V6(ipv6) = ip {
         if let Some(ipv4) = ipv6.to_ipv4_mapped() {
             ip = std::net::IpAddr::V4(ipv4);

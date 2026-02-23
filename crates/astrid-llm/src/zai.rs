@@ -214,12 +214,11 @@ impl LlmProvider for ZaiProvider {
             .post(url)
             .header("Content-Type", "application/json");
 
-        if let Ok(mut auth_value) =
+        let mut auth_value =
             reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
-        {
-            auth_value.set_sensitive(true);
-            request = request.header("Authorization", auth_value);
-        }
+                .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
+        auth_value.set_sensitive(true);
+        request = request.header("Authorization", auth_value);
 
         let response = request
             .json(&request_body)
@@ -382,12 +381,11 @@ impl LlmProvider for ZaiProvider {
             .post(url)
             .header("Content-Type", "application/json");
 
-        if let Ok(mut auth_value) =
+        let mut auth_value =
             reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
-        {
-            auth_value.set_sensitive(true);
-            request = request.header("Authorization", auth_value);
-        }
+                .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
+        auth_value.set_sensitive(true);
+        request = request.header("Authorization", auth_value);
 
         let response = request
             .json(&request_body)

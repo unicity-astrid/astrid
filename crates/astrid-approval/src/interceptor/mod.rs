@@ -190,6 +190,9 @@ impl SecurityInterceptor {
 
         match outcome {
             ApprovalOutcome::Allowed { proof } => {
+                if let Some(res) = budget_reservation {
+                    res.commit();
+                }
                 let intercept_proof = match proof {
                     ApprovalProof::Allowance { allowance_id }
                     | ApprovalProof::CustomAllowance { allowance_id } => {
@@ -304,9 +307,6 @@ impl SecurityInterceptor {
                     },
                 };
                 let audit_id = self.audit_allowed(action, &intercept_proof);
-                if let Some(res) = budget_reservation {
-                    res.commit();
-                }
                 Ok(InterceptResult {
                     proof: intercept_proof,
                     audit_id,
@@ -484,6 +484,7 @@ mod tests {
         interceptor: SecurityInterceptor,
         audit_log: Arc<AuditLog>,
         session_id: SessionId,
+        budget_tracker: Arc<BudgetTracker>,
     }
 
     async fn make_interceptor_with_audit(
@@ -507,7 +508,7 @@ mod tests {
             capability_store,
             approval_manager,
             policy,
-            budget_tracker,
+            Arc::clone(&budget_tracker),
             Arc::clone(&audit_log),
             runtime_key,
             session_id.clone(),
@@ -524,6 +525,7 @@ mod tests {
             interceptor,
             audit_log,
             session_id,
+            budget_tracker,
         }
     }
 
@@ -753,6 +755,28 @@ mod tests {
             },
             _ => panic!("Expected Denied authorization proof"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_budget_committed_on_approval() {
+        let t = make_interceptor_with_audit(
+            SecurityPolicy::default(),
+            Some(Arc::new(SessionApproveHandler)),
+        )
+        .await;
+
+        let action = SensitiveAction::McpToolCall {
+            server: "test".to_string(),
+            tool: "expensive_read".to_string(),
+        };
+
+        // Call intercept with a cost. SessionApproveHandler will approve it.
+        let result = t.interceptor.intercept(&action, "test", Some(5.0)).await;
+        assert!(result.is_ok(), "Expected action to be approved");
+
+        // Verify the budget was actually committed, not refunded
+        let snapshot = t.budget_tracker.snapshot();
+        assert_eq!(snapshot.session_spent_usd, 5.0, "Expected budget to be committed, but it was refunded");
     }
 
     #[tokio::test]

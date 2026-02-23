@@ -296,10 +296,10 @@ impl LlmProvider for OpenAiCompatProvider {
             .header("Content-Type", "application/json");
 
         // Add auth header if API key is present
-        if let Some(ref api_key) = self.api_key
-            && let Ok(mut auth_value) =
+        if let Some(ref api_key) = self.api_key {
+            let mut auth_value =
                 reqwest::header::HeaderValue::try_from(format!("Bearer {api_key}"))
-        {
+                    .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
             auth_value.set_sensitive(true);
             request = request.header("Authorization", auth_value);
         }
@@ -461,10 +461,10 @@ impl LlmProvider for OpenAiCompatProvider {
             .post(&self.base_url)
             .header("Content-Type", "application/json");
 
-        if let Some(ref api_key) = self.api_key
-            && let Ok(mut auth_value) =
+        if let Some(ref api_key) = self.api_key {
+            let mut auth_value =
                 reqwest::header::HeaderValue::try_from(format!("Bearer {api_key}"))
-        {
+                    .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
             auth_value.set_sensitive(true);
             request = request.header("Authorization", auth_value);
         }
