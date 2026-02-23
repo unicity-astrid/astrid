@@ -1,0 +1,31 @@
+# Gemini Code Assist Configuration
+# $schema: http://json-schema.org/draft-07/schema#
+
+# Enables fun features such as a poem in the initial pull request summary.
+have_fun: true
+
+# A list of glob patterns for files and directories that Gemini Code Assist should ignore.
+ignore_patterns:
+  - "**/*.min.js"
+  - "target/**"
+  - "Cargo.lock"
+
+# Configuration for persistent memory.
+memory_config:
+  disabled: false
+
+# Configuration for code reviews.
+code_review:
+  disable: false
+  # The minimum severity of review comments to consider (LOW, MEDIUM, HIGH, CRITICAL).
+  comment_severity_threshold: "MEDIUM"
+  # The maximum number of review comments to consider. Use -1 for unlimited.
+  max_review_comments: -1
+  
+  # Configuration for pull request opened events.
+  pull_request_opened:
+    help: false
+    summary: true
+    code_review: true
+    # Enables agent functionality on draft pull requests.
+    include_drafts: false
