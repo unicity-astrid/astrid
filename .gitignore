@@ -38,5 +38,7 @@ packages/*/dist/
 # AI
 .astrid
 .claude
-.gemini
+.gemini/*
+!.gemini/config.yaml
+!.gemini/styleguide.md
 .mcp.json
