@@ -291,53 +291,51 @@ impl DaemonServer {
     ///
     /// Returns `(was_previously_loaded, Result)` so callers can broadcast
     /// the appropriate events.
-        pub(super) async fn swap_and_load_plugin(
-            plugin_id: &PluginId,
-            mut new_plugin: Box<dyn astrid_plugins::Plugin>,
-            plugin_registry: &Arc<RwLock<PluginRegistry>>,
-            workspace_kv: &Arc<dyn KvStore>,
-            workspace_root: &std::path::Path,
-        ) -> (bool, Result<(), String>) {
-            // Create the execution context for the new plugin first.
-            // If this fails, we return early and leave the old plugin running.
-            let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
-                Ok(kv) => kv,
-                Err(e) => return (false, Err(e.to_string())),
-            };
-            let config = new_plugin.manifest().config.clone();
-            let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
-    
-            // Unregister the old plugin under a brief lock.
-            let old_plugin_opt = {
-                let mut registry = plugin_registry.write().await;
-                registry.unregister(plugin_id).ok()
-            };
-    
-            // Unload existing plugin (best-effort) without holding the registry lock.
-            let was_loaded = if let Some(mut existing) = old_plugin_opt {
-                let loaded = existing.state() == PluginState::Ready;
-                if loaded
-                    && let Err(e) = existing.unload().await
-                {
-                    warn!(plugin = %plugin_id, error = %e, "Error unloading plugin before reload");
-                }
-                loaded
-            } else {
-                false
-            };
-    
-            // Load the new plugin without holding the registry lock.
-            let load_result = new_plugin.load(&ctx).await.map_err(|e| e.to_string());
-    
-            // Now register the fully loaded plugin back into the registry.
+    pub(super) async fn swap_and_load_plugin(
+        plugin_id: &PluginId,
+        mut new_plugin: Box<dyn astrid_plugins::Plugin>,
+        plugin_registry: &Arc<RwLock<PluginRegistry>>,
+        workspace_kv: &Arc<dyn KvStore>,
+        workspace_root: &std::path::Path,
+    ) -> (bool, Result<(), String>) {
+        // Step 1: Create the execution context for the new plugin first.
+        // If this fails, we return early and leave the old plugin running.
+        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
+            Ok(kv) => kv,
+            Err(e) => return (false, Err(e.to_string())),
+        };
+        let config = new_plugin.manifest().config.clone();
+        let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
+
+        // Step 2: Remove existing plugin under a brief lock.
+        let (was_loaded, mut existing_plugin) = {
             let mut registry = plugin_registry.write().await;
-            if let Err(e) = registry.register(new_plugin) {
-                return (was_loaded, Err(e.to_string()));
-            }
-    
-            (was_loaded, load_result)
+            let existing = registry.unregister(plugin_id).ok();
+            let was_loaded = existing
+                .as_ref()
+                .is_some_and(|p| p.state() == PluginState::Ready);
+            (was_loaded, existing)
+        };
+
+        // Unload existing plugin outside the lock.
+        if let Some(existing) = &mut existing_plugin
+            && was_loaded
+            && let Err(e) = existing.unload().await
+        {
+            warn!(plugin = %plugin_id, error = %e, "Error unloading plugin before reload");
         }
 
+        // Step 3: Load the new plugin outside the lock.
+        let load_result = new_plugin.load(&ctx).await.map_err(|e| e.to_string());
+
+        // Step 4: Re-register the newly loaded plugin under a brief lock.
+        let mut registry = plugin_registry.write().await;
+        if let Err(e) = registry.register(new_plugin) {
+            return (was_loaded, Err(e.to_string()));
+        }
+
+        (was_loaded, load_result)
+    }
     /// Broadcast an event to all connected sessions.
     pub(super) async fn broadcast_event(
         sessions: &Arc<RwLock<HashMap<SessionId, SessionHandle>>>,

@@ -158,8 +158,7 @@ impl DaemonServer {
                 };
 
                 if !orphaned.is_empty() {
-                    // Extract handles under brief lock
-                    let removed_handles: Vec<_> = {
+                    let to_save: Vec<_> = {
                         let mut map = sessions.write().await;
                         orphaned
                             .iter()
@@ -167,8 +166,7 @@ impl DaemonServer {
                             .collect()
                     };
 
-                    // Process removed handles without holding the map lock
-                    for (id, handle) in removed_handles {
+                    for (id, handle) in to_save {
                         let session = handle.session.lock().await;
                         if let Err(e) = runtime.save_session(&session) {
                             warn!(session_id = %id, error = %e, "Failed to save orphaned session");

@@ -221,18 +221,19 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Starting Claude stream");
 
-        let mut request = self
+        let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
+        api_key_header.set_sensitive(true);
+
+        let response = self
             .client
             .post(url)
+            .header("x-api-key", api_key_header)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json");
-
-        let mut key_val = reqwest::header::HeaderValue::try_from(&self.config.api_key)
-            .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
-        key_val.set_sensitive(true);
-        request = request.header("x-api-key", key_val);
-
-        let response = request.json(&request_body).send().await?;
+            .header("content-type", "application/json")
+            .json(&request_body)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -348,18 +349,19 @@ impl LlmProvider for ClaudeProvider {
 
         debug!(model = self.config.model, "Sending Claude request");
 
-        let mut request = self
+        let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
+        api_key_header.set_sensitive(true);
+
+        let response = self
             .client
             .post(url)
+            .header("x-api-key", api_key_header)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json");
-
-        let mut key_val = reqwest::header::HeaderValue::try_from(&self.config.api_key)
-            .map_err(|e| LlmError::ConfigError(format!("Invalid characters in API key: {e}")))?;
-        key_val.set_sensitive(true);
-        request = request.header("x-api-key", key_val);
-
-        let response = request.json(&request_body).send().await?;
+            .header("content-type", "application/json")
+            .json(&request_body)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -465,6 +467,25 @@ struct DeltaUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_invalid_api_key_characters() {
+        let config = ProviderConfig::new("invalid\nkey", "claude-3-sonnet");
+        let provider = ClaudeProvider::new(config);
+        let Err(err_complete) = provider.complete(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_complete, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
+        );
+
+        let Err(err_stream) = provider.stream(&[], &[], "").await else {
+            panic!("Expected error");
+        };
+        assert!(
+            matches!(err_stream, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
+        );
+    }
 
     #[test]
     fn test_build_request() {
