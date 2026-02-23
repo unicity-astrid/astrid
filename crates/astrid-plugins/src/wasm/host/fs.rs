@@ -1,81 +1,88 @@
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use extism::{CurrentPlugin, Error, UserData, Val};
+
+use cap_std::fs::Dir;
 
 use crate::wasm::host::util;
 use crate::wasm::host_state::HostState;
 
-/// Lexically normalize a path (resolve `.` and `..` without filesystem access).
-fn lexical_normalize(path: &Path) -> Result<PathBuf, Error> {
-    let mut components = Vec::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                if let Some(last) = components.last() {
-                    if matches!(
-                        last,
-                        std::path::Component::RootDir | std::path::Component::Prefix(_)
-                    ) {
-                        return Err(Error::msg("path traversal attempts to escape root"));
-                    }
-                    components.pop();
-                } else {
-                    return Err(Error::msg("path traversal attempts to escape root"));
-                }
-            },
-            std::path::Component::CurDir => {},
-            other => components.push(other),
+/// Maximum number of directory entries allowed to be read by `readdir`
+const MAX_READDIR_ENTRIES: usize = 10_000;
+
+/// Strip any leading absolute slashes or prefixes (e.g. C:\) from the requested path
+/// so that `cap_std` can open it relative to the directory capability.
+fn make_relative(requested: &str) -> &Path {
+    let path = Path::new(requested);
+    let mut components = path.components();
+    while let Some(c) = components.clone().next() {
+        if matches!(c, Component::RootDir | Component::Prefix(_)) {
+            components.next(); // consume it
+        } else {
+            break;
         }
     }
-    Ok(components.iter().collect())
+    components.as_path()
 }
 
-/// Resolve a plugin-provided path relative to the workspace root and verify
-/// it does not escape the workspace boundary.
-pub(crate) fn resolve_within_workspace(
+/// Compute the true physical absolute path for the security gate by canonicalizing on the host filesystem.
+/// Returns both the absolute path and a sanitized relative path safe for capability use.
+/// This prevents symlink bypass attacks where a lexical path passes the gate but cap-std follows a symlink.
+fn resolve_physical_absolute(
     workspace_root: &Path,
     requested: &str,
-) -> Result<PathBuf, Error> {
+) -> Result<(PathBuf, PathBuf), Error> {
     let canonical_root = workspace_root
         .canonicalize()
         .unwrap_or_else(|_| workspace_root.to_path_buf());
 
-    let requested_path = Path::new(requested);
-    let joined = if requested_path.is_absolute() {
-        requested_path.to_path_buf()
-    } else {
-        canonical_root.join(requested_path)
-    };
+    let relative_requested = make_relative(requested);
+    let joined = canonical_root.join(relative_requested);
 
-    let canonical_path = if joined.exists() {
-        joined
-            .canonicalize()
-            .map_err(|e| Error::msg(format!("failed to resolve path: {e}")))?
-    } else {
-        let parent = joined.parent().unwrap_or(&joined);
-        let filename = joined.file_name();
-        if parent.exists() {
-            let canonical_parent = parent
-                .canonicalize()
-                .map_err(|e| Error::msg(format!("failed to resolve parent: {e}")))?;
-            match filename {
-                Some(name) => canonical_parent.join(name),
-                None => canonical_parent,
+    // Find the deepest existing ancestor to canonicalize to resolve any symlinks
+    let mut current = joined.clone();
+    let mut non_existent_components = Vec::new();
+
+    while !current.exists() {
+        if let Some(parent) = current.parent() {
+            if let Some(file_name) = current.file_name() {
+                non_existent_components.push(file_name.to_os_string());
             }
+            current = parent.to_path_buf();
         } else {
-            lexical_normalize(&joined)?
+            break;
         }
-    };
+    }
 
-    if !canonical_path.starts_with(&canonical_root) {
+    // Canonicalize the existing part to resolve symlinks
+    let mut resolved = current.canonicalize().unwrap_or_else(|_| current.clone());
+
+    // Re-attach the non-existent components, applying `..` and `.` lexically
+    for comp in non_existent_components.into_iter().rev() {
+        if comp == ".." {
+            resolved.pop();
+        } else if comp != "." {
+            resolved.push(comp);
+        }
+    }
+
+    if !resolved.starts_with(&canonical_root) {
         return Err(Error::msg(format!(
             "path escapes workspace boundary: {requested} resolves to {}",
-            canonical_path.display()
+            resolved.display()
         )));
     }
 
-    Ok(canonical_path)
+    let mut safe_relative = resolved
+        .strip_prefix(&canonical_root)
+        .unwrap_or(Path::new(""))
+        .to_path_buf();
+    if safe_relative.as_os_str().is_empty() {
+        safe_relative = PathBuf::from(".");
+    }
+
+    Ok((resolved, safe_relative))
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -94,8 +101,12 @@ pub(crate) fn astrid_fs_exists_impl(
     let workspace_root = state.workspace_root.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let exists = resolved.exists();
+    let (_, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    let exists = dir.exists(&safe_relative);
 
     let result = if exists { "true" } else { "false" };
     let mem = plugin.memory_new(result)?;
@@ -122,21 +133,24 @@ pub(crate) fn astrid_fs_mkdir_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_write(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_write(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied mkdir: {reason}")));
         }
     }
 
-    std::fs::create_dir_all(&resolved)
-        .map_err(|e| Error::msg(format!("mkdir failed ({resolved_str}): {e}")))?;
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    dir.create_dir_all(&safe_relative)
+        .map_err(|e| Error::msg(format!("mkdir failed ({absolute_str}): {e}")))?;
 
     Ok(())
 }
@@ -160,24 +174,44 @@ pub(crate) fn astrid_fs_readdir_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_read(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_read(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied readdir: {reason}")));
         }
     }
 
-    let entries: Vec<String> = std::fs::read_dir(&resolved)
-        .map_err(|e| Error::msg(format!("readdir failed ({resolved_str}): {e}")))?
-        .filter_map(Result::ok)
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect();
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    let iter = dir
+        .read_dir(&safe_relative)
+        .map_err(|e| Error::msg(format!("readdir failed ({absolute_str}): {e}")))?;
+
+    let mut entries = Vec::new();
+    for (count, entry_res) in iter.enumerate() {
+        if count >= MAX_READDIR_ENTRIES {
+            return Err(Error::msg(format!(
+                "directory listing exceeds maximum entries limit ({MAX_READDIR_ENTRIES})"
+            )));
+        }
+        match entry_res {
+            Ok(entry) => {
+                if let Ok(name) = entry.file_name().into_string() {
+                    entries.push(name);
+                }
+            },
+            Err(e) => {
+                tracing::warn!(plugin = %plugin_id, "readdir entry error: {e}");
+            },
+        }
+    }
 
     let json = serde_json::to_string(&entries)
         .map_err(|e| Error::msg(format!("failed to serialize readdir result: {e}")))?;
@@ -206,25 +240,30 @@ pub(crate) fn astrid_fs_stat_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_read(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_read(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied stat: {reason}")));
         }
     }
 
-    let metadata = std::fs::metadata(&resolved)
-        .map_err(|e| Error::msg(format!("stat failed ({resolved_str}): {e}")))?;
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    let metadata = dir
+        .metadata(&safe_relative)
+        .map_err(|e| Error::msg(format!("stat failed ({absolute_str}): {e}")))?;
 
     let mtime = metadata
         .modified()
         .ok()
+        .map(cap_std::time::SystemTime::into_std)
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0u64, |d| d.as_secs());
 
@@ -259,21 +298,24 @@ pub(crate) fn astrid_fs_unlink_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_write(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_write(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied unlink: {reason}")));
         }
     }
 
-    std::fs::remove_file(&resolved)
-        .map_err(|e| Error::msg(format!("unlink failed ({resolved_str}): {e}")))?;
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    dir.remove_file(&safe_relative)
+        .map_err(|e| Error::msg(format!("unlink failed ({absolute_str}): {e}")))?;
 
     Ok(())
 }
@@ -297,26 +339,30 @@ pub(crate) fn astrid_read_file_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_read(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_read(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied file read: {reason}")));
         }
     }
 
-    let file = std::fs::File::open(&resolved)
-        .map_err(|e| Error::msg(format!("failed to open file ({resolved_str}): {e}")))?;
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    let file = dir
+        .open(&safe_relative)
+        .map_err(|e| Error::msg(format!("failed to open file ({absolute_str}): {e}")))?;
 
     let mut bytes = Vec::new();
     file.take(util::MAX_GUEST_PAYLOAD_LEN + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| Error::msg(format!("read_file failed ({resolved_str}): {e}")))?;
+        .map_err(|e| Error::msg(format!("read_file failed ({absolute_str}): {e}")))?;
 
     if bytes.len() as u64 > util::MAX_GUEST_PAYLOAD_LEN {
         return Err(Error::msg(
@@ -352,21 +398,24 @@ pub(crate) fn astrid_write_file_impl(
     let handle = state.runtime_handle.clone();
     drop(state);
 
-    let resolved = resolve_within_workspace(&workspace_root, &path)?;
-    let resolved_str = resolved.to_string_lossy().to_string();
+    let (absolute, safe_relative) = resolve_physical_absolute(&workspace_root, &path)?;
+    let absolute_str = absolute.to_string_lossy().to_string();
 
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = plugin_id.clone();
-        let rstr = resolved_str.clone();
-        let check = handle.block_on(async move { gate.check_file_write(&pid, &rstr).await });
+        let astr = absolute_str.clone();
+        let check = handle.block_on(async move { gate.check_file_write(&pid, &astr).await });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied file write: {reason}")));
         }
     }
 
-    std::fs::write(&resolved, content.as_bytes())
-        .map_err(|e| Error::msg(format!("write_file failed ({resolved_str}): {e}")))?;
+    let dir = Dir::open_ambient_dir(&workspace_root, cap_std::ambient_authority())
+        .map_err(|e| Error::msg(format!("failed to open workspace dir: {e}")))?;
+
+    dir.write(&safe_relative, content.as_bytes())
+        .map_err(|e| Error::msg(format!("write_file failed ({absolute_str}): {e}")))?;
 
     Ok(())
 }

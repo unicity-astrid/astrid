@@ -58,6 +58,14 @@ fn build_test_plugin(
     workspace_root: &Path,
     config: HashMap<String, serde_json::Value>,
 ) -> extism::Plugin {
+    build_test_plugin_with_security(workspace_root, config, None)
+}
+
+fn build_test_plugin_with_security(
+    workspace_root: &Path,
+    config: HashMap<String, serde_json::Value>,
+    security: Option<Arc<dyn astrid_plugins::security::PluginSecurityGate>>,
+) -> extism::Plugin {
     let wasm_bytes = std::fs::read(wasm_fixture_path()).expect("read WASM fixture");
 
     let store = Arc::new(astrid_storage::MemoryKvStore::new());
@@ -74,7 +82,7 @@ fn build_test_plugin(
         subscriptions: std::collections::HashMap::new(),
         next_subscription_id: 1,
         config,
-        security: None,
+        security,
         runtime_handle: tokio::runtime::Handle::current(),
         has_connector_capability: false,
         inbound_tx: None,
@@ -394,6 +402,55 @@ async fn host_file_write_and_read() {
     assert!(!output.is_error, "test-file-read should succeed");
     let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
     assert_eq!(parsed["content"], "written by WASM plugin");
+
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_file_read_write_absolute_paths() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-file-abs");
+    let _ = std::fs::create_dir_all(&workspace);
+    let mut plugin = build_test_plugin(&workspace, HashMap::new());
+
+    // Write a file using a WASI-style absolute path
+    let output = execute_tool(
+        &mut plugin,
+        "test-file-write",
+        &serde_json::json!({ "path": "/test-output-abs.txt", "content": "written by WASM plugin using absolute path" }),
+    );
+    assert!(
+        !output.is_error,
+        "test-file-write with absolute path should succeed: {}",
+        output.content
+    );
+
+    // Verify file exists on disk (it should be placed relative to the workspace root)
+    let written_path = workspace.join("test-output-abs.txt");
+    assert!(
+        written_path.exists(),
+        "file should exist on disk at correct path"
+    );
+    let disk_content = std::fs::read_to_string(&written_path).unwrap();
+    assert_eq!(disk_content, "written by WASM plugin using absolute path");
+
+    // Read it back via the plugin using the absolute path
+    let output = execute_tool(
+        &mut plugin,
+        "test-file-read",
+        &serde_json::json!({ "path": "/test-output-abs.txt" }),
+    );
+    assert!(
+        !output.is_error,
+        "test-file-read with absolute path should succeed: {}",
+        output.content
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(
+        parsed["content"],
+        "written by WASM plugin using absolute path"
+    );
 
     let _ = std::fs::remove_dir_all(&workspace);
 }
@@ -732,5 +789,102 @@ async fn test_http_restricted_headers_filtered() {
     );
 
     server_handle.await.expect("Server task panicked");
+    let _ = std::fs::remove_dir_all(&workspace);
+}
+
+#[derive(Default)]
+struct CapturingSecurityGate {
+    captured_paths: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl astrid_plugins::security::PluginSecurityGate for CapturingSecurityGate {
+    async fn check_http_request(
+        &self,
+        _plugin_id: &str,
+        _method: &str,
+        _url: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn check_file_read(&self, _plugin_id: &str, path: &str) -> Result<(), String> {
+        self.captured_paths.lock().unwrap().push(path.to_string());
+        Ok(())
+    }
+
+    async fn check_file_write(&self, _plugin_id: &str, path: &str) -> Result<(), String> {
+        self.captured_paths.lock().unwrap().push(path.to_string());
+        Ok(())
+    }
+
+    async fn check_connector_register(
+        &self,
+        _plugin_id: &str,
+        _connector_name: &str,
+        _platform: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_host_file_read_write_symlink_bypass() {
+    build_fixture();
+
+    let workspace = std::env::temp_dir().join("e2e-wasm-file-symlink");
+    let _ = std::fs::remove_dir_all(&workspace);
+    std::fs::create_dir_all(&workspace).unwrap();
+
+    // Create a scenario where a symlink points to a location outside the apparent "public" directory,
+    // but still inside the workspace. The SecurityGate should evaluate the final canonicalized physical path.
+    let public_dir = workspace.join("public");
+    let private_dir = workspace.join("private");
+    std::fs::create_dir_all(&public_dir).unwrap();
+    std::fs::create_dir_all(&private_dir).unwrap();
+
+    let secret_file = private_dir.join("secret.txt");
+    std::fs::write(&secret_file, "top secret").unwrap();
+
+    // Symlink: public/link -> ../private
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("../private", public_dir.join("link")).unwrap();
+
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir("../private", public_dir.join("link")).unwrap();
+
+    let gate = std::sync::Arc::new(CapturingSecurityGate::default());
+    let mut plugin = build_test_plugin_with_security(
+        &workspace,
+        std::collections::HashMap::new(),
+        Some(gate.clone() as std::sync::Arc<dyn astrid_plugins::security::PluginSecurityGate>),
+    );
+
+    // WASM plugin requests to read public/link/secret.txt
+    let output = execute_tool(
+        &mut plugin,
+        "test-file-read",
+        &serde_json::json!({ "path": "public/link/secret.txt" }),
+    );
+    assert!(
+        !output.is_error,
+        "test-file-read through symlink should succeed physically: {}",
+        output.content
+    );
+
+    let parsed: serde_json::Value = serde_json::from_str(&output.content).unwrap();
+    assert_eq!(parsed["content"], "top secret");
+
+    let captured = gate.captured_paths.lock().unwrap().clone();
+    assert_eq!(captured.len(), 1, "gate should have been called once");
+
+    let path_str = &captured[0];
+
+    // The gate MUST receive the path that resolves INTO the private directory.
+    assert!(
+        path_str.contains("private"),
+        "The security gate must receive the resolved physical path containing 'private'. Received: {path_str}",
+    );
+
     let _ = std::fs::remove_dir_all(&workspace);
 }
