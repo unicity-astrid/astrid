@@ -48,7 +48,7 @@ landlock.workspace = true
 libc = "0.2"
 
 [features]
-http = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:sha2", "dep:subtle", "dep:base64", "dep:url"]
+http = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:sha2", "dep:subtle", "dep:base64", "dep:url", "astrid-core/reqwest"]
 watch = ["dep:notify"]
 approval = ["dep:astrid-approval"]
 

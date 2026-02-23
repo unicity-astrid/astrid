@@ -300,7 +300,7 @@ impl LlmProvider for OpenAiCompatProvider {
             let mut auth_value = reqwest::header::HeaderValue::try_from(format!(
                 "Bearer {api_key}"
             ))
-            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
             auth_value.set_sensitive(true);
             request = request.header("Authorization", auth_value);
         }
@@ -459,7 +459,7 @@ impl LlmProvider for OpenAiCompatProvider {
             let mut auth_value = reqwest::header::HeaderValue::try_from(format!(
                 "Bearer {api_key}"
             ))
-            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
             auth_value.set_sensitive(true);
             request = request.header("Authorization", auth_value);
         }
@@ -670,14 +670,14 @@ mod tests {
             panic!("Expected error");
         };
         assert!(
-            matches!(err_complete, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+            matches!(err_complete, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
         );
 
         let Err(err_stream) = provider.stream(&[], &[], "").await else {
             panic!("Expected error");
         };
         assert!(
-            matches!(err_stream, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+            matches!(err_stream, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
         );
     }
 

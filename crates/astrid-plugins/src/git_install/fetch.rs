@@ -55,6 +55,8 @@ async fn fetch_github_tarball(
         .user_agent("astrid-plugin-installer")
         .redirect(reqwest::redirect::Policy::limited(10))
         .timeout(std::time::Duration::from_secs(120))
+        .no_proxy()
+        .dns_resolver(std::sync::Arc::new(astrid_core::http::SafeDnsResolver))
         .build()
         .map_err(|e| PluginError::ExecutionFailed(format!("failed to create HTTP client: {e}")))?;
 

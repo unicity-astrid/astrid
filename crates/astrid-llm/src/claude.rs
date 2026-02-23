@@ -222,7 +222,7 @@ impl LlmProvider for ClaudeProvider {
         debug!(model = self.config.model, "Starting Claude stream");
 
         let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
-            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
         api_key_header.set_sensitive(true);
 
         let response = self
@@ -350,7 +350,7 @@ impl LlmProvider for ClaudeProvider {
         debug!(model = self.config.model, "Sending Claude request");
 
         let mut api_key_header = reqwest::header::HeaderValue::try_from(&self.config.api_key)
-            .map_err(|e| LlmError::ApiRequestFailed(format!("Invalid API key characters: {e}")))?;
+            .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
         api_key_header.set_sensitive(true);
 
         let response = self
@@ -476,14 +476,14 @@ mod tests {
             panic!("Expected error");
         };
         assert!(
-            matches!(err_complete, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+            matches!(err_complete, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
         );
 
         let Err(err_stream) = provider.stream(&[], &[], "").await else {
             panic!("Expected error");
         };
         assert!(
-            matches!(err_stream, LlmError::ApiRequestFailed(ref msg) if msg.contains("Invalid API key characters"))
+            matches!(err_stream, LlmError::ConfigError(ref msg) if msg.contains("Invalid API key characters"))
         );
     }
 

@@ -34,6 +34,10 @@ pub mod version;
 
 pub mod connector;
 
+/// HTTP utilities and protections (e.g. SSRF prevention)
+#[cfg(feature = "reqwest")]
+pub mod http;
+
 pub use error::{SecurityError, SecurityResult};
 pub use frontend::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,

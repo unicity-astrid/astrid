@@ -298,7 +298,16 @@ impl DaemonServer {
         workspace_kv: &Arc<dyn KvStore>,
         workspace_root: &std::path::Path,
     ) -> (bool, Result<(), String>) {
-        // Step 1: Remove existing plugin under a brief lock.
+        // Step 1: Create the execution context for the new plugin first.
+        // If this fails, we return early and leave the old plugin running.
+        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
+            Ok(kv) => kv,
+            Err(e) => return (false, Err(e.to_string())),
+        };
+        let config = new_plugin.manifest().config.clone();
+        let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
+
+        // Step 2: Remove existing plugin under a brief lock.
         let (was_loaded, mut existing_plugin) = {
             let mut registry = plugin_registry.write().await;
             let existing = registry.unregister(plugin_id).ok();
@@ -316,17 +325,10 @@ impl DaemonServer {
             warn!(plugin = %plugin_id, error = %e, "Error unloading plugin before reload");
         }
 
-        // Step 2: Load the new plugin outside the lock.
-        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
-            Ok(kv) => kv,
-            Err(e) => return (was_loaded, Err(e.to_string())),
-        };
-        let config = new_plugin.manifest().config.clone();
-        let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
-
+        // Step 3: Load the new plugin outside the lock.
         let load_result = new_plugin.load(&ctx).await.map_err(|e| e.to_string());
 
-        // Step 3: Re-register the newly loaded plugin under a brief lock.
+        // Step 4: Re-register the newly loaded plugin under a brief lock.
         let mut registry = plugin_registry.write().await;
         if let Err(e) = registry.register(new_plugin) {
             return (was_loaded, Err(e.to_string()));
@@ -334,7 +336,6 @@ impl DaemonServer {
 
         (was_loaded, load_result)
     }
-
     /// Broadcast an event to all connected sessions.
     pub(super) async fn broadcast_event(
         sessions: &Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
