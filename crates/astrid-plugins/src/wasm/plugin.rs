@@ -155,6 +155,7 @@ impl WasmPlugin {
     }
 
     /// Internal load logic. Separated so we can catch errors and set `Failed` state.
+    #[allow(clippy::too_many_lines)]
     fn do_load(&mut self, ctx: &PluginContext) -> PluginResult<()> {
         // 1. Resolve WASM file path
         let (wasm_path, expected_hash) = match &self.manifest.entry_point {
@@ -204,10 +205,36 @@ impl WasmPlugin {
 
             // 5. Build HostState
             let has_connector = self.has_connector_capability();
+
+            let lower_vfs = astrid_vfs::HostVfs::new();
+            let upper_vfs = astrid_vfs::HostVfs::new();
+            let root_handle = astrid_capabilities::DirHandle::new();
+            let temp_dir = tempfile::tempdir().map_err(|e| {
+                PluginError::WasmError(format!("failed to create session upper dir: {e}"))
+            })?;
+            let upper_dir_arc = std::sync::Arc::new(temp_dir);
+
+            tokio::runtime::Handle::current()
+                .block_on(async {
+                    lower_vfs
+                        .register_dir(root_handle.clone(), ctx.workspace_root.clone())
+                        .await?;
+                    upper_vfs
+                        .register_dir(root_handle.clone(), upper_dir_arc.path().to_path_buf())
+                        .await?;
+                    Ok::<(), astrid_vfs::VfsError>(())
+                })
+                .map_err(|e| PluginError::WasmError(format!("Failed to initialize VFS: {e}")))?;
+
+            let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
+
             let host_state = HostState {
                 plugin_uuid: uuid::Uuid::new_v4(),
                 plugin_id: self.id.clone(),
                 workspace_root: ctx.workspace_root.clone(),
+                vfs: std::sync::Arc::new(overlay_vfs),
+                vfs_root_handle: root_handle,
+                upper_dir: Some(upper_dir_arc),
                 kv: ctx.kv.clone(),
                 event_bus: astrid_events::EventBus::with_capacity(128), // TODO (Phase 2): pass actual bus instance down from runtime
                 ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),

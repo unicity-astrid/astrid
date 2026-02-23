@@ -506,10 +506,13 @@ fn handle_test_ipc_limits(args: &serde_json::Value) -> Result<ToolOutput, Error>
         "publish_large" => {
             // Test 1: Publish a large payload (> 5MB)
             let large_payload = "a".repeat(5 * 1024 * 1024 + 1024);
-            let result = unsafe { astrid_ipc_publish("test.large".into(), large_payload) };
+            let _ = unsafe { astrid_ipc_publish("test.large".into(), large_payload) };
+            
+            // If the publish succeeds or gracefully returns without trapping, we reach here.
+            // But the host traps on > 5MB, so we should never reach here.
             Ok(ToolOutput {
-                content: format!("{:?}", result),
-                is_error: result.is_err(),
+                content: "did not trap".into(),
+                is_error: true,
             })
         },
         "subscribe_loop" => {

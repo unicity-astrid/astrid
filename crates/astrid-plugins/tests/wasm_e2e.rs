@@ -72,10 +72,22 @@ fn build_test_plugin_with_security(
     let kv =
         ScopedKvStore::new(store, "plugin:test-all-endpoints").expect("create scoped KV store");
 
+    let root_handle = astrid_capabilities::DirHandle::new();
     let host_state = HostState {
         plugin_uuid: uuid::Uuid::new_v4(),
         plugin_id: PluginId::from_static("test-all-endpoints"),
         workspace_root: workspace_root.to_path_buf(),
+        vfs: std::sync::Arc::new({
+            let v = astrid_vfs::HostVfs::new();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()))
+                    .expect("Failed to register VFS dir");
+            });
+            v
+        }),
+        vfs_root_handle: root_handle,
+        upper_dir: None,
         kv,
         event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -114,10 +126,22 @@ fn build_connector_plugin(
 
     let (tx, rx) = mpsc::channel(256);
 
+    let root_handle = astrid_capabilities::DirHandle::new();
     let host_state = HostState {
         plugin_uuid: uuid::Uuid::new_v4(),
         plugin_id: PluginId::from_static("test-connector"),
         workspace_root: workspace_root.to_path_buf(),
+        vfs: std::sync::Arc::new({
+            let v = astrid_vfs::HostVfs::new();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()))
+                    .expect("Failed to register VFS dir");
+            });
+            v
+        }),
+        vfs_root_handle: root_handle,
+        upper_dir: None,
         kv,
         event_bus: astrid_events::EventBus::with_capacity(128),
         ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -660,7 +684,7 @@ async fn host_ipc_limits() {
     assert!(output1.is_err(), "large publish should fail");
     let err_str = output1.unwrap_err().clone();
     assert!(
-        err_str.contains("Payload exceeds maximum IPC size (5MB)"),
+        err_str.contains("Payload too large"),
         "unexpected error message: {err_str}"
     );
 
@@ -683,6 +707,7 @@ async fn host_ipc_limits() {
     let _ = std::fs::remove_dir_all(&workspace);
 }
 
+#[cfg(feature = "http")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_host_rejects_invalid_http_headers() {
     build_fixture();
@@ -708,6 +733,7 @@ async fn test_host_rejects_invalid_http_headers() {
     let _ = std::fs::remove_dir_all(&workspace);
 }
 
+#[cfg(feature = "http")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_http_restricted_headers_filtered() {
     build_fixture();

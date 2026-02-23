@@ -42,6 +42,8 @@ base64 = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 notify = { workspace = true, optional = true }
 cap-std = "3.4.1"
+astrid-vfs = { version = "0.1.0", path = "../astrid-vfs" }
+astrid-capabilities = { version = "0.1.0", path = "../astrid-capabilities" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock.workspace = true
