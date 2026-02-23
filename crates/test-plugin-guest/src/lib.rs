@@ -481,7 +481,7 @@ fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
     let handle_id = unsafe { astrid_ipc_subscribe(topic.into())? };
     
     // Publish
-    unsafe { astrid_ipc_publish(topic.into(), payload.into()) };
+    unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
     
     // Unsubscribe
     unsafe { astrid_ipc_unsubscribe(handle_id.clone())? };

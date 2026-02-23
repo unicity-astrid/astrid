@@ -684,7 +684,7 @@ async fn host_ipc_limits() {
     assert!(output1.is_err(), "large publish should fail");
     let err_str = output1.unwrap_err().clone();
     assert!(
-        err_str.contains("Payload exceeds maximum IPC size (5MB)"),
+        err_str.contains("Payload too large"),
         "unexpected error message: {err_str}"
     );
 

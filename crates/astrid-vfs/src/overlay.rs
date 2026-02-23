@@ -7,6 +7,17 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+struct LockGuard<'a> {
+    map: &'a DashMap<String, Arc<Mutex<()>>>,
+    key: String,
+}
+
+impl Drop for LockGuard<'_> {
+    fn drop(&mut self) {
+        self.map.remove(&self.key);
+    }
+}
+
 /// An implementation of `Vfs` providing a Copy-on-Write overlay.
 /// Reads fall through to the lower filesystem if absent in the upper.
 /// Writes strictly apply only to the upper filesystem.
@@ -119,6 +130,11 @@ impl Vfs for OverlayVfs {
                     .clone();
                 let _guard = path_lock.lock().await;
 
+                let _map_guard = LockGuard {
+                    map: &self.copy_locks,
+                    key: lock_key.clone(),
+                };
+
                 // Re-check after acquiring the lock in case another task already copied it
                 if !self.upper.exists(handle, path).await.unwrap_or(false) {
                     if truncate {
@@ -130,7 +146,6 @@ impl Vfs for OverlayVfs {
                         // Prevent OOM during copy-up by capping the size
                         let meta = self.lower.stat(handle, path).await?;
                         if meta.size > 50 * 1024 * 1024 {
-                            self.copy_locks.remove(&lock_key);
                             return Err(crate::VfsError::PermissionDenied(
                                 "File is too large for OverlayVfs copy-up (> 50MB)".into(),
                             ));
@@ -154,12 +169,10 @@ impl Vfs for OverlayVfs {
                         if let Err(e) = write_result {
                             // Revert the copy-up so we don't leave a truncated file
                             let _ = self.upper.unlink(handle, path).await;
-                            self.copy_locks.remove(&lock_key);
                             return Err(e);
                         }
                     }
                 }
-                self.copy_locks.remove(&lock_key);
             }
             return self.upper.open(handle, path, write, truncate).await;
         }

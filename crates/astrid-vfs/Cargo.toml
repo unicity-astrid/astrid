@@ -24,7 +24,7 @@ tokio = { workspace = true, features = ["fs", "io-util", "sync", "rt"] }
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
-dashmap = "6.1.0"
+dashmap = { workspace = true }
 cap-std = "3.4.1"
 
 [dev-dependencies]

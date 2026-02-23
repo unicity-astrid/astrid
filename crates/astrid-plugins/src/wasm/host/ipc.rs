@@ -33,15 +33,7 @@ pub(crate) fn astrid_ipc_publish_impl(
         state.plugin_uuid,
         payload_len.try_into().unwrap_or(usize::MAX),
     ) {
-        use astrid_events::ipc::QuotaError;
-        match e {
-            QuotaError::PayloadTooLarge => {
-                return Err(Error::msg("Payload exceeds maximum IPC size (5MB)"));
-            },
-            QuotaError::RateLimited => {
-                return Err(Error::msg("IPC rate limit exceeded (10MB/sec)"));
-            },
-        }
+        return Err(Error::msg(e.to_string()));
     }
 
     let topic: String = plugin.memory_get_val(&inputs[0])?;
