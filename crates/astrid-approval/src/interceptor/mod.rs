@@ -776,7 +776,10 @@ mod tests {
 
         // Verify the budget was actually committed, not refunded
         let snapshot = t.budget_tracker.snapshot();
-        assert_eq!(snapshot.session_spent_usd, 5.0, "Expected budget to be committed, but it was refunded");
+        assert_eq!(
+            snapshot.session_spent_usd, 5.0,
+            "Expected budget to be committed, but it was refunded"
+        );
     }
 
     #[tokio::test]

@@ -211,9 +211,7 @@ impl LlmProvider for ZaiProvider {
 
         let mut auth_value =
             reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
-                .map_err(|e| {
-                    LlmError::ConfigError(format!("Invalid API key characters: {e}"))
-                })?;
+                .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
         auth_value.set_sensitive(true);
 
         let response = self
@@ -373,9 +371,7 @@ impl LlmProvider for ZaiProvider {
 
         let mut auth_value =
             reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.config.api_key))
-                .map_err(|e| {
-                    LlmError::ConfigError(format!("Invalid API key characters: {e}"))
-                })?;
+                .map_err(|e| LlmError::ConfigError(format!("Invalid API key characters: {e}")))?;
         auth_value.set_sensitive(true);
 
         let response = self
