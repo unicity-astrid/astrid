@@ -76,6 +76,17 @@ pub enum IpcPayload {
     },
 }
 
+/// Errors that can occur when checking IPC quota.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum QuotaError {
+    /// The plugin has exceeded its rate limit.
+    #[error("Rate limit exceeded")]
+    RateLimited,
+    /// The payload exceeds the maximum allowed size.
+    #[error("Payload too large")]
+    PayloadTooLarge,
+}
+
 /// Simple token-bucket rate limiter for IPC publish events.
 #[derive(Debug)]
 pub struct IpcRateLimiter {
@@ -95,18 +106,14 @@ impl IpcRateLimiter {
 
     /// Check if a plugin (`source_id`) is allowed to publish a payload of `size_bytes`.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// Returns an integer code:
-    /// - `0` for success
-    /// - `-1` for rate-limited (too frequent)
-    /// - `-2` for payload too large
-    #[must_use]
+    /// Returns a `QuotaError` if rate-limited or if the payload is too large.
     #[allow(clippy::collapsible_if)]
-    pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> i64 {
+    pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> Result<(), QuotaError> {
         // Hard limit on payload size to prevent OOM
         if size_bytes > 5 * 1024 * 1024 {
-            return -2;
+            return Err(QuotaError::PayloadTooLarge);
         }
 
         let now = std::time::Instant::now();
@@ -133,12 +140,12 @@ impl IpcRateLimiter {
 
         // Hard limit on total bytes per second (10MB)
         if entry.1.saturating_add(size_bytes) > 10 * 1024 * 1024 {
-            return -1;
+            return Err(QuotaError::RateLimited);
         }
 
         entry.1 = entry.1.saturating_add(size_bytes);
 
-        0
+        Ok(())
     }
 }
 
@@ -158,10 +165,13 @@ mod tests {
         let source_id = Uuid::new_v4();
 
         // 1 MB is fine
-        assert_eq!(limiter.check_quota(source_id, 1024 * 1024), 0);
+        assert_eq!(limiter.check_quota(source_id, 1024 * 1024), Ok(()));
 
         // 6 MB is rejected (-2 for payload too large)
-        assert_eq!(limiter.check_quota(source_id, 6 * 1024 * 1024), -2);
+        assert_eq!(
+            limiter.check_quota(source_id, 6 * 1024 * 1024),
+            Err(QuotaError::PayloadTooLarge)
+        );
     }
 
     #[test]
@@ -170,13 +180,16 @@ mod tests {
         let source_id = Uuid::new_v4();
 
         // First 4 MB is fine
-        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), 0);
+        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), Ok(()));
 
         // Second 4 MB is fine (8 MB total in < 1 sec)
-        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), 0);
+        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), Ok(()));
 
         // Third 4 MB is rejected (12 MB total > 10MB limit) -> -1 for rate-limited
-        assert_eq!(limiter.check_quota(source_id, 4 * 1024 * 1024), -1);
+        assert_eq!(
+            limiter.check_quota(source_id, 4 * 1024 * 1024),
+            Err(QuotaError::RateLimited)
+        );
     }
 
     #[test]

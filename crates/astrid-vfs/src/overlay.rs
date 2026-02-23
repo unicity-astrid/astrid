@@ -3,9 +3,9 @@ use async_trait::async_trait;
 
 use crate::{Vfs, VfsDirEntry, VfsMetadata, VfsResult};
 
+use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use dashmap::DashMap;
 
 /// An implementation of `Vfs` providing a Copy-on-Write overlay.
 /// Reads fall through to the lower filesystem if absent in the upper.
@@ -21,7 +21,11 @@ impl OverlayVfs {
     /// Create a new Overlay VFS.
     #[must_use]
     pub fn new(lower: Box<dyn Vfs>, upper: Box<dyn Vfs>) -> Self {
-        Self { lower, upper, copy_locks: DashMap::new() }
+        Self {
+            lower,
+            upper,
+            copy_locks: DashMap::new(),
+        }
     }
 }
 
@@ -51,13 +55,13 @@ impl Vfs for OverlayVfs {
                 for entry in upper_entries {
                     entries.insert(entry.name.clone(), entry);
                 }
-            }
+            },
             Err(crate::VfsError::NotFound(_) | crate::VfsError::InvalidHandle) => {
                 // If upper just couldn't find the dir, it's fine as long as lower did
                 if !lower_success {
                     return Err(crate::VfsError::NotFound(path.into()));
                 }
-            }
+            },
             Err(e) => return Err(e), // Propagate hard IO/Permission errors immediately
         }
 
@@ -88,7 +92,13 @@ impl Vfs for OverlayVfs {
         self.upper.unlink(handle, path).await
     }
 
-    async fn open(&self, handle: &DirHandle, path: &str, write: bool, truncate: bool) -> VfsResult<FileHandle> {
+    async fn open(
+        &self,
+        handle: &DirHandle,
+        path: &str,
+        write: bool,
+        truncate: bool,
+    ) -> VfsResult<FileHandle> {
         if write {
             // Write operations strictly against upper.
             // Copy-up logic would occur here if modifying an existing lower file.
@@ -101,8 +111,12 @@ impl Vfs for OverlayVfs {
                 let normalized_path = crate::path::resolve_path(std::path::Path::new("/"), path)
                     .map_or_else(|_| path.to_string(), |p| p.to_string_lossy().to_string());
                 let lock_key = normalized_path;
-                
-                let path_lock = self.copy_locks.entry(lock_key).or_insert_with(|| Arc::new(Mutex::new(()))).clone();
+
+                let path_lock = self
+                    .copy_locks
+                    .entry(lock_key.clone())
+                    .or_insert_with(|| Arc::new(Mutex::new(())))
+                    .clone();
                 let _guard = path_lock.lock().await;
 
                 // Re-check after acquiring the lock in case another task already copied it
@@ -116,6 +130,7 @@ impl Vfs for OverlayVfs {
                         // Prevent OOM during copy-up by capping the size
                         let meta = self.lower.stat(handle, path).await?;
                         if meta.size > 50 * 1024 * 1024 {
+                            self.copy_locks.remove(&lock_key);
                             return Err(crate::VfsError::PermissionDenied(
                                 "File is too large for OverlayVfs copy-up (> 50MB)".into(),
                             ));
@@ -139,15 +154,24 @@ impl Vfs for OverlayVfs {
                         if let Err(e) = write_result {
                             // Revert the copy-up so we don't leave a truncated file
                             let _ = self.upper.unlink(handle, path).await;
+                            self.copy_locks.remove(&lock_key);
                             return Err(e);
                         }
                     }
                 }
+                self.copy_locks.remove(&lock_key);
             }
             return self.upper.open(handle, path, write, truncate).await;
         }
 
         // Read-only logic.
+        let normalized_path = crate::path::resolve_path(std::path::Path::new("/"), path)
+            .map_or_else(|_| path.to_string(), |p| p.to_string_lossy().to_string());
+
+        if let Some(path_lock) = self.copy_locks.get(&normalized_path) {
+            let _guard = path_lock.lock().await;
+        }
+
         if self.upper.exists(handle, path).await.unwrap_or(false) {
             return self.upper.open(handle, path, false, false).await;
         }
@@ -155,12 +179,19 @@ impl Vfs for OverlayVfs {
         self.lower.open(handle, path, false, false).await
     }
 
-    async fn open_dir(&self, handle: &DirHandle, path: &str, new_handle: DirHandle) -> VfsResult<()> {
+    async fn open_dir(
+        &self,
+        handle: &DirHandle,
+        path: &str,
+        new_handle: DirHandle,
+    ) -> VfsResult<()> {
         let exists_upper = self.upper.exists(handle, path).await.unwrap_or(false);
         let lower_meta = self.lower.stat(handle, path).await;
 
         if exists_upper {
-            self.upper.open_dir(handle, path, new_handle.clone()).await?;
+            self.upper
+                .open_dir(handle, path, new_handle.clone())
+                .await?;
             if matches!(lower_meta, Ok(meta) if meta.is_dir) {
                 // Propagate failures to ensure lower capabilities are mapped, or correctly fail
                 if let Err(e) = self.lower.open_dir(handle, path, new_handle.clone()).await {
@@ -172,7 +203,9 @@ impl Vfs for OverlayVfs {
             if meta.is_dir {
                 // Eagerly create the directory in upper to ensure symmetric handle mapping
                 self.upper.mkdir(handle, path).await.unwrap_or(());
-                self.upper.open_dir(handle, path, new_handle.clone()).await?;
+                self.upper
+                    .open_dir(handle, path, new_handle.clone())
+                    .await?;
                 if let Err(e) = self.lower.open_dir(handle, path, new_handle.clone()).await {
                     let _ = self.upper.close_dir(&new_handle).await;
                     return Err(e);

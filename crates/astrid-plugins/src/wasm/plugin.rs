@@ -209,13 +209,18 @@ impl WasmPlugin {
             let lower_vfs = astrid_vfs::HostVfs::new();
             let upper_vfs = astrid_vfs::HostVfs::new();
             let root_handle = astrid_capabilities::DirHandle::new();
-            let temp_dir = tempfile::tempdir()
-                .map_err(|e| PluginError::WasmError(format!("failed to create session upper dir: {e}")))?;
+            let temp_dir = tempfile::tempdir().map_err(|e| {
+                PluginError::WasmError(format!("failed to create session upper dir: {e}"))
+            })?;
             let upper_dir_arc = std::sync::Arc::new(temp_dir);
 
             tokio::runtime::Handle::current().block_on(async {
-                lower_vfs.register_dir(root_handle.clone(), ctx.workspace_root.clone()).await;
-                upper_vfs.register_dir(root_handle.clone(), upper_dir_arc.path().to_path_buf()).await;
+                lower_vfs
+                    .register_dir(root_handle.clone(), ctx.workspace_root.clone())
+                    .await;
+                upper_vfs
+                    .register_dir(root_handle.clone(), upper_dir_arc.path().to_path_buf())
+                    .await;
             });
 
             let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));

@@ -67,10 +67,21 @@ pub trait Vfs: Send + Sync {
     async fn unlink(&self, handle: &DirHandle, path: &str) -> VfsResult<()>;
 
     /// Open a file for reading/writing. Returns a handle.
-    async fn open(&self, handle: &DirHandle, path: &str, write: bool, truncate: bool) -> VfsResult<FileHandle>;
+    async fn open(
+        &self,
+        handle: &DirHandle,
+        path: &str,
+        write: bool,
+        truncate: bool,
+    ) -> VfsResult<FileHandle>;
 
     /// Open a subdirectory, granting a new narrowed capability handle.
-    async fn open_dir(&self, handle: &DirHandle, path: &str, new_handle: DirHandle) -> VfsResult<()>;
+    async fn open_dir(
+        &self,
+        handle: &DirHandle,
+        path: &str,
+        new_handle: DirHandle,
+    ) -> VfsResult<()>;
 
     /// Close a directory handle.
     async fn close_dir(&self, handle: &DirHandle) -> VfsResult<()>;

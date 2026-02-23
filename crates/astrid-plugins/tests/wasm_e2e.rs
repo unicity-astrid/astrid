@@ -80,10 +80,8 @@ fn build_test_plugin_with_security(
         vfs: std::sync::Arc::new({
             let v = astrid_vfs::HostVfs::new();
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(v.register_dir(
-                    root_handle.clone(),
-                    workspace_root.to_path_buf(),
-                ));
+                tokio::runtime::Handle::current()
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()));
             });
             v
         }),
@@ -135,10 +133,8 @@ fn build_connector_plugin(
         vfs: std::sync::Arc::new({
             let v = astrid_vfs::HostVfs::new();
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(v.register_dir(
-                    root_handle.clone(),
-                    workspace_root.to_path_buf(),
-                ));
+                tokio::runtime::Handle::current()
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()));
             });
             v
         }),
@@ -674,21 +670,21 @@ async fn host_ipc_limits() {
     let _ = std::fs::create_dir_all(&workspace);
     let mut plugin = build_test_plugin(&workspace, std::collections::HashMap::new());
 
-        // Test 1: Publish large payload
-        let output1 = try_execute_tool(
-            &mut plugin,
-            "test-ipc-limits",
-            &serde_json::json!({
-                "test_type": "publish_large"
-            }),
-        );
-    
-        assert!(output1.is_err(), "large publish should fail");
-        let err_str = output1.unwrap_err().clone();
-        assert!(
-            err_str.contains("Payload exceeds maximum IPC size (5MB)"),
-            "unexpected error message: {err_str}"
-        );
+    // Test 1: Publish large payload
+    let output1 = try_execute_tool(
+        &mut plugin,
+        "test-ipc-limits",
+        &serde_json::json!({
+            "test_type": "publish_large"
+        }),
+    );
+
+    assert!(output1.is_err(), "large publish should fail");
+    let err_str = output1.unwrap_err().clone();
+    assert!(
+        err_str.contains("Payload exceeds maximum IPC size (5MB)"),
+        "unexpected error message: {err_str}"
+    );
 
     // Test 2: Subscribe loop
     let output2 = try_execute_tool(
