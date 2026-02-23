@@ -1,6 +1,72 @@
+use std::path::{Component, Path, PathBuf};
 use extism::{CurrentPlugin, Error, UserData, Val};
 
 use crate::wasm::host_state::HostState;
+
+/// Strip any leading absolute slashes or prefixes (e.g. C:\) from the requested path
+fn make_relative(requested: &str) -> &Path {
+    let path = Path::new(requested);
+    let mut components = path.components();
+    while let Some(c) = components.clone().next() {
+        if matches!(c, Component::RootDir | Component::Prefix(_)) {
+            components.next(); // consume it
+        } else {
+            break;
+        }
+    }
+    components.as_path()
+}
+
+/// Compute the true physical absolute path for the security gate by canonicalizing on the host filesystem.
+/// This prevents symlink bypass attacks where a lexical path passes the gate but cap-std follows a symlink.
+fn resolve_physical_absolute(
+    workspace_root: &Path,
+    requested: &str,
+) -> Result<PathBuf, Error> {
+    let canonical_root = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+
+    let relative_requested = make_relative(requested);
+    let joined = canonical_root.join(relative_requested);
+
+    let mut current_check = joined.clone();
+    let mut unexisting_components = Vec::new();
+
+    loop {
+        if std::fs::symlink_metadata(&current_check).is_ok() {
+            let canonical = std::fs::canonicalize(&current_check).unwrap_or_else(|_| current_check.clone());
+            let mut final_path = canonical;
+            for comp in unexisting_components.into_iter().rev() {
+                final_path.push(comp);
+            }
+            if !final_path.starts_with(&canonical_root) {
+                return Err(Error::msg(format!(
+                    "path escapes workspace boundary: {requested} resolves to {}",
+                    final_path.display()
+                )));
+            }
+            return Ok(final_path);
+        }
+        if let Some(parent) = current_check.parent() {
+            if let Some(file_name) = current_check.file_name() {
+                unexisting_components.push(file_name.to_os_string());
+            }
+            current_check = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+
+    if !joined.starts_with(&canonical_root) {
+        return Err(Error::msg(format!(
+            "path escapes workspace boundary: {requested} resolves to {}",
+            joined.display()
+        )));
+    }
+
+    Ok(joined)
+}
 
 #[allow(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_exists_impl(
@@ -44,8 +110,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
     
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
     
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
@@ -83,8 +148,7 @@ pub(crate) fn astrid_fs_readdir_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
 
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
@@ -131,8 +195,7 @@ pub(crate) fn astrid_fs_stat_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
 
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
@@ -180,8 +243,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
 
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
@@ -220,8 +282,7 @@ pub(crate) fn astrid_read_file_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
 
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
@@ -269,8 +330,7 @@ pub(crate) fn astrid_write_file_impl(
     let plugin_id = state.plugin_id.as_str().to_owned();
     let security = state.security.clone();
 
-    let resolved = astrid_vfs::path::resolve_path(&state.workspace_root, &path)
-        .map_err(|e| Error::msg(format!("path resolution failed: {e}")))?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();

@@ -155,6 +155,7 @@ impl WasmPlugin {
     }
 
     /// Internal load logic. Separated so we can catch errors and set `Failed` state.
+    #[allow(clippy::too_many_lines)]
     fn do_load(&mut self, ctx: &PluginContext) -> PluginResult<()> {
         // 1. Resolve WASM file path
         let (wasm_path, expected_hash) = match &self.manifest.entry_point {

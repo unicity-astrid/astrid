@@ -709,6 +709,7 @@ async fn host_ipc_limits() {
     let _ = std::fs::remove_dir_all(&workspace);
 }
 
+#[cfg(feature = "http")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_host_rejects_invalid_http_headers() {
     build_fixture();
@@ -734,6 +735,7 @@ async fn test_host_rejects_invalid_http_headers() {
     let _ = std::fs::remove_dir_all(&workspace);
 }
 
+#[cfg(feature = "http")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_http_restricted_headers_filtered() {
     build_fixture();
