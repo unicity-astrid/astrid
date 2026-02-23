@@ -185,7 +185,8 @@ impl WasmHandler {
         let root_handle = astrid_capabilities::DirHandle::new();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
-                .block_on(vfs.register_dir(root_handle.clone(), self.workspace_root.clone()));
+                .block_on(vfs.register_dir(root_handle.clone(), self.workspace_root.clone()))
+                .expect("Failed to register VFS root dir");
         });
 
         let host_state = HostState {

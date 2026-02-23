@@ -81,7 +81,8 @@ fn build_test_plugin_with_security(
             let v = astrid_vfs::HostVfs::new();
             tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current()
-                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()));
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()))
+                    .expect("Failed to register VFS dir");
             });
             v
         }),
@@ -134,7 +135,8 @@ fn build_connector_plugin(
             let v = astrid_vfs::HostVfs::new();
             tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current()
-                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()));
+                    .block_on(v.register_dir(root_handle.clone(), workspace_root.to_path_buf()))
+                    .expect("Failed to register VFS dir");
             });
             v
         }),

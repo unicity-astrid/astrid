@@ -168,7 +168,11 @@ impl Vfs for OverlayVfs {
         let normalized_path = crate::path::resolve_path(std::path::Path::new("/"), path)
             .map_or_else(|_| path.to_string(), |p| p.to_string_lossy().to_string());
 
-        if let Some(path_lock) = self.copy_locks.get(&normalized_path) {
+        let lock_arc = self
+            .copy_locks
+            .get(&normalized_path)
+            .map(|r| r.value().clone());
+        if let Some(path_lock) = lock_arc {
             let _guard = path_lock.lock().await;
         }
 

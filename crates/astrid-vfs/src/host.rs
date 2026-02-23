@@ -50,8 +50,10 @@ impl HostVfs {
     ///
     /// # Panics
     ///
-    /// Panics if the internal `spawn_blocking` task fails to join.
-    pub async fn register_dir(&self, handle: DirHandle, physical_path: PathBuf) {
+    /// # Errors
+    ///
+    /// Returns a `VfsError::Io` if the directory cannot be opened.
+    pub async fn register_dir(&self, handle: DirHandle, physical_path: PathBuf) -> VfsResult<()> {
         let dir_res = tokio::task::spawn_blocking(move || {
             Dir::open_ambient_dir(&physical_path, cap_std::ambient_authority())
         })
@@ -62,9 +64,11 @@ impl HostVfs {
             Ok(dir) => {
                 let mut dirs = self.open_dirs.write().await;
                 dirs.insert(handle, Arc::new(dir));
+                Ok(())
             },
             Err(e) => {
                 tracing::error!("Failed to register root capability: {}", e);
+                Err(VfsError::Io(e))
             },
         }
     }
