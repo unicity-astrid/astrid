@@ -93,17 +93,17 @@ pub enum SensitiveAction {
         tool: String,
     },
 
-    /// Execute a plugin capability (host function call from WASM sandbox).
+    /// Execute a capsule capability (host function call from WASM sandbox).
     CapsuleExecution {
-        /// Plugin identifier.
+        /// Capsule identifier.
         capsule_id: String,
         /// Capability being invoked (e.g., `config_read`, `kv_write`).
         capability: String,
     },
 
-    /// Plugin requesting an outbound HTTP request.
+    /// Capsule requesting an outbound HTTP request.
     CapsuleHttpRequest {
-        /// Plugin identifier.
+        /// Capsule identifier.
         capsule_id: String,
         /// Target URL.
         url: String,
@@ -111,9 +111,9 @@ pub enum SensitiveAction {
         method: String,
     },
 
-    /// Plugin requesting file system access.
+    /// Capsule requesting file system access.
     CapsuleFileAccess {
-        /// Plugin identifier.
+        /// Capsule identifier.
         capsule_id: String,
         /// File path being accessed.
         path: String,
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_action_type_labels() {
+    fn test_capsule_action_type_labels() {
         assert_eq!(
             SensitiveAction::CapsuleExecution {
                 capsule_id: "weather".to_string(),
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_risk_levels_are_high() {
+    fn test_capsule_risk_levels_are_high() {
         assert_eq!(
             SensitiveAction::CapsuleExecution {
                 capsule_id: "p".to_string(),
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_summaries() {
+    fn test_capsule_summaries() {
         let action = SensitiveAction::CapsuleExecution {
             capsule_id: "weather".to_string(),
             capability: "config_read".to_string(),
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_display_matches_summary() {
+    fn test_capsule_display_matches_summary() {
         let action = SensitiveAction::CapsuleExecution {
             capsule_id: "test".to_string(),
             capability: "cap".to_string(),
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_serialization_roundtrip() {
+    fn test_capsule_serialization_roundtrip() {
         let actions = vec![
             SensitiveAction::CapsuleExecution {
                 capsule_id: "p1".to_string(),
