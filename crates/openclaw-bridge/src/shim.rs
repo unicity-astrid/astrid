@@ -321,6 +321,8 @@ function _ensureActivated() {
 }
 
 // ── Extism exports ─────────────────────────────────────────────────
+// Note: describe-tools is kept for backwards compatibility with dynamic discovery,
+// but astrid_tool_call and astrid_hook_trigger are the new Phase 4 Inbound ABI.
 module.exports["describe-tools"] = function() {
   _ensureActivated();
   var tools = [];
@@ -336,7 +338,7 @@ module.exports["describe-tools"] = function() {
   _Host.outputString(JSON.stringify(tools));
 };
 
-module.exports["execute-tool"] = function() {
+module.exports.astrid_tool_call = function() {
   _ensureActivated();
   var inputStr = _Host.inputString();
   var input;
@@ -390,7 +392,7 @@ module.exports["execute-tool"] = function() {
   }
 };
 
-module.exports["run-hook"] = function() {
+module.exports.astrid_hook_trigger = function() {
   _ensureActivated();
   var inputStr = _Host.inputString();
   var ctx;
@@ -411,6 +413,16 @@ module.exports["run-hook"] = function() {
   }
 
   _Host.outputString(JSON.stringify({ action: "continue", data: null }));
+};
+
+module.exports.astrid_command_run = function() {
+    _ensureActivated();
+    _Host.outputString(JSON.stringify({ content: "Commands not natively supported by OpenClaw", is_error: true }));
+};
+
+module.exports.astrid_cron_trigger = function() {
+    _ensureActivated();
+    _Host.outputString(JSON.stringify({ content: "Cron not natively supported by OpenClaw", is_error: true }));
 };
 "#
     .to_string()
@@ -445,8 +457,8 @@ mod tests {
         let config = HashMap::new();
         let shim = generate("// plugin code", &config);
         assert!(shim.contains("describe-tools"));
-        assert!(shim.contains("execute-tool"));
-        assert!(shim.contains("run-hook"));
+        assert!(shim.contains("astrid_tool_call"));
+        assert!(shim.contains("astrid_hook_trigger"));
     }
 
     #[test]
