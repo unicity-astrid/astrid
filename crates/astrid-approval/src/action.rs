@@ -94,17 +94,17 @@ pub enum SensitiveAction {
     },
 
     /// Execute a plugin capability (host function call from WASM sandbox).
-    PluginExecution {
+    CapsuleExecution {
         /// Plugin identifier.
-        plugin_id: String,
+        capsule_id: String,
         /// Capability being invoked (e.g., `config_read`, `kv_write`).
         capability: String,
     },
 
     /// Plugin requesting an outbound HTTP request.
-    PluginHttpRequest {
+    CapsuleHttpRequest {
         /// Plugin identifier.
-        plugin_id: String,
+        capsule_id: String,
         /// Target URL.
         url: String,
         /// HTTP method (GET, POST, etc.).
@@ -112,9 +112,9 @@ pub enum SensitiveAction {
     },
 
     /// Plugin requesting file system access.
-    PluginFileAccess {
+    CapsuleFileAccess {
         /// Plugin identifier.
-        plugin_id: String,
+        capsule_id: String,
         /// File path being accessed.
         path: String,
         /// Access mode (Read, Write, Delete).
@@ -137,9 +137,9 @@ impl SensitiveAction {
             Self::AccessControlChange { .. } => "access_control_change",
             Self::CapabilityGrant { .. } => "capability_grant",
             Self::McpToolCall { .. } => "mcp_tool_call",
-            Self::PluginExecution { .. } => "plugin_execution",
-            Self::PluginHttpRequest { .. } => "plugin_http_request",
-            Self::PluginFileAccess { .. } => "plugin_file_access",
+            Self::CapsuleExecution { .. } => "capsule_execution",
+            Self::CapsuleHttpRequest { .. } => "capsule_http_request",
+            Self::CapsuleFileAccess { .. } => "capsule_file_access",
         }
     }
 
@@ -158,9 +158,9 @@ impl SensitiveAction {
             | Self::ExecuteCommand { .. }
             | Self::TransmitData { .. }
             | Self::CapabilityGrant { .. }
-            | Self::PluginExecution { .. }
-            | Self::PluginHttpRequest { .. }
-            | Self::PluginFileAccess { .. } => RiskLevel::High,
+            | Self::CapsuleExecution { .. }
+            | Self::CapsuleHttpRequest { .. }
+            | Self::CapsuleFileAccess { .. } => RiskLevel::High,
             Self::FileRead { .. } | Self::NetworkRequest { .. } | Self::McpToolCall { .. } => {
                 RiskLevel::Medium
             },
@@ -205,20 +205,20 @@ impl SensitiveAction {
                 )
             },
             Self::McpToolCall { server, tool } => format!("MCP tool call: {server}/{tool}"),
-            Self::PluginExecution {
-                plugin_id,
+            Self::CapsuleExecution {
+                capsule_id,
                 capability,
-            } => format!("Plugin '{plugin_id}' wants to invoke capability '{capability}'"),
-            Self::PluginHttpRequest {
-                plugin_id,
+            } => format!("Capsule '{capsule_id}' wants to invoke capability '{capability}'"),
+            Self::CapsuleHttpRequest {
+                capsule_id,
                 url,
                 method,
-            } => format!("Plugin '{plugin_id}' wants to {method} {url}"),
-            Self::PluginFileAccess {
-                plugin_id,
+            } => format!("Capsule '{capsule_id}' wants to {method} {url}"),
+            Self::CapsuleFileAccess {
+                capsule_id,
                 path,
                 mode,
-            } => format!("Plugin '{plugin_id}' wants to {mode} {path}"),
+            } => format!("Capsule '{capsule_id}' wants to {mode} {path}"),
         }
     }
 }
@@ -307,46 +307,46 @@ mod tests {
     #[test]
     fn test_plugin_action_type_labels() {
         assert_eq!(
-            SensitiveAction::PluginExecution {
-                plugin_id: "weather".to_string(),
+            SensitiveAction::CapsuleExecution {
+                capsule_id: "weather".to_string(),
                 capability: "config_read".to_string(),
             }
             .action_type(),
-            "plugin_execution"
+            "capsule_execution"
         );
         assert_eq!(
-            SensitiveAction::PluginHttpRequest {
-                plugin_id: "weather".to_string(),
+            SensitiveAction::CapsuleHttpRequest {
+                capsule_id: "weather".to_string(),
                 url: "https://api.weather.com".to_string(),
                 method: "GET".to_string(),
             }
             .action_type(),
-            "plugin_http_request"
+            "capsule_http_request"
         );
         assert_eq!(
-            SensitiveAction::PluginFileAccess {
-                plugin_id: "weather".to_string(),
+            SensitiveAction::CapsuleFileAccess {
+                capsule_id: "weather".to_string(),
                 path: "/tmp/cache.json".to_string(),
                 mode: Permission::Read,
             }
             .action_type(),
-            "plugin_file_access"
+            "capsule_file_access"
         );
     }
 
     #[test]
     fn test_plugin_risk_levels_are_high() {
         assert_eq!(
-            SensitiveAction::PluginExecution {
-                plugin_id: "p".to_string(),
+            SensitiveAction::CapsuleExecution {
+                capsule_id: "p".to_string(),
                 capability: "c".to_string(),
             }
             .default_risk_level(),
             RiskLevel::High
         );
         assert_eq!(
-            SensitiveAction::PluginHttpRequest {
-                plugin_id: "p".to_string(),
+            SensitiveAction::CapsuleHttpRequest {
+                capsule_id: "p".to_string(),
                 url: "https://example.com".to_string(),
                 method: "GET".to_string(),
             }
@@ -354,8 +354,8 @@ mod tests {
             RiskLevel::High
         );
         assert_eq!(
-            SensitiveAction::PluginFileAccess {
-                plugin_id: "p".to_string(),
+            SensitiveAction::CapsuleFileAccess {
+                capsule_id: "p".to_string(),
                 path: "/tmp/f".to_string(),
                 mode: Permission::Read,
             }
@@ -366,40 +366,40 @@ mod tests {
 
     #[test]
     fn test_plugin_summaries() {
-        let action = SensitiveAction::PluginExecution {
-            plugin_id: "weather".to_string(),
+        let action = SensitiveAction::CapsuleExecution {
+            capsule_id: "weather".to_string(),
             capability: "config_read".to_string(),
         };
         assert_eq!(
             action.summary(),
-            "Plugin 'weather' wants to invoke capability 'config_read'"
+            "Capsule 'weather' wants to invoke capability 'config_read'"
         );
 
-        let action = SensitiveAction::PluginHttpRequest {
-            plugin_id: "weather".to_string(),
+        let action = SensitiveAction::CapsuleHttpRequest {
+            capsule_id: "weather".to_string(),
             url: "https://api.weather.com/v1".to_string(),
             method: "POST".to_string(),
         };
         assert_eq!(
             action.summary(),
-            "Plugin 'weather' wants to POST https://api.weather.com/v1"
+            "Capsule 'weather' wants to POST https://api.weather.com/v1"
         );
 
-        let action = SensitiveAction::PluginFileAccess {
-            plugin_id: "cache".to_string(),
+        let action = SensitiveAction::CapsuleFileAccess {
+            capsule_id: "cache".to_string(),
             path: "/tmp/cache.json".to_string(),
             mode: Permission::Write,
         };
         assert_eq!(
             action.summary(),
-            "Plugin 'cache' wants to write /tmp/cache.json"
+            "Capsule 'cache' wants to write /tmp/cache.json"
         );
     }
 
     #[test]
     fn test_plugin_display_matches_summary() {
-        let action = SensitiveAction::PluginExecution {
-            plugin_id: "test".to_string(),
+        let action = SensitiveAction::CapsuleExecution {
+            capsule_id: "test".to_string(),
             capability: "cap".to_string(),
         };
         assert_eq!(action.to_string(), action.summary());
@@ -408,17 +408,17 @@ mod tests {
     #[test]
     fn test_plugin_serialization_roundtrip() {
         let actions = vec![
-            SensitiveAction::PluginExecution {
-                plugin_id: "p1".to_string(),
+            SensitiveAction::CapsuleExecution {
+                capsule_id: "p1".to_string(),
                 capability: "cap1".to_string(),
             },
-            SensitiveAction::PluginHttpRequest {
-                plugin_id: "p2".to_string(),
+            SensitiveAction::CapsuleHttpRequest {
+                capsule_id: "p2".to_string(),
                 url: "https://example.com".to_string(),
                 method: "GET".to_string(),
             },
-            SensitiveAction::PluginFileAccess {
-                plugin_id: "p3".to_string(),
+            SensitiveAction::CapsuleFileAccess {
+                capsule_id: "p3".to_string(),
                 path: "/tmp/file".to_string(),
                 mode: Permission::Delete,
             },

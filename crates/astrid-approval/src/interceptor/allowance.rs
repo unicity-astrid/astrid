@@ -103,21 +103,21 @@ pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<Allowance
             host: host.clone(),
             ports: Some(vec![*port]),
         }),
-        SensitiveAction::PluginExecution {
-            plugin_id,
+        SensitiveAction::CapsuleExecution {
+            capsule_id,
             capability,
-        } => Some(AllowancePattern::PluginCapability {
-            plugin_id: plugin_id.clone(),
+        } => Some(AllowancePattern::CapsuleCapability {
+            capsule_id: capsule_id.clone(),
             capability: capability.clone(),
         }),
-        SensitiveAction::PluginHttpRequest { plugin_id, .. } => {
-            Some(AllowancePattern::PluginCapability {
-                plugin_id: plugin_id.clone(),
+        SensitiveAction::CapsuleHttpRequest { capsule_id, .. } => {
+            Some(AllowancePattern::CapsuleCapability {
+                capsule_id: capsule_id.clone(),
                 capability: "http_request".to_string(),
             })
         },
-        SensitiveAction::PluginFileAccess {
-            plugin_id, mode, ..
+        SensitiveAction::CapsuleFileAccess {
+            capsule_id, mode, ..
         } => {
             let cap = match mode {
                 Permission::Read => "file_read",
@@ -125,8 +125,8 @@ pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<Allowance
                 Permission::Delete => "file_delete",
                 _ => return None,
             };
-            Some(AllowancePattern::PluginCapability {
-                plugin_id: plugin_id.clone(),
+            Some(AllowancePattern::CapsuleCapability {
+                capsule_id: capsule_id.clone(),
                 capability: cap.to_string(),
             })
         },

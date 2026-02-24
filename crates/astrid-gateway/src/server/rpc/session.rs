@@ -478,7 +478,7 @@ impl RpcImpl {
         session.allowance_store.clear_session_allowances();
 
         // Evict plugin KV stores for this session (prevents unbounded growth).
-        self.runtime.cleanup_plugin_kv_stores(&session_id);
+        self.runtime.cleanup_capsule_kv_stores(&session_id);
 
         // Save session before ending.
         if let Err(e) = self.runtime.save_session(&session) {

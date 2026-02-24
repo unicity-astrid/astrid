@@ -45,7 +45,7 @@ pub struct HostState {
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Tokio runtime handle for bridging async operations in sync host functions.
     pub runtime_handle: tokio::runtime::Handle,
-    /// Whether the plugin manifest declares `PluginCapability::Connector`.
+    /// Whether the plugin manifest declares `CapsuleCapability::Connector`.
     ///
     /// Used to gate `astrid_register_connector` — only connector plugins
     /// are allowed to register connectors.
@@ -53,7 +53,7 @@ pub struct HostState {
     /// Sender for inbound messages from connector plugins.
     ///
     /// Set during plugin loading when the manifest declares
-    /// [`PluginCapability::Connector`](crate::PluginCapability). Feeds into
+    /// [`CapsuleCapability::Connector`](crate::CapsuleCapability). Feeds into
     /// the gateway's inbound router.
     pub inbound_tx: Option<mpsc::Sender<InboundMessage>>,
     /// Buffer for messages sent from the OS back to the Uplink Capsule.
@@ -193,7 +193,7 @@ mod tests {
 
         let desc = ConnectorDescriptor::builder("test-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -278,7 +278,7 @@ mod tests {
         for i in 0..MAX_CONNECTORS_PER_PLUGIN {
             let desc = ConnectorDescriptor::builder(format!("conn-{i}"), FrontendType::Discord)
                 .source(ConnectorSource::Wasm {
-                    plugin_id: "test".into(),
+                    capsule_id: "test".into(),
                 })
                 .capabilities(ConnectorCapabilities::receive_only())
                 .profile(ConnectorProfile::Chat)
@@ -291,7 +291,7 @@ mod tests {
         // One more should fail
         let extra = ConnectorDescriptor::builder("over-limit", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -335,7 +335,7 @@ mod tests {
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -345,7 +345,7 @@ mod tests {
         // Same name + same platform → rejected
         let desc2 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -356,7 +356,7 @@ mod tests {
         // Same name + different platform → allowed
         let desc3 = ConnectorDescriptor::builder("my-conn", FrontendType::Telegram)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)

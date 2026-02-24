@@ -136,14 +136,14 @@ mod tests {
         assert_eq!(ConnectorSource::Native.to_string(), "native");
         assert_eq!(
             ConnectorSource::Wasm {
-                plugin_id: "foo".into()
+                capsule_id: "foo".into()
             }
             .to_string(),
             "wasm(foo)"
         );
         assert_eq!(
             ConnectorSource::OpenClaw {
-                plugin_id: "bar".into()
+                capsule_id: "bar".into()
             }
             .to_string(),
             "openclaw(bar)"
@@ -151,9 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn source_display_truncates_long_plugin_id() {
+    fn source_display_truncates_long_capsule_id() {
         let long_id = "a".repeat(128);
-        let src = ConnectorSource::Wasm { plugin_id: long_id };
+        let src = ConnectorSource::Wasm {
+            capsule_id: long_id,
+        };
         let display = src.to_string();
         // 64 chars of 'a' + "wasm(" + ")" = 70
         assert_eq!(display.len(), 70);
@@ -165,7 +167,7 @@ mod tests {
         assert_eq!(
             src,
             ConnectorSource::Wasm {
-                plugin_id: "my-plugin-1".into()
+                capsule_id: "my-plugin-1".into()
             }
         );
     }
@@ -176,7 +178,7 @@ mod tests {
         assert_eq!(
             src,
             ConnectorSource::OpenClaw {
-                plugin_id: "bridge-42".into()
+                capsule_id: "bridge-42".into()
             }
         );
     }

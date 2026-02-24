@@ -68,9 +68,9 @@ pub struct AgentRuntime<P: LlmProvider> {
     pub(super) capsule_registry: Option<Arc<tokio::sync::RwLock<CapsuleRegistry>>>,
     /// Per-plugin KV stores that persist across tool calls.
     /// Keyed by `{session_id}:{server}` to isolate sessions from each other.
-    /// Call [`cleanup_plugin_kv_stores`](Self::cleanup_plugin_kv_stores) when a
+    /// Call [`cleanup_capsule_kv_stores`](Self::cleanup_capsule_kv_stores) when a
     /// session ends to prevent unbounded growth.
-    pub(super) plugin_kv_stores:
+    pub(super) capsule_kv_stores:
         std::sync::Mutex<std::collections::HashMap<String, Arc<dyn KvStore>>>,
     /// Weak self-reference for spawner injection (set via `set_self_arc`).
     pub(super) self_arc: tokio::sync::RwLock<Option<std::sync::Weak<Self>>>,
@@ -121,7 +121,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             security_policy: SecurityPolicy::default(),
             subagent_pool,
             capsule_registry: None,
-            plugin_kv_stores: std::sync::Mutex::new(std::collections::HashMap::new()),
+            capsule_kv_stores: std::sync::Mutex::new(std::collections::HashMap::new()),
             self_arc: tokio::sync::RwLock::new(None),
         }
     }
@@ -140,7 +140,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     ///
     /// Uses `Arc::new_cyclic` to avoid the two-step `new()` + `set_self_arc()` pattern.
     /// Accepts an optional `HookManager` since `with_hooks()` can't be chained after
-    /// Arc wrapping. Accepts an optional `PluginRegistry` for plugin tool integration.
+    /// Arc wrapping. Accepts an optional `PluginRegistry` for capsule tool integration.
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new_arc(
@@ -251,12 +251,12 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// Remove plugin KV stores for a session that has ended.
     ///
     /// Should be called when a session is finished to prevent unbounded growth
-    /// of the `plugin_kv_stores` map in long-running processes.
-    pub fn cleanup_plugin_kv_stores(&self, session_id: &SessionId) {
+    /// of the `capsule_kv_stores` map in long-running processes.
+    pub fn cleanup_capsule_kv_stores(&self, session_id: &SessionId) {
         let prefix = format!("{session_id}:");
         // SAFETY: no .await while lock is held — HashMap::retain is synchronous.
         let mut stores = self
-            .plugin_kv_stores
+            .capsule_kv_stores
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         stores.retain(|key, _| !key.starts_with(&prefix));
@@ -368,7 +368,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 Arc::clone(&session.budget_tracker),
                 self.config.default_subagent_timeout,
                 parent_callsign,
-                session.plugin_context.clone(),
+                session.capsule_context.clone(),
             );
             tool_ctx
                 .set_subagent_spawner(Some(Arc::new(executor)))

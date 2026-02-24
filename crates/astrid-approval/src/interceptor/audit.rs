@@ -27,25 +27,25 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
             resource: format!("{host}:{port}"),
             risk_level: action.default_risk_level(),
         },
-        SensitiveAction::PluginExecution {
-            plugin_id,
+        SensitiveAction::CapsuleExecution {
+            capsule_id,
             capability,
         } => AuditAction::ApprovalRequested {
-            action_type: "plugin_execution".to_string(),
-            resource: format!("plugin://{plugin_id}:{capability}"),
+            action_type: "capsule_execution".to_string(),
+            resource: format!("capsule://{capsule_id}:{capability}"),
             risk_level: action.default_risk_level(),
         },
-        SensitiveAction::PluginHttpRequest {
-            plugin_id,
+        SensitiveAction::CapsuleHttpRequest {
+            capsule_id,
             url,
             method,
         } => AuditAction::ApprovalRequested {
-            action_type: "plugin_http_request".to_string(),
-            resource: format!("plugin://{plugin_id}:http_request ({method} {url})"),
+            action_type: "capsule_http_request".to_string(),
+            resource: format!("capsule://{capsule_id}:http_request ({method} {url})"),
             risk_level: action.default_risk_level(),
         },
-        SensitiveAction::PluginFileAccess {
-            plugin_id,
+        SensitiveAction::CapsuleFileAccess {
+            capsule_id,
             path,
             mode,
         } => {
@@ -56,8 +56,8 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
                 _ => "file_access",
             };
             AuditAction::ApprovalRequested {
-                action_type: "plugin_file_access".to_string(),
-                resource: format!("plugin://{plugin_id}:{cap} ({path})"),
+                action_type: "capsule_file_access".to_string(),
+                resource: format!("capsule://{capsule_id}:{cap} ({path})"),
                 risk_level: action.default_risk_level(),
             }
         },

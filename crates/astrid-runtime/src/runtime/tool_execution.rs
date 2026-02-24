@@ -1,4 +1,4 @@
-//! Tool call dispatch: built-in, MCP, and plugin tools.
+//! Tool call dispatch: built-in, MCP, and capsule tools.
 
 use astrid_approval::SensitiveAction;
 use astrid_audit::{AuditAction, AuditOutcome, AuthorizationProof};
@@ -37,7 +37,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
 
         // Check for capsule tool (capsule:{capsule_id}:{tool_name})
         if astrid_capsule::registry::CapsuleRegistry::is_capsule_tool(&call.name) {
-            return self.execute_plugin_tool(session, call, frontend).await;
+            return self.execute_capsule_tool(session, call, frontend).await;
         }
 
         let (server, tool) = call.parse_name().ok_or_else(|| {
@@ -200,12 +200,12 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         Ok(tool_result)
     }
 
-    /// Execute a plugin tool with security checks, interceptor, and hooks.
+    /// Execute a capsule tool with security checks, interceptor, and hooks.
     ///
-    /// Plugin tool names follow the format `plugin:{plugin_id}:{tool_name}`.
+    /// Plugin tool names follow the format `plugin:{capsule_id}:{tool_name}`.
     /// The qualified name is used as-is for `PluginRegistry::find_tool()`.
     #[allow(clippy::too_many_lines)]
-    pub(super) async fn execute_plugin_tool<F: Frontend>(
+    pub(super) async fn execute_capsule_tool<F: Frontend>(
         &self,
         session: &mut AgentSession,
         call: &ToolCall,
@@ -269,12 +269,12 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             }
         }
 
-        // Classify the plugin tool call as a PluginExecution (not McpToolCall).
+        // Classify the capsule tool call as a CapsuleExecution (not McpToolCall).
         // This routes through SecurityPolicy::check_plugin_action, which checks
         // blocked_plugins and always requires approval — more appropriate than
         // the generic MCP tool classification.
-        let action = SensitiveAction::PluginExecution {
-            plugin_id: capsule_id_str.to_string(),
+        let action = SensitiveAction::CapsuleExecution {
+            capsule_id: capsule_id_str.to_string(),
             capability: tool.to_string(),
         };
 
@@ -304,7 +304,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 // and extract plugin config, then drop the lock before executing.
                 // This avoids blocking write-lock callers (load/unload/hot-reload)
                 // during potentially slow tool calls.
-                let (plugin_tool, _plugin_config) = {
+                let (capsule_tool, _plugin_config) = {
                     let registry = registry_lock.read().await;
                     match registry.find_tool(&call.name) {
                         Some((plugin, tool_arc)) => {
@@ -321,8 +321,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     // Read lock dropped here.
                 };
 
-                let result = match plugin_tool {
-                    Some(plugin_tool) => {
+                let result = match capsule_tool {
+                    Some(capsule_tool) => {
                         // Get or create a persistent KV store for this plugin+session.
                         // Keyed by "{session_id}:{server}" so different sessions are
                         // isolated from each other (prevents cross-session data leaks).
@@ -333,7 +333,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             // SAFETY: no .await while this std::sync::Mutex lock is held.
                             // The critical section is a synchronous HashMap lookup/insert.
                             let mut stores = self
-                                .plugin_kv_stores
+                                .capsule_kv_stores
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner);
                             Arc::clone(
@@ -367,7 +367,10 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                         .with_session(session.id.clone())
                         .with_user(user_uuid);
 
-                        match plugin_tool.execute(call.arguments.clone(), &tool_ctx).await {
+                        match capsule_tool
+                            .execute(call.arguments.clone(), &tool_ctx)
+                            .await
+                        {
                             Ok(output) => {
                                 let output = astrid_tools::truncate_output(output);
                                 ToolCallResult::success(&call.id, output)
@@ -396,9 +399,9 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             ),
         };
 
-        // Audit the plugin tool call.
+        // Audit the capsule tool call.
         // Note: the interceptor also writes an authorization-level audit entry.
-        // This explicit entry records richer metadata (plugin_id, tool, args_hash)
+        // This explicit entry records richer metadata (capsule_id, tool, args_hash)
         // and the execution outcome (success/failure) — complementary, not redundant.
         {
             let outcome = if tool_result.is_error {
@@ -409,8 +412,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             let args_hash = astrid_crypto::ContentHash::hash(call.arguments.to_string().as_bytes());
             if let Err(e) = self.audit.append(
                 session.id.clone(),
-                AuditAction::PluginToolCall {
-                    plugin_id: capsule_id_str.to_string(),
+                AuditAction::CapsuleToolCall {
+                    capsule_id: capsule_id_str.to_string(),
                     tool: tool.to_string(),
                     args_hash,
                 },
@@ -420,7 +423,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 warn!(
                     error = %e,
                     tool_name = %call.name,
-                    "Failed to audit plugin tool call"
+                    "Failed to audit capsule tool call"
                 );
             }
         }

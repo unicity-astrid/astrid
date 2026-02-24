@@ -174,7 +174,7 @@ impl DaemonServer {
                             info!(session_id = %id, "Cleaned up orphaned session");
                         }
                         // Evict plugin KV stores for this session (same as end_session).
-                        runtime.cleanup_plugin_kv_stores(&id);
+                        runtime.cleanup_capsule_kv_stores(&id);
                     }
                 }
 

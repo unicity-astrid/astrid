@@ -167,7 +167,7 @@ mod interceptor_gate {
             method: &str,
             url: &str,
         ) -> Result<(), String> {
-            let action = SensitiveAction::PluginHttpRequest {
+            let action = SensitiveAction::CapsuleHttpRequest {
                 capsule_id: capsule_id.to_string(),
                 url: url.to_string(),
                 method: method.to_string(),
@@ -180,7 +180,7 @@ mod interceptor_gate {
         }
 
         async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-            let action = SensitiveAction::PluginFileAccess {
+            let action = SensitiveAction::CapsuleFileAccess {
                 capsule_id: capsule_id.to_string(),
                 path: path.to_string(),
                 mode: Permission::Read,
@@ -193,7 +193,7 @@ mod interceptor_gate {
         }
 
         async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-            let action = SensitiveAction::PluginFileAccess {
+            let action = SensitiveAction::CapsuleFileAccess {
                 capsule_id: capsule_id.to_string(),
                 path: path.to_string(),
                 mode: Permission::Write,
@@ -211,7 +211,7 @@ mod interceptor_gate {
             connector_name: &str,
             platform: &str,
         ) -> Result<(), String> {
-            let action = SensitiveAction::PluginExecution {
+            let action = SensitiveAction::CapsuleExecution {
                 capsule_id: capsule_id.to_string(),
                 capability: format!("register_connector({connector_name}, {platform})"),
             };

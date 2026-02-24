@@ -136,10 +136,10 @@ impl SecurityPolicy {
             SensitiveAction::CapabilityGrant { .. } => PolicyResult::RequiresApproval(
                 RiskAssessment::new(RiskLevel::High, "Capability grants require approval"),
             ),
-            SensitiveAction::PluginExecution { plugin_id, .. }
-            | SensitiveAction::PluginHttpRequest { plugin_id, .. }
-            | SensitiveAction::PluginFileAccess { plugin_id, .. } => {
-                self.check_plugin_action(plugin_id, action)
+            SensitiveAction::CapsuleExecution { capsule_id, .. }
+            | SensitiveAction::CapsuleHttpRequest { capsule_id, .. }
+            | SensitiveAction::CapsuleFileAccess { capsule_id, .. } => {
+                self.check_plugin_action(capsule_id, action)
             },
         }
     }
@@ -267,40 +267,40 @@ impl SecurityPolicy {
     /// Check a plugin action with layered enforcement.
     ///
     /// 1. Plugin in `blocked_plugins`? -> Blocked
-    /// 2. `PluginHttpRequest` URL host in `denied_hosts`? -> Blocked
-    /// 3. `PluginFileAccess` path matches `denied_paths`? -> Blocked
+    /// 2. `CapsuleHttpRequest` URL host in `denied_hosts`? -> Blocked
+    /// 3. `CapsuleFileAccess` path matches `denied_paths`? -> Blocked
     /// 4. Otherwise -> `RequiresApproval` (plugins always need approval)
-    fn check_plugin_action(&self, plugin_id: &str, action: &SensitiveAction) -> PolicyResult {
+    fn check_plugin_action(&self, capsule_id: &str, action: &SensitiveAction) -> PolicyResult {
         // 1. Check blocked plugins
-        if self.blocked_plugins.contains(plugin_id) {
+        if self.blocked_plugins.contains(capsule_id) {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{plugin_id}' is blocked by policy"),
+                reason: format!("plugin '{capsule_id}' is blocked by policy"),
             };
         }
 
-        // 2. PluginHttpRequest: check denied_hosts
-        if let SensitiveAction::PluginHttpRequest { url, .. } = action
+        // 2. CapsuleHttpRequest: check denied_hosts
+        if let SensitiveAction::CapsuleHttpRequest { url, .. } = action
             && let Some(host) = extract_host_from_url(url)
             && self.denied_hosts.iter().any(|h| h == host)
         {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{plugin_id}' HTTP request to denied host '{host}'"),
+                reason: format!("plugin '{capsule_id}' HTTP request to denied host '{host}'"),
             };
         }
 
-        // 3. PluginFileAccess: check denied_paths
-        if let SensitiveAction::PluginFileAccess { path, .. } = action
+        // 3. CapsuleFileAccess: check denied_paths
+        if let SensitiveAction::CapsuleFileAccess { path, .. } = action
             && matches_any_glob(&self.denied_paths, path)
         {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{plugin_id}' file access to denied path '{path}'"),
+                reason: format!("plugin '{capsule_id}' file access to denied path '{path}'"),
             };
         }
 
         // 4. Plugins always require approval
         PolicyResult::RequiresApproval(RiskAssessment::new(
             RiskLevel::High,
-            format!("plugin '{plugin_id}' action requires approval"),
+            format!("plugin '{capsule_id}' action requires approval"),
         ))
     }
 
@@ -823,21 +823,21 @@ mod tests {
         let mut policy = SecurityPolicy::permissive();
         policy.blocked_plugins.insert("evil-plugin".to_string());
 
-        let action = SensitiveAction::PluginExecution {
-            plugin_id: "evil-plugin".to_string(),
+        let action = SensitiveAction::CapsuleExecution {
+            capsule_id: "evil-plugin".to_string(),
             capability: "anything".to_string(),
         };
         assert!(policy.check(&action).is_blocked());
 
-        let action = SensitiveAction::PluginHttpRequest {
-            plugin_id: "evil-plugin".to_string(),
+        let action = SensitiveAction::CapsuleHttpRequest {
+            capsule_id: "evil-plugin".to_string(),
             url: "https://safe.com".to_string(),
             method: "GET".to_string(),
         };
         assert!(policy.check(&action).is_blocked());
 
-        let action = SensitiveAction::PluginFileAccess {
-            plugin_id: "evil-plugin".to_string(),
+        let action = SensitiveAction::CapsuleFileAccess {
+            capsule_id: "evil-plugin".to_string(),
             path: "/tmp/safe".to_string(),
             mode: astrid_core::types::Permission::Read,
         };
@@ -848,8 +848,8 @@ mod tests {
     fn test_plugin_requires_approval() {
         let policy = SecurityPolicy::permissive();
 
-        let action = SensitiveAction::PluginExecution {
-            plugin_id: "good-plugin".to_string(),
+        let action = SensitiveAction::CapsuleExecution {
+            capsule_id: "good-plugin".to_string(),
             capability: "config_read".to_string(),
         };
         assert!(policy.check(&action).requires_approval());
@@ -860,16 +860,16 @@ mod tests {
         let mut policy = SecurityPolicy::permissive();
         policy.denied_hosts.push("evil.com".to_string());
 
-        let action = SensitiveAction::PluginHttpRequest {
-            plugin_id: "weather".to_string(),
+        let action = SensitiveAction::CapsuleHttpRequest {
+            capsule_id: "weather".to_string(),
             url: "https://evil.com/api".to_string(),
             method: "GET".to_string(),
         };
         assert!(policy.check(&action).is_blocked());
 
         // Same plugin, different host — requires approval (not blocked)
-        let action = SensitiveAction::PluginHttpRequest {
-            plugin_id: "weather".to_string(),
+        let action = SensitiveAction::CapsuleHttpRequest {
+            capsule_id: "weather".to_string(),
             url: "https://safe.com/api".to_string(),
             method: "GET".to_string(),
         };
@@ -881,16 +881,16 @@ mod tests {
         let mut policy = SecurityPolicy::permissive();
         policy.denied_paths.push("/etc/**".to_string());
 
-        let action = SensitiveAction::PluginFileAccess {
-            plugin_id: "cache".to_string(),
+        let action = SensitiveAction::CapsuleFileAccess {
+            capsule_id: "cache".to_string(),
             path: "/etc/passwd".to_string(),
             mode: astrid_core::types::Permission::Read,
         };
         assert!(policy.check(&action).is_blocked());
 
         // Safe path — requires approval (not blocked)
-        let action = SensitiveAction::PluginFileAccess {
-            plugin_id: "cache".to_string(),
+        let action = SensitiveAction::CapsuleFileAccess {
+            capsule_id: "cache".to_string(),
             path: "/tmp/cache.json".to_string(),
             mode: astrid_core::types::Permission::Read,
         };

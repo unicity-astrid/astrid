@@ -302,8 +302,8 @@ pub(super) fn validate_connector_declarations(
         }
         let has_match = registry.all_connector_descriptors().iter().any(|d| {
             let from_plugin = match &d.source {
-                ConnectorSource::Wasm { plugin_id } | ConnectorSource::OpenClaw { plugin_id } => {
-                    plugin_id.as_str() == conn_cfg.plugin.as_str()
+                ConnectorSource::Wasm { capsule_id } | ConnectorSource::OpenClaw { capsule_id } => {
+                    capsule_id.as_str() == conn_cfg.plugin.as_str()
                 },
                 ConnectorSource::Native => false,
             };

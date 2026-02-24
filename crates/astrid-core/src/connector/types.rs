@@ -187,7 +187,7 @@ impl FromStr for ConnectorProfile {
 /// # Trust boundary
 ///
 /// The [`new_wasm`](Self::new_wasm) and [`new_openclaw`](Self::new_openclaw)
-/// constructors validate the `plugin_id`. Direct struct construction or
+/// constructors validate the `capsule_id`. Direct struct construction or
 /// [`Deserialize`] bypass this validation — only use those paths with
 /// trusted data.
 ///
@@ -195,85 +195,85 @@ impl FromStr for ConnectorProfile {
 ///
 /// Uses serde's default externally-tagged representation:
 /// - `"native"` for [`Native`](Self::Native)
-/// - `{"wasm": {"plugin_id": "..."}}` for [`Wasm`](Self::Wasm)
-/// - `{"open_claw": {"plugin_id": "..."}}` for [`OpenClaw`](Self::OpenClaw)
+/// - `{"wasm": {"capsule_id": "..."}}` for [`Wasm`](Self::Wasm)
+/// - `{"open_claw": {"capsule_id": "..."}}` for [`OpenClaw`](Self::OpenClaw)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectorSource {
     /// Built-in frontend (CLI, Discord, Web).
     Native,
-    /// WASM plugin providing a connector.
+    /// WASM capsule providing a connector.
     Wasm {
-        /// Plugin identifier — lowercase alphanumeric and hyphens, must not
+        /// Capsule identifier — lowercase alphanumeric and hyphens, must not
         /// start or end with a hyphen. Validated by
-        /// [`ConnectorSource::new_wasm`]; the canonical `PluginId` type
-        /// lives in `astrid-plugins`.
-        plugin_id: String,
+        /// [`ConnectorSource::new_wasm`]; the canonical `CapsuleId` type
+        /// lives in `astrid-capsule`.
+        capsule_id: String,
     },
-    /// `OpenClaw`-bridged plugin connector.
+    /// `OpenClaw`-bridged capsule connector.
     OpenClaw {
-        /// Plugin identifier — lowercase alphanumeric and hyphens, must not
+        /// Capsule identifier — lowercase alphanumeric and hyphens, must not
         /// start or end with a hyphen. Validated by
-        /// [`ConnectorSource::new_openclaw`]; the canonical `PluginId` type
-        /// lives in `astrid-plugins`.
-        plugin_id: String,
+        /// [`ConnectorSource::new_openclaw`]; the canonical `CapsuleId` type
+        /// lives in `astrid-capsule`.
+        capsule_id: String,
     },
 }
 
 impl ConnectorSource {
-    /// Create a [`Wasm`](Self::Wasm) source with a validated plugin ID.
+    /// Create a [`Wasm`](Self::Wasm) source with a validated capsule ID.
     ///
-    /// The `plugin_id` must be non-empty, contain only lowercase ASCII
+    /// The `capsule_id` must be non-empty, contain only lowercase ASCII
     /// alphanumeric characters and hyphens, and must not start or end with
-    /// a hyphen (the same rules enforced by `PluginId` in `astrid-plugins`).
+    /// a hyphen (the same rules enforced by `CapsuleId` in `astrid-capsule`).
     ///
     /// # Errors
     ///
     /// Returns [`ConnectorError::InvalidPluginId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
-    pub fn new_wasm(plugin_id: impl Into<String>) -> ConnectorResult<Self> {
-        let id = plugin_id.into();
-        validate_plugin_id(&id)?;
-        Ok(Self::Wasm { plugin_id: id })
+    pub fn new_wasm(capsule_id: impl Into<String>) -> ConnectorResult<Self> {
+        let id = capsule_id.into();
+        validate_capsule_id(&id)?;
+        Ok(Self::Wasm { capsule_id: id })
     }
 
-    /// Create an [`OpenClaw`](Self::OpenClaw) source with a validated plugin ID.
+    /// Create an [`OpenClaw`](Self::OpenClaw) source with a validated capsule ID.
     ///
-    /// The `plugin_id` must be non-empty, contain only lowercase ASCII
+    /// The `capsule_id` must be non-empty, contain only lowercase ASCII
     /// alphanumeric characters and hyphens, and must not start or end with
-    /// a hyphen (the same rules enforced by `PluginId` in `astrid-plugins`).
+    /// a hyphen (the same rules enforced by `CapsuleId` in `astrid-capsule`).
     ///
     /// # Errors
     ///
     /// Returns [`ConnectorError::InvalidPluginId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
-    pub fn new_openclaw(plugin_id: impl Into<String>) -> ConnectorResult<Self> {
-        let id = plugin_id.into();
-        validate_plugin_id(&id)?;
-        Ok(Self::OpenClaw { plugin_id: id })
+    pub fn new_openclaw(capsule_id: impl Into<String>) -> ConnectorResult<Self> {
+        let id = capsule_id.into();
+        validate_capsule_id(&id)?;
+        Ok(Self::OpenClaw { capsule_id: id })
     }
 }
 
 /// Validate that a plugin ID is non-empty, contains only `[a-z0-9-]`, and
 /// does not start or end with a hyphen. Mirrors the rules in
 /// `PluginId::validate` from `astrid-plugins`.
-fn validate_plugin_id(id: &str) -> ConnectorResult<()> {
+fn validate_capsule_id(id: &str) -> ConnectorResult<()> {
     if id.is_empty() {
         return Err(ConnectorError::InvalidPluginId(
-            "plugin_id must not be empty".into(),
+            "capsule_id must not be empty".into(),
         ));
     }
     let first = id.as_bytes()[0];
     if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
         return Err(ConnectorError::InvalidPluginId(format!(
-            "plugin_id must start with [a-z0-9], got {id:?}"
+            "capsule_id must start with [a-z0-9], got {id:?}"
         )));
     }
     if id.ends_with('-') {
         return Err(ConnectorError::InvalidPluginId(format!(
-            "plugin_id must not end with a hyphen, got {id:?}"
+            "capsule_id must not end with a hyphen, got {id:?}"
         )));
     }
     if let Some(bad) = id
@@ -281,7 +281,7 @@ fn validate_plugin_id(id: &str) -> ConnectorResult<()> {
         .find(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-'))
     {
         return Err(ConnectorError::InvalidPluginId(format!(
-            "plugin_id contains invalid character {bad:?}"
+            "capsule_id contains invalid character {bad:?}"
         )));
     }
     Ok(())
@@ -293,12 +293,12 @@ impl fmt::Display for ConnectorSource {
             Self::Native => write!(f, "native"),
             // Use truncate_to_boundary for UTF-8 safety if deserialization
             // bypasses validation and injects non-ASCII plugin IDs.
-            Self::Wasm { plugin_id } => {
-                let safe = crate::utils::truncate_to_boundary(plugin_id, 64);
+            Self::Wasm { capsule_id } => {
+                let safe = crate::utils::truncate_to_boundary(capsule_id, 64);
                 write!(f, "wasm({safe})")
             },
-            Self::OpenClaw { plugin_id } => {
-                let safe = crate::utils::truncate_to_boundary(plugin_id, 64);
+            Self::OpenClaw { capsule_id } => {
+                let safe = crate::utils::truncate_to_boundary(capsule_id, 64);
                 write!(f, "openclaw({safe})")
             },
         }
