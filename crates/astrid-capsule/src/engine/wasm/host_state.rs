@@ -19,9 +19,9 @@ use crate::capsule::CapsuleId;
 /// Shared state accessible to all host functions via `UserData<HostState>`.
 pub struct HostState {
     /// The plugin this state belongs to.
-    pub plugin_id: CapsuleId,
+    pub capsule_id: CapsuleId,
     /// The unique session UUID for this plugin's execution state.
-    pub plugin_uuid: uuid::Uuid,
+    pub capsule_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
     pub workspace_root: PathBuf,
     /// The Virtual File System (VFS) instance for this plugin.
@@ -30,7 +30,7 @@ pub struct HostState {
     pub vfs_root_handle: astrid_capabilities::DirHandle,
     /// Reference to the ephemeral upper directory to keep it alive for the session.
     pub upper_dir: Option<Arc<tempfile::TempDir>>,
-    /// Plugin-scoped KV store (`plugin:{plugin_id}` namespace).
+    /// Plugin-scoped KV store (`plugin:{capsule_id}` namespace).
     pub kv: ScopedKvStore,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
@@ -104,7 +104,7 @@ impl HostState {
 impl std::fmt::Debug for HostState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HostState")
-            .field("plugin_id", &self.plugin_id)
+            .field("capsule_id", &self.capsule_id)
             .field("workspace_root", &self.workspace_root)
             .field("vfs_root_handle", &self.vfs_root_handle)
             .field("has_security", &self.security.is_some())
@@ -128,8 +128,8 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("test"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -166,8 +166,8 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("test"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -189,7 +189,7 @@ mod tests {
 
         let desc = ConnectorDescriptor::builder("test-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -209,8 +209,8 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("test"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -248,8 +248,8 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("test"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -271,7 +271,7 @@ mod tests {
         for i in 0..MAX_CONNECTORS_PER_PLUGIN {
             let desc = ConnectorDescriptor::builder(format!("conn-{i}"), FrontendType::Discord)
                 .source(ConnectorSource::Wasm {
-                    plugin_id: "test".into(),
+                    capsule_id: "test".into(),
                 })
                 .capabilities(ConnectorCapabilities::receive_only())
                 .profile(ConnectorProfile::Chat)
@@ -284,7 +284,7 @@ mod tests {
         // One more should fail
         let extra = ConnectorDescriptor::builder("over-limit", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -305,8 +305,8 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
 
         let mut state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("test"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: PluginId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -326,7 +326,7 @@ mod tests {
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -336,7 +336,7 @@ mod tests {
         // Same name + same platform → rejected
         let desc2 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -347,7 +347,7 @@ mod tests {
         // Same name + different platform → allowed
         let desc3 = ConnectorDescriptor::builder("my-conn", FrontendType::Telegram)
             .source(ConnectorSource::Wasm {
-                plugin_id: "test".into(),
+                capsule_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)

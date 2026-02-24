@@ -49,7 +49,7 @@ pub(crate) fn astrid_http_request_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     // Check capability via security gate (which will check if the host is allowed)
     // TODO: implement Phase 5 capabilities check
@@ -62,7 +62,7 @@ pub(crate) fn astrid_http_request_impl(
             .ok_or_else(|| Error::msg("URL missing host"))?;
 
         let gate = gate.clone();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let h = host.to_string();
         let check = tokio::task::block_in_place(|| {
             state

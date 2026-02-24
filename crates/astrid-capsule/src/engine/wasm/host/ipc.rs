@@ -31,7 +31,7 @@ pub(crate) fn astrid_ipc_publish_impl(
 
     // Check rate limit and quotas using the length *before* allocating the memory
     if let Err(e) = state.ipc_limiter.check_quota(
-        state.plugin_uuid,
+        state.capsule_uuid,
         payload_len.try_into().unwrap_or(usize::MAX),
     ) {
         return Err(Error::msg(e.to_string()));
@@ -63,10 +63,10 @@ pub(crate) fn astrid_ipc_publish_impl(
         Err(_) => return Err(Error::msg("IPC payload is not valid JSON")),
     };
 
-    let message = IpcMessage::new(topic, payload, state.plugin_uuid);
+    let message = IpcMessage::new(topic, payload, state.capsule_uuid);
 
     let event = AstridEvent::Ipc {
-        metadata: EventMetadata::new("wasm_guest").with_session_id(state.plugin_uuid),
+        metadata: EventMetadata::new("wasm_guest").with_session_id(state.capsule_uuid),
         message,
     };
 

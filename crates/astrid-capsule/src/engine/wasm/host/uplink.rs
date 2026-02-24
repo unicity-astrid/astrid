@@ -66,7 +66,7 @@ pub(crate) fn astrid_uplink_send_impl(
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let plugin_id = state.plugin_id.as_str().to_owned();
+    let capsule_id = state.capsule_id.as_str().to_owned();
     let inbound_tx = state.inbound_tx.clone();
 
     // In a full implementation we would check the manifest for Uplink definitions
@@ -79,13 +79,13 @@ pub(crate) fn astrid_uplink_send_impl(
         .map(|c| c.frontend_type.clone())
         .ok_or_else(|| {
             Error::msg(format!(
-                "uplink {connector_id} not registered by capsule {plugin_id}"
+                "uplink {connector_id} not registered by capsule {capsule_id}"
             ))
         })?;
     drop(state);
 
     let tx = inbound_tx
-        .ok_or_else(|| Error::msg(format!("capsule {plugin_id} has no inbound channel")))?;
+        .ok_or_else(|| Error::msg(format!("capsule {capsule_id} has no inbound channel")))?;
 
     let message =
         astrid_core::InboundMessage::builder(connector_id, platform, platform_user_id, content)
@@ -121,12 +121,12 @@ pub(crate) fn astrid_uplink_register_impl(
     let profile = parse_connector_profile(&profile_bytes)?;
 
     let ud = user_data.get()?;
-    let (plugin_id, _handle) = {
+    let (capsule_id, _handle) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.plugin_id.as_str().to_owned(),
+            state.capsule_id.as_str().to_owned(),
             state.runtime_handle.clone(),
         )
     };
@@ -135,7 +135,7 @@ pub(crate) fn astrid_uplink_register_impl(
     /*
     if let Some(gate) = &security {
         let gate = gate.clone();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let cname = name_str.clone();
         let plat = String::from_utf8_lossy(&platform_bytes).into_owned();
         let check = handle
@@ -148,9 +148,9 @@ pub(crate) fn astrid_uplink_register_impl(
     }
     */
 
-    let source = astrid_core::ConnectorSource::new_wasm(&plugin_id).map_err(|e| {
+    let source = astrid_core::ConnectorSource::new_wasm(&capsule_id).map_err(|e| {
         Error::msg(format!(
-            "failed to create uplink source for capsule {plugin_id}: {e}"
+            "failed to create uplink source for capsule {capsule_id}: {e}"
         ))
     })?;
 
@@ -168,7 +168,7 @@ pub(crate) fn astrid_uplink_register_impl(
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         state
             .register_connector(descriptor)
-            .map_err(|e| Error::msg(format!("capsule {plugin_id}: {e}")))?;
+            .map_err(|e| Error::msg(format!("capsule {capsule_id}: {e}")))?;
     }
 
     let mem = plugin.memory_new(&connector_id)?;

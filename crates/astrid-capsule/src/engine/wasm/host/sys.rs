@@ -22,7 +22,7 @@ pub(crate) fn astrid_log_impl(
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let plugin_id = state.plugin_id.as_str().to_owned();
+    let capsule_id = state.capsule_id.as_str().to_owned();
     drop(state);
 
     let parsed_level: LogLevel = match level.to_lowercase().as_str() {
@@ -34,11 +34,11 @@ pub(crate) fn astrid_log_impl(
     };
 
     match parsed_level {
-        LogLevel::Trace => tracing::trace!(plugin = %plugin_id, "{message}"),
-        LogLevel::Debug => tracing::debug!(plugin = %plugin_id, "{message}"),
-        LogLevel::Info => tracing::info!(plugin = %plugin_id, "{message}"),
-        LogLevel::Warn => tracing::warn!(plugin = %plugin_id, "{message}"),
-        LogLevel::Error => tracing::error!(plugin = %plugin_id, "{message}"),
+        LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
+        LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
+        LogLevel::Info => tracing::info!(plugin = %capsule_id, "{message}"),
+        LogLevel::Warn => tracing::warn!(plugin = %capsule_id, "{message}"),
+        LogLevel::Error => tracing::error!(plugin = %capsule_id, "{message}"),
     }
 
     Ok(())

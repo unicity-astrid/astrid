@@ -68,8 +68,8 @@ impl ExecutionEngine for WasmEngine {
             let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
             let host_state = HostState {
-                plugin_uuid: uuid::Uuid::new_v4(),
-                plugin_id: crate::capsule::CapsuleId::from_static(&self.manifest.package.name),
+                capsule_uuid: uuid::Uuid::new_v4(),
+                capsule_id: crate::capsule::CapsuleId::from_static(&self.manifest.package.name),
                 workspace_root: std::env::current_dir().unwrap_or_default(),
                 vfs: Arc::new(overlay_vfs),
                 vfs_root_handle: root_handle,

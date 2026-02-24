@@ -113,7 +113,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
@@ -121,7 +121,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -157,14 +157,14 @@ pub(crate) fn astrid_fs_readdir_impl(
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -209,14 +209,14 @@ pub(crate) fn astrid_fs_stat_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -262,14 +262,14 @@ pub(crate) fn astrid_fs_unlink_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -306,14 +306,14 @@ pub(crate) fn astrid_read_file_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -360,14 +360,14 @@ pub(crate) fn astrid_write_file_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let _plugin_id = state.plugin_id.as_str().to_owned();
+    let _capsule_id = state.capsule_id.as_str().to_owned();
 
     let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
     /*
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = plugin_id.clone();
+        let pid = capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
