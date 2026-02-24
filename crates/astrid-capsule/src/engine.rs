@@ -1,0 +1,60 @@
+//! Execution engine implementations for Astrid OS User-Space Capsules.
+//!
+//! Because a single `Capsule.toml` can define multiple execution units
+//! (e.g. a WASM component AND a legacy MCP host process), the OS uses
+//! an additive "Composite" architecture.
+
+use std::path::PathBuf;
+
+use async_trait::async_trait;
+
+use crate::error::CapsuleResult;
+use crate::manifest::CapsuleManifest;
+
+/// A runtime environment capable of executing capsule logic.
+///
+/// Examples include `StaticEngine` (for context files) and `McpHostEngine`.
+#[async_trait]
+pub trait ExecutionEngine: Send + Sync {
+    /// Load the engine (e.g., spawn a process, parse static files).
+    async fn load(&mut self) -> CapsuleResult<()>;
+
+    /// Unload the engine (e.g., kill a process, clear memory).
+    async fn unload(&mut self) -> CapsuleResult<()>;
+}
+
+/// The simplest engine. Handles universal, non-executable data injected into
+/// the OS memory (e.g., static skills, context files, declarative commands).
+///
+/// Every CompositeCapsule contains a `StaticEngine` by default.
+pub struct StaticEngine {
+    manifest: CapsuleManifest,
+    capsule_dir: PathBuf,
+}
+
+impl StaticEngine {
+    /// Create a new StaticEngine from a capsule manifest.
+    #[must_use]
+    pub fn new(manifest: CapsuleManifest, capsule_dir: PathBuf) -> Self {
+        Self {
+            manifest,
+            capsule_dir,
+        }
+    }
+}
+
+#[async_trait]
+impl ExecutionEngine for StaticEngine {
+    async fn load(&mut self) -> CapsuleResult<()> {
+        // In Phase 5, this will read `self.manifest.context_files` and `skills`
+        // from `self.capsule_dir` and publish them to the OS Event Bus or LLM Router.
+        
+        // For now, loading static files is instantaneous and infallible.
+        Ok(())
+    }
+
+    async fn unload(&mut self) -> CapsuleResult<()> {
+        // Purge the static context from OS memory.
+        Ok(())
+    }
+}
