@@ -36,22 +36,23 @@ impl CapsuleLoader {
     ) -> CapsuleResult<Box<dyn Capsule>> {
         let mut composite = CompositeCapsule::new(manifest.clone())?;
 
-        // 1. WASM Component Engine (Pure WASM or Compiled OpenClaw)
-        if let Some(_component) = &manifest.component {
-            // TODO: Box::new(WasmEngine::new(...))
-            // composite.add_engine(wasm_engine);
-        }
-
-        // 2. Legacy Host MCP Engine (The Airlock Override)
-        for _server in &manifest.mcp_servers {
-            // If server.server_type == "stdio", then the user is explicitly requesting
-            // a host process breakout. We verify the `host_process` capability was granted
-            // by the OS before adding this engine.
-
-            // TODO: Box::new(McpHostEngine::new(...))
-            // composite.add_engine(mcp_engine);
-        }
-
+                // 1. WASM Component Engine (Pure WASM or Compiled OpenClaw)
+                if manifest.component.is_some() {
+                    composite.add_engine(Box::new(crate::engine::WasmEngine::new(manifest.clone(), capsule_dir.clone())));
+                }
+        
+                // 2. Legacy Host MCP Engine (The Airlock Override)
+                for server in &manifest.mcp_servers {
+                    // If server.server_type == "stdio", then the user is explicitly requesting
+                    // a host process breakout.
+                    if server.server_type.as_deref() == Some("stdio") {
+                        composite.add_engine(Box::new(crate::engine::McpHostEngine::new(
+                            manifest.clone(),
+                            server.clone(),
+                            capsule_dir.clone(),
+                        )));
+                    }
+                }
         // 3. Static Context Engine
         // Always added. Handles injecting context_files, static commands, and skills
         // directly into the OS memory without booting any VMs or Processes.
