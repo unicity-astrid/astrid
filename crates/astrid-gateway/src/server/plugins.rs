@@ -158,7 +158,13 @@ impl DaemonServer {
             },
         };
 
-        let plugin_id = CapsuleId::from_static(&manifest.package.name);
+        let plugin_id = match CapsuleId::new(&manifest.package.name) {
+            Ok(id) => id,
+            Err(e) => {
+                warn!(dir = %plugin_dir.display(), error = %e, "Invalid capsule ID in manifest");
+                return;
+            }
+        };
         let plugin_id_str = plugin_id.as_str().to_string();
 
         // Skip plugins the user explicitly unloaded via RPC.

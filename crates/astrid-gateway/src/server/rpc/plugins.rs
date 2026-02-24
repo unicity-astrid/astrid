@@ -71,7 +71,7 @@ impl RpcImpl {
 
         let kv = match ScopedKvStore::new(
             Arc::clone(&self.workspace_kv),
-            format!("plugin:{plugin_id}"),
+            format!("capsule:{plugin_id}"),
         ) {
             Ok(kv) => kv,
             Err(e) => {

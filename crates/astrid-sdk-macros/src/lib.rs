@@ -118,7 +118,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub fn astrid_tool_call(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-            let instance = get_instance();
 
             match req.name.as_str() {
                 #( #tool_arms )*
@@ -131,7 +130,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub fn astrid_command_run(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-            let instance = get_instance();
 
             match req.name.as_str() {
                 #( #command_arms )*
@@ -144,7 +142,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub fn astrid_hook_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-            let instance = get_instance();
 
             match req.name.as_str() {
                 #( #hook_arms )*
@@ -157,7 +154,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub fn astrid_cron_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-            let instance = get_instance();
 
             match req.name.as_str() {
                 #( #cron_arms )*
