@@ -123,10 +123,21 @@ pub(crate) fn astrid_http_request_impl(
         }
     }
 
-    let body = tokio::task::block_in_place(|| {
-        runtime_handle.block_on(async move { response.text().await })
-    })
-    .map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
+    let body_result = tokio::task::block_in_place(|| {
+        runtime_handle.block_on(async move {
+            let mut response = response;
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
+                    return Err(format!("HTTP response exceeded maximum payload limit ({} bytes)", util::MAX_GUEST_PAYLOAD_LEN));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
+        })
+    });
+
+    let body = body_result.map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
 
     let resp_obj = HttpResponse {
         status,

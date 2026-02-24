@@ -107,7 +107,7 @@ pub(crate) fn astrid_fs_exists_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     // We allow read checks natively, but we ensure it uses the resolved path
     let exists = tokio::task::block_in_place(|| {
@@ -170,7 +170,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -225,7 +225,7 @@ pub(crate) fn astrid_fs_readdir_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     let entries = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -289,7 +289,7 @@ pub(crate) fn astrid_fs_stat_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     let metadata = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -354,7 +354,7 @@ pub(crate) fn astrid_fs_unlink_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -410,10 +410,19 @@ pub(crate) fn astrid_read_file_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     let content_bytes = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
+            let metadata = state.vfs.stat(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await?;
+            if metadata.size > util::MAX_GUEST_PAYLOAD_LEN {
+                return Err(astrid_vfs::VfsError::PermissionDenied(format!(
+                    "File too large to read into memory ({} bytes > {} bytes)",
+                    metadata.size,
+                    util::MAX_GUEST_PAYLOAD_LEN
+                )));
+            }
+
             let handle = state
                 .vfs
                 .open(
@@ -475,7 +484,7 @@ pub(crate) fn astrid_write_file_impl(
         .workspace_root
         .canonicalize()
         .unwrap_or_else(|_| state.workspace_root.clone());
-    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
+    let safe_relative = resolved.strip_prefix(&canonical_root).map_err(|_| Error::msg("resolved path escaped canonical root"))?;
 
     tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {

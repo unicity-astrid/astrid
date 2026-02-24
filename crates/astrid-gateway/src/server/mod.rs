@@ -15,7 +15,7 @@
 //! approval that the turn is waiting for).
 
 pub(super) mod config_apply;
-// mod e2e_tests;
+
 mod inbound_router;
 mod lifecycle;
 mod monitoring;

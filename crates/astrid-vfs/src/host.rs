@@ -62,7 +62,7 @@ impl HostVfs {
 
         match dir_res {
             Ok(dir) => {
-                let mut dirs = self.open_dirs.write().await;
+                let mut dirs: tokio::sync::RwLockWriteGuard<'_, HashMap<DirHandle, Arc<Dir>>> = self.open_dirs.write().await;
                 dirs.insert(handle, Arc::new(dir));
                 Ok(())
             },
@@ -74,7 +74,7 @@ impl HostVfs {
     }
 
     async fn get_dir(&self, handle: &DirHandle) -> VfsResult<Arc<Dir>> {
-        let dirs = self.open_dirs.read().await;
+        let dirs: tokio::sync::RwLockReadGuard<'_, HashMap<DirHandle, Arc<Dir>>> = self.open_dirs.read().await;
         dirs.get(handle).cloned().ok_or(VfsError::InvalidHandle)
     }
 }
@@ -225,7 +225,7 @@ impl Vfs for HostVfs {
         // Convert the cap_std File into a tokio async File
         let tokio_file = tokio::fs::File::from_std(std_file.into_std());
 
-        let mut files = self.open_files.write().await;
+        let mut files: tokio::sync::RwLockWriteGuard<'_, HashMap<FileHandle, OpenFileEntry>> = self.open_files.write().await;
         if files.len() >= 64 {
             return Err(VfsError::PermissionDenied("Too many open files".into()));
         }
@@ -259,7 +259,7 @@ impl Vfs for HostVfs {
         .expect("spawn_blocking panicked")
         .map_err(VfsError::Io)?;
 
-        let mut dirs = self.open_dirs.write().await;
+        let mut dirs: tokio::sync::RwLockWriteGuard<'_, HashMap<DirHandle, Arc<Dir>>> = self.open_dirs.write().await;
         if dirs.len() >= 64 {
             return Err(VfsError::PermissionDenied(
                 "Too many open directories".into(),
@@ -271,7 +271,7 @@ impl Vfs for HostVfs {
     }
 
     async fn close_dir(&self, handle: &DirHandle) -> VfsResult<()> {
-        let mut dirs = self.open_dirs.write().await;
+        let mut dirs: tokio::sync::RwLockWriteGuard<'_, HashMap<DirHandle, Arc<Dir>>> = self.open_dirs.write().await;
         if dirs.remove(handle).is_none() {
             return Err(VfsError::InvalidHandle);
         }
@@ -281,7 +281,7 @@ impl Vfs for HostVfs {
     async fn read(&self, handle: &FileHandle) -> VfsResult<Vec<u8>> {
         use tokio::io::AsyncReadExt;
         let file_arc = {
-            let files = self.open_files.read().await;
+            let files: tokio::sync::RwLockReadGuard<'_, HashMap<FileHandle, OpenFileEntry>> = self.open_files.read().await;
             files.get(handle).cloned().ok_or(VfsError::InvalidHandle)?
         };
 
@@ -315,7 +315,7 @@ impl Vfs for HostVfs {
     async fn write(&self, handle: &FileHandle, content: &[u8]) -> VfsResult<()> {
         use tokio::io::AsyncWriteExt;
         let file_arc = {
-            let files = self.open_files.read().await;
+            let files: tokio::sync::RwLockReadGuard<'_, HashMap<FileHandle, OpenFileEntry>> = self.open_files.read().await;
             files.get(handle).cloned().ok_or(VfsError::InvalidHandle)?
         };
 
@@ -327,7 +327,7 @@ impl Vfs for HostVfs {
     }
 
     async fn close(&self, handle: &FileHandle) -> VfsResult<()> {
-        let mut files = self.open_files.write().await;
+        let mut files: tokio::sync::RwLockWriteGuard<'_, HashMap<FileHandle, OpenFileEntry>> = self.open_files.write().await;
         if files.remove(handle).is_none() {
             return Err(VfsError::InvalidHandle);
         }

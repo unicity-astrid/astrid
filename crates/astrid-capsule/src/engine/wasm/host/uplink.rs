@@ -135,8 +135,9 @@ pub(crate) fn astrid_uplink_register_impl(
         let pid = capsule_id.clone();
         let cname = name_str.clone();
         let plat = String::from_utf8_lossy(&platform_bytes).into_owned();
-        let check = handle
-            .block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await });
+        let check = tokio::task::block_in_place(|| {
+            handle.block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await })
+        });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
                 "security denied uplink registration: {reason}"

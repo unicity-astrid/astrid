@@ -99,8 +99,8 @@ impl RpcImpl {
         let registry: tokio::sync::RwLockReadGuard<'_, astrid_capsule::registry::CapsuleRegistry> =
             self.plugins.read().await;
         for td in registry.all_tool_definitions() {
-            // Qualified name is "plugin:{plugin_id}:{tool_name}".
-            // Extract the "plugin:{plugin_id}" prefix as the server field.
+            // Qualified name is "capsule:{capsule_id}:{tool_name}".
+            // Extract the "capsule:{capsule_id}" prefix as the server field.
             let server = td
                 .name
                 .rsplit_once(':')

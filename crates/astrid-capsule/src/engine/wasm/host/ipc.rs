@@ -180,16 +180,17 @@ pub(crate) fn astrid_ipc_poll_impl(
     let mut messages = Vec::new();
     let mut payload_bytes = 0;
 
+    let mut dropped = 0;
+
     // Non-blocking poll - drain until buffer full or no more messages
     while let Some(event) = receiver.try_recv() {
         if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload)
-                .map(|s| s.len())
-                .unwrap_or(0);
+            let msg_len = serde_json::to_string(&message.payload).map(|s| s.len()).unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
             if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                // Buffer full, put the message back or just let it drop?
-                // Currently EventReceiver has no peek/put-back, so we'll drop it.
-                // In the future we should handle this gracefully.
+                // Buffer full, drop the current message and leave the rest in the channel.
+                // NOTE: The message that triggered this overflow is permanently consumed from 
+                // the broadcast receiver and lost. The `dropped` counter signals this loss to the guest.
+                dropped += 1;
                 break;
             }
             messages.push(message.clone());
@@ -197,7 +198,12 @@ pub(crate) fn astrid_ipc_poll_impl(
         }
     }
 
-    let json = serde_json::to_string(&messages)
+    let result_obj = serde_json::json!({
+        "messages": messages,
+        "dropped": dropped
+    });
+
+    let json = serde_json::to_string(&result_obj)
         .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))?;
 
     let mem = plugin.memory_new(&json)?;

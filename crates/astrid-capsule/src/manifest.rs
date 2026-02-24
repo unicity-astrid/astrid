@@ -121,6 +121,9 @@ pub struct CapabilitiesDef {
     #[serde(default)]
     pub net: Vec<String>,
     /// Scoped KV store access requests.
+    /// Note: KV access is inherently scoped per-capsule at runtime,
+    /// so this field is currently not enforced via a security gate, but
+    /// is present for future cross-capsule KV request declarations.
     #[serde(default)]
     pub kv: Vec<String>,
     /// VFS read paths.

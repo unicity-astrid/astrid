@@ -160,11 +160,6 @@ impl DaemonServer {
         let discovered = discover_hooks(Some(&hooks_extra));
         hook_manager.register_all(discovered).await;
 
-        // Clone MCP client for plugin registry before moving into runtime.
-        let _mcp_for_plugins = mcp.clone();
-        // Clone MCP client for watcher-driven plugin reloads.
-        let _mcp_for_watcher = mcp.clone();
-
         // Open persistent capability store (tokens survive restarts).
         let capabilities_store = Arc::new(
             CapabilityStore::with_persistence(home.capabilities_db_path()).map_err(|e| {

@@ -85,7 +85,7 @@ pub struct SecurityPolicy {
     pub require_approval_for_network: bool,
 
     /// Plugins that are completely blocked from execution.
-    pub blocked_plugins: HashSet<String>,
+    pub blocked_capsules: HashSet<String>,
 }
 
 impl SecurityPolicy {
@@ -102,7 +102,7 @@ impl SecurityPolicy {
             max_argument_size: 0,
             require_approval_for_delete: false,
             require_approval_for_network: false,
-            blocked_plugins: HashSet::new(),
+            blocked_capsules: HashSet::new(),
         }
     }
 
@@ -139,7 +139,7 @@ impl SecurityPolicy {
             SensitiveAction::CapsuleExecution { capsule_id, .. }
             | SensitiveAction::CapsuleHttpRequest { capsule_id, .. }
             | SensitiveAction::CapsuleFileAccess { capsule_id, .. } => {
-                self.check_plugin_action(capsule_id, action)
+                self.check_capsule_action(capsule_id, action)
             },
         }
     }
@@ -266,13 +266,13 @@ impl SecurityPolicy {
 
     /// Check a plugin action with layered enforcement.
     ///
-    /// 1. Plugin in `blocked_plugins`? -> Blocked
+    /// 1. Plugin in `blocked_capsules`? -> Blocked
     /// 2. `CapsuleHttpRequest` URL host in `denied_hosts`? -> Blocked
     /// 3. `CapsuleFileAccess` path matches `denied_paths`? -> Blocked
     /// 4. Otherwise -> `RequiresApproval` (plugins always need approval)
-    fn check_plugin_action(&self, capsule_id: &str, action: &SensitiveAction) -> PolicyResult {
+    fn check_capsule_action(&self, capsule_id: &str, action: &SensitiveAction) -> PolicyResult {
         // 1. Check blocked plugins
-        if self.blocked_plugins.contains(capsule_id) {
+        if self.blocked_capsules.contains(capsule_id) {
             return PolicyResult::Blocked {
                 reason: format!("plugin '{capsule_id}' is blocked by policy"),
             };
@@ -372,7 +372,7 @@ impl Default for SecurityPolicy {
             max_argument_size: 1024 * 1024, // 1 MB
             require_approval_for_delete: true,
             require_approval_for_network: true,
-            blocked_plugins: HashSet::new(),
+            blocked_capsules: HashSet::new(),
         }
     }
 }
@@ -811,7 +811,7 @@ mod tests {
         let deserialized: SecurityPolicy = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.blocked_tools.len(), policy.blocked_tools.len());
         assert!(deserialized.require_approval_for_delete);
-        assert!(deserialized.blocked_plugins.is_empty());
+        assert!(deserialized.blocked_capsules.is_empty());
     }
 
     // -----------------------------------------------------------------------
@@ -821,7 +821,7 @@ mod tests {
     #[test]
     fn test_blocked_plugin() {
         let mut policy = SecurityPolicy::permissive();
-        policy.blocked_plugins.insert("evil-plugin".to_string());
+        policy.blocked_capsules.insert("evil-plugin".to_string());
 
         let action = SensitiveAction::CapsuleExecution {
             capsule_id: "evil-plugin".to_string(),
@@ -933,10 +933,10 @@ mod tests {
     #[test]
     fn test_plugin_policy_serialization() {
         let mut policy = SecurityPolicy::default();
-        policy.blocked_plugins.insert("bad-plugin".to_string());
+        policy.blocked_capsules.insert("bad-plugin".to_string());
 
         let json = serde_json::to_string(&policy).unwrap();
         let deserialized: SecurityPolicy = serde_json::from_str(&json).unwrap();
-        assert!(deserialized.blocked_plugins.contains("bad-plugin"));
+        assert!(deserialized.blocked_capsules.contains("bad-plugin"));
     }
 }

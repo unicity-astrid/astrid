@@ -93,8 +93,26 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    let instance_block = if is_stateful {
+        quote! {}
+    } else {
+        quote! {
+            static INSTANCE: ::std::sync::OnceLock<#struct_name> = ::std::sync::OnceLock::new();
+
+            fn get_instance() -> &'static #struct_name {
+                INSTANCE.get_or_init(|| #struct_name::default())
+            }
+        }
+    };
+
     let expanded = quote! {
         #input
+
+        // Enforce Default implementation with a clearer compiler error
+        const _: () = {
+            fn assert_default<T: ::std::default::Default>() {}
+            let _ = assert_default::<#struct_name>;
+        };
 
         // -------------------------------------------------------------------
         // The Astrid OS Inbound ABI
@@ -107,11 +125,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
             arguments: Vec<u8>,
         }
 
-        static INSTANCE: ::std::sync::OnceLock<#struct_name> = ::std::sync::OnceLock::new();
-
-        fn get_instance() -> &'static #struct_name {
-            INSTANCE.get_or_init(|| #struct_name::default())
-        }
+        #instance_block
 
         /// Executed by the LLM Agent via the OS Event Bus.
         #[::extism_pdk::plugin_fn]

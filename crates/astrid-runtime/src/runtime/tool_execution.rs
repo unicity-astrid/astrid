@@ -270,8 +270,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         }
 
         // Classify the capsule tool call as a CapsuleExecution (not McpToolCall).
-        // This routes through SecurityPolicy::check_plugin_action, which checks
-        // blocked_plugins and always requires approval — more appropriate than
+        // This routes through SecurityPolicy::check_capsule_action, which checks
+        // blocked_capsules and always requires approval — more appropriate than
         // the generic MCP tool classification.
         let action = SensitiveAction::CapsuleExecution {
             capsule_id: capsule_id_str.to_string(),

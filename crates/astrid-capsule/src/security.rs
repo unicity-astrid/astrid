@@ -305,7 +305,7 @@ pub use interceptor_gate::SecurityInterceptorGate;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef};
+    use crate::manifest::{CapabilitiesDef, CapsuleManifest, PackageDef};
 
     fn make_manifest(net: Vec<&str>, fs_read: Vec<&str>, fs_write: Vec<&str>) -> CapsuleManifest {
         CapsuleManifest {
@@ -417,7 +417,9 @@ mod tests {
         );
         assert!(gate.check_file_read("test", "/workspace/src").await.is_ok()); // Exact match is OK
 
-        // Write wildcard
+        // Write wildcard permits any path through the security gate.
+        // Note: Actual VFS operations are still mathematically confined to the workspace root
+        // by cap-std, so allowing it at the gate level is safe as long as the OS VFS is used.
         assert!(gate.check_file_write("test", "/etc/passwd").await.is_ok());
         assert!(
             gate.check_file_write("test", "/random/file.txt")

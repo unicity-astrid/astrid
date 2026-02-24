@@ -232,11 +232,11 @@ async fn test_wasm_capsule_e2e_ipc_limits() {
     let result_loop = tool
         .execute(json!({ "test_type": "subscribe_loop" }), &tool_ctx)
         .await;
-    assert!(result_loop.is_err());
-    let err_str_loop = result_loop.unwrap_err().to_string();
+    assert!(result_loop.is_err(), "Expected loop to trap but it succeeded: {result_loop:?}");
+    let err_str = result_loop.unwrap_err().to_string();
     assert!(
-        err_str_loop.contains("Subscription limit reached"),
-        "Actual error: {err_str_loop}"
+        err_str.contains("Subscription limit reached"),
+        "Actual error: {err_str}"
     );
 }
 
@@ -377,7 +377,7 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
             input_schema: json!({ "type": "object" }),
         },
     ];
-    let Some((capsule, tool_ctx, temp_dir)) =
+    let Some((capsule, tool_ctx, _temp_dir)) =
         setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
@@ -404,13 +404,13 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
             &tool_ctx,
         )
         .await;
-    assert!(w_res.is_ok(), "Write failed: {:?}", w_res);
+    assert!(w_res.is_ok(), "Write failed: {w_res:?}");
 
     // Read
     let r_res = read_tool
         .execute(json!({ "path": &file_path_str }), &tool_ctx)
         .await;
-    assert!(r_res.is_ok(), "Read failed: {:?}", r_res);
+    assert!(r_res.is_ok(), "Read failed: {r_res:?}");
 
     let output: serde_json::Value = serde_json::from_str(&r_res.unwrap()).unwrap();
     let inner: serde_json::Value =
