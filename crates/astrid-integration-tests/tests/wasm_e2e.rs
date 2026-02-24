@@ -13,6 +13,7 @@ async fn setup_test_capsule(
     tools: Vec<ToolDef>,
     fs_read_caps: Vec<String>,
     fs_write_caps: Vec<String>,
+    net_caps: Vec<String>,
 ) -> (
     Box<dyn astrid_capsule::capsule::Capsule>,
     CapsuleToolContext,
@@ -54,7 +55,7 @@ async fn setup_test_capsule(
         }),
         dependencies: Default::default(),
         capabilities: CapabilitiesDef {
-            net: vec!["*".into()],
+            net: net_caps,
             kv: vec!["*".into()],
             fs_read: fs_read_caps,
             fs_write: fs_write_caps,
@@ -106,7 +107,7 @@ async fn test_wasm_capsule_e2e_basic_log() {
         description: "Test log tool".into(),
         input_schema: json!({ "type": "object", "properties": { "message": { "type": "string" } } }),
     }];
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let test_log_tool = capsule.tools().iter().find(|t| t.name() == "test-log").unwrap();
     let result = test_log_tool
@@ -126,7 +127,7 @@ async fn test_wasm_capsule_e2e_malicious_log_rejected() {
         description: "Malicious log tool".into(),
         input_schema: json!({ "type": "object" }),
     }];
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let malicious_tool = capsule.tools().iter().find(|t| t.name() == "test-malicious-log").unwrap();
     let result = malicious_tool.execute(json!({}), &tool_ctx).await;
@@ -145,7 +146,7 @@ async fn test_wasm_capsule_e2e_malicious_kv_rejected() {
         description: "Malicious kv tool".into(),
         input_schema: json!({ "type": "object" }),
     }];
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let malicious_tool = capsule.tools().iter().find(|t| t.name() == "test-malicious-kv").unwrap();
     let result = malicious_tool.execute(json!({}), &tool_ctx).await;
@@ -164,7 +165,7 @@ async fn test_wasm_capsule_e2e_ipc_limits() {
         description: "Test IPC Limits".into(),
         input_schema: json!({ "type": "object" }),
     }];
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let tool = capsule.tools().iter().find(|t| t.name() == "test-ipc-limits").unwrap();
     
@@ -189,7 +190,7 @@ async fn test_wasm_capsule_e2e_vfs_path_traversal() {
         input_schema: json!({ "type": "object" }),
     }];
     // Only give access to the workspace root
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let tool = capsule.tools().iter().find(|t| t.name() == "test-file-read").unwrap();
     
@@ -201,6 +202,64 @@ async fn test_wasm_capsule_e2e_vfs_path_traversal() {
     assert!(err_str.contains("escapes workspace boundary"), "Actual error: {err_str}");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wasm_capsule_e2e_http_security_gate() {
+    let tools = vec![ToolDef {
+        name: "test-http".into(),
+        description: "Test http tool".into(),
+        input_schema: json!({ "type": "object" }),
+    }];
+    
+    // Only give access to api.github.com
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec![], vec![], vec!["api.github.com".into()]).await;
+
+    let tool = capsule.tools().iter().find(|t| t.name() == "test-http").unwrap();
+    
+    // Attempt HTTP request to an allowed domain
+    // This will likely fail with a connection error or 404, but NOT a security denied error
+    let allowed_req = json!({
+        "method": "GET",
+        "url": "https://api.github.com/v1/user",
+        "headers": {},
+        "body": null
+    });
+    let result_allowed = tool.execute(json!({ "request": allowed_req.to_string() }), &tool_ctx).await;
+    let err_str_allowed = result_allowed.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(!err_str_allowed.contains("security denied"), "Should not be blocked by security gate");
+
+    // Attempt HTTP request to a denied domain
+    let denied_req = json!({
+        "method": "GET",
+        "url": "https://evil-hacker.com/steal",
+        "headers": {},
+        "body": null
+    });
+    let result_denied = tool.execute(json!({ "request": denied_req.to_string() }), &tool_ctx).await;
+    
+    assert!(result_denied.is_err(), "Denied request should fail");
+    let err_str_denied = result_denied.unwrap_err().to_string();
+    assert!(err_str_denied.contains("security denied"), "Actual error: {err_str_denied}");
+    assert!(err_str_denied.contains("not declared in manifest"), "Actual error: {err_str_denied}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wasm_capsule_e2e_malicious_http_headers() {
+    let tools = vec![ToolDef {
+        name: "test-malicious-http-headers".into(),
+        description: "Malicious HTTP headers tool".into(),
+        input_schema: json!({ "type": "object" }),
+    }];
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec![], vec![], vec!["*".into()]).await;
+
+    let tool = capsule.tools().iter().find(|t| t.name() == "test-malicious-http-headers").unwrap();
+    let result = tool.execute(json!({}), &tool_ctx).await;
+    
+    // The WASM runtime should trap and return a CapsuleError::WasmError
+    // because reqwest rejects headers with newlines (CRLF injection prevention).
+    assert!(result.is_err());
+    let err_str = result.unwrap_err().to_string();
+    assert!(err_str.contains("failed to parse header"), "Actual error: {err_str}");
+}
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
     let tools = vec![
@@ -215,7 +274,7 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
             input_schema: json!({ "type": "object" }),
         },
     ];
-    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await;
 
     let write_tool = capsule.tools().iter().find(|t| t.name() == "test-file-write").unwrap();
     let read_tool = capsule.tools().iter().find(|t| t.name() == "test-file-read").unwrap();

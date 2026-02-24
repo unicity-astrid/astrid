@@ -130,10 +130,10 @@ impl TestCapsule {
         let req_json = serde_json::json!({
             "method": "GET",
             "url": "http://example.com",
-            "headers": [
-                { "key": "Bad\nHeader", "value": "value" },
-                { "key": "Valid-Header", "value": "Bad\r\nValue" }
-            ],
+            "headers": {
+                "Bad\nHeader": "value",
+                "Valid-Header": "Bad\r\nValue"
+            },
             "body": null
         });
         
