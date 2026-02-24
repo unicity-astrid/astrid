@@ -190,13 +190,13 @@ Astrid aims for a **"just enable it"** zero-friction user experience while prese
 To ensure this architecture is implemented systematically, this is broken down into the following 
 trackable milestones:
 
-- [ ] **Step 4.1: `astrid-sys` Foundation (The Airlocks)** 
+- [x] **Step 4.1: `astrid-sys` Foundation (The Airlocks)** 
   Build the `astrid-sys` crate. Define the core System API wrappers (`ipc`, `vfs`, `kv`) and implement the `#[astrid::capsule]` macro to handle WASM FFI boilerplate and data serialization for Pure WASM capsules.
   
-- [ ] **Step 4.2: Capsule Manifest & Kernel Loader (Manifest-First)** 
+- [x] **Step 4.2: Capsule Manifest & Kernel Loader (Manifest-First)** 
   Define the `Capsule.toml` schema to support Static, Host (Legacy MCP), and Pure WASM modes. Update the `astridd` Kernel to parse these manifests, provision capability handles, collect and persist settings across restarts, and route logic without assuming every capsule is a WASM binary.
 
-- [ ] **Step 4.3: Zero-Friction Installation Pipeline (`astrid-cli`)** 
+- [x] **Step 4.3: Zero-Friction Installation Pipeline (`astrid-cli`)** 
   Build the `capsule install` command logic. Implement silent approvals for safe WASM executions and static features, setting collection prompts, and enforce the "Airlock Prompt" for dangerous `host_process` capabilities.
 
 - [ ] **Step 4.4: AstridClaw (OpenClaw Compilation & Syscall Translation)** 
@@ -208,7 +208,7 @@ trackable milestones:
 - [ ] **Step 4.6: Legacy Host MCP Support (The Escape Hatch)** 
   Implement the `host_process` capability within the Kernel to securely spawn and manage native host commands (like `npx` or `python`) and pipe their `stdio` to the IPC Message Bus for legacy servers that cannot be compiled by AstridClaw.
 
-- [ ] **Step 4.7: IPC Routing for MCP and Commands** 
+- [x] **Step 4.7: IPC Routing for MCP and Commands** 
   Standardize the IPC event schemas within `astrid-events` for routing MCP JSON-RPC requests and CLI slash-commands seamlessly between the Shell, the LLM Orchestrator, and the loaded Capsules.
 
 ---
