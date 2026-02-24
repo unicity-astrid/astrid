@@ -84,7 +84,7 @@ pub enum AllowancePattern {
     },
 
     /// Match any action from a specific plugin (wildcard).
-    PluginWildcard {
+    CapsuleWildcard {
         /// Plugin identifier.
         capsule_id: String,
     },
@@ -264,9 +264,9 @@ impl AllowancePattern {
                         }
             },
 
-            // PluginWildcard: match any plugin action from the same capsule_id
+            // CapsuleWildcard: match any plugin action from the same capsule_id
             (
-                Self::PluginWildcard { capsule_id },
+                Self::CapsuleWildcard { capsule_id },
                 SensitiveAction::CapsuleExecution {
                     capsule_id: action_pid,
                     ..
@@ -344,7 +344,7 @@ impl fmt::Display for AllowancePattern {
                 capsule_id,
                 capability,
             } => write!(f, "capsule://{capsule_id}:{capability}"),
-            Self::PluginWildcard { capsule_id } => write!(f, "capsule://{capsule_id}:*"),
+            Self::CapsuleWildcard { capsule_id } => write!(f, "capsule://{capsule_id}:*"),
         }
     }
 }

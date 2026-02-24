@@ -191,14 +191,7 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?;
         },
-        WasmHostFunction::UplinkReceive => {
-            crate::engine::wasm::host::uplink::astrid_uplink_receive_impl(
-                plugin,
-                &fn_inputs,
-                &mut fn_outputs,
-                user_data,
-            )?;
-        },
+
         WasmHostFunction::WriteFile => crate::engine::wasm::host::fs::astrid_write_file_impl(
             plugin,
             &fn_inputs,

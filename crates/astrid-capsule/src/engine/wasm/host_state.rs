@@ -56,8 +56,6 @@ pub struct HostState {
     /// [`CapsuleCapability::Connector`](crate::CapsuleCapability). Feeds into
     /// the gateway's inbound router.
     pub inbound_tx: Option<mpsc::Sender<InboundMessage>>,
-    /// Buffer for messages sent from the OS back to the Uplink Capsule.
-    pub uplink_buffer: Vec<Vec<u8>>,
     /// Connectors registered by the WASM guest via `astrid_register_connector`.
     pub registered_connectors: Vec<ConnectorDescriptor>,
 }
@@ -110,7 +108,6 @@ impl std::fmt::Debug for HostState {
             .field("has_security", &self.security.is_some())
             .field("has_connector_capability", &self.has_connector_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
-            .field("uplink_buffer_len", &self.uplink_buffer.len())
             .field("registered_connectors", &self.registered_connectors.len())
             .finish_non_exhaustive()
     }
@@ -145,7 +142,6 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -185,7 +181,6 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -229,7 +224,6 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -270,7 +264,6 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -329,7 +322,6 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 

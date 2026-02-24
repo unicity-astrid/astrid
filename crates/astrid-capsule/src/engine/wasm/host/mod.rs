@@ -36,7 +36,6 @@ pub enum WasmHostFunction {
     IpcPoll,
     UplinkRegister,
     UplinkSend,
-    UplinkReceive,
     KvGet,
     KvSet,
     GetConfig,
@@ -47,7 +46,7 @@ pub enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 20] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -61,7 +60,6 @@ impl WasmHostFunction {
         Self::IpcPoll,
         Self::UplinkRegister,
         Self::UplinkSend,
-        Self::UplinkReceive,
         Self::KvGet,
         Self::KvSet,
         Self::GetConfig,
@@ -92,7 +90,6 @@ impl WasmHostFunction {
             Self::IpcPoll => "astrid_ipc_poll",
             Self::UplinkRegister => "astrid_uplink_register",
             Self::UplinkSend => "astrid_uplink_send",
-            Self::UplinkReceive => "astrid_uplink_receive",
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::GetConfig => "astrid_get_config",
@@ -115,7 +112,6 @@ impl WasmHostFunction {
             | Self::IpcSubscribe
             | Self::IpcUnsubscribe
             | Self::IpcPoll
-            | Self::UplinkReceive
             | Self::KvGet
             | Self::GetConfig
             | Self::HttpRequest
@@ -146,7 +142,6 @@ impl WasmHostFunction {
             | Self::IpcPoll
             | Self::UplinkRegister
             | Self::UplinkSend
-            | Self::UplinkReceive
             | Self::KvGet
             | Self::GetConfig
             | Self::HttpRequest => TYPE_I64,
@@ -216,13 +211,7 @@ pub fn register_host_functions(
             WasmHostFunction::UplinkSend => {
                 builder.with_function(func.name(), args, rets, ud, uplink::astrid_uplink_send_impl)
             },
-            WasmHostFunction::UplinkReceive => builder.with_function(
-                func.name(),
-                args,
-                rets,
-                ud,
-                uplink::astrid_uplink_receive_impl,
-            ),
+
             WasmHostFunction::KvGet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_get_impl)
             },

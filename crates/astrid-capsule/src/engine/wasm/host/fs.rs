@@ -86,7 +86,23 @@ pub(crate) fn astrid_fs_exists_impl(
 
     let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let security = state.security.clone();
+
+    if let Some(gate) = security {
+        let p = resolved.to_string_lossy().to_string();
+        let pid = _capsule_id.clone();
+        let check = tokio::task::block_in_place(|| {
+            state
+                .runtime_handle
+                .block_on(async move { gate.check_file_read(&pid, &p).await })
+        });
+        if let Err(reason) = check {
+            return Err(Error::msg(format!("security denied exists check: {reason}")));
+        }
+    }
+
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     // We allow read checks natively, but we ensure it uses the resolved path
     let exists = tokio::task::block_in_place(|| {
@@ -139,7 +155,8 @@ pub(crate) fn astrid_fs_mkdir_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
     
     tokio::task::block_in_place(|| {
         state
@@ -184,7 +201,8 @@ pub(crate) fn astrid_fs_readdir_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let entries = tokio::task::block_in_place(|| {
         state
@@ -238,7 +256,8 @@ pub(crate) fn astrid_fs_stat_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let metadata = tokio::task::block_in_place(|| {
         state
@@ -293,7 +312,8 @@ pub(crate) fn astrid_fs_unlink_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     tokio::task::block_in_place(|| {
         state
@@ -339,7 +359,8 @@ pub(crate) fn astrid_read_file_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let content_bytes = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -395,7 +416,8 @@ pub(crate) fn astrid_write_file_impl(
         }
     }
 
-    let safe_relative = resolved.strip_prefix(&state.workspace_root).unwrap_or(&resolved);
+    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {

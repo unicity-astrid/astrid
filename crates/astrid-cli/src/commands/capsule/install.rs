@@ -152,7 +152,18 @@ pub(crate) fn install_from_local_path(
     // 5. Save securely elicited env to .env.json
     if !env_values.is_empty() {
         let env_path = target_dir.join(".env.json");
-        std::fs::write(&env_path, serde_json::to_string_pretty(&env_values)?)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true).mode(0o600);
+            let mut file = options.open(&env_path)?;
+            std::io::Write::write_all(&mut file, serde_json::to_string_pretty(&env_values)?.as_bytes())?;
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&env_path, serde_json::to_string_pretty(&env_values)?)?;
+        }
     }
 
     println!("{}", Theme::success(&format!("Installed capsule '{id}'")));
@@ -167,7 +178,7 @@ pub(crate) fn install_from_local_path(
 fn prompt_capabilities(manifest: &CapsuleManifest) -> anyhow::Result<()> {
     let caps = &manifest.capabilities;
     let has_dangerous_caps =
-        !caps.host_process.is_empty() || !caps.fs_read.is_empty() || !caps.fs_write.is_empty();
+        !caps.host_process.is_empty() || !caps.fs_read.is_empty() || !caps.fs_write.is_empty() || !caps.net.is_empty();
 
     if has_dangerous_caps {
         println!(
@@ -190,6 +201,9 @@ fn prompt_capabilities(manifest: &CapsuleManifest) -> anyhow::Result<()> {
         }
         if !caps.fs_write.is_empty() {
             println!("  - fs_write: {}", caps.fs_write.join(", "));
+        }
+        if !caps.net.is_empty() {
+            println!("  - net: {}", caps.net.join(", "));
         }
 
         println!();

@@ -172,26 +172,4 @@ pub(crate) fn astrid_uplink_register_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_uplink_receive_impl(
-    plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let ud = user_data.get()?;
-    let mut state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    if !state.uplink_buffer.is_empty() {
-        let msg_bytes = state.uplink_buffer.remove(0);
-        let mem = plugin.memory_new(&msg_bytes)?;
-        outputs[0] = plugin.memory_to_val(mem);
-    } else {
-        let mem = plugin.memory_new(&b""[..])?;
-        outputs[0] = plugin.memory_to_val(mem);
-    }
-
-    Ok(())
-}

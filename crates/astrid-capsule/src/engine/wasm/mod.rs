@@ -66,6 +66,17 @@ impl ExecutionEngine for WasmEngine {
         let event_bus = astrid_events::EventBus::clone(&ctx.event_bus);
         let manifest = self.manifest.clone();
 
+        let mut wasm_config = std::collections::HashMap::new();
+        for (key, def) in &self.manifest.env {
+            if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
+                if let Ok(val) = String::from_utf8(val_bytes) {
+                    wasm_config.insert(key.clone(), serde_json::Value::String(val));
+                }
+            } else if let Some(default_val) = &def.default {
+                wasm_config.insert(key.clone(), default_val.clone());
+            }
+        }
+
         let (plugin, rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
@@ -105,12 +116,11 @@ impl ExecutionEngine for WasmEngine {
                 ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
                 subscriptions: std::collections::HashMap::new(),
                 next_subscription_id,
-                config: std::collections::HashMap::new(),
+                config: wasm_config,
                 security: Some(security_gate),
                 runtime_handle: tokio::runtime::Handle::current(),
                 has_connector_capability: !manifest.uplinks.is_empty(),
                 inbound_tx: tx,
-                uplink_buffer: Vec::new(),
                 registered_connectors: Vec::new(),
             };
 

@@ -66,8 +66,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                     } else {
                         quote! {
                             let args = ::serde_json::from_slice(&req.arguments).unwrap_or_default();
-                            let instance = get_instance();
-                            let result = instance.#method_name(args)?;
+                            let result = get_instance().#method_name(args)?;
                             return Ok(::serde_json::to_vec(&result).unwrap_or_default());
                         }
                     };

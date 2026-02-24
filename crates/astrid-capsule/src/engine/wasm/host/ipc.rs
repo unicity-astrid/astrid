@@ -176,10 +176,20 @@ pub(crate) fn astrid_ipc_poll_impl(
         .ok_or_else(|| Error::msg("Subscription handle not found"))?;
 
     let mut messages = Vec::new();
-    // Non-blocking poll - drain everything currently available
+    let mut payload_bytes = 0;
+    
+    // Non-blocking poll - drain until buffer full or no more messages
     while let Some(event) = receiver.try_recv() {
         if let AstridEvent::Ipc { message, .. } = &*event {
+            let msg_len = serde_json::to_string(&message.payload).map(|s| s.len()).unwrap_or(0);
+            if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
+                // Buffer full, put the message back or just let it drop? 
+                // Currently EventReceiver has no peek/put-back, so we'll drop it.
+                // In the future we should handle this gracefully.
+                break;
+            }
             messages.push(message.clone());
+            payload_bytes += msg_len;
         }
     }
 

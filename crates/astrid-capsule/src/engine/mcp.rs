@@ -40,7 +40,9 @@ impl ExecutionEngine for McpHostEngine {
         })?;
 
         // Explicitly verify if the host_process capability was granted in the manifest
-        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| command_str.starts_with(cmd));
+        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| {
+            command_str == cmd || command_str.starts_with(&format!("{cmd} "))
+        });
         if !is_granted {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",

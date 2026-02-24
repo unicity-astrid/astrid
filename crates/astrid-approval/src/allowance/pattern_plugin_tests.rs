@@ -149,12 +149,12 @@ fn test_plugin_capability_file_mode_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
-// PluginWildcard matching tests
+// CapsuleWildcard matching tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_plugin_wildcard_matches_execution() {
-    let pattern = AllowancePattern::PluginWildcard {
+fn test_capsule_wildcard_matches_execution() {
+    let pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "weather".to_string(),
     };
     assert!(pattern.matches(
@@ -167,8 +167,8 @@ fn test_plugin_wildcard_matches_execution() {
 }
 
 #[test]
-fn test_plugin_wildcard_matches_http() {
-    let pattern = AllowancePattern::PluginWildcard {
+fn test_capsule_wildcard_matches_http() {
+    let pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "weather".to_string(),
     };
     assert!(pattern.matches(
@@ -182,8 +182,8 @@ fn test_plugin_wildcard_matches_http() {
 }
 
 #[test]
-fn test_plugin_wildcard_matches_file() {
-    let pattern = AllowancePattern::PluginWildcard {
+fn test_capsule_wildcard_matches_file() {
+    let pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "weather".to_string(),
     };
     assert!(pattern.matches(
@@ -197,8 +197,8 @@ fn test_plugin_wildcard_matches_file() {
 }
 
 #[test]
-fn test_plugin_wildcard_wrong_plugin() {
-    let pattern = AllowancePattern::PluginWildcard {
+fn test_capsule_wildcard_wrong_plugin() {
+    let pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "weather".to_string(),
     };
     assert!(!pattern.matches(
@@ -216,7 +216,7 @@ fn test_plugin_patterns_dont_match_non_plugin_actions() {
         capsule_id: "test".to_string(),
         capability: "read".to_string(),
     };
-    let wildcard_pattern = AllowancePattern::PluginWildcard {
+    let wildcard_pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "test".to_string(),
     };
     let non_plugin = SensitiveAction::McpToolCall {
@@ -241,7 +241,7 @@ fn test_plugin_pattern_display() {
     };
     assert_eq!(pattern.to_string(), "capsule://weather:http_request");
 
-    let pattern = AllowancePattern::PluginWildcard {
+    let pattern = AllowancePattern::CapsuleWildcard {
         capsule_id: "weather".to_string(),
     };
     assert_eq!(pattern.to_string(), "capsule://weather:*");
@@ -254,7 +254,7 @@ fn test_plugin_pattern_serialization_roundtrip() {
             capsule_id: "p1".to_string(),
             capability: "cap1".to_string(),
         },
-        AllowancePattern::PluginWildcard {
+        AllowancePattern::CapsuleWildcard {
             capsule_id: "p2".to_string(),
         },
     ];

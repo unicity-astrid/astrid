@@ -206,7 +206,6 @@ impl WasmHandler {
             runtime_handle: tokio::runtime::Handle::current(),
             has_connector_capability: false,
             inbound_tx: None,
-            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
         let user_data = UserData::new(host_state);

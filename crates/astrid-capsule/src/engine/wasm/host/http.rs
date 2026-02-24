@@ -57,17 +57,17 @@ pub(crate) fn astrid_http_request_impl(
     if let Some(gate) = security {
         let url_obj = reqwest::Url::parse(&req.url)
             .map_err(|e| Error::msg(format!("invalid url {}: {e}", req.url)))?;
-        let host = url_obj
+        let _ = url_obj
             .host_str()
             .ok_or_else(|| Error::msg("URL missing host"))?;
 
         let pid = _capsule_id.clone();
-        let h = host.to_string();
+        let full_url = req.url.clone();
         let m = req.method.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
-                .block_on(async move { gate.check_http_request(&pid, &m, &h).await })
+                .block_on(async move { gate.check_http_request(&pid, &m, &full_url).await })
         });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
