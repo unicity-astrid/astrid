@@ -10,46 +10,42 @@ use std::path::Path;
 use crate::error::{BridgeError, BridgeResult};
 use crate::manifest::OpenClawManifest;
 
-/// A serializable Astrid plugin manifest matching the `PluginManifest` serde format.
-///
-/// This is a local mirror — we don't depend on `astrid-plugins` at compile time
-/// to keep the binary lean. The dev-dependency round-trip test verifies compatibility.
+/// A serializable Astrid capsule manifest matching the `CapsuleManifest` serde format.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct OutputManifest {
-    id: String,
+    package: PackageDef,
+    component: Option<ComponentDef>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    env: HashMap<String, EnvDef>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct PackageDef {
     name: String,
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct ComponentDef {
+    entrypoint: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    author: Option<String>,
-    entry_point: OutputEntryPoint,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    capabilities: Vec<OutputCapability>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    config: HashMap<String, serde_json::Value>,
+    hash: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum OutputEntryPoint {
-    Wasm {
-        path: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        hash: Option<String>,
-    },
+struct EnvDef {
+    #[serde(rename = "type")]
+    env_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum OutputCapability {
-    Config,
-}
-
-/// Generate `plugin.toml` in the output directory.
+/// Generate `Capsule.toml` in the output directory.
 ///
 /// Reads the compiled WASM file to compute a blake3 hash, then writes
-/// the manifest with the correct `PluginManifest` serde format.
+/// the manifest with the correct `CapsuleManifest` serde format.
 ///
 /// # Errors
 ///
@@ -59,7 +55,7 @@ pub fn generate_manifest(
     astrid_id: &str,
     oc_manifest: &OpenClawManifest,
     wasm_path: &Path,
-    config: &HashMap<String, serde_json::Value>,
+    _config: &HashMap<String, serde_json::Value>,
     output_dir: &Path,
 ) -> BridgeResult<()> {
     // Compute blake3 hash of the WASM file
@@ -67,32 +63,39 @@ pub fn generate_manifest(
         .map_err(|e| BridgeError::Output(format!("failed to read WASM file for hashing: {e}")))?;
     let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
 
-    // Build capabilities
-    let mut capabilities = Vec::new();
-    if !config.is_empty() {
-        capabilities.push(OutputCapability::Config);
+    let mut env = HashMap::new();
+    // Map configSchema to env elicitations
+    if let Some(obj) = oc_manifest.config_schema.as_object()
+        && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
+    {
+        for (key, _val) in props {
+            let is_secret = key.to_lowercase().contains("key") || key.to_lowercase().contains("token");
+            env.insert(key.clone(), EnvDef {
+                env_type: if is_secret { "secret" } else { "string" }.into(),
+                request: Some(format!("Please enter value for {key}")),
+            });
+        }
     }
 
     let manifest = OutputManifest {
-        id: astrid_id.to_string(),
-        name: oc_manifest.display_name().to_string(),
-        version: oc_manifest.display_version().to_string(),
-        description: oc_manifest.description.clone(),
-        author: None,
-        entry_point: OutputEntryPoint::Wasm {
-            path: "plugin.wasm".into(),
-            hash: Some(hash),
+        package: PackageDef {
+            name: astrid_id.to_string(),
+            version: oc_manifest.display_version().to_string(),
+            description: oc_manifest.description.clone(),
         },
-        capabilities,
-        config: config.clone(),
+        component: Some(ComponentDef {
+            entrypoint: "plugin.wasm".into(),
+            hash: Some(hash),
+        }),
+        env,
     };
 
     let toml_str = toml::to_string_pretty(&manifest)
-        .map_err(|e| BridgeError::Output(format!("failed to serialize plugin.toml: {e}")))?;
+        .map_err(|e| BridgeError::Output(format!("failed to serialize Capsule.toml: {e}")))?;
 
-    let toml_path = output_dir.join("plugin.toml");
+    let toml_path = output_dir.join("Capsule.toml");
     std::fs::write(&toml_path, toml_str)
-        .map_err(|e| BridgeError::Output(format!("failed to write plugin.toml: {e}")))?;
+        .map_err(|e| BridgeError::Output(format!("failed to write Capsule.toml: {e}")))?;
 
     Ok(())
 }
@@ -105,47 +108,50 @@ mod tests {
     #[test]
     fn output_manifest_serializes_correctly() {
         let manifest = OutputManifest {
-            id: "hello-tool".into(),
-            name: "Hello Tool".into(),
-            version: "1.0.0".into(),
-            description: Some("A test plugin".into()),
-            author: None,
-            entry_point: OutputEntryPoint::Wasm {
-                path: "plugin.wasm".into(),
-                hash: Some("abc123".into()),
+            package: PackageDef {
+                name: "hello-tool".into(),
+                version: "1.0.0".into(),
+                description: Some("A test plugin".into()),
             },
-            capabilities: vec![OutputCapability::Config],
-            config: HashMap::from([("timeout".into(), serde_json::json!(30))]),
+            component: Some(ComponentDef {
+                entrypoint: "plugin.wasm".into(),
+                hash: Some("abc123".into()),
+            }),
+            env: HashMap::from([(
+                "apiKey".into(),
+                EnvDef {
+                    env_type: "secret".into(),
+                    request: Some("Enter key".into()),
+                },
+            )]),
         };
 
         let toml_str = toml::to_string_pretty(&manifest).unwrap();
-        assert!(toml_str.contains("id = \"hello-tool\""));
-        assert!(toml_str.contains("type = \"wasm\""));
-        assert!(toml_str.contains("path = \"plugin.wasm\""));
+        assert!(toml_str.contains("name = \"hello-tool\""));
+        assert!(toml_str.contains("entrypoint = \"plugin.wasm\""));
         assert!(toml_str.contains("hash = \"abc123\""));
-        assert!(toml_str.contains("type = \"config\""));
+        assert!(toml_str.contains("type = \"secret\""));
     }
 
     #[test]
     fn output_manifest_minimal() {
         let manifest = OutputManifest {
-            id: "minimal".into(),
-            name: "Minimal".into(),
-            version: "0.1.0".into(),
-            description: None,
-            author: None,
-            entry_point: OutputEntryPoint::Wasm {
-                path: "plugin.wasm".into(),
-                hash: None,
+            package: PackageDef {
+                name: "minimal".into(),
+                version: "0.1.0".into(),
+                description: None,
             },
-            capabilities: vec![],
-            config: HashMap::new(),
+            component: Some(ComponentDef {
+                entrypoint: "plugin.wasm".into(),
+                hash: None,
+            }),
+            env: HashMap::new(),
         };
 
         let toml_str = toml::to_string_pretty(&manifest).unwrap();
-        assert!(toml_str.contains("id = \"minimal\""));
+        assert!(toml_str.contains("name = \"minimal\""));
         assert!(!toml_str.contains("description"));
-        assert!(!toml_str.contains("[[capabilities]]"));
+        assert!(!toml_str.contains("[env]"));
     }
 
     #[test]
@@ -159,7 +165,12 @@ mod tests {
 
         let oc = OpenClawManifest {
             id: "test-plugin".into(),
-            config_schema: serde_json::json!({}),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "apiKey": { "type": "string" }
+                }
+            }),
             name: Some("Test Plugin".into()),
             version: Some("1.0.0".into()),
             description: Some("A test".into()),
@@ -169,17 +180,17 @@ mod tests {
             skills: vec![],
         };
 
-        let config = HashMap::from([("key".into(), serde_json::json!("value"))]);
+        let config = HashMap::new();
 
         generate_manifest("test-plugin", &oc, &wasm_path, &config, dir.path()).unwrap();
 
-        let toml_path = dir.path().join("plugin.toml");
+        let toml_path = dir.path().join("Capsule.toml");
         assert!(toml_path.exists());
 
         let content = std::fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("id = \"test-plugin\""));
-        assert!(content.contains("type = \"wasm\""));
+        assert!(content.contains("name = \"test-plugin\""));
+        assert!(content.contains("entrypoint = \"plugin.wasm\""));
         assert!(content.contains("hash = "));
-        assert!(content.contains("key = \"value\""));
+        assert!(content.contains("type = \"secret\""));
     }
 }

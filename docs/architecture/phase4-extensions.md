@@ -199,10 +199,10 @@ trackable milestones:
 - [x] **Step 4.3: Zero-Friction Installation Pipeline (`astrid-cli`)** 
   Build the `capsule install` command logic. Implement silent approvals for safe WASM executions and static features, setting collection prompts, and enforce the "Airlock Prompt" for dangerous `host_process` capabilities.
 
-- [ ] **Step 4.4: AstridClaw (OpenClaw Compilation & Syscall Translation)** 
+- [x] **Step 4.4: AstridClaw (OpenClaw Compilation & Syscall Translation)** 
   Refine the `openclaw-bridge` into the standalone AstridClaw transpiler tool. Implement the **Syscall Translation Layer** to ensure OpenClaw host functions (e.g., JS `fs.readFile`) are mapped directly to `astrid::sys::fs_read` WASM imports, keeping the core Kernel pure.
 
-- [ ] **Step 4.5: AstridClaw CLI Integration (JIT Auto-Wrapping)** 
+- [x] **Step 4.5: AstridClaw CLI Integration (JIT Auto-Wrapping)** 
   Integrate AstridClaw directly into the CLI Package Manager. Implement registry resolution so `capsule install openclaw:name` automatically fetches the JS plugin, compiles it to WASM via AstridClaw, synthesizes a `Capsule.toml`, and docks it.
 
 - [x] **Step 4.6: Legacy Host MCP Support (The Escape Hatch)** 

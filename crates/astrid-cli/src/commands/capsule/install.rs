@@ -14,7 +14,81 @@ use crate::theme::Theme;
 
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
-    install_from_local(source, workspace, &home)
+
+    if source.starts_with("openclaw:") {
+        install_from_openclaw(source, workspace, &home)
+    } else {
+        install_from_local(source, workspace, &home)
+    }
+}
+
+pub(crate) fn install_from_openclaw(
+    source: &str,
+    workspace: bool,
+    home: &AstridHome,
+) -> anyhow::Result<()> {
+    let plugin_name = source.strip_prefix("openclaw:").unwrap_or(source);
+    println!(
+        "{}",
+        Theme::info(&format!("Installing OpenClaw plugin from registry: {plugin_name}"))
+    );
+
+    // Step 1: Mock Registry Fetch
+    // In a real implementation, this would hit https://registry.openclaw.io
+    // For now, we assume the user might have a local directory with that name for testing,
+    // or we just bail if it doesn't exist locally as a fallback.
+    let source_path = Path::new(plugin_name);
+    if !source_path.exists() {
+        bail!("OpenClaw registry fetch not yet implemented. Please provide a local path to the OpenClaw plugin directory.");
+    }
+
+    transpile_and_install(source_path, workspace, home)
+}
+
+pub(crate) fn transpile_and_install(
+    source_path: &Path,
+    workspace: bool,
+    home: &AstridHome,
+) -> anyhow::Result<()> {
+    println!("{}", Theme::info("  Detected OpenClaw plugin. Transpiling to Astrid Capsule..."));
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
+    let output_dir = tmp_dir.path();
+
+    // 1. Parse OpenClaw Manifest
+    let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
+        .map_err(|e| anyhow::anyhow!("failed to parse OpenClaw manifest: {e}"))?;
+    
+    let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
+        .map_err(|e| anyhow::anyhow!("failed to convert plugin ID: {e}"))?;
+
+    // 2. Resolve Entry Point
+    let entry_point = openclaw_bridge::manifest::resolve_entry_point(source_path)
+        .map_err(|e| anyhow::anyhow!("failed to resolve entry point: {e}"))?;
+    let entry_path = source_path.join(&entry_point);
+
+    // 3. Transpile JS/TS
+    let source_code = std::fs::read_to_string(&entry_path)
+        .with_context(|| format!("failed to read entry point {}", entry_path.display()))?;
+    
+    let transpiled = openclaw_bridge::transpiler::transpile(&source_code, &entry_point)
+        .map_err(|e| anyhow::anyhow!("transpilation failed: {e}"))?;
+
+    // 4. Generate Shim
+    let shimmed = openclaw_bridge::shim::generate(&transpiled, &HashMap::new());
+
+    // 5. Compile to WASM
+    let wasm_output = output_dir.join("plugin.wasm");
+    openclaw_bridge::compiler::compile(&shimmed, &wasm_output)
+        .map_err(|e| anyhow::anyhow!("WASM compilation failed: {e}"))?;
+
+    // 6. Generate Capsule.toml
+    openclaw_bridge::output::generate_manifest(&astrid_id, &oc_manifest, &wasm_output, &HashMap::new(), output_dir)
+        .map_err(|e| anyhow::anyhow!("failed to generate Capsule.toml: {e}"))?;
+
+    // 7. Proceed with standard installation from the temp directory
+    println!("{}", Theme::success("  Transpilation successful."));
+    install_from_local_path(output_dir, workspace, home)
 }
 
 pub(crate) fn install_from_local(
@@ -27,14 +101,27 @@ pub(crate) fn install_from_local(
         bail!("Source path does not exist: {source}");
     }
 
+    // Auto-detect OpenClaw
+    if source_path.join("openclaw.plugin.json").exists() && !source_path.join("Capsule.toml").exists() {
+        return transpile_and_install(source_path, workspace, home);
+    }
+
+    install_from_local_path(source_path, workspace, home)
+}
+
+pub(crate) fn install_from_local_path(
+    source_path: &Path,
+    workspace: bool,
+    home: &AstridHome,
+) -> anyhow::Result<()> {
     println!(
         "{}",
-        Theme::info(&format!("Installing Capsule from local path: {source}"))
+        Theme::info(&format!("Installing Capsule from: {}", source_path.display()))
     );
 
     let manifest_path = source_path.join("Capsule.toml");
     if !manifest_path.exists() {
-        bail!("No Capsule.toml found in {source}");
+        bail!("No Capsule.toml found in {}", source_path.display());
     }
 
     let manifest = load_manifest(&manifest_path).context("failed to load Capsule manifest")?;
