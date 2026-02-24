@@ -97,18 +97,29 @@ pub(crate) fn astrid_fs_exists_impl(
                 .block_on(async move { gate.check_file_read(&pid, &p).await })
         });
         if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied exists check: {reason}")));
+            return Err(Error::msg(format!(
+                "security denied exists check: {reason}"
+            )));
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     // We allow read checks natively, but we ensure it uses the resolved path
     let exists = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.vfs.exists(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await })
+        state.runtime_handle.block_on(async {
+            state
+                .vfs
+                .exists(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
     })
     .unwrap_or(false);
 
@@ -155,13 +166,22 @@ pub(crate) fn astrid_fs_mkdir_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
-    
+
     tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.vfs.mkdir(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await })
+        state.runtime_handle.block_on(async {
+            state
+                .vfs
+                .mkdir(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
     })
     .map_err(|e| Error::msg(format!("mkdir failed: {e}")))?;
 
@@ -201,13 +221,22 @@ pub(crate) fn astrid_fs_readdir_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let entries = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.vfs.readdir(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await })
+        state.runtime_handle.block_on(async {
+            state
+                .vfs
+                .readdir(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
     })
     .map_err(|e| Error::msg(format!("readdir failed: {e}")))?;
 
@@ -256,13 +285,22 @@ pub(crate) fn astrid_fs_stat_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let metadata = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.vfs.stat(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await })
+        state.runtime_handle.block_on(async {
+            state
+                .vfs
+                .stat(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
     })
     .map_err(|e| Error::msg(format!("stat failed: {e}")))?;
 
@@ -312,13 +350,22 @@ pub(crate) fn astrid_fs_unlink_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.vfs.unlink(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref()).await })
+        state.runtime_handle.block_on(async {
+            state
+                .vfs
+                .unlink(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
     })
     .map_err(|e| Error::msg(format!("unlink failed: {e}")))?;
 
@@ -359,14 +406,22 @@ pub(crate) fn astrid_read_file_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     let content_bytes = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
             let handle = state
                 .vfs
-                .open(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref(), false, false)
+                .open(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                    false,
+                    false,
+                )
                 .await?;
             let data = state.vfs.read(&handle).await;
             let _ = state.vfs.close(&handle).await;
@@ -416,7 +471,10 @@ pub(crate) fn astrid_write_file_impl(
         }
     }
 
-    let canonical_root = state.workspace_root.canonicalize().unwrap_or_else(|_| state.workspace_root.clone());
+    let canonical_root = state
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| state.workspace_root.clone());
     let safe_relative = resolved.strip_prefix(&canonical_root).unwrap_or(&resolved);
 
     tokio::task::block_in_place(|| {
@@ -424,7 +482,12 @@ pub(crate) fn astrid_write_file_impl(
             // Note: pass truncate=true to emulate standard write behavior
             let handle = state
                 .vfs
-                .open(&state.vfs_root_handle, safe_relative.to_string_lossy().as_ref(), true, true)
+                .open(
+                    &state.vfs_root_handle,
+                    safe_relative.to_string_lossy().as_ref(),
+                    true,
+                    true,
+                )
                 .await?;
             let res = state.vfs.write(&handle, &content_bytes).await;
             let _ = state.vfs.close(&handle).await;

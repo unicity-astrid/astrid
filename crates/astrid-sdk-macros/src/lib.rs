@@ -37,7 +37,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
             let method_name = &method.sig.ident;
-            
+
             // Extract and process astrid attributes, then remove them
             let mut extracted_attrs = Vec::new();
             method.attrs.retain(|attr| {
@@ -108,7 +108,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         static INSTANCE: ::std::sync::OnceLock<#struct_name> = ::std::sync::OnceLock::new();
-        
+
         fn get_instance() -> &'static #struct_name {
             INSTANCE.get_or_init(|| #struct_name::default())
         }

@@ -93,16 +93,31 @@ impl ExecutionEngine for WasmEngine {
             let lower_vfs = astrid_vfs::HostVfs::new();
             let upper_vfs = astrid_vfs::HostVfs::new();
             let root_handle = astrid_capabilities::DirHandle::new();
-            
-            tokio::runtime::Handle::current().block_on(async {
-                lower_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.unwrap();
-                upper_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.unwrap();
-            });
 
+            tokio::runtime::Handle::current()
+                .block_on(async {
+                    lower_vfs
+                        .register_dir(root_handle.clone(), workspace_root.clone())
+                        .await?;
+                    upper_vfs
+                        .register_dir(root_handle.clone(), workspace_root.clone())
+                        .await?;
+                    Ok::<(), astrid_vfs::VfsError>(())
+                })
+                .map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!(
+                        "Failed to register VFS directory: {e}"
+                    ))
+                })?;
+
+            // NOTE: In Phase 4, OverlayVfs upper and lower layers share the same physical
+            // workspace root, meaning CoW semantics act as a direct pass-through.
+            // In Phase 5+, upper_vfs will point to a temporary session overlay directory.
             let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
             let next_subscription_id = 1;
-            let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(manifest.clone()));
+            let security_gate =
+                Arc::new(crate::security::ManifestSecurityGate::new(manifest.clone()));
 
             let host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
@@ -145,7 +160,7 @@ impl ExecutionEngine for WasmEngine {
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
-        
+
         let mut tools: Vec<std::sync::Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
         for t in &self.manifest.tools {
             tools.push(Arc::new(tool::WasmCapsuleTool::new(

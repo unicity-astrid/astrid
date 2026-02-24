@@ -156,11 +156,6 @@ pub mod uplink {
         };
         Ok(result)
     }
-
-    pub fn receive_bytes(uplink_id: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        let message_bytes = unsafe { astrid_uplink_recv(uplink_id.as_ref().to_vec())? };
-        Ok(message_bytes)
-    }
 }
 
 /// The KV Airlock — Persistent Key-Value Storage

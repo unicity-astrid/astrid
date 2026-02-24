@@ -41,15 +41,13 @@ async fn test_mcp_host_engine_capability_validation() {
         env: Default::default(),
         context_files: vec![],
         commands: vec![],
-        mcp_servers: vec![
-            McpServerDef {
-                id: "denied-mcp".into(),
-                description: None,
-                server_type: Some("stdio".into()),
-                command: Some("python3".into()), // "python3" is NOT allowed
-                args: vec!["server.py".into()],
-            }
-        ],
+        mcp_servers: vec![McpServerDef {
+            id: "denied-mcp".into(),
+            description: None,
+            server_type: Some("stdio".into()),
+            command: Some("python3".into()), // "python3" is NOT allowed
+            args: vec!["server.py".into()],
+        }],
         skills: vec![],
         uplinks: vec![],
         llm_providers: vec![],
@@ -60,16 +58,22 @@ async fn test_mcp_host_engine_capability_validation() {
 
     let mcp_client = astrid_mcp::McpClient::with_config(Default::default());
     let loader = CapsuleLoader::new(mcp_client);
-    
-    let mut capsule = loader.create_capsule(manifest, PathBuf::from("/tmp")).unwrap();
+
+    let mut capsule = loader
+        .create_capsule(manifest, PathBuf::from("/tmp"))
+        .unwrap();
 
     let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-mcp").unwrap();
     let event_bus = Arc::new(EventBus::with_capacity(128));
-    let ctx = CapsuleContext::new(std::env::current_dir().unwrap(), kv.clone(), event_bus.clone());
+    let ctx = CapsuleContext::new(
+        std::env::current_dir().unwrap(),
+        kv.clone(),
+        event_bus.clone(),
+    );
 
     let result = capsule.load(&ctx).await;
-    
-    // The load should fail because the second MCP server ("denied-mcp") requests "python3", 
+
+    // The load should fail because the second MCP server ("denied-mcp") requests "python3",
     // which is not in the `host_process` capability array!
     assert!(result.is_err(), "Load should fail due to capability denial");
     let err_str = result.unwrap_err().to_string();

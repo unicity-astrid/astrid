@@ -22,7 +22,12 @@ pub struct McpHostEngine {
 }
 
 impl McpHostEngine {
-    pub fn new(manifest: CapsuleManifest, server_def: McpServerDef, capsule_dir: PathBuf, mcp_client: McpClient) -> Self {
+    pub fn new(
+        manifest: CapsuleManifest,
+        server_def: McpServerDef,
+        capsule_dir: PathBuf,
+        mcp_client: McpClient,
+    ) -> Self {
         Self {
             manifest,
             server_def,
@@ -40,9 +45,12 @@ impl ExecutionEngine for McpHostEngine {
         })?;
 
         // Explicitly verify if the host_process capability was granted in the manifest
-        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| {
-            command_str == cmd || command_str.starts_with(&format!("{cmd} "))
-        });
+        let is_granted = self
+            .manifest
+            .capabilities
+            .host_process
+            .iter()
+            .any(|cmd| command_str == cmd || command_str.starts_with(&format!("{cmd} ")));
         if !is_granted {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
@@ -70,9 +78,14 @@ impl ExecutionEngine for McpHostEngine {
 
         // We use the `astrid-mcp` dynamic connection feature to spawn the `Command`
         // and attach its `stdio` directly to the `McpClient`.
-        self.mcp_client.connect_dynamic(&server_id, config).await.map_err(|e| {
-            CapsuleError::UnsupportedEntryPoint(format!("Failed to connect MCP host engine: {e}"))
-        })?;
+        self.mcp_client
+            .connect_dynamic(&server_id, config)
+            .await
+            .map_err(|e| {
+                CapsuleError::UnsupportedEntryPoint(format!(
+                    "Failed to connect MCP host engine: {e}"
+                ))
+            })?;
 
         Ok(())
     }
@@ -83,9 +96,9 @@ impl ExecutionEngine for McpHostEngine {
             "Shutting down MCP host process"
         );
         let server_id = format!("capsule:{}", self.manifest.package.name);
-        
+
         let _ = self.mcp_client.disconnect(&server_id).await;
-        
+
         // Let astrid-mcp drop the Child process and `Stdio` streams.
         Ok(())
     }

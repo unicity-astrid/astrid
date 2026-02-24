@@ -54,9 +54,8 @@ impl CapsuleTool for WasmCapsuleTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &CapsuleToolContext) -> CapsuleResult<String> {
-        let args_bytes = serde_json::to_vec(&args).map_err(|e| {
-            CapsuleError::ExecutionFailed(format!("failed to serialize args: {e}"))
-        })?;
+        let args_bytes = serde_json::to_vec(&args)
+            .map_err(|e| CapsuleError::ExecutionFailed(format!("failed to serialize args: {e}")))?;
 
         let tool_input = __AstridToolRequest {
             name: self.name.clone(),
@@ -68,9 +67,10 @@ impl CapsuleTool for WasmCapsuleTool {
         })?;
 
         let result = tokio::task::block_in_place(|| {
-            let mut plugin = self.plugin.lock().map_err(|e| {
-                CapsuleError::WasmError(format!("plugin lock poisoned: {e}"))
-            })?;
+            let mut plugin = self
+                .plugin
+                .lock()
+                .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))?;
             plugin
                 .call::<&[u8], Vec<u8>>("astrid_tool_call", &input_json)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_tool_call failed: {e:?}")))

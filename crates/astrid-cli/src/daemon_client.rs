@@ -10,8 +10,8 @@ use std::time::Duration;
 use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
 use astrid_gateway::DaemonServer;
 use astrid_gateway::rpc::{
-    AllowanceInfo, AstridRpcClient, AuditEntryInfo, BudgetInfo, DaemonEvent, DaemonStatus,
-    McpServerInfo, CapsuleInfo, SessionInfo, ToolInfo,
+    AllowanceInfo, AstridRpcClient, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonEvent,
+    DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
 };
 use astrid_gateway::server::DaemonPaths;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};

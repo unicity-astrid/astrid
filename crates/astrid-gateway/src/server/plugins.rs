@@ -163,7 +163,7 @@ impl DaemonServer {
             Err(e) => {
                 warn!(dir = %plugin_dir.display(), error = %e, "Invalid capsule ID in manifest");
                 return;
-            }
+            },
         };
         let plugin_id_str = plugin_id.as_str().to_string();
 
@@ -279,7 +279,8 @@ impl DaemonServer {
     ) -> (bool, Result<(), String>) {
         // Step 1: Create the execution context for the new plugin first.
         // If this fails, we return early and leave the old plugin running.
-        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("capsule:{plugin_id}")) {
+        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("capsule:{plugin_id}"))
+        {
             Ok(kv) => kv,
             Err(e) => return (false, Err(e.to_string())),
         };

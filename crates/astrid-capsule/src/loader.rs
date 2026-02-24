@@ -69,5 +69,3 @@ impl CapsuleLoader {
         Ok(Box::new(composite))
     }
 }
-
-

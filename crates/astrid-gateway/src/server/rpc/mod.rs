@@ -31,8 +31,8 @@ use tokio::sync::{RwLock, broadcast};
 
 use super::SessionHandle;
 use crate::rpc::{
-    AllowanceInfo, AstridRpcServer, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonStatus, McpServerInfo,
-    SessionInfo, ToolInfo,
+    AllowanceInfo, AstridRpcServer, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonStatus,
+    McpServerInfo, SessionInfo, ToolInfo,
 };
 
 /// The jsonrpsee RPC method handler.

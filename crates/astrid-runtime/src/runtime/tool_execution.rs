@@ -202,7 +202,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
 
     /// Execute a capsule tool with security checks, interceptor, and hooks.
     ///
-    /// Plugin tool names follow the format `plugin:{capsule_id}:{tool_name}`.
+    /// Capsule tool names follow the format `capsule:{capsule_id}:{tool_name}`.
     /// The qualified name is used as-is for `PluginRegistry::find_tool()`.
     #[allow(clippy::too_many_lines)]
     pub(super) async fn execute_capsule_tool<F: Frontend>(

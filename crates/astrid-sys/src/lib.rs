@@ -59,8 +59,6 @@ extern "ExtismHost" {
         platform_user_id: Vec<u8>,
         content: Vec<u8>,
     ) -> Vec<u8>;
-    /// Poll for the next inbound message from a direct uplink.
-    pub fn astrid_uplink_recv(uplink_id: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
     // Storage & Configuration

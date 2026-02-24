@@ -69,11 +69,15 @@ pub fn generate_manifest(
         && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
     {
         for (key, _val) in props {
-            let is_secret = key.to_lowercase().contains("key") || key.to_lowercase().contains("token");
-            env.insert(key.clone(), EnvDef {
-                env_type: if is_secret { "secret" } else { "string" }.into(),
-                request: Some(format!("Please enter value for {key}")),
-            });
+            let is_secret =
+                key.to_lowercase().contains("key") || key.to_lowercase().contains("token");
+            env.insert(
+                key.clone(),
+                EnvDef {
+                    env_type: if is_secret { "secret" } else { "string" }.into(),
+                    request: Some(format!("Please enter value for {key}")),
+                },
+            );
         }
     }
 

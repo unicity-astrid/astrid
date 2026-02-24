@@ -116,7 +116,9 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     }
 
     if topic_pattern.split('.').count() > 8 {
-        return Err(Error::msg("Topic pattern exceeds maximum allowed segments (8)"));
+        return Err(Error::msg(
+            "Topic pattern exceeds maximum allowed segments (8)",
+        ));
     }
 
     if state.subscriptions.len() >= 128 {
@@ -177,13 +179,15 @@ pub(crate) fn astrid_ipc_poll_impl(
 
     let mut messages = Vec::new();
     let mut payload_bytes = 0;
-    
+
     // Non-blocking poll - drain until buffer full or no more messages
     while let Some(event) = receiver.try_recv() {
         if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload).map(|s| s.len()).unwrap_or(0);
+            let msg_len = serde_json::to_string(&message.payload)
+                .map(|s| s.len())
+                .unwrap_or(0);
             if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                // Buffer full, put the message back or just let it drop? 
+                // Buffer full, put the message back or just let it drop?
                 // Currently EventReceiver has no peek/put-back, so we'll drop it.
                 // In the future we should handle this gracefully.
                 break;

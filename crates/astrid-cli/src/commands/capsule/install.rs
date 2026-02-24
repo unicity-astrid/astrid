@@ -30,7 +30,9 @@ pub(crate) fn install_from_openclaw(
     let plugin_name = source.strip_prefix("openclaw:").unwrap_or(source);
     println!(
         "{}",
-        Theme::info(&format!("Installing OpenClaw plugin from registry: {plugin_name}"))
+        Theme::info(&format!(
+            "Installing OpenClaw plugin from registry: {plugin_name}"
+        ))
     );
 
     // Step 1: Mock Registry Fetch
@@ -39,7 +41,9 @@ pub(crate) fn install_from_openclaw(
     // or we just bail if it doesn't exist locally as a fallback.
     let source_path = Path::new(plugin_name);
     if !source_path.exists() {
-        bail!("OpenClaw registry fetch not yet implemented. Please provide a local path to the OpenClaw plugin directory.");
+        bail!(
+            "OpenClaw registry fetch not yet implemented. Please provide a local path to the OpenClaw plugin directory."
+        );
     }
 
     transpile_and_install(source_path, workspace, home)
@@ -50,7 +54,10 @@ pub(crate) fn transpile_and_install(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-    println!("{}", Theme::info("  Detected OpenClaw plugin. Transpiling to Astrid Capsule..."));
+    println!(
+        "{}",
+        Theme::info("  Detected OpenClaw plugin. Transpiling to Astrid Capsule...")
+    );
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
@@ -58,7 +65,7 @@ pub(crate) fn transpile_and_install(
     // 1. Parse OpenClaw Manifest
     let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
         .map_err(|e| anyhow::anyhow!("failed to parse OpenClaw manifest: {e}"))?;
-    
+
     let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
         .map_err(|e| anyhow::anyhow!("failed to convert plugin ID: {e}"))?;
 
@@ -70,7 +77,7 @@ pub(crate) fn transpile_and_install(
     // 3. Transpile JS/TS
     let source_code = std::fs::read_to_string(&entry_path)
         .with_context(|| format!("failed to read entry point {}", entry_path.display()))?;
-    
+
     let transpiled = openclaw_bridge::transpiler::transpile(&source_code, &entry_point)
         .map_err(|e| anyhow::anyhow!("transpilation failed: {e}"))?;
 
@@ -83,8 +90,14 @@ pub(crate) fn transpile_and_install(
         .map_err(|e| anyhow::anyhow!("WASM compilation failed: {e}"))?;
 
     // 6. Generate Capsule.toml
-    openclaw_bridge::output::generate_manifest(&astrid_id, &oc_manifest, &wasm_output, &HashMap::new(), output_dir)
-        .map_err(|e| anyhow::anyhow!("failed to generate Capsule.toml: {e}"))?;
+    openclaw_bridge::output::generate_manifest(
+        &astrid_id,
+        &oc_manifest,
+        &wasm_output,
+        &HashMap::new(),
+        output_dir,
+    )
+    .map_err(|e| anyhow::anyhow!("failed to generate Capsule.toml: {e}"))?;
 
     // 7. Proceed with standard installation from the temp directory
     println!("{}", Theme::success("  Transpilation successful."));
@@ -102,7 +115,9 @@ pub(crate) fn install_from_local(
     }
 
     // Auto-detect OpenClaw
-    if source_path.join("openclaw.plugin.json").exists() && !source_path.join("Capsule.toml").exists() {
+    if source_path.join("openclaw.plugin.json").exists()
+        && !source_path.join("Capsule.toml").exists()
+    {
         return transpile_and_install(source_path, workspace, home);
     }
 
@@ -116,7 +131,10 @@ pub(crate) fn install_from_local_path(
 ) -> anyhow::Result<()> {
     println!(
         "{}",
-        Theme::info(&format!("Installing Capsule from: {}", source_path.display()))
+        Theme::info(&format!(
+            "Installing Capsule from: {}",
+            source_path.display()
+        ))
     );
 
     let manifest_path = source_path.join("Capsule.toml");
@@ -158,7 +176,10 @@ pub(crate) fn install_from_local_path(
             let mut options = std::fs::OpenOptions::new();
             options.write(true).create(true).truncate(true).mode(0o600);
             let mut file = options.open(&env_path)?;
-            std::io::Write::write_all(&mut file, serde_json::to_string_pretty(&env_values)?.as_bytes())?;
+            std::io::Write::write_all(
+                &mut file,
+                serde_json::to_string_pretty(&env_values)?.as_bytes(),
+            )?;
         }
         #[cfg(not(unix))]
         {
@@ -177,8 +198,10 @@ pub(crate) fn install_from_local_path(
 
 fn prompt_capabilities(manifest: &CapsuleManifest) -> anyhow::Result<()> {
     let caps = &manifest.capabilities;
-    let has_dangerous_caps =
-        !caps.host_process.is_empty() || !caps.fs_read.is_empty() || !caps.fs_write.is_empty() || !caps.net.is_empty();
+    let has_dangerous_caps = !caps.host_process.is_empty()
+        || !caps.fs_read.is_empty()
+        || !caps.fs_write.is_empty()
+        || !caps.net.is_empty();
 
     if has_dangerous_caps {
         println!(

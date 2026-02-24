@@ -112,7 +112,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     // Discover if it exposes the context tool
                     let (tool_arc, _tool_config) = {
                         let registry = registry_lock.read().await;
-                        let tool_name = format!("plugin:{capsule_id}:__astrid_get_agent_context");
+                        let tool_name = format!("capsule:{capsule_id}:__astrid_get_agent_context");
                         match registry.find_tool(&tool_name) {
                             Some((plugin, t)) => {
                                 let config = plugin
@@ -131,7 +131,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     if let Some(tool) = tool_arc {
                         let plugin_kv =
                             {
-                                let kv_key = format!("{}:plugin:{capsule_id}", session.id);
+                                let kv_key = format!("{}:capsule:{capsule_id}", session.id);
                                 let mut stores = self
                                     .capsule_kv_stores
                                     .lock()
@@ -141,7 +141,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                                 }))
                             };
 
-                        let scoped_name = format!("plugin-tool:plugin:{capsule_id}");
+                        let scoped_name = format!("capsule-tool:capsule:{capsule_id}");
                         if let Ok(scoped_kv) =
                             astrid_storage::ScopedKvStore::new(plugin_kv, scoped_name)
                         {

@@ -151,10 +151,14 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
     ) -> Result<(), String> {
         let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
         let host_str = parsed_url.host_str().unwrap_or("");
-        
-        if self.manifest.capabilities.net.iter().any(|d| {
-            d == "*" || host_str == d || host_str.ends_with(&format!(".{d}"))
-        }) {
+
+        if self
+            .manifest
+            .capabilities
+            .net
+            .iter()
+            .any(|d| d == "*" || host_str == d || host_str.ends_with(&format!(".{d}")))
+        {
             Ok(())
         } else {
             Err(format!(
@@ -164,7 +168,14 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
     }
 
     async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        if self.manifest.capabilities.fs_read.iter().any(|p| path.starts_with(p)) {
+        let path_obj = std::path::Path::new(path);
+        if self
+            .manifest
+            .capabilities
+            .fs_read
+            .iter()
+            .any(|p| p == "*" || path_obj.starts_with(p))
+        {
             Ok(())
         } else {
             Err(format!(
@@ -174,7 +185,14 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
     }
 
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        if self.manifest.capabilities.fs_write.iter().any(|p| path.starts_with(p)) {
+        let path_obj = std::path::Path::new(path);
+        if self
+            .manifest
+            .capabilities
+            .fs_write
+            .iter()
+            .any(|p| p == "*" || path_obj.starts_with(p))
+        {
             Ok(())
         } else {
             Err(format!(
@@ -287,6 +305,126 @@ pub use interceptor_gate::SecurityInterceptorGate;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::manifest::{CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef};
+
+    fn make_manifest(net: Vec<&str>, fs_read: Vec<&str>, fs_write: Vec<&str>) -> CapsuleManifest {
+        CapsuleManifest {
+            package: PackageDef {
+                name: "test".into(),
+                version: "0.1.0".into(),
+                description: None,
+                authors: vec![],
+                repository: None,
+                homepage: None,
+                documentation: None,
+                license: None,
+                license_file: None,
+                readme: None,
+                keywords: vec![],
+                categories: vec![],
+                astrid_version: None,
+                publish: None,
+                include: None,
+                exclude: None,
+                metadata: None,
+            },
+            component: None,
+            dependencies: Default::default(),
+            capabilities: CapabilitiesDef {
+                net: net.into_iter().map(String::from).collect(),
+                kv: vec![],
+                fs_read: fs_read.into_iter().map(String::from).collect(),
+                fs_write: fs_write.into_iter().map(String::from).collect(),
+                host_process: vec![],
+            },
+            env: Default::default(),
+            context_files: vec![],
+            commands: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            uplinks: vec![],
+            llm_providers: vec![],
+            interceptors: vec![],
+            cron_jobs: vec![],
+            tools: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_manifest_security_gate_http() {
+        let manifest = make_manifest(vec!["api.github.com"], vec![], vec![]);
+        let gate = ManifestSecurityGate::new(manifest);
+
+        assert!(
+            gate.check_http_request("test", "GET", "https://api.github.com/v1")
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_http_request("test", "GET", "https://v1.api.github.com/v1")
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_http_request("test", "GET", "https://evil.com/v1")
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_http_request("test", "GET", "http://api.github.com@127.0.0.1/admin")
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_http_request("test", "GET", "http://github.com/v1")
+                .await
+                .is_err()
+        );
+
+        let all_manifest = make_manifest(vec!["*"], vec![], vec![]);
+        let all_gate = ManifestSecurityGate::new(all_manifest);
+        assert!(
+            all_gate
+                .check_http_request("test", "GET", "https://evil.com/v1")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_manifest_security_gate_fs() {
+        let manifest = make_manifest(vec![], vec!["/workspace/src", "/tmp/exact.txt"], vec!["*"]);
+        let gate = ManifestSecurityGate::new(manifest);
+
+        // Path matches correctly
+        assert!(
+            gate.check_file_read("test", "/workspace/src/main.rs")
+                .await
+                .is_ok()
+        );
+        assert!(gate.check_file_read("test", "/tmp/exact.txt").await.is_ok());
+
+        // Path boundary correctly enforced
+        assert!(
+            gate.check_file_read("test", "/workspace/src-evil/main.rs")
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_file_read("test", "/workspace/src_evil/main.rs")
+                .await
+                .is_err()
+        );
+        assert!(gate.check_file_read("test", "/workspace/src").await.is_ok()); // Exact match is OK
+
+        // Write wildcard
+        assert!(gate.check_file_write("test", "/etc/passwd").await.is_ok());
+        assert!(
+            gate.check_file_write("test", "/random/file.txt")
+                .await
+                .is_ok()
+        );
+    }
 
     #[tokio::test]
     async fn allow_all_gate_permits_everything() {

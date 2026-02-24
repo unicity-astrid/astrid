@@ -204,7 +204,7 @@ impl ServerManager {
                 name: name.to_string(),
             });
         }
-        
+
         info!(server = name, "Dynamically registering MCP server");
 
         if let Err(e) = config.verify_binary() {

@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::capabilities::{CapabilitiesHandler, ServerNotice};
-use crate::config::{ServersConfig, ServerConfig};
+use crate::config::{ServerConfig, ServersConfig};
 use crate::error::{McpError, McpResult};
 use crate::server::{McpServerStatus, ServerManager};
 use crate::types::{

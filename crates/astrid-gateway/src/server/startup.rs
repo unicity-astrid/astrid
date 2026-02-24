@@ -391,8 +391,11 @@ impl DaemonServer {
                         },
                     };
 
-                    let ctx =
-                        astrid_capsule::context::CapsuleContext::new(workspace_root.clone(), kv, Arc::clone(&event_bus));
+                    let ctx = astrid_capsule::context::CapsuleContext::new(
+                        workspace_root.clone(),
+                        kv,
+                        Arc::clone(&event_bus),
+                    );
 
                     if let Err(e) = capsule.load(&ctx).await {
                         warn!(capsule_id = %capsule_id, error = %e, "Failed to auto-load capsule");

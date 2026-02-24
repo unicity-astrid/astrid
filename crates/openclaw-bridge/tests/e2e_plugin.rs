@@ -106,8 +106,14 @@ fn shim_wraps_test_plugin_with_all_host_functions() {
         shim.contains("describe-tools"),
         "missing describe-tools export"
     );
-    assert!(shim.contains("astrid_tool_call"), "missing astrid_tool_call export");
-    assert!(shim.contains("astrid_hook_trigger"), "missing astrid_hook_trigger export");
+    assert!(
+        shim.contains("astrid_tool_call"),
+        "missing astrid_tool_call export"
+    );
+    assert!(
+        shim.contains("astrid_hook_trigger"),
+        "missing astrid_hook_trigger export"
+    );
 
     // OpenClaw context mock is present
     assert!(

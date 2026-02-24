@@ -171,5 +171,3 @@ pub(crate) fn astrid_uplink_register_impl(
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
-
-

@@ -23,7 +23,11 @@ pub struct CapsuleContext {
 impl CapsuleContext {
     #[must_use]
     pub fn new(workspace_root: PathBuf, kv: ScopedKvStore, event_bus: Arc<EventBus>) -> Self {
-        Self { workspace_root, kv, event_bus }
+        Self {
+            workspace_root,
+            kv,
+            event_bus,
+        }
     }
 }
 

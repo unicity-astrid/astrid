@@ -44,14 +44,17 @@ pub(crate) fn astrid_http_request_impl(
     let req: HttpRequest = serde_json::from_str(&request_json)
         .map_err(|e| Error::msg(format!("invalid http request json: {e}")))?;
 
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    let _capsule_id = state.capsule_id.as_str().to_owned();
-
-    let security = state.security.clone();
+    let (capsule_id, security, runtime_handle) = {
+        let ud = user_data.get()?;
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.capsule_id.as_str().to_owned(),
+            state.security.clone(),
+            state.runtime_handle.clone(),
+        )
+    };
 
     // Check capability via security gate (which will check if the host is allowed)
     if let Some(gate) = security {
@@ -61,12 +64,11 @@ pub(crate) fn astrid_http_request_impl(
             .host_str()
             .ok_or_else(|| Error::msg("URL missing host"))?;
 
-        let pid = _capsule_id.clone();
+        let pid = capsule_id.clone();
         let full_url = req.url.clone();
         let m = req.method.clone();
         let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
+            runtime_handle
                 .block_on(async move { gate.check_http_request(&pid, &m, &full_url).await })
         });
         if let Err(reason) = check {
@@ -108,9 +110,7 @@ pub(crate) fn astrid_http_request_impl(
     }
 
     let response = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async move { request_builder.send().await })
+        runtime_handle.block_on(async move { request_builder.send().await })
     })
     .map_err(|e| Error::msg(format!("http request failed: {e}")))?;
 
@@ -124,9 +124,7 @@ pub(crate) fn astrid_http_request_impl(
     }
 
     let body = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async move { response.text().await })
+        runtime_handle.block_on(async move { response.text().await })
     })
     .map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
 
