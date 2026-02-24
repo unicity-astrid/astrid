@@ -28,6 +28,7 @@ astrid-runtime = { workspace = true }
 astrid-gateway = { workspace = true }
 astrid-hooks = { workspace = true }
 astrid-plugins = { workspace = true, features = ["http"] }
+astrid-capsule = { path = "../astrid-capsule" }
 astrid-telegram = { workspace = true }
 astrid-telemetry = { workspace = true }
 astrid-approval = { workspace = true }

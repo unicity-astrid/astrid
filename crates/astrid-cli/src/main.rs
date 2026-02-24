@@ -25,8 +25,8 @@ mod theme;
 mod tui;
 
 use commands::{
-    audit, chat, config, daemon, doctor, hooks, init, keys, onboarding, plugin, run, servers,
-    sessions,
+    audit, capsule, chat, config, daemon, doctor, hooks, init, keys, onboarding, plugin, run,
+    servers, sessions,
 };
 use theme::print_banner;
 
@@ -116,6 +116,12 @@ enum Commands {
     Plugin {
         #[command(subcommand)]
         command: PluginCommands,
+    },
+
+    /// Manage capsules (Phase 4 User-Space Microkernel)
+    Capsule {
+        #[command(subcommand)]
+        command: CapsuleCommands,
     },
 
     /// Initialize a workspace
@@ -266,6 +272,18 @@ enum ConfigCommands {
     Validate,
     /// Show config file paths being checked
     Paths,
+}
+
+#[derive(Subcommand)]
+enum CapsuleCommands {
+    /// Install a capsule from a local path or registry
+    Install {
+        /// Capsule source (local path or package name)
+        source: String,
+        /// Install to workspace instead of user-level
+        #[arg(long)]
+        workspace: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -435,6 +453,9 @@ async fn main() -> Result<()> {
         Some(Commands::Plugin { command }) => {
             handle_plugins(command).await?;
         },
+        Some(Commands::Capsule { command }) => {
+            handle_capsules(command)?;
+        },
         Some(Commands::Init) => {
             init::run_init()?;
         },
@@ -602,5 +623,13 @@ async fn handle_plugins(command: PluginCommands) -> Result<()> {
             plugin::compile_plugin(&path, output.as_deref())
         },
         PluginCommands::Info { id } => plugin::plugin_info(&id),
+    }
+}
+
+fn handle_capsules(command: CapsuleCommands) -> Result<()> {
+    match command {
+        CapsuleCommands::Install { source, workspace } => {
+            capsule::install::install_capsule(&source, workspace)
+        },
     }
 }

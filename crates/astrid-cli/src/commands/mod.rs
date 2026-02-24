@@ -1,6 +1,7 @@
 //! CLI commands.
 
 pub(crate) mod audit;
+pub(crate) mod capsule;
 pub(crate) mod chat;
 pub(crate) mod config;
 pub(crate) mod daemon;
