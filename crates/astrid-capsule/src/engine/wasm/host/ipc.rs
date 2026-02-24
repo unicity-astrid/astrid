@@ -127,12 +127,46 @@ pub(crate) fn astrid_ipc_subscribe_impl(
 #[allow(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_ipc_poll_impl(
     plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
+    inputs: &[Val],
     outputs: &mut [Val],
-    _user_data: UserData<HostState>,
+    user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    // TODO: Phase 5 IPC polling from HostState buffers
-    let mem = plugin.memory_new(&b""[..])?;
+    let handle_ptr = inputs[0].unwrap_i64();
+    let handle_len = plugin.memory_length(handle_ptr.cast_unsigned())?;
+    if handle_len > 32 {
+        return Err(Error::msg(
+            "Subscription handle exceeds maximum allowed length",
+        ));
+    }
+
+    let handle_id_bytes = util::get_safe_bytes(plugin, &inputs[0], 32)?;
+    let handle_id_str = String::from_utf8(handle_id_bytes).unwrap_or_default();
+    let handle_id: u64 = handle_id_str
+        .parse()
+        .map_err(|_| Error::msg("Invalid subscription handle format"))?;
+
+    let ud = user_data.get()?;
+    let mut state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    let receiver = state
+        .subscriptions
+        .get_mut(&handle_id)
+        .ok_or_else(|| Error::msg("Subscription handle not found"))?;
+
+    let mut messages = Vec::new();
+    // Non-blocking poll - drain everything currently available
+    while let Some(event) = receiver.try_recv() {
+        if let AstridEvent::Ipc { message, .. } = &*event {
+            messages.push(message.clone());
+        }
+    }
+
+    let json = serde_json::to_string(&messages)
+        .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))?;
+
+    let mem = plugin.memory_new(&json)?;
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }

@@ -295,6 +295,7 @@ impl DaemonServer {
             user_unloaded_capsules: Arc::clone(&user_unloaded_capsules),
             workspace_root: cwd.clone(),
             connector_sessions: Arc::clone(&connector_sessions),
+            inbound_tx: inbound_tx.clone(),
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -352,7 +353,7 @@ impl DaemonServer {
             let registry_clone: Arc<RwLock<CapsuleRegistry>> = Arc::clone(&capsule_registry);
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
-            let _inbound_tx_for_autoload = inbound_tx.clone();
+            let inbound_tx_for_autoload = inbound_tx.clone();
             let connectors_cfg = cfg.connectors.clone();
             tokio::spawn(async move {
                 let capsule_ids: Vec<CapsuleId> = {
@@ -392,7 +393,13 @@ impl DaemonServer {
                         warn!(capsule_id = %capsule_id, error = %e, "Failed to auto-load capsule");
                     } else {
                         info!(capsule_id = %capsule_id, "Auto-loaded capsule");
-                        // TODO: Re-wire inbound receiver when we re-add it to Capsule
+                        if let Some(rx) = capsule.take_inbound_rx() {
+                            let tx = inbound_tx_for_autoload.clone();
+                            let pid = capsule_id.to_string();
+                            tokio::spawn(async move {
+                                crate::server::inbound_router::forward_inbound(pid, rx, tx).await;
+                            });
+                        }
                     }
 
                     let mut registry: tokio::sync::RwLockWriteGuard<'_, CapsuleRegistry> =
@@ -451,6 +458,7 @@ impl DaemonServer {
             user_unloaded_capsules,
             identity_store: Arc::clone(&identity_store),
             connector_sessions: Arc::clone(&connector_sessions),
+            inbound_tx,
         };
 
         // Spawn the inbound message router.

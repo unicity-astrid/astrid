@@ -7,10 +7,9 @@ use std::sync::Arc;
 use astrid_capsule::capsule::{Capsule, CapsuleId, CapsuleState};
 use astrid_capsule::context::CapsuleContext;
 use astrid_capsule::registry::CapsuleRegistry;
-use astrid_core::{InboundMessage, SessionId};
+use astrid_core::SessionId;
 use astrid_storage::{KvStore, ScopedKvStore};
 use tokio::sync::RwLock;
-use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use super::monitoring::AbortOnDrop;
@@ -25,6 +24,7 @@ pub(super) struct WatcherReloadContext {
     pub(super) sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
     pub(super) workspace_root: PathBuf,
     pub(super) user_unloaded: Arc<RwLock<HashSet<CapsuleId>>>,
+    pub(super) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
 }
 
 impl DaemonServer {
@@ -89,6 +89,7 @@ impl DaemonServer {
             sessions: Arc::clone(&self.sessions),
             workspace_root: self.workspace_root.clone(),
             user_unloaded: Arc::clone(&self.user_unloaded_capsules),
+            inbound_tx: self.inbound_tx.clone(),
         };
 
         let handle = tokio::spawn(async move {
@@ -129,6 +130,7 @@ impl DaemonServer {
             sessions,
             workspace_root,
             user_unloaded,
+            inbound_tx,
         } = ctx;
         // Try to load the manifest. Compiled plugins have Capsule.toml;
         // uncompiled OpenClaw plugins only have openclaw.plugin.json and
@@ -213,21 +215,18 @@ impl DaemonServer {
                 // Wire inbound receiver if the reloaded plugin has connector capability.
                 // Takes a brief write lock to call take_inbound_rx() through the trait.
                 {
-                    let _rx = {
-                        let mut _reg = plugins.write().await;
-                        // TODO: Implement inbound receiver extraction for capsules in phase 5
-                        // reg.get_mut(&plugin_id).and_then(|p| p.take_inbound_rx())
-                        None::<mpsc::Receiver<InboundMessage>>
+                    let rx = {
+                        let mut reg = plugins.write().await;
+                        reg.get_mut(&plugin_id).and_then(|p| p.take_inbound_rx())
                     };
-                    /*
+
                     if let Some(rx) = rx {
                         let tx = inbound_tx.clone();
-                        let pid = plugin_id_str.clone();
+                        let pid = plugin_id.to_string();
                         tokio::spawn(async move {
-                            super::inbound_router::forward_inbound(pid, rx, tx).await;
+                            crate::server::inbound_router::forward_inbound(pid, rx, tx).await;
                         });
                     }
-                    */
                 }
 
                 Self::broadcast_event(

@@ -128,6 +128,8 @@ pub struct DaemonServer {
     /// reserved for future RPC endpoints. The inbound router holds its own
     /// `Arc` clone and manages this map directly.
     connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>>,
+    /// Sender for fanning in inbound messages from capsule uplinks.
+    inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
 }
 
 impl DaemonServer {

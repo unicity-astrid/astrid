@@ -64,7 +64,7 @@ impl CapsuleRegistry {
         if self.capsules.contains_key(&id) {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Already registered: {id}"
-            ))); // TODO
+            )));
         }
 
         // Register the capsule's uplinks (connectors)

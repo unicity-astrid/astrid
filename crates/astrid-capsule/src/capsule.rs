@@ -103,6 +103,14 @@ pub trait Capsule: Send + Sync {
     fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
         &[] // Default implementation returning empty list
     }
+
+    /// Extract the inbound receiver for connector messages.
+    /// This is typically called exactly once by the OS router after loading.
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        None
+    }
 }
 
 /// The universal, additive implementation of a Capsule.
@@ -171,5 +179,16 @@ impl Capsule for CompositeCapsule {
         }
         self.state = CapsuleState::Unloaded;
         Ok(())
+    }
+
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        for engine in &mut self.engines {
+            if let Some(rx) = engine.take_inbound_rx() {
+                return Some(rx);
+            }
+        }
+        None
     }
 }

@@ -93,7 +93,7 @@ impl RpcImpl {
         let manifest = plugin.manifest();
         let name = manifest.package.name.clone();
 
-        let _load_succeeded = load_result.is_ok();
+        let load_succeeded = load_result.is_ok();
         let (state_str, error, event) = match load_result {
             Ok(()) => (
                 "ready".to_string(),
@@ -123,14 +123,11 @@ impl RpcImpl {
         // Take the inbound receiver before re-registering, while we have
         // exclusive ownership of the plugin. Mirrors the auto-load and
         // hot-reload watcher paths. Only meaningful on successful load.
-        /* TODO: implement rx for capsules
         let inbound_rx = if load_succeeded {
             plugin.take_inbound_rx()
         } else {
             None
         };
-        */
-        // let _inbound_rx: Option<()> = None;
 
         // Brief write lock to put the plugin back.
         {
@@ -140,15 +137,13 @@ impl RpcImpl {
 
         // Spawn the fan-in forwarder after releasing the registry lock.
         // JoinHandle intentionally discarded: self-terminating (see inbound_router.rs).
-        /*
         if let Some(rx) = inbound_rx {
             let tx = self.inbound_tx.clone();
             let pid = plugin_id.clone();
             tokio::spawn(async move {
-                super::super::inbound_router::forward_inbound(pid, rx, tx).await;
+                crate::server::inbound_router::forward_inbound(pid, rx, tx).await;
             });
         }
-        */
 
         let info = PluginInfo {
             id: plugin_id,

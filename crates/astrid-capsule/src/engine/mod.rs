@@ -29,5 +29,10 @@ pub trait ExecutionEngine: Send + Sync {
     /// Unload the engine (e.g., drop WASM memory or SIGTERM the child process).
     async fn unload(&mut self) -> CapsuleResult<()>;
 
-    // TODO: Add methods for retrieving tools, handling hooks, and routing IPC.
+    /// Extract the inbound receiver if this engine provides one.
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        None
+    }
 }

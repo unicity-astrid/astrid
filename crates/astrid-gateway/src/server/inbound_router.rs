@@ -395,5 +395,28 @@ async fn run_connector_turn(ctx: &InboundRouterCtx, session_id: SessionId, input
 }
 
 // ---------------------------------------------------------------------------
+// Fan-in Forwarder
+// ---------------------------------------------------------------------------
+
+/// Forward messages from a capsule's specific inbound receiver to the central router channel.
+///
+/// Spawned once per capsule that declares connector capabilities.
+/// Terminates automatically when the capsule is unloaded (its `tx` drops, closing `rx`).
+pub(super) async fn forward_inbound(
+    capsule_id: String,
+    mut rx: mpsc::Receiver<InboundMessage>,
+    tx: mpsc::Sender<InboundMessage>,
+) {
+    tracing::debug!(capsule = %capsule_id, "Started inbound forwarder");
+    while let Some(msg) = rx.recv().await {
+        if tx.send(msg).await.is_err() {
+            // Central channel closed — daemon is shutting down.
+            break;
+        }
+    }
+    tracing::debug!(capsule = %capsule_id, "Inbound forwarder exiting");
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

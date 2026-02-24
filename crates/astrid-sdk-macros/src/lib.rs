@@ -36,20 +36,7 @@ pub fn capsule(_attr: TokenStream, item: TokenStream) -> TokenStream {
         if let ImplItem::Fn(method) = item {
             let method_name = &method.sig.ident;
             for attr in &method.attrs {
-                if attr.path().is_ident("astrid") {
-                    if let Ok(meta_list) = attr.meta.clone().require_list() {
-                        // Very basic parsing for Phase 4 proof-of-concept
-                        let tokens: Vec<_> = meta_list.tokens.clone().into_iter().collect();
-                        if tokens.len() == 1 {
-                            // Example: #[astrid(tool = "name")] -> wait, usually it's #[astrid::tool("name")]
-                            // Let's assume the syntax is #[astrid(tool("name"))] or we just parse #[tool("name")]
-                            // For simplicity, let's just use the stubs and implement real routing in Phase 6.
-                            // The user wants the TODOs gone and the macro to be more than a stub.
-                        }
-                    }
-                } else if attr.path().segments.len() == 2
-                    && attr.path().segments[0].ident == "astrid"
-                {
+                if attr.path().segments.len() == 2 && attr.path().segments[0].ident == "astrid" {
                     let attr_name = &attr.path().segments[1].ident;
                     if let Ok(name) = attr.parse_args::<LitStr>() {
                         let name_val = name.value();

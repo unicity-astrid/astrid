@@ -23,6 +23,7 @@ pub struct WasmEngine {
     manifest: CapsuleManifest,
     _capsule_dir: PathBuf,
     plugin: Option<Arc<Mutex<extism::Plugin>>>,
+    inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
 }
 
 impl WasmEngine {
@@ -31,6 +32,7 @@ impl WasmEngine {
             manifest,
             _capsule_dir: capsule_dir,
             plugin: None,
+            inbound_rx: None,
         }
     }
 }
@@ -55,11 +57,17 @@ impl ExecutionEngine for WasmEngine {
             self._capsule_dir.join(&component.entrypoint)
         };
 
-        // We wrap these synchronous operations in block_in_place
-        let plugin = tokio::task::block_in_place(|| {
+        let (plugin, rx) = tokio::task::block_in_place(|| {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
             })?;
+
+            let (tx, rx) = if !self.manifest.uplinks.is_empty() {
+                let (tx, rx) = tokio::sync::mpsc::channel(128);
+                (Some(tx), Some(rx))
+            } else {
+                (None, None)
+            };
 
             // Build HostState (Minimal for scaffolding)
             let lower_vfs = astrid_vfs::HostVfs::new();
@@ -87,7 +95,7 @@ impl ExecutionEngine for WasmEngine {
                 security: None,
                 runtime_handle: tokio::runtime::Handle::current(),
                 has_connector_capability: !self.manifest.uplinks.is_empty(),
-                inbound_tx: None,
+                inbound_tx: tx,
                 uplink_buffer: Vec::new(),
                 registered_connectors: Vec::new(),
             };
@@ -102,12 +110,15 @@ impl ExecutionEngine for WasmEngine {
             let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
             let builder = register_host_functions(builder, user_data);
 
-            builder.build().map_err(|e| {
+            let plugin = builder.build().map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to build Extism plugin: {e}"))
-            })
+            })?;
+
+            Ok::<_, CapsuleError>((plugin, rx))
         })?;
 
         self.plugin = Some(Arc::new(Mutex::new(plugin)));
+        self.inbound_rx = rx;
 
         Ok(())
     }
@@ -119,5 +130,11 @@ impl ExecutionEngine for WasmEngine {
         );
         self.plugin = None; // Drop releases WASM memory
         Ok(())
+    }
+
+    fn take_inbound_rx(
+        &mut self,
+    ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+        self.inbound_rx.take()
     }
 }

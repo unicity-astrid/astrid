@@ -77,6 +77,8 @@ pub(in crate::server) struct RpcImpl {
     /// when they have been saved to disk and are being re-loaded — the
     /// `user_id` field on `SessionHandle` is only available for live sessions.
     pub(in crate::server) connector_sessions: Arc<RwLock<HashMap<uuid::Uuid, SessionId>>>,
+    /// Sender for fanning in inbound messages from capsule uplinks.
+    pub(in crate::server) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
 }
 
 #[jsonrpsee::core::async_trait]

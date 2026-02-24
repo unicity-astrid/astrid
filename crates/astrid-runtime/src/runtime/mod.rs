@@ -299,7 +299,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// runtime.set_self_arc(&runtime).await;
     /// ```
     ///
-    // TODO: Consider migrating to `Arc::new_cyclic` to eliminate the two-step
+    // TODO(Phase 7): Consider migrating to `Arc::new_cyclic` to eliminate the two-step
     // initialization pattern and make the self-reference setup infallible.
     pub async fn set_self_arc(self: &Arc<Self>) {
         *self.self_arc.write().await = Some(Arc::downgrade(self));
