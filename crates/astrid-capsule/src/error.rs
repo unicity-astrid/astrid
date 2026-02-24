@@ -15,6 +15,12 @@ pub enum CapsuleError {
     /// The capsule requests an unsupported entry point or feature.
     #[error("Unsupported entry point: {0}")]
     UnsupportedEntryPoint(String),
+    /// A WASM host call or tool execution failed.
+    #[error("Execution failed: {0}")]
+    ExecutionFailed(String),
+    /// An error originated inside the WASM VM runtime.
+    #[error("WASM error: {0}")]
+    WasmError(String),
 }
 
 /// A specialized Result type for capsule operations.

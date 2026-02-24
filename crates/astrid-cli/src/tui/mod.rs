@@ -207,13 +207,13 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                         (context_tokens as f32 / max_context_tokens as f32).clamp(0.0, 1.0);
                 }
             },
-            DaemonEvent::PluginLoaded { name, .. } => {
+            DaemonEvent::CapsuleLoaded { name, .. } => {
                 app.push_notice(&format!("Plugin loaded: {name}"));
             },
-            DaemonEvent::PluginFailed { id, error } => {
+            DaemonEvent::CapsuleFailed { id, error } => {
                 app.push_notice(&format!("Plugin {id} failed: {error}"));
             },
-            DaemonEvent::PluginUnloaded { name, .. } => {
+            DaemonEvent::CapsuleUnloaded { name, .. } => {
                 app.push_notice(&format!("Plugin unloaded: {name}"));
             },
             _ => {},
@@ -449,13 +449,13 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.push_notice(&format!("Error: {msg}"));
             app.state = UiState::Error { message: msg };
         },
-        DaemonEvent::PluginLoaded { name, .. } => {
+        DaemonEvent::CapsuleLoaded { name, .. } => {
             app.push_notice(&format!("Plugin loaded: {name}"));
         },
-        DaemonEvent::PluginFailed { id, error } => {
+        DaemonEvent::CapsuleFailed { id, error } => {
             app.push_notice(&format!("Plugin {id} failed: {error}"));
         },
-        DaemonEvent::PluginUnloaded { name, .. } => {
+        DaemonEvent::CapsuleUnloaded { name, .. } => {
             app.push_notice(&format!("Plugin unloaded: {name}"));
         },
     }
@@ -607,7 +607,7 @@ async fn handle_slash_command(
                     status.active_sessions,
                     status.mcp_servers_running,
                     status.mcp_servers_configured,
-                    status.plugins_loaded,
+                    status.capsules_loaded,
                 ));
             } else {
                 app.push_notice("Failed to get daemon info.");
@@ -721,7 +721,7 @@ async fn handle_slash_command(
             Ok(()) => app.push_notice("Session saved."),
             Err(e) => app.push_notice(&format!("Failed to save: {e}")),
         },
-        "/plugins" => match client.list_plugins().await {
+        "/plugins" => match client.list_capsules().await {
             Ok(plugins) if plugins.is_empty() => {
                 app.push_notice("No plugins registered.");
             },

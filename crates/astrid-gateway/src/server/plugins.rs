@@ -26,6 +26,7 @@ pub(super) struct WatcherReloadContext {
     pub(super) user_unloaded: Arc<RwLock<HashSet<CapsuleId>>>,
     pub(super) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
     pub(super) mcp_client: astrid_mcp::McpClient,
+    pub(super) event_bus: Arc<astrid_events::EventBus>,
 }
 
 impl DaemonServer {
@@ -92,6 +93,7 @@ impl DaemonServer {
             user_unloaded: Arc::clone(&self.user_unloaded_capsules),
             inbound_tx: self.inbound_tx.clone(),
             mcp_client: self.mcp_client.clone(),
+            event_bus: Arc::clone(&self.event_bus),
         };
 
         let handle = tokio::spawn(async move {
@@ -134,6 +136,7 @@ impl DaemonServer {
             user_unloaded,
             inbound_tx,
             mcp_client,
+            event_bus,
         } = ctx;
         // Try to load the manifest. Compiled plugins have Capsule.toml;
         // uncompiled OpenClaw plugins only have openclaw.plugin.json and
@@ -179,7 +182,7 @@ impl DaemonServer {
                 warn!(plugin = %plugin_id, error = %e, "Failed to create capsule on reload");
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginFailed {
+                    DaemonEvent::CapsuleFailed {
                         id: plugin_id_str,
                         error: e.to_string(),
                     },
@@ -196,6 +199,7 @@ impl DaemonServer {
             plugins,
             workspace_kv,
             workspace_root,
+            event_bus,
         )
         .await;
 
@@ -203,7 +207,7 @@ impl DaemonServer {
         if was_loaded {
             Self::broadcast_event(
                 sessions,
-                DaemonEvent::PluginUnloaded {
+                DaemonEvent::CapsuleUnloaded {
                     id: plugin_id_str.clone(),
                     name: manifest.package.name.clone(),
                 },
@@ -234,7 +238,7 @@ impl DaemonServer {
 
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginLoaded {
+                    DaemonEvent::CapsuleLoaded {
                         id: plugin_id_str,
                         name: manifest.package.name.clone(),
                     },
@@ -245,7 +249,7 @@ impl DaemonServer {
                 warn!(plugin = %plugin_id, error = %e, "Failed to reload plugin");
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginFailed {
+                    DaemonEvent::CapsuleFailed {
                         id: plugin_id_str,
                         error: e,
                     },
@@ -265,6 +269,7 @@ impl DaemonServer {
         plugins: &Arc<RwLock<CapsuleRegistry>>,
         workspace_kv: &Arc<dyn KvStore>,
         workspace_root: &std::path::Path,
+        event_bus: &Arc<astrid_events::EventBus>,
     ) -> (bool, Result<(), String>) {
         // Step 1: Create the execution context for the new plugin first.
         // If this fails, we return early and leave the old plugin running.
@@ -272,7 +277,7 @@ impl DaemonServer {
             Ok(kv) => kv,
             Err(e) => return (false, Err(e.to_string())),
         };
-        let ctx = CapsuleContext::new(workspace_root.to_path_buf(), kv);
+        let ctx = CapsuleContext::new(workspace_root.to_path_buf(), kv, Arc::clone(event_bus));
 
         // Step 2: Remove existing plugin under a brief lock.
         let (was_loaded, mut existing_plugin) = {

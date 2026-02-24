@@ -124,6 +124,7 @@ pub struct CompositeCapsule {
     manifest: CapsuleManifest,
     state: CapsuleState,
     engines: Vec<Box<dyn crate::engine::ExecutionEngine>>,
+    tools: Vec<std::sync::Arc<dyn CapsuleTool>>,
 }
 
 impl CompositeCapsule {
@@ -135,6 +136,7 @@ impl CompositeCapsule {
             manifest,
             state: CapsuleState::Unloaded,
             engines: Vec::new(),
+            tools: Vec::new(),
         })
     }
 
@@ -160,11 +162,13 @@ impl Capsule for CompositeCapsule {
 
     async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
         self.state = CapsuleState::Loading;
+        self.tools.clear();
         for engine in &mut self.engines {
             if let Err(e) = engine.load(ctx).await {
                 self.state = CapsuleState::Failed(e.to_string());
                 return Err(e);
             }
+            self.tools.extend_from_slice(engine.tools());
         }
         self.state = CapsuleState::Ready;
         Ok(())
@@ -177,8 +181,13 @@ impl Capsule for CompositeCapsule {
             // prevent others from shutting down gracefully.
             let _ = engine.unload().await;
         }
+        self.tools.clear();
         self.state = CapsuleState::Unloaded;
         Ok(())
+    }
+
+    fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
+        &self.tools
     }
 
     fn take_inbound_rx(

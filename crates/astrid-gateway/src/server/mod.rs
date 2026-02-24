@@ -132,6 +132,8 @@ pub struct DaemonServer {
     inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
     /// MCP client for managing dynamic host servers.
     mcp_client: astrid_mcp::McpClient,
+    /// Event bus
+    event_bus: Arc<astrid_events::EventBus>,
 }
 
 impl DaemonServer {

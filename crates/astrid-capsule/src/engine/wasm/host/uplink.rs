@@ -7,7 +7,6 @@ use crate::engine::wasm::host_state::HostState;
 
 pub(crate) const MAX_INBOUND_MESSAGE_BYTES: usize = 1_048_576;
 
-#[allow(dead_code)]
 pub(crate) fn parse_frontend_type(platform: &[u8]) -> FrontendType {
     let platform_str = String::from_utf8_lossy(platform).to_lowercase();
     match platform_str.as_str() {
@@ -21,7 +20,6 @@ pub(crate) fn parse_frontend_type(platform: &[u8]) -> FrontendType {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn parse_connector_profile(profile: &[u8]) -> Result<ConnectorProfile, Error> {
     let profile_str = String::from_utf8_lossy(profile).to_lowercase();
     match profile_str.as_str() {

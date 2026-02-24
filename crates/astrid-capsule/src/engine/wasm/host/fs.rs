@@ -82,10 +82,15 @@ pub(crate) fn astrid_fs_exists_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
+    let _capsule_id = state.capsule_id.as_str().to_owned();
+
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+
+    // We allow read checks natively, but we ensure it uses the resolved path
     let exists = tokio::task::block_in_place(|| {
         state
             .runtime_handle
-            .block_on(async { state.vfs.exists(&state.vfs_root_handle, &path).await })
+            .block_on(async { state.vfs.exists(&state.vfs_root_handle, resolved.to_string_lossy().as_ref()).await })
     })
     .unwrap_or(false);
 
@@ -135,7 +140,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     tokio::task::block_in_place(|| {
         state
             .runtime_handle
-            .block_on(async { state.vfs.mkdir(&state.vfs_root_handle, &path).await })
+            .block_on(async { state.vfs.mkdir(&state.vfs_root_handle, resolved.to_string_lossy().as_ref()).await })
     })
     .map_err(|e| Error::msg(format!("mkdir failed: {e}")))?;
 
@@ -178,7 +183,7 @@ pub(crate) fn astrid_fs_readdir_impl(
     let entries = tokio::task::block_in_place(|| {
         state
             .runtime_handle
-            .block_on(async { state.vfs.readdir(&state.vfs_root_handle, &path).await })
+            .block_on(async { state.vfs.readdir(&state.vfs_root_handle, resolved.to_string_lossy().as_ref()).await })
     })
     .map_err(|e| Error::msg(format!("readdir failed: {e}")))?;
 
@@ -230,7 +235,7 @@ pub(crate) fn astrid_fs_stat_impl(
     let metadata = tokio::task::block_in_place(|| {
         state
             .runtime_handle
-            .block_on(async { state.vfs.stat(&state.vfs_root_handle, &path).await })
+            .block_on(async { state.vfs.stat(&state.vfs_root_handle, resolved.to_string_lossy().as_ref()).await })
     })
     .map_err(|e| Error::msg(format!("stat failed: {e}")))?;
 
@@ -283,7 +288,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     tokio::task::block_in_place(|| {
         state
             .runtime_handle
-            .block_on(async { state.vfs.unlink(&state.vfs_root_handle, &path).await })
+            .block_on(async { state.vfs.unlink(&state.vfs_root_handle, resolved.to_string_lossy().as_ref()).await })
     })
     .map_err(|e| Error::msg(format!("unlink failed: {e}")))?;
 
@@ -328,7 +333,7 @@ pub(crate) fn astrid_read_file_impl(
         state.runtime_handle.block_on(async {
             let handle = state
                 .vfs
-                .open(&state.vfs_root_handle, &path, false, false)
+                .open(&state.vfs_root_handle, resolved.to_string_lossy().as_ref(), false, false)
                 .await?;
             let data = state.vfs.read(&handle).await;
             let _ = state.vfs.close(&handle).await;
@@ -383,7 +388,7 @@ pub(crate) fn astrid_write_file_impl(
             // Note: pass truncate=true to emulate standard write behavior
             let handle = state
                 .vfs
-                .open(&state.vfs_root_handle, &path, true, true)
+                .open(&state.vfs_root_handle, resolved.to_string_lossy().as_ref(), true, true)
                 .await?;
             let res = state.vfs.write(&handle, &content_bytes).await;
             let _ = state.vfs.close(&handle).await;

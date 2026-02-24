@@ -56,6 +56,9 @@ pub struct CapsuleManifest {
     /// Scheduled background tasks (cron jobs) this capsule provides.
     #[serde(default, rename = "cron")]
     pub cron_jobs: Vec<CronDef>,
+    /// Native tools this capsule provides to the LLM agent.
+    #[serde(default, rename = "tool")]
+    pub tools: Vec<ToolDef>,
 }
 
 /// Package identity metadata.
@@ -222,6 +225,17 @@ pub struct LlmProviderDef {
     /// Capabilities this model supports (e.g., "text", "vision", "tools").
     #[serde(default)]
     pub capabilities: Vec<String>,
+}
+
+/// A tool provided by the capsule to the LLM agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDef {
+    /// Name of the tool.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// JSON schema for the tool's input parameters.
+    pub input_schema: serde_json::Value,
 }
 
 /// An eBPF-style interceptor hook provided by the capsule.

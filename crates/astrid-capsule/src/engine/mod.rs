@@ -35,4 +35,9 @@ pub trait ExecutionEngine: Send + Sync {
     ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
         None
     }
+
+    /// Return the native tools provided by this engine.
+    fn tools(&self) -> &[std::sync::Arc<dyn crate::tool::CapsuleTool>] {
+        &[]
+    }
 }

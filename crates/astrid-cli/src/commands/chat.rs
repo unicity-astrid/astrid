@@ -178,16 +178,16 @@ async fn run_json_chat(
                         .send_elicitation(session_id, &request_id, response)
                         .await?;
                 },
-                DaemonEvent::PluginLoaded { ref name, .. } => {
+                DaemonEvent::CapsuleLoaded { ref name, .. } => {
                     println!("{}", Theme::success(&format!("Plugin loaded: {name}")));
                 },
-                DaemonEvent::PluginFailed { ref id, ref error } => {
+                DaemonEvent::CapsuleFailed { ref id, ref error } => {
                     println!(
                         "{}",
                         Theme::warning(&format!("Plugin {id} failed to load: {error}"))
                     );
                 },
-                DaemonEvent::PluginUnloaded { ref name, .. } => {
+                DaemonEvent::CapsuleUnloaded { ref name, .. } => {
                     println!("{}", Theme::dimmed(&format!("Plugin unloaded: {name}")));
                 },
                 DaemonEvent::Usage { .. } | DaemonEvent::SessionSaved => {},
@@ -240,7 +240,7 @@ async fn handle_slash_command(command: &str, client: &DaemonClient, session_id: 
                     "  MCP:      {}/{} servers running",
                     status.mcp_servers_running, status.mcp_servers_configured
                 );
-                println!("  Plugins:  {} loaded\n", status.plugins_loaded);
+                println!("  Plugins:  {} loaded\n", status.capsules_loaded);
             } else {
                 println!("{}", Theme::error("Failed to get daemon info"));
             }
@@ -371,7 +371,7 @@ async fn handle_slash_command(command: &str, client: &DaemonClient, session_id: 
             Ok(()) => println!("{}", Theme::success("Session saved.")),
             Err(e) => println!("{}", Theme::error(&format!("Failed to save: {e}"))),
         },
-        "/plugins" => match client.list_plugins().await {
+        "/plugins" => match client.list_capsules().await {
             Ok(plugins) if plugins.is_empty() => {
                 println!("\n{}", Theme::dimmed("No plugins registered.\n"));
             },

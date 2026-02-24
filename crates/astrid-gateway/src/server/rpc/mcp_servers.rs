@@ -53,7 +53,7 @@ impl RpcImpl {
         let mcp = self.runtime.mcp();
         let session_count = self.sessions.read().await.len();
 
-        let plugins_loaded = {
+        let capsules_loaded = {
             let registry: tokio::sync::RwLockReadGuard<
                 '_,
                 astrid_capsule::registry::CapsuleRegistry,
@@ -76,7 +76,7 @@ impl RpcImpl {
             version: env!("CARGO_PKG_VERSION").to_string(),
             mcp_servers_configured: mcp.server_manager().configured_count(),
             mcp_servers_running: mcp.server_manager().running_count().await,
-            plugins_loaded,
+            capsules_loaded,
             ephemeral: self.ephemeral,
             active_connections: self.active_connections.load(Ordering::Relaxed),
         })

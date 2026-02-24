@@ -39,6 +39,15 @@ impl ExecutionEngine for McpHostEngine {
             CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
         })?;
 
+        // Explicitly verify if the host_process capability was granted in the manifest
+        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| command_str.starts_with(cmd));
+        if !is_granted {
+            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
+                command_str
+            )));
+        }
+
         info!(
             capsule = %self.manifest.package.name,
             command = %command_str,

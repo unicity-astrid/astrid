@@ -31,8 +31,8 @@ use tokio::sync::{RwLock, broadcast};
 
 use super::SessionHandle;
 use crate::rpc::{
-    AllowanceInfo, AstridRpcServer, AuditEntryInfo, BudgetInfo, DaemonStatus, McpServerInfo,
-    PluginInfo, SessionInfo, ToolInfo,
+    AllowanceInfo, AstridRpcServer, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonStatus, McpServerInfo,
+    SessionInfo, ToolInfo,
 };
 
 /// The jsonrpsee RPC method handler.
@@ -79,6 +79,7 @@ pub(in crate::server) struct RpcImpl {
     pub(in crate::server) connector_sessions: Arc<RwLock<HashMap<uuid::Uuid, SessionId>>>,
     /// Sender for fanning in inbound messages from capsule uplinks.
     pub(in crate::server) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
+    pub(in crate::server) event_bus: Arc<astrid_events::EventBus>,
 }
 
 #[jsonrpsee::core::async_trait]
@@ -181,16 +182,16 @@ impl AstridRpcServer for RpcImpl {
         self.save_session_impl(session_id).await
     }
 
-    async fn list_plugins(&self) -> Result<Vec<PluginInfo>, ErrorObjectOwned> {
-        self.list_plugins_impl().await
+    async fn list_capsules(&self) -> Result<Vec<CapsuleInfo>, ErrorObjectOwned> {
+        self.list_capsules_impl().await
     }
 
-    async fn load_plugin(&self, plugin_id: String) -> Result<PluginInfo, ErrorObjectOwned> {
-        self.load_plugin_impl(plugin_id).await
+    async fn load_capsule(&self, plugin_id: String) -> Result<CapsuleInfo, ErrorObjectOwned> {
+        self.load_capsule_impl(plugin_id).await
     }
 
-    async fn unload_plugin(&self, plugin_id: String) -> Result<(), ErrorObjectOwned> {
-        self.unload_plugin_impl(plugin_id).await
+    async fn unload_capsule(&self, plugin_id: String) -> Result<(), ErrorObjectOwned> {
+        self.unload_capsule_impl(plugin_id).await
     }
 
     async fn cancel_turn(&self, session_id: SessionId) -> Result<(), ErrorObjectOwned> {

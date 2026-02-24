@@ -1,24 +1,7 @@
 //! Test WASM guest plugin for end-to-end integration testing.
 //!
-//! Exercises all 9 Astrid host functions through 8 tools:
-//!
-//! | Tool                     | Host Functions Used                        |
-//! |--------------------------|--------------------------------------------|
-//! | `test-log`               | `astrid_log`                             |
-//! | `test-config`            | `astrid_get_config`                      |
-//! | `test-kv`                | `astrid_kv_set`, `astrid_kv_get`       |
-//! | `test-file-write`        | `astrid_write_file`                      |
-//! | `test-file-read`         | `astrid_read_file`                       |
-//! | `test-roundtrip`         | `astrid_kv_set`, `astrid_kv_get`       |
-//! | `test-register-connector`| `astrid_register_connector`              |
-//! | `test-channel-send`      | `astrid_register_connector`, `astrid_channel_send` |
-//!
-//! Built as a `cdylib` targeting `wasm32-unknown-unknown` for Extism.
-//!
-//! Export names use hyphens (`describe-tools`, `execute-tool`, `run-hook`)
-//! to match the Astrid plugin ABI convention. Since `#[plugin_fn]` only
-//! exports with Rust identifier names (underscores), we use `#[export_name]`
-//! on raw `extern "C"` functions that call into the Extism input/output API.
+//! Exercises all 9 Astrid host functions through 8 tools.
+//! Built using the new `astrid-sdk` and `#[capsule]` macro.
 
 #![allow(unsafe_code)]
 #![allow(missing_docs)]
@@ -27,50 +10,11 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use extism_pdk::*;
+use astrid_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Host function imports — must match the signatures registered by
-// `astrid_plugins::wasm::host_functions::register_host_functions`
-// ---------------------------------------------------------------------------
-
-#[host_fn]
-extern "ExtismHost" {
-    fn astrid_channel_send(
-        connector_id: String,
-        platform_user_id: String,
-        content: String,
-    ) -> String;
-    fn astrid_log(level: String, message: String);
-    fn astrid_get_config(key: String) -> String;
-    fn astrid_kv_get(key: String) -> String;
-    fn astrid_kv_set(key: String, value: String);
-    fn astrid_read_file(path: String) -> String;
-    fn astrid_register_connector(name: String, platform: String, profile: String) -> String;
-    fn astrid_write_file(path: String, content: String);
-    fn astrid_http_request(request_json: String) -> String;
-    fn astrid_ipc_publish(topic: String, payload: String);
-    fn astrid_ipc_subscribe(topic: String) -> String;
-    fn astrid_ipc_unsubscribe(handle: String);
-}
-
-// ---------------------------------------------------------------------------
-// ABI types — mirrors `astrid_core::plugin_abi`
-// ---------------------------------------------------------------------------
-
-#[derive(Serialize)]
-struct ToolDefinition {
-    name: String,
-    description: String,
-    input_schema: String,
-}
-
-#[derive(Deserialize)]
-struct ToolInput {
-    name: String,
-    arguments: String,
-}
+#[derive(Default)]
+pub struct TestCapsule;
 
 #[derive(Serialize)]
 struct ToolOutput {
@@ -78,480 +22,347 @@ struct ToolOutput {
     is_error: bool,
 }
 
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct PluginContext {
-    event: String,
-    session_id: String,
+#[derive(Deserialize, Default)]
+struct TestLogArgs {
+    message: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestConfigArgs {
+    key: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestKvArgs {
+    key: Option<String>,
+    value: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestFileWriteArgs {
+    path: Option<String>,
+    content: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestFileReadArgs {
+    path: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestRoundtripArgs {
+    data: serde_json::Value,
+}
+
+#[derive(Deserialize, Default)]
+struct TestRegisterConnectorArgs {
+    name: Option<String>,
+    platform: Option<String>,
+    profile: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct TestChannelSendArgs {
+    connector_name: Option<String>,
+    platform: Option<String>,
     user_id: Option<String>,
-    data: Option<String>,
+    message: Option<String>,
 }
 
-#[derive(Serialize)]
-struct HookResult {
-    action: String,
-    data: Option<String>,
+#[derive(Deserialize, Default)]
+struct TestIpcArgs {
+    topic: Option<String>,
+    payload: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Extism exports with hyphenated names
-//
-// We use `#[export_name]` to produce the exact export names the Astrid
-// plugin system expects: `describe-tools`, `execute-tool`, `run-hook`.
-// ---------------------------------------------------------------------------
-
-#[unsafe(export_name = "describe-tools")]
-pub extern "C" fn describe_tools() -> i32 {
-    let tools = vec![
-        ToolDefinition {
-            name: "test-log".into(),
-            description: "Log at every severity level and return confirmation".into(),
-            input_schema: r#"{"type":"object","properties":{"message":{"type":"string"}},"required":["message"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-config".into(),
-            description: "Read a config key and return its value".into(),
-            input_schema: r#"{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-kv".into(),
-            description: "Set a KV pair then read it back to verify round-trip".into(),
-            input_schema: r#"{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-file-write".into(),
-            description: "Write content to a file in the workspace".into(),
-            input_schema: r#"{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-file-read".into(),
-            description: "Read content from a file in the workspace".into(),
-            input_schema: r#"{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-roundtrip".into(),
-            description: "Write structured data to KV, read it back, verify integrity".into(),
-            input_schema: r#"{"type":"object","properties":{"data":{"type":"object"}},"required":["data"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-register-connector".into(),
-            description: "Register a connector and return its assigned ID".into(),
-            input_schema: r#"{"type":"object","properties":{"name":{"type":"string"},"platform":{"type":"string"},"profile":{"type":"string"}},"required":["name","platform","profile"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-channel-send".into(),
-            description: "Register a connector, then send a message through it".into(),
-            input_schema: r#"{"type":"object","properties":{"connector_name":{"type":"string"},"platform":{"type":"string"},"user_id":{"type":"string"},"message":{"type":"string"}},"required":["connector_name","platform","user_id","message"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-ipc".into(),
-            description: "Subscribe to an IPC topic and publish a message".into(),
-            input_schema: r#"{"type":"object","properties":{"topic":{"type":"string"},"payload":{"type":"string"}},"required":["topic","payload"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-ipc-limits".into(),
-            description: "Test IPC host function limits (publish and subscribe)".into(),
-            input_schema: r#"{"type":"object","properties":{"test_type":{"type":"string"}},"required":["test_type"]}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-malicious-log".into(),
-            description: "Attempt to log a message that exceeds the maximum log length limit".into(),
-            input_schema: r#"{"type":"object","properties":{}}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-malicious-kv".into(),
-            description: "Attempt to set a KV pair that exceeds the 10MB limit".into(),
-            input_schema: r#"{"type":"object","properties":{}}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-malicious-http-headers".into(),
-            description: "Attempt to trigger host panic with invalid HTTP headers".into(),
-            input_schema: r#"{"type":"object","properties":{}}"#.into(),
-        },
-        ToolDefinition {
-            name: "test-http".into(),
-            description: "Make an HTTP request via host function".into(),
-            input_schema: r#"{"type":"object","properties":{"request":{"type":"string"}},"required":["request"]}"#.into(),
-        },
-    ];
-
-    let json = serde_json::to_string(&tools).unwrap();
-    output(&json).unwrap();
-    0
+#[derive(Deserialize, Default)]
+struct TestIpcLimitsArgs {
+    test_type: Option<String>,
 }
 
-#[unsafe(export_name = "execute-tool")]
-pub extern "C" fn execute_tool() -> i32 {
-    let input_str: String = input().unwrap();
-    let tool_input: ToolInput = match serde_json::from_str(&input_str) {
-        Ok(ti) => ti,
-        Err(e) => {
-            let err = ToolOutput {
-                content: format!("failed to parse tool input: {e}"),
-                is_error: true,
-            };
-            output(&serde_json::to_string(&err).unwrap()).unwrap();
-            return 0;
-        },
-    };
-
-    let args: serde_json::Value = match serde_json::from_str(&tool_input.arguments) {
-        Ok(a) => a,
-        Err(e) => {
-            let err = ToolOutput {
-                content: format!("failed to parse arguments: {e}"),
-                is_error: true,
-            };
-            output(&serde_json::to_string(&err).unwrap()).unwrap();
-            return 0;
-        },
-    };
-
-    let result = match tool_input.name.as_str() {
-        "test-log" => handle_test_log(&args),
-        "test-config" => handle_test_config(&args),
-        "test-kv" => handle_test_kv(&args),
-        "test-file-write" => handle_test_file_write(&args),
-        "test-file-read" => handle_test_file_read(&args),
-        "test-roundtrip" => handle_test_roundtrip(&args),
-        "test-register-connector" => handle_test_register_connector(&args),
-        "test-channel-send" => handle_test_channel_send(&args),
-        "test-ipc" => handle_test_ipc(&args),
-        "test-ipc-limits" => handle_test_ipc_limits(&args),
-        "test-malicious-log" => handle_test_malicious_log(&args),
-        "test-malicious-kv" => handle_test_malicious_kv(&args),
-        "test-malicious-http-headers" => handle_test_malicious_http_headers(&args),
-        "test-http" => handle_test_http(&args),
-        other => Ok(ToolOutput {
-            content: format!("unknown tool: {other}"),
-            is_error: true,
-        }),
-    };
-
-    let tool_output = match result {
-        Ok(o) => o,
-        Err(e) => ToolOutput {
-            content: format!("tool execution failed: {e}"),
-            is_error: true,
-        },
-    };
-
-    output(&serde_json::to_string(&tool_output).unwrap()).unwrap();
-    0
+#[derive(Deserialize, Default)]
+struct TestHttpArgs {
+    request: Option<String>,
 }
 
-#[unsafe(export_name = "run-hook")]
-pub extern "C" fn run_hook() -> i32 {
-    // Read input but don't require it to be valid
-    let _ctx: Option<PluginContext> = input::<String>()
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok());
+#[derive(Deserialize, Default)]
+struct EmptyArgs {}
 
-    let result = HookResult {
-        action: "continue".into(),
-        data: None,
-    };
-    output(&serde_json::to_string(&result).unwrap()).unwrap();
-    0
-}
+#[capsule]
+impl TestCapsule {
+    #[astrid::tool("test-log")]
+    fn handle_test_log(&self, args: TestLogArgs) -> Result<ToolOutput, SysError> {
+        let message = args.message.unwrap_or_else(|| "test".to_string());
 
-// ---------------------------------------------------------------------------
-// Tool handlers
-// ---------------------------------------------------------------------------
+        sys::log("debug", format!("debug: {message}"))?;
+        sys::log("info", format!("info: {message}"))?;
+        sys::log("warn", format!("warn: {message}"))?;
+        sys::log("error", format!("error: {message}"))?;
 
-fn handle_test_log(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let message = args["message"].as_str().unwrap_or("test");
-
-    unsafe {
-        astrid_log("debug".into(), format!("debug: {message}"))?;
-        astrid_log("info".into(), format!("info: {message}"))?;
-        astrid_log("warn".into(), format!("warn: {message}"))?;
-        astrid_log("error".into(), format!("error: {message}"))?;
+        Ok(ToolOutput {
+            content: format!("logged at all levels: {message}"),
+            is_error: false,
+        })
     }
 
-    Ok(ToolOutput {
-        content: format!("logged at all levels: {message}"),
-        is_error: false,
-    })
-}
-
-fn handle_test_malicious_log(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    // Generate a string larger than MAX_LOG_MESSAGE_LEN (64KB)
-    let huge_message = "A".repeat(65 * 1024);
-    
-    // Attempting to log this should fail due to host memory limits
-    unsafe {
-        astrid_log("info".into(), huge_message)?;
+    #[astrid::tool("test-malicious-log")]
+    fn handle_test_malicious_log(&self, _args: EmptyArgs) -> Result<ToolOutput, SysError> {
+        let huge_message = "A".repeat(65 * 1024);
+        sys::log("info", huge_message)?;
+        Ok(ToolOutput {
+            content: "log succeeded unexpectedly".to_string(),
+            is_error: false,
+        })
     }
 
-    Ok(ToolOutput {
-        content: "log succeeded unexpectedly".to_string(),
-        is_error: false,
-    })
-}
-
-fn handle_test_malicious_kv(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    // Generate a string larger than MAX_GUEST_PAYLOAD_LEN (10MB)
-    let huge_message = "A".repeat(11 * 1024 * 1024);
-    
-    // Attempting to store this should fail due to host memory limits
-    unsafe {
-        astrid_kv_set("huge_key".into(), huge_message)?;
+    #[astrid::tool("test-malicious-kv")]
+    fn handle_test_malicious_kv(&self, _args: EmptyArgs) -> Result<ToolOutput, SysError> {
+        let huge_message = "A".repeat(11 * 1024 * 1024);
+        kv::set_bytes("huge_key", huge_message.as_bytes())?;
+        Ok(ToolOutput {
+            content: "kv set succeeded unexpectedly".to_string(),
+            is_error: false,
+        })
     }
 
-    Ok(ToolOutput {
-        content: "kv set succeeded unexpectedly".to_string(),
-        is_error: false,
-    })
-}
+    #[astrid::tool("test-malicious-http-headers")]
+    fn handle_test_malicious_http_headers(&self, _args: EmptyArgs) -> Result<ToolOutput, SysError> {
+        let req_json = serde_json::json!({
+            "method": "GET",
+            "url": "http://example.com",
+            "headers": [
+                { "key": "Bad\nHeader", "value": "value" },
+                { "key": "Valid-Header", "value": "Bad\r\nValue" }
+            ],
+            "body": null
+        });
+        
+        http::request_bytes(req_json.to_string().as_bytes())?;
 
-fn handle_test_malicious_http_headers(_args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let req_json = serde_json::json!({
-        "method": "GET",
-        "url": "http://example.com",
-        "headers": [
-            { "key": "Bad\nHeader", "value": "value" },
-            { "key": "Valid-Header", "value": "Bad\r\nValue" }
-        ],
-        "body": null
-    });
-    
-    // Attempting to send this should fail due to invalid headers
-    unsafe {
-        astrid_http_request(req_json.to_string())?;
+        Ok(ToolOutput {
+            content: "http request succeeded unexpectedly".to_string(),
+            is_error: false,
+        })
     }
 
-    Ok(ToolOutput {
-        content: "http request succeeded unexpectedly".to_string(),
-        is_error: false,
-    })
-}
+    #[astrid::tool("test-config")]
+    fn handle_test_config(&self, args: TestConfigArgs) -> Result<ToolOutput, SysError> {
+        let key = args.key.unwrap_or_default();
+        let value = sys::get_config_string(&key)?;
 
+        let result = if value.is_empty() {
+            serde_json::json!({ "found": false, "key": key, "value": null })
+        } else {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
+            serde_json::json!({ "found": true, "key": key, "value": parsed })
+        };
 
-fn handle_test_config(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let key = args["key"].as_str().unwrap_or("");
-
-    let value = unsafe { astrid_get_config(key.into())? };
-
-    let result = if value.is_empty() {
-        serde_json::json!({ "found": false, "key": key, "value": null })
-    } else {
-        // Try to parse as JSON, fall back to string
-        let parsed: serde_json::Value =
-            serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
-        serde_json::json!({ "found": true, "key": key, "value": parsed })
-    };
-
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
-
-fn handle_test_kv(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let key = args["key"].as_str().unwrap_or("");
-    let value = args["value"].as_str().unwrap_or("");
-
-    unsafe {
-        astrid_kv_set(key.into(), value.into())?;
-    }
-    let read_back = unsafe { astrid_kv_get(key.into())? };
-
-    let result = serde_json::json!({
-        "key": key,
-        "written": value,
-        "read_back": read_back,
-        "match": read_back == value
-    });
-
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
-
-fn handle_test_file_write(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let path = args["path"].as_str().unwrap_or("");
-    let content = args["content"].as_str().unwrap_or("");
-
-    unsafe {
-        astrid_write_file(path.into(), content.into())?;
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
     }
 
-    let result = serde_json::json!({ "written": true, "path": path });
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
+    #[astrid::tool("test-kv")]
+    fn handle_test_kv(&self, args: TestKvArgs) -> Result<ToolOutput, SysError> {
+        let key = args.key.unwrap_or_default();
+        let value = args.value.unwrap_or_default();
 
-fn handle_test_file_read(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let path = args["path"].as_str().unwrap_or("");
+        kv::set_bytes(&key, value.as_bytes())?;
+        let read_back_bytes = kv::get_bytes(&key)?;
+        let read_back = String::from_utf8_lossy(&read_back_bytes).to_string();
 
-    let content = unsafe { astrid_read_file(path.into())? };
+        let result = serde_json::json!({
+            "key": key,
+            "written": value,
+            "read_back": read_back,
+            "match": read_back == value
+        });
 
-    let result = serde_json::json!({ "path": path, "content": content });
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
-
-fn handle_test_roundtrip(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let data = &args["data"];
-    let serialized = serde_json::to_string(data)?;
-
-    unsafe {
-        astrid_kv_set("roundtrip-test".into(), serialized.clone())?;
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
     }
-    let read_back = unsafe { astrid_kv_get("roundtrip-test".into())? };
-    let parsed: serde_json::Value = serde_json::from_str(&read_back)?;
 
-    let result = serde_json::json!({
-        "original": data,
-        "round_tripped": parsed,
-        "integrity": serialized == read_back
-    });
+    #[astrid::tool("test-file-write")]
+    fn handle_test_file_write(&self, args: TestFileWriteArgs) -> Result<ToolOutput, SysError> {
+        let path = args.path.unwrap_or_default();
+        let content = args.content.unwrap_or_default();
 
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
+        fs::write_string(&path, &content)?;
 
-fn handle_test_register_connector(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let name = args["name"].as_str().unwrap_or("");
-    let platform = args["platform"].as_str().unwrap_or("");
-    let profile = args["profile"].as_str().unwrap_or("chat");
+        let result = serde_json::json!({ "written": true, "path": path });
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
 
-    let connector_id =
-        unsafe { astrid_register_connector(name.into(), platform.into(), profile.into())? };
+    #[astrid::tool("test-file-read")]
+    fn handle_test_file_read(&self, args: TestFileReadArgs) -> Result<ToolOutput, SysError> {
+        let path = args.path.unwrap_or_default();
 
-    let result = serde_json::json!({
-        "registered": true,
-        "connector_id": connector_id,
-        "name": name,
-        "platform": platform,
-        "profile": profile
-    });
+        let content = fs::read_string(&path)?;
 
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
+        let result = serde_json::json!({ "path": path, "content": content });
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
 
-fn handle_test_channel_send(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let connector_name = args["connector_name"].as_str().unwrap_or("");
-    let platform = args["platform"].as_str().unwrap_or("");
-    let user_id = args["user_id"].as_str().unwrap_or("");
-    let message = args["message"].as_str().unwrap_or("");
+    #[astrid::tool("test-roundtrip")]
+    fn handle_test_roundtrip(&self, args: TestRoundtripArgs) -> Result<ToolOutput, SysError> {
+        kv::set_json("roundtrip-test", &args.data)?;
+        let read_back: serde_json::Value = kv::get_json("roundtrip-test")?;
 
-    // First register a connector to get an ID
-    let connector_id = unsafe {
-        astrid_register_connector(connector_name.into(), platform.into(), "chat".into())?
-    };
+        let result = serde_json::json!({
+            "original": args.data,
+            "round_tripped": read_back,
+            "integrity": args.data == read_back
+        });
 
-    // Then send a message through it
-    let send_result =
-        unsafe { astrid_channel_send(connector_id.clone(), user_id.into(), message.into())? };
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
 
-    // Parse the send result
-    let send_parsed: serde_json::Value =
-        serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
+    #[astrid::tool("test-register-connector")]
+    fn handle_test_register_connector(&self, args: TestRegisterConnectorArgs) -> Result<ToolOutput, SysError> {
+        let name = args.name.unwrap_or_default();
+        let platform = args.platform.unwrap_or_default();
+        let profile = args.profile.unwrap_or_else(|| "chat".to_string());
 
-    let result = serde_json::json!({
-        "connector_id": connector_id,
-        "send_result": send_parsed,
-        "user_id": user_id,
-        "message": message
-    });
+        let connector_id_bytes = uplink::register(&name, &platform, &profile)?;
+        let connector_id = String::from_utf8_lossy(&connector_id_bytes).to_string();
 
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
+        let result = serde_json::json!({
+            "registered": true,
+            "connector_id": connector_id,
+            "name": name,
+            "platform": platform,
+            "profile": profile
+        });
 
-fn handle_test_ipc(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let topic = args["topic"].as_str().unwrap_or("");
-    let payload = args["payload"].as_str().unwrap_or("");
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
 
-    // Subscribe
-    let handle_id = unsafe { astrid_ipc_subscribe(topic.into())? };
-    
-    // Publish
-    unsafe { astrid_ipc_publish(topic.into(), payload.into())? };
-    
-    // Unsubscribe
-    unsafe { astrid_ipc_unsubscribe(handle_id.clone())? };
+    #[astrid::tool("test-channel-send")]
+    fn handle_test_channel_send(&self, args: TestChannelSendArgs) -> Result<ToolOutput, SysError> {
+        let connector_name = args.connector_name.unwrap_or_default();
+        let platform = args.platform.unwrap_or_default();
+        let user_id = args.user_id.unwrap_or_default();
+        let message = args.message.unwrap_or_default();
 
-    let result = serde_json::json!({
-        "topic": topic,
-        "payload": payload,
-        "subscription_handle": handle_id,
-        "unsubscribed": true
-    });
+        let connector_id_bytes = uplink::register(&connector_name, &platform, "chat")?;
 
-    Ok(ToolOutput {
-        content: serde_json::to_string(&result)?,
-        is_error: false,
-    })
-}
+        let send_result_bytes = uplink::send_bytes(&connector_id_bytes, user_id.as_bytes(), message.as_bytes())?;
+        let send_result = String::from_utf8_lossy(&send_result_bytes).to_string();
 
-fn handle_test_ipc_limits(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let test_type = args["test_type"].as_str().unwrap_or("");
-    
-    match test_type {
-        "publish_large" => {
-            // Test 1: Publish a large payload (> 5MB)
-            let large_payload = "a".repeat(5 * 1024 * 1024 + 1024);
-            let _ = unsafe { astrid_ipc_publish("test.large".into(), large_payload) };
-            
-            // If the publish succeeds or gracefully returns without trapping, we reach here.
-            // But the host traps on > 5MB, so we should never reach here.
-            Ok(ToolOutput {
-                content: "did not trap".into(),
-                is_error: true,
-            })
-        },
-        "subscribe_loop" => {
-            // Test 2: Exhaust the subscription limit (128)
-            let mut handles = Vec::new();
-            for _ in 0..128 {
-                match unsafe { astrid_ipc_subscribe("test.loop".into()) } {
-                    Ok(h) => handles.push(h),
-                    Err(e) => return Ok(ToolOutput {
-                        content: format!("failed before 128: {:?}", e),
-                        is_error: true,
-                    }),
+        let send_parsed: serde_json::Value =
+            serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
+
+        let result = serde_json::json!({
+            "connector_id": String::from_utf8_lossy(&connector_id_bytes).to_string(),
+            "send_result": send_parsed,
+            "user_id": user_id,
+            "message": message
+        });
+
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
+
+    #[astrid::tool("test-ipc")]
+    fn handle_test_ipc(&self, args: TestIpcArgs) -> Result<ToolOutput, SysError> {
+        let topic = args.topic.unwrap_or_default();
+        let payload = args.payload.unwrap_or_default();
+
+        let handle_bytes = ipc::subscribe(&topic)?;
+        
+        ipc::publish_bytes(&topic, payload.as_bytes())?;
+        
+        ipc::unsubscribe(&handle_bytes)?;
+
+        let result = serde_json::json!({
+            "topic": topic,
+            "payload": payload,
+            "subscription_handle": String::from_utf8_lossy(&handle_bytes).to_string(),
+            "unsubscribed": true
+        });
+
+        Ok(ToolOutput {
+            content: serde_json::to_string(&result)?,
+            is_error: false,
+        })
+    }
+
+    #[astrid::tool("test-ipc-limits")]
+    fn handle_test_ipc_limits(&self, args: TestIpcLimitsArgs) -> Result<ToolOutput, SysError> {
+        let test_type = args.test_type.unwrap_or_default();
+        
+        match test_type.as_str() {
+            "publish_large" => {
+                let large_payload = "a".repeat(5 * 1024 * 1024 + 1024);
+                let _ = ipc::publish_bytes("test.large", large_payload.as_bytes());
+                
+                Ok(ToolOutput {
+                    content: "did not trap".into(),
+                    is_error: true,
+                })
+            },
+            "subscribe_loop" => {
+                let mut handles = Vec::new();
+                for _ in 0..128 {
+                    match ipc::subscribe("test.loop") {
+                        Ok(h) => handles.push(h),
+                        Err(e) => return Ok(ToolOutput {
+                            content: format!("failed before 128: {:?}", e),
+                            is_error: true,
+                        }),
+                    }
                 }
-            }
-            
-            // 129th should fail
-            let result = unsafe { astrid_ipc_subscribe("test.loop".into()) };
-            
-            Ok(ToolOutput {
-                content: format!("handles_created: {}, 129th_result: {:?}", handles.len(), result),
-                is_error: result.is_err(), // Will be marked as error in test if it matches Err
-            })
-        },
-        _ => Ok(ToolOutput {
-            content: "unknown test_type".into(),
-            is_error: true,
-        }),
+                
+                let result = ipc::subscribe("test.loop");
+                
+                Ok(ToolOutput {
+                    content: format!("handles_created: {}, 129th_result: {:?}", handles.len(), result),
+                    is_error: result.is_err(),
+                })
+            },
+            _ => Ok(ToolOutput {
+                content: "unknown test_type".into(),
+                is_error: true,
+            }),
+        }
     }
-}
 
-fn handle_test_http(args: &serde_json::Value) -> Result<ToolOutput, Error> {
-    let req = args
-        .get("request")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::msg("missing 'request' string arg"))?;
+    #[astrid::tool("test-http")]
+    fn handle_test_http(&self, args: TestHttpArgs) -> Result<ToolOutput, SysError> {
+        let req = args.request.unwrap_or_default();
 
-    let output_str = unsafe { astrid_http_request(req.into()) }?;
-    Ok(ToolOutput {
-        content: output_str,
-        is_error: false,
-    })
+        let output_bytes = http::request_bytes(req.as_bytes())?;
+        let output_str = String::from_utf8_lossy(&output_bytes).to_string();
+
+        Ok(ToolOutput {
+            content: output_str,
+            is_error: false,
+        })
+    }
+
+    #[astrid::interceptor("run-hook")]
+    fn run_hook(&self, _args: EmptyArgs) -> Result<serde_json::Value, SysError> {
+        Ok(serde_json::json!({
+            "action": "continue",
+            "data": null
+        }))
+    }
 }

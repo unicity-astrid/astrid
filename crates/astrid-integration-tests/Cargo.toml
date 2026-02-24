@@ -19,6 +19,7 @@ astrid-test.workspace = true
 astrid-capsule.workspace = true
 astrid-hooks.workspace = true
 astrid-storage.workspace = true
+astrid-events.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = "3"

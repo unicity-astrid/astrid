@@ -8,10 +8,10 @@ use astrid_storage::ScopedKvStore;
 use jsonrpsee::types::ErrorObjectOwned;
 
 use super::RpcImpl;
-use crate::rpc::{DaemonEvent, PluginInfo, error_codes};
+use crate::rpc::{CapsuleInfo, DaemonEvent, error_codes};
 
 impl RpcImpl {
-    pub(super) async fn list_plugins_impl(&self) -> Result<Vec<PluginInfo>, ErrorObjectOwned> {
+    pub(super) async fn list_capsules_impl(&self) -> Result<Vec<CapsuleInfo>, ErrorObjectOwned> {
         let registry: tokio::sync::RwLockReadGuard<'_, astrid_capsule::registry::CapsuleRegistry> =
             self.plugins.read().await;
         let mut infos = Vec::new();
@@ -25,7 +25,7 @@ impl RpcImpl {
                     CapsuleState::Unloading => ("unloading".to_string(), None),
                 };
                 let manifest = plugin.manifest();
-                infos.push(PluginInfo {
+                infos.push(CapsuleInfo {
                     id: id.as_str().to_string(),
                     name: manifest.package.name.clone(),
                     version: manifest.package.version.clone(),
@@ -40,10 +40,10 @@ impl RpcImpl {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub(super) async fn load_plugin_impl(
+    pub(super) async fn load_capsule_impl(
         &self,
         plugin_id: String,
-    ) -> Result<PluginInfo, ErrorObjectOwned> {
+    ) -> Result<CapsuleInfo, ErrorObjectOwned> {
         let pid = CapsuleId::new(&plugin_id).map_err(|e| {
             ErrorObjectOwned::owned(
                 error_codes::INVALID_REQUEST,
@@ -86,7 +86,7 @@ impl RpcImpl {
             },
         };
 
-        let ctx = CapsuleContext::new(self.workspace_root.clone(), kv);
+        let ctx = CapsuleContext::new(self.workspace_root.clone(), kv, Arc::clone(&self.event_bus));
 
         // Expensive async load happens outside the lock.
         let load_result: astrid_capsule::error::CapsuleResult<()> = plugin.load(&ctx).await;
@@ -98,7 +98,7 @@ impl RpcImpl {
             Ok(()) => (
                 "ready".to_string(),
                 None,
-                DaemonEvent::PluginLoaded {
+                DaemonEvent::CapsuleLoaded {
                     id: plugin_id.clone(),
                     name: name.clone(),
                 },
@@ -108,7 +108,7 @@ impl RpcImpl {
                 (
                     "failed".to_string(),
                     Some(err_msg.clone()),
-                    DaemonEvent::PluginFailed {
+                    DaemonEvent::CapsuleFailed {
                         id: plugin_id.clone(),
                         error: err_msg,
                     },
@@ -145,7 +145,7 @@ impl RpcImpl {
             });
         }
 
-        let info = PluginInfo {
+        let info = CapsuleInfo {
             id: plugin_id,
             name,
             version,
@@ -171,7 +171,7 @@ impl RpcImpl {
         Ok(info)
     }
 
-    pub(super) async fn unload_plugin_impl(
+    pub(super) async fn unload_capsule_impl(
         &self,
         plugin_id: String,
     ) -> Result<(), ErrorObjectOwned> {
@@ -219,7 +219,7 @@ impl RpcImpl {
         // Mark as user-unloaded so the watcher doesn't re-load it.
         self.user_unloaded_capsules.write().await.insert(pid);
 
-        let event = DaemonEvent::PluginUnloaded {
+        let event = DaemonEvent::CapsuleUnloaded {
             id: plugin_id,
             name,
         };

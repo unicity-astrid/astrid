@@ -6,6 +6,7 @@
 //! `astrid-approval`'s `SecurityInterceptor` is available behind the
 //! `approval` feature flag.
 
+use crate::manifest::CapsuleManifest;
 use async_trait::async_trait;
 
 /// Security gate for plugin host function calls.
@@ -126,6 +127,60 @@ impl CapsuleSecurityGate for DenyAllGate {
 // ---------------------------------------------------------------------------
 // Concrete adapter wrapping SecurityInterceptor (behind `approval` feature)
 // ---------------------------------------------------------------------------
+
+/// Security gate that enforces capabilities based on the manifest.
+/// Assumes capabilities declared in the manifest were approved by the user during installation.
+#[derive(Debug, Clone)]
+pub struct ManifestSecurityGate {
+    manifest: CapsuleManifest,
+}
+
+impl ManifestSecurityGate {
+    pub fn new(manifest: CapsuleManifest) -> Self {
+        Self { manifest }
+    }
+}
+
+#[async_trait]
+impl CapsuleSecurityGate for ManifestSecurityGate {
+    async fn check_http_request(
+        &self,
+        capsule_id: &str,
+        _method: &str,
+        url: &str,
+    ) -> Result<(), String> {
+        // Extract domain from url (e.g., https://api.github.com/v1 -> api.github.com)
+        let domain = url.trim_start_matches("http://").trim_start_matches("https://").split('/').next().unwrap_or(url);
+        
+        if self.manifest.capabilities.net.iter().any(|d| domain.contains(d) || d == "*") {
+            Ok(())
+        } else {
+            Err(format!(
+                "plugin '{capsule_id}' denied: network access to '{url}' not declared in manifest"
+            ))
+        }
+    }
+
+    async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
+        if self.manifest.capabilities.fs_read.iter().any(|p| path.starts_with(p)) {
+            Ok(())
+        } else {
+            Err(format!(
+                "plugin '{capsule_id}' denied: read access to '{path}' not declared in manifest"
+            ))
+        }
+    }
+
+    async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
+        if self.manifest.capabilities.fs_write.iter().any(|p| path.starts_with(p)) {
+            Ok(())
+        } else {
+            Err(format!(
+                "plugin '{capsule_id}' denied: write access to '{path}' not declared in manifest"
+            ))
+        }
+    }
+}
 
 #[cfg(feature = "approval")]
 mod interceptor_gate {

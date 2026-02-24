@@ -3,8 +3,10 @@
 //! Provides the execution context for capsule lifecycle and tool invocations.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use astrid_core::SessionId;
+use astrid_events::EventBus;
 use astrid_storage::ScopedKvStore;
 use uuid::Uuid;
 
@@ -15,12 +17,13 @@ use crate::capsule::CapsuleId;
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
     pub kv: ScopedKvStore,
+    pub event_bus: Arc<EventBus>,
 }
 
 impl CapsuleContext {
     #[must_use]
-    pub fn new(workspace_root: PathBuf, kv: ScopedKvStore) -> Self {
-        Self { workspace_root, kv }
+    pub fn new(workspace_root: PathBuf, kv: ScopedKvStore, event_bus: Arc<EventBus>) -> Self {
+        Self { workspace_root, kv, event_bus }
     }
 }
 

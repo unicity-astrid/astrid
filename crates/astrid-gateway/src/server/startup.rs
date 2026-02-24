@@ -278,6 +278,9 @@ impl DaemonServer {
         let router_workspace_budget = Arc::clone(&workspace_budget_tracker);
         let router_model_name = model_name.clone();
 
+        // Central event bus for IPC routing between capsules and the OS
+        let event_bus = Arc::new(astrid_events::EventBus::with_capacity(1024));
+
         let rpc_impl = RpcImpl {
             runtime: Arc::clone(&runtime),
             sessions: Arc::clone(&session_map),
@@ -296,6 +299,7 @@ impl DaemonServer {
             workspace_root: cwd.clone(),
             connector_sessions: Arc::clone(&connector_sessions),
             inbound_tx: inbound_tx.clone(),
+            event_bus: Arc::clone(&event_bus),
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -355,6 +359,7 @@ impl DaemonServer {
             let workspace_root = cwd.clone();
             let inbound_tx_for_autoload = inbound_tx.clone();
             let connectors_cfg = cfg.connectors.clone();
+            let event_bus = Arc::clone(&event_bus);
             tokio::spawn(async move {
                 let capsule_ids: Vec<CapsuleId> = {
                     let registry: tokio::sync::RwLockReadGuard<'_, CapsuleRegistry> =
@@ -387,7 +392,7 @@ impl DaemonServer {
                     };
 
                     let ctx =
-                        astrid_capsule::context::CapsuleContext::new(workspace_root.clone(), kv);
+                        astrid_capsule::context::CapsuleContext::new(workspace_root.clone(), kv, Arc::clone(&event_bus));
 
                     if let Err(e) = capsule.load(&ctx).await {
                         warn!(capsule_id = %capsule_id, error = %e, "Failed to auto-load capsule");
@@ -460,6 +465,7 @@ impl DaemonServer {
             connector_sessions: Arc::clone(&connector_sessions),
             inbound_tx,
             mcp_client: mcp.clone(),
+            event_bus: Arc::clone(&event_bus),
         };
 
         // Spawn the inbound message router.

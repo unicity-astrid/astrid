@@ -258,7 +258,7 @@ pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
 
         if file_type.is_dir() {
             let name = entry.file_name();
-            if name == "node_modules" || name == ".git" || name == "dist" {
+            if name == "node_modules" || name == ".git" || name == "dist" || name == "target" {
                 continue;
             }
             copy_plugin_dir(&src_path, &dst_path)?;

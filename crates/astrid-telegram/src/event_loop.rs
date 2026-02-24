@@ -131,9 +131,9 @@ async fn handle_event(
         },
         DaemonEvent::Usage { .. }
         | DaemonEvent::SessionSaved
-        | DaemonEvent::PluginLoaded { .. }
-        | DaemonEvent::PluginFailed { .. }
-        | DaemonEvent::PluginUnloaded { .. } => false,
+        | DaemonEvent::CapsuleLoaded { .. }
+        | DaemonEvent::CapsuleFailed { .. }
+        | DaemonEvent::CapsuleUnloaded { .. } => false,
     }
 }
 
