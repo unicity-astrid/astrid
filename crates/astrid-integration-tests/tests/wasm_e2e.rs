@@ -200,3 +200,41 @@ async fn test_wasm_capsule_e2e_vfs_path_traversal() {
     let err_str = result.unwrap_err().to_string();
     assert!(err_str.contains("escapes workspace boundary"), "Actual error: {err_str}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
+    let tools = vec![
+        ToolDef {
+            name: "test-file-write".into(),
+            description: "Write tool".into(),
+            input_schema: json!({ "type": "object" }),
+        },
+        ToolDef {
+            name: "test-file-read".into(),
+            description: "Read tool".into(),
+            input_schema: json!({ "type": "object" }),
+        },
+    ];
+    let (capsule, tool_ctx) = setup_test_capsule(tools, vec!["/".into()], vec!["/".into()]).await;
+
+    let write_tool = capsule.tools().iter().find(|t| t.name() == "test-file-write").unwrap();
+    let read_tool = capsule.tools().iter().find(|t| t.name() == "test-file-read").unwrap();
+    
+    // Write a test file into the workspace root
+    let file_path_str = "test_rw_legitimate.txt";
+    
+    // Write
+    let w_res = write_tool.execute(json!({ "path": &file_path_str, "content": "hello vfs" }), &tool_ctx).await;
+    assert!(w_res.is_ok(), "Write failed: {:?}", w_res);
+    
+    // Read
+    let r_res = read_tool.execute(json!({ "path": &file_path_str }), &tool_ctx).await;
+    assert!(r_res.is_ok(), "Read failed: {:?}", r_res);
+    
+    let output: serde_json::Value = serde_json::from_str(&r_res.unwrap()).unwrap();
+    let inner: serde_json::Value = serde_json::from_str(output["content"].as_str().unwrap()).unwrap();
+    assert_eq!(inner["content"], "hello vfs");
+
+    // Cleanup
+    let _ = std::fs::remove_file(file_path_str);
+}

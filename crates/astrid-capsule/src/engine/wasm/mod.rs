@@ -82,6 +82,12 @@ impl ExecutionEngine for WasmEngine {
             let lower_vfs = astrid_vfs::HostVfs::new();
             let upper_vfs = astrid_vfs::HostVfs::new();
             let root_handle = astrid_capabilities::DirHandle::new();
+            
+            tokio::runtime::Handle::current().block_on(async {
+                lower_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.unwrap();
+                upper_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.unwrap();
+            });
+
             let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
             let next_subscription_id = 1;

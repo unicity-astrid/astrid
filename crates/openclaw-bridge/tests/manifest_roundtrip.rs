@@ -1,70 +1,61 @@
 //! Round-trip test: generated TOML parses correctly.
 //!
 //! Validates that the TOML output from `openclaw-bridge` contains the
-//! expected fields and structure compatible with `PluginManifest`.
-//! We parse as `toml::Value` to avoid a dev-dependency on `astrid-plugins`,
-//! which would pull in `extism`/`wasmtime` and conflict with wizer's wasmtime.
+//! expected fields and structure compatible with `CapsuleManifest`.
 
 use std::collections::HashMap;
 
 #[test]
 fn generated_toml_parses_with_expected_fields() {
     let toml_str = r#"
-        id = "hello-tool"
-        name = "Hello Tool"
+        [package]
+        name = "hello-tool"
         version = "1.0.0"
-        description = "A test plugin"
+        description = "A test capsule"
 
-        [entry_point]
-        type = "wasm"
-        path = "plugin.wasm"
+        [component]
+        entrypoint = "plugin.wasm"
         hash = "abc123def456"
 
-        [[capabilities]]
-        type = "config"
-
-        [config]
-        timeout = 30
-        api_key = "test"
+        [env.api_key]
+        type = "secret"
+        request = "Please enter value for api_key"
     "#;
 
     let parsed: toml::Value = toml::from_str(toml_str).expect("should parse as valid TOML");
     let table = parsed.as_table().unwrap();
 
-    assert_eq!(table["id"].as_str().unwrap(), "hello-tool");
-    assert_eq!(table["name"].as_str().unwrap(), "Hello Tool");
-    assert_eq!(table["version"].as_str().unwrap(), "1.0.0");
-    assert_eq!(table["description"].as_str().unwrap(), "A test plugin");
+    let package = table["package"].as_table().unwrap();
+    assert_eq!(package["name"].as_str().unwrap(), "hello-tool");
+    assert_eq!(package["version"].as_str().unwrap(), "1.0.0");
+    assert_eq!(package["description"].as_str().unwrap(), "A test capsule");
 
-    let entry = table["entry_point"].as_table().unwrap();
-    assert_eq!(entry["type"].as_str().unwrap(), "wasm");
-    assert_eq!(entry["path"].as_str().unwrap(), "plugin.wasm");
+    let component = table["component"].as_table().unwrap();
+    assert_eq!(component["entrypoint"].as_str().unwrap(), "plugin.wasm");
+    assert_eq!(component["hash"].as_str().unwrap(), "abc123def456");
 
-    let caps = table["capabilities"].as_array().unwrap();
-    assert_eq!(caps.len(), 1);
-
-    let config = table["config"].as_table().unwrap();
-    assert_eq!(config.len(), 2);
+    let env = table["env"].as_table().unwrap();
+    let api_key = env["api_key"].as_table().unwrap();
+    assert_eq!(api_key["type"].as_str().unwrap(), "secret");
 }
 
 #[test]
 fn minimal_generated_toml_parses() {
     let toml_str = r#"
-        id = "minimal-plugin"
-        name = "Minimal"
+        [package]
+        name = "minimal-plugin"
         version = "0.1.0"
 
-        [entry_point]
-        type = "wasm"
-        path = "plugin.wasm"
+        [component]
+        entrypoint = "plugin.wasm"
     "#;
 
     let parsed: toml::Value = toml::from_str(toml_str).expect("should parse as valid TOML");
     let table = parsed.as_table().unwrap();
 
-    assert_eq!(table["id"].as_str().unwrap(), "minimal-plugin");
-    assert!(table.get("capabilities").is_none());
-    assert!(table.get("config").is_none());
+    let package = table["package"].as_table().unwrap();
+    assert_eq!(package["name"].as_str().unwrap(), "minimal-plugin");
+    assert!(table.get("env").is_none());
 }
 
 #[test]
@@ -77,7 +68,12 @@ fn output_manifest_round_trips_through_toml() {
         name: Some("My Cool Plugin".into()),
         version: Some("2.0.0".into()),
         description: Some("Cool stuff".into()),
-        config_schema: serde_json::json!({"type": "object"}),
+        config_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "apiKey": { "type": "string" }
+            }
+        }),
         kind: None,
         channels: vec![],
         providers: vec![],
@@ -93,14 +89,20 @@ fn output_manifest_round_trips_through_toml() {
     openclaw_bridge::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, dir.path())
         .unwrap();
 
-    let toml_content = std::fs::read_to_string(dir.path().join("plugin.toml")).unwrap();
+    let toml_content = std::fs::read_to_string(dir.path().join("Capsule.toml")).unwrap();
     let parsed: toml::Value = toml::from_str(&toml_content).expect("generated TOML should parse");
     let table = parsed.as_table().unwrap();
 
-    assert_eq!(table["id"].as_str().unwrap(), "my-cool-plugin");
-    assert_eq!(table["name"].as_str().unwrap(), "My Cool Plugin");
-    assert_eq!(table["version"].as_str().unwrap(), "2.0.0");
+    let package = table["package"].as_table().unwrap();
+    assert_eq!(package["name"].as_str().unwrap(), "my-cool-plugin");
+    assert_eq!(package["version"].as_str().unwrap(), "2.0.0");
+    assert_eq!(package["description"].as_str().unwrap(), "Cool stuff");
 
-    let config_table = table["config"].as_table().unwrap();
-    assert!(config_table["debug"].as_bool().unwrap());
+    let component = table["component"].as_table().unwrap();
+    assert_eq!(component["entrypoint"].as_str().unwrap(), "plugin.wasm");
+    assert!(component.contains_key("hash"));
+
+    let env = table["env"].as_table().unwrap();
+    let api_key = env["apiKey"].as_table().unwrap();
+    assert_eq!(api_key["type"].as_str().unwrap(), "secret");
 }

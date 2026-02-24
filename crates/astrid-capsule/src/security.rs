@@ -149,10 +149,12 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
         _method: &str,
         url: &str,
     ) -> Result<(), String> {
-        // Extract domain from url (e.g., https://api.github.com/v1 -> api.github.com)
-        let domain = url.trim_start_matches("http://").trim_start_matches("https://").split('/').next().unwrap_or(url);
+        let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
+        let host_str = parsed_url.host_str().unwrap_or("");
         
-        if self.manifest.capabilities.net.iter().any(|d| domain.contains(d) || d == "*") {
+        if self.manifest.capabilities.net.iter().any(|d| {
+            d == "*" || host_str == d || host_str.ends_with(&format!(".{d}"))
+        }) {
             Ok(())
         } else {
             Err(format!(
