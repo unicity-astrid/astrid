@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use crate::capsule::CapsuleId;
 use astrid_core::connector::{ConnectorDescriptor, InboundMessage, MAX_CONNECTORS_PER_PLUGIN};
 use astrid_storage::ScopedKvStore;
 
-use crate::capsule::CapsuleId;
 // TODO: Migrate security gate
 // use crate::security::PluginSecurityGate;
 
@@ -129,7 +129,7 @@ mod tests {
 
         let state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
-            capsule_id: PluginId::from_static("test"),
+            capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -156,6 +156,7 @@ mod tests {
 
     #[test]
     fn register_connector_accumulates() {
+        use crate::capsule::CapsuleId;
         use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
         use astrid_core::identity::FrontendType;
 
@@ -167,7 +168,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
-            capsule_id: PluginId::from_static("test"),
+            capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -189,7 +190,7 @@ mod tests {
 
         let desc = ConnectorDescriptor::builder("test-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                capsule_id: "test".into(),
+                plugin_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -210,7 +211,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
-            capsule_id: PluginId::from_static("test"),
+            capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -238,6 +239,7 @@ mod tests {
 
     #[test]
     fn register_connector_rejects_at_limit() {
+        use crate::capsule::CapsuleId;
         use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
         use astrid_core::identity::FrontendType;
 
@@ -249,7 +251,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
-            capsule_id: PluginId::from_static("test"),
+            capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -271,7 +273,7 @@ mod tests {
         for i in 0..MAX_CONNECTORS_PER_PLUGIN {
             let desc = ConnectorDescriptor::builder(format!("conn-{i}"), FrontendType::Discord)
                 .source(ConnectorSource::Wasm {
-                    capsule_id: "test".into(),
+                    plugin_id: "test".into(),
                 })
                 .capabilities(ConnectorCapabilities::receive_only())
                 .profile(ConnectorProfile::Chat)
@@ -284,7 +286,7 @@ mod tests {
         // One more should fail
         let extra = ConnectorDescriptor::builder("over-limit", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                capsule_id: "test".into(),
+                plugin_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -295,6 +297,7 @@ mod tests {
 
     #[test]
     fn register_connector_rejects_duplicate_name_and_platform() {
+        use crate::capsule::CapsuleId;
         use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
         use astrid_core::identity::FrontendType;
 
@@ -306,7 +309,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
-            capsule_id: PluginId::from_static("test"),
+            capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
@@ -326,7 +329,7 @@ mod tests {
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                capsule_id: "test".into(),
+                plugin_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -336,7 +339,7 @@ mod tests {
         // Same name + same platform → rejected
         let desc2 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
             .source(ConnectorSource::Wasm {
-                capsule_id: "test".into(),
+                plugin_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)
@@ -347,7 +350,7 @@ mod tests {
         // Same name + different platform → allowed
         let desc3 = ConnectorDescriptor::builder("my-conn", FrontendType::Telegram)
             .source(ConnectorSource::Wasm {
-                capsule_id: "test".into(),
+                plugin_id: "test".into(),
             })
             .capabilities(ConnectorCapabilities::receive_only())
             .profile(ConnectorProfile::Chat)

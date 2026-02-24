@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use astrid_plugins::{PluginContext, PluginId, PluginState};
+use astrid_capsule::capsule::{CapsuleId, CapsuleState};
+use astrid_capsule::context::CapsuleContext;
 use astrid_storage::ScopedKvStore;
 use jsonrpsee::types::ErrorObjectOwned;
 
@@ -11,25 +12,26 @@ use crate::rpc::{DaemonEvent, PluginInfo, error_codes};
 
 impl RpcImpl {
     pub(super) async fn list_plugins_impl(&self) -> Result<Vec<PluginInfo>, ErrorObjectOwned> {
-        let registry = self.plugin_registry.read().await;
+        let registry: tokio::sync::RwLockReadGuard<'_, astrid_capsule::registry::CapsuleRegistry> =
+            self.plugins.read().await;
         let mut infos = Vec::new();
         for id in registry.list() {
             if let Some(plugin) = registry.get(id) {
                 let (state_str, error) = match plugin.state() {
-                    PluginState::Unloaded => ("unloaded".to_string(), None),
-                    PluginState::Loading => ("loading".to_string(), None),
-                    PluginState::Ready => ("ready".to_string(), None),
-                    PluginState::Failed(msg) => ("failed".to_string(), Some(msg)),
-                    PluginState::Unloading => ("unloading".to_string(), None),
+                    CapsuleState::Unloaded => ("unloaded".to_string(), None),
+                    CapsuleState::Loading => ("loading".to_string(), None),
+                    CapsuleState::Ready => ("ready".to_string(), None),
+                    CapsuleState::Failed(msg) => ("failed".to_string(), Some(msg)),
+                    CapsuleState::Unloading => ("unloading".to_string(), None),
                 };
                 let manifest = plugin.manifest();
                 infos.push(PluginInfo {
                     id: id.as_str().to_string(),
-                    name: manifest.name.clone(),
-                    version: manifest.version.clone(),
+                    name: manifest.package.name.clone(),
+                    version: manifest.package.version.clone(),
                     state: state_str,
                     tool_count: plugin.tools().len(),
-                    description: manifest.description.clone(),
+                    description: manifest.package.description.clone(),
                     error,
                 });
             }
@@ -42,7 +44,7 @@ impl RpcImpl {
         &self,
         plugin_id: String,
     ) -> Result<PluginInfo, ErrorObjectOwned> {
-        let pid = PluginId::new(&plugin_id).map_err(|e| {
+        let pid = CapsuleId::new(&plugin_id).map_err(|e| {
             ErrorObjectOwned::owned(
                 error_codes::INVALID_REQUEST,
                 format!("Invalid plugin id: {e}"),
@@ -51,12 +53,12 @@ impl RpcImpl {
         })?;
 
         // Clear user-unloaded flag -- user explicitly wants this plugin loaded.
-        self.user_unloaded_plugins.write().await.remove(&pid);
+        self.user_unloaded_capsules.write().await.remove(&pid);
 
         // Take the plugin out of the registry so we can load it without
         // holding the write lock (MCP plugins spawn subprocesses + handshake).
         let mut plugin = {
-            let mut registry = self.plugin_registry.write().await;
+            let mut registry = self.plugins.write().await;
             registry.unregister(&pid).map_err(|_| {
                 ErrorObjectOwned::owned(
                     error_codes::PLUGIN_NOT_FOUND,
@@ -74,7 +76,7 @@ impl RpcImpl {
             Ok(kv) => kv,
             Err(e) => {
                 // Put the plugin back before returning the error.
-                let mut registry = self.plugin_registry.write().await;
+                let mut registry = self.plugins.write().await;
                 let _ = registry.register(plugin);
                 return Err(ErrorObjectOwned::owned(
                     error_codes::INTERNAL_ERROR,
@@ -84,15 +86,14 @@ impl RpcImpl {
             },
         };
 
-        let config = plugin.manifest().config.clone();
-        let ctx = PluginContext::new(self.workspace_root.clone(), kv, config);
+        let ctx = CapsuleContext::new(self.workspace_root.clone(), kv);
 
         // Expensive async load happens outside the lock.
-        let load_result = plugin.load(&ctx).await;
+        let load_result: astrid_capsule::error::CapsuleResult<()> = plugin.load(&ctx).await;
         let manifest = plugin.manifest();
-        let name = manifest.name.clone();
+        let name = manifest.package.name.clone();
 
-        let load_succeeded = load_result.is_ok();
+        let _load_succeeded = load_result.is_ok();
         let (state_str, error, event) = match load_result {
             Ok(()) => (
                 "ready".to_string(),
@@ -116,26 +117,30 @@ impl RpcImpl {
         };
 
         let tool_count = plugin.tools().len();
-        let version = manifest.version.clone();
-        let description = manifest.description.clone();
+        let version = manifest.package.version.clone();
+        let description = manifest.package.description.clone();
 
         // Take the inbound receiver before re-registering, while we have
         // exclusive ownership of the plugin. Mirrors the auto-load and
         // hot-reload watcher paths. Only meaningful on successful load.
+        /* TODO: implement rx for capsules
         let inbound_rx = if load_succeeded {
             plugin.take_inbound_rx()
         } else {
             None
         };
+        */
+        // let _inbound_rx: Option<()> = None;
 
         // Brief write lock to put the plugin back.
         {
-            let mut registry = self.plugin_registry.write().await;
+            let mut registry = self.plugins.write().await;
             let _ = registry.register(plugin);
         }
 
         // Spawn the fan-in forwarder after releasing the registry lock.
         // JoinHandle intentionally discarded: self-terminating (see inbound_router.rs).
+        /*
         if let Some(rx) = inbound_rx {
             let tx = self.inbound_tx.clone();
             let pid = plugin_id.clone();
@@ -143,6 +148,7 @@ impl RpcImpl {
                 super::super::inbound_router::forward_inbound(pid, rx, tx).await;
             });
         }
+        */
 
         let info = PluginInfo {
             id: plugin_id,
@@ -174,7 +180,7 @@ impl RpcImpl {
         &self,
         plugin_id: String,
     ) -> Result<(), ErrorObjectOwned> {
-        let pid = PluginId::new(&plugin_id).map_err(|e| {
+        let pid = CapsuleId::new(&plugin_id).map_err(|e| {
             ErrorObjectOwned::owned(
                 error_codes::INVALID_REQUEST,
                 format!("Invalid plugin id: {e}"),
@@ -185,7 +191,7 @@ impl RpcImpl {
         // Take the plugin out so we can unload without holding the lock
         // (MCP plugins may need to shut down child processes).
         let mut plugin = {
-            let mut registry = self.plugin_registry.write().await;
+            let mut registry = self.plugins.write().await;
             registry.unregister(&pid).map_err(|_| {
                 ErrorObjectOwned::owned(
                     error_codes::PLUGIN_NOT_FOUND,
@@ -195,14 +201,14 @@ impl RpcImpl {
             })?
         };
 
-        let name = plugin.manifest().name.clone();
+        let name = plugin.manifest().package.name.clone();
 
         // Unload outside the lock.
-        let unload_result = plugin.unload().await;
+        let unload_result: astrid_capsule::error::CapsuleResult<()> = plugin.unload().await;
 
         // Always put the plugin back (brief write lock).
         {
-            let mut registry = self.plugin_registry.write().await;
+            let mut registry = self.plugins.write().await;
             let _ = registry.register(plugin);
         }
 
@@ -216,7 +222,7 @@ impl RpcImpl {
         })?;
 
         // Mark as user-unloaded so the watcher doesn't re-load it.
-        self.user_unloaded_plugins.write().await.insert(pid);
+        self.user_unloaded_capsules.write().await.insert(pid);
 
         let event = DaemonEvent::PluginUnloaded {
             id: plugin_id,

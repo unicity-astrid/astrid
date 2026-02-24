@@ -19,14 +19,15 @@ use std::time::Instant;
 
 use astrid_approval::budget::WorkspaceBudgetTracker;
 use astrid_capabilities::CapabilityStore;
-use astrid_core::{ApprovalDecision, ElicitationResponse, InboundMessage, SessionId};
+use astrid_capsule::capsule::CapsuleId;
+use astrid_capsule::registry::CapsuleRegistry;
+use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
 use astrid_llm::LlmProvider;
-use astrid_plugins::{PluginId, PluginRegistry};
 use astrid_runtime::AgentRuntime;
 use astrid_storage::KvStore;
 use jsonrpsee::PendingSubscriptionSink;
 use jsonrpsee::types::ErrorObjectOwned;
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{RwLock, broadcast};
 
 use super::SessionHandle;
 use crate::rpc::{
@@ -45,7 +46,7 @@ pub(in crate::server) struct RpcImpl {
     /// Session map (brief locks for insert/remove/lookup only).
     pub(in crate::server) sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
     /// Plugin registry (shared, behind `RwLock`).
-    pub(in crate::server) plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub(in crate::server) plugins: Arc<RwLock<CapsuleRegistry>>,
     /// Shared KV store for deferred resolution persistence.
     pub(in crate::server) deferred_kv: Arc<dyn KvStore>,
     /// Shared persistent capability store (tokens survive restarts).
@@ -67,15 +68,9 @@ pub(in crate::server) struct RpcImpl {
     /// Whether the daemon is running in ephemeral mode.
     pub(in crate::server) ephemeral: bool,
     /// Plugin IDs explicitly unloaded by the user (shared with watcher).
-    pub(in crate::server) user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>>,
+    pub(in crate::server) user_unloaded_capsules: Arc<RwLock<HashSet<CapsuleId>>>,
     /// Workspace root directory (consistent with watcher reload path).
     pub(in crate::server) workspace_root: PathBuf,
-    /// Sender side of the central inbound channel.
-    ///
-    /// Cloned for each connector plugin loaded via the `load_plugin` RPC so
-    /// that its inbound receiver is wired into the router, mirroring the
-    /// auto-load and hot-reload watcher paths.
-    pub(in crate::server) inbound_tx: mpsc::Sender<InboundMessage>,
     /// Reverse index: `AstridUserId` → most recent active `SessionId`.
     ///
     /// Used by `resume_session_impl` to detect connector-originated sessions

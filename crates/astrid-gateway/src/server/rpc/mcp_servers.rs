@@ -2,7 +2,7 @@
 
 use std::sync::atomic::Ordering;
 
-use astrid_plugins::PluginState;
+use astrid_capsule::capsule::CapsuleState;
 use jsonrpsee::types::ErrorObjectOwned;
 use tracing::info;
 
@@ -54,14 +54,17 @@ impl RpcImpl {
         let session_count = self.sessions.read().await.len();
 
         let plugins_loaded = {
-            let registry = self.plugin_registry.read().await;
+            let registry: tokio::sync::RwLockReadGuard<
+                '_,
+                astrid_capsule::registry::CapsuleRegistry,
+            > = self.plugins.read().await;
             registry
                 .list()
                 .iter()
                 .filter(|id| {
                     registry
                         .get(id)
-                        .is_some_and(|p| matches!(p.state(), PluginState::Ready))
+                        .is_some_and(|p| matches!(p.state(), CapsuleState::Ready))
                 })
                 .count()
         };

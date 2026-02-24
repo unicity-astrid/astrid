@@ -4,13 +4,13 @@
 
 use astrid_approval::{SecurityInterceptor, SecurityPolicy};
 use astrid_audit::AuditLog;
+use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::{Frontend, SessionId};
 use astrid_crypto::KeyPair;
 use astrid_hooks::result::HookContext;
 use astrid_hooks::{HookEvent, HookManager};
 use astrid_llm::LlmProvider;
 use astrid_mcp::McpClient;
-use astrid_plugins::PluginRegistry;
 use astrid_storage::KvStore;
 use astrid_tools::{SparkConfig, ToolContext, ToolRegistry};
 use astrid_workspace::WorkspaceBoundary;
@@ -64,8 +64,8 @@ pub struct AgentRuntime<P: LlmProvider> {
     pub(super) security_policy: SecurityPolicy,
     /// Sub-agent pool (shared across turns).
     pub(super) subagent_pool: Arc<SubAgentPool>,
-    /// Plugin registry (shared with the gateway).
-    pub(super) plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
+    /// Capsule registry (shared with the gateway).
+    pub(super) capsule_registry: Option<Arc<tokio::sync::RwLock<CapsuleRegistry>>>,
     /// Per-plugin KV stores that persist across tool calls.
     /// Keyed by `{session_id}:{server}` to isolate sessions from each other.
     /// Call [`cleanup_plugin_kv_stores`](Self::cleanup_plugin_kv_stores) when a
@@ -120,19 +120,19 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             shared_cwd,
             security_policy: SecurityPolicy::default(),
             subagent_pool,
-            plugin_registry: None,
+            capsule_registry: None,
             plugin_kv_stores: std::sync::Mutex::new(std::collections::HashMap::new()),
             self_arc: tokio::sync::RwLock::new(None),
         }
     }
 
-    /// Set the plugin registry for plugin tool integration.
+    /// Set the capsule registry for capsule tool integration.
     #[must_use]
-    pub fn with_plugin_registry(
+    pub fn with_capsule_registry(
         mut self,
-        registry: Arc<tokio::sync::RwLock<PluginRegistry>>,
+        registry: Arc<tokio::sync::RwLock<CapsuleRegistry>>,
     ) -> Self {
-        self.plugin_registry = Some(registry);
+        self.capsule_registry = Some(registry);
         self
     }
 
@@ -151,14 +151,14 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         crypto: KeyPair,
         config: RuntimeConfig,
         hooks: Option<HookManager>,
-        plugin_registry: Option<Arc<tokio::sync::RwLock<PluginRegistry>>>,
+        capsule_registry: Option<Arc<tokio::sync::RwLock<CapsuleRegistry>>>,
     ) -> Arc<Self> {
         Arc::new_cyclic(|weak| {
             let mut runtime = Self::new(llm, mcp, audit, sessions, crypto, config);
             if let Some(hook_manager) = hooks {
                 runtime.hooks = Arc::new(hook_manager);
             }
-            runtime.plugin_registry = plugin_registry;
+            runtime.capsule_registry = capsule_registry;
             // Pre-set the self-reference (no async needed — field is initialized directly).
             runtime.self_arc = tokio::sync::RwLock::new(Some(weak.clone()));
             runtime

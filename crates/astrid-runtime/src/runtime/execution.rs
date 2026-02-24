@@ -101,20 +101,28 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         // It is held in session.plugin_context and dynamically injected into the prompt.
         #[allow(clippy::collapsible_if)]
         if session.plugin_context.is_none() {
-            if let Some(ref registry_lock) = self.plugin_registry {
+            if let Some(ref registry_lock) = self.capsule_registry {
                 let mut combined_context = String::new();
-                let active_plugins: Vec<astrid_plugins::PluginId> = {
+                let active_plugins: Vec<astrid_capsule::capsule::CapsuleId> = {
                     let registry = registry_lock.read().await;
                     registry.list().into_iter().cloned().collect()
                 };
 
                 for plugin_id in active_plugins {
                     // Discover if it exposes the context tool
-                    let (tool_arc, tool_config) = {
+                    let (tool_arc, _tool_config) = {
                         let registry = registry_lock.read().await;
                         let tool_name = format!("plugin:{plugin_id}:__astrid_get_agent_context");
                         match registry.find_tool(&tool_name) {
-                            Some((plugin, t)) => (Some(t), plugin.manifest().config.clone()),
+                            Some((plugin, t)) => {
+                                let config = plugin
+                                    .manifest()
+                                    .env
+                                    .iter()
+                                    .filter_map(|(k, v)| v.default.clone().map(|d| (k.clone(), d)))
+                                    .collect();
+                                (Some(t), config)
+                            },
                             None => (None, std::collections::HashMap::new()),
                         }
                     };
@@ -138,12 +146,12 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                             astrid_storage::ScopedKvStore::new(plugin_kv, scoped_name)
                         {
                             let user_uuid = Self::user_uuid(session.user_id);
-                            let tool_ctx = astrid_plugins::PluginToolContext::new(
+                            let tool_ctx = astrid_capsule::context::CapsuleToolContext::new(
                                 plugin_id.clone(),
                                 self.config.workspace.root.clone(),
                                 scoped_kv,
                             )
-                            .with_config(tool_config)
+                            // .with_config(tool_config) // Context tools do not take config directly in capsule implementation
                             .with_session(session.id.clone())
                             .with_user(user_uuid);
 
@@ -279,8 +287,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                     .with_schema(t.input_schema.clone())
             }));
 
-            // Plugin tools (snapshot under a brief read lock).
-            if let Some(ref registry) = self.plugin_registry {
+            // Capsule tools (snapshot under a brief read lock).
+            if let Some(ref registry) = self.capsule_registry {
                 let registry = registry.read().await;
                 llm_tools.extend(registry.all_tool_definitions().into_iter().map(|td| {
                     LlmToolDefinition::new(td.name)

@@ -25,8 +25,8 @@ mod theme;
 mod tui;
 
 use commands::{
-    audit, capsule, chat, config, daemon, doctor, hooks, init, keys, onboarding, plugin, run,
-    servers, sessions,
+    audit, capsule, chat, config, daemon, doctor, hooks, init, keys, onboarding, run, servers,
+    sessions,
 };
 use theme::print_banner;
 
@@ -110,12 +110,6 @@ enum Commands {
     Keys {
         #[command(subcommand)]
         command: KeyCommands,
-    },
-
-    /// Manage plugins
-    Plugin {
-        #[command(subcommand)]
-        command: PluginCommands,
     },
 
     /// Manage capsules (Phase 4 User-Space Microkernel)
@@ -450,9 +444,6 @@ async fn main() -> Result<()> {
         Some(Commands::Keys { command }) => {
             handle_keys(&command)?;
         },
-        Some(Commands::Plugin { command }) => {
-            handle_plugins(command).await?;
-        },
         Some(Commands::Capsule { command }) => {
             handle_capsules(command)?;
         },
@@ -607,22 +598,6 @@ fn handle_keys(command: &KeyCommands) -> Result<()> {
     match command {
         KeyCommands::Show => keys::show_key(),
         KeyCommands::Generate { force } => keys::generate_key(*force),
-    }
-}
-
-async fn handle_plugins(command: PluginCommands) -> Result<()> {
-    match command {
-        PluginCommands::List => plugin::list_plugins().await,
-        PluginCommands::Install {
-            source,
-            from_openclaw,
-            workspace,
-        } => plugin::install_plugin(&source, from_openclaw, workspace).await,
-        PluginCommands::Remove { id } => plugin::remove_plugin(&id).await,
-        PluginCommands::Compile { path, output } => {
-            plugin::compile_plugin(&path, output.as_deref())
-        },
-        PluginCommands::Info { id } => plugin::plugin_info(&id),
     }
 }
 

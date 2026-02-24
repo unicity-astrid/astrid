@@ -5,7 +5,6 @@ use astrid_audit::{AuditAction, AuditOutcome, AuthorizationProof};
 use astrid_core::Frontend;
 use astrid_hooks::HookEvent;
 use astrid_llm::{LlmProvider, ToolCall, ToolCallResult};
-use astrid_plugins::{PluginRegistry, PluginToolContext};
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
 use astrid_tools::{ToolContext, ToolRegistry, truncate_output};
 use std::sync::Arc;
@@ -36,8 +35,8 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 .await;
         }
 
-        // Check for plugin tool (plugin:{plugin_id}:{tool_name})
-        if PluginRegistry::is_plugin_tool(&call.name) {
+        // Check for capsule tool (capsule:{capsule_id}:{tool_name})
+        if astrid_capsule::registry::CapsuleRegistry::is_capsule_tool(&call.name) {
             return self.execute_plugin_tool(session, call, frontend).await;
         }
 
@@ -212,25 +211,22 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         call: &ToolCall,
         frontend: &F,
     ) -> RuntimeResult<ToolCallResult> {
-        let Some(ref registry_lock) = self.plugin_registry else {
+        let Some(ref registry_lock) = self.capsule_registry else {
             return Ok(ToolCallResult::error(
                 &call.id,
                 "Plugin tools are not available (no plugin registry configured)",
             ));
         };
 
-        // Parse the qualified name into plugin ID and tool name.
-        // Format: "plugin:{plugin_id}:{tool_name}" where tool_name may contain colons.
-        // Uses strip_prefix + split_once (left-to-right) to correctly handle tool names
-        // with colons (e.g. "plugin:foo:name:with:colons" → id="foo", tool="name:with:colons").
-        let (plugin_id_str, tool) = match call.name.strip_prefix("plugin:") {
+        // Parse the qualified name into capsule ID and tool name.
+        let (capsule_id_str, tool) = match call.name.strip_prefix("capsule:") {
             Some(rest) => match rest.split_once(':') {
                 Some((id, tool_name)) => (id, tool_name),
                 None => {
                     return Ok(ToolCallResult::error(
                         &call.id,
                         format!(
-                            "Malformed plugin tool name (missing tool segment): {}",
+                            "Malformed capsule tool name (missing tool segment): {}",
                             call.name
                         ),
                     ));
@@ -240,14 +236,14 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 return Ok(ToolCallResult::error(
                     &call.id,
                     format!(
-                        "Malformed plugin tool name (missing plugin: prefix): {}",
+                        "Malformed capsule tool name (missing capsule: prefix): {}",
                         call.name
                     ),
                 ));
             },
         };
         // Server-like prefix used for hooks, interceptor, and audit metadata.
-        let server = format!("plugin:{plugin_id_str}");
+        let server = format!("capsule:{capsule_id_str}");
 
         // Check workspace boundaries
         if let Err(tool_error) = self
@@ -278,7 +274,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
         // blocked_plugins and always requires approval — more appropriate than
         // the generic MCP tool classification.
         let action = SensitiveAction::PluginExecution {
-            plugin_id: plugin_id_str.to_string(),
+            plugin_id: capsule_id_str.to_string(),
             capability: tool.to_string(),
         };
 
@@ -308,11 +304,17 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                 // and extract plugin config, then drop the lock before executing.
                 // This avoids blocking write-lock callers (load/unload/hot-reload)
                 // during potentially slow tool calls.
-                let (plugin_tool, plugin_config) = {
+                let (plugin_tool, _plugin_config) = {
                     let registry = registry_lock.read().await;
                     match registry.find_tool(&call.name) {
                         Some((plugin, tool_arc)) => {
-                            (Some(tool_arc), plugin.manifest().config.clone())
+                            let config = plugin
+                                .manifest()
+                                .env
+                                .iter()
+                                .filter_map(|(k, v)| v.default.clone().map(|d| (k.clone(), d)))
+                                .collect();
+                            (Some(tool_arc), config)
                         },
                         None => (None, std::collections::HashMap::new()),
                     }
@@ -351,21 +353,17 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
                                 },
                             };
 
-                        // Build PluginId from the already-parsed plugin_id_str.
-                        // Invariant: is_plugin_tool() validated this ID and find_tool()
-                        // successfully parsed it, so PluginId::new() cannot fail here.
-                        let plugin_id = astrid_plugins::PluginId::new(plugin_id_str).expect(
-                            "plugin_id_str already validated by is_plugin_tool and find_tool",
-                        );
+                        let capsule_id = astrid_capsule::capsule::CapsuleId::new(capsule_id_str)
+                            .expect("capsule_id_str already validated by find_tool");
 
                         let user_uuid = Self::user_uuid(session.user_id);
 
-                        let tool_ctx = PluginToolContext::new(
-                            plugin_id,
+                        let tool_ctx = astrid_capsule::context::CapsuleToolContext::new(
+                            capsule_id,
                             self.config.workspace.root.clone(),
                             scoped_kv,
                         )
-                        .with_config(plugin_config)
+                        // .with_config(plugin_config)
                         .with_session(session.id.clone())
                         .with_user(user_uuid);
 
@@ -412,7 +410,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
             if let Err(e) = self.audit.append(
                 session.id.clone(),
                 AuditAction::PluginToolCall {
-                    plugin_id: plugin_id_str.to_string(),
+                    plugin_id: capsule_id_str.to_string(),
                     tool: tool.to_string(),
                     args_hash,
                 },

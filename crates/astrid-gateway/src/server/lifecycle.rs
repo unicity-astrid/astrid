@@ -1,6 +1,6 @@
 //! Daemon shutdown and cleanup logic.
 
-use astrid_plugins::PluginId;
+use astrid_capsule::capsule::CapsuleId;
 use tracing::{info, warn};
 
 use super::DaemonServer;
@@ -8,8 +8,8 @@ use super::DaemonServer;
 impl DaemonServer {
     /// Gracefully unload all registered plugins.
     pub async fn shutdown_plugins(&self) {
-        let mut registry = self.plugin_registry.write().await;
-        let ids: Vec<PluginId> = registry.list().into_iter().cloned().collect();
+        let mut registry = self.plugins.write().await;
+        let ids: Vec<CapsuleId> = registry.list().into_iter().cloned().collect();
         for id in ids {
             if let Some(plugin) = registry.get_mut(&id)
                 && let Err(e) = plugin.unload().await

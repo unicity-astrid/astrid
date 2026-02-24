@@ -22,7 +22,7 @@ astrid-telemetry = { workspace = true }
 astrid-workspace = { workspace = true }
 astrid-storage = { workspace = true }
 astrid-tools = { workspace = true }
-astrid-plugins = { workspace = true }
+astrid-capsule = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

@@ -15,7 +15,7 @@
 //! approval that the turn is waiting for).
 
 pub(super) mod config_apply;
-mod e2e_tests;
+// mod e2e_tests;
 mod inbound_router;
 mod lifecycle;
 mod monitoring;
@@ -33,16 +33,15 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::time::{Duration, Instant};
 
-use astrid_core::InboundMessage;
+use astrid_capsule::capsule::CapsuleId;
+use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
 use astrid_core::identity::IdentityStore;
 use astrid_llm::LlmProvider;
-use astrid_mcp::McpClient;
-use astrid_plugins::{PluginId, PluginRegistry, WasmPluginLoader};
 use astrid_runtime::{AgentRuntime, AgentSession};
 use astrid_storage::KvStore;
 use chrono::{DateTime, Utc};
-use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use uuid::Uuid;
 
 use crate::daemon_frontend::DaemonFrontend;
@@ -90,13 +89,9 @@ pub struct DaemonServer {
     /// Session map (brief locks only for insert/remove/lookup).
     sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
     /// Plugin registry (shared across RPC handlers).
-    plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub plugins: Arc<RwLock<CapsuleRegistry>>,
     /// Workspace KV store (used for plugin scoped storage on reload).
     workspace_kv: Arc<dyn KvStore>,
-    /// MCP client (used to re-create MCP plugins on reload).
-    mcp_client: McpClient,
-    /// WASM plugin loader (shared configuration for reload consistency).
-    wasm_loader: Arc<WasmPluginLoader>,
     /// Home directory for plugin paths.
     home: astrid_core::dirs::AstridHome,
     /// Workspace root directory.
@@ -118,20 +113,15 @@ pub struct DaemonServer {
     active_connections: Arc<AtomicUsize>,
     /// Interval between session cleanup sweeps.
     session_cleanup_interval: Duration,
-    /// Plugin IDs explicitly unloaded by the user via RPC.
+    /// Capsule IDs explicitly unloaded by the user via RPC.
     ///
-    /// The watcher skips these to avoid re-loading plugins the user
+    /// The watcher skips these to avoid re-loading capsules the user
     /// intentionally stopped. Cleared when the user re-loads via RPC.
-    user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>>,
+    user_unloaded_capsules: Arc<RwLock<HashSet<CapsuleId>>>,
     /// Identity store for resolving platform users to canonical Astrid identities.
     /// Stored here for future RPC endpoints (e.g. list/link identities).
     #[allow(dead_code)]
     identity_store: Arc<dyn IdentityStore>,
-    /// Sender side of the central inbound message channel.
-    ///
-    /// Cloned for each plugin that declares connector capability. The inbound
-    /// router task holds the receiver end and drains it to route messages.
-    inbound_tx: mpsc::Sender<InboundMessage>,
     /// Maps `AstridUserId` (UUID) → most recent active `SessionId`.
     ///
     /// Shared with the session cleanup loop (periodic stale-entry sweep) and

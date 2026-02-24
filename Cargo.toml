@@ -21,7 +21,7 @@ members = [
     "crates/astrid-config",
 
     # Plugins
-    "crates/astrid-plugins",
+    
     "crates/openclaw-bridge",
 
     # Phase 2
@@ -86,8 +86,13 @@ astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.0" }
 astrid-config = { path = "crates/astrid-config", version = "0.1.0" }
 
 # Internal crates - Plugins
-astrid-plugins = { path = "crates/astrid-plugins", version = "0.1.0" }
 openclaw-bridge = { path = "crates/openclaw-bridge" }
+
+# Internal crates - Phase 4
+astrid-sys = { path = "crates/astrid-sys", version = "0.1.0" }
+astrid-sdk = { path = "crates/astrid-sdk", version = "0.1.0" }
+astrid-sdk-macros = { path = "crates/astrid-sdk-macros", version = "0.1.0" }
+astrid-capsule = { path = "crates/astrid-capsule", version = "0.1.0" }
 
 # Internal crates - Phase 2
 astrid-approval = { path = "crates/astrid-approval", version = "0.1.0" }
