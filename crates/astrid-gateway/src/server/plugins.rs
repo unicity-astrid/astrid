@@ -25,6 +25,7 @@ pub(super) struct WatcherReloadContext {
     pub(super) workspace_root: PathBuf,
     pub(super) user_unloaded: Arc<RwLock<HashSet<CapsuleId>>>,
     pub(super) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
+    pub(super) mcp_client: astrid_mcp::McpClient,
 }
 
 impl DaemonServer {
@@ -90,6 +91,7 @@ impl DaemonServer {
             workspace_root: self.workspace_root.clone(),
             user_unloaded: Arc::clone(&self.user_unloaded_capsules),
             inbound_tx: self.inbound_tx.clone(),
+            mcp_client: self.mcp_client.clone(),
         };
 
         let handle = tokio::spawn(async move {
@@ -131,6 +133,7 @@ impl DaemonServer {
             workspace_root,
             user_unloaded,
             inbound_tx,
+            mcp_client,
         } = ctx;
         // Try to load the manifest. Compiled plugins have Capsule.toml;
         // uncompiled OpenClaw plugins only have openclaw.plugin.json and
@@ -169,7 +172,7 @@ impl DaemonServer {
         }
 
         // Create the new plugin instance.
-        let loader = astrid_capsule::loader::CapsuleLoader::new();
+        let loader = astrid_capsule::loader::CapsuleLoader::new(mcp_client.clone());
         let new_plugin = match loader.create_capsule(manifest.clone(), plugin_dir.to_path_buf()) {
             Ok(p) => p,
             Err(e) => {

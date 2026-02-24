@@ -205,7 +205,7 @@ trackable milestones:
 - [ ] **Step 4.5: AstridClaw CLI Integration (JIT Auto-Wrapping)** 
   Integrate AstridClaw directly into the CLI Package Manager. Implement registry resolution so `capsule install openclaw:name` automatically fetches the JS plugin, compiles it to WASM via AstridClaw, synthesizes a `Capsule.toml`, and docks it.
 
-- [ ] **Step 4.6: Legacy Host MCP Support (The Escape Hatch)** 
+- [x] **Step 4.6: Legacy Host MCP Support (The Escape Hatch)** 
   Implement the `host_process` capability within the Kernel to securely spawn and manage native host commands (like `npx` or `python`) and pipe their `stdio` to the IPC Message Bus for legacy servers that cannot be compiled by AstridClaw.
 
 - [x] **Step 4.7: IPC Routing for MCP and Commands** 

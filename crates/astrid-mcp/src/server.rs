@@ -193,6 +193,29 @@ impl ServerManager {
         Ok(())
     }
 
+    /// Add a server configuration dynamically and register it.
+    ///
+    /// # Errors
+    /// Returns an error if the server is already running.
+    pub async fn add_server(&self, name: &str, config: ServerConfig) -> McpResult<()> {
+        let mut running = self.running.write().await;
+        if running.contains_key(name) {
+            return Err(McpError::ServerAlreadyRunning {
+                name: name.to_string(),
+            });
+        }
+        
+        info!(server = name, "Dynamically registering MCP server");
+
+        if let Err(e) = config.verify_binary() {
+            error!(server = name, error = %e, "Binary verification failed");
+            return Err(e);
+        }
+
+        running.insert(name.to_string(), RunningServer::new(config));
+        Ok(())
+    }
+
     /// Establish the actual MCP connection for a registered server.
     ///
     /// Spawns the child process, performs the MCP handshake, and fetches

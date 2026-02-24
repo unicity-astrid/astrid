@@ -42,7 +42,7 @@ fn default_max_retries() -> u32 {
 }
 
 /// Configuration for a single MCP server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Server name (unique identifier).
     #[serde(skip)]

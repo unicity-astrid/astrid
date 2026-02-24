@@ -187,7 +187,7 @@ impl DaemonServer {
 
         // Discover and register capsules.
         let mut capsule_registry: CapsuleRegistry = CapsuleRegistry::new();
-        let capsule_loader = astrid_capsule::loader::CapsuleLoader::new();
+        let capsule_loader = astrid_capsule::loader::CapsuleLoader::new(mcp.clone());
         let plugin_dirs = vec![home.plugins_dir()];
         let discovered = discover_manifests(Some(&plugin_dirs));
 
@@ -218,7 +218,7 @@ impl DaemonServer {
 
         let runtime = AgentRuntime::new_arc(
             llm,
-            mcp,
+            mcp.clone(),
             audit,
             sessions,
             key,
@@ -459,6 +459,7 @@ impl DaemonServer {
             identity_store: Arc::clone(&identity_store),
             connector_sessions: Arc::clone(&connector_sessions),
             inbound_tx,
+            mcp_client: mcp.clone(),
         };
 
         // Spawn the inbound message router.

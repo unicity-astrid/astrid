@@ -6,15 +6,19 @@ use crate::capsule::{Capsule, CompositeCapsule};
 use crate::error::CapsuleResult;
 use crate::manifest::CapsuleManifest;
 
+use astrid_mcp::McpClient;
+
 /// Responsible for translating a declarative `Capsule.toml` manifest into
 /// a live, unified `CompositeCapsule` packed with the correct execution engines.
-pub struct CapsuleLoader {}
+pub struct CapsuleLoader {
+    mcp_client: McpClient,
+}
 
 impl CapsuleLoader {
     /// Create a new Capsule Loader.
     #[must_use]
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(mcp_client: McpClient) -> Self {
+        Self { mcp_client }
     }
 
     /// Parse a `CapsuleManifest` and build a unified `CompositeCapsule`.
@@ -50,6 +54,7 @@ impl CapsuleLoader {
                     manifest.clone(),
                     server.clone(),
                     capsule_dir.clone(),
+                    self.mcp_client.clone(),
                 )));
             }
         }
@@ -65,8 +70,4 @@ impl CapsuleLoader {
     }
 }
 
-impl Default for CapsuleLoader {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+

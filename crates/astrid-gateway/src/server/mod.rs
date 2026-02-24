@@ -130,6 +130,8 @@ pub struct DaemonServer {
     connector_sessions: Arc<RwLock<HashMap<Uuid, SessionId>>>,
     /// Sender for fanning in inbound messages from capsule uplinks.
     inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
+    /// MCP client for managing dynamic host servers.
+    mcp_client: astrid_mcp::McpClient,
 }
 
 impl DaemonServer {

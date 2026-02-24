@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
-use tokio::process::{Child, Command};
 use tracing::info;
 
 use super::ExecutionEngine;
@@ -8,7 +7,7 @@ use crate::context::CapsuleContext;
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::{CapsuleManifest, McpServerDef};
 
-use std::process::Stdio;
+use astrid_mcp::McpClient;
 
 /// Executes Legacy Host MCP servers via `stdio`.
 ///
@@ -19,16 +18,16 @@ pub struct McpHostEngine {
     manifest: CapsuleManifest,
     server_def: McpServerDef,
     capsule_dir: PathBuf,
-    process: Option<Child>,
+    mcp_client: McpClient,
 }
 
 impl McpHostEngine {
-    pub fn new(manifest: CapsuleManifest, server_def: McpServerDef, capsule_dir: PathBuf) -> Self {
+    pub fn new(manifest: CapsuleManifest, server_def: McpServerDef, capsule_dir: PathBuf, mcp_client: McpClient) -> Self {
         Self {
             manifest,
             server_def,
             capsule_dir,
-            process: None,
+            mcp_client,
         }
     }
 }
@@ -36,7 +35,6 @@ impl McpHostEngine {
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
     async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
-        // Build the command from the manifest definition
         let command_str = self.server_def.command.as_ref().ok_or_else(|| {
             CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
         })?;
@@ -44,38 +42,40 @@ impl ExecutionEngine for McpHostEngine {
         info!(
             capsule = %self.manifest.package.name,
             command = %command_str,
-            "Spawning legacy MCP host process (Airlock Override)"
+            "Registering legacy MCP host process dynamically (Airlock Override)"
         );
 
-        let mut cmd = Command::new(command_str);
-        cmd.args(&self.server_def.args);
-        cmd.current_dir(&self.capsule_dir);
-        cmd.stdin(Stdio::piped());
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::null());
+        let server_id = format!("capsule:{}", self.manifest.package.name);
 
-        let mut child = cmd.spawn().map_err(|e| {
-            CapsuleError::UnsupportedEntryPoint(format!("Failed to spawn host process: {}", e))
+        let config = astrid_mcp::ServerConfig {
+            name: server_id.clone(),
+            command: Some(command_str.clone()),
+            args: self.server_def.args.clone(),
+            env: std::collections::HashMap::new(), // In Phase 6/7, inject [env] vars here
+            cwd: Some(self.capsule_dir.clone()),
+            restart_policy: astrid_mcp::RestartPolicy::Always, // Host engines should restart on crash
+            ..Default::default()
+        };
+
+        // We use the `astrid-mcp` dynamic connection feature to spawn the `Command`
+        // and attach its `stdio` directly to the `McpClient`.
+        self.mcp_client.connect_dynamic(&server_id, config).await.map_err(|e| {
+            CapsuleError::UnsupportedEntryPoint(format!("Failed to connect MCP host engine: {e}"))
         })?;
 
-        // TODO: In Phase 7, pipe stdin/stdout and connect to astrid-mcp.
-        // For Phase 4/5 scaffolding, we just prove the process starts.
-        let _stdin = child.stdin.take();
-        let _stdout = child.stdout.take();
-
-        self.process = Some(child);
         Ok(())
     }
 
     async fn unload(&mut self) -> CapsuleResult<()> {
-        if let Some(mut child) = self.process.take() {
-            info!(
-                capsule = %self.manifest.package.name,
-                "Shutting down MCP host process"
-            );
-            // Send SIGTERM / kill the child process gracefully
-            let _ = child.kill().await;
-        }
+        info!(
+            capsule = %self.manifest.package.name,
+            "Shutting down MCP host process"
+        );
+        let server_id = format!("capsule:{}", self.manifest.package.name);
+        
+        let _ = self.mcp_client.disconnect(&server_id).await;
+        
+        // Let astrid-mcp drop the Child process and `Stdio` streams.
         Ok(())
     }
 }
