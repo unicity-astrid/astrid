@@ -197,7 +197,7 @@ pub struct SkillDef {
 }
 
 /// An uplink provided by the capsule (e.g., Telegram, CLI).
-/// 
+///
 /// This allows the LLM agent to route messages out to a specific frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UplinkDef {

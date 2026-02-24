@@ -41,7 +41,9 @@ impl CapsuleId {
 
     fn validate(id: &str) -> CapsuleResult<()> {
         if id.is_empty() {
-            return Err(CapsuleError::UnsupportedEntryPoint("capsule id must not be empty".into()));
+            return Err(CapsuleError::UnsupportedEntryPoint(
+                "capsule id must not be empty".into(),
+            ));
         }
         if !id
             .chars()

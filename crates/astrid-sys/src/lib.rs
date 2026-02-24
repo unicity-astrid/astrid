@@ -2,7 +2,7 @@
 //!
 //! This crate defines the absolute lowest-level, mathematically pure ABI.
 //! Every single parameter and return type across the WASM boundary is
-//! represented as raw bytes (`Vec<u8>`). 
+//! represented as raw bytes (`Vec<u8>`).
 //!
 //! This provides true OS-level primitiveness: file paths can contain non-UTF-8
 //! sequences, IPC topics can be binary hashes, and the Kernel never wastes CPU
@@ -33,7 +33,7 @@ extern "ExtismHost" {
     pub fn astrid_fs_stat(path: Vec<u8>) -> Vec<u8>;
     /// Delete a file or directory in the VFS.
     pub fn astrid_fs_unlink(path: Vec<u8>);
-    
+
     /// Read a file's contents from the VFS.
     pub fn astrid_read_file(path: Vec<u8>) -> Vec<u8>;
     /// Write contents to a file in the VFS.
@@ -50,7 +50,7 @@ extern "ExtismHost" {
     pub fn astrid_ipc_unsubscribe(handle: Vec<u8>);
     /// Poll for the next message on an IPC subscription handle.
     pub fn astrid_ipc_poll(handle: Vec<u8>) -> Vec<u8>;
-    
+
     /// Register a direct uplink (frontend).
     pub fn astrid_uplink_register(name: Vec<u8>, platform: Vec<u8>, profile: Vec<u8>) -> Vec<u8>;
     /// Send a message via a direct uplink.
@@ -69,7 +69,7 @@ extern "ExtismHost" {
     pub fn astrid_kv_get(key: Vec<u8>) -> Vec<u8>;
     /// Set a value in the KV store.
     pub fn astrid_kv_set(key: Vec<u8>, value: Vec<u8>);
-    
+
     /// Get a system configuration string.
     pub fn astrid_get_config(key: Vec<u8>) -> Vec<u8>;
 

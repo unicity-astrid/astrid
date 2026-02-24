@@ -29,7 +29,11 @@ impl CapsuleLoader {
     /// # Errors
     /// Returns a `CapsuleError` if the manifest is invalid or requests an
     /// unsupported engine configuration.
-    pub fn create_capsule(&self, manifest: CapsuleManifest, capsule_dir: PathBuf) -> CapsuleResult<Box<dyn Capsule>> {
+    pub fn create_capsule(
+        &self,
+        manifest: CapsuleManifest,
+        capsule_dir: PathBuf,
+    ) -> CapsuleResult<Box<dyn Capsule>> {
         let mut composite = CompositeCapsule::new(manifest.clone())?;
 
         // 1. WASM Component Engine (Pure WASM or Compiled OpenClaw)
@@ -43,7 +47,7 @@ impl CapsuleLoader {
             // If server.server_type == "stdio", then the user is explicitly requesting
             // a host process breakout. We verify the `host_process` capability was granted
             // by the OS before adding this engine.
-            
+
             // TODO: Box::new(McpHostEngine::new(...))
             // composite.add_engine(mcp_engine);
         }
@@ -51,7 +55,10 @@ impl CapsuleLoader {
         // 3. Static Context Engine
         // Always added. Handles injecting context_files, static commands, and skills
         // directly into the OS memory without booting any VMs or Processes.
-        composite.add_engine(Box::new(crate::engine::StaticEngine::new(manifest.clone(), capsule_dir)));
+        composite.add_engine(Box::new(crate::engine::StaticEngine::new(
+            manifest.clone(),
+            capsule_dir,
+        )));
 
         Ok(Box::new(composite))
     }

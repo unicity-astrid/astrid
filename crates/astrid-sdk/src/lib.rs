@@ -13,7 +13,7 @@
 
 use astrid_sys::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 /// Core error type for SDK operations
@@ -91,12 +91,18 @@ pub mod ipc {
         Ok(())
     }
 
-    pub fn publish_json<T: Serialize>(topic: impl AsRef<[u8]>, payload: &T) -> Result<(), SysError> {
+    pub fn publish_json<T: Serialize>(
+        topic: impl AsRef<[u8]>,
+        payload: &T,
+    ) -> Result<(), SysError> {
         let bytes = serde_json::to_vec(payload)?;
         publish_bytes(topic, &bytes)
     }
 
-    pub fn publish_msgpack<T: Serialize>(topic: impl AsRef<[u8]>, payload: &T) -> Result<(), SysError> {
+    pub fn publish_msgpack<T: Serialize>(
+        topic: impl AsRef<[u8]>,
+        payload: &T,
+    ) -> Result<(), SysError> {
         let bytes = rmp_serde::to_vec_named(payload)?;
         publish_bytes(topic, &bytes)
     }
@@ -121,24 +127,38 @@ pub mod ipc {
 pub mod uplink {
     use super::*;
 
-    pub fn register(name: impl AsRef<[u8]>, platform: impl AsRef<[u8]>, profile: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        let id_bytes = unsafe { 
-            astrid_uplink_register(name.as_ref().to_vec(), platform.as_ref().to_vec(), profile.as_ref().to_vec())? 
+    pub fn register(
+        name: impl AsRef<[u8]>,
+        platform: impl AsRef<[u8]>,
+        profile: impl AsRef<[u8]>,
+    ) -> Result<Vec<u8>, SysError> {
+        let id_bytes = unsafe {
+            astrid_uplink_register(
+                name.as_ref().to_vec(),
+                platform.as_ref().to_vec(),
+                profile.as_ref().to_vec(),
+            )?
         };
         Ok(id_bytes)
     }
 
-    pub fn send_bytes(uplink_id: impl AsRef<[u8]>, platform_user_id: impl AsRef<[u8]>, content: &[u8]) -> Result<Vec<u8>, SysError> {
-        let result = unsafe { 
-            astrid_uplink_send(uplink_id.as_ref().to_vec(), platform_user_id.as_ref().to_vec(), content.to_vec())? 
+    pub fn send_bytes(
+        uplink_id: impl AsRef<[u8]>,
+        platform_user_id: impl AsRef<[u8]>,
+        content: &[u8],
+    ) -> Result<Vec<u8>, SysError> {
+        let result = unsafe {
+            astrid_uplink_send(
+                uplink_id.as_ref().to_vec(),
+                platform_user_id.as_ref().to_vec(),
+                content.to_vec(),
+            )?
         };
         Ok(result)
     }
 
     pub fn receive_bytes(uplink_id: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        let message_bytes = unsafe { 
-            astrid_uplink_recv(uplink_id.as_ref().to_vec())?
-        };
+        let message_bytes = unsafe { astrid_uplink_recv(uplink_id.as_ref().to_vec())? };
         Ok(message_bytes)
     }
 }
@@ -197,8 +217,18 @@ pub mod cron {
     use super::*;
 
     /// Schedule a dynamic cron job that will wake up this capsule.
-    pub fn schedule(name: impl AsRef<[u8]>, schedule: impl AsRef<[u8]>, payload: &[u8]) -> Result<(), SysError> {
-        unsafe { astrid_cron_schedule(name.as_ref().to_vec(), schedule.as_ref().to_vec(), payload.to_vec())? };
+    pub fn schedule(
+        name: impl AsRef<[u8]>,
+        schedule: impl AsRef<[u8]>,
+        payload: &[u8],
+    ) -> Result<(), SysError> {
+        unsafe {
+            astrid_cron_schedule(
+                name.as_ref().to_vec(),
+                schedule.as_ref().to_vec(),
+                payload.to_vec(),
+            )?
+        };
         Ok(())
     }
 
@@ -222,7 +252,7 @@ pub mod sys {
         let result = unsafe { astrid_get_config(key.as_ref().to_vec())? };
         Ok(result)
     }
-    
+
     pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
         let bytes = get_config_bytes(key)?;
         String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
@@ -230,7 +260,7 @@ pub mod sys {
 }
 
 pub mod prelude {
-    pub use crate::{fs, ipc, uplink, kv, http, cron, sys, SysError};
+    pub use crate::{SysError, cron, fs, http, ipc, kv, sys, uplink};
     pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]

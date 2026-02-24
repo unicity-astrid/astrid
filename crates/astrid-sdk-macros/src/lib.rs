@@ -15,7 +15,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemImpl};
+use syn::{ItemImpl, parse_macro_input};
 
 /// Marks an `impl` block as the entry point for an Astrid Capsule.
 ///
@@ -49,7 +49,7 @@ pub fn capsule(_attr: TokenStream, item: TokenStream) -> TokenStream {
             // TODO: Generate AST router based on #[tool] attributes
             // e.g., deserialize `input` (JSON/MsgPack) into a ToolRequest,
             // route to #struct_name::my_tool(...), and serialize the result.
-            
+
             Ok(b"Successfully routed tool call".to_vec())
         }
 

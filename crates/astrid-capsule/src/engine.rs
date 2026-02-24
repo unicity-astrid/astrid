@@ -28,8 +28,8 @@ pub trait ExecutionEngine: Send + Sync {
 ///
 /// Every CompositeCapsule contains a `StaticEngine` by default.
 pub struct StaticEngine {
-    manifest: CapsuleManifest,
-    capsule_dir: PathBuf,
+    _manifest: CapsuleManifest,
+    _capsule_dir: PathBuf,
 }
 
 impl StaticEngine {
@@ -37,8 +37,8 @@ impl StaticEngine {
     #[must_use]
     pub fn new(manifest: CapsuleManifest, capsule_dir: PathBuf) -> Self {
         Self {
-            manifest,
-            capsule_dir,
+            _manifest: manifest,
+            _capsule_dir: capsule_dir,
         }
     }
 }
@@ -48,7 +48,7 @@ impl ExecutionEngine for StaticEngine {
     async fn load(&mut self) -> CapsuleResult<()> {
         // In Phase 5, this will read `self.manifest.context_files` and `skills`
         // from `self.capsule_dir` and publish them to the OS Event Bus or LLM Router.
-        
+
         // For now, loading static files is instantaneous and infallible.
         Ok(())
     }
