@@ -115,13 +115,13 @@ pub(crate) fn astrid_fs_mkdir_impl(
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    // TODO: Phase 5 Capability check
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -131,7 +131,6 @@ pub(crate) fn astrid_fs_mkdir_impl(
             return Err(Error::msg(format!("security denied mkdir: {reason}")));
         }
     }
-    */
 
     tokio::task::block_in_place(|| {
         state
@@ -159,12 +158,13 @@ pub(crate) fn astrid_fs_readdir_impl(
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -174,7 +174,6 @@ pub(crate) fn astrid_fs_readdir_impl(
             return Err(Error::msg(format!("security denied readdir: {reason}")));
         }
     }
-    */
 
     let entries = tokio::task::block_in_place(|| {
         state
@@ -211,12 +210,13 @@ pub(crate) fn astrid_fs_stat_impl(
 
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -226,7 +226,6 @@ pub(crate) fn astrid_fs_stat_impl(
             return Err(Error::msg(format!("security denied stat: {reason}")));
         }
     }
-    */
 
     let metadata = tokio::task::block_in_place(|| {
         state
@@ -264,12 +263,13 @@ pub(crate) fn astrid_fs_unlink_impl(
 
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -279,7 +279,6 @@ pub(crate) fn astrid_fs_unlink_impl(
             return Err(Error::msg(format!("security denied unlink: {reason}")));
         }
     }
-    */
 
     tokio::task::block_in_place(|| {
         state
@@ -308,12 +307,13 @@ pub(crate) fn astrid_read_file_impl(
 
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -323,7 +323,6 @@ pub(crate) fn astrid_read_file_impl(
             return Err(Error::msg(format!("security denied read_file: {reason}")));
         }
     }
-    */
 
     let content_bytes = tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {
@@ -362,12 +361,13 @@ pub(crate) fn astrid_write_file_impl(
 
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
-    let _resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
+    let resolved = resolve_physical_absolute(&state.workspace_root, &path)?;
 
-    /*
+    let security = state.security.clone();
+
     if let Some(gate) = security {
         let p = resolved.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
@@ -377,7 +377,6 @@ pub(crate) fn astrid_write_file_impl(
             return Err(Error::msg(format!("security denied write_file: {reason}")));
         }
     }
-    */
 
     tokio::task::block_in_place(|| {
         state.runtime_handle.block_on(async {

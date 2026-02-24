@@ -51,9 +51,9 @@ pub(crate) fn astrid_http_request_impl(
 
     let _capsule_id = state.capsule_id.as_str().to_owned();
 
+    let security = state.security.clone();
+
     // Check capability via security gate (which will check if the host is allowed)
-    // TODO: implement Phase 5 capabilities check
-    /*
     if let Some(gate) = security {
         let url_obj = reqwest::Url::parse(&req.url)
             .map_err(|e| Error::msg(format!("invalid url {}: {e}", req.url)))?;
@@ -61,19 +61,20 @@ pub(crate) fn astrid_http_request_impl(
             .host_str()
             .ok_or_else(|| Error::msg("URL missing host"))?;
 
-        let gate = gate.clone();
-        let pid = capsule_id.clone();
+        let pid = _capsule_id.clone();
         let h = host.to_string();
+        let m = req.method.clone();
         let check = tokio::task::block_in_place(|| {
             state
                 .runtime_handle
-                .block_on(async move { gate.check_network(&pid, &h).await })
+                .block_on(async move { gate.check_http_request(&pid, &m, &h).await })
         });
         if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied network access: {reason}")));
+            return Err(Error::msg(format!(
+                "security denied network access: {reason}"
+            )));
         }
     }
-    */
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))

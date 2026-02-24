@@ -13,5 +13,6 @@ pub mod error;
 pub mod loader;
 pub mod manifest;
 pub mod registry;
+pub mod security;
 pub mod tool;
 pub mod watcher;

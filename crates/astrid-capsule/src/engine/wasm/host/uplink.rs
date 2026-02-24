@@ -121,18 +121,17 @@ pub(crate) fn astrid_uplink_register_impl(
     let profile = parse_connector_profile(&profile_bytes)?;
 
     let ud = user_data.get()?;
-    let (capsule_id, _handle) = {
+    let (capsule_id, security, handle) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
             state.capsule_id.as_str().to_owned(),
+            state.security.clone(),
             state.runtime_handle.clone(),
         )
     };
 
-    // TODO: Phase 5 Capability check
-    /*
     if let Some(gate) = &security {
         let gate = gate.clone();
         let pid = capsule_id.clone();
@@ -146,7 +145,6 @@ pub(crate) fn astrid_uplink_register_impl(
             )));
         }
     }
-    */
 
     let source = astrid_core::ConnectorSource::new_wasm(&capsule_id).map_err(|e| {
         Error::msg(format!(
@@ -181,10 +179,21 @@ pub(crate) fn astrid_uplink_receive_impl(
     plugin: &mut CurrentPlugin,
     _inputs: &[Val],
     outputs: &mut [Val],
-    _user_data: UserData<HostState>,
+    user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    // TODO: Implement inbound buffering in HostState
-    let mem = plugin.memory_new(&b""[..])?;
-    outputs[0] = plugin.memory_to_val(mem);
+    let ud = user_data.get()?;
+    let mut state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if !state.uplink_buffer.is_empty() {
+        let msg_bytes = state.uplink_buffer.remove(0);
+        let mem = plugin.memory_new(&msg_bytes)?;
+        outputs[0] = plugin.memory_to_val(mem);
+    } else {
+        let mem = plugin.memory_new(&b""[..])?;
+        outputs[0] = plugin.memory_to_val(mem);
+    }
+
     Ok(())
 }

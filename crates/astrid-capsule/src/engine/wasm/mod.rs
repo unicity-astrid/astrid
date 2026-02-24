@@ -88,6 +88,7 @@ impl ExecutionEngine for WasmEngine {
                 runtime_handle: tokio::runtime::Handle::current(),
                 has_connector_capability: !self.manifest.uplinks.is_empty(),
                 inbound_tx: None,
+                uplink_buffer: Vec::new(),
                 registered_connectors: Vec::new(),
             };
 

@@ -13,8 +13,7 @@ use crate::capsule::CapsuleId;
 use astrid_core::connector::{ConnectorDescriptor, InboundMessage, MAX_CONNECTORS_PER_PLUGIN};
 use astrid_storage::ScopedKvStore;
 
-// TODO: Migrate security gate
-// use crate::security::PluginSecurityGate;
+use crate::security::CapsuleSecurityGate;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
 pub struct HostState {
@@ -43,8 +42,7 @@ pub struct HostState {
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
     /// Optional security gate for gated operations (HTTP, file I/O).
-    // pub security: Option<Arc<dyn PluginSecurityGate>>,
-    pub security: Option<()>,
+    pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Tokio runtime handle for bridging async operations in sync host functions.
     pub runtime_handle: tokio::runtime::Handle,
     /// Whether the plugin manifest declares `PluginCapability::Connector`.
@@ -58,6 +56,8 @@ pub struct HostState {
     /// [`PluginCapability::Connector`](crate::PluginCapability). Feeds into
     /// the gateway's inbound router.
     pub inbound_tx: Option<mpsc::Sender<InboundMessage>>,
+    /// Buffer for messages sent from the OS back to the Uplink Capsule.
+    pub uplink_buffer: Vec<Vec<u8>>,
     /// Connectors registered by the WASM guest via `astrid_register_connector`.
     pub registered_connectors: Vec<ConnectorDescriptor>,
 }
@@ -110,6 +110,7 @@ impl std::fmt::Debug for HostState {
             .field("has_security", &self.security.is_some())
             .field("has_connector_capability", &self.has_connector_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
+            .field("uplink_buffer_len", &self.uplink_buffer.len())
             .field("registered_connectors", &self.registered_connectors.len())
             .finish_non_exhaustive()
     }
@@ -144,6 +145,7 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
+            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -183,6 +185,7 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
+            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -226,6 +229,7 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
+            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -266,6 +270,7 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
+            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 
@@ -324,6 +329,7 @@ mod tests {
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
+            uplink_buffer: Vec::new(),
             registered_connectors: Vec::new(),
         };
 

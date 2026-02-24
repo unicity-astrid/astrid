@@ -8,6 +8,8 @@ use crate::context::CapsuleContext;
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::{CapsuleManifest, McpServerDef};
 
+use std::process::Stdio;
+
 /// Executes Legacy Host MCP servers via `stdio`.
 ///
 /// This engine requires the `host_process` capability. It securely spawns
@@ -48,13 +50,18 @@ impl ExecutionEngine for McpHostEngine {
         let mut cmd = Command::new(command_str);
         cmd.args(&self.server_def.args);
         cmd.current_dir(&self.capsule_dir);
+        cmd.stdin(Stdio::piped());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::null());
 
-        // TODO: In a full implementation, pipe stdin/stdout and connect to astrid-mcp.
-        // For Phase 4 scaffolding, we just prove the process starts.
-
-        let child = cmd.spawn().map_err(|e| {
+        let mut child = cmd.spawn().map_err(|e| {
             CapsuleError::UnsupportedEntryPoint(format!("Failed to spawn host process: {}", e))
         })?;
+
+        // TODO: In Phase 7, pipe stdin/stdout and connect to astrid-mcp.
+        // For Phase 4/5 scaffolding, we just prove the process starts.
+        let _stdin = child.stdin.take();
+        let _stdout = child.stdout.take();
 
         self.process = Some(child);
         Ok(())

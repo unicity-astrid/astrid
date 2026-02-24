@@ -8,11 +8,13 @@ rust-version.workspace = true
 description = "Core runtime management for User-Space Capsules in Astrid OS"
 
 [dependencies]
+astrid-mcp = { workspace = true }
 astrid-core = { workspace = true }
 astrid-vfs = { path = "../astrid-vfs" }
 astrid-capabilities = { workspace = true }
 astrid-events = { workspace = true }
 astrid-storage = { workspace = true }
+astrid-approval = { workspace = true, optional = true }
 extism = { workspace = true }
 uuid = { workspace = true }
 tempfile = { workspace = true }
@@ -26,3 +28,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
+
+[features]
+approval = ["astrid-approval"]

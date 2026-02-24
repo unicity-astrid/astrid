@@ -67,11 +67,21 @@ impl CapsuleRegistry {
             ))); // TODO
         }
 
-        // Register the capsule's connectors, rolling back on failure.
-        let _registered_ids: Vec<ConnectorId> = Vec::new();
-        // TODO: Port connectors extraction
-        /*
-        for descriptor in capsule.connectors() {
+        // Register the capsule's uplinks (connectors)
+        let mut registered_ids: Vec<ConnectorId> = Vec::new();
+        for uplink in &capsule.manifest().uplinks {
+            let source =
+                astrid_core::connector::ConnectorSource::new_wasm(id.as_str()).map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("Failed to create source: {}", e))
+                })?;
+
+            let descriptor =
+                ConnectorDescriptor::builder(uplink.name.clone(), uplink.platform.clone())
+                    .source(source)
+                    .capabilities(ConnectorCapabilities::receive_only())
+                    .profile(uplink.profile)
+                    .build();
+
             match self.register_connector(&id, descriptor.clone()) {
                 Ok(()) => registered_ids.push(descriptor.id),
                 Err(e) => {
@@ -82,7 +92,6 @@ impl CapsuleRegistry {
                 },
             }
         }
-        */
 
         info!(capsule_id = %id, "Registered capsule");
         self.capsules.insert(id, capsule);

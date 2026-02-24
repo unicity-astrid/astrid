@@ -8,10 +8,7 @@ use crate::manifest::CapsuleManifest;
 
 /// Responsible for translating a declarative `Capsule.toml` manifest into
 /// a live, unified `CompositeCapsule` packed with the correct execution engines.
-pub struct CapsuleLoader {
-    // TODO: In Phase 5, this will hold Arc references to the Wasmtime Engine
-    // and Security Gates so it can pass them down into the WasmEngine instances.
-}
+pub struct CapsuleLoader {}
 
 impl CapsuleLoader {
     /// Create a new Capsule Loader.
