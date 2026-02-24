@@ -5,8 +5,10 @@ use std::fmt;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::context::CapsuleContext;
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
+use crate::tool::CapsuleTool;
 
 /// Unique, stable, human-readable capsule identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -92,10 +94,15 @@ pub trait Capsule: Send + Sync {
     fn state(&self) -> CapsuleState;
 
     /// Load the capsule, initializing all of its execution engines.
-    async fn load(&mut self) -> CapsuleResult<()>;
+    async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()>;
 
     /// Unload the capsule, terminating all of its execution engines.
     async fn unload(&mut self) -> CapsuleResult<()>;
+
+    /// Tools exposed by this capsule.
+    fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
+        &[] // Default implementation returning empty list
+    }
 }
 
 /// The universal, additive implementation of a Capsule.
@@ -143,10 +150,10 @@ impl Capsule for CompositeCapsule {
         self.state.clone()
     }
 
-    async fn load(&mut self) -> CapsuleResult<()> {
+    async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
         self.state = CapsuleState::Loading;
         for engine in &mut self.engines {
-            if let Err(e) = engine.load().await {
+            if let Err(e) = engine.load(ctx).await {
                 self.state = CapsuleState::Failed(e.to_string());
                 return Err(e);
             }

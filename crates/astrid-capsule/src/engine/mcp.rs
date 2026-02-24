@@ -1,11 +1,12 @@
-use std::path::PathBuf;
 use async_trait::async_trait;
-use tracing::info;
+use std::path::PathBuf;
 use tokio::process::{Child, Command};
+use tracing::info;
 
-use crate::error::{CapsuleResult, CapsuleError};
-use crate::manifest::{CapsuleManifest, McpServerDef};
 use super::ExecutionEngine;
+use crate::context::CapsuleContext;
+use crate::error::{CapsuleError, CapsuleResult};
+use crate::manifest::{CapsuleManifest, McpServerDef};
 
 /// Executes Legacy Host MCP servers via `stdio`.
 ///
@@ -32,7 +33,7 @@ impl McpHostEngine {
 
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
-    async fn load(&mut self) -> CapsuleResult<()> {
+    async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
         // Build the command from the manifest definition
         let command_str = self.server_def.command.as_ref().ok_or_else(|| {
             CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())

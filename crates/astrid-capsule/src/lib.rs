@@ -6,8 +6,11 @@
 //! environments (WASM sandboxes, legacy host processes, or OpenClaw bridges).
 
 pub mod capsule;
+pub mod context;
 pub mod discovery;
 pub mod engine;
 pub mod error;
 pub mod loader;
 pub mod manifest;
+pub mod registry;
+pub mod tool;

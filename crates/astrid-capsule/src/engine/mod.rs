@@ -5,16 +5,17 @@
 //! an additive "Composite" architecture. The capsule iterates over its
 //! registered engines to handle lifecycle events.
 
-mod static_engine;
 pub mod mcp;
+mod static_engine;
 pub mod wasm;
 
-pub use static_engine::StaticEngine;
 pub use mcp::McpHostEngine;
+pub use static_engine::StaticEngine;
 pub use wasm::WasmEngine;
 
 use async_trait::async_trait;
 
+use crate::context::CapsuleContext;
 use crate::error::CapsuleResult;
 
 /// A runtime environment capable of executing capsule logic.
@@ -23,10 +24,10 @@ use crate::error::CapsuleResult;
 #[async_trait]
 pub trait ExecutionEngine: Send + Sync {
     /// Load the engine (e.g., spawn the WASM VM or start the Node.js process).
-    async fn load(&mut self) -> CapsuleResult<()>;
+    async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()>;
 
     /// Unload the engine (e.g., drop WASM memory or SIGTERM the child process).
     async fn unload(&mut self) -> CapsuleResult<()>;
-    
+
     // TODO: Add methods for retrieving tools, handling hooks, and routing IPC.
 }
