@@ -20,19 +20,17 @@ path = "src/daemon_main.rs"
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-crypto = { workspace = true }
-astrid-capabilities = { workspace = true }
 astrid-audit = { workspace = true }
 astrid-mcp = { workspace = true }
 astrid-llm = { workspace = true }
 astrid-runtime = { workspace = true }
 astrid-gateway = { workspace = true }
 astrid-hooks = { workspace = true }
-astrid-plugins = { workspace = true, features = ["http"] }
+astrid-capsule = { workspace = true }
 astrid-telegram = { workspace = true }
 astrid-telemetry = { workspace = true }
 astrid-approval = { workspace = true }
-openclaw-bridge = { workspace = true }
-blake3 = { workspace = true }
+astrid-openclaw = { workspace = true }
 
 # CLI
 clap = { workspace = true }
@@ -45,7 +43,6 @@ syntect = { workspace = true }
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }
-futures = { workspace = true }
 
 # JSON-RPC client (connects to daemon)
 jsonrpsee = { workspace = true }
@@ -54,10 +51,6 @@ jsonrpsee = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
-
-# Transpilation (Tier 2 TS→JS pre-processing)
-oxc = { workspace = true }
-oxc_allocator = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }

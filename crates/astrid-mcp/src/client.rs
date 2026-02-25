@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::capabilities::{CapabilitiesHandler, ServerNotice};
-use crate::config::ServersConfig;
+use crate::config::{ServerConfig, ServersConfig};
 use crate::error::{McpError, McpResult};
 use crate::server::{McpServerStatus, ServerManager};
 use crate::types::{
@@ -146,6 +146,28 @@ impl McpClient {
         info!(server = server_name, "MCP connection established");
 
         // Refresh tools cache
+        self.refresh_tools_cache().await?;
+
+        Ok(())
+    }
+
+    /// Dynamically connect a new server using a provided configuration.
+    ///
+    /// # Errors
+    /// Returns an error if the server is already running or cannot be started.
+    pub async fn connect_dynamic(&self, name: &str, config: ServerConfig) -> McpResult<()> {
+        self.servers.add_server(name, config).await?;
+
+        self.servers
+            .connect_server(
+                name,
+                self.capabilities.clone(),
+                Some(self.notice_tx.clone()),
+            )
+            .await?;
+
+        info!(server = name, "Dynamic MCP connection established");
+
         self.refresh_tools_cache().await?;
 
         Ok(())

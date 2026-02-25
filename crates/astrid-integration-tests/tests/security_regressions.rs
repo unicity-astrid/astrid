@@ -9,6 +9,8 @@
 //! - Expired allowance cleanup during atomic lookup
 //! - Race condition in workspace budget check+reserve (now atomic)
 
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::sync::Arc;
 
 use astrid_approval::deferred::DeferredResolutionStore;

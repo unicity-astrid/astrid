@@ -21,8 +21,7 @@ members = [
     "crates/astrid-config",
 
     # Plugins
-    "crates/astrid-plugins",
-    "crates/openclaw-bridge",
+    "crates/astrid-openclaw",
 
     # Phase 2
     "crates/astrid-approval",
@@ -44,6 +43,10 @@ members = [
     "crates/astrid-cli-mockup",  # UI/UX prototype
     "crates/astrid-telegram",
     "crates/astrid-vfs",
+    "crates/astrid-sys",
+    "crates/astrid-sdk",
+    "crates/astrid-sdk-macros",
+    "crates/astrid-capsule",
     # "crates/astrid-discord",  # Phase 7
     # "crates/astrid-web",      # Phase 7
 
@@ -53,7 +56,7 @@ members = [
 exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/unicity-astrid/astrid"
@@ -61,33 +64,39 @@ rust-version = "1.93"
 
 [workspace.dependencies]
 # Internal crates - Core (Phase 1)
-astrid-core = { path = "crates/astrid-core", version = "0.1.0" }
-astrid-crypto = { path = "crates/astrid-crypto", version = "0.1.0" }
-astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.1.0" }
-astrid-events = { path = "crates/astrid-events", version = "0.1.0" }
-astrid-hooks = { path = "crates/astrid-hooks", version = "0.1.0" }
-astrid-mcp = { path = "crates/astrid-mcp", version = "0.1.0" }
-astrid-audit = { path = "crates/astrid-audit", version = "0.1.0" }
-astrid-llm = { path = "crates/astrid-llm", version = "0.1.0" }
-astrid-runtime = { path = "crates/astrid-runtime", version = "0.1.0" }
-astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.1.0" }
+astrid-core = { path = "crates/astrid-core", version = "0.1.1" }
+astrid-crypto = { path = "crates/astrid-crypto", version = "0.1.1" }
+astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.1.1" }
+astrid-events = { path = "crates/astrid-events", version = "0.1.1" }
+astrid-hooks = { path = "crates/astrid-hooks", version = "0.1.1" }
+astrid-mcp = { path = "crates/astrid-mcp", version = "0.1.1" }
+astrid-audit = { path = "crates/astrid-audit", version = "0.1.1" }
+astrid-llm = { path = "crates/astrid-llm", version = "0.1.1" }
+astrid-runtime = { path = "crates/astrid-runtime", version = "0.1.1" }
+astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.1.1" }
 astrid-test = { path = "crates/astrid-test" }
-astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.0" }
-astrid-tools = { path = "crates/astrid-tools", version = "0.1.0" }
-astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.0" }
-astrid-gateway = { path = "crates/astrid-gateway", version = "0.1.0" }
-astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.0" }
+astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
+astrid-tools = { path = "crates/astrid-tools", version = "0.1.1" }
+astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
+astrid-gateway = { path = "crates/astrid-gateway", version = "0.1.1" }
+astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }
+astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
 
 # Internal crates - Configuration
-astrid-config = { path = "crates/astrid-config", version = "0.1.0" }
+astrid-config = { path = "crates/astrid-config", version = "0.1.1" }
 
 # Internal crates - Plugins
-astrid-plugins = { path = "crates/astrid-plugins", version = "0.1.0" }
-openclaw-bridge = { path = "crates/openclaw-bridge" }
+astrid-openclaw = { path = "crates/astrid-openclaw", version = "0.1.1" }
+
+# Internal crates - Phase 4
+astrid-sys = { path = "crates/astrid-sys", version = "0.1.1" }
+astrid-sdk = { path = "crates/astrid-sdk", version = "0.1.1" }
+astrid-sdk-macros = { path = "crates/astrid-sdk-macros", version = "0.1.1" }
+astrid-capsule = { path = "crates/astrid-capsule", version = "0.1.1" }
 
 # Internal crates - Phase 2
-astrid-approval = { path = "crates/astrid-approval", version = "0.1.0" }
-astrid-storage = { path = "crates/astrid-storage", version = "0.1.0" }
+astrid-approval = { path = "crates/astrid-approval", version = "0.1.1" }
+astrid-storage = { path = "crates/astrid-storage", version = "0.1.1" }
 
 # Internal crates - Deferred phases
 # astrid-sandbox = { path = "crates/astrid-sandbox" }   # Phase 3

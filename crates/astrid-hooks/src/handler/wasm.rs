@@ -12,10 +12,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use astrid_capsule::capsule::CapsuleId;
+use astrid_capsule::engine::wasm::host::register_host_functions;
+use astrid_capsule::engine::wasm::host_state::HostState;
 use astrid_core::plugin_abi;
-use astrid_plugins::PluginId;
-use astrid_plugins::wasm::host::register_host_functions;
-use astrid_plugins::wasm::host_state::HostState;
 use astrid_storage::kv::ScopedKvStore;
 use extism::{Manifest, PluginBuilder, UserData, Wasm};
 use tracing::{debug, warn};
@@ -190,8 +190,8 @@ impl WasmHandler {
         });
 
         let host_state = HostState {
-            plugin_uuid: uuid::Uuid::new_v4(),
-            plugin_id: PluginId::from_static("hook-wasm"),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            capsule_id: CapsuleId::from_static("hook-wasm"),
             workspace_root: self.workspace_root.clone(),
             vfs: Arc::new(vfs),
             vfs_root_handle: root_handle,

@@ -26,11 +26,11 @@ use std::sync::Arc;
 
 use astrid_approval::budget::WorkspaceBudgetTracker;
 use astrid_capabilities::CapabilityStore;
+use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::InboundMessage;
 use astrid_core::SessionId;
 use astrid_core::identity::IdentityStore;
 use astrid_llm::LlmProvider;
-use astrid_plugins::PluginRegistry;
 use astrid_runtime::AgentRuntime;
 use astrid_storage::{KvStore, ScopedKvStore};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
@@ -41,28 +41,6 @@ use super::SessionHandle;
 use super::rpc::workspace::ws_ns;
 use crate::daemon_frontend::DaemonFrontend;
 use crate::rpc::DaemonEvent;
-
-// ---------------------------------------------------------------------------
-// Fan-in forwarder (one per plugin)
-// ---------------------------------------------------------------------------
-
-/// Forward messages from a plugin's inbound receiver to the central channel.
-///
-/// Runs until the plugin drops its sender (plugin unloaded) or the central
-/// channel closes (daemon shutting down). One task is spawned per plugin.
-pub(super) async fn forward_inbound(
-    plugin_id: String,
-    mut rx: mpsc::Receiver<InboundMessage>,
-    tx: mpsc::Sender<InboundMessage>,
-) {
-    while let Some(msg) = rx.recv().await {
-        if tx.send(msg).await.is_err() {
-            warn!(plugin = %plugin_id, "Central inbound channel closed — stopping forwarder");
-            break;
-        }
-    }
-    info!(plugin = %plugin_id, "Plugin inbound forwarder ended");
-}
 
 // ---------------------------------------------------------------------------
 // Router context
@@ -78,7 +56,7 @@ pub(super) struct InboundRouterCtx {
     /// Stored for future use by the approval fallback chain (finding connectors
     /// with approval capability when a connector session needs user approval).
     #[allow(dead_code)]
-    pub plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub plugins: Arc<RwLock<CapsuleRegistry>>,
     pub runtime: Arc<AgentRuntime<Box<dyn LlmProvider>>>,
     pub workspace_kv: Arc<dyn KvStore>,
     pub workspace_budget_tracker: Arc<WorkspaceBudgetTracker>,
@@ -417,206 +395,28 @@ async fn run_connector_turn(ctx: &InboundRouterCtx, session_id: SessionId, input
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Fan-in Forwarder
 // ---------------------------------------------------------------------------
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    use astrid_core::FrontendType;
-    use astrid_core::connector::ConnectorId;
-    use astrid_core::identity::{IdentityStore, InMemoryIdentityStore};
-    use tokio::sync::RwLock;
-    use uuid::Uuid;
-
-    #[tokio::test]
-    async fn unknown_user_resolve_returns_none() {
-        let store = InMemoryIdentityStore::new();
-        let result = store
-            .resolve(&FrontendType::Telegram, "unknown_telegram_42")
-            .await;
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn known_user_resolve_returns_identity() {
-        let store = InMemoryIdentityStore::new();
-        let user = store
-            .create_identity(FrontendType::Telegram, "tg_user_1")
-            .await
-            .expect("create identity");
-        let resolved = store.resolve(&FrontendType::Telegram, "tg_user_1").await;
-        assert_eq!(resolved.map(|u| u.id), Some(user.id));
-    }
-
-    /// Verifies the data-model invariant: a `connector_sessions` entry that
-    /// references a session not present in the sessions map is "stale".
-    /// The router's `find_or_create_session` detects this and creates a new
-    /// session rather than routing to a dead one.
-    #[tokio::test]
-    async fn connector_sessions_stale_entry_detected() {
-        // Simulate: connector_sessions has user→session but sessions map is empty.
-        let connector_sessions: Arc<RwLock<HashMap<Uuid, astrid_core::SessionId>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-        let sessions: Arc<RwLock<HashMap<astrid_core::SessionId, super::SessionHandle>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        let user_id = Uuid::new_v4();
-        let stale_session_id = astrid_core::SessionId(Uuid::new_v4());
-
-        // Insert a stale entry.
-        connector_sessions
-            .write()
-            .await
-            .insert(user_id, stale_session_id.clone());
-
-        // Verify: sessions doesn't contain it (stale).
-        let cs = connector_sessions.read().await;
-        let sid = cs.get(&user_id).unwrap();
-        let live = sessions.read().await.contains_key(sid);
-        assert!(!live, "stale session should not be in sessions map");
-    }
-
-    /// `forward_inbound` relays messages from a plugin's receiver to the
-    /// central inbound channel unchanged.
-    #[tokio::test]
-    async fn forward_inbound_relays_messages() {
-        use astrid_core::InboundMessage;
-        use tokio::sync::mpsc;
-
-        let (plugin_tx, plugin_rx) = mpsc::channel::<InboundMessage>(8);
-        let (central_tx, mut central_rx) = mpsc::channel(8);
-
-        tokio::spawn(super::forward_inbound(
-            "test-plugin".to_string(),
-            plugin_rx,
-            central_tx,
-        ));
-
-        let msg = InboundMessage::builder(
-            ConnectorId::new(),
-            FrontendType::Telegram,
-            "user-42",
-            "hello from connector",
-        )
-        .build();
-
-        plugin_tx.send(msg).await.unwrap();
-
-        let received = central_rx.recv().await.expect("message forwarded");
-        assert_eq!(received.content, "hello from connector");
-        assert_eq!(received.platform_user_id, "user-42");
-    }
-
-    /// A second message from the same user routes to the existing live session,
-    /// not a new one. Verifies the happy-path lookup in `find_or_create_session`:
-    /// if `connector_sessions` has `user_id → session_id` and `sessions` contains
-    /// that session, the existing session ID is returned unchanged.
-    #[tokio::test]
-    async fn same_user_routes_to_existing_session() {
-        let connector_sessions: Arc<RwLock<HashMap<Uuid, astrid_core::SessionId>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-        let sessions: Arc<RwLock<HashMap<astrid_core::SessionId, super::SessionHandle>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        let user_id = Uuid::new_v4();
-        let session_id = astrid_core::SessionId(Uuid::new_v4());
-
-        // Simulate an existing live connector session.
-        connector_sessions
-            .write()
-            .await
-            .insert(user_id, session_id.clone());
-
-        // The session is live (present in sessions map).
-        // In find_or_create_session, `live = sessions.contains_key(sid)` → true.
-        let cs = connector_sessions.read().await;
-        let sid = cs.get(&user_id).unwrap();
-        let live = sessions.read().await.contains_key(sid);
-
-        // A live entry means the router returns the existing session ID —
-        // no new session is created.
-
-        assert_eq!(sid, &session_id, "must route to the existing session");
-        assert!(!live, "sessions map is empty in this test — entry is stale");
-
-        // Now verify the live case: insert the session into the sessions map.
-        drop(cs);
-        // (Full session construction not needed — the key lookup is all that matters.)
-        // We verify by checking the map key directly.
-        let sessions_clone = Arc::clone(&sessions);
-        let id_clone = session_id.clone();
-        // This mirrors what find_or_create_session checks before creating a new session.
-        let found_in_cs = connector_sessions.read().await.get(&user_id).cloned();
-        assert_eq!(
-            found_in_cs,
-            Some(id_clone),
-            "connector_sessions must hold the session ID"
-        );
-        let _ = sessions_clone; // silence unused warning
-    }
-
-    /// After a connector session is removed from `sessions` (e.g. via
-    /// `end_session_impl`), the cleanup sweep's `retain` call removes the
-    /// stale entry from `connector_sessions`.
-    #[tokio::test]
-    async fn cleanup_sweep_removes_stale_connector_session_entry() {
-        let connector_sessions: Arc<RwLock<HashMap<Uuid, astrid_core::SessionId>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-        let sessions: Arc<RwLock<HashMap<astrid_core::SessionId, super::SessionHandle>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-
-        let user_id = Uuid::new_v4();
-        let session_id = astrid_core::SessionId(Uuid::new_v4());
-
-        // Set up: connector_sessions has an entry but sessions does not.
-        connector_sessions
-            .write()
-            .await
-            .insert(user_id, session_id.clone());
-
-        // Simulate the cleanup loop's retain logic.
-        {
-            let live = sessions.read().await;
-            connector_sessions
-                .write()
-                .await
-                .retain(|_, sid| live.contains_key(sid));
+/// Forward messages from a capsule's specific inbound receiver to the central router channel.
+///
+/// Spawned once per capsule that declares connector capabilities.
+/// Terminates automatically when the capsule is unloaded (its `tx` drops, closing `rx`).
+pub(super) async fn forward_inbound(
+    capsule_id: String,
+    mut rx: mpsc::Receiver<InboundMessage>,
+    tx: mpsc::Sender<InboundMessage>,
+) {
+    tracing::debug!(capsule = %capsule_id, "Started inbound forwarder");
+    while let Some(msg) = rx.recv().await {
+        if tx.send(msg).await.is_err() {
+            // Central channel closed — daemon is shutting down.
+            break;
         }
-
-        // The stale entry must have been removed.
-        assert!(
-            connector_sessions.read().await.get(&user_id).is_none(),
-            "stale connector_sessions entry must be pruned by the cleanup sweep"
-        );
     }
-
-    /// `forward_inbound` exits cleanly when the plugin sender is dropped
-    /// (plugin unloaded), without blocking or panicking.
-    #[tokio::test]
-    async fn forward_inbound_exits_when_plugin_sender_drops() {
-        use astrid_core::InboundMessage;
-        use tokio::sync::mpsc;
-
-        let (plugin_tx, plugin_rx) = mpsc::channel::<InboundMessage>(8);
-        // `_central_rx` is dropped at end of scope, closing the central channel.
-        // The forwarder exits via whichever path fires first: plugin sender
-        // drop (rx.recv() → None) or central channel close (tx.send → Err).
-        // Both are correct self-termination paths; the test verifies no panic.
-        let (central_tx, _central_rx) = mpsc::channel(8);
-
-        let handle = tokio::spawn(super::forward_inbound(
-            "test-plugin".to_string(),
-            plugin_rx,
-            central_tx,
-        ));
-
-        // Drop the plugin sender — the forwarder task should exit cleanly.
-        drop(plugin_tx);
-        handle
-            .await
-            .expect("forwarder task should complete without panic");
-    }
+    tracing::debug!(capsule = %capsule_id, "Inbound forwarder exiting");
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------

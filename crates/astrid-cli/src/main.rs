@@ -25,7 +25,7 @@ mod theme;
 mod tui;
 
 use commands::{
-    audit, chat, config, daemon, doctor, hooks, init, keys, onboarding, plugin, run, servers,
+    audit, capsule, chat, config, daemon, doctor, hooks, init, keys, onboarding, run, servers,
     sessions,
 };
 use theme::print_banner;
@@ -112,10 +112,10 @@ enum Commands {
         command: KeyCommands,
     },
 
-    /// Manage plugins
-    Plugin {
+    /// Manage capsules (Phase 4 User-Space Microkernel)
+    Capsule {
         #[command(subcommand)]
-        command: PluginCommands,
+        command: CapsuleCommands,
     },
 
     /// Initialize a workspace
@@ -266,6 +266,18 @@ enum ConfigCommands {
     Validate,
     /// Show config file paths being checked
     Paths,
+}
+
+#[derive(Subcommand)]
+enum CapsuleCommands {
+    /// Install a capsule from a local path or registry
+    Install {
+        /// Capsule source (local path or package name)
+        source: String,
+        /// Install to workspace instead of user-level
+        #[arg(long)]
+        workspace: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -432,8 +444,8 @@ async fn main() -> Result<()> {
         Some(Commands::Keys { command }) => {
             handle_keys(&command)?;
         },
-        Some(Commands::Plugin { command }) => {
-            handle_plugins(command).await?;
+        Some(Commands::Capsule { command }) => {
+            handle_capsules(command)?;
         },
         Some(Commands::Init) => {
             init::run_init()?;
@@ -589,18 +601,10 @@ fn handle_keys(command: &KeyCommands) -> Result<()> {
     }
 }
 
-async fn handle_plugins(command: PluginCommands) -> Result<()> {
+fn handle_capsules(command: CapsuleCommands) -> Result<()> {
     match command {
-        PluginCommands::List => plugin::list_plugins().await,
-        PluginCommands::Install {
-            source,
-            from_openclaw,
-            workspace,
-        } => plugin::install_plugin(&source, from_openclaw, workspace).await,
-        PluginCommands::Remove { id } => plugin::remove_plugin(&id).await,
-        PluginCommands::Compile { path, output } => {
-            plugin::compile_plugin(&path, output.as_deref())
+        CapsuleCommands::Install { source, workspace } => {
+            capsule::install::install_capsule(&source, workspace)
         },
-        PluginCommands::Info { id } => plugin::plugin_info(&id),
     }
 }

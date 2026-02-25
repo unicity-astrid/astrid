@@ -50,7 +50,7 @@ pub struct AgentSession {
     /// Whether this session belongs to a sub-agent (skip spark preamble in `run_loop`).
     pub is_subagent: bool,
     /// Plugin-provided context (fetched dynamically per subagent/session, not persisted).
-    pub plugin_context: Option<String>,
+    pub capsule_context: Option<String>,
 }
 
 impl AgentSession {
@@ -80,7 +80,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
-            plugin_context: None,
+            capsule_context: None,
         }
     }
 
@@ -110,7 +110,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: false,
-            plugin_context: None,
+            capsule_context: None,
         }
     }
 
@@ -151,7 +151,7 @@ impl AgentSession {
             workspace_path: None,
             model: None,
             is_subagent: true,
-            plugin_context: None,
+            capsule_context: None,
         }
     }
 

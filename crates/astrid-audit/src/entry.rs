@@ -149,9 +149,9 @@ pub enum AuditAction {
     },
 
     /// Plugin tool was called.
-    PluginToolCall {
+    CapsuleToolCall {
         /// Plugin ID.
-        plugin_id: String,
+        capsule_id: String,
         /// Tool name.
         tool: String,
         /// Hash of the arguments (not the args themselves for privacy).
@@ -368,10 +368,10 @@ impl AuditAction {
             Self::McpToolCall { server, tool, .. } => {
                 format!("Called tool {server}:{tool}")
             },
-            Self::PluginToolCall {
-                plugin_id, tool, ..
+            Self::CapsuleToolCall {
+                capsule_id, tool, ..
             } => {
-                format!("Called plugin tool {plugin_id}:{tool}")
+                format!("Called capsule tool {capsule_id}:{tool}")
             },
             Self::McpResourceRead { server, uri } => {
                 format!("Read resource {server}:{uri}")

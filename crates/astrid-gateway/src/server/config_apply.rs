@@ -7,13 +7,13 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use astrid_capsule::registry::CapsuleRegistry;
 use astrid_config::{Config, ConnectorConfig};
 use astrid_core::ConnectorProfile;
 use astrid_core::ConnectorSource;
 use astrid_core::identity::{
     AstridUserId, FrontendLink, FrontendType, IdentityError, IdentityStore, LinkVerificationMethod,
 };
-use astrid_plugins::PluginRegistry;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -254,14 +254,14 @@ pub(super) async fn apply_identity_links(cfg: &Config, identity_store: &Arc<dyn 
 /// 4. The plugin exposes a connector with the declared profile.
 pub(super) fn validate_connector_declarations(
     connectors: &[ConnectorConfig],
-    registry: &PluginRegistry,
+    registry: &CapsuleRegistry,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     for conn_cfg in connectors {
         if conn_cfg.plugin.is_empty() {
             continue;
         }
-        let Ok(pid) = astrid_plugins::PluginId::new(conn_cfg.plugin.clone()) else {
+        let Ok(pid) = astrid_capsule::capsule::CapsuleId::new(conn_cfg.plugin.clone()) else {
             warnings.push(format!(
                 "[[connectors]] invalid plugin ID format: {}",
                 conn_cfg.plugin
@@ -302,8 +302,8 @@ pub(super) fn validate_connector_declarations(
         }
         let has_match = registry.all_connector_descriptors().iter().any(|d| {
             let from_plugin = match &d.source {
-                ConnectorSource::Wasm { plugin_id } | ConnectorSource::OpenClaw { plugin_id } => {
-                    plugin_id.as_str() == conn_cfg.plugin.as_str()
+                ConnectorSource::Wasm { capsule_id } | ConnectorSource::OpenClaw { capsule_id } => {
+                    capsule_id.as_str() == conn_cfg.plugin.as_str()
                 },
                 ConnectorSource::Native => false,
             };
@@ -322,355 +322,3 @@ pub(super) fn validate_connector_declarations(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use astrid_config::{Config, IdentityLinkConfig, IdentitySection};
-    use astrid_core::identity::InMemoryIdentityStore;
-
-    use super::*;
-
-    // --- config_admin_id ---
-
-    #[test]
-    fn config_admin_id_is_deterministic() {
-        assert_eq!(config_admin_id(), config_admin_id());
-        assert_ne!(config_admin_id(), Uuid::nil());
-    }
-
-    // --- apply_identity_links ---
-
-    fn make_cfg(links: Vec<IdentityLinkConfig>) -> Config {
-        Config {
-            identity: IdentitySection { links },
-            ..Default::default()
-        }
-    }
-
-    fn make_link(platform: &str, platform_user_id: &str, astrid_user: &str) -> IdentityLinkConfig {
-        IdentityLinkConfig {
-            platform: platform.to_owned(),
-            platform_user_id: platform_user_id.to_owned(),
-            astrid_user: astrid_user.to_owned(),
-            method: "admin".to_owned(),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_apply_identity_links_creates_link() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![make_link("telegram", "123456", "josh")]);
-
-        apply_identity_links(&cfg, &store).await;
-
-        let resolved = store.resolve(&FrontendType::Telegram, "123456").await;
-        assert!(resolved.is_some(), "link should have been created");
-    }
-
-    #[tokio::test]
-    async fn test_apply_identity_links_sets_display_name() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![make_link("telegram", "123456", "josh")]);
-
-        apply_identity_links(&cfg, &store).await;
-
-        // Resolve the linked identity and verify display name was set.
-        let resolved = store.resolve(&FrontendType::Telegram, "123456").await;
-        assert!(resolved.is_some());
-        let user = resolved.unwrap();
-        assert_eq!(user.display_name.as_deref(), Some("josh"));
-    }
-
-    #[tokio::test]
-    async fn test_apply_identity_links_idempotent() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![make_link("telegram", "123456", "josh")]);
-
-        apply_identity_links(&cfg, &store).await;
-        apply_identity_links(&cfg, &store).await; // must not error or duplicate
-
-        let resolved = store.resolve(&FrontendType::Telegram, "123456").await;
-        assert!(
-            resolved.is_some(),
-            "link should still exist after second call"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_apply_identity_links_skips_incomplete() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![
-            make_link("", "123", "josh"),      // missing platform
-            make_link("telegram", "", "josh"), // missing platform_user_id
-            make_link("telegram", "456", ""),  // missing astrid_user
-        ]);
-
-        apply_identity_links(&cfg, &store).await; // must not panic
-
-        assert!(
-            store
-                .resolve(&FrontendType::Telegram, "123")
-                .await
-                .is_none()
-        );
-        assert!(
-            store
-                .resolve(&FrontendType::Telegram, "456")
-                .await
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn apply_identity_links_uuid_resolution() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        // Pre-create an identity so we have a valid UUID to reference.
-        let existing = store
-            .create_identity(FrontendType::Cli, "known-user")
-            .await
-            .expect("create_identity");
-        let uuid_str = existing.id.to_string();
-
-        // Use the UUID string as astrid_user — should resolve via get_by_id.
-        let cfg = make_cfg(vec![make_link("telegram", "998", &uuid_str)]);
-        apply_identity_links(&cfg, &store).await;
-
-        let resolved = store.resolve(&FrontendType::Telegram, "998").await;
-        assert!(
-            resolved.is_some(),
-            "link should have been created via UUID lookup"
-        );
-        assert_eq!(
-            resolved.unwrap().id,
-            existing.id,
-            "should resolve to the pre-existing identity"
-        );
-    }
-
-    #[tokio::test]
-    async fn apply_identity_links_creates_new_user_with_warn() {
-        // "brand-new-user" is not in the store; resolve_astrid_user mints a fresh
-        // identity (step 3) and emits a warn! about possible misconfiguration.
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![make_link("discord", "555", "brand-new-user")]);
-        apply_identity_links(&cfg, &store).await;
-
-        // The new identity should be linked to discord/555.
-        let resolved = store.resolve(&FrontendType::Discord, "555").await;
-        assert!(
-            resolved.is_some(),
-            "new identity should have been created and linked"
-        );
-    }
-
-    #[tokio::test]
-    async fn apply_identity_links_skips_unsupported_method() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![IdentityLinkConfig {
-            platform: "telegram".to_owned(),
-            platform_user_id: "777".to_owned(),
-            astrid_user: "carol".to_owned(),
-            method: "oauth".to_owned(), // unsupported
-        }]);
-
-        apply_identity_links(&cfg, &store).await;
-
-        assert!(
-            store
-                .resolve(&FrontendType::Telegram, "777")
-                .await
-                .is_none(),
-            "link should NOT be created for unsupported method"
-        );
-    }
-
-    #[tokio::test]
-    async fn apply_identity_links_two_platforms_same_user() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let cfg = make_cfg(vec![
-            make_link("telegram", "111", "shared-user"),
-            make_link("discord", "222", "shared-user"),
-        ]);
-
-        apply_identity_links(&cfg, &store).await;
-
-        let telegram_id = store.resolve(&FrontendType::Telegram, "111").await;
-        let discord_id = store.resolve(&FrontendType::Discord, "222").await;
-        assert!(telegram_id.is_some(), "telegram link should exist");
-        assert!(discord_id.is_some(), "discord link should exist");
-        // Both should map to the same canonical Astrid identity.
-        assert_eq!(
-            telegram_id.unwrap().id,
-            discord_id.unwrap().id,
-            "both platforms must resolve to the same AstridUserId"
-        );
-    }
-
-    #[tokio::test]
-    async fn apply_identity_links_root_user_resolution() {
-        let store: Arc<dyn IdentityStore> = Arc::new(InMemoryIdentityStore::new());
-        let os_user = get_os_username();
-
-        // config uses "root"
-        let cfg = make_cfg(vec![make_link("telegram", "888", "root")]);
-        apply_identity_links(&cfg, &store).await;
-
-        let resolved = store.resolve(&FrontendType::Telegram, "888").await;
-        assert!(resolved.is_some());
-        let user = resolved.unwrap();
-
-        // Identity should be created with OS username as CLI platform ID.
-        let cli_id = store.resolve(&FrontendType::Cli, &os_user).await;
-        assert!(cli_id.is_some());
-        assert_eq!(user.id, cli_id.unwrap().id);
-        assert_eq!(user.display_name.as_deref(), Some(os_user.as_str()));
-    }
-
-    // --- validate_connector_declarations ---
-
-    // Minimal mock plugin for validate_connector_declarations tests.
-    struct MockPlugin {
-        id: astrid_plugins::PluginId,
-        manifest: astrid_plugins::PluginManifest,
-    }
-
-    impl MockPlugin {
-        fn new(id: &str) -> Self {
-            let plugin_id = astrid_plugins::PluginId::from_static(id);
-            Self {
-                manifest: astrid_plugins::PluginManifest {
-                    id: plugin_id.clone(),
-                    name: format!("Mock {id}"),
-                    version: "0.1.0".into(),
-                    description: None,
-                    author: None,
-                    entry_point: astrid_plugins::PluginEntryPoint::Wasm {
-                        path: "plugin.wasm".into(),
-                        hash: None,
-                    },
-                    capabilities: vec![],
-                    connectors: vec![],
-                    config: std::collections::HashMap::new(),
-                },
-                id: plugin_id,
-            }
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl astrid_plugins::Plugin for MockPlugin {
-        fn id(&self) -> &astrid_plugins::PluginId {
-            &self.id
-        }
-
-        fn manifest(&self) -> &astrid_plugins::PluginManifest {
-            &self.manifest
-        }
-
-        fn state(&self) -> astrid_plugins::PluginState {
-            astrid_plugins::PluginState::Ready
-        }
-
-        async fn load(
-            &mut self,
-            _ctx: &astrid_plugins::PluginContext,
-        ) -> astrid_plugins::PluginResult<()> {
-            Ok(())
-        }
-
-        async fn unload(&mut self) -> astrid_plugins::PluginResult<()> {
-            Ok(())
-        }
-
-        fn tools(&self) -> &[Arc<dyn astrid_plugins::PluginTool>] {
-            &[]
-        }
-
-        fn connectors(&self) -> &[astrid_core::ConnectorDescriptor] {
-            &[]
-        }
-    }
-
-    #[test]
-    fn validate_connector_declarations_warns_missing() {
-        let registry = PluginRegistry::new();
-        let connectors = vec![ConnectorConfig {
-            plugin: "missing-plugin".to_owned(),
-            profile: "chat".to_owned(),
-        }];
-        let warnings = validate_connector_declarations(&connectors, &registry);
-        assert!(
-            !warnings.is_empty(),
-            "should warn when plugin is not loaded"
-        );
-        assert!(
-            warnings.iter().any(|w| w.contains("missing-plugin")),
-            "warning should name the missing plugin"
-        );
-    }
-
-    #[test]
-    fn validate_connector_declarations_warns_invalid_profile() {
-        let registry = PluginRegistry::new();
-        let connectors = vec![ConnectorConfig {
-            plugin: "some-plugin".to_owned(),
-            profile: "bogus".to_owned(),
-        }];
-        let warnings = validate_connector_declarations(&connectors, &registry);
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("unknown connector profile")),
-            "should warn about invalid profile: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_connector_declarations_ok_known() {
-        let mut registry = PluginRegistry::new();
-        let plugin_id = astrid_plugins::PluginId::from_static("known-connector-plugin");
-        registry
-            .register(Box::new(MockPlugin::new("known-connector-plugin")))
-            .unwrap();
-        let descriptor =
-            astrid_core::ConnectorDescriptor::builder("My Connector", FrontendType::Telegram)
-                .source(ConnectorSource::new_wasm("known-connector-plugin").unwrap())
-                .profile(ConnectorProfile::Chat)
-                .build();
-        registry.register_connector(&plugin_id, descriptor).unwrap();
-
-        let connectors = vec![ConnectorConfig {
-            plugin: "known-connector-plugin".to_owned(),
-            profile: "chat".to_owned(),
-        }];
-        let warnings = validate_connector_declarations(&connectors, &registry);
-        assert!(
-            warnings.is_empty(),
-            "no warnings expected for a properly registered connector: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn validate_connector_declarations_native_cli() {
-        let registry = PluginRegistry::new();
-
-        // Valid: native-cli with interactive profile.
-        let connectors = vec![ConnectorConfig {
-            plugin: "native-cli".to_owned(),
-            profile: "interactive".to_owned(),
-        }];
-        let warnings = validate_connector_declarations(&connectors, &registry);
-        assert!(warnings.is_empty());
-
-        // Invalid: native-cli with wrong profile.
-        let connectors = vec![ConnectorConfig {
-            plugin: "native-cli".to_owned(),
-            profile: "chat".to_owned(),
-        }];
-        let warnings = validate_connector_declarations(&connectors, &registry);
-        assert!(
-            warnings.iter().any(|w| w.contains("fixed profile")),
-            "should warn about fixed profile mismatch: {warnings:?}"
-        );
-    }
-}

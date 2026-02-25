@@ -73,7 +73,7 @@ pub use health::{HealthCheck, HealthState, HealthStatus};
 pub use manager::{AgentHandle, AgentManager, AgentStatus};
 pub use router::{ChannelBinding, MessageRouter};
 pub use rpc::{
-    AstridRpcClient, DaemonEvent, DaemonStatus, McpServerInfo, PluginInfo, SessionInfo, ToolInfo,
+    AstridRpcClient, CapsuleInfo, DaemonEvent, DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
 };
 pub use runtime::GatewayRuntime;
 pub use secrets::Secrets;

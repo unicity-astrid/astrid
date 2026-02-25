@@ -192,7 +192,7 @@ astrid-telegram--+        |
                           |     +-- astrid-workspace (boundaries)
                           |
                           |-- astrid-plugins (WASM + MCP plugins)
-                          |     +-- openclaw-bridge (TS/JS -> WASM compiler)
+                          |     +-- astrid-openclaw (TS/JS -> WASM compiler)
                           |
                           |-- astrid-audit (chain-linked logging)
                           |-- astrid-crypto (ed25519 + BLAKE3)
@@ -400,7 +400,7 @@ crates/
   astrid-telemetry/     Logging with multiple formats and per-crate directives
   astrid-cli/           CLI binary (astrid) and daemon binary (astridd)
   astrid-telegram/      Telegram bot frontend
-  openclaw-bridge/      TypeScript/JavaScript to WASM compilation pipeline
+  astrid-openclaw/      TypeScript/JavaScript to WASM compilation pipeline
 wit/
   astrid-plugin.wit     WIT interface for the WASM plugin ABI
 packages/

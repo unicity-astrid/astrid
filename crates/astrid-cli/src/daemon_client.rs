@@ -10,8 +10,8 @@ use std::time::Duration;
 use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
 use astrid_gateway::DaemonServer;
 use astrid_gateway::rpc::{
-    AllowanceInfo, AstridRpcClient, AuditEntryInfo, BudgetInfo, DaemonEvent, DaemonStatus,
-    McpServerInfo, PluginInfo, SessionInfo, ToolInfo,
+    AllowanceInfo, AstridRpcClient, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonEvent,
+    DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
 };
 use astrid_gateway::server::DaemonPaths;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
@@ -246,8 +246,8 @@ impl DaemonClient {
     /// # Errors
     ///
     /// Returns an error if the RPC call fails.
-    pub async fn list_plugins(&self) -> anyhow::Result<Vec<PluginInfo>> {
-        let plugins = self.client.list_plugins().await?;
+    pub async fn list_capsules(&self) -> anyhow::Result<Vec<CapsuleInfo>> {
+        let plugins = self.client.list_capsules().await?;
         Ok(plugins)
     }
 
@@ -256,8 +256,8 @@ impl DaemonClient {
     /// # Errors
     ///
     /// Returns an error if the RPC call fails.
-    pub async fn load_plugin(&self, plugin_id: &str) -> anyhow::Result<PluginInfo> {
-        let info = self.client.load_plugin(plugin_id.to_string()).await?;
+    pub async fn load_capsule(&self, plugin_id: &str) -> anyhow::Result<CapsuleInfo> {
+        let info = self.client.load_capsule(plugin_id.to_string()).await?;
         Ok(info)
     }
 
@@ -266,8 +266,8 @@ impl DaemonClient {
     /// # Errors
     ///
     /// Returns an error if the RPC call fails.
-    pub async fn unload_plugin(&self, plugin_id: &str) -> anyhow::Result<()> {
-        self.client.unload_plugin(plugin_id.to_string()).await?;
+    pub async fn unload_capsule(&self, plugin_id: &str) -> anyhow::Result<()> {
+        self.client.unload_capsule(plugin_id.to_string()).await?;
         Ok(())
     }
 

@@ -96,19 +96,19 @@ pub fn action_to_resource_permission(action: &SensitiveAction) -> Option<(String
         SensitiveAction::NetworkRequest { host, port } => {
             Some((format!("net://{host}:{port}"), Permission::Invoke))
         },
-        SensitiveAction::PluginExecution {
-            plugin_id,
+        SensitiveAction::CapsuleExecution {
+            capsule_id,
             capability,
         } => Some((
-            format!("plugin://{plugin_id}:{capability}"),
+            format!("capsule://{capsule_id}:{capability}"),
             Permission::Invoke,
         )),
-        SensitiveAction::PluginHttpRequest { plugin_id, .. } => Some((
-            format!("plugin://{plugin_id}:http_request"),
+        SensitiveAction::CapsuleHttpRequest { capsule_id, .. } => Some((
+            format!("capsule://{capsule_id}:http_request"),
             Permission::Invoke,
         )),
-        SensitiveAction::PluginFileAccess {
-            plugin_id, mode, ..
+        SensitiveAction::CapsuleFileAccess {
+            capsule_id, mode, ..
         } => {
             let cap = match mode {
                 Permission::Read => "file_read",
@@ -116,7 +116,7 @@ pub fn action_to_resource_permission(action: &SensitiveAction) -> Option<(String
                 Permission::Delete => "file_delete",
                 _ => return None,
             };
-            Some((format!("plugin://{plugin_id}:{cap}"), Permission::Invoke))
+            Some((format!("capsule://{capsule_id}:{cap}"), Permission::Invoke))
         },
         _ => None,
     }

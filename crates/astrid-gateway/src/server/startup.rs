@@ -10,16 +10,15 @@ use std::time::{Duration, Instant};
 use astrid_approval::budget::{WorkspaceBudgetSnapshot, WorkspaceBudgetTracker};
 use astrid_audit::AuditLog;
 use astrid_capabilities::CapabilityStore;
+use astrid_capsule::capsule::CapsuleId;
+use astrid_capsule::discovery::discover_manifests;
+use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
 use astrid_core::identity::InMemoryIdentityStore;
 use astrid_crypto::KeyPair;
 use astrid_hooks::{HookManager, discover_hooks};
 use astrid_llm::{ClaudeProvider, LlmProvider, OpenAiCompatProvider, ZaiProvider};
 use astrid_mcp::McpClient;
-use astrid_plugins::manifest::PluginEntryPoint;
-use astrid_plugins::{
-    PluginContext, PluginId, PluginRegistry, WasmPluginLoader, discover_manifests,
-};
 use astrid_runtime::{AgentRuntime, SessionStore, config_bridge};
 use astrid_storage::{KvStore, ScopedKvStore, SurrealKvStore};
 use jsonrpsee::server::{Server, ServerHandle};
@@ -161,11 +160,6 @@ impl DaemonServer {
         let discovered = discover_hooks(Some(&hooks_extra));
         hook_manager.register_all(discovered).await;
 
-        // Clone MCP client for plugin registry before moving into runtime.
-        let mcp_for_plugins = mcp.clone();
-        // Clone MCP client for watcher-driven plugin reloads.
-        let mcp_for_watcher = mcp.clone();
-
         // Open persistent capability store (tokens survive restarts).
         let capabilities_store = Arc::new(
             CapabilityStore::with_persistence(home.capabilities_db_path()).map_err(|e| {
@@ -186,56 +180,46 @@ impl DaemonServer {
                 crate::GatewayError::Runtime(format!("Failed to open deferred store: {e}"))
             })?);
 
-        // Discover and register plugins (does not load them yet).
-        // Built before the runtime so we can pass the Arc into new_arc().
-        let mut plugin_registry = PluginRegistry::new();
-        let wasm_loader = Arc::new(WasmPluginLoader::new());
+        // Discover and register capsules.
+        let mut capsule_registry: CapsuleRegistry = CapsuleRegistry::new();
+        let capsule_loader = astrid_capsule::loader::CapsuleLoader::new(mcp.clone());
         let plugin_dirs = vec![home.plugins_dir()];
         let discovered = discover_manifests(Some(&plugin_dirs));
+
         for (mut manifest, plugin_dir) in discovered {
-            // Resolve relative WASM paths to absolute, anchored at the
-            // directory where the manifest was discovered. Without this,
-            // WasmPlugin::do_load would resolve them against the daemon CWD
-            // which is wrong for both user-level and workspace-level plugins.
-            if let PluginEntryPoint::Wasm { ref mut path, .. } = manifest.entry_point
-                && path.is_relative()
+            if let Some(component) = &mut manifest.component
+                && component.entrypoint.is_relative()
             {
-                *path = plugin_dir.join(&*path);
+                let mut new_path: std::path::PathBuf = plugin_dir.clone();
+                new_path.push(&component.entrypoint);
+                component.entrypoint = new_path;
             }
 
-            let plugin: Box<dyn astrid_plugins::Plugin> = match &manifest.entry_point {
-                PluginEntryPoint::Wasm { .. } => {
-                    Box::new(wasm_loader.create_plugin(manifest.clone()))
-                },
-                PluginEntryPoint::Mcp { .. } => {
-                    match astrid_plugins::create_plugin(
-                        manifest.clone(),
-                        Some(mcp_for_plugins.clone()),
-                        Some(plugin_dir.clone()),
-                    ) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            warn!(plugin = %manifest.id, error = %e, "Failed to create MCP plugin");
-                            continue;
-                        },
-                    }
+            let capsule = match capsule_loader.create_capsule(manifest.clone(), plugin_dir.clone())
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(capsule = %manifest.package.name, error = %e, "Failed to create capsule");
+                    continue;
                 },
             };
-            if let Err(e) = plugin_registry.register(plugin) {
-                warn!(plugin = %manifest.id, error = %e, "Failed to register plugin");
+
+            if let Err(e) = capsule_registry.register(capsule) {
+                warn!(capsule = %manifest.package.name, error = %e, "Failed to register capsule");
             }
         }
-        let plugin_registry = Arc::new(RwLock::new(plugin_registry));
+        let capsule_registry: Arc<RwLock<CapsuleRegistry>> =
+            Arc::new(RwLock::new(capsule_registry));
 
         let runtime = AgentRuntime::new_arc(
             llm,
-            mcp,
+            mcp.clone(),
             audit,
             sessions,
             key,
             config,
             Some(hook_manager),
-            Some(Arc::clone(&plugin_registry)),
+            Some(Arc::clone(&capsule_registry)),
         );
 
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -273,7 +257,7 @@ impl DaemonServer {
 
         let model_name = cfg.model.model.clone();
         let active_connections = Arc::new(AtomicUsize::new(0));
-        let user_unloaded_plugins: Arc<RwLock<HashSet<PluginId>>> =
+        let user_unloaded_capsules: Arc<RwLock<HashSet<CapsuleId>>> =
             Arc::new(RwLock::new(HashSet::new()));
 
         // Central inbound message channel: all connector plugin receivers fan in here.
@@ -284,18 +268,18 @@ impl DaemonServer {
             Arc::new(RwLock::new(HashMap::new()));
 
         // Pre-clone fields needed by the inbound router before rpc_impl takes ownership.
-        // Note: `workspace_kv` is NOT listed here because rpc_impl takes
-        // `Arc::clone(&workspace_kv)` (not by move), so the original Arc survives
-        // and can be cloned again for the router context below.
         let router_deferred_kv = Arc::clone(&deferred_kv);
         let router_capabilities_store = Arc::clone(&capabilities_store);
         let router_workspace_budget = Arc::clone(&workspace_budget_tracker);
         let router_model_name = model_name.clone();
 
+        // Central event bus for IPC routing between capsules and the OS
+        let event_bus = Arc::new(astrid_events::EventBus::with_capacity(1024));
+
         let rpc_impl = RpcImpl {
             runtime: Arc::clone(&runtime),
             sessions: Arc::clone(&session_map),
-            plugin_registry: Arc::clone(&plugin_registry),
+            plugins: Arc::clone(&capsule_registry),
             deferred_kv,
             capabilities_store,
             workspace_kv: Arc::clone(&workspace_kv),
@@ -306,10 +290,11 @@ impl DaemonServer {
             model_name,
             active_connections: Arc::clone(&active_connections),
             ephemeral: options.ephemeral,
-            user_unloaded_plugins: Arc::clone(&user_unloaded_plugins),
+            user_unloaded_capsules: Arc::clone(&user_unloaded_capsules),
             workspace_root: cwd.clone(),
-            inbound_tx: inbound_tx.clone(),
             connector_sessions: Arc::clone(&connector_sessions),
+            inbound_tx: inbound_tx.clone(),
+            event_bus: Arc::clone(&event_bus),
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -354,86 +339,81 @@ impl DaemonServer {
         // is ever needed.
         {
             let descriptor = crate::daemon_frontend::DaemonFrontend::native_connector_descriptor();
-            let mut reg = plugin_registry.write().await;
-            if let Err(e) = reg.register_connector(
-                &astrid_plugins::PluginId::from_static("native-cli"),
-                descriptor,
-            ) {
+            let mut reg: tokio::sync::RwLockWriteGuard<'_, CapsuleRegistry> =
+                capsule_registry.write().await;
+            if let Err(e) =
+                reg.register_connector(&CapsuleId::from_static("native-cli"), descriptor)
+            {
                 warn!(error = %e, "Failed to register native CLI connector");
             }
         }
 
-        // Background task: auto-load discovered plugins after the server is
-        // accepting connections (avoids blocking the 5s CLI connect timeout).
-        // Each plugin is taken out of the registry, loaded without the lock
-        // held, then put back -- so MCP handshakes don't block other operations.
         {
-            let registry_clone = Arc::clone(&plugin_registry);
+            let registry_clone: Arc<RwLock<CapsuleRegistry>> = Arc::clone(&capsule_registry);
             let kv_clone = Arc::clone(&workspace_kv);
             let workspace_root = cwd.clone();
             let inbound_tx_for_autoload = inbound_tx.clone();
             let connectors_cfg = cfg.connectors.clone();
+            let event_bus = Arc::clone(&event_bus);
             tokio::spawn(async move {
-                // Collect IDs under a brief read lock.
-                let plugin_ids: Vec<PluginId> = {
-                    let registry = registry_clone.read().await;
+                let capsule_ids: Vec<CapsuleId> = {
+                    let registry: tokio::sync::RwLockReadGuard<'_, CapsuleRegistry> =
+                        registry_clone.read().await;
                     registry.list().into_iter().cloned().collect()
                 };
 
-                for plugin_id in plugin_ids {
-                    // Take the plugin out (brief write lock).
-                    let mut plugin = {
-                        let mut registry = registry_clone.write().await;
-                        match registry.unregister(&plugin_id) {
-                            Ok(p) => p,
+                for capsule_id in capsule_ids {
+                    let mut capsule = {
+                        let mut registry: tokio::sync::RwLockWriteGuard<'_, CapsuleRegistry> =
+                            registry_clone.write().await;
+                        match registry.unregister(&capsule_id) {
+                            Ok(c) => c,
                             Err(_) => continue,
                         }
                     };
 
                     let kv = match ScopedKvStore::new(
                         Arc::clone(&kv_clone),
-                        format!("plugin:{plugin_id}"),
+                        format!("capsule:{capsule_id}"),
                     ) {
                         Ok(kv) => kv,
                         Err(e) => {
-                            warn!(plugin_id = %plugin_id, error = %e, "Failed to create plugin KV scope");
-                            // Put it back.
-                            let mut registry = registry_clone.write().await;
-                            let _ = registry.register(plugin);
+                            warn!(capsule_id = %capsule_id, error = %e, "Failed to create capsule KV scope");
+                            let mut registry: tokio::sync::RwLockWriteGuard<'_, CapsuleRegistry> =
+                                registry_clone.write().await;
+                            let _ = registry.register(capsule);
                             continue;
                         },
                     };
-                    let config = plugin.manifest().config.clone();
-                    let ctx = PluginContext::new(workspace_root.clone(), kv, config);
 
-                    // Load without holding any lock.
-                    if let Err(e) = plugin.load(&ctx).await {
-                        warn!(plugin_id = %plugin_id, error = %e, "Failed to auto-load plugin");
+                    let ctx = astrid_capsule::context::CapsuleContext::new(
+                        workspace_root.clone(),
+                        kv,
+                        Arc::clone(&event_bus),
+                    );
+
+                    if let Err(e) = capsule.load(&ctx).await {
+                        warn!(capsule_id = %capsule_id, error = %e, "Failed to auto-load capsule");
                     } else {
-                        info!(plugin_id = %plugin_id, "Auto-loaded plugin");
-                        // Wire inbound receiver for connector plugins. Called after
-                        // load() because the receiver is only created during load.
-                        if let Some(rx) = plugin.take_inbound_rx() {
+                        info!(capsule_id = %capsule_id, "Auto-loaded capsule");
+                        if let Some(rx) = capsule.take_inbound_rx() {
                             let tx = inbound_tx_for_autoload.clone();
-                            let pid = plugin_id.as_str().to_string();
-                            // JoinHandle intentionally discarded: the forwarder
-                            // task is self-terminating — exits when the plugin
-                            // sender drops or the central channel closes.
+                            let pid = capsule_id.to_string();
                             tokio::spawn(async move {
-                                super::inbound_router::forward_inbound(pid, rx, tx).await;
+                                crate::server::inbound_router::forward_inbound(pid, rx, tx).await;
                             });
                         }
                     }
 
-                    // Put the plugin back (brief write lock).
-                    let mut registry = registry_clone.write().await;
-                    let _ = registry.register(plugin);
+                    let mut registry: tokio::sync::RwLockWriteGuard<'_, CapsuleRegistry> =
+                        registry_clone.write().await;
+                    let _ = registry.register(capsule);
                 }
 
-                // Validate configured connectors after all plugins are auto-loaded.
-                // Best-effort: warns on mismatches, never fails startup.
+                // Validate configured connectors after all capsules are auto-loaded.
                 {
-                    let registry = registry_clone.read().await;
+                    let registry: tokio::sync::RwLockReadGuard<'_, CapsuleRegistry> =
+                        registry_clone.read().await;
                     for warning in super::config_apply::validate_connector_declarations(
                         &connectors_cfg,
                         &registry,
@@ -466,10 +446,8 @@ impl DaemonServer {
         let daemon = Self {
             runtime: Arc::clone(&runtime),
             sessions: Arc::clone(&session_map),
-            plugin_registry: Arc::clone(&plugin_registry),
+            plugins: Arc::clone(&capsule_registry),
             workspace_kv: Arc::clone(&workspace_kv),
-            mcp_client: mcp_for_watcher,
-            wasm_loader,
             home: home.clone(),
             workspace_root: cwd,
             started_at: Instant::now(),
@@ -480,20 +458,21 @@ impl DaemonServer {
             ephemeral_grace_secs,
             active_connections,
             session_cleanup_interval,
-            user_unloaded_plugins,
+            user_unloaded_capsules,
             identity_store: Arc::clone(&identity_store),
-            inbound_tx: inbound_tx.clone(),
             connector_sessions: Arc::clone(&connector_sessions),
+            inbound_tx,
+            mcp_client: mcp.clone(),
+            event_bus: Arc::clone(&event_bus),
         };
 
-        // Spawn the inbound message router. It drains the central inbound channel
-        // and routes each message to an agent session by identity.
+        // Spawn the inbound message router.
         let router_ctx = super::inbound_router::InboundRouterCtx {
             inbound_rx,
             identity_store,
             sessions: session_map,
             connector_sessions,
-            plugin_registry,
+            plugins: capsule_registry,
             runtime,
             workspace_kv: Arc::clone(&workspace_kv),
             workspace_budget_tracker: router_workspace_budget,

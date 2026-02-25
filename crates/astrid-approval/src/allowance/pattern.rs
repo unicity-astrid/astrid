@@ -72,21 +72,21 @@ pub enum AllowancePattern {
 
     /// Match a specific plugin capability.
     ///
-    /// For `PluginExecution`, matches on the `capability` field directly.
-    /// For `PluginHttpRequest`, matches on `"http_request"`.
-    /// For `PluginFileAccess`, matches on the derived capability name
+    /// For `CapsuleExecution`, matches on the `capability` field directly.
+    /// For `CapsuleHttpRequest`, matches on `"http_request"`.
+    /// For `CapsuleFileAccess`, matches on the derived capability name
     /// (`"file_read"`, `"file_write"`, `"file_delete"`).
-    PluginCapability {
+    CapsuleCapability {
         /// Plugin identifier.
-        plugin_id: String,
+        capsule_id: String,
         /// Capability name to match.
         capability: String,
     },
 
     /// Match any action from a specific plugin (wildcard).
-    PluginWildcard {
+    CapsuleWildcard {
         /// Plugin identifier.
-        plugin_id: String,
+        capsule_id: String,
     },
 }
 
@@ -220,41 +220,41 @@ impl AllowancePattern {
                 SensitiveAction::ExecuteCommand { command, .. },
             ) => matches_file_glob(pattern, command),
 
-            // PluginCapability: match plugin actions with same plugin_id + derived capability
+            // CapsuleCapability: match plugin actions with same capsule_id + derived capability
             (
-                Self::PluginCapability {
-                    plugin_id,
+                Self::CapsuleCapability {
+                    capsule_id,
                     capability,
                 },
-                SensitiveAction::PluginExecution {
-                    plugin_id: action_pid,
+                SensitiveAction::CapsuleExecution {
+                    capsule_id: action_pid,
                     capability: action_cap,
                 },
-            ) => plugin_id == action_pid && capability == action_cap,
+            ) => capsule_id == action_pid && capability == action_cap,
 
             (
-                Self::PluginCapability {
-                    plugin_id,
+                Self::CapsuleCapability {
+                    capsule_id,
                     capability,
                 },
-                SensitiveAction::PluginHttpRequest {
-                    plugin_id: action_pid,
+                SensitiveAction::CapsuleHttpRequest {
+                    capsule_id: action_pid,
                     ..
                 },
-            ) => plugin_id == action_pid && capability == "http_request",
+            ) => capsule_id == action_pid && capability == "http_request",
 
             (
-                Self::PluginCapability {
-                    plugin_id,
+                Self::CapsuleCapability {
+                    capsule_id,
                     capability,
                 },
-                SensitiveAction::PluginFileAccess {
-                    plugin_id: action_pid,
+                SensitiveAction::CapsuleFileAccess {
+                    capsule_id: action_pid,
                     mode,
                     ..
                 },
             ) => {
-                plugin_id == action_pid
+                capsule_id == action_pid
                     && capability
                         == match mode {
                             Permission::Read => "file_read",
@@ -264,22 +264,22 @@ impl AllowancePattern {
                         }
             },
 
-            // PluginWildcard: match any plugin action from the same plugin_id
+            // CapsuleWildcard: match any plugin action from the same capsule_id
             (
-                Self::PluginWildcard { plugin_id },
-                SensitiveAction::PluginExecution {
-                    plugin_id: action_pid,
+                Self::CapsuleWildcard { capsule_id },
+                SensitiveAction::CapsuleExecution {
+                    capsule_id: action_pid,
                     ..
                 }
-                | SensitiveAction::PluginHttpRequest {
-                    plugin_id: action_pid,
+                | SensitiveAction::CapsuleHttpRequest {
+                    capsule_id: action_pid,
                     ..
                 }
-                | SensitiveAction::PluginFileAccess {
-                    plugin_id: action_pid,
+                | SensitiveAction::CapsuleFileAccess {
+                    capsule_id: action_pid,
                     ..
                 },
-            ) => plugin_id == action_pid,
+            ) => capsule_id == action_pid,
 
             // Custom never matches (future extensibility), and all other combinations don't match
             _ => false,
@@ -340,11 +340,11 @@ impl fmt::Display for AllowancePattern {
                 permission,
             } => write!(f, "workspace:{pattern} ({permission})"),
             Self::Custom { pattern } => write!(f, "custom:{pattern}"),
-            Self::PluginCapability {
-                plugin_id,
+            Self::CapsuleCapability {
+                capsule_id,
                 capability,
-            } => write!(f, "plugin://{plugin_id}:{capability}"),
-            Self::PluginWildcard { plugin_id } => write!(f, "plugin://{plugin_id}:*"),
+            } => write!(f, "capsule://{capsule_id}:{capability}"),
+            Self::CapsuleWildcard { capsule_id } => write!(f, "capsule://{capsule_id}:*"),
         }
     }
 }

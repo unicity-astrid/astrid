@@ -4,13 +4,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use astrid_core::{InboundMessage, SessionId};
-use astrid_mcp::McpClient;
-use astrid_plugins::manifest::PluginEntryPoint;
-use astrid_plugins::{PluginContext, PluginId, PluginRegistry, PluginState, WasmPluginLoader};
+use astrid_capsule::capsule::{Capsule, CapsuleId, CapsuleState};
+use astrid_capsule::context::CapsuleContext;
+use astrid_capsule::registry::CapsuleRegistry;
+use astrid_core::SessionId;
 use astrid_storage::{KvStore, ScopedKvStore};
 use tokio::sync::RwLock;
-use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use super::monitoring::AbortOnDrop;
@@ -20,15 +19,14 @@ use crate::rpc::DaemonEvent;
 /// Shared context passed to `handle_watcher_reload` to avoid exceeding the
 /// clippy `too_many_arguments` limit.
 pub(super) struct WatcherReloadContext {
-    pub(super) plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub(super) plugins: Arc<RwLock<CapsuleRegistry>>,
     pub(super) workspace_kv: Arc<dyn KvStore>,
     pub(super) sessions: Arc<RwLock<HashMap<SessionId, SessionHandle>>>,
-    pub(super) mcp_client: McpClient,
     pub(super) workspace_root: PathBuf,
-    pub(super) user_unloaded: Arc<RwLock<HashSet<PluginId>>>,
-    pub(super) wasm_loader: Arc<WasmPluginLoader>,
-    /// Central inbound channel sender — cloned for each hot-reloaded connector plugin.
-    pub(super) inbound_tx: mpsc::Sender<InboundMessage>,
+    pub(super) user_unloaded: Arc<RwLock<HashSet<CapsuleId>>>,
+    pub(super) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
+    pub(super) mcp_client: astrid_mcp::McpClient,
+    pub(super) event_bus: Arc<astrid_events::EventBus>,
 }
 
 impl DaemonServer {
@@ -42,7 +40,7 @@ impl DaemonServer {
     /// Returns `None` if no plugin directories exist yet.
     #[must_use]
     pub fn spawn_plugin_watcher(&self) -> Option<tokio::task::JoinHandle<()>> {
-        use astrid_plugins::watcher::{PluginWatcher, WatchEvent, WatcherConfig};
+        use astrid_capsule::watcher::{CapsuleWatcher, WatchEvent, WatcherConfig};
 
         let mut watch_paths: Vec<PathBuf> = Vec::new();
 
@@ -76,7 +74,7 @@ impl DaemonServer {
             ..Default::default()
         };
 
-        let (watcher, mut events) = match PluginWatcher::new(config) {
+        let (watcher, mut events) = match CapsuleWatcher::new(config) {
             Ok(pair) => pair,
             Err(e) => {
                 warn!(error = %e, "Failed to create plugin file watcher");
@@ -88,14 +86,14 @@ impl DaemonServer {
         // watching each directory -- no need to log here too.
 
         let reload_ctx = WatcherReloadContext {
-            plugin_registry: Arc::clone(&self.plugin_registry),
+            plugins: Arc::clone(&self.plugins),
             workspace_kv: Arc::clone(&self.workspace_kv),
             sessions: Arc::clone(&self.sessions),
-            mcp_client: self.mcp_client.clone(),
             workspace_root: self.workspace_root.clone(),
-            user_unloaded: Arc::clone(&self.user_unloaded_plugins),
-            wasm_loader: Arc::clone(&self.wasm_loader),
+            user_unloaded: Arc::clone(&self.user_unloaded_capsules),
             inbound_tx: self.inbound_tx.clone(),
+            mcp_client: self.mcp_client.clone(),
+            event_bus: Arc::clone(&self.event_bus),
         };
 
         let handle = tokio::spawn(async move {
@@ -108,12 +106,12 @@ impl DaemonServer {
 
             while let Some(event) = events.recv().await {
                 match event {
-                    WatchEvent::PluginChanged { plugin_dir, .. } => {
-                        info!(dir = %plugin_dir.display(), "Plugin change detected, reloading");
-                        Self::handle_watcher_reload(&plugin_dir, &reload_ctx).await;
+                    WatchEvent::CapsuleChanged { capsule_dir, .. } => {
+                        info!(dir = %capsule_dir.display(), "Capsule change detected, reloading");
+                        Self::handle_watcher_reload(&capsule_dir, &reload_ctx).await;
                     },
                     WatchEvent::Error(msg) => {
-                        warn!(error = %msg, "Plugin watcher error");
+                        warn!(error = %msg, "Capsule watcher error");
                     },
                 }
             }
@@ -131,26 +129,26 @@ impl DaemonServer {
     #[allow(clippy::too_many_lines)]
     async fn handle_watcher_reload(plugin_dir: &std::path::Path, ctx: &WatcherReloadContext) {
         let WatcherReloadContext {
-            plugin_registry,
+            plugins,
             workspace_kv,
             sessions,
-            mcp_client,
             workspace_root,
             user_unloaded,
-            wasm_loader,
             inbound_tx,
+            mcp_client,
+            event_bus,
         } = ctx;
-        // Try to load the manifest. Compiled plugins have plugin.toml;
+        // Try to load the manifest. Compiled plugins have Capsule.toml;
         // uncompiled OpenClaw plugins only have openclaw.plugin.json and
-        // need to be compiled first (handled by `astrid plugin install`).
-        let manifest_path = plugin_dir.join("plugin.toml");
-        let mut manifest = match astrid_plugins::load_manifest(&manifest_path) {
+        // need to be compiled first (handled by `astrid capsule install`).
+        let manifest_path = plugin_dir.join("Capsule.toml");
+        let mut manifest = match astrid_capsule::discovery::load_manifest(&manifest_path) {
             Ok(m) => m,
             Err(_) if plugin_dir.join("openclaw.plugin.json").exists() => {
                 debug!(
                     dir = %plugin_dir.display(),
-                    "OpenClaw plugin changed but has no compiled plugin.toml — \
-                     run `astrid plugin install` to compile"
+                    "OpenClaw plugin changed but has no compiled Capsule.toml — \
+                     run `astrid capsule install` to compile"
                 );
                 return;
             },
@@ -160,7 +158,13 @@ impl DaemonServer {
             },
         };
 
-        let plugin_id = manifest.id.clone();
+        let plugin_id = match CapsuleId::new(&manifest.package.name) {
+            Ok(id) => id,
+            Err(e) => {
+                warn!(dir = %plugin_dir.display(), error = %e, "Invalid capsule ID in manifest");
+                return;
+            },
+        };
         let plugin_id_str = plugin_id.as_str().to_string();
 
         // Skip plugins the user explicitly unloaded via RPC.
@@ -170,27 +174,23 @@ impl DaemonServer {
         }
 
         // Resolve relative WASM paths to absolute (same as initial discovery).
-        if let PluginEntryPoint::Wasm { ref mut path, .. } = manifest.entry_point
-            && path.is_relative()
+        if let Some(component) = &mut manifest.component
+            && component.entrypoint.is_relative()
         {
-            *path = plugin_dir.join(&*path);
+            component.entrypoint = plugin_dir.join(&component.entrypoint);
         }
 
         // Create the new plugin instance.
-        let new_plugin = match Self::create_plugin_from_manifest(
-            &manifest,
-            mcp_client,
-            wasm_loader,
-            Some(plugin_dir.to_path_buf()),
-        ) {
+        let loader = astrid_capsule::loader::CapsuleLoader::new(mcp_client.clone());
+        let new_plugin = match loader.create_capsule(manifest.clone(), plugin_dir.to_path_buf()) {
             Ok(p) => p,
             Err(e) => {
-                warn!(plugin = %plugin_id, error = %e, "Failed to create plugin on reload");
+                warn!(plugin = %plugin_id, error = %e, "Failed to create capsule on reload");
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginFailed {
+                    DaemonEvent::CapsuleFailed {
                         id: plugin_id_str,
-                        error: e,
+                        error: e.to_string(),
                     },
                 )
                 .await;
@@ -202,9 +202,10 @@ impl DaemonServer {
         let (was_loaded, load_result) = Self::swap_and_load_plugin(
             &plugin_id,
             new_plugin,
-            plugin_registry,
+            plugins,
             workspace_kv,
             workspace_root,
+            event_bus,
         )
         .await;
 
@@ -212,9 +213,9 @@ impl DaemonServer {
         if was_loaded {
             Self::broadcast_event(
                 sessions,
-                DaemonEvent::PluginUnloaded {
+                DaemonEvent::CapsuleUnloaded {
                     id: plugin_id_str.clone(),
-                    name: manifest.name.clone(),
+                    name: manifest.package.name.clone(),
                 },
             )
             .await;
@@ -228,27 +229,24 @@ impl DaemonServer {
                 // Takes a brief write lock to call take_inbound_rx() through the trait.
                 {
                     let rx = {
-                        let mut reg = plugin_registry.write().await;
+                        let mut reg = plugins.write().await;
                         reg.get_mut(&plugin_id).and_then(|p| p.take_inbound_rx())
                     };
+
                     if let Some(rx) = rx {
                         let tx = inbound_tx.clone();
-                        let pid = plugin_id_str.clone();
-                        // JoinHandle intentionally discarded: the forwarder task
-                        // is self-terminating — it exits when the plugin's sender
-                        // drops (plugin unloaded) or the central channel closes
-                        // (daemon shutdown). No cleanup tracking is needed.
+                        let pid = plugin_id.to_string();
                         tokio::spawn(async move {
-                            super::inbound_router::forward_inbound(pid, rx, tx).await;
+                            crate::server::inbound_router::forward_inbound(pid, rx, tx).await;
                         });
                     }
                 }
 
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginLoaded {
+                    DaemonEvent::CapsuleLoaded {
                         id: plugin_id_str,
-                        name: manifest.name.clone(),
+                        name: manifest.package.name.clone(),
                     },
                 )
                 .await;
@@ -257,7 +255,7 @@ impl DaemonServer {
                 warn!(plugin = %plugin_id, error = %e, "Failed to reload plugin");
                 Self::broadcast_event(
                     sessions,
-                    DaemonEvent::PluginFailed {
+                    DaemonEvent::CapsuleFailed {
                         id: plugin_id_str,
                         error: e,
                     },
@@ -267,53 +265,34 @@ impl DaemonServer {
         }
     }
 
-    /// Create a plugin instance from a manifest.
-    pub(super) fn create_plugin_from_manifest(
-        manifest: &astrid_plugins::PluginManifest,
-        mcp_client: &McpClient,
-        wasm_loader: &WasmPluginLoader,
-        plugin_dir: Option<PathBuf>,
-    ) -> Result<Box<dyn astrid_plugins::Plugin>, String> {
-        match &manifest.entry_point {
-            PluginEntryPoint::Wasm { .. } => {
-                Ok(Box::new(wasm_loader.create_plugin(manifest.clone())))
-            },
-            PluginEntryPoint::Mcp { .. } => astrid_plugins::create_plugin(
-                manifest.clone(),
-                Some(mcp_client.clone()),
-                plugin_dir,
-            )
-            .map_err(|e| e.to_string()),
-        }
-    }
-
     /// Swap a plugin in the registry: unload old, unregister, register new, load.
     ///
     /// Returns `(was_previously_loaded, Result)` so callers can broadcast
     /// the appropriate events.
     pub(super) async fn swap_and_load_plugin(
-        plugin_id: &PluginId,
-        mut new_plugin: Box<dyn astrid_plugins::Plugin>,
-        plugin_registry: &Arc<RwLock<PluginRegistry>>,
+        plugin_id: &CapsuleId,
+        mut new_plugin: Box<dyn Capsule>,
+        plugins: &Arc<RwLock<CapsuleRegistry>>,
         workspace_kv: &Arc<dyn KvStore>,
         workspace_root: &std::path::Path,
+        event_bus: &Arc<astrid_events::EventBus>,
     ) -> (bool, Result<(), String>) {
         // Step 1: Create the execution context for the new plugin first.
         // If this fails, we return early and leave the old plugin running.
-        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("plugin:{plugin_id}")) {
+        let kv = match ScopedKvStore::new(Arc::clone(workspace_kv), format!("capsule:{plugin_id}"))
+        {
             Ok(kv) => kv,
             Err(e) => return (false, Err(e.to_string())),
         };
-        let config = new_plugin.manifest().config.clone();
-        let ctx = PluginContext::new(workspace_root.to_path_buf(), kv, config);
+        let ctx = CapsuleContext::new(workspace_root.to_path_buf(), kv, Arc::clone(event_bus));
 
         // Step 2: Remove existing plugin under a brief lock.
         let (was_loaded, mut existing_plugin) = {
-            let mut registry = plugin_registry.write().await;
+            let mut registry = plugins.write().await;
             let existing = registry.unregister(plugin_id).ok();
             let was_loaded = existing
                 .as_ref()
-                .is_some_and(|p| p.state() == PluginState::Ready);
+                .is_some_and(|p| p.state() == CapsuleState::Ready);
             (was_loaded, existing)
         };
 
@@ -329,7 +308,7 @@ impl DaemonServer {
         let load_result = new_plugin.load(&ctx).await.map_err(|e| e.to_string());
 
         // Step 4: Re-register the newly loaded plugin under a brief lock.
-        let mut registry = plugin_registry.write().await;
+        let mut registry = plugins.write().await;
         if let Err(e) = registry.register(new_plugin) {
             return (was_loaded, Err(e.to_string()));
         }
