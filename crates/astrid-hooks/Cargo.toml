@@ -24,8 +24,8 @@ uuid.workspace = true
 regex.workspace = true
 globset.workspace = true
 toml.workspace = true
-astrid-vfs = { version = "0.1.0", path = "../astrid-vfs" }
-astrid-capabilities = { version = "0.1.0", path = "../astrid-capabilities" }
+astrid-vfs = { version = "0.1.1", path = "../astrid-vfs" }
+astrid-capabilities = { version = "0.1.1", path = "../astrid-capabilities" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

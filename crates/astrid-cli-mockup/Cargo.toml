@@ -1,7 +1,7 @@
 [package]
 name = "astrid-cli-mockup"
 description = "UI/UX mockup for the Astrid interactive CLI experience"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 publish = false
 
