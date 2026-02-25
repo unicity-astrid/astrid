@@ -9,7 +9,7 @@ description = "Core runtime management for User-Space Capsules in Astrid OS"
 
 [dependencies]
 astrid-core = { workspace = true }
-astrid-vfs = { path = "../astrid-vfs" }
+astrid-vfs = { workspace = true }
 astrid-capabilities = { workspace = true }
 astrid-events = { workspace = true }
 astrid-storage = { workspace = true }

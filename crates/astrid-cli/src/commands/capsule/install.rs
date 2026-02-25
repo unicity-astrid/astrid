@@ -63,14 +63,14 @@ pub(crate) fn transpile_and_install(
     let output_dir = tmp_dir.path();
 
     // 1. Parse OpenClaw Manifest
-    let oc_manifest = openclaw_bridge::manifest::parse_manifest(source_path)
+    let oc_manifest = astrid_openclaw::manifest::parse_manifest(source_path)
         .map_err(|e| anyhow::anyhow!("failed to parse OpenClaw manifest: {e}"))?;
 
-    let astrid_id = openclaw_bridge::manifest::convert_id(&oc_manifest.id)
+    let astrid_id = astrid_openclaw::manifest::convert_id(&oc_manifest.id)
         .map_err(|e| anyhow::anyhow!("failed to convert plugin ID: {e}"))?;
 
     // 2. Resolve Entry Point
-    let entry_point = openclaw_bridge::manifest::resolve_entry_point(source_path)
+    let entry_point = astrid_openclaw::manifest::resolve_entry_point(source_path)
         .map_err(|e| anyhow::anyhow!("failed to resolve entry point: {e}"))?;
     let entry_path = source_path.join(&entry_point);
 
@@ -78,19 +78,19 @@ pub(crate) fn transpile_and_install(
     let source_code = std::fs::read_to_string(&entry_path)
         .with_context(|| format!("failed to read entry point {}", entry_path.display()))?;
 
-    let transpiled = openclaw_bridge::transpiler::transpile(&source_code, &entry_point)
+    let transpiled = astrid_openclaw::transpiler::transpile(&source_code, &entry_point)
         .map_err(|e| anyhow::anyhow!("transpilation failed: {e}"))?;
 
     // 4. Generate Shim
-    let shimmed = openclaw_bridge::shim::generate(&transpiled, &HashMap::new());
+    let shimmed = astrid_openclaw::shim::generate(&transpiled, &HashMap::new());
 
     // 5. Compile to WASM
     let wasm_output = output_dir.join("plugin.wasm");
-    openclaw_bridge::compiler::compile(&shimmed, &wasm_output)
+    astrid_openclaw::compiler::compile(&shimmed, &wasm_output)
         .map_err(|e| anyhow::anyhow!("WASM compilation failed: {e}"))?;
 
     // 6. Generate Capsule.toml
-    openclaw_bridge::output::generate_manifest(
+    astrid_openclaw::output::generate_manifest(
         &astrid_id,
         &oc_manifest,
         &wasm_output,

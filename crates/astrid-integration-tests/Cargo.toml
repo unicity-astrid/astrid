@@ -28,7 +28,7 @@ futures.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
-openclaw-bridge.workspace = true
+astrid-openclaw.workspace = true
 which.workspace = true
 
 [lints]
