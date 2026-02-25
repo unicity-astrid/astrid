@@ -126,7 +126,7 @@ fn check_imports(program: &oxc::ast::ast::Program) -> BridgeResult<()> {
         return Err(BridgeError::UnresolvedImports(format!(
             "plugin imports modules that cannot be resolved at runtime: [{modules}]. \
              Single-file plugins must be self-contained. If your plugin needs external \
-             dependencies, pre-bundle it with esbuild or rollup before running openclaw-bridge. \
+             dependencies, pre-bundle it with esbuild or rollup before running astrid-openclaw. \
              Note: node:fs, node:path, and node:os are polyfilled and allowed."
         )));
     }

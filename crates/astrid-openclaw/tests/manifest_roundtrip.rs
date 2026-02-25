@@ -1,6 +1,6 @@
 //! Round-trip test: generated TOML parses correctly.
 //!
-//! Validates that the TOML output from `openclaw-bridge` contains the
+//! Validates that the TOML output from `astrid-openclaw` contains the
 //! expected fields and structure compatible with `CapsuleManifest`.
 
 use std::collections::HashMap;
@@ -63,7 +63,7 @@ fn output_manifest_round_trips_through_toml() {
     let mut config = HashMap::new();
     config.insert("debug".to_string(), serde_json::json!(true));
 
-    let oc = openclaw_bridge::manifest::OpenClawManifest {
+    let oc = astrid_openclaw::manifest::OpenClawManifest {
         id: "my-cool-plugin".into(),
         name: Some("My Cool Plugin".into()),
         version: Some("2.0.0".into()),
@@ -80,13 +80,13 @@ fn output_manifest_round_trips_through_toml() {
         skills: vec![],
     };
 
-    let astrid_id = openclaw_bridge::manifest::convert_id(&oc.id).unwrap();
+    let astrid_id = astrid_openclaw::manifest::convert_id(&oc.id).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
     let wasm_path = dir.path().join("plugin.wasm");
     std::fs::write(&wasm_path, b"fake wasm content").unwrap();
 
-    openclaw_bridge::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, dir.path())
+    astrid_openclaw::output::generate_manifest(&astrid_id, &oc, &wasm_path, &config, dir.path())
         .unwrap();
 
     let toml_content = std::fs::read_to_string(dir.path().join("Capsule.toml")).unwrap();

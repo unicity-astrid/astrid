@@ -9,7 +9,7 @@ rust-version.workspace = true
 description = "CLI tool to convert OpenClaw tool plugins into Astrid WASM plugins"
 
 [[bin]]
-name = "openclaw-bridge"
+name = "astrid-openclaw"
 path = "src/main.rs"
 
 [dependencies]

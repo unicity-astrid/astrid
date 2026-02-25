@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-KERNEL_DIR="$ROOT_DIR/crates/openclaw-bridge/kernel"
+KERNEL_DIR="$ROOT_DIR/crates/astrid-openclaw/kernel"
 BUILD_DIR="${TMPDIR:-/tmp}/quickjs-kernel-build"
 
 JS_PDK_REPO="https://github.com/nicholasgasior/extism-js.git"
@@ -76,8 +76,8 @@ fi
 SIZE=$(wc -c < "$KERNEL_DIR/engine.wasm" | tr -d ' ')
 echo "==> Success: $KERNEL_DIR/engine.wasm ($SIZE bytes)"
 echo ""
-echo "Rebuild openclaw-bridge to embed the kernel:"
-echo "  cargo build -p openclaw-bridge"
+echo "Rebuild astrid-openclaw to embed the kernel:"
+echo "  cargo build -p astrid-openclaw"
 
 # Cleanup
 rm -rf "$BUILD_DIR"

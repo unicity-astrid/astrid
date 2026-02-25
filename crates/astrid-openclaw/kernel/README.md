@@ -1,7 +1,7 @@
 # QuickJS WASM Kernel
 
 The `engine.wasm` file is the QuickJS engine compiled to `wasm32-wasip1`, used by the
-openclaw-bridge compiler to embed JavaScript into WASM plugins via Wizer pre-initialization.
+astrid-openclaw compiler to embed JavaScript into WASM plugins via Wizer pre-initialization.
 
 **This file is NOT checked into git.** It is built from source and placed here by
 `scripts/build-quickjs-kernel.sh`. The `build.rs` generates a placeholder stub when the
@@ -51,7 +51,7 @@ wasm-opt --enable-reference-types --enable-bulk-memory --strip -O3 \
   -o target/wasm32-wasip1/release/js_pdk_core.wasm
 
 # Copy to this directory
-cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astrid/crates/openclaw-bridge/kernel/engine.wasm
+cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astrid/crates/astrid-openclaw/kernel/engine.wasm
 ```
 
 ### Updating the Hash
@@ -59,7 +59,7 @@ cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astrid/crates/openclaw
 After placing a new `engine.wasm`, update the blake3 hash:
 
 ```bash
-cd crates/openclaw-bridge/kernel
+cd crates/astrid-openclaw/kernel
 b3sum engine.wasm > engine.wasm.blake3
 ```
 

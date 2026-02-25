@@ -13,16 +13,16 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
-use openclaw_bridge::compiler;
-use openclaw_bridge::error::{BridgeError, BridgeResult};
-use openclaw_bridge::manifest;
-use openclaw_bridge::output;
-use openclaw_bridge::shim;
-use openclaw_bridge::transpiler;
+use astrid_openclaw::compiler;
+use astrid_openclaw::error::{BridgeError, BridgeResult};
+use astrid_openclaw::manifest;
+use astrid_openclaw::output;
+use astrid_openclaw::shim;
+use astrid_openclaw::transpiler;
 
 #[derive(Parser)]
 #[command(
-    name = "openclaw-bridge",
+    name = "astrid-openclaw",
     about = "Convert OpenClaw tool plugins into Astrid WASM plugins"
 )]
 struct Cli {

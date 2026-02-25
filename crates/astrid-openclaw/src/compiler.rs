@@ -61,7 +61,7 @@ pub fn compile(js_source: &str, output_path: &Path) -> BridgeResult<()> {
         return Err(BridgeError::CompileFailed(
             "QuickJS kernel is a placeholder stub. Build the real kernel with: \
              ./scripts/build-quickjs-kernel.sh\n\
-             See crates/openclaw-bridge/kernel/README.md for manual build instructions."
+             See crates/astrid-openclaw/kernel/README.md for manual build instructions."
                 .into(),
         ));
     }
@@ -83,7 +83,7 @@ pub fn compile(js_source: &str, output_path: &Path) -> BridgeResult<()> {
     Ok(())
 }
 
-/// Locate the `openclaw-bridge` CLI binary for the Wizer subprocess.
+/// Locate the `astrid-openclaw` CLI binary for the Wizer subprocess.
 ///
 /// Search order:
 /// 1. `OPENCLAW_BRIDGE_BIN` environment variable
@@ -101,20 +101,20 @@ fn find_bridge_binary() -> BridgeResult<PathBuf> {
         .map_err(|e| BridgeError::CompileFailed(format!("cannot find own executable: {e}")))?;
 
     // If we ARE the bridge binary (running as CLI), use ourselves
-    if self_exe.file_stem().is_some_and(|s| s == "openclaw-bridge") {
+    if self_exe.file_stem().is_some_and(|s| s == "astrid-openclaw") {
         return Ok(self_exe);
     }
 
     // When running as a test binary (target/debug/deps/xxx), look in ancestor dirs
     for ancestor in self_exe.ancestors().skip(1).take(3) {
-        let candidate = ancestor.join("openclaw-bridge");
+        let candidate = ancestor.join("astrid-openclaw");
         if candidate.is_file() {
             return Ok(candidate);
         }
     }
 
     Err(BridgeError::CompileFailed(
-        "cannot find openclaw-bridge binary for Wizer subprocess. \
+        "cannot find astrid-openclaw binary for Wizer subprocess. \
          Set OPENCLAW_BRIDGE_BIN or ensure the binary is built."
             .into(),
     ))
@@ -122,7 +122,7 @@ fn find_bridge_binary() -> BridgeResult<PathBuf> {
 
 /// Run Wizer in a subprocess, piping JS source to stdin.
 ///
-/// Finds the `openclaw-bridge` binary and invokes its hidden `wizer-internal`
+/// Finds the `astrid-openclaw` binary and invokes its hidden `wizer-internal`
 /// subcommand. The child process runs Wizer on the embedded kernel and writes
 /// the pre-initialized WASM to a temp file.
 fn wizer_subprocess(js_source: &str) -> BridgeResult<Vec<u8>> {

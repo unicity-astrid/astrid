@@ -1,4 +1,4 @@
-//! Build script for openclaw-bridge.
+//! Build script for astrid-openclaw.
 //!
 //! Handles the `QuickJS` WASM kernel:
 //! - If `kernel/engine.wasm` exists, copies it to `OUT_DIR` and verifies blake3 hash

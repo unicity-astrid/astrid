@@ -24,7 +24,7 @@ To support existing, standard MCP servers (written in Node.js, Python, or Go), a
 *How it runs:* During `capsule install`, the user gets a clear warning that this capsule runs un-sandboxed code on their host machine. If approved, the Astrid Kernel spawns the process natively (e.g., `npx`) and seamlessly routes its `stdio` through the IPC Message Bus.
 
 #### C. The AstridClaw Compiled Capsule (OpenClaw Bridge)
-Astrid possesses a standalone developer tool and translation engine called **AstridClaw** (`openclaw-bridge`). **Crucially, AstridClaw is not part of the OS Kernel.** It is a toolchain feature integrated into the Package Manager (CLI).
+Astrid possesses a standalone developer tool and translation engine called **AstridClaw** (`astrid-openclaw`). **Crucially, AstridClaw is not part of the OS Kernel.** It is a toolchain feature integrated into the Package Manager (CLI).
 *How it works:* When a developer wants to use an OpenClaw JS/TS plugin, AstridClaw compiles the JavaScript into a pure WebAssembly binary (using engines like `wizer` and `oxc`).
 *Syscall Translation:* During compilation, AstridClaw intercepts OpenClaw-specific host function calls and translates (thunks) them into standard Astrid System API calls (`astrid::sys`). This ensures the resulting WASM binary runs natively on Astrid, keeping the core Kernel completely ignorant of OpenClaw's legacy ABI.
 *The Result:* The output is a standard, Pure WASM Capsule (Type D) that can be installed perfectly into the OS sandbox.
@@ -63,7 +63,7 @@ my_custom_key = "value"
 [dependencies]
 # Capsules can declare dependencies on other capsules for dynamic linking or IPC routing
 git-core-tools = "1.2.0"
-openclaw-bridge = ">=0.5.0"
+astrid-openclaw = ">=0.5.0"
 
 [component]
 # If it's a WASM or OpenClaw capsule, specify the entry point. Omit for static or legacy host capsules.
@@ -200,7 +200,7 @@ trackable milestones:
   Build the `capsule install` command logic. Implement silent approvals for safe WASM executions and static features, setting collection prompts, and enforce the "Airlock Prompt" for dangerous `host_process` capabilities.
 
 - [x] **Step 4.4: AstridClaw (OpenClaw Compilation & Syscall Translation)** 
-  Refine the `openclaw-bridge` into the standalone AstridClaw transpiler tool. Implement the **Syscall Translation Layer** to ensure OpenClaw host functions (e.g., JS `fs.readFile`) are mapped directly to `astrid::sys::fs_read` WASM imports, keeping the core Kernel pure.
+  Refine the `astrid-openclaw` into the standalone AstridClaw transpiler tool. Implement the **Syscall Translation Layer** to ensure OpenClaw host functions (e.g., JS `fs.readFile`) are mapped directly to `astrid::sys::fs_read` WASM imports, keeping the core Kernel pure.
 
 - [x] **Step 4.5: AstridClaw CLI Integration (JIT Auto-Wrapping)** 
   Integrate AstridClaw directly into the CLI Package Manager. Implement registry resolution so `capsule install openclaw:name` automatically fetches the JS plugin, compiles it to WASM via AstridClaw, synthesizes a `Capsule.toml`, and docks it.
@@ -260,9 +260,9 @@ Toolchain compilers (AstridClaw) and User-Space Applications (the CLI and Telegr
 
 **The Pragmatic Strategy:**
 During active development of the System API and IPC ABI, moving these components to separate repositories would cause massive friction and "dependency hell" across commits. 
-Therefore, they will remain in the primary Cargo Workspace (`crates/astrid-cli`, `crates/openclaw-bridge`) for now, but **must be treated as external dependencies**.
+Therefore, they will remain in the primary Cargo Workspace (`crates/astrid-cli`, `crates/astrid-openclaw`) for now, but **must be treated as external dependencies**.
 1. `astrid-cli` must **never** import `astrid-core` directly. It must only communicate via `astrid-sys` (or IPC if not yet WASM).
-2. `openclaw-bridge` (AstridClaw) must have **zero** dependencies on the Kernel.
+2. `astrid-openclaw` (AstridClaw) must have **zero** dependencies on the Kernel.
 
 **The Future (Ejection):**
 Once the `astrid::sys` ABI stabilizes, these crates will be ejected from the monorepo into their own dedicated repositories (e.g., `astrid-toolchain-claw`, `astrid-app-cli`), fully realizing the modular, decoupled OS vision.

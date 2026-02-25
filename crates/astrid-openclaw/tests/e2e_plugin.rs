@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
-use openclaw_bridge::shim;
-use openclaw_bridge::transpiler;
+use astrid_openclaw::shim;
+use astrid_openclaw::transpiler;
 
 /// Read the test plugin source.
 fn test_plugin_source() -> String {
@@ -204,7 +204,7 @@ fn compile_test_plugin_to_wasm() {
     let wasm_path = tmp_dir.join("plugin.wasm");
 
     // Compile (now takes string, not path)
-    openclaw_bridge::compiler::compile(&shimmed, &wasm_path)
+    astrid_openclaw::compiler::compile(&shimmed, &wasm_path)
         .expect("embedded compilation should succeed");
 
     assert!(wasm_path.exists(), "WASM output file should exist");
