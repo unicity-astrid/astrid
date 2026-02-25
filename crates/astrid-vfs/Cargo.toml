@@ -12,6 +12,9 @@ description = "Virtual File System and Capability sandbox for Astrid agent runti
 astrid-core = { workspace = true }
 astrid-capabilities = { workspace = true }
 
+# Boundaries
+ignore = { workspace = true }
+
 # Error handling
 thiserror = { workspace = true }
 

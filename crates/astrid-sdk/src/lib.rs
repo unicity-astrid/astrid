@@ -254,8 +254,39 @@ pub mod sys {
     }
 }
 
+/// The Process Airlock — Spawning Native Host Processes
+pub mod process {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    /// Request payload for spawning a host process.
+    #[derive(Debug, Serialize)]
+    pub struct ProcessRequest<'a> {
+        pub cmd: &'a str,
+        pub args: &'a [&'a str],
+    }
+
+    /// Result returned from a spawned host process.
+    #[derive(Debug, Deserialize)]
+    pub struct ProcessResult {
+        pub stdout: String,
+        pub stderr: String,
+        pub exit_code: i32,
+    }
+
+    /// Spawns a native host process.
+    /// The Capsule must have the `host_process` capability granted for this command.
+    pub fn spawn(cmd: &str, args: &[&str]) -> Result<ProcessResult, SysError> {
+        let req = ProcessRequest { cmd, args };
+        let req_bytes = serde_json::to_vec(&req)?;
+        let result_bytes = unsafe { astrid_spawn_host(req_bytes)? };
+        let result: ProcessResult = serde_json::from_slice(&result_bytes)?;
+        Ok(result)
+    }
+}
+
 pub mod prelude {
-    pub use crate::{SysError, cron, fs, http, ipc, kv, sys, uplink};
+    pub use crate::{SysError, cron, fs, http, ipc, kv, process, sys, uplink};
     pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]
