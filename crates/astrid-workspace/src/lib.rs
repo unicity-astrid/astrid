@@ -41,8 +41,14 @@ pub mod boundaries;
 pub mod config;
 pub mod escape;
 pub mod profiles;
+/// Host-level sandbox generation for shell processes.
+pub mod sandbox;
+/// Git worktree management for agent sessions.
+pub mod worktree;
 
 pub use boundaries::{PathCheck, WorkspaceBoundary};
 pub use config::{EscapePolicy, WorkspaceConfig, WorkspaceMode};
 pub use escape::{EscapeDecision, EscapeRequest};
 pub use profiles::WorkspaceProfile;
+pub use sandbox::SandboxCommand;
+pub use worktree::ActiveWorktree;

@@ -16,6 +16,7 @@ globset.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+fs_extra = "1.3.0"
 
 [dev-dependencies]
 tempfile = "3.10"
