@@ -53,7 +53,7 @@ members = [
     # Optional Integrations
     # "crates/astrid-unicity",  # After research
 ]
-exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest"]
+exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell"]
 
 [workspace.package]
 version = "0.1.1"
