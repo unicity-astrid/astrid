@@ -41,6 +41,7 @@ members = [
     # Frontends
     "crates/astrid-cli",
     "crates/astrid-cli-mockup",  # UI/UX prototype
+    "crates/astrid-frontend-common",
     "crates/astrid-telegram",
     "crates/astrid-vfs",
     "crates/astrid-sys",
@@ -53,7 +54,7 @@ members = [
     # Optional Integrations
     # "crates/astrid-unicity",  # After research
 ]
-exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest"]
+exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-discord"]
 
 [workspace.package]
 version = "0.1.1"
@@ -79,6 +80,7 @@ astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
 astrid-tools = { path = "crates/astrid-tools", version = "0.1.1" }
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
 astrid-gateway = { path = "crates/astrid-gateway", version = "0.1.1" }
+astrid-frontend-common = { path = "crates/astrid-frontend-common", version = "0.1.1" }
 astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }
 astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
 
@@ -201,6 +203,12 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 async-trait = "0.1"
 futures = "0.3"
 tokio-util = "0.7"
+
+# WebSocket client (Discord Gateway proxy)
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+
+# Fast random number generation (jitter)
+fastrand = "2"
 
 # Encoding
 base64 = "0.22"

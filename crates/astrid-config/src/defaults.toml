@@ -444,6 +444,41 @@ allowed_user_ids = []
 embedded = true
 
 # ============================================================================
+# Discord Bot Configuration
+# ============================================================================
+# Settings for the Discord bot capsule frontend (astrid-discord).
+# Unlike Telegram (a standalone binary), Discord runs as a WASM capsule inside
+# the daemon. These settings configure the host-side webhook endpoint and
+# authorization.
+
+[discord]
+# Discord Bot API token from the Discord Developer Portal.
+# Prefer environment variable DISCORD_BOT_TOKEN over storing here.
+# bot_token = ""
+
+# Discord application ID from the Discord Developer Portal.
+# Prefer environment variable DISCORD_APPLICATION_ID over storing here.
+# application_id = ""
+
+# Discord guild IDs allowed to interact with the bot.
+# Empty list means allow all guilds.
+allowed_guild_ids = []
+
+# Discord user IDs allowed to interact with the bot.
+# Empty list means allow all users.
+allowed_user_ids = []
+
+# Session scoping mode: "channel" or "user".
+# - "channel": One agent session per Discord channel (users share context).
+# - "user": One agent session per Discord user (private regardless of channel).
+session_scope = "channel"
+
+# Whether to enable the Discord capsule.
+# When true, the daemon loads the astrid-discord capsule on startup if
+# bot_token and application_id are configured.
+enabled = false
+
+# ============================================================================
 # Spark (Agent Identity)
 # ============================================================================
 # Static seed for the agent's identity. These values are used as a fallback

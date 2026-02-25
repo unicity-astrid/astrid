@@ -1,210 +1,22 @@
 //! Session mapping: Telegram `ChatId` → daemon `SessionId`.
+//!
+//! This module re-exports the generic [`astrid_frontend_common::SessionMap`]
+//! specialized for Telegram's `ChatId`.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+pub use astrid_frontend_common::session::{ChannelSession, TurnStartResult};
 
-use astrid_core::SessionId;
 use teloxide::types::ChatId;
-use tokio::sync::RwLock;
 
-/// Per-chat session state.
-pub struct ChatSession {
-    /// Daemon session ID.
-    pub session_id: SessionId,
-    /// Whether a turn is currently in progress (prevents double-send).
-    pub turn_in_progress: bool,
-}
+/// Telegram-specific session map: `ChatId` → daemon session.
+pub type SessionMap = astrid_frontend_common::SessionMap<ChatId>;
 
-/// Result of attempting to start a turn for a chat.
-pub enum TurnStartResult {
-    /// Turn started successfully; contains the session ID.
-    Started(SessionId),
-    /// A turn is already in progress (or a session is being created).
-    TurnBusy,
-    /// No session exists for this chat.
-    NoSession,
-}
-
-/// Interior state guarded by a single `RwLock`.
-struct Inner {
-    sessions: HashMap<ChatId, ChatSession>,
-    /// Chats that are currently creating a session (prevents duplicate
-    /// `create_session` calls when concurrent messages race).
-    creating: HashSet<ChatId>,
-}
-
-/// Maps Telegram chat IDs to daemon sessions.
-#[derive(Clone)]
-pub struct SessionMap {
-    inner: Arc<RwLock<Inner>>,
-}
-
-impl Default for SessionMap {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SessionMap {
-    /// Create an empty session map.
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(Inner {
-                sessions: HashMap::new(),
-                creating: HashSet::new(),
-            })),
-        }
-    }
-
-    /// Get the session ID for a chat, if one exists.
-    pub async fn get_session_id(&self, chat_id: ChatId) -> Option<SessionId> {
-        self.inner
-            .read()
-            .await
-            .sessions
-            .get(&chat_id)
-            .map(|s| s.session_id.clone())
-    }
-
-    /// Insert a new session mapping.
-    ///
-    /// Also clears any in-progress creation lock for this chat to keep
-    /// internal invariants consistent.
-    pub async fn insert(&self, chat_id: ChatId, session_id: SessionId) {
-        let mut guard = self.inner.write().await;
-        guard.creating.remove(&chat_id);
-        guard.sessions.insert(
-            chat_id,
-            ChatSession {
-                session_id,
-                turn_in_progress: false,
-            },
-        );
-    }
-
-    /// Atomically check if a session exists and start a turn.
-    ///
-    /// Also returns `TurnBusy` if a session is currently being created for
-    /// this chat (prevents the caller from starting a duplicate creation).
-    pub async fn try_start_existing_turn(&self, chat_id: ChatId) -> TurnStartResult {
-        let mut guard = self.inner.write().await;
-        if guard.creating.contains(&chat_id) {
-            return TurnStartResult::TurnBusy;
-        }
-        match guard.sessions.get_mut(&chat_id) {
-            Some(session) if session.turn_in_progress => TurnStartResult::TurnBusy,
-            Some(session) => {
-                session.turn_in_progress = true;
-                TurnStartResult::Started(session.session_id.clone())
-            },
-            None => TurnStartResult::NoSession,
-        }
-    }
-
-    /// Atomically claim the right to create a session for this chat.
-    ///
-    /// Returns `true` if the caller should proceed with `create_session`.
-    /// Returns `false` if a session already exists or another task is
-    /// already creating one.
-    pub async fn try_claim_creation(&self, chat_id: ChatId) -> bool {
-        let mut guard = self.inner.write().await;
-        if guard.sessions.contains_key(&chat_id) || guard.creating.contains(&chat_id) {
-            false
-        } else {
-            guard.creating.insert(chat_id);
-            true
-        }
-    }
-
-    /// Complete session creation: insert the session and clear the creation
-    /// lock.
-    pub async fn finish_creation(&self, chat_id: ChatId, session_id: SessionId) {
-        let mut guard = self.inner.write().await;
-        guard.creating.remove(&chat_id);
-        guard.sessions.insert(
-            chat_id,
-            ChatSession {
-                session_id,
-                turn_in_progress: false,
-            },
-        );
-    }
-
-    /// Atomically complete session creation and start a turn in one lock
-    /// acquisition. Prevents a race where another message starts the turn
-    /// between `finish_creation` and `try_start_existing_turn`.
-    pub async fn finish_creation_and_start_turn(
-        &self,
-        chat_id: ChatId,
-        session_id: SessionId,
-    ) -> SessionId {
-        let mut guard = self.inner.write().await;
-        guard.creating.remove(&chat_id);
-        guard.sessions.insert(
-            chat_id,
-            ChatSession {
-                session_id: session_id.clone(),
-                turn_in_progress: true,
-            },
-        );
-        session_id
-    }
-
-    /// Cancel session creation (on failure) and clear the creation lock.
-    pub async fn cancel_creation(&self, chat_id: ChatId) {
-        self.inner.write().await.creating.remove(&chat_id);
-    }
-
-    /// Remove a session mapping.
-    ///
-    /// Also clears any in-progress creation lock for this chat so a
-    /// concurrent `finish_creation_and_start_turn` doesn't silently
-    /// re-insert the session after a `/reset`.
-    pub async fn remove(&self, chat_id: ChatId) -> Option<SessionId> {
-        let mut guard = self.inner.write().await;
-        guard.creating.remove(&chat_id);
-        guard.sessions.remove(&chat_id).map(|s| s.session_id)
-    }
-
-    /// Atomically check and start a turn for this chat.
-    ///
-    /// Returns `true` if the turn was started (was not already in progress).
-    /// Returns `false` if a turn is already in progress or no session exists.
-    pub async fn try_start_turn(&self, chat_id: ChatId) -> bool {
-        let mut guard = self.inner.write().await;
-        if let Some(session) = guard.sessions.get_mut(&chat_id) {
-            if session.turn_in_progress {
-                false
-            } else {
-                session.turn_in_progress = true;
-                true
-            }
-        } else {
-            false
-        }
-    }
-
-    /// Check if a turn is currently in progress for this chat.
-    pub async fn is_turn_in_progress(&self, chat_id: ChatId) -> bool {
-        self.inner
-            .read()
-            .await
-            .sessions
-            .get(&chat_id)
-            .is_some_and(|s| s.turn_in_progress)
-    }
-
-    /// Mark a turn as finished for this chat.
-    pub async fn set_turn_in_progress(&self, chat_id: ChatId, in_progress: bool) {
-        if let Some(session) = self.inner.write().await.sessions.get_mut(&chat_id) {
-            session.turn_in_progress = in_progress;
-        }
-    }
-}
+/// Legacy alias — [`ChannelSession`] is the shared name.
+pub type ChatSession = ChannelSession;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use astrid_core::SessionId;
 
     fn chat(id: i64) -> ChatId {
         ChatId(id)

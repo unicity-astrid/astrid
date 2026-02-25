@@ -1,14 +1,12 @@
 //! Approval flow via Telegram inline keyboards.
 
-use std::collections::HashMap;
 use std::fmt::Write as _;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use astrid_core::{ApprovalDecision, ApprovalOption, ApprovalRequest};
+use astrid_frontend_common::PendingStore;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::client::DaemonClient;
@@ -26,15 +24,13 @@ struct PendingApproval {
     chat_id: ChatId,
     /// The available options.
     options: Vec<ApprovalOption>,
-    /// When this entry was created (for TTL expiry).
-    created_at: Instant,
 }
 
 /// Manages pending approval requests.
 #[derive(Clone)]
 pub struct ApprovalManager {
     /// Map from full `request_id` to pending approval.
-    pending: Arc<RwLock<HashMap<String, PendingApproval>>>,
+    pending: PendingStore<PendingApproval>,
 }
 
 impl Default for ApprovalManager {
@@ -48,7 +44,7 @@ impl ApprovalManager {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            pending: Arc::new(RwLock::new(HashMap::new())),
+            pending: PendingStore::new(PENDING_TTL),
         }
     }
 
@@ -102,18 +98,16 @@ impl ApprovalManager {
             return;
         }
 
-        let mut guard = self.pending.write().await;
-        // Reap expired entries before inserting to bound memory usage.
-        guard.retain(|_, v| v.created_at.elapsed() < PENDING_TTL);
-        guard.insert(
-            request_id.to_string(),
-            PendingApproval {
-                request_id: request_id.to_string(),
-                chat_id,
-                options: request.options.clone(),
-                created_at: Instant::now(),
-            },
-        );
+        self.pending
+            .insert(
+                request_id.to_string(),
+                PendingApproval {
+                    request_id: request_id.to_string(),
+                    chat_id,
+                    options: request.options.clone(),
+                },
+            )
+            .await;
     }
 
     /// Handle a callback query from an approval button press.
@@ -141,8 +135,7 @@ impl ApprovalManager {
             return false;
         };
 
-        let pending = self.pending.write().await.remove(prefix);
-        let Some(pending) = pending else {
+        let Some(pending) = self.pending.remove(prefix).await else {
             let _ = bot.answer_callback_query(&query.id).text("Expired").await;
             return true;
         };

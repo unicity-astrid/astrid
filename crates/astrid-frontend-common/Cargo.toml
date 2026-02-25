@@ -1,25 +1,17 @@
 [package]
-name = "astrid-telegram"
+name = "astrid-frontend-common"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Telegram bot frontend for the Astrid agent runtime"
-
-[[bin]]
-name = "astrid-telegram"
-path = "src/main.rs"
+description = "Shared abstractions for Astrid frontend crates (Telegram, Discord, etc.)"
 
 [dependencies]
 # Internal
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
-astrid-frontend-common = { workspace = true }
 astrid-gateway = { workspace = true }
-
-# Telegram
-teloxide = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
@@ -27,22 +19,14 @@ tokio = { workspace = true }
 # JSON-RPC client
 jsonrpsee = { workspace = true }
 
-# Serialization
-serde_json = { workspace = true }
-
-# UUID
-uuid = { workspace = true }
-
 # Error handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 
-# Text processing
-regex = { workspace = true }
+[dev-dependencies]
+futures = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,65 +1,47 @@
 //! Daemon client for the Telegram bot.
 //!
-//! Adapted from `astrid-cli`'s `DaemonClient`. Key difference: **no daemon
-//! auto-start**. The bot is a long-lived service that connects to an
-//! already-running daemon.
+//! This is a thin wrapper around [`astrid_frontend_common::DaemonClient`]
+//! that maps errors to [`TelegramBotError`].
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
-use astrid_gateway::rpc::{AstridRpcClient, BudgetInfo, DaemonEvent, DaemonStatus, SessionInfo};
-use astrid_gateway::server::DaemonPaths;
-use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
+use astrid_gateway::rpc::{BudgetInfo, DaemonEvent, DaemonStatus, SessionInfo};
 
 use crate::error::TelegramBotError;
 
 /// A client that connects to the Astrid daemon via `WebSocket`.
 ///
-/// Unlike the CLI client, this does **not** auto-start the daemon.
-/// The daemon must already be running.
+/// Wraps the shared [`astrid_frontend_common::DaemonClient`] and maps all
+/// errors to [`TelegramBotError`] for backward compatibility.
 pub struct DaemonClient {
-    client: WsClient,
+    inner: astrid_frontend_common::DaemonClient,
 }
 
 impl DaemonClient {
     /// Connect to the daemon at the given URL.
     pub async fn connect_url(url: &str) -> Result<Self, TelegramBotError> {
-        let client = WsClientBuilder::default()
-            .connection_timeout(Duration::from_secs(10))
-            .build(url)
+        let inner = astrid_frontend_common::DaemonClient::connect_url(url)
             .await
-            .map_err(|e| {
-                TelegramBotError::DaemonConnection(format!(
-                    "failed to connect to daemon at {url}: {e}"
-                ))
-            })?;
-
-        Ok(Self { client })
+            .map_err(map_err)?;
+        Ok(Self { inner })
     }
 
     /// Connect to the daemon, auto-discovering the port from
     /// `~/.astrid/daemon.port`.
     pub async fn connect_discover() -> Result<Self, TelegramBotError> {
-        let paths = DaemonPaths::default_dir()
-            .map_err(|e| TelegramBotError::DaemonConnection(e.to_string()))?;
-
-        let port = astrid_gateway::DaemonServer::read_port(&paths).ok_or_else(|| {
-            TelegramBotError::DaemonConnection(
-                "daemon port file not found — is astridd running?".to_string(),
-            )
-        })?;
-
-        let url = format!("ws://127.0.0.1:{port}");
-        Self::connect_url(&url).await
+        let inner = astrid_frontend_common::DaemonClient::connect_discover()
+            .await
+            .map_err(map_err)?;
+        Ok(Self { inner })
     }
 
     /// Connect using an explicit URL or fall back to auto-discovery.
     pub async fn connect(daemon_url: Option<&str>) -> Result<Self, TelegramBotError> {
-        match daemon_url {
-            Some(url) => Self::connect_url(url).await,
-            None => Self::connect_discover().await,
-        }
+        let inner = astrid_frontend_common::DaemonClient::connect(daemon_url)
+            .await
+            .map_err(map_err)?;
+        Ok(Self { inner })
     }
 
     /// Create a new session.
@@ -67,18 +49,15 @@ impl DaemonClient {
         &self,
         workspace_path: Option<PathBuf>,
     ) -> Result<SessionInfo, TelegramBotError> {
-        self.client
+        self.inner
             .create_session(workspace_path)
             .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+            .map_err(map_err)
     }
 
     /// End a session.
     pub async fn end_session(&self, session_id: &SessionId) -> Result<(), TelegramBotError> {
-        self.client
-            .end_session(session_id.clone())
-            .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+        self.inner.end_session(session_id).await.map_err(map_err)
     }
 
     /// Send user input to a session.
@@ -87,10 +66,10 @@ impl DaemonClient {
         session_id: &SessionId,
         input: &str,
     ) -> Result<(), TelegramBotError> {
-        self.client
-            .send_input(session_id.clone(), input.to_string())
+        self.inner
+            .send_input(session_id, input)
             .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+            .map_err(map_err)
     }
 
     /// Subscribe to session events.
@@ -98,10 +77,10 @@ impl DaemonClient {
         &self,
         session_id: &SessionId,
     ) -> Result<jsonrpsee::core::client::Subscription<DaemonEvent>, TelegramBotError> {
-        self.client
-            .subscribe_events(session_id.clone())
+        self.inner
+            .subscribe_events(session_id)
             .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+            .map_err(map_err)
     }
 
     /// Respond to an approval request.
@@ -111,10 +90,10 @@ impl DaemonClient {
         request_id: &str,
         decision: ApprovalDecision,
     ) -> Result<(), TelegramBotError> {
-        self.client
-            .approval_response(session_id.clone(), request_id.to_string(), decision)
+        self.inner
+            .send_approval(session_id, request_id, decision)
             .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+            .map_err(map_err)
     }
 
     /// Respond to an elicitation request.
@@ -124,26 +103,20 @@ impl DaemonClient {
         request_id: &str,
         response: ElicitationResponse,
     ) -> Result<(), TelegramBotError> {
-        self.client
-            .elicitation_response(session_id.clone(), request_id.to_string(), response)
+        self.inner
+            .send_elicitation(session_id, request_id, response)
             .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+            .map_err(map_err)
     }
 
     /// Cancel the current turn.
     pub async fn cancel_turn(&self, session_id: &SessionId) -> Result<(), TelegramBotError> {
-        self.client
-            .cancel_turn(session_id.clone())
-            .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+        self.inner.cancel_turn(session_id).await.map_err(map_err)
     }
 
     /// Get daemon status.
     pub async fn status(&self) -> Result<DaemonStatus, TelegramBotError> {
-        self.client
-            .status()
-            .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+        self.inner.status().await.map_err(map_err)
     }
 
     /// Get budget info for a session.
@@ -151,9 +124,16 @@ impl DaemonClient {
         &self,
         session_id: &SessionId,
     ) -> Result<BudgetInfo, TelegramBotError> {
-        self.client
-            .session_budget(session_id.clone())
-            .await
-            .map_err(|e| TelegramBotError::DaemonRpc(e.to_string()))
+        self.inner.session_budget(session_id).await.map_err(map_err)
+    }
+}
+
+/// Map a [`FrontendCommonError`] to a [`TelegramBotError`].
+fn map_err(e: astrid_frontend_common::FrontendCommonError) -> TelegramBotError {
+    use astrid_frontend_common::FrontendCommonError;
+    match e {
+        FrontendCommonError::DaemonConnection(msg) => TelegramBotError::DaemonConnection(msg),
+        FrontendCommonError::DaemonRpc(msg) => TelegramBotError::DaemonRpc(msg),
+        FrontendCommonError::Config(msg) => TelegramBotError::Config(msg),
     }
 }

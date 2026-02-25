@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use astrid_core::{ElicitationRequest, ElicitationResponse, ElicitationSchema};
+use astrid_frontend_common::PendingStore;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 use tokio::sync::RwLock;
@@ -29,15 +30,17 @@ struct PendingCallback {
     request_id: String,
     chat_id: ChatId,
     values: Vec<String>,
-    created_at: Instant,
 }
 
 /// Manages elicitation requests.
 #[derive(Clone)]
 pub struct ElicitationManager {
     /// Pending keyboard-based elicitations: full `request_id` to pending.
-    pending_callbacks: Arc<RwLock<HashMap<String, PendingCallback>>>,
+    pending_callbacks: PendingStore<PendingCallback>,
     /// Pending text-reply elicitations: `ChatId` to pending.
+    ///
+    /// Keyed by `ChatId` (not request ID) because text replies are matched
+    /// by the chat they arrive in, not by a callback data prefix.
     pending_text_replies: Arc<RwLock<HashMap<ChatId, PendingTextReply>>>,
 }
 
@@ -52,7 +55,7 @@ impl ElicitationManager {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            pending_callbacks: Arc::new(RwLock::new(HashMap::new())),
+            pending_callbacks: PendingStore::new(PENDING_TTL),
             pending_text_replies: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -125,17 +128,16 @@ impl ElicitationManager {
             return;
         }
 
-        let mut guard = self.pending_callbacks.write().await;
-        guard.retain(|_, v| v.created_at.elapsed() < PENDING_TTL);
-        guard.insert(
-            request_id.to_string(),
-            PendingCallback {
-                request_id: request_id.to_string(),
-                chat_id,
-                values,
-                created_at: Instant::now(),
-            },
-        );
+        self.pending_callbacks
+            .insert(
+                request_id.to_string(),
+                PendingCallback {
+                    request_id: request_id.to_string(),
+                    chat_id,
+                    values,
+                },
+            )
+            .await;
     }
 
     /// Send a yes/no confirmation elicitation.
@@ -166,17 +168,16 @@ impl ElicitationManager {
             return;
         }
 
-        let mut guard = self.pending_callbacks.write().await;
-        guard.retain(|_, v| v.created_at.elapsed() < PENDING_TTL);
-        guard.insert(
-            request_id.to_string(),
-            PendingCallback {
-                request_id: request_id.to_string(),
-                chat_id,
-                values: vec!["true".to_string(), "false".to_string()],
-                created_at: Instant::now(),
-            },
-        );
+        self.pending_callbacks
+            .insert(
+                request_id.to_string(),
+                PendingCallback {
+                    request_id: request_id.to_string(),
+                    chat_id,
+                    values: vec!["true".to_string(), "false".to_string()],
+                },
+            )
+            .await;
     }
 
     /// Send a text/secret prompt that expects the next text message as reply.
@@ -279,8 +280,7 @@ impl ElicitationManager {
         let prefix = parts[1];
         let action = parts[2];
 
-        let pending = self.pending_callbacks.write().await.remove(prefix);
-        let Some(pending) = pending else {
+        let Some(pending) = self.pending_callbacks.remove(prefix).await else {
             let _ = bot.answer_callback_query(&query.id).text("Expired").await;
             return true;
         };

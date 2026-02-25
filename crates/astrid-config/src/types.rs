@@ -58,6 +58,8 @@ pub struct Config {
     pub retry: RetrySection,
     /// Telegram bot frontend settings.
     pub telegram: TelegramSection,
+    /// Discord bot capsule frontend settings.
+    pub discord: DiscordSection,
     /// Agent identity seed (static fallback for spark.toml).
     pub spark: SparkSection,
     /// Pre-declared connector plugins to validate at startup.
@@ -821,6 +823,74 @@ impl Serialize for TelegramSection {
 }
 
 // ---------------------------------------------------------------------------
+// DiscordSection
+// ---------------------------------------------------------------------------
+
+/// Discord bot capsule frontend configuration.
+///
+/// Unlike [`TelegramSection`] (which configures a standalone binary), Discord
+/// runs as a WASM capsule inside the daemon. These settings control the
+/// host-side behaviour: which capsule to load, authorization rules, and
+/// session scoping.
+#[derive(Clone, Deserialize)]
+#[serde(default)]
+pub struct DiscordSection {
+    /// Discord Bot API token (from the Discord Developer Portal).
+    /// Prefer environment variables over storing this in a file.
+    pub bot_token: Option<String>,
+    /// Discord application ID (from the Discord Developer Portal).
+    pub application_id: Option<String>,
+    /// Discord guild IDs allowed to interact with the bot.
+    /// Empty means allow all guilds.
+    pub allowed_guild_ids: Vec<String>,
+    /// Discord user IDs allowed to interact with the bot.
+    /// Empty means allow all users.
+    pub allowed_user_ids: Vec<String>,
+    /// Session scoping mode: `"channel"` (default) or `"user"`.
+    pub session_scope: String,
+    /// Whether the Discord capsule is enabled.
+    pub enabled: bool,
+}
+
+impl Default for DiscordSection {
+    fn default() -> Self {
+        Self {
+            bot_token: None,
+            application_id: None,
+            allowed_guild_ids: Vec::new(),
+            allowed_user_ids: Vec::new(),
+            session_scope: "channel".to_owned(),
+            enabled: false,
+        }
+    }
+}
+
+impl std::fmt::Debug for DiscordSection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscordSection")
+            .field("has_bot_token", &self.bot_token.is_some())
+            .field("has_application_id", &self.application_id.is_some())
+            .field("allowed_guild_ids", &self.allowed_guild_ids)
+            .field("allowed_user_ids", &self.allowed_user_ids)
+            .field("session_scope", &self.session_scope)
+            .field("enabled", &self.enabled)
+            .finish()
+    }
+}
+
+impl Serialize for DiscordSection {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("DiscordSection", 5)?;
+        // bot_token and application_id are intentionally omitted (secrets).
+        state.serialize_field("allowed_guild_ids", &self.allowed_guild_ids)?;
+        state.serialize_field("allowed_user_ids", &self.allowed_user_ids)?;
+        state.serialize_field("session_scope", &self.session_scope)?;
+        state.serialize_field("enabled", &self.enabled)?;
+        state.end()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RetrySection
 // ---------------------------------------------------------------------------
 
@@ -1110,6 +1180,63 @@ method = "admin"
         let cfg: Config = toml::from_str(toml).unwrap();
         assert!(cfg.connectors.is_empty());
         assert!(cfg.identity.links.is_empty());
+    }
+
+    #[test]
+    fn discord_section_defaults() {
+        let toml = "[model]\nprovider = \"claude\"\n";
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert!(cfg.discord.bot_token.is_none());
+        assert!(cfg.discord.application_id.is_none());
+        assert!(cfg.discord.allowed_guild_ids.is_empty());
+        assert!(cfg.discord.allowed_user_ids.is_empty());
+        assert_eq!(cfg.discord.session_scope, "channel");
+        assert!(!cfg.discord.enabled);
+    }
+
+    #[test]
+    fn discord_section_parses() {
+        let toml = r#"
+[discord]
+bot_token = "test-token"
+application_id = "123456"
+allowed_guild_ids = ["111", "222"]
+allowed_user_ids = ["333"]
+session_scope = "user"
+enabled = true
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.discord.bot_token.as_deref(), Some("test-token"));
+        assert_eq!(cfg.discord.application_id.as_deref(), Some("123456"));
+        assert_eq!(cfg.discord.allowed_guild_ids.len(), 2);
+        assert_eq!(cfg.discord.allowed_user_ids, vec!["333"]);
+        assert_eq!(cfg.discord.session_scope, "user");
+        assert!(cfg.discord.enabled);
+    }
+
+    #[test]
+    fn discord_section_debug_hides_token() {
+        let section = DiscordSection {
+            bot_token: Some("secret".into()),
+            application_id: Some("app-id".into()),
+            ..Default::default()
+        };
+        let debug = format!("{section:?}");
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("has_bot_token: true"));
+    }
+
+    #[test]
+    fn discord_section_serialize_omits_secrets() {
+        let section = DiscordSection {
+            bot_token: Some("secret-token".into()),
+            application_id: Some("secret-app-id".into()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&section).unwrap();
+        assert!(!json.contains("secret-token"));
+        assert!(!json.contains("secret-app-id"));
+        assert!(json.contains("session_scope"));
     }
 
     #[test]
