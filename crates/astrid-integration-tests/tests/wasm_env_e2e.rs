@@ -134,7 +134,8 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         .await
         .unwrap();
     let out1_outer: serde_json::Value = serde_json::from_str(&res1).unwrap();
-    let out1: serde_json::Value = serde_json::from_str(out1_outer["content"].as_str().unwrap()).unwrap();
+    let out1: serde_json::Value =
+        serde_json::from_str(out1_outer["content"].as_str().unwrap()).unwrap();
     assert_eq!(out1["found"], true);
     assert_eq!(out1["value"], "default_value");
 
@@ -144,7 +145,8 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         .await
         .unwrap();
     let out2_outer: serde_json::Value = serde_json::from_str(&res2).unwrap();
-    let out2: serde_json::Value = serde_json::from_str(out2_outer["content"].as_str().unwrap()).unwrap();
+    let out2: serde_json::Value =
+        serde_json::from_str(out2_outer["content"].as_str().unwrap()).unwrap();
     assert_eq!(out2["found"], true);
     assert_eq!(out2["value"], "injected_value");
 
@@ -154,6 +156,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         .await
         .unwrap();
     let out3_outer: serde_json::Value = serde_json::from_str(&res3).unwrap();
-    let out3: serde_json::Value = serde_json::from_str(out3_outer["content"].as_str().unwrap()).unwrap();
+    let out3: serde_json::Value =
+        serde_json::from_str(out3_outer["content"].as_str().unwrap()).unwrap();
     assert_eq!(out3["found"], false);
 }

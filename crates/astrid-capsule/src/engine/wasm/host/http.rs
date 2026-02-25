@@ -129,7 +129,10 @@ pub(crate) fn astrid_http_request_impl(
             let mut bytes = Vec::new();
             while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
                 if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                    return Err(format!("HTTP response exceeded maximum payload limit ({} bytes)", util::MAX_GUEST_PAYLOAD_LEN));
+                    return Err(format!(
+                        "HTTP response exceeded maximum payload limit ({} bytes)",
+                        util::MAX_GUEST_PAYLOAD_LEN
+                    ));
                 }
                 bytes.extend_from_slice(&chunk);
             }
@@ -137,7 +140,8 @@ pub(crate) fn astrid_http_request_impl(
         })
     });
 
-    let body = body_result.map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
+    let body =
+        body_result.map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
 
     let resp_obj = HttpResponse {
         status,

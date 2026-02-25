@@ -185,10 +185,12 @@ pub(crate) fn astrid_ipc_poll_impl(
     // Non-blocking poll - drain until buffer full or no more messages
     while let Some(event) = receiver.try_recv() {
         if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload).map(|s| s.len()).unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
+            let msg_len = serde_json::to_string(&message.payload)
+                .map(|s| s.len())
+                .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
             if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
                 // Buffer full, drop the current message and leave the rest in the channel.
-                // NOTE: The message that triggered this overflow is permanently consumed from 
+                // NOTE: The message that triggered this overflow is permanently consumed from
                 // the broadcast receiver and lost. The `dropped` counter signals this loss to the guest.
                 dropped += 1;
                 break;

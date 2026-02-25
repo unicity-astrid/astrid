@@ -232,7 +232,10 @@ async fn test_wasm_capsule_e2e_ipc_limits() {
     let result_loop = tool
         .execute(json!({ "test_type": "subscribe_loop" }), &tool_ctx)
         .await;
-    assert!(result_loop.is_err(), "Expected loop to trap but it succeeded: {result_loop:?}");
+    assert!(
+        result_loop.is_err(),
+        "Expected loop to trap but it succeeded: {result_loop:?}"
+    );
     let err_str = result_loop.unwrap_err().to_string();
     assert!(
         err_str.contains("Subscription limit reached"),
@@ -361,7 +364,10 @@ async fn test_wasm_capsule_e2e_malicious_http_headers() {
     // because reqwest rejects headers with newlines (CRLF injection prevention).
     assert!(result.is_err());
     let err_str = result.unwrap_err().to_string();
-    assert!(err_str.contains("invalid HTTP header name") || err_str.contains("failed to parse header"), "Actual error: {err_str}");
+    assert!(
+        err_str.contains("invalid HTTP header name") || err_str.contains("failed to parse header"),
+        "Actual error: {err_str}"
+    );
 }
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
