@@ -274,7 +274,7 @@ impl SecurityPolicy {
         // 1. Check blocked plugins
         if self.blocked_capsules.contains(capsule_id) {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{capsule_id}' is blocked by policy"),
+                reason: format!("capsule '{capsule_id}' is blocked by policy"),
             };
         }
 
@@ -284,7 +284,7 @@ impl SecurityPolicy {
             && self.denied_hosts.iter().any(|h| h == host)
         {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{capsule_id}' HTTP request to denied host '{host}'"),
+                reason: format!("capsule '{capsule_id}' HTTP request to denied host '{host}'"),
             };
         }
 
@@ -293,14 +293,14 @@ impl SecurityPolicy {
             && matches_any_glob(&self.denied_paths, path)
         {
             return PolicyResult::Blocked {
-                reason: format!("plugin '{capsule_id}' file access to denied path '{path}'"),
+                reason: format!("capsule '{capsule_id}' file access to denied path '{path}'"),
             };
         }
 
         // 4. Plugins always require approval
         PolicyResult::RequiresApproval(RiskAssessment::new(
             RiskLevel::High,
-            format!("plugin '{capsule_id}' action requires approval"),
+            format!("capsule '{capsule_id}' action requires approval"),
         ))
     }
 
