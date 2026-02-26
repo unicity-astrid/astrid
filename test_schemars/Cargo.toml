@@ -1,1 +1,0 @@
-[package]\nname = "test_schemars"\nversion = "0.1.0"\nedition = "2021"\n[dependencies]\nschemars = "1.2.1"
