@@ -15,11 +15,47 @@ use crate::theme::Theme;
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
-    if source.starts_with("openclaw:") {
-        install_from_openclaw(source, workspace, &home)
-    } else {
-        install_from_local(source, workspace, &home)
+    // 1. Explicit Local Path
+    if source.starts_with('.') || source.starts_with('/') {
+        return install_from_local(source, workspace, &home);
     }
+
+    // 2. OpenClaw Explicit Prefix
+    if let Some(rest) = source.strip_prefix("openclaw:") {
+        // If it uses the github namespace alias after the prefix
+        if let Some(repo) = rest.strip_prefix('@') {
+            let url = format!("https://github.com/{repo}");
+            return install_from_github(&url, workspace, &home, true);
+        }
+        return install_from_openclaw(rest, workspace, &home);
+    }
+
+    // 3. Native Namespace Alias (@org/repo) -> GitHub
+    if let Some(repo) = source.strip_prefix('@') {
+        let url = format!("https://github.com/{repo}");
+        return install_from_github(&url, workspace, &home, false);
+    }
+
+    // 4. Raw GitHub URL
+    if source.starts_with("github.com/") || source.starts_with("https://github.com/") {
+        return install_from_github(source, workspace, &home, false);
+    }
+
+    // 5. Fallback: Assume it's a local folder matching the given name
+    install_from_local(source, workspace, &home)
+}
+
+pub(crate) fn install_from_github(
+    url: &str,
+    _workspace: bool,
+    _home: &AstridHome,
+    _is_openclaw: bool,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::info(&format!("Fetching capsule from GitHub: {url}"))
+    );
+    bail!("GitHub remote resolution is not yet implemented. Please download the repository locally and run `astrid capsule install ./path`");
 }
 
 pub(crate) fn install_from_openclaw(
