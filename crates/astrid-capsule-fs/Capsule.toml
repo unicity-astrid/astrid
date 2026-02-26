@@ -1,0 +1,12 @@
+[package]
+name = "astrid-capsule-fs"
+version = "0.1.0"
+description = "Core filesystem tools for the Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "fs-tools"
+file = "astrid_capsule_fs.wasm"
+type = "executable"
+capabilities = { fs_read = ["workspace://"], fs_write = ["workspace://"] }

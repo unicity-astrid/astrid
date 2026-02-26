@@ -83,6 +83,7 @@ tar.workspace = true
 flate2.workspace = true
 extism.workspace = true
 cargo_metadata = "0.23.1"
+reqwest = { workspace = true, features = ["json"] }
 
 [lints]
 workspace = true

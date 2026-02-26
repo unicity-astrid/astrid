@@ -87,6 +87,49 @@ fn detect_project_type(dir: &Path) -> Result<String> {
     );
 }
 
+fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
+    use extism::{Function, UserData};
+
+    let dummy = |name: &str, num_inputs: usize, num_outputs: usize| {
+        let inputs = vec![extism::PTR; num_inputs];
+        let outputs = vec![extism::PTR; num_outputs];
+        Function::new(
+            name,
+            inputs,
+            outputs,
+            UserData::new(()),
+            |_, _, _, _| {
+                Err(extism::Error::msg("Dummy function called"))
+            }
+        )
+    };
+
+    vec![
+        dummy("astrid_fs_exists", 1, 1),
+        dummy("astrid_fs_mkdir", 1, 0),
+        dummy("astrid_fs_readdir", 1, 1),
+        dummy("astrid_fs_stat", 1, 1),
+        dummy("astrid_fs_unlink", 1, 0),
+        dummy("astrid_read_file", 1, 1),
+        dummy("astrid_write_file", 2, 0),
+        dummy("astrid_ipc_publish", 2, 0),
+        dummy("astrid_ipc_subscribe", 1, 1),
+        dummy("astrid_ipc_unsubscribe", 1, 0),
+        dummy("astrid_ipc_poll", 1, 1),
+        dummy("astrid_uplink_register", 3, 1),
+        dummy("astrid_uplink_send", 3, 1),
+        dummy("astrid_kv_get", 1, 1),
+        dummy("astrid_kv_set", 2, 0),
+        dummy("astrid_get_config", 1, 1),
+        dummy("astrid_http_request", 1, 1),
+        dummy("astrid_log", 2, 0),
+        dummy("astrid_cron_schedule", 3, 0),
+        dummy("astrid_cron_cancel", 1, 0),
+        dummy("astrid_spawn_host", 1, 1),
+    ]
+}
+
+#[allow(clippy::too_many_lines)]
 fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
     info!("🔨 Building Rust WASM capsule from {}", dir.display());
 
@@ -121,9 +164,7 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         .context("Failed to spawn cargo build")?;
 
     if !status.success() {
-        bail!(
-            "Cargo build failed. Ensure you have the target installed: `rustup target add wasm32-wasip1`"
-        );
+        bail!("Cargo build failed. Ensure you have the target installed: `rustup target add wasm32-wasip1`");
     }
 
     // 4. Locate the compiled WASM binary
@@ -156,7 +197,7 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
     info!("   Extracting Extism schemas...");
     let wasm_bytes = fs::read(&wasm_path).context("Failed to read compiled WASM binary")?;
     let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
-    let mut plugin = extism::Plugin::new(&manifest, [], true)
+    let mut plugin = extism::Plugin::new(&manifest, create_dummy_functions(), true)
         .context("Failed to initialize Extism plugin for schema extraction")?;
 
     let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
