@@ -311,8 +311,8 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
         }
     }
 
-    // 5. Inject Context Files (GEMINI.md)
-    let context_file_name = parsed.get("contextFileName").and_then(Value::as_str).unwrap_or("GEMINI.md");
+    // 5. Inject Context Files (AGENTS.md)
+    let context_file_name = parsed.get("contextFileName").and_then(Value::as_str).unwrap_or("AGENTS.md");
     let context_path = dir.join(context_file_name);
     if context_path.exists() {
         let _ = write!(toml, "[[context_file]]\nname = \"workspace-context\"\nfile = \"{context_file_name}\"\n\n");
