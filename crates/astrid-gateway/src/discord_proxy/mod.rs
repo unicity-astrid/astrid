@@ -398,7 +398,7 @@ impl DiscordGatewayProxy {
                     Err(e) => {
                         error!(error = %e, "Failed to serialize Gateway payload");
                         continue;
-                    }
+                    },
                 };
                 if let Err(e) = ws_writer.send(Message::Text(json.into())).await {
                     debug!(error = %e, "Writer task: send failed");

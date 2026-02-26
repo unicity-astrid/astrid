@@ -103,8 +103,7 @@ impl DiscordCapsule {
         let sanitized = sanitize_for_discord(&args.content);
         // Discord edit replaces the full message; truncate to limit.
         let content = if sanitized.len() > 2000 {
-            sanitized[..crate::format::floor_char_boundary(&sanitized, 2000)]
-                .to_string()
+            sanitized[..crate::format::floor_char_boundary(&sanitized, 2000)].to_string()
         } else {
             sanitized
         };
@@ -139,12 +138,9 @@ impl DiscordCapsule {
                 match serde_json::from_slice(&events_bytes) {
                     Ok(single) => vec![single],
                     Err(e) => {
-                        sys::log(
-                            "error",
-                            format!("Failed to parse IPC event: {e}"),
-                        )?;
+                        sys::log("error", format!("Failed to parse IPC event: {e}"))?;
                         vec![]
-                    }
+                    },
                 }
             },
         };
@@ -998,10 +994,10 @@ impl DiscordCapsule {
                     .get("channel_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                if !channel_id.is_empty() {
-                    if let Err(e) = api.send_message(channel_id, &error_text) {
-                        sys::log("error", format!("Failed to send error message: {e}"))?;
-                    }
+                if !channel_id.is_empty()
+                    && let Err(e) = api.send_message(channel_id, &error_text)
+                {
+                    sys::log("error", format!("Failed to send error message: {e}"))?;
                 }
             }
 
