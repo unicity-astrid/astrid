@@ -6,6 +6,8 @@
 //! registered engines to handle lifecycle events.
 
 pub mod mcp;
+#[cfg(test)]
+mod mcp_tests;
 mod static_engine;
 pub mod wasm;
 
