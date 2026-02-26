@@ -60,3 +60,28 @@ This is the "heart transplant" of the OS. It must be done atomically to avoid br
 - [ ] **Step 7.3: Orchestrator Extraction (`astrid-capsule-orchestrator`):** Extract the `astrid-runtime::execution` loop into a stateful WASM capsule that communicates purely over the Event Bus.
 - [ ] **Step 7.4: The Front-End Re-Wire:** Update the existing CLI and Telegram frontends to stop calling `astrid-runtime` directly, and instead publish `user.prompt` events to the Event Bus and listen for `agent.response` events.
 - [ ] **Step 7.5: The Great Purge:** Delete `astrid-runtime` and `astrid-llm` from the core daemon tree entirely.
+
+## 5. Extensibility Use Cases
+
+By enforcing the rule that all intelligence must communicate solely via standard IPC schemas over the Event Bus, Astrid becomes a truly infinite sandbox for AI research and deployment.
+
+### Use Case 1: The Local "Paranoid" Distro
+A financial firm requires absolute data privacy. They cannot use Anthropic or OpenAI. 
+*   **The Swap:** They uninstall `astrid-capsule-anthropic` and install `astrid-capsule-ollama`.
+*   **The Result:** The Orchestrator capsule still emits `llm.request.generate` events on the bus. The new Ollama capsule catches them and routes them to a local GPU. The Orchestrator doesn`t even know the provider changed; the entire OS functions offline instantly.
+
+### Use Case 2: The "Debate Swarm" Researcher
+A university researcher wants to test a novel agentic architecture where three distinct personas (A Coder, a Security Expert, and a Manager) debate a user`s prompt before executing a tool.
+*   **The Swap:** The researcher writes a new `astrid-capsule-debate-orchestrator`. They update `config.toml` to route `user.prompt` events to their new capsule instead of the default ReAct orchestrator.
+*   **The Result:** The new orchestrator receives the user`s prompt. It emits *three* parallel `llm.request` events to three different provider capsules. It aggregates their responses over the Event Bus, synthesizes a final plan, and sends the winning `tool.request.execute` to the Tool Router. 
+
+### Use Case 3: The Caching Middleware
+A company wants to reduce LLM API costs for repetitive CLI tasks (like asking "How do I undo a git commit?").
+*   **The Swap:** They install a middleware `astrid-capsule-cache`. They configure the Event Bus router to send all `llm.request` events to the Cache capsule *first*. 
+*   **The Result:** The Cache capsule intercepts the request. It uses the `astrid::sys::kv` airlocks to check its local database. If it finds a match, it instantly publishes the `LlmResponse` back to the Orchestrator. If it misses, it re-publishes the event to the actual Provider capsule. The Orchestrator and the Provider remain completely unmodified.
+
+### Use Case 4: The "Self-Driving" Test Suite
+A developer wants an agent to autonomously write code, run tests, and fix bugs in a loop overnight without human intervention.
+*   **The Swap:** They replace the default Orchestrator with an `astrid-capsule-autonomous-worker`. 
+*   **The Result:** This specialized orchestrator catches `user.prompt` ("Build a web server"), but instead of waiting for human approval after every tool call, it programmatically loops through the Tool Router, reads the `astrid-capsule-shell` exit codes, and self-corrects based on compiler errors until the tests pass.
+
