@@ -393,8 +393,12 @@ impl DiscordGatewayProxy {
         tokio::spawn(async move {
             let mut ws_writer = ws_writer;
             while let Some(payload) = outbound_rx.recv().await {
-                let Ok(json) = serde_json::to_string(&payload) else {
-                    continue;
+                let json = match serde_json::to_string(&payload) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        error!(error = %e, "Failed to serialize Gateway payload");
+                        continue;
+                    }
                 };
                 if let Err(e) = ws_writer.send(Message::Text(json.into())).await {
                     debug!(error = %e, "Writer task: send failed");

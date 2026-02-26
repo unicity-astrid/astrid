@@ -158,7 +158,7 @@ pub(crate) fn chunk_discord(text: &str, max_len: usize) -> Vec<String> {
 }
 
 /// Find the largest byte index ≤ `i` that is a char boundary.
-fn floor_char_boundary(s: &str, i: usize) -> usize {
+pub(crate) fn floor_char_boundary(s: &str, i: usize) -> usize {
     if i >= s.len() {
         return s.len();
     }

@@ -103,7 +103,8 @@ impl DiscordCapsule {
         let sanitized = sanitize_for_discord(&args.content);
         // Discord edit replaces the full message; truncate to limit.
         let content = if sanitized.len() > 2000 {
-            sanitized[..sanitized.floor_char_boundary(2000)].to_string()
+            sanitized[..crate::format::floor_char_boundary(&sanitized, 2000)]
+                .to_string()
         } else {
             sanitized
         };
@@ -137,7 +138,13 @@ impl DiscordCapsule {
                 // Try single event.
                 match serde_json::from_slice(&events_bytes) {
                     Ok(single) => vec![single],
-                    Err(_) => vec![],
+                    Err(e) => {
+                        sys::log(
+                            "error",
+                            format!("Failed to parse IPC event: {e}"),
+                        )?;
+                        vec![]
+                    }
                 }
             },
         };
@@ -970,17 +977,21 @@ impl DiscordCapsule {
         if let Some(session) = get_session(scope, &turn.scope_id)? {
             if let Some(ref token) = session.interaction_token {
                 // Interaction mode: edit deferred response.
-                let _ = api.interaction_edit_original(
+                if let Err(e) = api.interaction_edit_original(
                     token,
                     &WebhookMessage {
                         content: Some(error_text.clone()),
                         ..Default::default()
                     },
-                );
+                ) {
+                    sys::log("error", format!("Failed to edit error response: {e}"))?;
+                }
             } else if let Some(ref msg_id) = session.last_message_id {
                 // Message mode: edit the ack message.
                 let channel_id = &turn.channel_id;
-                let _ = api.edit_message(channel_id, msg_id, &error_text);
+                if let Err(e) = api.edit_message(channel_id, msg_id, &error_text) {
+                    sys::log("error", format!("Failed to edit error message: {e}"))?;
+                }
             } else {
                 // Fallback: send to channel from event payload.
                 let channel_id = event
@@ -988,7 +999,9 @@ impl DiscordCapsule {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 if !channel_id.is_empty() {
-                    let _ = api.send_message(channel_id, &error_text);
+                    if let Err(e) = api.send_message(channel_id, &error_text) {
+                        sys::log("error", format!("Failed to send error message: {e}"))?;
+                    }
                 }
             }
 

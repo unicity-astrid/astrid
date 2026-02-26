@@ -826,13 +826,24 @@ impl Serialize for TelegramSection {
 // DiscordSection
 // ---------------------------------------------------------------------------
 
+/// Session scoping mode for the Discord bot.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DiscordSessionScope {
+    /// One session per Discord channel (multiple users share context).
+    #[default]
+    Channel,
+    /// One session per Discord user (personal sessions regardless of channel).
+    User,
+}
+
 /// Discord bot capsule frontend configuration.
 ///
 /// Unlike [`TelegramSection`] (which configures a standalone binary), Discord
 /// runs as a WASM capsule inside the daemon. These settings control the
 /// host-side behaviour: which capsule to load, authorization rules, and
 /// session scoping.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct DiscordSection {
     /// Discord Bot API token (from the Discord Developer Portal).
@@ -846,24 +857,12 @@ pub struct DiscordSection {
     /// Discord user IDs allowed to interact with the bot.
     /// Empty means allow all users.
     pub allowed_user_ids: Vec<String>,
-    /// Session scoping mode: `"channel"` (default) or `"user"`.
-    pub session_scope: String,
+    /// Session scoping mode: `channel` (default) or `user`.
+    pub session_scope: DiscordSessionScope,
     /// Whether the Discord capsule is enabled.
     pub enabled: bool,
 }
 
-impl Default for DiscordSection {
-    fn default() -> Self {
-        Self {
-            bot_token: None,
-            application_id: None,
-            allowed_guild_ids: Vec::new(),
-            allowed_user_ids: Vec::new(),
-            session_scope: "channel".to_owned(),
-            enabled: false,
-        }
-    }
-}
 
 impl std::fmt::Debug for DiscordSection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1190,7 +1189,7 @@ method = "admin"
         assert!(cfg.discord.application_id.is_none());
         assert!(cfg.discord.allowed_guild_ids.is_empty());
         assert!(cfg.discord.allowed_user_ids.is_empty());
-        assert_eq!(cfg.discord.session_scope, "channel");
+        assert_eq!(cfg.discord.session_scope, DiscordSessionScope::Channel);
         assert!(!cfg.discord.enabled);
     }
 
@@ -1210,7 +1209,7 @@ enabled = true
         assert_eq!(cfg.discord.application_id.as_deref(), Some("123456"));
         assert_eq!(cfg.discord.allowed_guild_ids.len(), 2);
         assert_eq!(cfg.discord.allowed_user_ids, vec!["333"]);
-        assert_eq!(cfg.discord.session_scope, "user");
+        assert_eq!(cfg.discord.session_scope, DiscordSessionScope::User);
         assert!(cfg.discord.enabled);
     }
 

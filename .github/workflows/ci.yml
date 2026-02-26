@@ -115,3 +115,7 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+      - name: Build WASM capsules
+        working-directory: crates/astrid-discord
+        run: cargo build --target wasm32-unknown-unknown --release
