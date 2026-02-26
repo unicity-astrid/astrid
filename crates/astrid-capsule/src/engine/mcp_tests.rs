@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::context::CapsuleContext;
-    use crate::engine::mcp::McpHostEngine;
     use crate::engine::ExecutionEngine;
+    use crate::engine::mcp::McpHostEngine;
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, McpServerDef, PackageDef};
     use std::collections::HashMap;
     use std::fs;
@@ -68,7 +68,7 @@ mod tests {
         // We must ensure it fails against the raw "./bin/npx-malicious" string.
         let manifest = dummy_manifest("./bin/npx-malicious", vec!["npx"]);
         let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-        
+
         let mut engine = McpHostEngine::new(
             manifest,
             McpServerDef {
@@ -93,7 +93,7 @@ mod tests {
         };
 
         let result = engine.load(&ctx).await;
-        
+
         // It must explicitly fail the security check
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -123,7 +123,7 @@ mod tests {
         // The user granted capability for "bin/my-tool"
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
         let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-        
+
         let mut engine = McpHostEngine::new(
             manifest,
             McpServerDef {
@@ -147,11 +147,16 @@ mod tests {
         };
 
         let result = engine.load(&ctx).await;
-        
+
         // It should attempt the connection and fail at the handshake step (meaning it successfully found and spawned the fat binary slice)
         assert!(result.is_err(), "Test failed: {:?}", result.err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("MCP handshake failed") || err_msg.contains("Failed to start MCP server"), "Expected handshake or start failure, got: {}", err_msg);
+        assert!(
+            err_msg.contains("MCP handshake failed")
+                || err_msg.contains("Failed to start MCP server"),
+            "Expected handshake or start failure, got: {}",
+            err_msg
+        );
     }
 
     #[tokio::test]
@@ -169,7 +174,7 @@ mod tests {
 
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
         let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-        
+
         let mut engine = McpHostEngine::new(
             manifest,
             McpServerDef {
@@ -193,7 +198,7 @@ mod tests {
         };
 
         let result = engine.load(&ctx).await;
-        
+
         // It must fail because our env!("TARGET") slice wasn't found inside the directory
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();

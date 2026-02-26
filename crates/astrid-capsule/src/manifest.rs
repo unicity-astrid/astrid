@@ -123,6 +123,9 @@ pub struct ComponentDef {
     /// List of component IDs this component dynamically links to.
     #[serde(default)]
     pub link: Vec<String>,
+    /// Capabilities specifically requested by this component.
+    #[serde(default)]
+    pub capabilities: Option<CapabilitiesDef>,
 }
 
 /// A collection of capabilities the capsule requests from the OS.

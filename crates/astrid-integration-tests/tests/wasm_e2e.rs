@@ -60,6 +60,7 @@ async fn setup_test_capsule(
             hash: None,
             r#type: "executable".to_string(),
             link: vec![],
+            capabilities: None,
         }],
         dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {

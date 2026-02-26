@@ -78,6 +78,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             hash: None,
             r#type: "executable".to_string(),
             link: vec![],
+            capabilities: None,
         }],
         dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {

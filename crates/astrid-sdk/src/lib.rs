@@ -13,9 +13,9 @@
 
 use astrid_sys::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Serialize, de::DeserializeOwned};
 pub use extism_pdk;
 pub use schemars;
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 /// Core error type for SDK operations

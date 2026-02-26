@@ -212,6 +212,12 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::SpawnHost => crate::engine::wasm::host::process::astrid_spawn_host_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
     }
 
     if fn_outputs.is_empty() {

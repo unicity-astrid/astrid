@@ -1,7 +1,6 @@
 use crate::commands::build::archiver::pack_capsule_archive;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
-use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -93,15 +92,9 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
     let dummy = |name: &str, num_inputs: usize, num_outputs: usize| {
         let inputs = vec![extism::PTR; num_inputs];
         let outputs = vec![extism::PTR; num_outputs];
-        Function::new(
-            name,
-            inputs,
-            outputs,
-            UserData::new(()),
-            |_, _, _, _| {
-                Err(extism::Error::msg("Dummy function called"))
-            }
-        )
+        Function::new(name, inputs, outputs, UserData::new(()), |_, _, _, _| {
+            Err(extism::Error::msg("Dummy function called"))
+        })
     };
 
     vec![
@@ -164,7 +157,9 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         .context("Failed to spawn cargo build")?;
 
     if !status.success() {
-        bail!("Cargo build failed. Ensure you have the target installed: `rustup target add wasm32-wasip1`");
+        bail!(
+            "Cargo build failed. Ensure you have the target installed: `rustup target add wasm32-wasip1`"
+        );
     }
 
     // 4. Locate the compiled WASM binary
@@ -216,22 +211,38 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
 
     // 6. Merge with developer's Capsule.toml
     let base_toml_path = dir.join("Capsule.toml");
-    let mut toml_content = if base_toml_path.exists() {
-        fs::read_to_string(&base_toml_path).context("Failed to read Capsule.toml")?
+    let mut toml_doc = if base_toml_path.exists() {
+        let content = fs::read_to_string(&base_toml_path).context("Failed to read Capsule.toml")?;
+        content
+            .parse::<toml_edit::DocumentMut>()
+            .context("Failed to parse Capsule.toml")?
     } else {
-        // Synthesize a basic one if missing
-        format!(
-            "[package]\nname = \"{crate_name}\"\nversion = \"{package_version}\"\ndescription = \"\"\n\n[component]\nentrypoint = \"{wasm_name}.wasm\"\n\n"
-        )
+        let mut doc = toml_edit::DocumentMut::new();
+
+        let mut package = toml_edit::Table::new();
+        package.insert("name", toml_edit::value(crate_name.as_str()));
+        package.insert("version", toml_edit::value(package_version));
+        package.insert("description", toml_edit::value(""));
+        doc.insert("package", toml_edit::Item::Table(package));
+
+        let mut comp = toml_edit::Table::new();
+        comp.insert("entrypoint", toml_edit::value(format!("{wasm_name}.wasm")));
+        doc.insert("component", toml_edit::Item::Table(comp));
+
+        doc
     };
 
     // Inject the tools
     if let Value::Object(tools) = extracted_tools
         && !tools.is_empty()
     {
-        // Append a newline if necessary
-        if !toml_content.ends_with('\n') {
-            toml_content.push('\n');
+        // Get or create the `tool` array of tables
+        let mut tools_array = toml_edit::ArrayOfTables::new();
+        if let Some(existing) = toml_doc
+            .get("tool")
+            .and_then(toml_edit::Item::as_array_of_tables)
+        {
+            tools_array = existing.clone();
         }
 
         for (tool_name, schema) in tools {
@@ -241,18 +252,40 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
                 .and_then(Value::as_str)
                 .unwrap_or("Auto-generated Rust tool");
 
-            let _ = writeln!(
-                toml_content,
-                "[[tool]]\nname = \"{tool_name}\"\ndescription = \"{description}\""
-            );
-            let _ = writeln!(
-                toml_content,
-                "input_schema = {}",
-                serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string())
-            );
-            toml_content.push('\n');
+            let mut tool_table = toml_edit::Table::new();
+            tool_table.insert("name", toml_edit::value(tool_name));
+            tool_table.insert("description", toml_edit::value(description));
+
+            // For schemas, we store it as an inline table to match previous formatting,
+            // but since it's arbitrary JSON, converting it via toml_edit is complex.
+            // Wait, we can just store the JSON string, OR use serde_json to value mapping.
+            // Actually, previously we stored it as an inline table string, but here we can just
+            // convert the serde_json Value to toml_edit::Value recursively.
+            // Since we don't have a direct JSON->TOML inline table converter handy without extra code,
+            // we will just store it as an inline table if we map it, OR just write the raw string
+            // but using a literal string in TOML so it's safe. Wait, the manifest parser expects a table.
+
+            // Let's do a simple recursive convert if it's an object.
+            // The simplest safe way is to parse the JSON string as TOML. Since JSON is mostly a subset of TOML inline tables (wait, it's not strictly).
+
+            // The safest way is to use the `toml` crate's `serde` to convert JSON Value to `toml::Value`,
+            // then format it, then parse that into `toml_edit::Item`.
+            let toml_val: toml::Value = serde_json::from_value(schema.clone())
+                .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+            let toml_str = toml::to_string(&toml_val).unwrap_or_default();
+            // Parse the generated TOML string into an Item
+            if let Ok(parsed_doc) = toml_str.parse::<toml_edit::DocumentMut>() {
+                let table = parsed_doc.into_table();
+                tool_table.insert("input_schema", toml_edit::Item::Table(table));
+            }
+
+            tools_array.push(tool_table);
         }
+
+        toml_doc.insert("tool", toml_edit::Item::ArrayOfTables(tools_array));
     }
+
+    let toml_content = toml_doc.to_string();
 
     // 7. Pack the Archive
     let out_dir = match output {
@@ -346,13 +379,18 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
     }
 
     // Fallback: If no `settings` block, but we find `env` inside the mcpServers, we strip them and ask generically.
-    if env_table.is_empty() && let Some(servers) = parsed.get("mcpServers").and_then(Value::as_object) {
+    if env_table.is_empty()
+        && let Some(servers) = parsed.get("mcpServers").and_then(Value::as_object)
+    {
         for (_, server_config) in servers {
             if let Some(env_map) = server_config.get("env").and_then(Value::as_object) {
                 for (env_key, _) in env_map {
                     let mut env_def = toml_edit::InlineTable::new();
                     env_def.insert("type", "secret".into());
-                    env_def.insert("request", format!("Please provide a value for {env_key}").into());
+                    env_def.insert(
+                        "request",
+                        format!("Please provide a value for {env_key}").into(),
+                    );
                     env_table.insert(env_key, toml_edit::value(env_def));
                 }
             }
@@ -418,7 +456,10 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
     }
 
     if !mcp_servers_array.is_empty() {
-        toml_doc.insert("mcp_server", toml_edit::Item::ArrayOfTables(mcp_servers_array));
+        toml_doc.insert(
+            "mcp_server",
+            toml_edit::Item::ArrayOfTables(mcp_servers_array),
+        );
     }
 
     // 5. Inject Context Files (AGENTS.md)
@@ -427,7 +468,10 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
         .and_then(Value::as_str)
         .unwrap_or("AGENTS.md");
     // Ensure we don't allow path traversal in the context file name
-    let sanitized_context_name = Path::new(context_file_name).file_name().unwrap_or_default().to_string_lossy();
+    let sanitized_context_name = Path::new(context_file_name)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
     let context_path = dir.join(sanitized_context_name.as_ref());
 
     let mut context_files_array = toml_edit::ArrayOfTables::new();
@@ -439,7 +483,10 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
         additional_files.push(context_path);
     }
     if !context_files_array.is_empty() {
-        toml_doc.insert("context_file", toml_edit::Item::ArrayOfTables(context_files_array));
+        toml_doc.insert(
+            "context_file",
+            toml_edit::Item::ArrayOfTables(context_files_array),
+        );
     }
 
     // 6. Inject Skills
@@ -478,7 +525,10 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
             let path = entry.path();
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("toml") {
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-                let cmd_name = format!("/{}", path.file_stem().unwrap_or_default().to_string_lossy());
+                let cmd_name = format!(
+                    "/{}",
+                    path.file_stem().unwrap_or_default().to_string_lossy()
+                );
 
                 let mut cmd_table = toml_edit::Table::new();
                 cmd_table.insert("name", toml_edit::value(cmd_name));

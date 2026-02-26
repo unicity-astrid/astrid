@@ -40,21 +40,23 @@ impl McpHostEngine {
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
     async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
-        let original_command_str = self.server_def.command.as_ref().ok_or_else(|| {
-            CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
-        })?.clone();
+        let original_command_str = self
+            .server_def
+            .command
+            .as_ref()
+            .ok_or_else(|| {
+                CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
+            })?
+            .clone();
 
         // 1. Explicitly verify if the host_process capability was granted in the manifest.
         // We check against the *original* command name *before* any path resolution occurs.
         // This prevents malicious capsules from bypassing checks by naming directories
         // with substrings of allowed commands (e.g., `./bin/npx-compat/`).
-        let is_granted = self
-            .manifest
-            .capabilities
-            .host_process
-            .iter()
-            .any(|cmd| original_command_str == *cmd || original_command_str.starts_with(&format!("{cmd} ")));
-            
+        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| {
+            original_command_str == *cmd || original_command_str.starts_with(&format!("{cmd} "))
+        });
+
         if !is_granted {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
@@ -65,26 +67,38 @@ impl ExecutionEngine for McpHostEngine {
         let mut command_str = original_command_str.clone();
 
         // 2. Fat Binary Resolution:
-        // If the command is a relative path (e.g. "./bin/my-tool") that exists locally within 
+        // If the command is a relative path (e.g. "./bin/my-tool") that exists locally within
         // the capsule directory, check if it's a directory. If it is, append the host's target triple.
         let local_cmd_path = self.capsule_dir.join(&command_str);
-        if local_cmd_path.is_dir() {
-            let host_triple = env!("TARGET"); // Injected by cargo at build time
-            let arch_slice = local_cmd_path.join(host_triple);
-            
-            if arch_slice.exists() {
-                info!("Fat binary resolved: using {} slice for {}", host_triple, command_str);
-                // Convert back to string. Using absolute path ensures we don't rely on PATH resolution.
-                command_str = arch_slice.to_string_lossy().to_string();
-            } else {
+
+        // Prevent path traversal outside the capsule directory
+        if let Ok(canonical_cmd) = local_cmd_path.canonicalize()
+            && let Ok(canonical_capsule_dir) = self.capsule_dir.canonicalize()
+        {
+            if !canonical_cmd.starts_with(&canonical_capsule_dir) {
                 return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                    "Fat binary directory '{}' does not contain a slice for the current architecture: {}",
-                    command_str, host_triple
+                    "Path traversal detected: command '{}' escapes the capsule directory.",
+                    command_str
                 )));
             }
-        } else if local_cmd_path.is_file() {
-            // It's a local file, just use the absolute path directly to be safe
-            command_str = local_cmd_path.to_string_lossy().to_string();
+
+            if canonical_cmd.is_dir() {
+                let host_triple = env!("TARGET"); // Injected by cargo at build time
+                let arch_slice = canonical_cmd.join(host_triple);
+
+                if arch_slice.is_file() {
+                    info!("Fat binary resolved: using {} slice for {}", host_triple, command_str);
+                    command_str = arch_slice.to_string_lossy().to_string();
+                } else {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "Fat binary directory '{}' does not contain a valid slice for the current architecture: {}",
+                        command_str, host_triple
+                    )));
+                }
+            } else if canonical_cmd.is_file() {
+                // It's a local file, just use the absolute path directly to be safe
+                command_str = canonical_cmd.to_string_lossy().to_string();
+            }
         }
 
         info!(
