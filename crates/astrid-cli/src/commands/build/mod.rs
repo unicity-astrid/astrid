@@ -308,22 +308,25 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
         .unwrap_or("Converted MCP capsule")
         .to_string();
 
-    let mut toml = String::new();
-    let _ = write!(
-        toml,
-        "[package]\nname = \"{name}\"\nversion = \"{version}\"\ndescription = \"{description}\"\nauthors = [\"Auto-Converter\"]\n\n"
-    );
+    let mut toml_doc = toml_edit::DocumentMut::new();
+
+    let mut package = toml_edit::Table::new();
+    package.insert("name", toml_edit::value(name.clone()));
+    package.insert("version", toml_edit::value(version));
+    package.insert("description", toml_edit::value(description));
+    let mut authors = toml_edit::Array::new();
+    authors.push("Auto-Converter");
+    package.insert("authors", toml_edit::value(authors));
+    toml_doc.insert("package", toml_edit::Item::Table(package));
 
     let mut additional_files = Vec::new();
 
     // 2. Extract settings and convert to `[env]` block (gemini-extension.json specific)
-    let mut has_env = false;
-    let mut env_block = String::from("[env]\n");
+    let mut env_table = toml_edit::Table::new();
 
     if let Some(settings) = parsed.get("settings").and_then(Value::as_array) {
         for setting in settings {
             if let Some(env_var) = setting.get("envVar").and_then(Value::as_str) {
-                has_env = true;
                 let req_name = setting
                     .get("name")
                     .and_then(Value::as_str)
@@ -333,24 +336,24 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
                     .and_then(Value::as_str)
                     .unwrap_or("");
 
-                let _ = writeln!(
-                    env_block,
-                    "{env_var} = {{ type = \"secret\", request = \"{req_name}\", description = \"{desc}\" }}"
-                );
+                let mut env_def = toml_edit::InlineTable::new();
+                env_def.insert("type", "secret".into());
+                env_def.insert("request", req_name.into());
+                env_def.insert("description", desc.into());
+                env_table.insert(env_var, toml_edit::value(env_def));
             }
         }
     }
 
     // Fallback: If no `settings` block, but we find `env` inside the mcpServers, we strip them and ask generically.
-    if !has_env && let Some(servers) = parsed.get("mcpServers").and_then(Value::as_object) {
+    if env_table.is_empty() && let Some(servers) = parsed.get("mcpServers").and_then(Value::as_object) {
         for (_, server_config) in servers {
             if let Some(env_map) = server_config.get("env").and_then(Value::as_object) {
                 for (env_key, _) in env_map {
-                    has_env = true;
-                    let _ = writeln!(
-                        env_block,
-                        "{env_key} = {{ type = \"secret\", request = \"Please provide a value for {env_key}\" }}"
-                    );
+                    let mut env_def = toml_edit::InlineTable::new();
+                    env_def.insert("type", "secret".into());
+                    env_def.insert("request", format!("Please provide a value for {env_key}").into());
+                    env_table.insert(env_key, toml_edit::value(env_def));
                 }
             }
         }
@@ -369,49 +372,53 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
     }
 
     if !capabilities.is_empty() {
-        toml.push_str("[capabilities]\n");
-        toml.push_str("host_process = [");
-        let formatted_caps: Vec<String> = capabilities.iter().map(|c| format!("\"{c}\"")).collect();
-        toml.push_str(&formatted_caps.join(", "));
-        toml.push_str("]\n\n");
+        let mut caps_table = toml_edit::Table::new();
+        let mut host_arr = toml_edit::Array::new();
+        for cap in capabilities {
+            host_arr.push(cap);
+        }
+        caps_table.insert("host_process", toml_edit::value(host_arr));
+        toml_doc.insert("capabilities", toml_edit::Item::Table(caps_table));
     }
 
-    if has_env {
-        toml.push_str(&env_block);
-        toml.push('\n');
+    if !env_table.is_empty() {
+        toml_doc.insert("env", toml_edit::Item::Table(env_table));
     }
 
     // 4. Extract MCP Servers
+    let mut mcp_servers_array = toml_edit::ArrayOfTables::new();
     if let Some(servers) = parsed.get("mcpServers").and_then(Value::as_object) {
         for (server_id, server_config) in servers {
-            toml.push_str("[[mcp_server]]\n");
-            let _ = writeln!(toml, "id = \"{server_id}\"");
+            let mut server_table = toml_edit::Table::new();
+            server_table.insert("id", toml_edit::value(server_id));
 
             if let Some(desc) = server_config.get("description").and_then(Value::as_str) {
-                let _ = writeln!(toml, "description = \"{desc}\"");
+                server_table.insert("description", toml_edit::value(desc));
             }
 
             if let Some(cmd) = server_config.get("command").and_then(Value::as_str) {
-                toml.push_str("type = \"stdio\"\n");
-                let _ = writeln!(toml, "command = \"{cmd}\"");
+                server_table.insert("type", toml_edit::value("stdio"));
+                server_table.insert("command", toml_edit::value(cmd));
 
                 if let Some(args) = server_config.get("args").and_then(Value::as_array) {
-                    let formatted_args: Vec<String> = args
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(|a| format!("\"{a}\""))
-                        .collect();
-                    if !formatted_args.is_empty() {
-                        let joined = formatted_args.join(", ");
-                        let _ = writeln!(toml, "args = [{joined}]");
+                    let mut args_arr = toml_edit::Array::new();
+                    for a in args.iter().filter_map(Value::as_str) {
+                        args_arr.push(a);
+                    }
+                    if !args_arr.is_empty() {
+                        server_table.insert("args", toml_edit::value(args_arr));
                     }
                 }
             } else if let Some(http_url) = server_config.get("httpUrl").and_then(Value::as_str) {
-                toml.push_str("type = \"sse\"\n");
-                let _ = writeln!(toml, "url = \"{http_url}\"");
+                server_table.insert("type", toml_edit::value("sse"));
+                server_table.insert("url", toml_edit::value(http_url));
             }
-            toml.push('\n');
+            mcp_servers_array.push(server_table);
         }
+    }
+
+    if !mcp_servers_array.is_empty() {
+        toml_doc.insert("mcp_server", toml_edit::Item::ArrayOfTables(mcp_servers_array));
     }
 
     // 5. Inject Context Files (AGENTS.md)
@@ -419,17 +426,25 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
         .get("contextFileName")
         .and_then(Value::as_str)
         .unwrap_or("AGENTS.md");
-    let context_path = dir.join(context_file_name);
+    // Ensure we don't allow path traversal in the context file name
+    let sanitized_context_name = Path::new(context_file_name).file_name().unwrap_or_default().to_string_lossy();
+    let context_path = dir.join(sanitized_context_name.as_ref());
+
+    let mut context_files_array = toml_edit::ArrayOfTables::new();
     if context_path.exists() {
-        let _ = write!(
-            toml,
-            "[[context_file]]\nname = \"workspace-context\"\nfile = \"{context_file_name}\"\n\n"
-        );
+        let mut ctx_table = toml_edit::Table::new();
+        ctx_table.insert("name", toml_edit::value("workspace-context"));
+        ctx_table.insert("file", toml_edit::value(sanitized_context_name.as_ref()));
+        context_files_array.push(ctx_table);
         additional_files.push(context_path);
+    }
+    if !context_files_array.is_empty() {
+        toml_doc.insert("context_file", toml_edit::Item::ArrayOfTables(context_files_array));
     }
 
     // 6. Inject Skills
     let skills_dir = dir.join("skills");
+    let mut skills_array = toml_edit::ArrayOfTables::new();
     if skills_dir.exists()
         && skills_dir.is_dir()
         && let Ok(entries) = fs::read_dir(&skills_dir)
@@ -439,17 +454,22 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy();
                 let skill_name = path.file_stem().unwrap_or_default().to_string_lossy();
-                let _ = write!(
-                    toml,
-                    "[[skill]]\nname = \"{skill_name}\"\nfile = \"skills/{file_name}\"\n\n"
-                );
+
+                let mut skill_table = toml_edit::Table::new();
+                skill_table.insert("name", toml_edit::value(skill_name.as_ref()));
+                skill_table.insert("file", toml_edit::value(format!("skills/{file_name}")));
+                skills_array.push(skill_table);
             }
         }
         additional_files.push(skills_dir);
     }
+    if !skills_array.is_empty() {
+        toml_doc.insert("skill", toml_edit::Item::ArrayOfTables(skills_array));
+    }
 
     // 7. Inject Commands
     let commands_dir = dir.join("commands");
+    let mut commands_array = toml_edit::ArrayOfTables::new();
     if commands_dir.exists()
         && commands_dir.is_dir()
         && let Ok(entries) = fs::read_dir(&commands_dir)
@@ -458,18 +478,21 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
             let path = entry.path();
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("toml") {
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-                let cmd_name = format!(
-                    "/{}",
-                    path.file_stem().unwrap_or_default().to_string_lossy()
-                );
-                let _ = write!(
-                    toml,
-                    "[[command]]\nname = \"{cmd_name}\"\nfile = \"commands/{file_name}\"\n\n"
-                );
+                let cmd_name = format!("/{}", path.file_stem().unwrap_or_default().to_string_lossy());
+
+                let mut cmd_table = toml_edit::Table::new();
+                cmd_table.insert("name", toml_edit::value(cmd_name));
+                cmd_table.insert("file", toml_edit::value(format!("commands/{file_name}")));
+                commands_array.push(cmd_table);
             }
         }
         additional_files.push(commands_dir);
     }
+    if !commands_array.is_empty() {
+        toml_doc.insert("command", toml_edit::Item::ArrayOfTables(commands_array));
+    }
+
+    let toml = toml_doc.to_string();
 
     // 8. Pack the archive
     let out_dir = match output {

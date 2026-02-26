@@ -98,7 +98,18 @@ pub(crate) fn install_from_github(
         }
     }
 
-    println!("{}", Theme::dimmed("  No pre-compiled `.capsule` release found. Falling back to JIT compilation..."));
+    println!("{}", Theme::dimmed("  No pre-compiled `.capsule` release found."));
+
+    let theme = ColorfulTheme::default();
+    let proceed = Confirm::with_theme(&theme)
+        .with_prompt("Do you want to clone this repository and build the capsule locally? (WARNING: This will execute the repository's build scripts on your machine)")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    if !proceed {
+        bail!("Installation aborted. No pre-compiled release was found.");
+    }
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
     let clone_dir = tmp_dir.path().join(repo);

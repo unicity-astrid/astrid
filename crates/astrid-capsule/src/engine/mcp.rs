@@ -40,11 +40,31 @@ impl McpHostEngine {
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
     async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
-        let mut command_str = self.server_def.command.as_ref().ok_or_else(|| {
+        let original_command_str = self.server_def.command.as_ref().ok_or_else(|| {
             CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
         })?.clone();
 
-        // Fat Binary Resolution:
+        // 1. Explicitly verify if the host_process capability was granted in the manifest.
+        // We check against the *original* command name *before* any path resolution occurs.
+        // This prevents malicious capsules from bypassing checks by naming directories
+        // with substrings of allowed commands (e.g., `./bin/npx-compat/`).
+        let is_granted = self
+            .manifest
+            .capabilities
+            .host_process
+            .iter()
+            .any(|cmd| original_command_str == *cmd || original_command_str.starts_with(&format!("{cmd} ")));
+            
+        if !is_granted {
+            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
+                original_command_str
+            )));
+        }
+
+        let mut command_str = original_command_str.clone();
+
+        // 2. Fat Binary Resolution:
         // If the command is a relative path (e.g. "./bin/my-tool") that exists locally within 
         // the capsule directory, check if it's a directory. If it is, append the host's target triple.
         let local_cmd_path = self.capsule_dir.join(&command_str);
@@ -67,26 +87,10 @@ impl ExecutionEngine for McpHostEngine {
             command_str = local_cmd_path.to_string_lossy().to_string();
         }
 
-        // Explicitly verify if the host_process capability was granted in the manifest.
-        // We check against the *original* command name (or the absolute path if resolved)
-        // to ensure the user's granted capability matches the execution intent.
-        let is_granted = self
-            .manifest
-            .capabilities
-            .host_process
-            .iter()
-            .any(|cmd| command_str.contains(cmd) || command_str.starts_with(&format!("{cmd} ")));
-            
-        if !is_granted {
-            return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
-                command_str
-            )));
-        }
-
         info!(
             capsule = %self.manifest.package.name,
-            command = %command_str,
+            original_command = %original_command_str,
+            resolved_command = %command_str,
             "Registering legacy MCP host process dynamically (Airlock Override)"
         );
 
