@@ -82,4 +82,10 @@ extern "ExtismHost" {
     pub fn astrid_cron_schedule(name: Vec<u8>, schedule: Vec<u8>, payload: Vec<u8>);
     /// Cancel a dynamic cron job.
     pub fn astrid_cron_cancel(name: Vec<u8>);
+
+    // -----------------------------------------------------------------------
+    // Host Execution (The Escape Hatch)
+    // -----------------------------------------------------------------------
+    /// Spawn a native host process. Requires the `host_process` capability.
+    pub fn astrid_spawn_host(cmd_and_args_json: Vec<u8>) -> Vec<u8>;
 }

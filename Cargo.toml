@@ -183,6 +183,7 @@ uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
 
 # Glob matching
 globset = "0.4"
+ignore = "0.4"
 
 # Regex
 regex = "1.10"
