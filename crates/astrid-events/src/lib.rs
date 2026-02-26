@@ -52,6 +52,7 @@ pub mod prelude;
 mod bus;
 mod event;
 pub mod ipc;
+pub mod llm;
 mod subscriber;
 
 pub use bus::{DEFAULT_CHANNEL_CAPACITY, EventBus, EventReceiver};
