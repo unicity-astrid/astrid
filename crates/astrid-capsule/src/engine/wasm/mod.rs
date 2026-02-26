@@ -48,16 +48,16 @@ impl ExecutionEngine for WasmEngine {
             "Loading Pure WASM component"
         );
 
-        let component = self.manifest.component.as_ref().ok_or_else(|| {
+        let component = self.manifest.components.first().ok_or_else(|| {
             CapsuleError::UnsupportedEntryPoint(
-                "WASM engine requires a component definition".into(),
+                "WASM engine requires at least one component definition".into(),
             )
         })?;
 
-        let wasm_path = if component.entrypoint.is_absolute() {
-            component.entrypoint.clone()
+        let wasm_path = if component.path.is_absolute() {
+            component.path.clone()
         } else {
-            self._capsule_dir.join(&component.entrypoint)
+            self._capsule_dir.join(&component.path)
         };
 
         // Clone context components to move into block_in_place

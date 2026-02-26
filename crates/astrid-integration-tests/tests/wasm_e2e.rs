@@ -54,10 +54,13 @@ async fn setup_test_capsule(
             exclude: None,
             metadata: None,
         },
-        component: Some(ComponentDef {
-            entrypoint: fixture_path.clone(),
+        components: vec![ComponentDef {
+            id: "default".to_string(),
+            path: fixture_path.clone(),
             hash: None,
-        }),
+            r#type: "executable".to_string(),
+            link: vec![],
+        }],
         dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,

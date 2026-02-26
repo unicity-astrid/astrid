@@ -122,7 +122,7 @@ enum Commands {
     Build {
         /// Optional path to the project directory (defaults to current directory)
         path: Option<String>,
-        
+
         /// Output directory for the packaged `.capsule` archive
         #[arg(short, long)]
         output: Option<String>,
@@ -465,8 +465,18 @@ async fn main() -> Result<()> {
         Some(Commands::Capsule { command }) => {
             handle_capsules(command)?;
         },
-        Some(Commands::Build { path, output, project_type, from_mcp_json }) => {
-            commands::build::run_build(path.as_deref(), output.as_deref(), project_type.as_deref(), from_mcp_json.as_deref())?;
+        Some(Commands::Build {
+            path,
+            output,
+            project_type,
+            from_mcp_json,
+        }) => {
+            commands::build::run_build(
+                path.as_deref(),
+                output.as_deref(),
+                project_type.as_deref(),
+                from_mcp_json.as_deref(),
+            )?;
         },
         Some(Commands::Init) => {
             init::run_init()?;

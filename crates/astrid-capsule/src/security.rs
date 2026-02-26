@@ -328,7 +328,7 @@ mod tests {
                 exclude: None,
                 metadata: None,
             },
-            component: None,
+            components: vec![],
             dependencies: Default::default(),
             capabilities: CapabilitiesDef {
                 net: net.into_iter().map(String::from).collect(),

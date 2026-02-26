@@ -21,8 +21,9 @@ use astrid_core::identity::FrontendType;
 pub struct CapsuleManifest {
     /// The package definition including name and version.
     pub package: PackageDef,
-    /// The WASM or OpenClaw entry point definition.
-    pub component: Option<ComponentDef>,
+    /// The WASM components provided by this capsule.
+    #[serde(default, rename = "component")]
+    pub components: Vec<ComponentDef>,
     /// Dependencies on other capsules.
     #[serde(default)]
     pub dependencies: HashMap<String, String>,
@@ -105,13 +106,23 @@ pub struct PackageDef {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Defines the main executable component of the capsule.
+/// Defines an executable or library component within the capsule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentDef {
-    /// Path to the WASM file or OpenClaw script.
-    pub entrypoint: PathBuf,
+    /// Unique identifier for this component within the capsule.
+    #[serde(default)]
+    pub id: String,
+    /// Path to the WASM file.
+    #[serde(rename = "file", alias = "entrypoint")]
+    pub path: PathBuf,
     /// Expected hash for security verification.
     pub hash: Option<String>,
+    /// Type of component: "executable" (default) or "library".
+    #[serde(default)]
+    pub r#type: String,
+    /// List of component IDs this component dynamically links to.
+    #[serde(default)]
+    pub link: Vec<String>,
 }
 
 /// A collection of capabilities the capsule requests from the OS.

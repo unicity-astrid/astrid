@@ -55,7 +55,9 @@ pub(crate) fn install_from_github(
         "{}",
         Theme::info(&format!("Fetching capsule from GitHub: {url}"))
     );
-    bail!("GitHub remote resolution is not yet implemented. Please download the repository locally and run `astrid capsule install ./path`");
+    bail!(
+        "GitHub remote resolution is not yet implemented. Please download the repository locally and run `astrid capsule install ./path`"
+    );
 }
 
 pub(crate) fn install_from_openclaw(

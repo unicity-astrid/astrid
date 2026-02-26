@@ -29,7 +29,7 @@ async fn test_mcp_host_engine_capability_validation() {
             exclude: None,
             metadata: None,
         },
-        component: None,
+        components: vec![],
         dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
