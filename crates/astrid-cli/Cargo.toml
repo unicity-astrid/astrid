@@ -81,6 +81,8 @@ tempfile = { workspace = true }
 directories = { workspace = true }
 tar.workspace = true
 flate2.workspace = true
+extism.workspace = true
+cargo_metadata = "0.23.1"
 
 [lints]
 workspace = true

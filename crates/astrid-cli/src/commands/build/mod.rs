@@ -43,9 +43,7 @@ pub(crate) fn run_build(
 
     // Step 2: Route to the appropriate builder strategy
     match detected_type.as_str() {
-        "rust" => {
-            build_rust_capsule(&target_dir, output);
-        }
+        "rust" => build_rust_capsule(&target_dir, output)?,
         "mcp" => handle_mcp_quick_convert(&target_dir, "mcp.json", output)?,
         "extension" => handle_mcp_quick_convert(&target_dir, "gemini-extension.json", output)?,
         "js" | "ts" | "node" => {
@@ -87,9 +85,116 @@ fn detect_project_type(dir: &Path) -> Result<String> {
     bail!("Could not automatically detect the project type. Please ensure a Cargo.toml, gemini-extension.json, package.json, or Capsule.toml exists in the directory, or use the --type flag.");
 }
 
-fn build_rust_capsule(_dir: &Path, _output: Option<&str>) {
-    // TODO: Implement the `cargo build --target wasm32-wasip1`, Extism schema extraction, and tarball packing
-    warn!("Rust builder is currently a stub.");
+fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
+    info!("🔨 Building Rust WASM capsule from {}", dir.display());
+
+    // 1. Verify cargo is available
+    let cargo_check = std::process::Command::new("cargo").arg("--version").output();
+    if cargo_check.is_err() {
+        bail!("`cargo` is not installed or not in PATH. Rust compilation failed.");
+    }
+
+    // 2. Parse Cargo Metadata to get the exact artifact name
+    let meta = cargo_metadata::MetadataCommand::new()
+        .current_dir(dir)
+        .no_deps()
+        .exec()
+        .context("Failed to parse Cargo metadata")?;
+
+    let package = meta.root_package().context("No root package found in Cargo.toml")?;
+    let crate_name = package.name.clone();
+    let package_version = package.version.to_string();
+    let wasm_name = crate_name.replace('-', "_");
+    
+    // 3. Compile the WASM target
+    info!("   Compiling target wasm32-wasip1...");
+    let status = std::process::Command::new("cargo")
+        .current_dir(dir)
+        .args(["build", "--target", "wasm32-wasip1", "--release"])
+        .status()
+        .context("Failed to spawn cargo build")?;
+
+    if !status.success() {
+        bail!(
+            "Cargo build failed. Ensure you have the target installed: `rustup target add wasm32-wasip1`"
+        );
+    }
+
+    // 4. Locate the compiled WASM binary
+    // Assuming a standard target directory structure for single packages or excluded workspace members
+    let mut wasm_path = dir.join("target").join("wasm32-wasip1").join("release").join(format!("{wasm_name}.wasm"));
+    
+    // Fallback: Check the global workspace target directory if it wasn't built locally
+    if !wasm_path.exists() {
+        wasm_path = meta.workspace_root.into_std_path_buf().join("target").join("wasm32-wasip1").join("release").join(format!("{wasm_name}.wasm"));
+    }
+
+    if !wasm_path.exists() {
+        bail!("Could not locate compiled WASM binary at {}", wasm_path.display());
+    }
+
+    // 5. Extract Schemas using Extism
+    info!("   Extracting Extism schemas...");
+    let wasm_bytes = fs::read(&wasm_path).context("Failed to read compiled WASM binary")?;
+    let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
+    let mut plugin = extism::Plugin::new(&manifest, [], true)
+        .context("Failed to initialize Extism plugin for schema extraction")?;
+
+    let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
+        Ok(json) => json,
+        Err(e) => {
+            warn!("Capsule does not export schemas (astrid_export_schemas failed: {}). Proceeding without auto-generated tools.", e);
+            "{}".to_string()
+        }
+    };
+
+    let extracted_tools: Value = serde_json::from_str(&schema_json).unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
+
+    // 6. Merge with developer's Capsule.toml
+    let base_toml_path = dir.join("Capsule.toml");
+    let mut toml_content = if base_toml_path.exists() {
+        fs::read_to_string(&base_toml_path).context("Failed to read Capsule.toml")?
+    } else {
+        // Synthesize a basic one if missing
+        format!("[package]\nname = \"{crate_name}\"\nversion = \"{package_version}\"\ndescription = \"\"\n\n[component]\nentrypoint = \"{wasm_name}.wasm\"\n\n")
+    };
+
+    // Inject the tools
+    if let Value::Object(tools) = extracted_tools
+        && !tools.is_empty()
+    {
+        // Append a newline if necessary
+        if !toml_content.ends_with('\n') {
+            toml_content.push('\n');
+        }
+        
+        for (tool_name, schema) in tools {
+            // Determine a description from the schema if possible
+            let description = schema.get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("Auto-generated Rust tool");
+
+            let _ = writeln!(toml_content, "[[tool]]\nname = \"{tool_name}\"\ndescription = \"{description}\"");
+            let _ = writeln!(toml_content, "input_schema = {}", serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string()));
+            toml_content.push('\n');
+        }
+    }
+
+    // 7. Pack the Archive
+    let out_dir = match output {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_dir()?.join("dist"),
+    };
+    
+    if !out_dir.exists() {
+        fs::create_dir_all(&out_dir)?;
+    }
+
+    let out_file = out_dir.join(format!("{crate_name}.capsule"));
+    pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[])?;
+
+    info!("🎉 Successfully built Rust capsule: {}", out_file.display());
+    Ok(())
 }
 
 #[allow(dead_code)]
