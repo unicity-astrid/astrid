@@ -1,0 +1,75 @@
+[package]
+name = "astrid-discord"
+version = "0.1.0"
+description = "Discord bot frontend for Astrid"
+authors = ["Unicity Labs"]
+astrid-version = ">=0.1.0"
+
+[component]
+entrypoint = "target/wasm32-unknown-unknown/release/astrid_discord.wasm"
+
+# ── Capabilities ──────────────────────────────────────────────
+[capabilities]
+net = [
+    "discord.com",
+    "cdn.discordapp.com",
+]
+kv = ["sessions", "interactions", "state"]
+
+# ── Environment Variables (elicited during install) ───────────
+[env.DISCORD_BOT_TOKEN]
+type = "secret"
+request = "Enter your Discord bot token"
+description = "Bot token from the Discord Developer Portal"
+
+[env.DISCORD_APPLICATION_ID]
+type = "string"
+request = "Enter your Discord application ID"
+description = "Application ID from the Discord Developer Portal"
+
+[env.DISCORD_ALLOWED_USERS]
+type = "string"
+request = "Comma-separated Discord user IDs to allow (leave empty for all)"
+description = "Restrict bot usage to specific Discord users"
+
+[env.DISCORD_ALLOWED_GUILDS]
+type = "string"
+request = "Comma-separated guild IDs to allow (leave empty for all)"
+description = "Restrict bot usage to specific Discord guilds"
+
+[env.DISCORD_SESSION_SCOPE]
+type = "string"
+request = "Session scope: 'channel' or 'user' (default: channel)"
+description = "Whether sessions are scoped per channel or per user"
+
+# ── Uplink ────────────────────────────────────────────────────
+[[uplink]]
+name = "discord"
+platform = "discord"
+profile = "chat"
+
+# ── Tools (exposed to the LLM agent) ─────────────────────────
+[[tool]]
+name = "discord-send"
+description = "Send a message to a Discord channel"
+input_schema = { type = "object", properties = { channel_id = { type = "string" }, content = { type = "string" } }, required = ["channel_id", "content"] }
+
+[[tool]]
+name = "discord-edit"
+description = "Edit an existing Discord message"
+input_schema = { type = "object", properties = { channel_id = { type = "string" }, message_id = { type = "string" }, content = { type = "string" } }, required = ["channel_id", "message_id", "content"] }
+
+# ── Interceptors ──────────────────────────────────────────────
+[[interceptor]]
+event = "run-hook"
+
+# ── Cron ──────────────────────────────────────────────────────
+[[cron]]
+name = "discord-gateway-poll"
+schedule = "*/1 * * * * *"
+action = "poll-gateway"
+
+[[cron]]
+name = "discord-heartbeat"
+schedule = "*/30 * * * * *"
+action = "heartbeat"

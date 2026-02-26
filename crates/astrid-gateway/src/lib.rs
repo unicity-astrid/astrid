@@ -54,6 +54,7 @@ pub mod prelude;
 pub mod config;
 pub mod config_bridge;
 pub mod daemon_frontend;
+pub mod discord_proxy;
 pub mod error;
 pub mod health;
 pub mod manager;
@@ -68,6 +69,7 @@ pub mod subagent;
 pub use config::{
     AgentConfig, GatewayConfig, ModelConfig, RetrySettings, SessionConfig, TimeoutConfig,
 };
+pub use discord_proxy::{DiscordGatewayProxy, DiscordProxyConfig};
 pub use error::{GatewayError, GatewayResult};
 pub use health::{HealthCheck, HealthState, HealthStatus};
 pub use manager::{AgentHandle, AgentManager, AgentStatus};

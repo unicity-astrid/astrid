@@ -3,6 +3,11 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+// Re-export the platform-agnostic text splitting utilities from the shared
+// crate so existing callers (`event_loop.rs`, etc.) continue to compile
+// without import changes.
+pub use astrid_frontend_common::format::{chunk_text, find_split_point};
+
 /// Maximum message length for Telegram (with some margin below 4096).
 const MAX_MESSAGE_LEN: usize = 4000;
 
@@ -98,55 +103,6 @@ pub fn md_to_telegram_html(md: &str) -> String {
     }
 
     text
-}
-
-/// Split text into chunks that fit within Telegram's message size limit.
-///
-/// Tries to split at paragraph boundaries first, then newlines, then
-/// hard-cuts at `max_len`.
-pub fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
-    let max_len = if max_len == 0 {
-        MAX_MESSAGE_LEN
-    } else {
-        max_len
-    };
-
-    if text.len() <= max_len {
-        return vec![text.to_string()];
-    }
-
-    let mut chunks = Vec::new();
-    let mut remaining = text;
-
-    while !remaining.is_empty() {
-        if remaining.len() <= max_len {
-            chunks.push(remaining.to_string());
-            break;
-        }
-
-        // Try splitting at a double newline (paragraph boundary).
-        let hard_cut = remaining.floor_char_boundary(max_len);
-        let split_at = find_split_point(remaining, hard_cut, "\n\n")
-            .or_else(|| find_split_point(remaining, hard_cut, "\n"))
-            .unwrap_or(hard_cut);
-
-        let (chunk, rest) = remaining.split_at(split_at);
-        chunks.push(chunk.to_string());
-        remaining = rest.trim_start_matches('\n');
-    }
-
-    chunks
-}
-
-/// Find a split point by searching backwards from `boundary` for `delimiter`.
-///
-/// `boundary` must be a valid char boundary in `text`.
-fn find_split_point(text: &str, boundary: usize, delimiter: &str) -> Option<usize> {
-    let search_region = &text[..boundary];
-    search_region
-        .rfind(delimiter)
-        // Safety: pos from rfind() is within bounds, delimiter.len() keeps us within text
-        .map(|pos| pos.saturating_add(delimiter.len()))
 }
 
 /// Find a safe truncation boundary in an HTML string at or before `max_len`.
@@ -426,100 +382,6 @@ mod tests {
     #[test]
     fn md_empty_string() {
         assert_eq!(md_to_telegram_html(""), "");
-    }
-
-    // --- chunk_text ---
-
-    #[test]
-    fn chunk_text_short_message() {
-        let chunks = chunk_text("short text", 100);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0], "short text");
-    }
-
-    #[test]
-    fn chunk_text_exact_limit() {
-        let text = "x".repeat(100);
-        let chunks = chunk_text(&text, 100);
-        assert_eq!(chunks.len(), 1);
-    }
-
-    #[test]
-    fn chunk_text_splits_at_paragraph() {
-        let text = "a".repeat(50) + "\n\n" + &"b".repeat(50);
-        let chunks = chunk_text(&text, 60);
-        assert_eq!(chunks.len(), 2);
-        assert!(chunks[0].starts_with('a'));
-        assert!(chunks[1].starts_with('b'));
-    }
-
-    #[test]
-    fn chunk_text_splits_at_newline_when_no_paragraph() {
-        let text = "a".repeat(30) + "\n" + &"b".repeat(30);
-        let chunks = chunk_text(&text, 40);
-        assert_eq!(chunks.len(), 2);
-    }
-
-    #[test]
-    fn chunk_text_hard_split_when_no_breaks() {
-        let text = "x".repeat(200);
-        let chunks = chunk_text(&text, 100);
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0].len(), 100);
-        assert_eq!(chunks[1].len(), 100);
-    }
-
-    #[test]
-    fn chunk_text_zero_max_uses_default() {
-        let text = "short";
-        let chunks = chunk_text(text, 0);
-        assert_eq!(chunks.len(), 1);
-    }
-
-    #[test]
-    fn chunk_text_empty_string() {
-        let chunks = chunk_text("", 100);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0], "");
-    }
-
-    #[test]
-    fn chunk_text_multibyte_safe() {
-        // 3-byte chars — a max_len that falls mid-char must not panic
-        let text = "あ".repeat(100); // 300 bytes
-        let chunks = chunk_text(&text, 50);
-        assert!(chunks.len() > 1);
-        for chunk in &chunks {
-            // All chunks must be valid UTF-8 (implicit by being String)
-            assert!(!chunk.is_empty());
-        }
-    }
-
-    #[test]
-    fn chunk_text_preserves_all_content() {
-        let text = "a".repeat(150) + "\n\n" + &"b".repeat(150);
-        let chunks = chunk_text(&text, 200);
-        let reassembled: String = chunks.join("");
-        // All content should be preserved (except possibly stripped newlines
-        // between chunks).
-        assert!(reassembled.contains(&"a".repeat(150)));
-        assert!(reassembled.contains(&"b".repeat(150)));
-    }
-
-    // --- find_split_point ---
-
-    #[test]
-    fn find_split_at_double_newline() {
-        let text = "hello\n\nworld and more text here";
-        let point = find_split_point(text, 20, "\n\n");
-        assert_eq!(point, Some(7)); // After "hello\n\n"
-    }
-
-    #[test]
-    fn find_split_no_delimiter() {
-        let text = "no breaks at all in this text";
-        let point = find_split_point(text, 15, "\n\n");
-        assert!(point.is_none());
     }
 
     // --- find_safe_html_boundary ---

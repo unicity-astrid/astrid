@@ -33,8 +33,14 @@ tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 directories.workspace = true
 jsonrpsee = { workspace = true }
+
+# WebSocket client (Discord Gateway proxy)
+tokio-tungstenite = { workspace = true }
+fastrand = { workspace = true }
+reqwest = { workspace = true }
 
 # Config hot-reload
 notify = "7"

@@ -130,7 +130,7 @@ The key difference: the WASM sandbox is a hard wall that nobody can turn off. Th
 
 ## Capsules (The Extension System)
 
-Astrid implements a Phase 4 Manifest-First architecture for all user-provided code and extensions, powered by the [`astrid-capsule`](crates/astrid-capsule/README.md) engine.
+Astrid implements a Phase 4 Manifest-First architecture for all user-provided code and extensions, powered by the [`astrid-capsule`](crates/astrid-capsule/README.md) engine. Astrid supports three kinds of plugins:
 
 Rather than forcing developers into a single execution paradigm, Astralis uses a **Composite Architecture**. A single `Capsule.toml` manifest can orchestrate multiple execution engines under one logical unit. The system parses this declarative manifest to wire up capabilities, tools, and environment variables before a single line of user code executes.
 
@@ -189,6 +189,8 @@ description = "Anthropic Claude 3.5 Sonnet Provider"
 capabilities = ["text", "vision", "tools"]
 ```
 
+**Capsules** are manifest-first plugins built with the Astrid SDK (`astrid-sdk`). They run in WASM and communicate through seven typed Airlock syscall boundaries (VFS, IPC, Uplink, KV, HTTP, Cron, Sys) instead of raw host functions. Capsules are the recommended model for building frontends and integrations — the Discord bot is a capsule. Define a `Capsule.toml` manifest declaring capabilities, and the runtime enforces those boundaries.
+
 ### The OpenClaw bridge
 
 If you have TypeScript/JavaScript extensions from the OpenClaw ecosystem, Astrid can compile them to WASM automatically. The pipeline is pure Rust, no Node.js required for compilation:
@@ -212,15 +214,16 @@ The key trick: Wizer pre-initializes the QuickJS engine at compile time, so cold
 ### Runtime
 - Streaming LLM support: Anthropic Claude, OpenAI-compatible providers, and Zai
 - MCP client (2025-11-25 spec): sampling, roots, elicitation, URL elicitation, and tasks via `rmcp`
-- 8 built-in tools: `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `list_directory`, `task`. All run in-process.
+- 9 built-in tools: `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `list_directory`, `task`, `spark`. All run in-process.
 - Sub-agent delegation: spawn child agents with restricted permissions and configurable concurrency
 - Session persistence: sessions survive daemon restarts
 
 ### Frontends
 - **CLI** (`astrid`): interactive REPL with TUI, syntax highlighting, clipboard support
 - **Telegram** (`astrid-telegram`): bot with inline approval buttons and streaming responses
+- **Discord** (`astrid-discord`): WASM capsule with slash commands, approval buttons, and streamed responses. Runs sandboxed inside the capsule runtime with a host-side Gateway proxy for private network deployments.
 - **Daemon** (`astridd`): background server with JSON-RPC over WebSocket
-- **Build your own**: implement the `Frontend` trait to add new interfaces
+- **Build your own**: implement the `Frontend` trait to add new interfaces, or build a capsule for sandboxed frontends
 
 ## Architecture
 
@@ -237,15 +240,21 @@ astrid-telegram--+        |
                           |     +-- astrid-workspace (boundaries)
                           |
                           |-- astrid-capsule (composite execution engines & manifest routing)
+                          |     |-- astrid-discord.wasm (Discord bot capsule)
+                          |     +-- astrid-sdk (capsule development SDK)
+                          |
+                          |-- astrid-gateway
+                          |     +-- discord_proxy (Discord Gateway WebSocket proxy)
                           |     +-- astrid-openclaw (TS/JS -> WASM compiler)
                           |
+                          |-- astrid-frontend-common (shared frontend utilities)
                           |-- astrid-audit (chain-linked logging)
                           |-- astrid-crypto (ed25519 + BLAKE3)
                           |-- astrid-storage (SurrealKV + SurrealDB)
                           +-- astrid-config (layered TOML)
 ```
 
-The `Frontend` trait is how you plug in new UIs. Every frontend shares the same runtime, sessions, authorization tokens, budget tracking, and audit log.
+The `Frontend` trait is how you plug in new UIs. Every frontend shares the same runtime, sessions, authorization tokens, budget tracking, and audit log. Frontends can also be built as **capsules** (sandboxed WASM plugins) using the Astrid SDK, as demonstrated by the Discord frontend.
 
 ## Quick start
 
@@ -288,6 +297,37 @@ astrid daemon status
 astrid daemon stop
 ```
 
+### Discord bot
+
+The Discord frontend runs as a sandboxed WASM capsule with a host-side Gateway proxy. All connections are outbound — no public endpoints required.
+
+```bash
+# Build the Discord capsule
+cd crates/astrid-discord
+cargo build --target wasm32-unknown-unknown --release
+
+# Install the capsule
+astrid plugin install ./crates/astrid-discord
+```
+
+During installation, you'll be prompted for:
+- **Bot token** from the [Discord Developer Portal](https://discord.com/developers/applications)
+- **Application ID** from the same portal
+
+Configure your bot in the Developer Portal:
+- **OAuth2 scopes**: `bot`, `applications.commands`
+- **Bot permissions**: Send Messages, Embed Links, Read Message History, Use Slash Commands
+- **Privileged intents**: Enable "Message Content" only if you want the bot to respond to regular messages (not just slash commands)
+
+The daemon starts a Gateway proxy automatically when the Discord capsule is loaded. Available slash commands: `/chat`, `/reset`, `/status`, `/cancel`, `/help`.
+
+Optional environment variables:
+```bash
+DISCORD_ALLOWED_USERS="123456789,987654321"  # restrict to specific users
+DISCORD_ALLOWED_GUILDS="111222333"           # restrict to specific servers
+DISCORD_SESSION_SCOPE="channel"              # "channel" (default) or "user"
+```
+
 ## CLI commands
 
 | Command | Description |
@@ -313,7 +353,10 @@ astrid daemon stop
 - **`astrid-workspace`**: Workspace boundaries and escape approval.
 - **`astrid-mcp`**: MCP client implementation.
 - **`astrid-tools`**: Built-in core runtime tools.
-- **`astrid-cli` / `astrid-gateway`**: CLI binary and background daemon implementation.
+- **`astrid-cli` / `astrid-gateway`**: CLI binary and background daemon (includes Discord Gateway proxy).
+- **`astrid-discord`**: Discord bot frontend (WASM capsule, built with astrid-sdk).
+- **`astrid-frontend-common`**: Shared frontend utilities (DaemonClient, SessionMap, PendingStore).
+- **`astrid-telegram`**: Telegram bot frontend.
 
 ## Development
 
