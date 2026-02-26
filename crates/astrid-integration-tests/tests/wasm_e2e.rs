@@ -61,7 +61,7 @@ async fn setup_test_capsule(
             r#type: "executable".to_string(),
             link: vec![],
         }],
-        dependencies: Default::default(),
+        dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,
             kv: vec!["*".into()],
@@ -69,7 +69,7 @@ async fn setup_test_capsule(
             fs_write: fs_write_caps,
             host_process: vec![],
         },
-        env: Default::default(),
+        env: std::collections::HashMap::default(),
         context_files: vec![],
         commands: vec![],
         mcp_servers: vec![],
@@ -81,7 +81,7 @@ async fn setup_test_capsule(
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(Default::default());
+    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
     let loader = CapsuleLoader::new(mcp_client);
 
     let mut capsule = loader

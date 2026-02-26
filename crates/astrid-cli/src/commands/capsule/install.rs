@@ -47,17 +47,92 @@ pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<(
 
 pub(crate) fn install_from_github(
     url: &str,
-    _workspace: bool,
-    _home: &AstridHome,
+    workspace: bool,
+    home: &AstridHome,
     _is_openclaw: bool,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
         Theme::info(&format!("Fetching capsule from GitHub: {url}"))
     );
-    bail!(
-        "GitHub remote resolution is not yet implemented. Please download the repository locally and run `astrid capsule install ./path`"
-    );
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .build()?;
+
+    let url_trimmed = url.trim_end_matches('/');
+    let mut parts: Vec<&str> = url_trimmed.split('/').collect();
+    if parts.len() < 2 {
+        bail!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo");
+    }
+    let repo = parts.pop().context("Failed to get repo name from URL")?;
+    let org = parts.pop().context("Failed to get org name from URL")?;
+
+    let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
+
+    println!("{}", Theme::dimmed("  Checking for latest release..."));
+
+    let res = client.get(&api_url).send();
+
+    if let Ok(response) = res
+        && response.status().is_success()
+        && let Ok(json) = response.json::<serde_json::Value>()
+        && let Some(assets) = json.get("assets").and_then(serde_json::Value::as_array)
+    {
+        for asset in assets {
+            if let Some(name) = asset.get("name").and_then(serde_json::Value::as_str)
+                && name.ends_with(".capsule")
+                && let Some(download_url) = asset.get("browser_download_url").and_then(serde_json::Value::as_str)
+            {
+                println!("{}", Theme::success(&format!("  Found pre-compiled capsule: {name}")));
+
+                let tmp_dir = tempfile::tempdir()?;
+                let download_path = tmp_dir.path().join(name);
+                let mut file = std::fs::File::create(&download_path)?;
+
+                let mut download_res = client.get(download_url).send()?;
+                download_res.copy_to(&mut file)?;
+
+                return unpack_and_install(&download_path, workspace, home);
+            }
+        }
+    }
+
+    println!("{}", Theme::dimmed("  No pre-compiled `.capsule` release found. Falling back to JIT compilation..."));
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
+    let clone_dir = tmp_dir.path().join(repo);
+
+    println!("{}", Theme::dimmed("  Cloning repository to temporary directory..."));
+    let status = std::process::Command::new("git")
+        .args(["clone", "--depth", "1", url, &clone_dir.to_string_lossy()])
+        .status()
+        .context("Failed to spawn git clone")?;
+
+    if !status.success() {
+        bail!("Failed to clone repository from GitHub.");
+    }
+
+    println!("{}", Theme::info("  Building capsule using Universal Migrator..."));
+    let output_dir = tmp_dir.path().join("dist");
+    std::fs::create_dir_all(&output_dir)?;
+
+    crate::commands::build::run_build(
+        Some(clone_dir.to_str().context("Invalid clone dir path")?),
+        Some(output_dir.to_str().context("Invalid output dir path")?),
+        None,
+        None,
+    )?;
+
+    // Find the .capsule file
+    for entry in std::fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
+            return unpack_and_install(&entry.path(), workspace, home);
+        }
+    }
+
+    bail!("Universal Migrator failed to produce a .capsule archive.");
 }
 
 pub(crate) fn install_from_openclaw(
@@ -159,7 +234,36 @@ pub(crate) fn install_from_local(
         return transpile_and_install(source_path, workspace, home);
     }
 
+    // Unpack .capsule archive if it is a file
+    if source_path.is_file() && source.ends_with(".capsule") {
+        return unpack_and_install(source_path, workspace, home);
+    }
+
     install_from_local_path(source_path, workspace, home)
+}
+
+fn unpack_and_install(
+    archive_path: &Path,
+    workspace: bool,
+    home: &AstridHome,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::info(&format!("Unpacking capsule archive: {}", archive_path.display()))
+    );
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for unpacking")?;
+    let unpack_dir = tmp_dir.path();
+
+    let tar_gz = std::fs::File::open(archive_path)
+        .with_context(|| format!("Failed to open archive: {}", archive_path.display()))?;
+    
+    let tar = flate2::read::GzDecoder::new(tar_gz);
+    let mut archive = tar::Archive::new(tar);
+    archive.unpack(unpack_dir)
+        .with_context(|| format!("Failed to unpack archive: {}", archive_path.display()))?;
+
+    install_from_local_path(unpack_dir, workspace, home)
 }
 
 pub(crate) fn install_from_local_path(
