@@ -52,8 +52,8 @@ members = [
 
     # Optional Integrations
     # "crates/astrid-unicity",  # After research
-]
-exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell", "crates/astrid-capsule-fs"]
+    ]
+    exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell", "crates/astrid-capsule-fs", "crates/astrid-capsule-identity", "crates/astrid-capsule-anthropic", "crates/astrid-capsule-orchestrator", "crates/astrid-capsule-router"]
 
 [workspace.package]
 version = "0.1.1"
@@ -128,7 +128,7 @@ tempfile = "3"
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
 
 # Async runtime
-tokio = { version = "1.43", features = ["full"] }
+tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
