@@ -5,9 +5,13 @@ edition = "2024"
 description = "Tool execution routing middleware for Astrid OS"
 publish = false
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
-astrid-sdk = { path = "../astrid-sdk" }
+astrid-sdk = { path = "../astrid-sdk", features = ["derive"] }
+astrid-events = { path = "../astrid-events" }
 extism-pdk = "1.4.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.13", features = ["v4", "serde"] }

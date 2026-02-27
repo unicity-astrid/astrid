@@ -9,9 +9,8 @@ astrid-version = ">=0.1.0"
 id = "identity-builder"
 file = "astrid_capsule_identity.wasm"
 type = "executable"
-capabilities = { fs_read = ["workspace://"], event_bus = ["identity.request.build"] }
+capabilities = { fs_read = ["workspace://"] }
 
-[[connector]]
-id = "identity-rpc"
-protocol = "ipc"
-topics = ["identity.request.build"]
+[[interceptor]]
+event = "identity.request.build"
+action = "handle_build_request"

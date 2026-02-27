@@ -5,63 +5,55 @@
 
 mod schemas;
 
+use astrid_events::ipc::IpcPayload;
+use astrid_events::llm::{Message, MessageContent, MessageRole, StreamEvent};
 use astrid_sdk::prelude::*;
-use schemas::*;
-use serde::Deserialize;
+use schemas::{ContentBlock, Delta, StreamingEvent};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
+#[derive(Serialize)]
+struct HttpRequest {
+    url: String,
+    method: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct HttpResponse {
+    status: u16,
+    #[allow(dead_code)]
+    headers: std::collections::HashMap<String, String>,
+    body: String,
+}
+
 #[derive(Default)]
 pub struct AnthropicCapsule;
 
-static SUB_HANDLE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
-
-#[derive(Deserialize, Default)]
-pub struct EmptyArgs {}
-
 #[capsule]
 impl AnthropicCapsule {
-    #[astrid::cron("* * * * * *")]
-    fn poll_requests(&self, _args: EmptyArgs) -> Result<(), SysError> {
-        let handle = if let Some(h) = SUB_HANDLE.get() {
-            h
-        } else {
-            let h = ipc::subscribe("llm.request.generate.anthropic")?;
-            SUB_HANDLE
-                .set(h)
-                .map_err(|_| SysError::ApiError("Failed to set handle".into()))?;
-            SUB_HANDLE.get().unwrap()
-        };
-
-        let poll_bytes = ipc::poll_bytes(handle)?;
-
-        if poll_bytes.is_empty() {
-            return Ok(());
-        }
-
-        let poll_result: PollResult = serde_json::from_slice(&poll_bytes)
-            .map_err(|e| SysError::ApiError(format!("Failed to parse poll result: {}", e)))?;
-
-        for msg in poll_result.messages {
-            if msg.topic == "llm.request.generate.anthropic" {
-                if let Ok(IpcPayload::LlmRequest {
-                    messages,
-                    tools,
-                    system,
-                }) = serde_json::from_value::<IpcPayload>(msg.payload)
-                {
-                    if let Err(e) = Self::handle_request(messages, tools, &system) {
-                        sys::log("error", format!("Failed to handle LLM request: {e}"))?;
-                        let _ = ipc::publish_json(
-                            "llm.stream.anthropic",
-                            &IpcPayload::LlmStreamEvent {
-                                event: StreamEvent::Error(e.to_string()),
-                            },
-                        );
-                    }
-                }
+    #[astrid::interceptor("handle_llm_request")]
+    pub fn handle_llm_request(&self, req: IpcPayload) -> Result<(), SysError> {
+        if let IpcPayload::LlmRequest {
+            messages,
+            tools,
+            system,
+            ..
+        } = req
+        {
+            if let Err(e) = Self::execute_request(messages, tools, &system) {
+                sys::log("error", format!("Failed to handle LLM request: {e}"))?;
+                let _ = ipc::publish_json(
+                    "llm.stream.anthropic",
+                    &IpcPayload::LlmStreamEvent {
+                        request_id: uuid::Uuid::new_v4(), // We should pass request_id from the original request
+                        event: StreamEvent::Error(e.to_string()),
+                    },
+                );
             }
         }
         Ok(())
@@ -69,9 +61,9 @@ impl AnthropicCapsule {
 }
 
 impl AnthropicCapsule {
-    fn handle_request(
+    fn execute_request(
         messages: Vec<Message>,
-        tools: Vec<LlmToolDefinition>,
+        tools: Vec<astrid_events::llm::LlmToolDefinition>,
         system: &str,
     ) -> Result<(), SysError> {
         // Build API request
@@ -211,7 +203,10 @@ impl AnthropicCapsule {
     }
 
     fn publish_event(event: StreamEvent) -> Result<(), SysError> {
-        let payload = IpcPayload::LlmStreamEvent { event };
+        let payload = IpcPayload::LlmStreamEvent { 
+            request_id: uuid::Uuid::new_v4(), // Fix later to pass ID
+            event 
+        };
         ipc::publish_json("llm.stream.anthropic", &payload)
     }
 
@@ -230,9 +225,9 @@ impl AnthropicCapsule {
                 let content: Vec<Value> = calls
                     .iter()
                     .map(|c| {
-                        let id = c.get("id").and_then(|v| v.as_str()).unwrap_or_default();
-                        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-                        let input = c.get("arguments").cloned().unwrap_or(Value::Null);
+                        let id = &c.id;
+                        let name = &c.name;
+                        let input = &c.arguments;
                         serde_json::json!({
                             "type": "tool_use",
                             "id": id,
@@ -248,18 +243,9 @@ impl AnthropicCapsule {
                 })
             },
             MessageContent::ToolResult(result) => {
-                let call_id = result
-                    .get("call_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let content = result
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let is_error = result
-                    .get("is_error")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let call_id = &result.call_id;
+                let content = &result.content;
+                let is_error = result.is_error;
 
                 serde_json::json!({
                     "role": "user",
@@ -275,26 +261,22 @@ impl AnthropicCapsule {
                 let content: Vec<Value> = parts
                     .iter()
                     .map(|p| {
-                        if let Some(t) = p.get("type").and_then(|v| v.as_str()) {
-                            if t == "text" {
-                                serde_json::json!({"type": "text", "text": p.get("text").and_then(|v| v.as_str()).unwrap_or_default()})
-                            } else if t == "image" {
+                        match p {
+                            astrid_events::llm::ContentPart::Text { text } => {
+                                serde_json::json!({"type": "text", "text": text})
+                            },
+                            astrid_events::llm::ContentPart::Image { media_type, data } => {
                                 serde_json::json!({
                                     "type": "image",
                                     "source": {
                                         "type": "base64",
-                                        "media_type": p.get("media_type").and_then(|v| v.as_str()).unwrap_or_default(),
-                                        "data": p.get("data").and_then(|v| v.as_str()).unwrap_or_default(),
+                                        "media_type": media_type,
+                                        "data": data,
                                     }
                                 })
-                            } else {
-                                Value::Null
                             }
-                        } else {
-                            Value::Null
                         }
                     })
-                    .filter(|v| !v.is_null())
                     .collect();
 
                 serde_json::json!({

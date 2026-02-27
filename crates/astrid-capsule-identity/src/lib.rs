@@ -82,8 +82,8 @@ const TOOL_GUIDELINES: &str = "\
 
 #[capsule]
 impl IdentityBuilder {
-    #[astrid::tool("identity.request.build")]
-    pub fn build_system_prompt(&self, req: BuildRequest) -> Result<BuildResponse, SysError> {
+    #[astrid::interceptor("handle_build_request")]
+    pub fn build_system_prompt(&self, req: BuildRequest) -> Result<(), SysError> {
         let os = "astrid-os"; // or get from sys::get_config_string?
         let workspace_root = req.workspace_root.trim_end_matches('/');
         let project_name = workspace_root.split('/').last().unwrap_or("project");
@@ -128,16 +128,11 @@ impl IdentityBuilder {
             }
         }
 
-        let response = BuildResponse { prompt: prompt.clone() };
+        let response = BuildResponse { prompt };
 
         // Publish over Event Bus via IPC
-        let _ = ipc::publish_json("identity.response.build", &response);
+        let _ = ipc::publish_json("identity.response.ready", &response);
 
-        Ok(response)
-    }
-
-    #[astrid::interceptor("identity.request.build")]
-    pub fn build_system_prompt_interceptor(&self, req: BuildRequest) -> Result<BuildResponse, SysError> {
-        self.build_system_prompt(req)
+        Ok(())
     }
 }
