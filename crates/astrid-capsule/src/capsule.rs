@@ -111,6 +111,18 @@ pub trait Capsule: Send + Sync {
     ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
         None
     }
+
+    /// Invoke an interceptor handler by action name.
+    ///
+    /// Called by the event dispatcher when an IPC event matches one of
+    /// this capsule's registered interceptor patterns. `action` is the
+    /// handler name (e.g., `handle_user_prompt`), `payload` is the
+    /// serialized IPC payload bytes.
+    fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        Err(CapsuleError::ExecutionFailed(
+            "interceptors not supported".into(),
+        ))
+    }
 }
 
 /// The universal, additive implementation of a Capsule.
@@ -199,5 +211,19 @@ impl Capsule for CompositeCapsule {
             }
         }
         None
+    }
+
+    fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        for engine in &self.engines {
+            match engine.invoke_interceptor(action, payload) {
+                Ok(result) => return Ok(result),
+                // Engine doesn't support interceptors — try the next one.
+                Err(CapsuleError::ExecutionFailed(_)) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(CapsuleError::ExecutionFailed(
+            "no engine supports interceptors".into(),
+        ))
     }
 }

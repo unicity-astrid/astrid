@@ -68,9 +68,9 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                         quote! {
                             let args = ::serde_json::from_slice(&req.arguments)
                                 .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
-                            let mut instance: #struct_name = ::astrid_sdk::prelude::kv::get_borsh("__state").unwrap_or_default();
+                            let mut instance: #struct_name = ::astrid_sdk::prelude::kv::get_json("__state").unwrap_or_default();
                             let result = instance.#method_name(args)?;
-                            ::astrid_sdk::prelude::kv::set_borsh("__state", &instance)
+                            ::astrid_sdk::prelude::kv::set_json("__state", &instance)
                                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
                             let res_json = ::serde_json::to_vec(&result)
                                 .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;

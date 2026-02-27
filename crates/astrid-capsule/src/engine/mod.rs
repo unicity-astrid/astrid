@@ -42,4 +42,18 @@ pub trait ExecutionEngine: Send + Sync {
     fn tools(&self) -> &[std::sync::Arc<dyn crate::tool::CapsuleTool>] {
         &[]
     }
+
+    /// Invoke an interceptor handler by action name.
+    ///
+    /// `action` is the handler name (e.g., `handle_user_prompt`) and
+    /// `payload` is the serialized IPC payload. Returns the raw WASM
+    /// response bytes.
+    ///
+    /// The default implementation returns an error. Engines that support
+    /// interceptors (e.g., `WasmEngine`) override this.
+    fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        Err(crate::error::CapsuleError::ExecutionFailed(
+            "interceptors not supported by this engine".into(),
+        ))
+    }
 }

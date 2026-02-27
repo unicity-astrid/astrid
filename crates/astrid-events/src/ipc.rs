@@ -1,11 +1,16 @@
 //! Cross-boundary IPC message schemas and payloads.
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[cfg(feature = "runtime")]
+use chrono::{DateTime, Utc};
+
 /// A cross-boundary message sent over the event bus between WASM guests and the host.
+///
+/// Only available with the `runtime` feature (not WASM-compatible due to `chrono`).
+#[cfg(feature = "runtime")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IpcMessage {
     /// Topic pattern or exact match (e.g., `astrid.cli.input`).
@@ -20,6 +25,7 @@ pub struct IpcMessage {
     pub timestamp: DateTime<Utc>,
 }
 
+#[cfg(feature = "runtime")]
 impl IpcMessage {
     /// Create a new IPC message.
     #[must_use]
@@ -120,6 +126,9 @@ pub enum IpcPayload {
 }
 
 /// Errors that can occur when checking IPC quota.
+///
+/// Only available with the `runtime` feature.
+#[cfg(feature = "runtime")]
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum QuotaError {
     /// The plugin has exceeded its rate limit.
@@ -131,12 +140,16 @@ pub enum QuotaError {
 }
 
 /// Simple token-bucket rate limiter for IPC publish events.
+///
+/// Only available with the `runtime` feature.
+#[cfg(feature = "runtime")]
 #[derive(Debug)]
 pub struct IpcRateLimiter {
     state: dashmap::DashMap<Uuid, (std::time::Instant, usize)>,
     last_prune: std::sync::Mutex<std::time::Instant>,
 }
 
+#[cfg(feature = "runtime")]
 impl IpcRateLimiter {
     /// Create a new IPC rate limiter.
     #[must_use]
@@ -192,6 +205,7 @@ impl IpcRateLimiter {
     }
 }
 
+#[cfg(feature = "runtime")]
 impl Default for IpcRateLimiter {
     fn default() -> Self {
         Self::new()

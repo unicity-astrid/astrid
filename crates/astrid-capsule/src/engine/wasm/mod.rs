@@ -198,4 +198,30 @@ impl ExecutionEngine for WasmEngine {
     fn tools(&self) -> &[std::sync::Arc<dyn crate::tool::CapsuleTool>] {
         &self.tools
     }
+
+    fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        let plugin = self
+            .plugin
+            .as_ref()
+            .ok_or_else(|| CapsuleError::ExecutionFailed("plugin not loaded".into()))?;
+
+        // Build the same __AstridToolRequest the macro expects:
+        // { "name": "<action>", "arguments": [<payload bytes>] }
+        let request = serde_json::json!({
+            "name": action,
+            "arguments": payload,
+        });
+        let input = serde_json::to_vec(&request).map_err(|e| {
+            CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
+        })?;
+
+        tokio::task::block_in_place(|| {
+            let mut plugin = plugin
+                .lock()
+                .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))?;
+            plugin
+                .call::<&[u8], Vec<u8>>("astrid_hook_trigger", &input)
+                .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
+        })
+    }
 }

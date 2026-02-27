@@ -190,7 +190,10 @@ impl EventReceiver {
                     }
                     skipped = skipped.wrapping_add(1);
                     if skipped.is_multiple_of(100) {
+                        #[cfg(not(target_os = "wasi"))]
                         tokio::task::yield_now().await;
+                        #[cfg(target_os = "wasi")]
+                        std::hint::spin_loop();
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(count)) => {

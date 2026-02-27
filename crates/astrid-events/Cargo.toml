@@ -7,28 +7,39 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Event bus for Astrid secure agent runtime"
 
-[dependencies]
-# Internal
-astrid-core = { workspace = true }
+[features]
+default = ["runtime"]
+runtime = [
+    "dep:astrid-core",
+    "dep:tokio",
+    "dep:async-trait",
+    "dep:dashmap",
+    "dep:tracing",
+    "dep:chrono",
+]
 
-# Serialization
+[dependencies]
+# Internal (runtime only — not available in WASM builds)
+astrid-core = { workspace = true, optional = true }
+
+# Serialization (always available)
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Error handling
+# Error handling (always available)
 thiserror = { workspace = true }
 
-# Async
-tokio = { workspace = true, features = ["sync"] }
-async-trait = { workspace = true }
+# Async (runtime only)
+tokio = { version = "1.49", features = ["sync", "rt"], optional = true }
+async-trait = { workspace = true, optional = true }
 
 # Time & IDs
-chrono = { workspace = true }
 uuid = { workspace = true }
 
-# Tracing
-tracing = { workspace = true }
-dashmap = { workspace = true }
+# Runtime-only deps
+chrono = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+dashmap = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
