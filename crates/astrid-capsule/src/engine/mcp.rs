@@ -95,7 +95,10 @@ impl ExecutionEngine for McpHostEngine {
                                 host_triple
                             )));
                         }
-                        info!("Fat binary resolved: using {} slice for {}", host_triple, command_str);
+                        info!(
+                            "Fat binary resolved: using {} slice for {}",
+                            host_triple, command_str
+                        );
                         command_str = canon_slice.to_string_lossy().to_string();
                     } else {
                         return Err(CapsuleError::UnsupportedEntryPoint(format!(

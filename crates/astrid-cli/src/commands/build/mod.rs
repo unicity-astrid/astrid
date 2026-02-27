@@ -229,10 +229,10 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         comp.insert("id", toml_edit::value(crate_name.as_str()));
         comp.insert("file", toml_edit::value(format!("{wasm_name}.wasm")));
         comp.insert("type", toml_edit::value("executable"));
-        
+
         let mut comp_arr = toml_edit::ArrayOfTables::new();
         comp_arr.push(comp);
-        
+
         doc.insert("component", toml_edit::Item::ArrayOfTables(comp_arr));
 
         doc
