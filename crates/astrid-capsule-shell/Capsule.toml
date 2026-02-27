@@ -5,8 +5,10 @@ description = "Core shell execution tools for the Astrid OS"
 authors = ["Astrid Core Team"]
 astrid-version = ">=0.1.0"
 
-[component]
-entrypoint = "target/wasm32-wasip1/release/astrid_capsule_shell.wasm"
+[[component]]
+id = "shell-tools"
+file = "astrid_capsule_shell.wasm"
+type = "executable"
 
 [capabilities]
 host_process = ["bash", "sh", "zsh"]

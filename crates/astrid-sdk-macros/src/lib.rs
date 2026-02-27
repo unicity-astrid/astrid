@@ -66,18 +66,24 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     let execute_block = if is_stateful {
                         quote! {
-                            let args = ::serde_json::from_slice(&req.arguments).unwrap_or_default();
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
                             let mut instance: #struct_name = ::astrid_sdk::prelude::kv::get_borsh("__state").unwrap_or_default();
                             let result = instance.#method_name(args)?;
                             ::astrid_sdk::prelude::kv::set_borsh("__state", &instance)
                                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-                            return Ok(::serde_json::to_vec(&result).unwrap_or_default());
+                            let res_json = ::serde_json::to_vec(&result)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                            return Ok(res_json);
                         }
                     } else {
                         quote! {
-                            let args = ::serde_json::from_slice(&req.arguments).unwrap_or_default();
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
                             let result = get_instance().#method_name(args)?;
-                            return Ok(::serde_json::to_vec(&result).unwrap_or_default());
+                            let res_json = ::serde_json::to_vec(&result)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                            return Ok(res_json);
                         }
                     };
 

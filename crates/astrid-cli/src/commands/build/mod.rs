@@ -226,8 +226,14 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         doc.insert("package", toml_edit::Item::Table(package));
 
         let mut comp = toml_edit::Table::new();
-        comp.insert("entrypoint", toml_edit::value(format!("{wasm_name}.wasm")));
-        doc.insert("component", toml_edit::Item::Table(comp));
+        comp.insert("id", toml_edit::value(crate_name.as_str()));
+        comp.insert("file", toml_edit::value(format!("{wasm_name}.wasm")));
+        comp.insert("type", toml_edit::value("executable"));
+        
+        let mut comp_arr = toml_edit::ArrayOfTables::new();
+        comp_arr.push(comp);
+        
+        doc.insert("component", toml_edit::Item::ArrayOfTables(comp_arr));
 
         doc
     };

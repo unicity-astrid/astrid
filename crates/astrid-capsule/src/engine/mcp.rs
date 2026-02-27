@@ -86,12 +86,23 @@ impl ExecutionEngine for McpHostEngine {
                 let host_triple = env!("TARGET"); // Injected by cargo at build time
                 let arch_slice = canonical_cmd.join(host_triple);
 
+                // Ensure it is a regular file and canonicalize to check symlinks don't escape
                 if arch_slice.is_file() {
-                    info!(
-                        "Fat binary resolved: using {} slice for {}",
-                        host_triple, command_str
-                    );
-                    command_str = arch_slice.to_string_lossy().to_string();
+                    if let Ok(canon_slice) = arch_slice.canonicalize() {
+                        if !canon_slice.starts_with(&canonical_capsule_dir) {
+                            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                                "Fat binary slice '{}' resolves outside the capsule boundary.",
+                                host_triple
+                            )));
+                        }
+                        info!("Fat binary resolved: using {} slice for {}", host_triple, command_str);
+                        command_str = canon_slice.to_string_lossy().to_string();
+                    } else {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to resolve fat binary slice for the current architecture: {}",
+                            host_triple
+                        )));
+                    }
                 } else {
                     return Err(CapsuleError::UnsupportedEntryPoint(format!(
                         "Fat binary directory '{}' does not contain a valid slice for the current architecture: {}",
