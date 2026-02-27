@@ -80,6 +80,9 @@ pub(in crate::server) struct RpcImpl {
     /// Sender for fanning in inbound messages from capsule uplinks.
     pub(in crate::server) inbound_tx: tokio::sync::mpsc::Sender<astrid_core::InboundMessage>,
     pub(in crate::server) event_bus: Arc<astrid_events::EventBus>,
+    /// When `true`, `send_input` publishes a `user.prompt` IPC event to the
+    /// capsule pipeline instead of running the monolithic runtime turn.
+    pub(in crate::server) use_capsule_pipeline: bool,
 }
 
 #[jsonrpsee::core::async_trait]

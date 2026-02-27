@@ -31,6 +31,77 @@ use super::rpc::RpcImpl;
 use super::{DaemonServer, SessionHandle};
 use crate::rpc::AstridRpcServer;
 
+/// Collect tool definitions from the capsule registry and write them to the
+/// orchestrator capsule's scoped KV store under the `"tool_schemas"` key.
+///
+/// The orchestrator is identified dynamically as the capsule that intercepts
+/// the `user.prompt` event (no hardcoded capsule ID).
+///
+/// Called after initial autoload and after each hot-reload so the orchestrator
+/// always has an up-to-date tool schema set.
+pub(super) async fn collect_and_write_tool_schemas(
+    registry: &RwLock<CapsuleRegistry>,
+    workspace_kv: &Arc<dyn astrid_storage::KvStore>,
+) {
+    let reg = registry.read().await;
+
+    // Find the orchestrator: the capsule that intercepts `user.prompt`.
+    let orchestrator_id = reg.list().iter().find_map(|id| {
+        let capsule = reg.get(id)?;
+        let has_user_prompt = capsule
+            .manifest()
+            .interceptors
+            .iter()
+            .any(|i| i.event == "user.prompt");
+        has_user_prompt.then(|| (*id).clone())
+    });
+
+    let Some(orchestrator_id) = orchestrator_id else {
+        info!(
+            "No orchestrator capsule found (no user.prompt interceptor) — skipping tool schema write"
+        );
+        return;
+    };
+
+    // Collect tool definitions from all ready capsules.
+    let tool_defs: Vec<astrid_events::llm::LlmToolDefinition> = reg
+        .all_tool_definitions()
+        .into_iter()
+        .map(|td| astrid_events::llm::LlmToolDefinition {
+            name: td.name,
+            description: Some(td.description),
+            input_schema: td.input_schema,
+        })
+        .collect();
+
+    // Release the read lock before the async KV write.
+    drop(reg);
+
+    let kv = match ScopedKvStore::new(
+        Arc::clone(workspace_kv),
+        format!("capsule:{orchestrator_id}"),
+    ) {
+        Ok(kv) => kv,
+        Err(e) => {
+            warn!(error = %e, "Failed to create scoped KV for orchestrator tool schema write");
+            return;
+        },
+    };
+
+    match kv.set_json("tool_schemas", &tool_defs).await {
+        Ok(()) => {
+            info!(
+                orchestrator = %orchestrator_id,
+                tool_count = tool_defs.len(),
+                "Wrote tool schemas to orchestrator KV"
+            );
+        },
+        Err(e) => {
+            warn!(error = %e, "Failed to write tool schemas to orchestrator KV");
+        },
+    }
+}
+
 /// Options controlling daemon startup behaviour.
 #[derive(Debug, Clone, Default)]
 pub struct DaemonStartOptions {
@@ -295,6 +366,7 @@ impl DaemonServer {
             connector_sessions: Arc::clone(&connector_sessions),
             inbound_tx: inbound_tx.clone(),
             event_bus: Arc::clone(&event_bus),
+            use_capsule_pipeline: cfg.gateway.use_capsule_pipeline,
         };
 
         let handle = server.start(rpc_impl.into_rpc());
@@ -421,6 +493,10 @@ impl DaemonServer {
                         warn!("{}", warning);
                     }
                 }
+
+                // Populate tool schemas in the orchestrator capsule's KV store
+                // so it can include them in LLM generation requests.
+                collect_and_write_tool_schemas(&registry_clone, &kv_clone).await;
             });
         }
 
@@ -492,6 +568,37 @@ impl DaemonServer {
             Arc::clone(&daemon.event_bus),
         );
         tokio::spawn(dispatcher.run());
+
+        // Spawn the response bridge (capsule pipeline → DaemonEvent) when the
+        // capsule pipeline is enabled. Subscribes to `agent.*` IPC topics and
+        // converts AgentResponse payloads into DaemonEvents for connected CLIs.
+        //
+        // Known limitation: responses are broadcast to ALL active sessions.
+        // The orchestrator currently uses DEFAULT_SESSION_ID and IPC events
+        // do not carry session routing information. Phase 8 adds session-scoped
+        // routing. This is acceptable under the feature flag.
+        if cfg.gateway.use_capsule_pipeline {
+            let bridge_sessions = Arc::clone(&daemon.sessions);
+            let mut agent_rx = daemon.event_bus.subscribe_topic("agent.");
+            tokio::spawn(async move {
+                while let Some(event) = agent_rx.recv().await {
+                    if let astrid_events::AstridEvent::Ipc { message, .. } = &*event
+                        && let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } =
+                            &message.payload
+                    {
+                        let sessions = bridge_sessions.read().await;
+                        for handle in sessions.values() {
+                            let _ = handle
+                                .event_tx
+                                .send(crate::rpc::DaemonEvent::Text(text.clone()));
+                            if *is_final {
+                                let _ = handle.event_tx.send(crate::rpc::DaemonEvent::TurnComplete);
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         Ok((daemon, handle, addr, cfg))
     }
