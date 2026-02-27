@@ -137,12 +137,12 @@ impl AnthropicProvider {
 
     /// Parse the SSE response body and publish standardized stream events.
     fn parse_sse_stream(request_id: Uuid, body: &str) -> Result<(), SysError> {
-        let mut buffer = body.to_string();
+        let mut buffer = body;
         let mut current_tool_id = String::new();
 
         while let Some(event_end) = buffer.find("\n\n") {
-            let event_data = buffer[..event_end].to_string();
-            buffer = buffer[(event_end + 2)..].to_string();
+            let event_data = &buffer[..event_end];
+            buffer = &buffer[(event_end + 2)..];
 
             for line in event_data.lines() {
                 if let Some(data) = line.strip_prefix("data: ") {

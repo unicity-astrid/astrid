@@ -118,7 +118,13 @@ impl SessionState {
     /// Load state from KV for the given session, or create default if not present.
     fn load(session_id: &str) -> Self {
         let key = state_key(session_id);
-        kv::get_json::<Self>(&key).unwrap_or_default()
+        kv::get_json::<Self>(&key).unwrap_or_else(|e| {
+            let _ = sys::log(
+                "error",
+                format!("Failed to load session state, resetting: {e}"),
+            );
+            Self::default()
+        })
     }
 
     /// Persist state to KV for the given session.
@@ -362,10 +368,19 @@ impl Orchestrator {
             let mut dispatched = Vec::new();
 
             for tc in &state.pending_stream_tools {
-                let arguments: serde_json::Value =
-                    serde_json::from_str(&tc.args_json).unwrap_or(serde_json::Value::Object(
-                        serde_json::Map::new(),
-                    ));
+                let arguments: serde_json::Value = match serde_json::from_str(&tc.args_json) {
+                    Ok(args) => args,
+                    Err(e) => {
+                        let _ = sys::log(
+                            "warn",
+                            format!(
+                                "Failed to parse tool arguments for {}: {e}. Defaulting to empty object.",
+                                tc.name
+                            ),
+                        );
+                        serde_json::Value::Object(serde_json::Map::new())
+                    }
+                };
 
                 dispatched.push(DispatchedToolCall {
                     id: tc.id.clone(),
