@@ -202,6 +202,7 @@ mod tests {
         // It must fail because our env!("TARGET") slice wasn't found inside the directory
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("does not contain a slice for the current architecture"));
+        println!("Error Message Output: {}", err_msg);
+        assert!(err_msg.contains("does not contain a valid slice for the current architecture"));
     }
 }

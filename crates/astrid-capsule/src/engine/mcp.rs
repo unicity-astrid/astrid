@@ -87,7 +87,10 @@ impl ExecutionEngine for McpHostEngine {
                 let arch_slice = canonical_cmd.join(host_triple);
 
                 if arch_slice.is_file() {
-                    info!("Fat binary resolved: using {} slice for {}", host_triple, command_str);
+                    info!(
+                        "Fat binary resolved: using {} slice for {}",
+                        host_triple, command_str
+                    );
                     command_str = arch_slice.to_string_lossy().to_string();
                 } else {
                     return Err(CapsuleError::UnsupportedEntryPoint(format!(
