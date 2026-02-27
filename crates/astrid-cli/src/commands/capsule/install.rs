@@ -1,6 +1,7 @@
 //! Capsule management commands - install capsules securely.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, bail};
@@ -15,11 +16,154 @@ use crate::theme::Theme;
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
-    if source.starts_with("openclaw:") {
-        install_from_openclaw(source, workspace, &home)
-    } else {
-        install_from_local(source, workspace, &home)
+    // 1. Explicit Local Path
+    if source.starts_with('.') || source.starts_with('/') {
+        return install_from_local(source, workspace, &home);
     }
+
+    // 2. OpenClaw Explicit Prefix
+    if let Some(rest) = source.strip_prefix("openclaw:") {
+        // If it uses the github namespace alias after the prefix
+        if let Some(repo) = rest.strip_prefix('@') {
+            let url = format!("https://github.com/{repo}");
+            return install_from_github(&url, workspace, &home, true);
+        }
+        return install_from_openclaw(rest, workspace, &home);
+    }
+
+    // 3. Native Namespace Alias (@org/repo) -> GitHub
+    if let Some(repo) = source.strip_prefix('@') {
+        let url = format!("https://github.com/{repo}");
+        return install_from_github(&url, workspace, &home, false);
+    }
+
+    // 4. Raw GitHub URL
+    if source.starts_with("github.com/") || source.starts_with("https://github.com/") {
+        return install_from_github(source, workspace, &home, false);
+    }
+
+    // 5. Fallback: Assume it's a local folder matching the given name
+    install_from_local(source, workspace, &home)
+}
+
+pub(crate) fn install_from_github(
+    url: &str,
+    workspace: bool,
+    home: &AstridHome,
+    _is_openclaw: bool,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::info(&format!("Fetching capsule from GitHub: {url}"))
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let url_trimmed = url.trim_end_matches('/');
+    let mut parts: Vec<&str> = url_trimmed.split('/').collect();
+    if parts.len() < 2 {
+        bail!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo");
+    }
+    let repo = parts.pop().context("Failed to get repo name from URL")?;
+    let org = parts.pop().context("Failed to get org name from URL")?;
+
+    let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
+
+    println!("{}", Theme::dimmed("  Checking for latest release..."));
+
+    let res = client.get(&api_url).send();
+
+    if let Ok(response) = res
+        && response.status().is_success()
+        && let Ok(json) = response.json::<serde_json::Value>()
+        && let Some(assets) = json.get("assets").and_then(serde_json::Value::as_array)
+    {
+        for asset in assets {
+            if let Some(name) = asset.get("name").and_then(serde_json::Value::as_str)
+                && name.ends_with(".capsule")
+                && let Some(download_url) = asset
+                    .get("browser_download_url")
+                    .and_then(serde_json::Value::as_str)
+            {
+                println!(
+                    "{}",
+                    Theme::success(&format!("  Found pre-compiled capsule: {name}"))
+                );
+
+                let tmp_dir = tempfile::tempdir()?;
+                let sanitized_name = Path::new(name).file_name().unwrap_or_default();
+                let download_path = tmp_dir.path().join(sanitized_name);
+                let mut file = std::fs::File::create(&download_path)?;
+
+                let download_res = client.get(download_url).send()?;
+
+                // Enforce a strict 50MB download limit to prevent DoS attacks
+                let mut limited_stream = download_res.take(50 * 1024 * 1024);
+                std::io::copy(&mut limited_stream, &mut file)?;
+
+                return unpack_and_install(&download_path, workspace, home);
+            }
+        }
+    }
+
+    println!(
+        "{}",
+        Theme::dimmed("  No pre-compiled `.capsule` release found.")
+    );
+
+    let theme = ColorfulTheme::default();
+    let proceed = Confirm::with_theme(&theme)
+        .with_prompt("Do you want to clone this repository and build the capsule locally? (WARNING: This will execute the repository's build scripts on your machine)")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    if !proceed {
+        bail!("Installation aborted. No pre-compiled release was found.");
+    }
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
+    let clone_dir = tmp_dir.path().join(repo);
+
+    println!(
+        "{}",
+        Theme::dimmed("  Cloning repository to temporary directory...")
+    );
+    let status = std::process::Command::new("git")
+        .args(["clone", "--depth", "1", url, &clone_dir.to_string_lossy()])
+        .status()
+        .context("Failed to spawn git clone")?;
+
+    if !status.success() {
+        bail!("Failed to clone repository from GitHub.");
+    }
+
+    println!(
+        "{}",
+        Theme::info("  Building capsule using Universal Migrator...")
+    );
+    let output_dir = tmp_dir.path().join("dist");
+    std::fs::create_dir_all(&output_dir)?;
+
+    crate::commands::build::run_build(
+        Some(clone_dir.to_str().context("Invalid clone dir path")?),
+        Some(output_dir.to_str().context("Invalid output dir path")?),
+        None,
+        None,
+    )?;
+
+    // Find the .capsule file
+    for entry in std::fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
+            return unpack_and_install(&entry.path(), workspace, home);
+        }
+    }
+
+    bail!("Universal Migrator failed to produce a .capsule archive.");
 }
 
 pub(crate) fn install_from_openclaw(
@@ -121,7 +265,76 @@ pub(crate) fn install_from_local(
         return transpile_and_install(source_path, workspace, home);
     }
 
+    // Unpack .capsule archive if it is a file
+    if source_path.is_file() && source.ends_with(".capsule") {
+        return unpack_and_install(source_path, workspace, home);
+    }
+
     install_from_local_path(source_path, workspace, home)
+}
+
+fn unpack_and_install(
+    archive_path: &Path,
+    workspace: bool,
+    home: &AstridHome,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::info(&format!(
+            "Unpacking capsule archive: {}",
+            archive_path.display()
+        ))
+    );
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for unpacking")?;
+    let unpack_dir = tmp_dir.path();
+
+    let tar_gz = std::fs::File::open(archive_path)
+        .with_context(|| format!("Failed to open archive: {}", archive_path.display()))?;
+
+    let tar = flate2::read::GzDecoder::new(tar_gz);
+    let mut archive = tar::Archive::new(tar);
+
+    // Safely unpack the archive, verifying paths to prevent traversal and symlink attacks
+    for entry in archive
+        .entries()
+        .context("Failed to read archive entries")?
+    {
+        let mut entry = entry.context("Failed to read archive entry")?;
+        let entry_path = entry.path().context("Invalid path in archive")?;
+
+        // Prevent absolute paths or path traversal (..)
+        if entry_path.is_absolute()
+            || entry_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            bail!(
+                "Malicious archive detected: invalid path '{}'",
+                entry_path.display()
+            );
+        }
+
+        let out_path = unpack_dir.join(&entry_path);
+
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Deny symlinks to prevent arbitrary file writes
+        if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
+            bail!(
+                "Malicious archive detected: symlinks are not allowed ('{}')",
+                entry_path.display()
+            );
+        }
+
+        entry
+            .unpack(&out_path)
+            .with_context(|| format!("Failed to unpack file: {}", out_path.display()))?;
+    }
+
+    install_from_local_path(unpack_dir, workspace, home)
 }
 
 pub(crate) fn install_from_local_path(

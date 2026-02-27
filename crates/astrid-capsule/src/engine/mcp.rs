@@ -40,27 +40,88 @@ impl McpHostEngine {
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
     async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
-        let command_str = self.server_def.command.as_ref().ok_or_else(|| {
-            CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
-        })?;
+        let original_command_str = self
+            .server_def
+            .command
+            .as_ref()
+            .ok_or_else(|| {
+                CapsuleError::UnsupportedEntryPoint("MCP server requires a 'command' field".into())
+            })?
+            .clone();
 
-        // Explicitly verify if the host_process capability was granted in the manifest
-        let is_granted = self
-            .manifest
-            .capabilities
-            .host_process
-            .iter()
-            .any(|cmd| command_str == cmd || command_str.starts_with(&format!("{cmd} ")));
+        // 1. Explicitly verify if the host_process capability was granted in the manifest.
+        // We check against the *original* command name *before* any path resolution occurs.
+        // This prevents malicious capsules from bypassing checks by naming directories
+        // with substrings of allowed commands (e.g., `./bin/npx-compat/`).
+        let is_granted = self.manifest.capabilities.host_process.iter().any(|cmd| {
+            original_command_str == *cmd || original_command_str.starts_with(&format!("{cmd} "))
+        });
+
         if !is_granted {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Security Check Failed: host_process capability for '{}' was not declared in the manifest.",
-                command_str
+                original_command_str
             )));
+        }
+
+        let mut command_str = original_command_str.clone();
+
+        // 2. Fat Binary Resolution:
+        // If the command is a relative path (e.g. "./bin/my-tool") that exists locally within
+        // the capsule directory, check if it's a directory. If it is, append the host's target triple.
+        let local_cmd_path = self.capsule_dir.join(&command_str);
+
+        // Prevent path traversal outside the capsule directory
+        if let Ok(canonical_cmd) = local_cmd_path.canonicalize()
+            && let Ok(canonical_capsule_dir) = self.capsule_dir.canonicalize()
+        {
+            if !canonical_cmd.starts_with(&canonical_capsule_dir) {
+                return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                    "Path traversal detected: command '{}' escapes the capsule directory.",
+                    command_str
+                )));
+            }
+
+            if canonical_cmd.is_dir() {
+                let host_triple = env!("TARGET"); // Injected by cargo at build time
+                let arch_slice = canonical_cmd.join(host_triple);
+
+                // Ensure it is a regular file and canonicalize to check symlinks don't escape
+                if arch_slice.is_file() {
+                    if let Ok(canon_slice) = arch_slice.canonicalize() {
+                        if !canon_slice.starts_with(&canonical_capsule_dir) {
+                            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                                "Fat binary slice '{}' resolves outside the capsule boundary.",
+                                host_triple
+                            )));
+                        }
+                        info!(
+                            "Fat binary resolved: using {} slice for {}",
+                            host_triple, command_str
+                        );
+                        command_str = canon_slice.to_string_lossy().to_string();
+                    } else {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to resolve fat binary slice for the current architecture: {}",
+                            host_triple
+                        )));
+                    }
+                } else {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "Fat binary directory '{}' does not contain a valid slice for the current architecture: {}",
+                        command_str, host_triple
+                    )));
+                }
+            } else if canonical_cmd.is_file() {
+                // It's a local file, just use the absolute path directly to be safe
+                command_str = canonical_cmd.to_string_lossy().to_string();
+            }
         }
 
         info!(
             capsule = %self.manifest.package.name,
-            command = %command_str,
+            original_command = %original_command_str,
+            resolved_command = %command_str,
             "Registering legacy MCP host process dynamically (Airlock Override)"
         );
 
@@ -68,7 +129,7 @@ impl ExecutionEngine for McpHostEngine {
 
         let config = astrid_mcp::ServerConfig {
             name: server_id.clone(),
-            command: Some(command_str.clone()),
+            command: Some(command_str),
             args: self.server_def.args.clone(),
             env: std::collections::HashMap::new(), // In Phase 6/7, inject [env] vars here
             cwd: Some(self.capsule_dir.clone()),

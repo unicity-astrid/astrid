@@ -30,6 +30,9 @@ pub trait CapsuleSecurityGate: Send + Sync {
     /// Check whether the plugin is allowed to write a file.
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String>;
 
+    /// Check whether the plugin is allowed to spawn a host process.
+    async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String>;
+
     /// Check whether the plugin is allowed to register a connector.
     ///
     /// Default implementation permits all registrations. Override to enforce
@@ -73,6 +76,10 @@ impl CapsuleSecurityGate for AllowAllGate {
         Ok(())
     }
 
+    async fn check_host_process(&self, _capsule_id: &str, _command: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     async fn check_connector_register(
         &self,
         _capsule_id: &str,
@@ -109,6 +116,12 @@ impl CapsuleSecurityGate for DenyAllGate {
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
             "plugin '{capsule_id}' denied: write {path} (DenyAllGate)"
+        ))
+    }
+
+    async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
+        Err(format!(
+            "plugin '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
         ))
     }
 
@@ -200,6 +213,22 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             ))
         }
     }
+
+    async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
+        if self
+            .manifest
+            .capabilities
+            .host_process
+            .iter()
+            .any(|cmd| command == cmd || command.starts_with(&format!("{cmd} ")))
+        {
+            Ok(())
+        } else {
+            Err(format!(
+                "plugin '{capsule_id}' denied: host process '{command}' not declared in manifest"
+            ))
+        }
+    }
 }
 
 #[cfg(feature = "approval")]
@@ -280,6 +309,18 @@ mod interceptor_gate {
                 .map_err(|e| e.to_string())
         }
 
+        async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
+            let action = SensitiveAction::CapsuleExecution {
+                capsule_id: capsule_id.to_string(),
+                capability: format!("host_process: {command}"),
+            };
+            self.interceptor
+                .intercept(&action, "plugin host function: host process", None)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
         async fn check_connector_register(
             &self,
             capsule_id: &str,
@@ -328,7 +369,7 @@ mod tests {
                 exclude: None,
                 metadata: None,
             },
-            component: None,
+            components: vec![],
             dependencies: Default::default(),
             capabilities: CapabilitiesDef {
                 net: net.into_iter().map(String::from).collect(),

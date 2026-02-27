@@ -29,8 +29,8 @@ async fn test_mcp_host_engine_capability_validation() {
             exclude: None,
             metadata: None,
         },
-        component: None,
-        dependencies: Default::default(),
+        components: vec![],
+        dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             kv: vec![],
@@ -38,7 +38,7 @@ async fn test_mcp_host_engine_capability_validation() {
             fs_write: vec![],
             host_process: vec!["npx".into()], // Only "npx" is allowed
         },
-        env: Default::default(),
+        env: std::collections::HashMap::default(),
         context_files: vec![],
         commands: vec![],
         mcp_servers: vec![McpServerDef {
@@ -56,7 +56,7 @@ async fn test_mcp_host_engine_capability_validation() {
         tools: vec![],
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(Default::default());
+    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
     let loader = CapsuleLoader::new(mcp_client);
 
     let mut capsule = loader

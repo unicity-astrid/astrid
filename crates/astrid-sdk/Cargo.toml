@@ -18,6 +18,7 @@ thiserror = "2"
 
 # The procedural macros that provide the magic #[astrid::capsule] DX
 astrid-sdk-macros = { workspace = true, optional = true }
+schemars = "0.8"
 
 [features]
 derive = ["dep:astrid-sdk-macros"]

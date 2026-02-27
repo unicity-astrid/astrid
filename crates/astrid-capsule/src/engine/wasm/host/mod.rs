@@ -8,6 +8,8 @@ pub mod http;
 pub mod ipc;
 /// Key-Value persistent storage primitives.
 pub mod kv;
+/// Process spawning and sandboxing.
+pub mod process;
 /// `QuickJS` ABI definitions.
 pub mod shim;
 /// System configuration primitives.
@@ -43,10 +45,11 @@ pub enum WasmHostFunction {
     Log,
     CronSchedule,
     CronCancel,
+    SpawnHost,
 }
 
 impl WasmHostFunction {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -67,6 +70,7 @@ impl WasmHostFunction {
         Self::Log,
         Self::CronSchedule,
         Self::CronCancel,
+        Self::SpawnHost,
     ];
 
     #[must_use]
@@ -97,6 +101,7 @@ impl WasmHostFunction {
             Self::Log => "astrid_log",
             Self::CronSchedule => "astrid_cron_schedule",
             Self::CronCancel => "astrid_cron_cancel",
+            Self::SpawnHost => "astrid_spawn_host",
         }
     }
 
@@ -115,6 +120,7 @@ impl WasmHostFunction {
             | Self::KvGet
             | Self::GetConfig
             | Self::HttpRequest
+            | Self::SpawnHost
             | Self::CronCancel => 1,
             Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
@@ -144,6 +150,7 @@ impl WasmHostFunction {
             | Self::UplinkSend
             | Self::KvGet
             | Self::GetConfig
+            | Self::SpawnHost
             | Self::HttpRequest => TYPE_I64,
         }
     }
@@ -232,6 +239,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::CronCancel => {
                 builder.with_function(func.name(), args, rets, ud, cron::astrid_cron_cancel_impl)
+            },
+            WasmHostFunction::SpawnHost => {
+                builder.with_function(func.name(), args, rets, ud, process::astrid_spawn_host_impl)
             },
         };
     }

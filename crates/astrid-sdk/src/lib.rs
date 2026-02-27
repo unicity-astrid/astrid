@@ -13,6 +13,8 @@
 
 use astrid_sys::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+pub use extism_pdk;
+pub use schemars;
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 

@@ -33,10 +33,20 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut command_arms = Vec::new();
     let mut hook_arms = Vec::new();
     let mut cron_arms = Vec::new();
+    let mut schema_arms = Vec::new();
 
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
             let method_name = &method.sig.ident;
+
+            // Extract the argument type (the first Typed argument) for schema generation
+            let mut arg_type = None;
+            for arg in &method.sig.inputs {
+                if let syn::FnArg::Typed(pat_type) = arg {
+                    arg_type = Some(pat_type.ty.clone());
+                    break;
+                }
+            }
 
             // Extract and process astrid attributes, then remove them
             let mut extracted_attrs = Vec::new();
@@ -56,18 +66,24 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     let execute_block = if is_stateful {
                         quote! {
-                            let args = ::serde_json::from_slice(&req.arguments).unwrap_or_default();
-                            let mut instance: #struct_name = ::astrid_sdk::prelude::kv::get_json("__state").unwrap_or_default();
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
+                            let mut instance: #struct_name = ::astrid_sdk::prelude::kv::get_borsh("__state").unwrap_or_default();
                             let result = instance.#method_name(args)?;
-                            ::astrid_sdk::prelude::kv::set_json("__state", &instance)
+                            ::astrid_sdk::prelude::kv::set_borsh("__state", &instance)
                                 .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-                            return Ok(::serde_json::to_vec(&result).unwrap_or_default());
+                            let res_json = ::serde_json::to_vec(&result)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                            return Ok(res_json);
                         }
                     } else {
                         quote! {
-                            let args = ::serde_json::from_slice(&req.arguments).unwrap_or_default();
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
                             let result = get_instance().#method_name(args)?;
-                            return Ok(::serde_json::to_vec(&result).unwrap_or_default());
+                            let res_json = ::serde_json::to_vec(&result)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                            return Ok(res_json);
                         }
                     };
 
@@ -75,6 +91,13 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                         tool_arms.push(quote! {
                             #name_val => { #execute_block }
                         });
+
+                        // Automatically generate schemars extraction for this tool
+                        if let Some(ty) = &arg_type {
+                            schema_arms.push(quote! {
+                                map.insert(#name_val.to_string(), ::astrid_sdk::schemars::schema_for!(#ty));
+                            });
+                        }
                     } else if attr_name == "command" {
                         command_arms.push(quote! {
                             #name_val => { #execute_block }
@@ -128,6 +151,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         #instance_block
 
         /// Executed by the LLM Agent via the OS Event Bus.
+        #[allow(missing_docs)]
         #[::extism_pdk::plugin_fn]
         pub fn astrid_tool_call(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
@@ -140,6 +164,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         /// Executed by a human typing a slash-command in an Uplink (CLI/Telegram).
+        #[allow(missing_docs)]
         #[::extism_pdk::plugin_fn]
         pub fn astrid_command_run(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
@@ -152,6 +177,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         /// Executed synchronously by the Kernel during OS lifecycle events (Interceptors).
+        #[allow(missing_docs)]
         #[::extism_pdk::plugin_fn]
         pub fn astrid_hook_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
@@ -164,6 +190,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         /// Executed by the Kernel's scheduler when a static or dynamic cron job fires.
+        #[allow(missing_docs)]
         #[::extism_pdk::plugin_fn]
         pub fn astrid_cron_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
             let req: __AstridToolRequest = ::serde_json::from_slice(&input)
@@ -173,6 +200,17 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 #( #cron_arms )*
                 _ => return Err(::extism_pdk::Error::msg("Unknown cron job").into()),
             }
+        }
+
+        /// Auto-generated schema export for CLI builders.
+        /// Extracts all JSON schemas for tools defined in this capsule.
+        #[allow(missing_docs)]
+        #[::extism_pdk::plugin_fn]
+        pub fn astrid_export_schemas(_input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+            let mut map: ::std::collections::HashMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::HashMap::new();
+            #( #schema_arms )*
+            let json = ::serde_json::to_vec(&map).unwrap_or_default();
+            Ok(json)
         }
     };
 

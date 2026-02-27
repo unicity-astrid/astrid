@@ -11,6 +11,7 @@ use astrid_storage::{MemoryKvStore, ScopedKvStore};
 use serde_json::json;
 
 #[tokio::test(flavor = "multi_thread")]
+#[allow(clippy::too_many_lines)]
 async fn test_wasm_capsule_e2e_env_config_injection() {
     let tools = vec![ToolDef {
         name: "test-config".into(),
@@ -71,11 +72,15 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             exclude: None,
             metadata: None,
         },
-        component: Some(ComponentDef {
-            entrypoint: fixture_path.clone(),
+        components: vec![ComponentDef {
+            id: "default".to_string(),
+            path: fixture_path.clone(),
             hash: None,
-        }),
-        dependencies: Default::default(),
+            r#type: "executable".to_string(),
+            link: vec![],
+            capabilities: None,
+        }],
+        dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             kv: vec!["*".into()],
@@ -95,7 +100,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(Default::default());
+    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
     let loader = CapsuleLoader::new(mcp_client);
     let mut capsule = loader
         .create_capsule(manifest, fixture_path.parent().unwrap().to_path_buf())

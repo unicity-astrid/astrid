@@ -69,6 +69,49 @@ pub enum IpcPayload {
         /// Justification.
         reason: String,
     },
+    /// Request an LLM provider capsule to generate a response.
+    LlmRequest {
+        /// The unique ID of the request, used for routing the response stream back.
+        request_id: Uuid,
+        /// The requested model name (e.g. "claude-3-5-sonnet").
+        model: String,
+        /// The conversation history.
+        messages: Vec<crate::llm::Message>,
+        /// The tools available to the model.
+        tools: Vec<crate::llm::LlmToolDefinition>,
+        /// The system prompt.
+        system: String,
+    },
+    /// A stream event from an LLM provider capsule.
+    LlmStreamEvent {
+        /// The unique ID of the request this stream belongs to.
+        request_id: Uuid,
+        /// The actual stream event (`TokenDelta`, `ToolCallStart`, etc).
+        event: crate::llm::StreamEvent,
+    },
+    /// The final, non-streaming LLM response.
+    LlmResponse {
+        /// The unique ID of the request this response belongs to.
+        request_id: Uuid,
+        /// The final response object.
+        response: crate::llm::LlmResponse,
+    },
+    /// Request the Tool Router capsule to execute a tool.
+    ToolExecuteRequest {
+        /// The unique ID of the tool call.
+        call_id: String,
+        /// The name of the tool to execute.
+        tool_name: String,
+        /// The JSON arguments.
+        arguments: Value,
+    },
+    /// The result of a tool execution.
+    ToolExecuteResult {
+        /// The unique ID of the tool call.
+        call_id: String,
+        /// The result of the execution.
+        result: crate::llm::ToolCallResult,
+    },
     /// Arbitrary JSON data for unstructured plugins.
     Custom {
         /// Raw data.

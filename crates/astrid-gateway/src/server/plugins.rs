@@ -174,10 +174,10 @@ impl DaemonServer {
         }
 
         // Resolve relative WASM paths to absolute (same as initial discovery).
-        if let Some(component) = &mut manifest.component
-            && component.entrypoint.is_relative()
-        {
-            component.entrypoint = plugin_dir.join(&component.entrypoint);
+        for component in &mut manifest.components {
+            if component.path.is_relative() {
+                component.path = plugin_dir.join(&component.path);
+            }
         }
 
         // Create the new plugin instance.

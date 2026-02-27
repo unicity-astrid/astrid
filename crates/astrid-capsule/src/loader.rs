@@ -38,7 +38,7 @@ impl CapsuleLoader {
         let mut composite = CompositeCapsule::new(manifest.clone())?;
 
         // 1. WASM Component Engine (Pure WASM or Compiled OpenClaw)
-        if manifest.component.is_some() {
+        if !manifest.components.is_empty() {
             composite.add_engine(Box::new(crate::engine::WasmEngine::new(
                 manifest.clone(),
                 capsule_dir.clone(),

@@ -118,6 +118,24 @@ enum Commands {
         command: CapsuleCommands,
     },
 
+    /// Build and package a Capsule (The Universal Migrator)
+    Build {
+        /// Optional path to the project directory (defaults to current directory)
+        path: Option<String>,
+
+        /// Output directory for the packaged `.capsule` archive
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Explicitly define the project type (e.g., 'mcp' for legacy host servers)
+        #[arg(short, long, name = "type")]
+        project_type: Option<String>,
+
+        /// Import a legacy `mcp.json` to auto-convert
+        #[arg(long)]
+        from_mcp_json: Option<String>,
+    },
+
     /// Initialize a workspace
     Init,
 }
@@ -446,6 +464,19 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Capsule { command }) => {
             handle_capsules(command)?;
+        },
+        Some(Commands::Build {
+            path,
+            output,
+            project_type,
+            from_mcp_json,
+        }) => {
+            commands::build::run_build(
+                path.as_deref(),
+                output.as_deref(),
+                project_type.as_deref(),
+                from_mcp_json.as_deref(),
+            )?;
         },
         Some(Commands::Init) => {
             init::run_init()?;

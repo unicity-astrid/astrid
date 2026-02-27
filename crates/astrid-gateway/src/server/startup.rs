@@ -187,12 +187,12 @@ impl DaemonServer {
         let discovered = discover_manifests(Some(&plugin_dirs));
 
         for (mut manifest, plugin_dir) in discovered {
-            if let Some(component) = &mut manifest.component
-                && component.entrypoint.is_relative()
-            {
-                let mut new_path: std::path::PathBuf = plugin_dir.clone();
-                new_path.push(&component.entrypoint);
-                component.entrypoint = new_path;
+            for component in &mut manifest.components {
+                if component.path.is_relative() {
+                    let mut new_path: std::path::PathBuf = plugin_dir.clone();
+                    new_path.push(&component.path);
+                    component.path = new_path;
+                }
             }
 
             let capsule = match capsule_loader.create_capsule(manifest.clone(), plugin_dir.clone())

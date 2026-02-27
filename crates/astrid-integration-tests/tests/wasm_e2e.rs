@@ -54,11 +54,15 @@ async fn setup_test_capsule(
             exclude: None,
             metadata: None,
         },
-        component: Some(ComponentDef {
-            entrypoint: fixture_path.clone(),
+        components: vec![ComponentDef {
+            id: "default".to_string(),
+            path: fixture_path.clone(),
             hash: None,
-        }),
-        dependencies: Default::default(),
+            r#type: "executable".to_string(),
+            link: vec![],
+            capabilities: None,
+        }],
+        dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,
             kv: vec!["*".into()],
@@ -66,7 +70,7 @@ async fn setup_test_capsule(
             fs_write: fs_write_caps,
             host_process: vec![],
         },
-        env: Default::default(),
+        env: std::collections::HashMap::default(),
         context_files: vec![],
         commands: vec![],
         mcp_servers: vec![],
@@ -78,7 +82,7 @@ async fn setup_test_capsule(
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(Default::default());
+    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
     let loader = CapsuleLoader::new(mcp_client);
 
     let mut capsule = loader

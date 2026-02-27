@@ -1,0 +1,19 @@
+[package]
+name = "astrid-capsule-shell"
+version = "0.1.0"
+description = "Core shell execution tools for the Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "shell-tools"
+file = "astrid_capsule_shell.wasm"
+type = "executable"
+
+[capabilities]
+host_process = ["bash", "sh", "zsh"]
+
+[[tool]]
+name = "run_shell_command"
+description = "Execute a bash command in the active worktree sandbox. Processes are heavily sandboxed (e.g. via bwrap or Seatbelt) and isolated from the host machine."
+input_schema = { type = "object", properties = { command = { type = "string", description = "The exact bash command to execute" } }, required = ["command"] }
