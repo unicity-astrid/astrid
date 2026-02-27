@@ -1,0 +1,11 @@
+[package]
+name = "astrid-capsule-anthropic"
+version = "0.1.0"
+description = "Anthropic LLM Provider Capsule"
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "anthropic"
+file = "astrid_capsule_anthropic.wasm"
+type = "executable"
+capabilities = { http_client = ["api.anthropic.com"], ipc_publish = ["llm.stream.*"], ipc_subscribe = ["llm.request.generate.anthropic"] }

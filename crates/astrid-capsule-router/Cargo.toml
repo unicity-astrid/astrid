@@ -1,0 +1,13 @@
+[package]
+name = "astrid-capsule-router"
+version = "0.1.0"
+edition = "2024"
+description = "Tool execution routing middleware for Astrid OS"
+publish = false
+
+[dependencies]
+astrid-sdk = { path = "../astrid-sdk" }
+extism-pdk = "1.4.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }

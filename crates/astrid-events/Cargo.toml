@@ -19,7 +19,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 # Async
-tokio = { workspace = true, features = ["sync"] }
+tokio = { version = "1.49", features = ["sync"] }
 async-trait = { workspace = true }
 
 # Time & IDs
@@ -29,6 +29,7 @@ uuid = { workspace = true }
 # Tracing
 tracing = { workspace = true }
 dashmap = { workspace = true }
+borsh = { version = "1.6.0", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

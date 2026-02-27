@@ -1,0 +1,19 @@
+[package]
+name = "astrid-capsule-orchestrator"
+version = "0.1.0"
+description = "Default ReAct Orchestrator loop"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "orchestrator"
+file = "astrid_capsule_orchestrator.wasm"
+type = "executable"
+
+[[interceptor]]
+event = "user.prompt"
+action = "handle_user_prompt"
+
+[[interceptor]]
+event = "identity.response.ready"
+action = "resume_with_identity"

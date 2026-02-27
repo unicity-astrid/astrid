@@ -1,0 +1,12 @@
+[package]
+name = "astrid-capsule-router"
+version = "0.1.0"
+description = "Tool execution routing middleware for Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "router"
+file = "astrid_capsule_router.wasm"
+type = "executable"
+capabilities = { network = ["ipc://tool.request.execute", "ipc://tool.execute.*"] }
