@@ -1,9 +1,17 @@
-//! Astrid Events - Event bus for the Astrid secure agent runtime.
+//! Astrid Events - Event types and optional bus for the Astrid secure agent runtime.
 //!
 //! This crate provides:
-//! - Event types for all runtime operations
-//! - Broadcast-based event bus for async subscribers
-//! - Subscriber registry for synchronous handlers
+//! - IPC payload types and LLM message schemas (always available, WASM-compatible)
+//! - Broadcast-based event bus for async subscribers (requires `runtime` feature)
+//! - Subscriber registry for synchronous handlers (requires `runtime` feature)
+//!
+//! # Feature Flags
+//!
+//! - `runtime` (default): Enables the event bus, subscriber registry, and full event
+//!   types. Pulls in `tokio`, `chrono`, and other host-only dependencies. Not
+//!   compatible with WASM targets.
+//! - Without `runtime`: Only IPC payload schemas and LLM types are available. Suitable
+//!   for WASM capsule crates that need to serialize/deserialize IPC messages.
 //!
 //! # Architecture
 //!
@@ -47,17 +55,28 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[cfg(feature = "runtime")]
 pub mod prelude;
 
+#[cfg(feature = "runtime")]
 mod bus;
+#[cfg(feature = "runtime")]
 mod event;
 pub mod ipc;
 pub mod llm;
+#[cfg(feature = "runtime")]
 mod subscriber;
 
+#[cfg(feature = "runtime")]
 pub use bus::{DEFAULT_CHANNEL_CAPACITY, EventBus, EventReceiver};
+#[cfg(feature = "runtime")]
 pub use event::{AstridEvent, EventMetadata};
-pub use ipc::{IpcMessage, IpcPayload, IpcRateLimiter};
+#[cfg(feature = "runtime")]
+pub use ipc::IpcMessage;
+pub use ipc::IpcPayload;
+#[cfg(feature = "runtime")]
+pub use ipc::IpcRateLimiter;
+#[cfg(feature = "runtime")]
 pub use subscriber::{
     EventFilter, EventSubscriber, FilterSubscriber, SubscriberId, SubscriberRegistry,
 };

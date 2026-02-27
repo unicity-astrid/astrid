@@ -1,0 +1,24 @@
+[package]
+name = "astrid-capsule-anthropic"
+version = "0.1.0"
+description = "Anthropic LLM Provider"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "anthropic"
+file = "astrid_capsule_anthropic.wasm"
+type = "executable"
+capabilities = { net = ["api.anthropic.com"] }
+
+[env]
+anthropic_api_key = { type = "secret", request = "Please enter your Anthropic API Key" }
+
+[[llm_provider]]
+id = "claude-3-5-sonnet-20241022"
+description = "Claude 3.5 Sonnet"
+capabilities = ["text", "vision", "tools"]
+
+[[interceptor]]
+event = "llm.request.generate.anthropic"
+action = "handle_llm_request"

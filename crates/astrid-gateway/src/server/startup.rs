@@ -484,6 +484,15 @@ impl DaemonServer {
         };
         tokio::spawn(super::inbound_router::run_inbound_router(router_ctx));
 
+        // Spawn the IPC event dispatcher for capsule interceptors.
+        // Routes IPC events from the bus to capsule WASM interceptor handlers
+        // based on Capsule.toml [[interceptor]] definitions.
+        let dispatcher = astrid_capsule::dispatcher::EventDispatcher::new(
+            Arc::clone(&daemon.plugins),
+            Arc::clone(&daemon.event_bus),
+        );
+        tokio::spawn(dispatcher.run());
+
         Ok((daemon, handle, addr, cfg))
     }
 }

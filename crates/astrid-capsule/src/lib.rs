@@ -8,6 +8,7 @@
 pub mod capsule;
 pub mod context;
 pub mod discovery;
+pub mod dispatcher;
 pub mod engine;
 pub mod error;
 pub mod loader;

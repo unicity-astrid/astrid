@@ -38,13 +38,12 @@ pub(crate) fn astrid_ipc_publish_impl(
     }
 
     let topic_bytes = util::get_safe_bytes(plugin, &inputs[0], 256)?;
-    let mut topic = String::from_utf8(topic_bytes).unwrap_or_default();
+    let topic = String::from_utf8(topic_bytes).unwrap_or_default();
 
-    // Auto-prefix with capsule ID to securely namespace topics
-    let prefix = format!("{}.", state.capsule_id.as_str());
-    if !topic.starts_with(&prefix) {
-        topic = format!("{prefix}{topic}");
-    }
+    // Topics are published unprefixed. Provenance is tracked via
+    // `IpcMessage::source_id` (the capsule's UUID). The kernel's event
+    // dispatcher handles routing based on Capsule.toml interceptor
+    // definitions, not topic namespacing.
 
     if topic.split('.').count() > 8 {
         return Err(Error::msg("Topic exceeds maximum allowed segments (8)"));
@@ -102,18 +101,16 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     }
 
     let topic_pattern_bytes = util::get_safe_bytes(plugin, &inputs[0], 256)?;
-    let mut topic_pattern = String::from_utf8(topic_pattern_bytes).unwrap_or_default();
+    let topic_pattern = String::from_utf8(topic_pattern_bytes).unwrap_or_default();
 
     let ud = user_data.get()?;
     let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    // Auto-prefix with capsule ID to securely namespace subscriptions
-    let prefix = format!("{}.", state.capsule_id.as_str());
-    if !topic_pattern.starts_with(&prefix) {
-        topic_pattern = format!("{prefix}{topic_pattern}");
-    }
+    // Subscriptions are unprefixed. Capsules subscribe to system topics
+    // directly (e.g., `agent.response`). Provenance is tracked via
+    // `IpcMessage::source_id`, not topic namespacing.
 
     if topic_pattern.split('.').count() > 8 {
         return Err(Error::msg(

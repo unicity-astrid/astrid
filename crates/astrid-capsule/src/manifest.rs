@@ -255,15 +255,22 @@ pub struct ToolDef {
     pub input_schema: serde_json::Value,
 }
 
-/// An eBPF-style interceptor hook provided by the capsule.
+/// An event interceptor registered by the capsule.
 ///
-/// This allows the OS to synchronously route specific lifecycle events
-/// (like `BeforeToolCall` or `BeforeAgentResponse`) through this capsule
-/// for filtering or policy enforcement without introspecting the WASM binary.
+/// Maps an IPC event topic pattern to a named action (WASM export handler).
+/// The kernel's event dispatcher matches incoming IPC events against the
+/// `event` pattern and invokes `astrid_hook_trigger` with the `action` name
+/// and the event payload.
+///
+/// Topic patterns support single-segment wildcards: `tool.execute.*.result`
+/// matches `tool.execute.search.result` but not `tool.execute.result`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterceptorDef {
-    /// The specific OS event to intercept (e.g., "BeforeToolCall").
+    /// IPC topic pattern to match (e.g., `user.prompt`, `tool.execute.*.result`).
     pub event: String,
+    /// Name of the handler function inside the WASM guest
+    /// (must match an `#[astrid::interceptor("...")]` annotation).
+    pub action: String,
 }
 
 /// A scheduled background task (cron job) provided by the capsule.

@@ -31,6 +31,7 @@ astrid-telegram = { workspace = true }
 astrid-telemetry = { workspace = true }
 astrid-approval = { workspace = true }
 astrid-openclaw = { workspace = true }
+astrid-tools = { workspace = true }
 
 # CLI
 clap = { workspace = true }
