@@ -1,0 +1,31 @@
+[package]
+name = "astrid-capsule-orchestrator"
+version = "0.1.0"
+description = "Default event-driven orchestrator for Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "orchestrator"
+file = "astrid_capsule_orchestrator.wasm"
+type = "executable"
+
+# User input from frontends (CLI, Telegram, etc.)
+[[interceptor]]
+event = "user.prompt"
+action = "handle_user_prompt"
+
+# System prompt returned by the identity capsule
+[[interceptor]]
+event = "identity.response.ready"
+action = "handle_identity_response"
+
+# LLM streaming events from provider capsules
+[[interceptor]]
+event = "llm.stream.anthropic"
+action = "handle_llm_stream"
+
+# Tool execution results from the tool router
+[[interceptor]]
+event = "tool.execute.result"
+action = "handle_tool_result"

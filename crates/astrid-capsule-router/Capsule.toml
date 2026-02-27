@@ -1,0 +1,21 @@
+[package]
+name = "astrid-capsule-router"
+version = "0.1.0"
+description = "Tool execution routing middleware for Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "router"
+file = "astrid_capsule_router.wasm"
+type = "executable"
+
+# Tool execution requests from the orchestrator
+[[interceptor]]
+event = "tool.request.execute"
+action = "handle_execute_request"
+
+# Tool results from tool capsules (wildcard match on tool.execute.*.result)
+[[interceptor]]
+event = "tool.execute.*.result"
+action = "handle_execute_result"

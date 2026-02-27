@@ -1,0 +1,16 @@
+[package]
+name = "astrid-capsule-identity"
+version = "0.1.0"
+description = "Context Builder Capsule for Astrid OS"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "identity-builder"
+file = "astrid_capsule_identity.wasm"
+type = "executable"
+capabilities = { fs_read = ["workspace://"] }
+
+[[interceptor]]
+event = "identity.request.build"
+action = "handle_build_request"
