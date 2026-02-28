@@ -432,6 +432,21 @@ async fn main() -> Result<()> {
             let workspace = std::env::current_dir().ok();
             chat::run_chat(session, workspace, output_format).await?;
         },
+        None => {
+            // Default to Chat mode if no command is specified (e.g. just running `astrid`)
+            if output_format == formatter::OutputFormat::Json {
+                print_banner();
+            }
+            ensure_global_config();
+            if !onboarding::has_api_key() {
+                onboarding::run_onboarding();
+            }
+            onboarding::run_spark_onboarding();
+            
+            // Auto-mount the current working directory!
+            let workspace = std::env::current_dir().ok();
+            chat::run_chat(None, workspace, output_format).await?;
+        },
         Some(Commands::Run {
             foreground,
             config: config_path,
@@ -481,19 +496,7 @@ async fn main() -> Result<()> {
         Some(Commands::Init) => {
             init::run_init()?;
         },
-        None => {
-            // Default to chat mode.
-            if output_format == formatter::OutputFormat::Json {
-                print_banner();
-            }
-            ensure_global_config();
-            if !onboarding::has_api_key() {
-                onboarding::run_onboarding();
-            }
-            onboarding::run_spark_onboarding();
-            let workspace = std::env::current_dir().ok();
-            chat::run_chat(None, workspace, output_format).await?;
-        },
+
     }
 
     Ok(())
