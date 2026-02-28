@@ -204,6 +204,7 @@ impl WasmHandler {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: tokio::runtime::Handle::current(),
             has_connector_capability: false,
             inbound_tx: None,

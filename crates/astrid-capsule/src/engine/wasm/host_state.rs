@@ -45,6 +45,8 @@ pub struct HostState {
     pub config: HashMap<String, serde_json::Value>,
     /// Optional security gate for gated operations (HTTP, file I/O).
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
+    /// Hook manager for executing user scripts synchronously via airlock.
+    pub hook_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
     /// Tokio runtime handle for bridging async operations in sync host functions.
     pub runtime_handle: tokio::runtime::Handle,
     /// Whether the plugin manifest declares `CapsuleCapability::Connector`.
@@ -142,6 +144,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
@@ -182,6 +185,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
@@ -226,6 +230,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
@@ -267,6 +272,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
@@ -326,6 +332,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             security: None,
+            hook_manager: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,

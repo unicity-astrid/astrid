@@ -121,6 +121,12 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::TriggerHook => crate::engine::wasm::host::sys::astrid_trigger_hook_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
         WasmHostFunction::HttpRequest => crate::engine::wasm::host::http::astrid_http_request_impl(
             plugin,
             &fn_inputs,

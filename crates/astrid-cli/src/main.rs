@@ -442,7 +442,7 @@ async fn main() -> Result<()> {
                 onboarding::run_onboarding();
             }
             onboarding::run_spark_onboarding();
-            
+
             // Auto-mount the current working directory!
             let workspace = std::env::current_dir().ok();
             chat::run_chat(None, workspace, output_format).await?;
@@ -496,7 +496,6 @@ async fn main() -> Result<()> {
         Some(Commands::Init) => {
             init::run_init()?;
         },
-
     }
 
     Ok(())

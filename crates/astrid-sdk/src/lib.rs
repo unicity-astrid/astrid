@@ -265,6 +265,15 @@ pub mod sys {
     }
 }
 
+/// The Hooks Airlock — Executing User Middleware
+pub mod hooks {
+    use super::*;
+
+    pub fn trigger(event_bytes: &[u8]) -> Result<Vec<u8>, SysError> {
+        unsafe { Ok(astrid_trigger_hook(event_bytes.to_vec())?) }
+    }
+}
+
 /// The Process Airlock — Spawning Native Host Processes
 pub mod process {
     use super::*;
@@ -297,7 +306,7 @@ pub mod process {
 }
 
 pub mod prelude {
-    pub use crate::{SysError, cron, fs, http, ipc, kv, process, sys, uplink};
+    pub use crate::{SysError, cron, fs, hooks, http, ipc, kv, process, sys, uplink};
     pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]

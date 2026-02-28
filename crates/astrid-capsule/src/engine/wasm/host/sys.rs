@@ -100,3 +100,41 @@ pub(crate) fn astrid_get_caller_impl(
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
+
+#[allow(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_trigger_hook_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let event_bytes = util::get_safe_bytes(plugin, &inputs[0], 1024 * 1024)?; // 1MB max payload
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    // In Phase 7, the HookManager is passed into HostState so we can execute hooks synchronously.
+    let result_bytes = if let Some(_hook_manager) = &state.hook_manager {
+        // We use block_in_place because Extism host functions are synchronous,
+        // but our HookManager executes shell scripts/HTTP asynchronously.
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                // Here we would actually deserialize the event_bytes and trigger the hook.
+                // For now, we return a pass-through success result.
+                Ok::<Vec<u8>, String>(event_bytes.to_vec())
+            })
+        });
+        result.unwrap_or_else(|e| format!(r#"{{"error": "{}"}}"#, e).into_bytes())
+    } else {
+        // No hook manager configured, just pass through
+        event_bytes.to_vec()
+    };
+
+    drop(state);
+
+    let mem = plugin.memory_new(&result_bytes)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
