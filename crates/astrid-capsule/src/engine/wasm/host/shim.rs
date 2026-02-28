@@ -110,7 +110,10 @@ pub(crate) fn shim_invoke_host_func(
             user_data,
         )?,
         WasmHostFunction::GetConfig => crate::engine::wasm::host::sys::astrid_get_config_impl(
-            plugin, &fn_inputs, &mut fn_outputs, user_data,
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
         )?,
         WasmHostFunction::GetCaller => crate::engine::wasm::host::sys::astrid_get_caller_impl(
             plugin,

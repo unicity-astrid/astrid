@@ -260,7 +260,8 @@ pub mod sys {
     /// Retrieves the caller context (User ID and Session ID) for the current execution.
     pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
         let bytes = unsafe { astrid_get_caller()? };
-        serde_json::from_slice(&bytes).map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
+        serde_json::from_slice(&bytes)
+            .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
     }
 }
 

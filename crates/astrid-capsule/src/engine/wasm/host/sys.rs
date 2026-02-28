@@ -82,14 +82,15 @@ pub(crate) fn astrid_get_caller_impl(
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        
+
     let result = if let Some(_msg) = &state.caller_context {
         let session_id = None::<String>; // TODO: extract from AstridEvent
         let user_id = None::<String>; // TODO: extract from AstridEvent
         serde_json::json!({
             "session_id": session_id,
             "user_id": user_id
-        }).to_string()
+        })
+        .to_string()
     } else {
         String::from("{}")
     };
