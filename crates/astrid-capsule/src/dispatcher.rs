@@ -68,7 +68,7 @@ impl EventDispatcher {
 
         while let Some(event) = receiver.recv().await {
             if let AstridEvent::Ipc { message, .. } = &*event {
-                self.dispatch(&message.topic, &message.payload).await;
+                self.dispatch(message).await;
             }
         }
 
@@ -76,7 +76,8 @@ impl EventDispatcher {
     }
 
     /// Match an IPC event against all registered interceptors and invoke matches.
-    async fn dispatch(&self, topic: &str, payload: &astrid_events::ipc::IpcPayload) {
+    async fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
+        let topic = &message.topic;
         // Phase 1: collect matches under a brief read lock.
         let matches: Vec<(CapsuleId, String)> = {
             let registry = self.registry.read().await;
@@ -100,11 +101,11 @@ impl EventDispatcher {
             return;
         }
 
-        // Serialize payload once for all invocations.
-        let payload_bytes = match serde_json::to_vec(payload) {
+        // Serialize the FULL message once for all invocations so capsules get metadata.
+        let payload_bytes = match serde_json::to_vec(message) {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn!(topic, error = %e, "Failed to serialize IPC payload for dispatch");
+                warn!(topic, error = %e, "Failed to serialize IPC message for dispatch");
                 return;
             },
         };
