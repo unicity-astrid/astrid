@@ -121,6 +121,7 @@ impl ExecutionEngine for WasmEngine {
 
             let host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
+                caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
                     .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
                 workspace_root,

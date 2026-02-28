@@ -70,6 +70,8 @@ extern "ExtismHost" {
 
     /// Get a system configuration string.
     pub fn astrid_get_config(key: Vec<u8>) -> Vec<u8>;
+    /// Get the user ID and session ID that invoked the current execution context.
+    pub fn astrid_get_caller() -> Vec<u8>;
 
     // -----------------------------------------------------------------------
     // General System (Network, Logging, & Scheduling)

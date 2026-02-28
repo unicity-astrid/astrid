@@ -41,6 +41,7 @@ pub enum WasmHostFunction {
     KvGet,
     KvSet,
     GetConfig,
+    GetCaller,
     HttpRequest,
     Log,
     CronSchedule,
@@ -97,6 +98,7 @@ impl WasmHostFunction {
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::GetConfig => "astrid_get_config",
+            Self::GetCaller => "astrid_get_caller",
             Self::HttpRequest => "astrid_http_request",
             Self::Log => "astrid_log",
             Self::CronSchedule => "astrid_cron_schedule",
@@ -124,6 +126,7 @@ impl WasmHostFunction {
             | Self::CronCancel => 1,
             Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
+            Self::GetCaller => 0,
         }
     }
 
@@ -151,7 +154,8 @@ impl WasmHostFunction {
             | Self::KvGet
             | Self::GetConfig
             | Self::SpawnHost
-            | Self::HttpRequest => TYPE_I64,
+            | Self::HttpRequest
+            | Self::GetCaller => TYPE_I64,
         }
     }
 }
@@ -227,6 +231,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::GetConfig => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_get_config_impl)
+            },
+            WasmHostFunction::GetCaller => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_get_caller_impl)
             },
             WasmHostFunction::HttpRequest => {
                 builder.with_function(func.name(), args, rets, ud, http::astrid_http_request_impl)

@@ -61,10 +61,20 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             for attr in extracted_attrs {
                 let attr_name = &attr.path().segments[1].ident;
-                if let Ok(name) = attr.parse_args::<LitStr>() {
-                    let name_val = name.value();
+                
+                // Allow inferring the name from the function if no string argument is provided.
+                let name_val = if let Ok(name) = attr.parse_args::<LitStr>() {
+                    name.value()
+                } else {
+                    method_name.to_string()
+                };
 
-                    let execute_block = if is_stateful {
+                // Determine if this tool is marked as mutable
+                let is_mutable = method.attrs.iter().any(|a| {
+                    a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable"
+                });
+
+                let execute_block = if is_stateful {
                         quote! {
                             let args = ::serde_json::from_slice(&req.arguments)
                                 .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
@@ -99,7 +109,21 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                         // Automatically generate schemars extraction for this tool
                         if let Some(ty) = &arg_type {
                             schema_arms.push(quote! {
-                                map.insert(#name_val.to_string(), ::astrid_sdk::schemars::schema_for!(#ty));
+                                let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
+                                if let ::astrid_sdk::schemars::schema::Schema::Object(ref mut obj) = schema.schema {
+                                    if let Some(ref mut meta) = obj.metadata {
+                                        let mut ext = std::collections::BTreeMap::new();
+                                        ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
+                                        meta.extensions = ext;
+                                    } else {
+                                        let mut meta = ::astrid_sdk::schemars::schema::Metadata::default();
+                                        let mut ext = std::collections::BTreeMap::new();
+                                        ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
+                                        meta.extensions = ext;
+                                        obj.metadata = Some(Box::new(meta));
+                                    }
+                                }
+                                map.insert(#name_val.to_string(), schema);
                             });
                         }
                     } else if attr_name == "command" {
@@ -115,7 +139,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                             #name_val => { #execute_block }
                         });
                     }
-                }
             }
         }
     }

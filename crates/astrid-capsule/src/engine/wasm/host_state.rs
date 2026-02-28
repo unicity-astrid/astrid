@@ -19,6 +19,8 @@ use crate::security::CapsuleSecurityGate;
 pub struct HostState {
     /// The plugin this state belongs to.
     pub capsule_id: CapsuleId,
+    /// Context of the current caller (set per-invocation by the dispatcher).
+    pub caller_context: Option<astrid_events::ipc::IpcMessage>,
     /// The unique session UUID for this plugin's execution state.
     pub capsule_uuid: uuid::Uuid,
     /// Workspace root directory (file operations are confined here).
@@ -127,6 +129,7 @@ mod tests {
 
         let state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
@@ -166,6 +169,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
@@ -209,6 +213,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
@@ -249,6 +254,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),
@@ -307,6 +313,7 @@ mod tests {
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: std::sync::Arc::new(astrid_vfs::HostVfs::new()),

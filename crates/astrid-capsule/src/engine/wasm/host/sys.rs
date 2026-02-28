@@ -70,3 +70,32 @@ pub(crate) fn astrid_get_config_impl(
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
+
+#[allow(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_get_caller_impl(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        
+    let result = if let Some(_msg) = &state.caller_context {
+        let session_id = None::<String>; // TODO: extract from AstridEvent
+        let user_id = None::<String>; // TODO: extract from AstridEvent
+        serde_json::json!({
+            "session_id": session_id,
+            "user_id": user_id
+        }).to_string()
+    } else {
+        String::from("{}")
+    };
+    drop(state);
+
+    let mem = plugin.memory_new(&result)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
