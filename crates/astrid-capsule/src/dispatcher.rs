@@ -103,7 +103,7 @@ impl EventDispatcher {
 
         // Serialize the FULL message once for all invocations so capsules get metadata.
         let payload_bytes = match serde_json::to_vec(message) {
-            Ok(bytes) => bytes,
+            Ok(bytes) => std::sync::Arc::new(bytes),
             Err(e) => {
                 warn!(topic, error = %e, "Failed to serialize IPC message for dispatch");
                 return;
@@ -122,7 +122,7 @@ impl EventDispatcher {
             );
 
             let registry = Arc::clone(&self.registry);
-            let payload = payload_bytes.clone();
+            let payload = Arc::clone(&payload_bytes);
             let cid = capsule_id.clone();
             let act = action.clone();
 

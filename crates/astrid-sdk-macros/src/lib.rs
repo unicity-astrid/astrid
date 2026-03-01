@@ -111,17 +111,10 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                         schema_arms.push(quote! {
                                 let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
                                 if let ::astrid_sdk::schemars::schema::Schema::Object(ref mut obj) = schema.schema {
-                                    if let Some(ref mut meta) = obj.metadata {
-                                        let mut ext = std::collections::BTreeMap::new();
-                                        ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
-                                        meta.extensions = ext;
-                                    } else {
-                                        let mut meta = ::astrid_sdk::schemars::schema::Metadata::default();
-                                        let mut ext = std::collections::BTreeMap::new();
-                                        ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
-                                        meta.extensions = ext;
-                                        obj.metadata = Some(Box::new(meta));
-                                    }
+                                    let mut ext = std::collections::BTreeMap::new();
+                                    ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
+                                    let meta = obj.metadata.get_or_insert_with(Box::default);
+                                    meta.extensions = ext;
                                 }
                                 map.insert(#name_val.to_string(), schema);
                             });
