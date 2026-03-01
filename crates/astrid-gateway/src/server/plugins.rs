@@ -242,6 +242,10 @@ impl DaemonServer {
                     }
                 }
 
+                // Refresh tool schemas in the orchestrator's KV after hot-reload
+                // so newly added/removed tools are reflected in LLM requests.
+                super::startup::collect_and_write_tool_schemas(plugins, workspace_kv).await;
+
                 Self::broadcast_event(
                     sessions,
                     DaemonEvent::CapsuleLoaded {

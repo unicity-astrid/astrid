@@ -139,6 +139,7 @@ impl AnthropicProvider {
     fn parse_sse_stream(request_id: Uuid, body: &str) -> Result<(), SysError> {
         let mut buffer = body;
         let mut current_tool_id = String::new();
+        let mut input_tokens = 0;
 
         while let Some(event_end) = buffer.find("\n\n") {
             let event_data = &buffer[..event_end];
@@ -152,7 +153,7 @@ impl AnthropicProvider {
                     }
 
                     if let Ok(event) = serde_json::from_str::<StreamingEvent>(data) {
-                        Self::handle_sse_event(request_id, event, &mut current_tool_id)?;
+                        Self::handle_sse_event(request_id, event, &mut current_tool_id, &mut input_tokens)?;
                     }
                 }
             }
@@ -166,8 +167,14 @@ impl AnthropicProvider {
         request_id: Uuid,
         event: StreamingEvent,
         current_tool_id: &mut String,
+        input_tokens: &mut usize,
     ) -> Result<(), SysError> {
         match event {
+            StreamingEvent::MessageStart { message } => {
+                if let Some(usage) = message.get("usage") {
+                    *input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                }
+            }
             StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
                 ContentBlock::Text { .. } => {}
                 ContentBlock::ToolUse { id, name, .. } => {
@@ -206,7 +213,7 @@ impl AnthropicProvider {
                 Self::publish_stream(
                     request_id,
                     StreamEvent::Usage {
-                        input_tokens: usage.input_tokens.unwrap_or(0),
+                        input_tokens: *input_tokens,
                         output_tokens: usage.output_tokens,
                     },
                 )?;

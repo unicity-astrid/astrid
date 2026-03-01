@@ -61,60 +61,76 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             for attr in extracted_attrs {
                 let attr_name = &attr.path().segments[1].ident;
-                if let Ok(name) = attr.parse_args::<LitStr>() {
-                    let name_val = name.value();
 
-                    let execute_block = if is_stateful {
-                        quote! {
-                            let args = ::serde_json::from_slice(&req.arguments)
-                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
-                            let mut instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
-                                Ok(state) => state,
-                                Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
-                                Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
-                            };
-                            let result = instance.#method_name(args)?;
-                            ::astrid_sdk::prelude::kv::set_json("__state", &instance)
-                                .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-                            let res_json = ::serde_json::to_vec(&result)
-                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
-                            return Ok(res_json);
-                        }
-                    } else {
-                        quote! {
-                            let args = ::serde_json::from_slice(&req.arguments)
-                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
-                            let result = get_instance().#method_name(args)?;
-                            let res_json = ::serde_json::to_vec(&result)
-                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
-                            return Ok(res_json);
-                        }
-                    };
+                // Allow inferring the name from the function if no string argument is provided.
+                let name_val = if let Ok(name) = attr.parse_args::<LitStr>() {
+                    name.value()
+                } else {
+                    method_name.to_string()
+                };
 
-                    if attr_name == "tool" {
-                        tool_arms.push(quote! {
-                            #name_val => { #execute_block }
-                        });
+                // Determine if this tool is marked as mutable
+                let is_mutable = method.attrs.iter().any(|a| {
+                    a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable"
+                });
 
-                        // Automatically generate schemars extraction for this tool
-                        if let Some(ty) = &arg_type {
-                            schema_arms.push(quote! {
-                                map.insert(#name_val.to_string(), ::astrid_sdk::schemars::schema_for!(#ty));
-                            });
-                        }
-                    } else if attr_name == "command" {
-                        command_arms.push(quote! {
-                            #name_val => { #execute_block }
-                        });
-                    } else if attr_name == "interceptor" {
-                        hook_arms.push(quote! {
-                            #name_val => { #execute_block }
-                        });
-                    } else if attr_name == "cron" {
-                        cron_arms.push(quote! {
-                            #name_val => { #execute_block }
-                        });
+                let execute_block = if is_stateful {
+                    quote! {
+                        let args = ::serde_json::from_slice(&req.arguments)
+                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
+                        let mut instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
+                            Ok(state) => state,
+                            Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
+                            Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
+                        };
+                        let result = instance.#method_name(args)?;
+                        ::astrid_sdk::prelude::kv::set_json("__state", &instance)
+                            .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                        let res_json = ::serde_json::to_vec(&result)
+                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                        return Ok(res_json);
                     }
+                } else {
+                    quote! {
+                        let args = ::serde_json::from_slice(&req.arguments)
+                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
+                        let result = get_instance().#method_name(args)?;
+                        let res_json = ::serde_json::to_vec(&result)
+                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
+                        return Ok(res_json);
+                    }
+                };
+
+                if attr_name == "tool" {
+                    tool_arms.push(quote! {
+                        #name_val => { #execute_block }
+                    });
+
+                    // Automatically generate schemars extraction for this tool
+                    if let Some(ty) = &arg_type {
+                        schema_arms.push(quote! {
+                                let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
+                                if let ::astrid_sdk::schemars::schema::Schema::Object(ref mut obj) = schema.schema {
+                                    let mut ext = std::collections::BTreeMap::new();
+                                    ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
+                                    let meta = obj.metadata.get_or_insert_with(Box::default);
+                                    meta.extensions = ext;
+                                }
+                                map.insert(#name_val.to_string(), schema);
+                            });
+                    }
+                } else if attr_name == "command" {
+                    command_arms.push(quote! {
+                        #name_val => { #execute_block }
+                    });
+                } else if attr_name == "interceptor" {
+                    hook_arms.push(quote! {
+                        #name_val => { #execute_block }
+                    });
+                } else if attr_name == "cron" {
+                    cron_arms.push(quote! {
+                        #name_val => { #execute_block }
+                    });
                 }
             }
         }

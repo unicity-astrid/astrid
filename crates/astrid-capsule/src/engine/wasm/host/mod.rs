@@ -41,7 +41,9 @@ pub enum WasmHostFunction {
     KvGet,
     KvSet,
     GetConfig,
+    GetCaller,
     HttpRequest,
+    TriggerHook,
     Log,
     CronSchedule,
     CronCancel,
@@ -97,10 +99,12 @@ impl WasmHostFunction {
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::GetConfig => "astrid_get_config",
+            Self::GetCaller => "astrid_get_caller",
             Self::HttpRequest => "astrid_http_request",
             Self::Log => "astrid_log",
             Self::CronSchedule => "astrid_cron_schedule",
             Self::CronCancel => "astrid_cron_cancel",
+            Self::TriggerHook => "astrid_trigger_hook",
             Self::SpawnHost => "astrid_spawn_host",
         }
     }
@@ -121,9 +125,11 @@ impl WasmHostFunction {
             | Self::GetConfig
             | Self::HttpRequest
             | Self::SpawnHost
-            | Self::CronCancel => 1,
+            | Self::CronCancel
+            | Self::TriggerHook => 1,
             Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
+            Self::GetCaller => 0,
         }
     }
 
@@ -151,7 +157,9 @@ impl WasmHostFunction {
             | Self::KvGet
             | Self::GetConfig
             | Self::SpawnHost
-            | Self::HttpRequest => TYPE_I64,
+            | Self::HttpRequest
+            | Self::GetCaller
+            | Self::TriggerHook => TYPE_I64,
         }
     }
 }
@@ -227,6 +235,12 @@ pub fn register_host_functions(
             },
             WasmHostFunction::GetConfig => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_get_config_impl)
+            },
+            WasmHostFunction::GetCaller => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_get_caller_impl)
+            },
+            WasmHostFunction::TriggerHook => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_trigger_hook_impl)
             },
             WasmHostFunction::HttpRequest => {
                 builder.with_function(func.name(), args, rets, ud, http::astrid_http_request_impl)

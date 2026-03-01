@@ -4,16 +4,23 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use astrid_core::SessionId;
+use astrid_events::ipc::{IpcMessage, IpcPayload};
+use astrid_events::{AstridEvent, EventMetadata};
 use astrid_storage::ScopedKvStore;
 use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use super::RpcImpl;
 use super::workspace::ws_ns;
 use crate::daemon_frontend::DaemonFrontend;
 use crate::rpc::{DaemonEvent, SessionInfo, error_codes};
 use crate::server::SessionHandle;
+
+/// Stable source UUID for IPC messages originating from the gateway RPC layer.
+/// Uses the nil UUID as a sentinel; Phase 8 introduces per-session routing.
+const GATEWAY_SOURCE_ID: Uuid = Uuid::nil();
 
 impl RpcImpl {
     pub(super) async fn create_session_impl(
@@ -258,6 +265,7 @@ impl RpcImpl {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) async fn send_input_impl(
         &self,
         session_id: SessionId,
@@ -286,6 +294,33 @@ impl RpcImpl {
                 None::<()>,
             ));
         }
+
+        // ── Capsule pipeline path (gated behind config flag) ──────────
+        //
+        // When enabled, user input is published as a `user.prompt` IPC event
+        // to the EventBus. The orchestrator capsule picks it up, coordinates
+        // with identity/provider/tool-router capsules, and publishes responses
+        // on `agent.*` topics. The response bridge (spawned at startup) converts
+        // those back into DaemonEvents for the CLI.
+        //
+        // The monolithic runtime path below remains the default and is unchanged.
+        if self.use_capsule_pipeline {
+            let msg = IpcMessage::new(
+                "user.prompt",
+                IpcPayload::UserInput {
+                    text: input,
+                    context: None,
+                },
+                GATEWAY_SOURCE_ID,
+            );
+            self.event_bus.publish(AstridEvent::Ipc {
+                metadata: EventMetadata::new("gateway.rpc"),
+                message: msg,
+            });
+            return Ok(());
+        }
+
+        // ── Monolithic runtime path (default) ─────────────────────────
 
         let runtime = Arc::clone(&self.runtime);
         let event_tx = handle.event_tx.clone();

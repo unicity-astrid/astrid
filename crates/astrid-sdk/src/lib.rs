@@ -237,6 +237,8 @@ pub mod cron {
 }
 
 /// The Sys Airlock — System logging and configuration
+pub mod types;
+
 pub mod sys {
     use super::*;
 
@@ -253,6 +255,22 @@ pub mod sys {
     pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
         let bytes = get_config_bytes(key)?;
         String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
+    }
+
+    /// Retrieves the caller context (User ID and Session ID) for the current execution.
+    pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
+        let bytes = unsafe { astrid_get_caller()? };
+        serde_json::from_slice(&bytes)
+            .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
+    }
+}
+
+/// The Hooks Airlock — Executing User Middleware
+pub mod hooks {
+    use super::*;
+
+    pub fn trigger(event_bytes: &[u8]) -> Result<Vec<u8>, SysError> {
+        unsafe { Ok(astrid_trigger_hook(event_bytes.to_vec())?) }
     }
 }
 
@@ -288,7 +306,7 @@ pub mod process {
 }
 
 pub mod prelude {
-    pub use crate::{SysError, cron, fs, http, ipc, kv, process, sys, uplink};
+    pub use crate::{SysError, cron, fs, hooks, http, ipc, kv, process, sys, uplink};
     pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]

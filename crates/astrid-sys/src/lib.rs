@@ -70,6 +70,8 @@ extern "ExtismHost" {
 
     /// Get a system configuration string.
     pub fn astrid_get_config(key: Vec<u8>) -> Vec<u8>;
+    /// Get the user ID and session ID that invoked the current execution context.
+    pub fn astrid_get_caller() -> Vec<u8>;
 
     // -----------------------------------------------------------------------
     // General System (Network, Logging, & Scheduling)
@@ -82,6 +84,8 @@ extern "ExtismHost" {
     pub fn astrid_cron_schedule(name: Vec<u8>, schedule: Vec<u8>, payload: Vec<u8>);
     /// Cancel a dynamic cron job.
     pub fn astrid_cron_cancel(name: Vec<u8>);
+    /// Trigger a hook event and wait for its synchronous result.
+    pub fn astrid_trigger_hook(event_bytes: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
     // Host Execution (The Escape Hatch)

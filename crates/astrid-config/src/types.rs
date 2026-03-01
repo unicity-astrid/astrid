@@ -651,6 +651,10 @@ pub struct GatewaySection {
     pub idle_shutdown_secs: u64,
     /// Interval (in seconds) between stale session cleanup sweeps.
     pub session_cleanup_interval_secs: u64,
+    /// When `true`, `send_input` publishes a `user.prompt` IPC event to the
+    /// capsule pipeline instead of running the monolithic runtime turn.
+    /// Default: `false`. Use for testing the Phase 7 capsule pipeline.
+    pub use_capsule_pipeline: bool,
 }
 
 impl Default for GatewaySection {
@@ -664,6 +668,7 @@ impl Default for GatewaySection {
             shutdown_timeout_secs: 30,
             idle_shutdown_secs: 30,
             session_cleanup_interval_secs: 60,
+            use_capsule_pipeline: false,
         }
     }
 }

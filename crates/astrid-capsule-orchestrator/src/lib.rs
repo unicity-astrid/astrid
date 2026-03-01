@@ -437,8 +437,11 @@ impl Orchestrator {
 
         let tools = Self::load_tool_schemas();
 
+        let llm_topic = sys::get_config_string("llm_provider_topic")
+            .unwrap_or_else(|_| "llm.request.generate.anthropic".into());
+
         ipc::publish_json(
-            "llm.request.generate.anthropic",
+            &llm_topic,
             &IpcPayload::LlmRequest {
                 request_id: state.request_id,
                 model,

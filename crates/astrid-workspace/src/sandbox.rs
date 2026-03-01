@@ -64,19 +64,32 @@ impl SandboxCommand {
         {
             // macOS Seatbelt implementation
             // We write a dynamic profile to /tmp that denies all writes except to the worktree and /tmp.
+            // We also restrict reads to system directories, the worktree, and tmp to protect user dotfiles.
             let profile = format!(
                 r#"(version 1)
 (deny default)
-(allow file-read*)
 (allow process-exec*)
 (allow process-fork)
 (allow network*)
 (allow sysctl-read)
 (allow ipc-posix-shm)
+(allow file-read*
+    (subpath "/usr")
+    (subpath "/bin")
+    (subpath "/sbin")
+    (subpath "/System")
+    (subpath "/Library")
+    (subpath "/opt")
+    (subpath "/dev")
+    (subpath "{worktree_str}")
+    (subpath "/private/tmp")
+    (subpath "/var/folders")
+)
 (allow file-write* 
     (subpath "{worktree_str}")
     (subpath "/private/tmp")
     (subpath "/var/folders")
+    (literal "/dev/null")
 )"#
             );
 
