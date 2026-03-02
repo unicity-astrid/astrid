@@ -13,7 +13,6 @@
 //!   `tool.execute.search.result` but not `tool.execute.result`
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
@@ -22,39 +21,20 @@ use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
 
-/// Maximum time the dispatcher waits for a single interceptor invocation
-/// before detaching and continuing. This is defense-in-depth: the primary
-/// WASM kill mechanism is Extism's per-call timeout (~10s). The dispatch
-/// timeout covers lock contention, host-function hangs, and ensures the
-/// dispatcher continues regardless. It does NOT kill the blocked thread —
-/// it detaches it.
-const INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(15);
-
 /// Routes IPC events from the `EventBus` to capsule interceptors.
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
-    /// Per-interceptor timeout. Defaults to [`INTERCEPTOR_TIMEOUT`].
-    timeout: Duration,
 }
 
 impl EventDispatcher {
-    /// Create a new event dispatcher with the default timeout.
+    /// Create a new event dispatcher.
     #[must_use]
     pub fn new(registry: Arc<RwLock<CapsuleRegistry>>, event_bus: Arc<EventBus>) -> Self {
         Self {
             registry,
             event_bus,
-            timeout: INTERCEPTOR_TIMEOUT,
         }
-    }
-
-    /// Override the per-interceptor timeout (useful for testing).
-    #[cfg(test)]
-    #[must_use]
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
     }
 
     /// Run the dispatch loop. Blocks until the event bus is closed.
@@ -133,15 +113,15 @@ impl EventDispatcher {
                     .map(|capsule| capsule.invoke_interceptor(&act, &payload))
             });
 
-            match tokio::time::timeout(self.timeout, handle).await {
-                Ok(Ok(Some(Ok(_)))) => {
+            match handle.await {
+                Ok(Some(Ok(_))) => {
                     debug!(
                         capsule_id = %capsule_id,
                         action = %action,
                         "Interceptor completed"
                     );
                 },
-                Ok(Ok(Some(Err(e)))) => {
+                Ok(Some(Err(e))) => {
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
@@ -150,27 +130,18 @@ impl EventDispatcher {
                         "Interceptor invocation failed"
                     );
                 },
-                Ok(Ok(None)) => {
+                Ok(None) => {
                     debug!(
                         capsule_id = %capsule_id,
                         "Capsule no longer registered, skipping interceptor"
                     );
                 },
-                Ok(Err(e)) => {
+                Err(e) => {
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
                         error = %e,
                         "Interceptor task panicked"
-                    );
-                },
-                Err(_) => {
-                    warn!(
-                        capsule_id = %capsule_id,
-                        action = %action,
-                        topic,
-                        "Interceptor timed out after {}s (blocked thread detached)",
-                        self.timeout.as_secs()
                     );
                 },
             }
