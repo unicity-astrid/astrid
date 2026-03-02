@@ -513,11 +513,11 @@ mod tests {
         );
         assert_eq!(
             home.capsules_dir(),
-            PathBuf::from("/tmp/test-astrid/plugins")
+            PathBuf::from("/tmp/test-astrid/capsules")
         );
         assert_eq!(
             home.capsules_cache_dir(),
-            PathBuf::from("/tmp/test-astrid/cache/plugins")
+            PathBuf::from("/tmp/test-astrid/cache/capsules")
         );
         assert_eq!(home.hooks_dir(), PathBuf::from("/tmp/test-astrid/hooks"));
         assert_eq!(
