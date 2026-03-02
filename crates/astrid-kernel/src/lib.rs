@@ -1,68 +1,46 @@
-//! Astrid Gateway - Daemon layer for the Astrid secure agent runtime.
-//!
-//! This crate provides a daemon wrapper around `astrid-runtime` that handles:
-//! - Configuration loading and hot-reload
-//! - Multi-agent management
-//! - Message routing between frontends and agents
-//! - State persistence and checkpointing
-//! - Health checks and monitoring
-//! - Graceful shutdown
-//!
-//! # Architecture
-//!
-//! ```text
-//! astrid-kernel (daemon layer)
-//! ├── Config loading & hot-reload
-//! ├── Multi-agent management
-//! ├── Message routing
-//! ├── State persistence & checkpointing
-//! ├── Health checks
-//! ├── Graceful shutdown
-//! └── astrid-runtime (orchestration layer)
-//!     ├── Session management
-//!     ├── Context management
-//!     └── astrid-llm (provider layer)
-//!         └── astrid-mcp (tool layer)
-//! ```
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use astrid_kernel::{GatewayConfig, GatewayRuntime};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let config = GatewayConfig::load("~/.astrid/gateway.toml")?;
-//!     let runtime = GatewayRuntime::new(config)?;
-//!
-//!     // Run the gateway (blocks until shutdown)
-//!     runtime.run().await?;
-//!
-//!     Ok(())
-//! }
-//! ```
-
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
 #![warn(unreachable_pub)]
-#![deny(clippy::unwrap_used)]
-#![cfg_attr(test, allow(clippy::unwrap_used))]
+#![allow(clippy::module_name_repetitions)]
 
-pub mod prelude;
+//! Astrid Kernel - The core execution engine and IPC router.
+//!
+//! The Kernel is a pure, decentralized WASM runner. It contains no business
+//! logic, no cognitive loops, and no network servers. Its sole responsibility
+//! is to instantiate `astrid_events::EventBus`, load `.capsule` files into
+//! the Extism sandbox, and route IPC bytes between them.
 
 pub mod config;
 pub mod config_bridge;
-pub mod daemon_frontend;
 pub mod error;
-pub mod rpc;
-pub mod server;
 
-pub use config::{
-    AgentConfig, GatewayConfig, ModelConfig, RetrySettings, SessionConfig, TimeoutConfig,
-};
-pub use error::{GatewayError, GatewayResult};
-pub use rpc::{
-    AstridRpcClient, CapsuleInfo, DaemonEvent, DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
-};
-pub use server::{DaemonServer, DaemonStartOptions};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use astrid_events::EventBus;
+use astrid_capsule::registry::CapsuleRegistry;
+
+/// The core Operating System Kernel.
+pub struct Kernel {
+    /// The global IPC message bus.
+    pub event_bus: Arc<EventBus>,
+    /// The process manager (loaded WASM capsules).
+    pub plugins: Arc<RwLock<CapsuleRegistry>>,
+}
+
+impl Kernel {
+    /// Boot a new Kernel instance.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            event_bus: Arc::new(EventBus::new()),
+            plugins: Arc::new(RwLock::new(CapsuleRegistry::new())),
+        }
+    }
+}
+
+impl Default for Kernel {
+    fn default() -> Self {
+        Self::new()
+    }
+}

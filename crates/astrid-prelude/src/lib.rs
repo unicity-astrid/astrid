@@ -80,7 +80,6 @@ pub use astrid_capabilities::prelude::*;
 pub use astrid_core::prelude::*;
 pub use astrid_crypto::prelude::*;
 pub use astrid_events::prelude::*;
-pub use astrid_kernel::prelude::*;
 pub use astrid_hooks::prelude::*;
 pub use astrid_llm::prelude::*;
 pub use astrid_mcp::prelude::*;
