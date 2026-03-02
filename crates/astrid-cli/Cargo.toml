@@ -11,10 +11,6 @@ description = "Command-line interface for Astrid secure agent runtime"
 name = "astrid"
 path = "src/main.rs"
 
-[[bin]]
-name = "astridd"
-path = "src/daemon_main.rs"
-
 [dependencies]
 # Internal
 astrid-config = { workspace = true }
@@ -22,16 +18,14 @@ astrid-core = { workspace = true }
 astrid-crypto = { workspace = true }
 astrid-audit = { workspace = true }
 astrid-mcp = { workspace = true }
-astrid-llm = { workspace = true }
-astrid-runtime = { workspace = true }
 astrid-kernel = { workspace = true }
 astrid-hooks = { workspace = true }
 astrid-capsule = { workspace = true }
-astrid-telegram = { workspace = true }
 astrid-telemetry = { workspace = true }
 astrid-approval = { workspace = true }
 astrid-openclaw = { workspace = true }
 astrid-tools = { workspace = true }
+astrid-events = { workspace = true, features = ["runtime"] }
 
 # CLI
 clap = { workspace = true }
@@ -44,9 +38,6 @@ syntect = { workspace = true }
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }
-
-# JSON-RPC client (connects to daemon)
-jsonrpsee = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

@@ -529,6 +529,6 @@ fn resolve_target_dir(
         let root = std::env::current_dir().context("could not determine current directory")?;
         Ok(root.join(".astrid").join("plugins").join(id))
     } else {
-        Ok(home.plugins_dir().join(id))
+        Ok(home.capsules_dir().join(id))
     }
 }
