@@ -13,6 +13,8 @@
 
 /// The Unix Domain Socket IPC bridge for multi-process Extism scaling.
 pub mod socket;
+/// The Management API router listening to the `EventBus`.
+pub mod kernel_router;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,6 +42,48 @@ pub struct Kernel {
 }
 
 impl Kernel {
+    /// Boot a new Kernel instance mounted at the specified directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the VFS mount paths cannot be registered.
+    pub async fn new(workspace_root: PathBuf) -> Result<Arc<Self>, std::io::Error> {
+        let event_bus = Arc::new(EventBus::new());
+        let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
+
+        // 1. Initialize MCP process manager
+        let mcp_config = ServersConfig::load_default().unwrap_or_default();
+        let mcp_manager = ServerManager::new(mcp_config);
+        let mcp_client = McpClient::new(mcp_manager);
+
+        // 1. Establish the physical security boundary (sandbox handle)
+        let root_handle = DirHandle::new();
+
+        // 2. Initialize the physical filesystem layers
+        let lower_vfs = HostVfs::new();
+        lower_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
+
+        let upper_vfs = HostVfs::new();
+        upper_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
+
+        // 3. Wrap in copy-on-write OverlayVfs
+        let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
+
+        // Spawn the local Unix Domain Socket IPC bridge
+        drop(socket::spawn_socket_server(Arc::clone(&event_bus)));
+
+        let kernel = Arc::new(Self {
+            event_bus,
+            capsules,
+            mcp_client,
+            vfs: Arc::new(overlay_vfs),
+            vfs_root_handle: root_handle,
+            workspace_root,
+        });
+        std::mem::drop(crate::kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
+        Ok(kernel)
+    }
+
     /// Load a capsule into the Kernel from a directory containing a Capsule.toml
     ///
     /// # Errors
@@ -78,7 +122,7 @@ impl Kernel {
         
         let mut paths = Vec::new();
         if let Ok(home) = AstridHome::resolve() {
-            paths.push(home.plugins_dir());
+            paths.push(home.capsules_dir());
         }
         
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
@@ -91,52 +135,5 @@ impl Kernel {
                 );
             }
         }
-    }
-
-    /// Boot a new Kernel instance mounted at the specified directory.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the VFS mount paths cannot be registered.
-    pub async fn new(workspace_root: PathBuf) -> Result<Self, std::io::Error> {
-        let event_bus = Arc::new(EventBus::new());
-        let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
-        
-        // 1. Initialize MCP process manager
-        let mcp_config = ServersConfig::load_default().unwrap_or_default();
-        let mcp_manager = ServerManager::new(mcp_config);
-        let mcp_client = McpClient::new(mcp_manager);
-
-        // 1. Establish the physical security boundary (sandbox handle)
-        let root_handle = DirHandle::new();
-
-        // 2. Initialize the physical filesystem layers
-        let lower_vfs = HostVfs::new();
-        lower_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
-
-        let upper_vfs = HostVfs::new();
-        upper_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
-
-        // 3. Wrap in copy-on-write OverlayVfs
-        let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
-
-        // Spawn the local Unix Domain Socket IPC bridge
-        drop(socket::spawn_socket_server(Arc::clone(&event_bus)));
-
-        Ok(Self {
-            event_bus,
-            capsules,
-            mcp_client,
-            vfs: Arc::new(overlay_vfs),
-            vfs_root_handle: root_handle,
-            workspace_root,
-        })
-    }
-}
-
-impl Default for Kernel {
-    fn default() -> Self {
-        let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        tokio::runtime::Handle::current().block_on(Self::new(root)).expect("Failed to init kernel")
     }
 }
