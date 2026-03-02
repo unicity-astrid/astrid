@@ -1,7 +1,7 @@
 //! Gateway run command.
 
 use anyhow::Result;
-use astrid_gateway::{GatewayConfig, GatewayRuntime};
+use astrid_kernel::{GatewayConfig, GatewayRuntime};
 use colored::Colorize;
 
 /// Start the gateway daemon.
@@ -19,7 +19,7 @@ pub(crate) async fn run_gateway(foreground: bool, config_path: Option<&str>) -> 
         let unified = astrid_config::Config::load(cwd.as_deref())
             .map(|r| r.config)
             .unwrap_or_default();
-        astrid_gateway::config_bridge::from_unified_config(&unified)
+        astrid_kernel::config_bridge::from_unified_config(&unified)
     };
 
     // Show configuration summary

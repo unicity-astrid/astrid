@@ -1,11 +1,11 @@
 //! Prelude module - commonly used types for convenient import.
 //!
-//! Use `use astrid_gateway::prelude::*;` to import all essential types.
+//! Use `use astrid_kernel::prelude::*;` to import all essential types.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use astrid_gateway::prelude::*;
+//! use astrid_kernel::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> GatewayResult<()> {

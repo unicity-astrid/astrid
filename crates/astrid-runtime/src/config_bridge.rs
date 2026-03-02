@@ -341,7 +341,7 @@ mod tests {
     /// same JSON keys when serialized from defaults. If someone adds a field
     /// to one but not the other, this test catches the mismatch.
     ///
-    /// NOTE: `astrid_gateway::config::SparkConfig` is a third mirror type.
+    /// NOTE: `astrid_kernel::config::SparkConfig` is a third mirror type.
     /// The gateway `config_bridge` has its own parity test for that type.
     /// The canonical field set is defined by `astrid_config::SparkSection`.
     #[test]

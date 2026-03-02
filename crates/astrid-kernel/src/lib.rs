@@ -11,7 +11,7 @@
 //! # Architecture
 //!
 //! ```text
-//! astrid-gateway (daemon layer)
+//! astrid-kernel (daemon layer)
 //! ├── Config loading & hot-reload
 //! ├── Multi-agent management
 //! ├── Message routing
@@ -28,7 +28,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use astrid_gateway::{GatewayConfig, GatewayRuntime};
+//! use astrid_kernel::{GatewayConfig, GatewayRuntime};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,7 +1,7 @@
 //! `astridd` — standalone daemon binary for the Astrid secure agent runtime.
 //!
 //! This is a thin entry point that runs the daemon server directly using
-//! `astrid-gateway`. It exists so that `ps` and process managers show a
+//! `astrid-kernel`. It exists so that `ps` and process managers show a
 //! distinct `astridd` process name.
 //!
 //! By default the daemon runs in **persistent** mode (stays running until
@@ -19,8 +19,8 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 
-use astrid_gateway::DaemonServer;
-use astrid_gateway::server::DaemonStartOptions;
+use astrid_kernel::DaemonServer;
+use astrid_kernel::server::DaemonStartOptions;
 
 /// Astrid Daemon — background agent runtime server.
 #[derive(Parser)]

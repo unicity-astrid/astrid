@@ -19,7 +19,7 @@ astrid-events.workspace = true
 astrid-hooks.workspace = true
 astrid-workspace.workspace = true
 astrid-telemetry.workspace = true
-astrid-gateway.workspace = true
+astrid-kernel.workspace = true
 
 [lints]
 workspace = true

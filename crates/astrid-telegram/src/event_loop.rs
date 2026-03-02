@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use astrid_gateway::rpc::DaemonEvent;
+use astrid_kernel::rpc::DaemonEvent;
 use jsonrpsee::core::client::Subscription;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;

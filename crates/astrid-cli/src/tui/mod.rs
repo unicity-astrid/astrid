@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use astrid_core::{
     ApprovalDecision, ApprovalOption, ElicitationResponse, RiskLevel as CoreRiskLevel, SessionId,
 };
-use astrid_gateway::rpc::{DaemonEvent, SessionInfo};
+use astrid_kernel::rpc::{DaemonEvent, SessionInfo};
 use crossterm::{
     event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     execute,

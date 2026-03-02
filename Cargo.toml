@@ -36,7 +36,7 @@ members = [
     "crates/astrid-integration-tests",
 
     # Gateway
-    "crates/astrid-gateway",
+    "crates/astrid-kernel",
 
     # Frontends
     "crates/astrid-cli",
@@ -78,7 +78,7 @@ astrid-test = { path = "crates/astrid-test" }
 astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
 astrid-tools = { path = "crates/astrid-tools", version = "0.1.1" }
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
-astrid-gateway = { path = "crates/astrid-gateway", version = "0.1.1" }
+astrid-kernel = { path = "crates/astrid-kernel", version = "0.1.1" }
 astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }
 astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
 

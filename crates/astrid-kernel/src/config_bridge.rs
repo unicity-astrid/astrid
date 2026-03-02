@@ -113,7 +113,7 @@ fn default_state_dir() -> String {
 
 #[cfg(test)]
 mod tests {
-    /// Verify that `astrid_gateway::config::SparkConfig` has the same field
+    /// Verify that `astrid_kernel::config::SparkConfig` has the same field
     /// set as `astrid_config::SparkSection`. If someone adds a field to one
     /// but not the other, this test catches the mismatch.
     #[test]
@@ -128,7 +128,7 @@ mod tests {
 
         assert_eq!(
             section_keys, gateway_keys,
-            "astrid_config::SparkSection and astrid_gateway::config::SparkConfig have divergent field sets"
+            "astrid_config::SparkSection and astrid_kernel::config::SparkConfig have divergent field sets"
         );
     }
 }

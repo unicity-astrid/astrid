@@ -21,7 +21,7 @@
 //! // - astrid-hooks (hook system)
 //! // - astrid-workspace (boundaries)
 //! // - astrid-telemetry (logging, tracing)
-//! // - astrid-gateway (daemon layer)
+//! // - astrid-kernel (daemon layer)
 //! ```
 //!
 //! # Per-Crate Preludes
@@ -80,7 +80,7 @@ pub use astrid_capabilities::prelude::*;
 pub use astrid_core::prelude::*;
 pub use astrid_crypto::prelude::*;
 pub use astrid_events::prelude::*;
-pub use astrid_gateway::prelude::*;
+pub use astrid_kernel::prelude::*;
 pub use astrid_hooks::prelude::*;
 pub use astrid_llm::prelude::*;
 pub use astrid_mcp::prelude::*;

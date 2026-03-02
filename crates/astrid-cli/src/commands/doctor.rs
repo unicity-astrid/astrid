@@ -1,7 +1,7 @@
 //! Doctor command for health checks.
 
 use anyhow::Result;
-use astrid_gateway::{GatewayConfig, GatewayRuntime, HealthState};
+use astrid_kernel::{GatewayConfig, GatewayRuntime, HealthState};
 use colored::Colorize;
 
 /// Run health checks against the gateway.

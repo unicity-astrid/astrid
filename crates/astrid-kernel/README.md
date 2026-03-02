@@ -1,14 +1,14 @@
-# astrid-gateway
+# astrid-kernel
 
-[![Crates.io](https://img.shields.io/crates/v/astrid-gateway)](https://crates.io/crates/astrid-gateway)
+[![Crates.io](https://img.shields.io/crates/v/astrid-kernel)](https://crates.io/crates/astrid-kernel)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.93](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org)
 
 The daemon layer for the Astrid secure agent runtime, managing multi-agent lifecycles, JSON-RPC communication, and comprehensive system health.
 
-`astrid-gateway` serves as the central nervous system of the Astralis OS. While `astrid-runtime` handles the intricate mechanics of context windows and tool execution, the gateway acts as the long-running daemon that binds these mechanics to the outside world. It abstracts the complexity of MCP server management, plugin lifecycles, and agent orchestration behind a clean, event-driven JSON-RPC over WebSocket interface.
+`astrid-kernel` serves as the central nervous system of the Astralis OS. While `astrid-runtime` handles the intricate mechanics of context windows and tool execution, the gateway acts as the long-running daemon that binds these mechanics to the outside world. It abstracts the complexity of MCP server management, plugin lifecycles, and agent orchestration behind a clean, event-driven JSON-RPC over WebSocket interface.
 
-Whether you are building a CLI, a web frontend, or a custom desktop client, `astrid-gateway` provides the stable, observable boundary that ensures your agents run continuously, securely, and predictably.
+Whether you are building a CLI, a web frontend, or a custom desktop client, `astrid-kernel` provides the stable, observable boundary that ensures your agents run continuously, securely, and predictably.
 
 ## Core Features
 
@@ -27,7 +27,7 @@ Client Application (CLI, Web, GUI)
                │
       [JSON-RPC / WebSocket]
                │
-       astrid-gateway (Daemon)
+       astrid-kernel (Daemon)
        ├── Configuration & Hot-Reload
        ├── Multi-Agent Manager
        ├── Message Router
@@ -52,7 +52,7 @@ Client Application (CLI, Web, GUI)
 The gateway is designed to be embedded as the primary execution loop of a host process.
 
 ```rust
-use astrid_gateway::{GatewayConfig, GatewayRuntime};
+use astrid_kernel::{GatewayConfig, GatewayRuntime};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,7 +91,7 @@ When modifying the gateway, ensure you respect the closed-set enum architecture 
 To run the test suite for this crate:
 
 ```bash
-cargo test -p astrid-gateway -- --quiet
+cargo test -p astrid-kernel -- --quiet
 ```
 
 ## License

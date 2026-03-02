@@ -1,7 +1,7 @@
 //! Servers command - manage MCP servers.
 
 use astrid_core::truncate_to_boundary;
-use astrid_gateway::rpc::ToolInfo;
+use astrid_kernel::rpc::ToolInfo;
 use astrid_mcp::ServersConfig;
 use colored::Colorize;
 

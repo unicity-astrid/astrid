@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
-use astrid_gateway::rpc::{AstridRpcClient, BudgetInfo, DaemonEvent, DaemonStatus, SessionInfo};
-use astrid_gateway::server::DaemonPaths;
+use astrid_kernel::rpc::{AstridRpcClient, BudgetInfo, DaemonEvent, DaemonStatus, SessionInfo};
+use astrid_kernel::server::DaemonPaths;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 
 use crate::error::TelegramBotError;
@@ -44,7 +44,7 @@ impl DaemonClient {
         let paths = DaemonPaths::default_dir()
             .map_err(|e| TelegramBotError::DaemonConnection(e.to_string()))?;
 
-        let port = astrid_gateway::DaemonServer::read_port(&paths).ok_or_else(|| {
+        let port = astrid_kernel::DaemonServer::read_port(&paths).ok_or_else(|| {
             TelegramBotError::DaemonConnection(
                 "daemon port file not found — is astridd running?".to_string(),
             )

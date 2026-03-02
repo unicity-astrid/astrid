@@ -1,8 +1,8 @@
 //! Integration tests for the gateway runtime.
 
-use astrid_gateway::config::GatewayConfig;
-use astrid_gateway::runtime::{GatewayRuntime, RuntimeState};
-use astrid_gateway::state::PersistedState;
+use astrid_kernel::config::GatewayConfig;
+use astrid_kernel::runtime::{GatewayRuntime, RuntimeState};
+use astrid_kernel::state::PersistedState;
 use tempfile::TempDir;
 
 /// Test full gateway lifecycle: create -> start -> health check -> shutdown.
@@ -20,7 +20,7 @@ async fn test_gateway_lifecycle() {
 
     // Health should be OK (or degraded with no agents, which is fine)
     let health = runtime.health().await;
-    assert!(health.is_healthy() || health.state == astrid_gateway::health::HealthState::Degraded);
+    assert!(health.is_healthy() || health.state == astrid_kernel::health::HealthState::Degraded);
 
     // Shutdown
     runtime.shutdown().await.unwrap();
@@ -52,7 +52,7 @@ async fn test_state_persistence() {
     let mut state = PersistedState::new();
     state.set_agent(
         "test-agent",
-        astrid_gateway::state::AgentState {
+        astrid_kernel::state::AgentState {
             name: "test-agent".into(),
             session_id: Some("session-123".into()),
             last_activity: Some(chrono::Utc::now()),
@@ -88,7 +88,7 @@ async fn test_pending_approvals() {
     let mut state = PersistedState::new();
 
     // Add approval
-    state.add_pending_approval(astrid_gateway::state::PendingApproval {
+    state.add_pending_approval(astrid_kernel::state::PendingApproval {
         id: "approval-1".into(),
         agent_name: "test-agent".into(),
         session_id: "session-1".into(),
@@ -119,7 +119,7 @@ async fn test_task_queue() {
     let mut state = PersistedState::new();
 
     // Queue tasks with different priorities
-    state.queue_task(astrid_gateway::state::QueuedTask {
+    state.queue_task(astrid_kernel::state::QueuedTask {
         id: "task-low".into(),
         agent_name: "agent".into(),
         task_type: "message".into(),
@@ -130,7 +130,7 @@ async fn test_task_queue() {
         last_error: None,
     });
 
-    state.queue_task(astrid_gateway::state::QueuedTask {
+    state.queue_task(astrid_kernel::state::QueuedTask {
         id: "task-high".into(),
         agent_name: "agent".into(),
         task_type: "message".into(),
@@ -209,7 +209,7 @@ async fn test_subagent_state() {
 
     state.subagents.insert(
         "sub-1".into(),
-        astrid_gateway::state::SubAgentState {
+        astrid_kernel::state::SubAgentState {
             id: "sub-1".into(),
             parent_id: None,
             task: "Research topic X".into(),
@@ -222,7 +222,7 @@ async fn test_subagent_state() {
 
     state.subagents.insert(
         "sub-2".into(),
-        astrid_gateway::state::SubAgentState {
+        astrid_kernel::state::SubAgentState {
             id: "sub-2".into(),
             parent_id: Some("sub-1".into()),
             task: "Subtask of sub-1".into(),

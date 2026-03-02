@@ -1,8 +1,8 @@
 //! Daemon management commands (status, stop, run).
 
 use anyhow::Result;
-use astrid_gateway::DaemonServer;
-use astrid_gateway::server::{DaemonPaths, DaemonStartOptions};
+use astrid_kernel::DaemonServer;
+use astrid_kernel::server::{DaemonPaths, DaemonStartOptions};
 use colored::Colorize;
 
 use crate::daemon_client::DaemonClient;
