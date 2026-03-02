@@ -83,7 +83,7 @@ impl EventDispatcher {
 
         // Serialize the FULL message once for all invocations so capsules get metadata.
         let payload_bytes = match serde_json::to_vec(message) {
-            Ok(bytes) => std::sync::Arc::new(bytes),
+            Ok(bytes) => Arc::new(bytes),
             Err(e) => {
                 warn!(topic, error = %e, "Failed to serialize IPC message for dispatch");
                 return;
@@ -252,7 +252,7 @@ mod tests {
     // ── Dispatch integration tests ──────────────────────────────────
 
     use std::sync::atomic::{AtomicBool, Ordering};
-
+    use std::time::Duration;
     use async_trait::async_trait;
 
     use crate::capsule::{Capsule, CapsuleId, CapsuleState};
@@ -444,8 +444,7 @@ mod tests {
 
         let bus = Arc::new(EventBus::with_capacity(64));
         // Use a 1-second timeout for fast tests.
-        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus))
-            .with_timeout(Duration::from_secs(1));
+        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
         let handle = tokio::spawn(dispatcher.run());
 
         tokio::task::yield_now().await;

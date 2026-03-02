@@ -25,7 +25,7 @@ pub struct WasmEngine {
     _capsule_dir: PathBuf,
     plugin: Option<Arc<Mutex<extism::Plugin>>>,
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
-    tools: Vec<std::sync::Arc<dyn crate::tool::CapsuleTool>>,
+    tools: Vec<Arc<dyn crate::tool::CapsuleTool>>,
 }
 
 impl WasmEngine {
@@ -164,7 +164,7 @@ impl ExecutionEngine for WasmEngine {
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
-        let mut tools: Vec<std::sync::Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
+        let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
         for t in &self.manifest.tools {
             tools.push(Arc::new(tool::WasmCapsuleTool::new(
                 t.name.clone(),
@@ -197,7 +197,7 @@ impl ExecutionEngine for WasmEngine {
         self.inbound_rx.take()
     }
 
-    fn tools(&self) -> &[std::sync::Arc<dyn crate::tool::CapsuleTool>] {
+    fn tools(&self) -> &[Arc<dyn crate::tool::CapsuleTool>] {
         &self.tools
     }
 

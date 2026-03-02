@@ -19,8 +19,10 @@ pub mod config_bridge;
 /// The socket client for interacting with the Kernel.
 pub mod socket_client;
 mod formatter;
+mod repl;
 mod theme;
 mod commands;
+mod tui;
 
 use theme::print_banner;
 
