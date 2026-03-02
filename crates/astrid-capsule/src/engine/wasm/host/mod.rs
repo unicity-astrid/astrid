@@ -4,11 +4,11 @@ pub mod cron;
 pub mod fs;
 /// HTTP network executions for plugins.
 pub mod http;
-pub mod net;
 /// Inter-Process Communication bus.
 pub mod ipc;
 /// Key-Value persistent storage primitives.
 pub mod kv;
+pub mod net;
 /// Process spawning and sandboxing.
 pub mod process;
 /// `QuickJS` ABI definitions.

@@ -11,20 +11,20 @@
 //! is to instantiate `astrid_events::EventBus`, load `.capsule` files into
 //! the Extism sandbox, and route IPC bytes between them.
 
-/// The Unix Domain Socket IPC bridge for multi-process Extism scaling.
-pub mod socket;
 /// The Management API router listening to the `EventBus`.
 pub mod kernel_router;
+/// The Unix Domain Socket IPC bridge for multi-process Extism scaling.
+pub mod socket;
 
+use astrid_capabilities::DirHandle;
+use astrid_capsule::registry::CapsuleRegistry;
+use astrid_core::SessionId;
+use astrid_events::EventBus;
+use astrid_mcp::{McpClient, ServerManager, ServersConfig};
+use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use astrid_events::EventBus;
-use astrid_capsule::registry::CapsuleRegistry;
-use astrid_vfs::{Vfs, OverlayVfs, HostVfs};
-use astrid_capabilities::DirHandle;
-use astrid_core::SessionId;
-use astrid_mcp::{McpClient, ServerManager, ServersConfig};
 
 /// The core Operating System Kernel.
 pub struct Kernel {
@@ -50,7 +50,10 @@ impl Kernel {
     /// # Errors
     ///
     /// Returns an error if the VFS mount paths cannot be registered.
-    pub async fn new(session_id: SessionId, workspace_root: PathBuf) -> Result<Arc<Self>, std::io::Error> {
+    pub async fn new(
+        session_id: SessionId,
+        workspace_root: PathBuf,
+    ) -> Result<Arc<Self>, std::io::Error> {
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
 
@@ -64,16 +67,25 @@ impl Kernel {
 
         // 2. Initialize the physical filesystem layers
         let lower_vfs = HostVfs::new();
-        lower_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
+        lower_vfs
+            .register_dir(root_handle.clone(), workspace_root.clone())
+            .await
+            .map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
 
         let upper_vfs = HostVfs::new();
-        upper_vfs.register_dir(root_handle.clone(), workspace_root.clone()).await.map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
+        upper_vfs
+            .register_dir(root_handle.clone(), workspace_root.clone())
+            .await
+            .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
 
         // 3. Wrap in copy-on-write OverlayVfs
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
         // Spawn the local Unix Domain Socket IPC bridge
-        drop(socket::spawn_socket_server(session_id.clone(), Arc::clone(&event_bus)));
+        drop(socket::spawn_socket_server(
+            session_id.clone(),
+            Arc::clone(&event_bus),
+        ));
 
         let kernel = Arc::new(Self {
             session_id,
@@ -95,40 +107,43 @@ impl Kernel {
     /// Returns an error if the manifest cannot be loaded, the capsule cannot be created, or registration fails.
     pub async fn load_capsule(&self, dir: PathBuf) -> Result<(), anyhow::Error> {
         let manifest_path = dir.join("Capsule.toml");
-        let manifest = astrid_capsule::discovery::load_manifest(&manifest_path).map_err(|e| anyhow::anyhow!(e))?;
+        let manifest = astrid_capsule::discovery::load_manifest(&manifest_path)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp_client.clone());
         let mut capsule = loader.create_capsule(manifest, dir)?;
 
         // Build the context
         let kv = astrid_storage::ScopedKvStore::new(
-            Arc::new(astrid_storage::MemoryKvStore::new()), 
-            format!("capsule:{}", capsule.id())
+            Arc::new(astrid_storage::MemoryKvStore::new()),
+            format!("capsule:{}", capsule.id()),
         )?;
 
         let ctx = astrid_capsule::context::CapsuleContext::new(
             self.workspace_root.clone(),
             kv,
-            Arc::clone(&self.event_bus)
+            Arc::clone(&self.event_bus),
         );
 
         capsule.load(&ctx).await?;
 
         let mut registry = self.capsules.write().await;
-        registry.register(capsule).map_err(|e| anyhow::anyhow!("Failed to register capsule: {e}"))?;
-        
+        registry
+            .register(capsule)
+            .map_err(|e| anyhow::anyhow!("Failed to register capsule: {e}"))?;
+
         Ok(())
     }
 
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/plugins` and `.astrid/plugins`).
     pub async fn load_all_capsules(&self) {
         use astrid_core::dirs::AstridHome;
-        
+
         let mut paths = Vec::new();
         if let Ok(home) = AstridHome::resolve() {
             paths.push(home.capsules_dir());
         }
-        
+
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
         for (manifest, dir) in discovered {
             if let Err(e) = self.load_capsule(dir.clone()).await {

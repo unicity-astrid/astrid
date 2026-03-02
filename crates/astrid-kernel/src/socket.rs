@@ -15,7 +15,7 @@ pub fn kernel_socket_path(session_id: &SessionId) -> PathBuf {
         Err(e) => {
             warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
             PathBuf::from("/tmp/.astrid/sessions")
-        }
+        },
     };
     base.join(session_id.0.to_string()).join("kernel.sock")
 }

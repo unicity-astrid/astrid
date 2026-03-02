@@ -1,6 +1,6 @@
-use extism::{CurrentPlugin, Error, UserData, Val};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
+use extism::{CurrentPlugin, Error, UserData, Val};
 
 // Stub implementation for now, will map to true UnixSockets soon!
 pub(crate) fn astrid_net_bind_unix_impl(

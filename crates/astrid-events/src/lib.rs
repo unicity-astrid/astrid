@@ -63,9 +63,9 @@ mod bus;
 #[cfg(feature = "runtime")]
 mod event;
 pub mod ipc;
-pub mod llm;
 /// Definitions for Kernel Management API requests and responses.
 pub mod kernel_api;
+pub mod llm;
 #[cfg(feature = "runtime")]
 mod subscriber;
 
