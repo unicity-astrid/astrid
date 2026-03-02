@@ -12,6 +12,7 @@ astrid-events.workspace = true
 astrid-capsule.workspace = true
 astrid-capabilities.workspace = true
 astrid-vfs.workspace = true
+astrid-mcp.workspace = true
 
 tokio = { workspace = true, features = ["full", "signal"] }
 tracing.workspace = true

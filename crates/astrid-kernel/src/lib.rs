@@ -21,6 +21,7 @@ use astrid_events::EventBus;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_vfs::{Vfs, OverlayVfs, HostVfs};
 use astrid_capabilities::DirHandle;
+use astrid_mcp::{McpClient, ServerManager, ServersConfig};
 
 /// The core Operating System Kernel.
 pub struct Kernel {
@@ -28,6 +29,8 @@ pub struct Kernel {
     pub event_bus: Arc<EventBus>,
     /// The process manager (loaded WASM capsules).
     pub plugins: Arc<RwLock<CapsuleRegistry>>,
+    /// The MCP native process manager.
+    pub mcp_client: McpClient,
     /// The global Virtual File System mount.
     pub vfs: Arc<dyn Vfs>,
     /// The global physical root handle (cap-std) for the VFS.
@@ -45,6 +48,11 @@ impl Kernel {
     pub async fn new(workspace_root: PathBuf) -> Result<Self, std::io::Error> {
         let event_bus = Arc::new(EventBus::new());
         let plugins = Arc::new(RwLock::new(CapsuleRegistry::new()));
+        
+        // 1. Initialize MCP process manager
+        let mcp_config = ServersConfig::load_default().unwrap_or_default();
+        let mcp_manager = ServerManager::new(mcp_config);
+        let mcp_client = McpClient::new(mcp_manager);
 
         // 1. Establish the physical security boundary (sandbox handle)
         let root_handle = DirHandle::new();
@@ -60,11 +68,12 @@ impl Kernel {
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
         // Spawn the local Unix Domain Socket IPC bridge
-        std::mem::drop(crate::socket::spawn_socket_server(Arc::clone(&event_bus)));
+        drop(socket::spawn_socket_server(Arc::clone(&event_bus)));
 
         Ok(Self {
             event_bus,
             plugins,
+            mcp_client,
             vfs: Arc::new(overlay_vfs),
             vfs_root_handle: root_handle,
             workspace_root,
