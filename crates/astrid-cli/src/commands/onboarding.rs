@@ -599,7 +599,7 @@ pub(crate) fn run_spark_onboarding() {
         .unwrap_or_default();
 
     // Build and write spark.toml using proper TOML serialization (avoids injection)
-    let spark = astrid_runtime::SparkConfig {
+    let spark = astrid_tools::spark::SparkConfig {
         callsign: callsign.trim().to_string(),
         class: class.trim().to_string(),
         aura: aura.trim().to_string(),

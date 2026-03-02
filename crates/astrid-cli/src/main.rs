@@ -463,7 +463,7 @@ async fn main() -> Result<()> {
             handle_hooks(command).await?;
         },
         Some(Commands::Sessions { command }) => {
-            handle_sessions(command)?;
+            handle_sessions(command).await?;
         },
         Some(Commands::Servers { command }) => {
             handle_servers(command).await?;
@@ -512,41 +512,29 @@ async fn handle_daemon(command: DaemonCommands) -> Result<()> {
     }
 }
 
-fn handle_sessions(command: SessionCommands) -> Result<()> {
-    use astrid_core::dirs::AstridHome;
-    use astrid_runtime::SessionStore;
-
-    let home = AstridHome::resolve()?;
-    let store = SessionStore::from_home(&home);
+async fn handle_sessions(command: SessionCommands) -> Result<()> {
+    let client = crate::daemon_client::DaemonClient::connect().await?;
 
     match command {
-        SessionCommands::List => sessions::list_sessions(&store),
-        SessionCommands::Show { id, last } => {
-            let resolved = resolve_session_id(&store, id, last)?;
-            sessions::show_session(&store, &resolved)
+        SessionCommands::List => sessions::list_sessions(&client).await,
+        SessionCommands::Show { .. } => {
+            anyhow::bail!("Show session is temporarily disabled during the microkernel transition.")
         },
         SessionCommands::Delete { id, last } => {
-            let resolved = resolve_session_id(&store, id, last)?;
-            sessions::delete_session(&store, &resolved)
+            let resolved = resolve_session_id(id, last)?;
+            sessions::delete_session(&client, &resolved).await
         },
-        SessionCommands::Cleanup { older_than } => sessions::cleanup_sessions(&store, older_than),
+        SessionCommands::Cleanup { .. } => {
+            anyhow::bail!("Cleanup is temporarily disabled during the microkernel transition.")
+        },
     }
 }
 
 /// Resolve a session ID from either an explicit ID or `--last`.
-fn resolve_session_id(
-    store: &astrid_runtime::SessionStore,
-    id: Option<String>,
-    last: bool,
-) -> Result<String> {
+fn resolve_session_id(id: Option<String>, last: bool) -> Result<String> {
     match (id, last) {
         (Some(id), false) => Ok(id),
-        (None, true) => {
-            let session = store
-                .most_recent()?
-                .ok_or_else(|| anyhow::anyhow!("No sessions found"))?;
-            Ok(session.id.0.to_string())
-        },
+        (None, true) => anyhow::bail!("--last is not supported over RPC yet"),
         (Some(_), true) => anyhow::bail!("Cannot specify both a session ID and --last"),
         (None, false) => anyhow::bail!("Provide a session ID or use --last"),
     }
