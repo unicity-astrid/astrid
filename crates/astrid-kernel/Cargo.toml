@@ -10,6 +10,8 @@ rust-version.workspace = true
 [dependencies]
 astrid-events.workspace = true
 astrid-capsule.workspace = true
+astrid-capabilities.workspace = true
+astrid-vfs.workspace = true
 
 tokio = { workspace = true, features = ["full", "signal"] }
 tracing.workspace = true
