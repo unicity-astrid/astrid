@@ -39,9 +39,9 @@ members = [
     "crates/astrid-kernel",
 
     # Frontends
-    "crates/astrid-cli",
-    "crates/astrid-cli-mockup",  # UI/UX prototype
-    "crates/astrid-telegram",
+    # "crates/astrid-cli",
+    # "crates/astrid-cli-mockup",  # UI/UX prototype
+    # "crates/astrid-telegram",
     "crates/astrid-vfs",
     "crates/astrid-sys",
     "crates/astrid-sdk",
