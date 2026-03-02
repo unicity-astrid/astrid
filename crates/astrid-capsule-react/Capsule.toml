@@ -1,5 +1,5 @@
 [package]
-name = "astrid-capsule-orchestrator"
+name = "astrid-capsule-react"
 version = "0.1.0"
 description = "Default event-driven orchestrator for Astrid OS"
 authors = ["Astrid Core Team"]
@@ -7,7 +7,7 @@ astrid-version = ">=0.1.0"
 
 [[component]]
 id = "orchestrator"
-file = "astrid_capsule_orchestrator.wasm"
+file = "astrid_capsule_react.wasm"
 type = "executable"
 
 # User input from frontends (CLI, Telegram, etc.)

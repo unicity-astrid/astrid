@@ -144,10 +144,10 @@ impl SessionState {
 
 /// Default orchestrator capsule.
 #[derive(Default)]
-pub struct Orchestrator;
+pub struct ReactAgent;
 
 #[capsule]
-impl Orchestrator {
+impl ReactAgent {
     /// Handles `user.prompt` events from frontends (CLI, Telegram, etc.).
     ///
     /// Adds the user message to conversation history, then requests the
@@ -357,7 +357,7 @@ impl Orchestrator {
     }
 }
 
-impl Orchestrator {
+impl ReactAgent {
     /// Called when the LLM stream finishes. Evaluates whether to dispatch
     /// tool calls or emit the final response.
     fn handle_stream_done(state: &mut SessionState) -> Result<(), SysError> {

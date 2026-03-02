@@ -1,5 +1,5 @@
 [package]
-name = "astrid-capsule-orchestrator"
+name = "astrid-capsule-react"
 version = "0.1.0"
 edition = "2024"
 description = "The default LLM reasoning and execution loop for Astrid OS"
