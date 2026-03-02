@@ -171,7 +171,7 @@ pub async fn run_or_connect(session: Option<String>, workspace: Option<std::path
         SessionId::from_uuid(Uuid::new_v4())
     };
 
-    let socket_path = astrid_kernel::socket::kernel_socket_path(&session_id);
+    let socket_path = socket_client::proxy_socket_path(&session_id);
 
     // 2. Check if a Kernel is already running for this session
     if socket_path.exists() {

@@ -11,7 +11,7 @@ description = "Core runtime management for User-Space Capsules in Astrid OS"
 astrid-core = { workspace = true }
 astrid-vfs = { workspace = true }
 astrid-capabilities = { workspace = true }
-astrid-events = { workspace = true }
+astrid-events = { workspace = true, features = ["runtime"] }
 astrid-storage = { workspace = true }
 astrid-approval = { workspace = true, optional = true }
 astrid-mcp = { workspace = true }

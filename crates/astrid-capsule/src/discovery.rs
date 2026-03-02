@@ -29,10 +29,10 @@ pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<(CapsuleManife
     let mut manifests = Vec::new();
 
     // Workspace-level capsules
-    let local_plugins_dir = PathBuf::from(".astrid/plugins");
-    if local_plugins_dir.exists() {
-        info!(path = %local_plugins_dir.display(), "Discovering capsules from local directory");
-        match load_manifests_from_dir(&local_plugins_dir) {
+    let local_capsules_dir = PathBuf::from(".astrid/capsules");
+    if local_capsules_dir.exists() {
+        info!(path = %local_capsules_dir.display(), "Discovering capsules from local directory");
+        match load_manifests_from_dir(&local_capsules_dir) {
             Ok(found) => manifests.extend(found),
             Err(e) => warn!(error = %e, "Failed to load capsules from local directory"),
         }

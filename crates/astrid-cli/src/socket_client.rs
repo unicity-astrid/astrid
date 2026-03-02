@@ -2,8 +2,24 @@ use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use astrid_events::AstridEvent;
-use anyhow::{Context, Result};
 use astrid_core::SessionId;
+use tracing::warn;
+
+use anyhow::{Context, Result};
+
+/// Path to the local Unix Domain Socket managed by the CLI Proxy Capsule.
+#[must_use]
+pub fn proxy_socket_path(session_id: &SessionId) -> std::path::PathBuf {
+    use astrid_core::dirs::AstridHome;
+    let base = match AstridHome::resolve() {
+        Ok(home) => home.sessions_dir(),
+        Err(e) => {
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
+            std::path::PathBuf::from("/tmp/.astrid/sessions")
+        }
+    };
+    base.join(session_id.0.to_string()).join("ipc.sock")
+}
 
 /// A client connection to the Kernel's Unix Domain Socket.
 pub struct SocketClient {
@@ -19,8 +35,8 @@ impl SocketClient {
     /// # Errors
     /// Returns an error if the socket file does not exist or connection fails.
     pub async fn connect(session_id: SessionId) -> Result<Self> {
-        let path = astrid_kernel::socket::kernel_socket_path(&session_id);
-        
+        let path = proxy_socket_path(&session_id);
+
         if !path.exists() {
             anyhow::bail!("Kernel socket for session {session_id} not found at {}", path.display());
         }
