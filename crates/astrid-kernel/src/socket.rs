@@ -5,11 +5,11 @@ use tracing::{info, warn, error};
 use std::sync::Arc;
 use astrid_events::EventBus;
 
-/// Path to the local Unix Domain Socket for the daemon.
+/// Path to the local Unix Domain Socket for the kernel.
 #[must_use]
-pub fn daemon_socket_path() -> PathBuf {
+pub fn kernel_socket_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".astrid/daemon.sock")
+    PathBuf::from(home).join(".astrid/kernel.sock")
 }
 
 /// Spawns a background task that listens for local IPC connections via Unix Domain Sockets.
@@ -17,7 +17,7 @@ pub fn daemon_socket_path() -> PathBuf {
 #[allow(clippy::cast_possible_truncation)]
 pub fn spawn_socket_server(event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let path = daemon_socket_path();
+        let path = kernel_socket_path();
         
         // Remove stale socket file if it exists
         if path.exists() {
