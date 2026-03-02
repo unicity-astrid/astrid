@@ -29,22 +29,15 @@ pub use crate::{GatewayError, GatewayResult};
 pub use crate::{AgentConfig, GatewayConfig, ModelConfig, SessionConfig, TimeoutConfig};
 
 // Runtime
-pub use crate::GatewayRuntime;
 
 // Health checks
-pub use crate::{HealthCheck, HealthState, HealthStatus};
 
 // Agent management
-pub use crate::{AgentHandle, AgentManager, AgentStatus};
 
 // Routing
-pub use crate::{ChannelBinding, MessageRouter};
 
 // Secrets
-pub use crate::Secrets;
 
 // State persistence
-pub use crate::{PendingApproval, PersistedState, QueuedTask, SubAgentState};
 
 // Subagent management
-pub use crate::{SubAgentHandle, SubAgentId, SubAgentPool, SubAgentPoolStats, SubAgentStatus};

@@ -55,28 +55,14 @@ pub mod config;
 pub mod config_bridge;
 pub mod daemon_frontend;
 pub mod error;
-pub mod health;
-pub mod manager;
-pub mod router;
 pub mod rpc;
-pub mod runtime;
-pub mod secrets;
 pub mod server;
-pub mod state;
-pub mod subagent;
 
 pub use config::{
     AgentConfig, GatewayConfig, ModelConfig, RetrySettings, SessionConfig, TimeoutConfig,
 };
 pub use error::{GatewayError, GatewayResult};
-pub use health::{HealthCheck, HealthState, HealthStatus};
-pub use manager::{AgentHandle, AgentManager, AgentStatus};
-pub use router::{ChannelBinding, MessageRouter};
 pub use rpc::{
     AstridRpcClient, CapsuleInfo, DaemonEvent, DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
 };
-pub use runtime::GatewayRuntime;
-pub use secrets::Secrets;
 pub use server::{DaemonServer, DaemonStartOptions};
-pub use state::{PendingApproval, PersistedState, QueuedTask, SubAgentState};
-pub use subagent::{SubAgentHandle, SubAgentId, SubAgentPool, SubAgentPoolStats, SubAgentStatus};
