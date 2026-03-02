@@ -11,9 +11,8 @@
 //! is to instantiate `astrid_events::EventBus`, load `.capsule` files into
 //! the Extism sandbox, and route IPC bytes between them.
 
-pub mod config;
-pub mod config_bridge;
-pub mod error;
+/// The Unix Domain Socket IPC bridge for multi-process Extism scaling.
+pub mod socket;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -32,9 +31,15 @@ impl Kernel {
     /// Boot a new Kernel instance.
     #[must_use]
     pub fn new() -> Self {
+        let event_bus = Arc::new(EventBus::new());
+        let plugins = Arc::new(RwLock::new(CapsuleRegistry::new()));
+        
+        // Spawn the local Unix Domain Socket IPC bridge
+        std::mem::drop(crate::socket::spawn_socket_server(Arc::clone(&event_bus)));
+        
         Self {
-            event_bus: Arc::new(EventBus::new()),
-            plugins: Arc::new(RwLock::new(CapsuleRegistry::new())),
+            event_bus,
+            plugins,
         }
     }
 }

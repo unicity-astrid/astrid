@@ -128,7 +128,7 @@ tempfile = "3"
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
 
 # Async runtime
-tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread"] }
+tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
