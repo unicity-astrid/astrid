@@ -4,20 +4,21 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, warn, error};
 use std::sync::Arc;
 use astrid_events::EventBus;
+use astrid_core::SessionId;
 
 /// Path to the local Unix Domain Socket for the kernel.
 #[must_use]
-pub fn kernel_socket_path() -> PathBuf {
+pub fn kernel_socket_path(session_id: &SessionId) -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".astrid/kernel.sock")
+    PathBuf::from(home).join(".astrid").join("sessions").join(session_id.0.to_string()).join("kernel.sock")
 }
 
 /// Spawns a background task that listens for local IPC connections via Unix Domain Sockets.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
-pub fn spawn_socket_server(event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_socket_server(session_id: SessionId, event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let path = kernel_socket_path();
+        let path = kernel_socket_path(&session_id);
         
         // Remove stale socket file if it exists
         if path.exists() {

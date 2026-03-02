@@ -23,10 +23,13 @@ use astrid_events::EventBus;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_vfs::{Vfs, OverlayVfs, HostVfs};
 use astrid_capabilities::DirHandle;
+use astrid_core::SessionId;
 use astrid_mcp::{McpClient, ServerManager, ServersConfig};
 
 /// The core Operating System Kernel.
 pub struct Kernel {
+    /// The unique identifier for this kernel session.
+    pub session_id: SessionId,
     /// The global IPC message bus.
     pub event_bus: Arc<EventBus>,
     /// The process manager (loaded WASM capsules).
@@ -47,7 +50,7 @@ impl Kernel {
     /// # Errors
     ///
     /// Returns an error if the VFS mount paths cannot be registered.
-    pub async fn new(workspace_root: PathBuf) -> Result<Arc<Self>, std::io::Error> {
+    pub async fn new(session_id: SessionId, workspace_root: PathBuf) -> Result<Arc<Self>, std::io::Error> {
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
 
@@ -70,9 +73,10 @@ impl Kernel {
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
         // Spawn the local Unix Domain Socket IPC bridge
-        drop(socket::spawn_socket_server(Arc::clone(&event_bus)));
+        drop(socket::spawn_socket_server(session_id.clone(), Arc::clone(&event_bus)));
 
         let kernel = Arc::new(Self {
+            session_id,
             event_bus,
             capsules,
             mcp_client,
@@ -80,7 +84,7 @@ impl Kernel {
             vfs_root_handle: root_handle,
             workspace_root,
         });
-        std::mem::drop(crate::kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
+        drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         Ok(kernel)
     }
 

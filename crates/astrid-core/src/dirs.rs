@@ -207,14 +207,14 @@ impl AstridHome {
 
     /// Installed plugins directory (`~/.astrid/plugins/`).
     #[must_use]
-    pub fn plugins_dir(&self) -> PathBuf {
-        self.root.join("plugins")
+    pub fn capsules_dir(&self) -> PathBuf {
+        self.root.join("capsules")
     }
 
-    /// Plugin compilation cache directory (`~/.astrid/cache/plugins/`).
+    /// Capsule compilation cache directory (`~/.astrid/cache/capsules/`).
     #[must_use]
-    pub fn plugin_cache_dir(&self) -> PathBuf {
-        self.root.join("cache").join("plugins")
+    pub fn capsules_cache_dir(&self) -> PathBuf {
+        self.root.join("cache").join("capsules")
     }
 
     /// Hooks directory (`~/.astrid/hooks/`).
@@ -512,11 +512,11 @@ mod tests {
             PathBuf::from("/tmp/test-astrid/state.db")
         );
         assert_eq!(
-            home.plugins_dir(),
+            home.capsules_dir(),
             PathBuf::from("/tmp/test-astrid/plugins")
         );
         assert_eq!(
-            home.plugin_cache_dir(),
+            home.capsules_cache_dir(),
             PathBuf::from("/tmp/test-astrid/cache/plugins")
         );
         assert_eq!(home.hooks_dir(), PathBuf::from("/tmp/test-astrid/hooks"));
