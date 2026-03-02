@@ -36,12 +36,12 @@ members = [
     "crates/astrid-integration-tests",
 
     # Gateway
-    "crates/astrid-gateway",
+    "crates/astrid-kernel",
 
     # Frontends
-    "crates/astrid-cli",
-    "crates/astrid-cli-mockup",  # UI/UX prototype
-    "crates/astrid-telegram",
+    # "crates/astrid-cli",
+    # "crates/astrid-cli-mockup",  # UI/UX prototype
+    # "crates/astrid-telegram",
     "crates/astrid-vfs",
     "crates/astrid-sys",
     "crates/astrid-sdk",
@@ -78,7 +78,7 @@ astrid-test = { path = "crates/astrid-test" }
 astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
 astrid-tools = { path = "crates/astrid-tools", version = "0.1.1" }
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
-astrid-gateway = { path = "crates/astrid-gateway", version = "0.1.1" }
+astrid-kernel = { path = "crates/astrid-kernel", version = "0.1.1" }
 astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }
 astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
 
@@ -128,7 +128,7 @@ tempfile = "3"
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
 
 # Async runtime
-tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread"] }
+tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

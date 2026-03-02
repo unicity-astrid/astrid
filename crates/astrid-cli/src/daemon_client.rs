@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use astrid_core::{ApprovalDecision, ElicitationResponse, SessionId};
-use astrid_gateway::DaemonServer;
-use astrid_gateway::rpc::{
+use astrid_kernel::DaemonServer;
+use astrid_kernel::rpc::{
     AllowanceInfo, AstridRpcClient, AuditEntryInfo, BudgetInfo, CapsuleInfo, DaemonEvent,
     DaemonStatus, McpServerInfo, SessionInfo, ToolInfo,
 };
-use astrid_gateway::server::DaemonPaths;
+use astrid_kernel::server::DaemonPaths;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 
 /// A client that connects to the Astrid daemon.

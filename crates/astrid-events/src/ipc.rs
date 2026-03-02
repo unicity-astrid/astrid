@@ -51,6 +51,8 @@ impl IpcMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum IpcPayload {
+    /// Raw, arbitrary JSON.
+    RawJson(Value),
     /// User input provided via a frontend (CLI, Telegram).
     UserInput {
         /// The raw text input.

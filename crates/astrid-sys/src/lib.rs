@@ -74,6 +74,18 @@ extern "ExtismHost" {
     pub fn astrid_get_caller() -> Vec<u8>;
 
     // -----------------------------------------------------------------------
+    // Network (Sockets & Streams)
+    // -----------------------------------------------------------------------
+    /// Bind a Unix Domain Socket and return a listener handle.
+    pub fn astrid_net_bind_unix(path: Vec<u8>) -> Vec<u8>;
+    /// Accept an incoming connection on a bound Unix listener handle. Returns a stream handle.
+    pub fn astrid_net_accept(listener_handle: Vec<u8>) -> Vec<u8>;
+    /// Read bytes from a stream handle.
+    pub fn astrid_net_read(stream_handle: Vec<u8>) -> Vec<u8>;
+    /// Write bytes to a stream handle.
+    pub fn astrid_net_write(stream_handle: Vec<u8>, data: Vec<u8>);
+
+    // -----------------------------------------------------------------------
     // General System (Network, Logging, & Scheduling)
     // -----------------------------------------------------------------------
     /// Issue an HTTP request.

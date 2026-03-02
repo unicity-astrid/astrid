@@ -1,0 +1,26 @@
+[package]
+name = "astrid-kernel"
+version.workspace = true
+edition.workspace = true
+description = "Astrid micro-kernel, the core of the Astrid OS"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+astrid-events.workspace = true
+astrid-capsule.workspace = true
+astrid-capabilities.workspace = true
+astrid-vfs.workspace = true
+astrid-mcp.workspace = true
+
+tokio = { workspace = true, features = ["full", "signal"] }
+tracing.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+astrid-storage.workspace = true
+astrid-core.workspace = true
+
+[lints]
+workspace = true

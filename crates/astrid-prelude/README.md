@@ -26,7 +26,7 @@ While this compartmentalization is a strict requirement for the system's securit
 *   **`astrid_core`**: Foundational types, unified error handling (`RuntimeResult`), and identity.
 *   **`astrid_crypto`**: Key pairs, cryptographic signatures, and hashing primitives.
 *   **`astrid_events`**: Event bus architecture and asynchronous message passing types.
-*   **`astrid_gateway`**: Daemon layer communication, routing, and IPC abstractions.
+*   **`astrid_kernel`**: Daemon layer communication, routing, and IPC abstractions.
 *   **`astrid_hooks`**: Interception logic and lifecycle hook management.
 *   **`astrid_llm`**: Model providers, stream events, and message abstractions.
 *   **`astrid_mcp`**: Model Context Protocol clients, tools, and server configurations.

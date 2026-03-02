@@ -8,7 +8,7 @@ use astrid_core::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationRequest, ElicitationResponse,
     ElicitationSchema, SessionId,
 };
-use astrid_gateway::rpc::DaemonEvent;
+use astrid_kernel::rpc::DaemonEvent;
 use colored::Colorize;
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 
@@ -72,7 +72,7 @@ fn resolve_model_name() -> String {
 async fn run_json_chat(
     client: &DaemonClient,
     session_id: &SessionId,
-    session_info: &astrid_gateway::rpc::SessionInfo,
+    session_info: &astrid_kernel::rpc::SessionInfo,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
     let mut formatter: Box<dyn OutputFormatter> = create_formatter(format);

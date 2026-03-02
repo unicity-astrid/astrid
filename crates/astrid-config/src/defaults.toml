@@ -331,7 +331,7 @@ directives = []
 # ============================================================================
 # Gateway Configuration
 # ============================================================================
-# Settings for the astrid-gateway daemon (if using daemon mode).
+# Settings for the astrid-kernel daemon (if using daemon mode).
 
 [gateway]
 # Directory to store gateway state (server metadata, health status, etc.)

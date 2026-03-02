@@ -776,8 +776,8 @@ mod tests {
 
         // Verify the budget was actually committed, not refunded
         let snapshot = t.budget_tracker.snapshot();
-        assert_eq!(
-            snapshot.session_spent_usd, 5.0,
+        assert!(
+            (snapshot.session_spent_usd - 5.0).abs() < f64::EPSILON,
             "Expected budget to be committed, but it was refunded"
         );
     }

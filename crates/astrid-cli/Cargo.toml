@@ -24,7 +24,7 @@ astrid-audit = { workspace = true }
 astrid-mcp = { workspace = true }
 astrid-llm = { workspace = true }
 astrid-runtime = { workspace = true }
-astrid-gateway = { workspace = true }
+astrid-kernel = { workspace = true }
 astrid-hooks = { workspace = true }
 astrid-capsule = { workspace = true }
 astrid-telegram = { workspace = true }
