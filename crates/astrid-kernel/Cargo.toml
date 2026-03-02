@@ -19,6 +19,7 @@ tracing.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 astrid-storage.workspace = true
+astrid-core.workspace = true
 
 [lints]
 workspace = true

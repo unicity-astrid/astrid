@@ -72,6 +72,27 @@ impl Kernel {
         Ok(())
     }
 
+    /// Auto-discover and load all capsules from the standard directories (`~/.astrid/plugins` and `.astrid/plugins`).
+    pub async fn load_all_capsules(&self) {
+        use astrid_core::dirs::AstridHome;
+        
+        let mut paths = Vec::new();
+        if let Ok(home) = AstridHome::resolve() {
+            paths.push(home.plugins_dir());
+        }
+        
+        let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
+        for (manifest, dir) in discovered {
+            if let Err(e) = self.load_capsule(dir.clone()).await {
+                tracing::warn!(
+                    capsule = %manifest.package.name,
+                    error = %e,
+                    "Failed to load capsule during discovery"
+                );
+            }
+        }
+    }
+
     /// Boot a new Kernel instance mounted at the specified directory.
     ///
     /// # Errors
