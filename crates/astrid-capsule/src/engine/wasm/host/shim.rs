@@ -109,6 +109,18 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::NetBindUnix => crate::engine::wasm::host::net::astrid_net_bind_unix_impl(
+            plugin, &fn_inputs, &mut fn_outputs, user_data,
+        )?,
+        WasmHostFunction::NetAccept => crate::engine::wasm::host::net::astrid_net_accept_impl(
+            plugin, &fn_inputs, &mut fn_outputs, user_data,
+        )?,
+        WasmHostFunction::NetRead => crate::engine::wasm::host::net::astrid_net_read_impl(
+            plugin, &fn_inputs, &mut fn_outputs, user_data,
+        )?,
+        WasmHostFunction::NetWrite => crate::engine::wasm::host::net::astrid_net_write_impl(
+            plugin, &fn_inputs, &mut fn_outputs, user_data,
+        )?,
         WasmHostFunction::GetConfig => crate::engine::wasm::host::sys::astrid_get_config_impl(
             plugin,
             &fn_inputs,

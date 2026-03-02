@@ -4,6 +4,7 @@ pub mod cron;
 pub mod fs;
 /// HTTP network executions for plugins.
 pub mod http;
+pub mod net;
 /// Inter-Process Communication bus.
 pub mod ipc;
 /// Key-Value persistent storage primitives.
@@ -41,6 +42,10 @@ pub enum WasmHostFunction {
     KvGet,
     KvSet,
     GetConfig,
+    NetBindUnix,
+    NetAccept,
+    NetRead,
+    NetWrite,
     GetCaller,
     HttpRequest,
     TriggerHook,
@@ -99,6 +104,10 @@ impl WasmHostFunction {
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::GetConfig => "astrid_get_config",
+            Self::NetBindUnix => "astrid_net_bind_unix",
+            Self::NetAccept => "astrid_net_accept",
+            Self::NetRead => "astrid_net_read",
+            Self::NetWrite => "astrid_net_write",
             Self::GetCaller => "astrid_get_caller",
             Self::HttpRequest => "astrid_http_request",
             Self::Log => "astrid_log",
@@ -126,8 +135,11 @@ impl WasmHostFunction {
             | Self::HttpRequest
             | Self::SpawnHost
             | Self::CronCancel
+            | Self::NetBindUnix
+            | Self::NetAccept
+            | Self::NetRead
             | Self::TriggerHook => 1,
-            Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log => 2,
+            Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
             Self::GetCaller => 0,
         }
@@ -140,6 +152,7 @@ impl WasmHostFunction {
             Self::FsMkdir
             | Self::FsUnlink
             | Self::WriteFile
+            | Self::NetWrite
             | Self::IpcPublish
             | Self::IpcUnsubscribe
             | Self::KvSet
@@ -159,7 +172,10 @@ impl WasmHostFunction {
             | Self::SpawnHost
             | Self::HttpRequest
             | Self::GetCaller
-            | Self::TriggerHook => TYPE_I64,
+            | Self::TriggerHook
+            | Self::NetBindUnix
+            | Self::NetAccept
+            | Self::NetRead => TYPE_I64,
         }
     }
 }
@@ -232,6 +248,18 @@ pub fn register_host_functions(
             },
             WasmHostFunction::KvSet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_set_impl)
+            },
+            WasmHostFunction::NetBindUnix => {
+                builder.with_function(func.name(), args, rets, ud, net::astrid_net_bind_unix_impl)
+            },
+            WasmHostFunction::NetAccept => {
+                builder.with_function(func.name(), args, rets, ud, net::astrid_net_accept_impl)
+            },
+            WasmHostFunction::NetRead => {
+                builder.with_function(func.name(), args, rets, ud, net::astrid_net_read_impl)
+            },
+            WasmHostFunction::NetWrite => {
+                builder.with_function(func.name(), args, rets, ud, net::astrid_net_write_impl)
             },
             WasmHostFunction::GetConfig => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_get_config_impl)
