@@ -28,7 +28,7 @@ pub struct Kernel {
     /// The global IPC message bus.
     pub event_bus: Arc<EventBus>,
     /// The process manager (loaded WASM capsules).
-    pub plugins: Arc<RwLock<CapsuleRegistry>>,
+    pub capsules: Arc<RwLock<CapsuleRegistry>>,
     /// The MCP native process manager.
     pub mcp_client: McpClient,
     /// The global Virtual File System mount.
@@ -40,6 +40,38 @@ pub struct Kernel {
 }
 
 impl Kernel {
+    /// Load a capsule into the Kernel from a directory containing a Capsule.toml
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the manifest cannot be loaded, the capsule cannot be created, or registration fails.
+    pub async fn load_capsule(&self, dir: PathBuf) -> Result<(), anyhow::Error> {
+        let manifest_path = dir.join("Capsule.toml");
+        let manifest = astrid_capsule::discovery::load_manifest(&manifest_path).map_err(|e| anyhow::anyhow!(e))?;
+
+        let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp_client.clone());
+        let mut capsule = loader.create_capsule(manifest, dir)?;
+
+        // Build the context
+        let kv = astrid_storage::ScopedKvStore::new(
+            Arc::new(astrid_storage::MemoryKvStore::new()), 
+            format!("capsule:{}", capsule.id())
+        )?;
+
+        let ctx = astrid_capsule::context::CapsuleContext::new(
+            self.workspace_root.clone(),
+            kv,
+            Arc::clone(&self.event_bus)
+        );
+
+        capsule.load(&ctx).await?;
+
+        let mut registry = self.capsules.write().await;
+        registry.register(capsule).map_err(|e| anyhow::anyhow!("Failed to register capsule: {e}"))?;
+        
+        Ok(())
+    }
+
     /// Boot a new Kernel instance mounted at the specified directory.
     ///
     /// # Errors
@@ -47,7 +79,7 @@ impl Kernel {
     /// Returns an error if the VFS mount paths cannot be registered.
     pub async fn new(workspace_root: PathBuf) -> Result<Self, std::io::Error> {
         let event_bus = Arc::new(EventBus::new());
-        let plugins = Arc::new(RwLock::new(CapsuleRegistry::new()));
+        let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
         
         // 1. Initialize MCP process manager
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
@@ -72,7 +104,7 @@ impl Kernel {
 
         Ok(Self {
             event_bus,
-            plugins,
+            capsules,
             mcp_client,
             vfs: Arc::new(overlay_vfs),
             vfs_root_handle: root_handle,

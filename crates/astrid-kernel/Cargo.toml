@@ -17,6 +17,8 @@ astrid-mcp.workspace = true
 tokio = { workspace = true, features = ["full", "signal"] }
 tracing.workspace = true
 serde_json.workspace = true
+anyhow.workspace = true
+astrid-storage.workspace = true
 
 [lints]
 workspace = true
