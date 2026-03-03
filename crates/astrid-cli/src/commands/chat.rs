@@ -78,7 +78,7 @@ async fn run_json_chat(
         }
 
         if input.starts_with('/') {
-            handle_slash_command(input, client, session_id).await;
+            handle_slash_command(input, client, session_id);
             continue;
         }
 
@@ -100,19 +100,17 @@ async fn run_json_chat(
                         break;
                     }
                 },
-                astrid_events::ipc::IpcPayload::ToolCallStart { id, name, args } => {
+                astrid_events::ipc::IpcPayload::LlmStreamEvent { event: astrid_events::llm::StreamEvent::ToolCallStart { id, name }, .. } => {
                     formatter.flush_markdown();
-                    let args_val = serde_json::to_value(&args).unwrap_or_default();
-                    formatter.format_tool_start(&id.to_string(), &name, &args_val);
+                    formatter.format_tool_start(&id, &name, &serde_json::Value::Null);
                 },
-                astrid_events::ipc::IpcPayload::ToolCallResult {
-                    id,
+                astrid_events::ipc::IpcPayload::ToolExecuteResult {
+                    call_id,
                     result,
-                    is_error,
                 } => {
                     formatter.flush_markdown();
-                    let res_val = serde_json::to_value(&result).unwrap_or_default();
-                    formatter.format_tool_result(&id.to_string(), &res_val, is_error);
+                    let res_val = serde_json::to_string(&result.content).unwrap_or_default();
+                    formatter.format_tool_result(&call_id, &res_val, result.is_error);
                 },
                 astrid_events::ipc::IpcPayload::ApprovalRequired {
                     action,
@@ -120,30 +118,13 @@ async fn run_json_chat(
                     reason,
                 } => {
                     formatter.flush_markdown();
-                    println!("{}", Theme::warning(&format!("Approval required: {} on {} ({})", action, resource, reason)));
+                    println!("{}", Theme::warning(&format!("Approval required: {action} on {resource} ({reason})")));
                     // TUI handles this correctly, JSON mode auto-aborts for safety unless headless approvals are enabled
                     client.send_message(astrid_events::ipc::IpcMessage::new(
                         "user.approval",
                         astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
                             "approved": false,
                             "reason": "Approval not supported in JSON REPL mode"
-                        })),
-                        session_id.0
-                    )).await?;
-                },
-                astrid_events::ipc::IpcPayload::ElicitationRequired {
-                    action,
-                    resource,
-                    ..
-                } => {
-                    formatter.flush_markdown();
-                    println!("{}", Theme::warning(&format!("Elicitation required: {} on {}", action, resource)));
-                    // Same as approval, auto-cancel in non-interactive REPL mode
-                     client.send_message(astrid_events::ipc::IpcMessage::new(
-                        "user.elicitation",
-                        astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
-                            "cancelled": true,
-                            "reason": "Elicitation not supported in JSON REPL mode"
                         })),
                         session_id.0
                     )).await?;
@@ -156,10 +137,10 @@ async fn run_json_chat(
     Ok(())
 }
 
-async fn handle_slash_command(
+fn handle_slash_command(
     cmd: &str,
     _client: &mut SocketClient,
     _session_id: &SessionId,
 ) {
-    println!("Slash commands temporarily disabled in JSON Mode during microkernel refactor: {}", cmd);
+    println!("Slash commands temporarily disabled in JSON Mode during microkernel refactor: {cmd}");
 }

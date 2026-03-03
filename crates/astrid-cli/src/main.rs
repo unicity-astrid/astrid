@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
             ensure_global_config();
             commands::onboarding::run_spark_onboarding();
             let workspace = std::env::current_dir().ok();
-            run_or_connect(session, workspace).await?;
+            run_or_connect(session, workspace, output_format).await?;
         },
         None => {
             // Default to Chat mode if no command is specified
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
             ensure_global_config();
             commands::onboarding::run_spark_onboarding();
             let workspace = std::env::current_dir().ok();
-            run_or_connect(None, workspace).await?;
+            run_or_connect(None, workspace, output_format).await?;
         },
         Some(Commands::Build {
             path,
@@ -200,7 +200,11 @@ async fn main() -> Result<()> {
 ///
 /// # Errors
 /// Returns an error if the kernel fails to boot or the socket fails to connect.
-pub async fn run_or_connect(session: Option<String>, workspace: Option<std::path::PathBuf>) -> Result<()> {
+pub(crate) async fn run_or_connect(
+    session: Option<String>,
+    workspace: Option<std::path::PathBuf>,
+    format: formatter::OutputFormat,
+) -> Result<()> {
     use astrid_core::SessionId;
     use uuid::Uuid;
 
@@ -231,17 +235,13 @@ pub async fn run_or_connect(session: Option<String>, workspace: Option<std::path
     }
 
     // 3. Connect the dumb pipe
-    let mut client = socket_client::SocketClient::connect(session_id).await?;
+    let mut client = socket_client::SocketClient::connect(session_id.clone()).await?;
     
-    // 4. (Placeholder) Run the TUI or simple REPL loop
-    // For now, we will just send a mock ping and listen
-    println!("{}", theme::Theme::success("Connected to Kernel IPC Bus."));
-    
-    client.send_input("Hello from CLI".to_string()).await?;
-    
-    while let Ok(Some(event)) = client.read_event().await {
-        println!("Received event: {event:?}");
-    }
-
-    Ok(())
+    // 4. Run the TUI or simple REPL loop
+    let workspace_root = std::env::current_dir().ok();
+    let model_name = astrid_config::Config::load(workspace_root.as_deref())
+        .ok()
+        .map_or_else(|| "unknown".to_string(), |r| r.config.model.model);
+        
+    crate::commands::chat::run_chat(&mut client, &session_id, &model_name, format).await
 }
