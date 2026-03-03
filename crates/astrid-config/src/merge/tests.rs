@@ -997,7 +997,7 @@ fn test_allow_command_hooks_cannot_enable() {
 
 #[test]
 fn test_set_nested_no_panic_on_missing_table() {
-    let mut val: toml::Value = toml::from_str("[model]\nprovider = \"claude\"").unwrap();
+    let mut val: toml::Value = toml::from_str("[model]\nprovider = \"unknown\"").unwrap();
     // This should not panic — the intermediate "nonexistent" table is missing.
     set_nested(
         &mut val,
@@ -1005,5 +1005,5 @@ fn test_set_nested_no_panic_on_missing_table() {
         toml::Value::Boolean(true),
     );
     // Value should be unchanged.
-    assert_eq!(val["model"]["provider"].as_str().unwrap(), "claude");
+    assert_eq!(val["model"]["provider"].as_str().unwrap(), "unknown");
 }

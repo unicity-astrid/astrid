@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_defaults_deserialize_to_config() {
         let config: Config = toml::from_str(DEFAULTS_TOML).unwrap();
-        assert_eq!(config.model.provider, "claude");
+        assert_eq!(config.model.provider, "unknown");
         assert_eq!(config.model.max_tokens, 4096);
         assert!((config.budget.session_max_usd - 100.0).abs() < f64::EPSILON);
         assert_eq!(config.timeouts.request_secs, 120);

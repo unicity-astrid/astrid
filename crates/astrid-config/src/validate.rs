@@ -35,12 +35,12 @@ fn validate_model(config: &Config) -> ConfigResult<()> {
 
     if !matches!(
         m.provider.as_str(),
-        "claude" | "openai" | "openai-compat" | "zai"
+        "claude" | "openai" | "openai-compat" | "zai" | "unknown"
     ) {
         return Err(ConfigError::ValidationError {
             field: "model.provider".to_owned(),
             message: format!(
-                "unsupported provider '{}'; expected one of: claude, openai, openai-compat, zai",
+                "unsupported provider '{}'; expected one of: claude, openai, openai-compat, zai, unknown",
                 m.provider
             ),
         });

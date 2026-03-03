@@ -128,8 +128,8 @@ impl Serialize for ModelConfig {
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
-            provider: "claude".to_owned(),
-            model: "claude-sonnet-4-20250514".to_owned(),
+            provider: "unknown".to_owned(),
+            model: "unknown".to_owned(),
             api_key: None,
             api_url: None,
             max_tokens: 4096,

@@ -17,13 +17,13 @@
 
 [model]
 # LLM provider to use. Currently supported: "claude"
-provider = "claude"
+provider = "unknown"
 
 # Model identifier. Examples:
 # - "claude-sonnet-4-20250514" (Claude Sonnet 4)
 # - "claude-opus-4-6" (Claude Opus 4.6)
 # - "claude-sonnet-4-5-20250929" (Claude Sonnet 4.5)
-model = "claude-sonnet-4-20250514"
+model = "unknown"
 
 # API key for the provider. If not set here, will be read from:
 # - ANTHROPIC_API_KEY environment variable (for Claude)

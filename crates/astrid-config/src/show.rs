@@ -180,7 +180,7 @@ mod tests {
         };
 
         let output = resolved.show(ShowFormat::Toml, Some("model")).unwrap();
-        assert!(output.contains("claude"));
+        assert!(output.contains("unknown"));
         // Should NOT contain budget or other sections.
         assert!(!output.contains("session_max_usd"));
     }
