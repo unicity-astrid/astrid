@@ -56,7 +56,7 @@ pub enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 26] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -73,11 +73,16 @@ impl WasmHostFunction {
         Self::KvGet,
         Self::KvSet,
         Self::GetConfig,
+        Self::GetCaller,
         Self::HttpRequest,
         Self::Log,
         Self::CronSchedule,
         Self::CronCancel,
         Self::SpawnHost,
+        Self::NetBindUnix,
+        Self::NetAccept,
+        Self::NetRead,
+        Self::NetWrite,
     ];
 
     #[must_use]

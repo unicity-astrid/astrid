@@ -111,16 +111,29 @@ async fn main() -> Result<()> {
         .map(|r| r.config);
 
     // Set up logging from config, with --verbose override.
-    let log_config = if let Some(cfg) = &unified_cfg {
+        let log_config = if let Some(cfg) = &unified_cfg {
         let mut lc = config_bridge::to_log_config(cfg);
         if cli.verbose {
             "debug".clone_into(&mut lc.level);
+        }
+        // Force file logging if running interactive Chat mode to prevent TUI corruption
+        if matches!(cli.command, Some(Commands::Chat { .. }) | None)
+            && let Ok(home) = astrid_core::dirs::AstridHome::resolve()
+        {
+            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
         }
         lc
     } else {
         // Fallback if config loading fails.
         let level = if cli.verbose { "debug" } else { "info" };
-        astrid_telemetry::LogConfig::new(level).with_format(astrid_telemetry::LogFormat::Compact)
+        let mut lc = astrid_telemetry::LogConfig::new(level)
+            .with_format(astrid_telemetry::LogFormat::Compact);
+        if matches!(cli.command, Some(Commands::Chat { .. }) | None)
+            && let Ok(home) = astrid_core::dirs::AstridHome::resolve()
+        {
+            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
+        }
+        lc
     };
     if let Err(e) = astrid_telemetry::setup_logging(&log_config) {
         eprintln!("Failed to initialize logging: {e}");
