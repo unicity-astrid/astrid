@@ -17,7 +17,7 @@ pub fn kernel_socket_path(session_id: &SessionId) -> PathBuf {
             PathBuf::from("/tmp/.astrid/sessions")
         },
     };
-    base.join(session_id.0.to_string()).join("kernel.sock")
+    base.join(session_id.0.to_string()).join("ipc.sock")
 }
 
 /// Spawns a background task that listens for local IPC connections via Unix Domain Sockets.

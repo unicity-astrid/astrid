@@ -5,7 +5,7 @@ description = "Native Unix Socket bridge for the Astrid CLI frontend."
 
 [[component]]
 id = "main"
-file = "target/wasm32-wasip1/release/astrid_capsule_cli.wasm"
+file = "astrid_capsule_cli.wasm"
 
 [capabilities]
 uplink = true
