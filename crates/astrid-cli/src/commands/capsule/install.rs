@@ -270,6 +270,29 @@ pub(crate) fn install_from_local(
         return unpack_and_install(source_path, workspace, home);
     }
 
+    // Auto-build Rust capsules if we point at a source directory with a Cargo.toml
+    if source_path.is_dir() && source_path.join("Cargo.toml").exists() {
+        println!("{}", Theme::info(&format!("Detected Cargo project at {}. Auto-building capsule...", source_path.display())));
+        let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
+        let output_dir = tmp_dir.path().join("dist");
+        
+        crate::commands::build::run_build(
+            Some(source),
+            Some(output_dir.to_str().context("Invalid output dir path")?),
+            Some("rust"),
+            None,
+        )?;
+
+        // Find the newly built .capsule file in the output directory
+        for entry in std::fs::read_dir(&output_dir)? {
+            let entry = entry?;
+            if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
+                return unpack_and_install(&entry.path(), workspace, home);
+            }
+        }
+        bail!("Failed to auto-build capsule from Cargo project.");
+    }
+
     install_from_local_path(source_path, workspace, home)
 }
 
