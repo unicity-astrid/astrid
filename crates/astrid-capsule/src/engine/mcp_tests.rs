@@ -90,6 +90,7 @@ mod tests {
             workspace_root: std::path::PathBuf::from("/"),
             event_bus: bus,
             kv,
+            cli_socket_listener: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -144,6 +145,7 @@ mod tests {
             workspace_root: std::path::PathBuf::from("/"),
             event_bus: bus,
             kv,
+            cli_socket_listener: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -195,6 +197,7 @@ mod tests {
             workspace_root: std::path::PathBuf::from("/"),
             event_bus: bus,
             kv,
+            cli_socket_listener: None,
         };
 
         let result = engine.load(&ctx).await;

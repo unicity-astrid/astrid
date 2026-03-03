@@ -1,0 +1,12 @@
+[package]
+name = "astrid-capsule-cli"
+version = "0.1.0"
+description = "Native Unix Socket bridge for the Astrid CLI frontend."
+
+[[component]]
+id = "main"
+file = "target/wasm32-wasip1/release/astrid_capsule_cli.wasm"
+
+[capabilities]
+uplink = true
+net_bind = ["unix:*"]

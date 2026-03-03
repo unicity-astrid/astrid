@@ -134,6 +134,7 @@ impl ExecutionEngine for WasmEngine {
                 subscriptions: std::collections::HashMap::new(),
                 next_subscription_id,
                 config: wasm_config,
+                cli_socket_listener: ctx.cli_socket_listener.clone(),
                 security: Some(security_gate),
                 hook_manager: None, // Will be injected by Gateway
                 runtime_handle: tokio::runtime::Handle::current(),

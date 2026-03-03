@@ -97,6 +97,7 @@ async fn setup_test_capsule(
         temp_workspace.path().to_path_buf(),
         kv.clone(),
         event_bus.clone(),
+        None,
     );
 
     capsule.load(&ctx).await.expect("Failed to load capsule");

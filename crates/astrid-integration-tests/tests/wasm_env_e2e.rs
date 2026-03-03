@@ -117,6 +117,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         std::env::current_dir().unwrap(),
         kv.clone(),
         event_bus.clone(),
+        None,
     );
 
     capsule.load(&ctx).await.unwrap();

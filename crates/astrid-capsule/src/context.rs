@@ -13,20 +13,22 @@ use uuid::Uuid;
 use crate::capsule::CapsuleId;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
+    pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
 }
 
 impl CapsuleContext {
     #[must_use]
-    pub fn new(workspace_root: PathBuf, kv: ScopedKvStore, event_bus: Arc<EventBus>) -> Self {
+    pub fn new(workspace_root: PathBuf, kv: ScopedKvStore, event_bus: Arc<EventBus>, cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>) -> Self {
         Self {
             workspace_root,
             kv,
             event_bus,
+            cli_socket_listener,
         }
     }
 }

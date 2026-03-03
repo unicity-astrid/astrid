@@ -62,6 +62,8 @@ pub struct HostState {
     pub inbound_tx: Option<mpsc::Sender<InboundMessage>>,
     /// Connectors registered by the WASM guest via `astrid_register_connector`.
     pub registered_connectors: Vec<ConnectorDescriptor>,
+    /// Optional natively bound unix listener.
+    pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
 }
 
 impl HostState {
@@ -149,6 +151,7 @@ mod tests {
             has_connector_capability: false,
             inbound_tx: None,
             registered_connectors: Vec::new(),
+            cli_socket_listener: None,
         };
 
         let debug = format!("{state:?}");
@@ -190,6 +193,7 @@ mod tests {
             has_connector_capability: true,
             inbound_tx: None,
             registered_connectors: Vec::new(),
+            cli_socket_listener: None,
         };
 
         assert!(state.connectors().is_empty());
@@ -235,6 +239,7 @@ mod tests {
             has_connector_capability: false,
             inbound_tx: None,
             registered_connectors: Vec::new(),
+            cli_socket_listener: None,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -277,6 +282,7 @@ mod tests {
             has_connector_capability: true,
             inbound_tx: None,
             registered_connectors: Vec::new(),
+            cli_socket_listener: None,
         };
 
         // Fill to the limit
@@ -337,6 +343,7 @@ mod tests {
             has_connector_capability: true,
             inbound_tx: None,
             registered_connectors: Vec::new(),
+            cli_socket_listener: None,
         };
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)

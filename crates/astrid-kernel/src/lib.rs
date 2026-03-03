@@ -13,7 +13,7 @@
 
 /// The Management API router listening to the `EventBus`.
 pub mod kernel_router;
-/// The Unix Domain Socket IPC bridge for multi-process Extism scaling.
+/// The Unix Domain Socket manager.
 pub mod socket;
 
 use astrid_capabilities::DirHandle;
@@ -123,6 +123,7 @@ impl Kernel {
             self.workspace_root.clone(),
             kv,
             Arc::clone(&self.event_bus),
+            None,
         );
 
         capsule.load(&ctx).await?;

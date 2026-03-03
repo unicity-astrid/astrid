@@ -69,6 +69,7 @@ async fn test_mcp_host_engine_capability_validation() {
         std::env::current_dir().unwrap(),
         kv.clone(),
         event_bus.clone(),
+        None,
     );
 
     let result = capsule.load(&ctx).await;
