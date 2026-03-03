@@ -52,6 +52,12 @@ enum Commands {
         session: Option<String>,
     },
 
+    /// Manage capsules
+    Capsule {
+        #[command(subcommand)]
+        command: CapsuleCommands,
+    },
+
     /// Build and package a Capsule (The Universal Migrator)
     Build {
         /// Optional path to the project directory (defaults to current directory)
@@ -72,6 +78,19 @@ enum Commands {
 
     /// Initialize a workspace
     Init,
+}
+
+
+#[derive(Subcommand)]
+enum CapsuleCommands {
+    /// Install a capsule from a local path or registry
+    Install {
+        /// Capsule source (local path or package name)
+        source: String,
+        /// Install to workspace instead of user-level
+        #[arg(long)]
+        workspace: bool,
+    },
 }
 
 fn ensure_global_config() {
@@ -149,6 +168,14 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Init) => {
             commands::init::run_init()?;
+        },
+
+        Some(Commands::Capsule { command }) => {
+            match command {
+                CapsuleCommands::Install { source, workspace } => {
+                    commands::capsule::install::install_capsule(&source, workspace)?;
+                },
+            }
         },
     }
 
