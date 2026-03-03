@@ -7,7 +7,6 @@
 use astrid_core::SessionId;
 use colored::Colorize;
 
-use crate::commands::onboarding;
 use crate::socket_client::SocketClient;
 use crate::formatter::{OutputFormat, OutputFormatter, create_formatter};
 use crate::repl::ReadlineEvent;
@@ -20,11 +19,6 @@ pub(crate) async fn run_chat(
     model_name: &str,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    // Ensure the user has an API key before connecting to the daemon.
-    if !onboarding::has_api_key() {
-        onboarding::run_onboarding();
-    }
-
     match format {
         OutputFormat::Pretty => {
             // TUI mode — replaces the rustyline REPL.

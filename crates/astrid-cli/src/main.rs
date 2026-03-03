@@ -152,8 +152,7 @@ async fn main() -> Result<()> {
                 print_banner();
             }
             ensure_global_config();
-            commands::onboarding::run_spark_onboarding();
-            let workspace = std::env::current_dir().ok();
+                        let workspace = std::env::current_dir().ok();
             run_or_connect(session, workspace, output_format).await?;
         },
         None => {
@@ -162,8 +161,7 @@ async fn main() -> Result<()> {
                 print_banner();
             }
             ensure_global_config();
-            commands::onboarding::run_spark_onboarding();
-            let workspace = std::env::current_dir().ok();
+                        let workspace = std::env::current_dir().ok();
             run_or_connect(None, workspace, output_format).await?;
         },
         Some(Commands::Build {
