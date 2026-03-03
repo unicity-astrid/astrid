@@ -119,6 +119,11 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         dummy("astrid_cron_schedule", 3, 0),
         dummy("astrid_cron_cancel", 1, 0),
         dummy("astrid_spawn_host", 1, 1),
+        dummy("astrid_net_bind_unix", 1, 1),
+        dummy("astrid_net_accept", 1, 1),
+        dummy("astrid_net_read", 1, 1),
+        dummy("astrid_net_write", 2, 0),
+        dummy("astrid_get_caller", 0, 1),
     ]
 }
 
@@ -141,9 +146,24 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         .exec()
         .context("Failed to parse Cargo metadata")?;
 
+    // In a workspace, root_package() might be None if the current dir isn't a package.
+    // However, if we point it at a member crate directory, we need to extract the package 
+    // that matches the manifest path of the current directory.
     let package = meta
-        .root_package()
-        .context("No root package found in Cargo.toml")?;
+        .packages
+        .iter()
+        .find(|p| {
+            if let Some(parent) = p.manifest_path.parent()
+                && let Ok(canon_parent) = parent.as_std_path().canonicalize()
+                && let Ok(canon_dir) = dir.canonicalize()
+            {
+                return canon_parent == canon_dir;
+            }
+            false
+        })
+        .or_else(|| meta.root_package())
+        .context("No package found matching the target directory in Cargo.toml")?;
+        
     let crate_name = package.name.clone();
     let package_version = package.version.to_string();
     let wasm_name = crate_name.replace('-', "_");
