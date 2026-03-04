@@ -15,16 +15,10 @@ path = "src/main.rs"
 # Internal
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
-astrid-crypto = { workspace = true }
-astrid-audit = { workspace = true }
-astrid-mcp = { workspace = true }
 astrid-kernel = { workspace = true }
-astrid-hooks = { workspace = true }
 astrid-capsule = { workspace = true }
 astrid-telemetry = { workspace = true }
-astrid-approval = { workspace = true }
 astrid-openclaw = { workspace = true }
-astrid-tools = { workspace = true }
 astrid-events = { workspace = true, features = ["runtime"] }
 
 # CLI
@@ -37,7 +31,6 @@ syntect = { workspace = true }
 
 # Async
 tokio = { workspace = true }
-async-trait = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

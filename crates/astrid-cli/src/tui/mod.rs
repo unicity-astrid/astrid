@@ -244,9 +244,34 @@ fn handle_slash_command(
     _client: &mut SocketClient,
     _session_id: &SessionId,
 ) {
-    if cmd == "quit" || cmd == "exit" || cmd == "q" {
-        app.should_quit = true;
-    } else {
-        app.push_notice(&format!("Command not implemented in microkernel UI: {cmd}"));
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    if parts.is_empty() {
+        return;
+    }
+
+    match parts[0] {
+        "/quit" | "/exit" | "/q" => {
+            app.should_quit = true;
+        }
+        "/clear" => {
+            app.messages.clear();
+            app.nexus_stream.clear();
+            app.stream_buffer.clear();
+            app.push_notice("Screen cleared.");
+        }
+        "/help" => {
+            app.push_message(MessageRole::User, cmd.to_string());
+            app.push_message(MessageRole::Assistant, 
+                "**Available UI Commands:**\n\
+                 - `/help`   - Show this message\n\
+                 - `/clear`  - Clear the local terminal screen\n\
+                 - `/quit`   - Disconnect from the OS Kernel\n\
+                 \n\
+                 *Note: To manage sessions, use the native `astrid session` command outside the TUI.*".to_string()
+            );
+        }
+        _ => {
+            app.push_notice(&format!("Unknown UI command: {cmd}. Type /help for available commands."));
+        }
     }
 }
