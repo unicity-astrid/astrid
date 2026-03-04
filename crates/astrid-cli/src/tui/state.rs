@@ -5,60 +5,13 @@ use std::time::{Duration, Instant};
 
 // ─── Slash Command Palette ──────────────────────────────────────
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct SlashCommandDef {
-    pub name: &'static str,
-    pub description: &'static str,
+    pub name: String,
+    pub description: String,
 }
 
 pub(crate) const PALETTE_MAX_VISIBLE: usize = 6;
-
-pub(crate) const SLASH_COMMANDS: &[SlashCommandDef] = &[
-    SlashCommandDef {
-        name: "/help",
-        description: "Show available commands",
-    },
-    SlashCommandDef {
-        name: "/clear",
-        description: "Clear conversation history",
-    },
-    SlashCommandDef {
-        name: "/info",
-        description: "Show daemon status",
-    },
-    SlashCommandDef {
-        name: "/servers",
-        description: "List MCP servers",
-    },
-    SlashCommandDef {
-        name: "/tools",
-        description: "List available tools",
-    },
-    SlashCommandDef {
-        name: "/plugins",
-        description: "List registered plugins",
-    },
-    SlashCommandDef {
-        name: "/allowances",
-        description: "Show active allowances",
-    },
-    SlashCommandDef {
-        name: "/budget",
-        description: "Show budget usage",
-    },
-    SlashCommandDef {
-        name: "/audit",
-        description: "Show recent audit entries",
-    },
-    SlashCommandDef {
-        name: "/save",
-        description: "Save current session",
-    },
-    SlashCommandDef {
-        name: "/sessions",
-        description: "List active sessions",
-    },
-];
 
 // ─── UI State Machine ────────────────────────────────────────────
 
@@ -221,6 +174,7 @@ pub(crate) struct App {
     pub scroll_offset: usize,
 
     // ── Slash palette ──
+    pub slash_commands: Vec<SlashCommandDef>,
     pub palette_selected: usize,
     pub palette_scroll_offset: usize,
 
@@ -264,6 +218,20 @@ impl App {
             cursor_pos: 0,
             scroll_offset: 0,
 
+            slash_commands: vec![
+                SlashCommandDef {
+                    name: "/help".to_string(),
+                    description: "Show available commands".to_string(),
+                },
+                SlashCommandDef {
+                    name: "/clear".to_string(),
+                    description: "Clear conversation history".to_string(),
+                },
+                SlashCommandDef {
+                    name: "/quit".to_string(),
+                    description: "Disconnect from the OS Kernel".to_string(),
+                },
+            ],
             palette_selected: 0,
             palette_scroll_offset: 0,
 
@@ -291,9 +259,9 @@ impl App {
     }
 
     /// Return the filtered list of slash commands matching the current input prefix.
-    pub(crate) fn palette_filtered(&self) -> Vec<&'static SlashCommandDef> {
+    pub(crate) fn palette_filtered(&self) -> Vec<&SlashCommandDef> {
         let prefix = &self.input;
-        SLASH_COMMANDS
+        self.slash_commands
             .iter()
             .filter(|cmd| cmd.name.starts_with(prefix))
             .collect()

@@ -43,7 +43,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             if palette_is_active {
                 let filtered = app.palette_filtered();
                 if let Some(cmd) = filtered.get(app.palette_selected) {
-                    app.input = cmd.name.to_string();
+                    app.input = cmd.name.clone();
                     app.cursor_pos = app.input.len();
                 }
                 app.palette_reset();
@@ -57,7 +57,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Tab, _) if palette_is_active => {
             let filtered = app.palette_filtered();
             if let Some(cmd) = filtered.get(app.palette_selected) {
-                app.input = cmd.name.to_string();
+                app.input = cmd.name.clone();
                 app.cursor_pos = app.input.len();
             }
             app.palette_reset();

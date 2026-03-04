@@ -87,6 +87,18 @@ pub(crate) async fn run(
 
     // Initialize terminal — wrapped in a guard for proper cleanup.
     let (mut terminal, keyboard_enhanced) = init_terminal()?;
+    
+    // Sync dynamic commands on startup.
+    let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+    if let Ok(val) = serde_json::to_value(req) {
+        let msg = astrid_events::ipc::IpcMessage::new(
+            "kernel.request.get_commands",
+            astrid_events::ipc::IpcPayload::RawJson(val),
+            session_id.0,
+        );
+        let _ = client.send_message(msg).await;
+    }
+
     let result = run_loop(&mut terminal, &mut app, client, session_id).await;
 
     // Always restore terminal, even on error.
@@ -165,25 +177,38 @@ async fn run_loop(
 /// Map a `KernelEvent` to TUI state changes.
 #[allow(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
-    use std::fmt::Write as _;
-
     if let AstridEvent::Ipc { message, .. } = event {
         if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
             app.stream_buffer.push_str(text);
         } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
             && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
-            && !cmds.is_empty()
         {
-            let mut cmd_str = String::from("**Dynamic Capsule Commands:**\n");
+            // Reset the dynamic slash command palette to the hardcoded base commands
+            app.slash_commands = vec![
+                state::SlashCommandDef {
+                    name: "/help".to_string(),
+                    description: "Show available commands".to_string(),
+                },
+                state::SlashCommandDef {
+                    name: "/clear".to_string(),
+                    description: "Clear conversation history".to_string(),
+                },
+                state::SlashCommandDef {
+                    name: "/quit".to_string(),
+                    description: "Disconnect from the OS Kernel".to_string(),
+                },
+            ];
+
+            // Append all dynamically discovered capsule commands
             for cmd in cmds {
-                let _ = writeln!(
-                    cmd_str,
-                    "- `{}` - {} (via {})",
-                    cmd.name, cmd.description, cmd.provider_capsule
-                );
+                app.slash_commands.push(state::SlashCommandDef {
+                    name: format!("/{}", cmd.name),
+                    description: format!("{} (via {})", cmd.description, cmd.provider_capsule),
+                });
             }
-            app.push_message(state::MessageRole::Assistant, cmd_str);
+
+            app.push_notice("Dynamic capsule commands synced.");
         }
     }
 }

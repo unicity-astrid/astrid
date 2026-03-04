@@ -893,10 +893,10 @@ fn render_palette_items(
         let description = if cmd.description.len() > desc_avail && desc_avail > 1 {
             format!(
                 "{}…",
-                truncate_to_boundary(cmd.description, desc_avail.saturating_sub(1))
+                truncate_to_boundary(&cmd.description, desc_avail.saturating_sub(1))
             )
         } else {
-            cmd.description.to_string()
+            cmd.description.clone()
         };
 
         // Fill remaining width with background
