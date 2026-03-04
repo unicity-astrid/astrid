@@ -126,7 +126,7 @@ async fn run_loop(
         }
 
         // Process pending actions (approval decisions, input sends).
-        handle_pending_actions(app, client, session_id).await?;
+        handle_pending_actions(app, client, session_id, terminal).await?;
 
         // Poll for crossterm input events (non-blocking).
         if crossterm::event::poll(Duration::from_millis(10))? {
@@ -225,6 +225,7 @@ async fn handle_pending_actions(
     app: &mut App,
     client: &mut SocketClient,
     session_id: &SessionId,
+    terminal: &mut Term,
 ) -> anyhow::Result<()> {
     let actions: Vec<PendingAction> = app.pending_actions.drain(..).collect();
 
@@ -258,7 +259,7 @@ async fn handle_pending_actions(
             },
             PendingAction::SendInput(content) => {
                 if content.starts_with('/') {
-                    handle_slash_command(&content, app, client, session_id).await;
+                    handle_slash_command(&content, app, client, session_id, terminal).await;
                 } else {
                     // Add user message to the stream.
                     app.push_message(MessageRole::User, content.clone());
@@ -292,6 +293,7 @@ async fn handle_slash_command(
     app: &mut App,
     client: &mut SocketClient,
     session_id: &SessionId,
+    terminal: &mut Term,
 ) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
@@ -314,7 +316,18 @@ async fn handle_slash_command(
             } else {
                 let source = parts[1];
                 app.push_notice(&format!("Installing capsule from: {source}..."));
-                match crate::commands::capsule::install::install_capsule(source, false) {
+                
+                // Suspend the TUI so `dialoguer` can use standard I/O
+                let _ = restore_terminal(terminal, false); // Best effort
+                
+                let result = crate::commands::capsule::install::install_capsule(source, false);
+                
+                // Re-initialize the TUI and redraw
+                let _ = crossterm::terminal::enable_raw_mode();
+                let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen);
+                let _ = terminal.clear();
+
+                match result {
                     Ok(()) => {
                         app.push_notice(
                             "Installation complete. Sending refresh signal to Kernel...",
