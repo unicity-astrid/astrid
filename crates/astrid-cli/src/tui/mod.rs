@@ -190,7 +190,22 @@ async fn handle_pending_actions(
                 app.push_notice("Denial via UI is temporarily disabled in Microkernel mode.");
             },
             PendingAction::CancelTurn => {
-                app.push_notice("Cancellation is temporarily disabled in Microkernel mode.");
+                // Send an empty UserInput with a special __cancel__ context
+                // This signals to the Orchestrator to abort the current ReAct loop
+                let cancel_payload = astrid_events::ipc::IpcPayload::UserInput {
+                    text: String::new(),
+                    context: Some(serde_json::json!({"action": "cancel_turn"})),
+                };
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "user.prompt",
+                    cancel_payload,
+                    session_id.0,
+                );
+                if let Err(e) = client.send_message(msg).await {
+                    app.push_notice(&format!("Failed to send cancellation signal: {e}"));
+                } else {
+                    app.state = UiState::Interrupted;
+                }
             },
             PendingAction::SendInput(content) => {
                 if content.starts_with('/') {
