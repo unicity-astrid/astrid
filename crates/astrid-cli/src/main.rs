@@ -210,7 +210,28 @@ pub(crate) async fn run_or_connect(
     let session_id = if let Some(sid) = session {
         SessionId::from_uuid(Uuid::parse_str(&sid).map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?)
     } else {
-        SessionId::from_uuid(Uuid::new_v4())
+        // Find the most recently modified session directory, or generate a new one
+        let mut latest_session = None;
+        let mut latest_time = std::time::SystemTime::UNIX_EPOCH;
+        
+        if let Ok(home) = astrid_core::dirs::AstridHome::resolve()
+            && let Ok(entries) = std::fs::read_dir(home.sessions_dir())
+        {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata()
+                    && meta.is_dir()
+                    && let Ok(modified) = meta.modified()
+                    && modified > latest_time
+                    && let Some(name) = entry.file_name().to_str()
+                    && let Ok(uuid) = Uuid::parse_str(name)
+                {
+                    latest_time = modified;
+                    latest_session = Some(SessionId::from_uuid(uuid));
+                }
+            }
+        }
+        
+        latest_session.unwrap_or_else(|| SessionId::from_uuid(Uuid::new_v4()))
     };
 
     let socket_path = socket_client::proxy_socket_path(&session_id);
