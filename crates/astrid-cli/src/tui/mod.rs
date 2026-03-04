@@ -293,7 +293,7 @@ async fn handle_slash_command(
     app: &mut App,
     client: &mut SocketClient,
     session_id: &SessionId,
-    terminal: &mut Term,
+    _terminal: &mut Term,
 ) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
@@ -315,17 +315,9 @@ async fn handle_slash_command(
                 app.push_notice("Usage: /install <path-to-capsule-or-directory>");
             } else {
                 let source = parts[1];
-                app.push_notice(&format!("Installing capsule from: {source}..."));
+                app.push_notice(&format!("Installing capsule from: {source} (headless mode)..."));
                 
-                // Suspend the TUI so `dialoguer` can use standard I/O
-                let _ = restore_terminal(terminal, false); // Best effort
-                
-                let result = crate::commands::capsule::install::install_capsule(source, false);
-                
-                // Re-initialize the TUI and redraw
-                let _ = crossterm::terminal::enable_raw_mode();
-                let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen);
-                let _ = terminal.clear();
+                let result = crate::commands::capsule::install::install_capsule(source, false, true);
 
                 match result {
                     Ok(()) => {

@@ -13,12 +13,12 @@ use astrid_core::dirs::AstridHome;
 
 use crate::theme::Theme;
 
-pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
+pub(crate) fn install_capsule(source: &str, workspace: bool, headless: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
     // 1. Explicit Local Path
     if source.starts_with('.') || source.starts_with('/') {
-        return install_from_local(source, workspace, &home);
+        return install_from_local(source, workspace, &home, headless);
     }
 
     // 2. OpenClaw Explicit Prefix
@@ -26,24 +26,24 @@ pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<(
         // If it uses the github namespace alias after the prefix
         if let Some(repo) = rest.strip_prefix('@') {
             let url = format!("https://github.com/{repo}");
-            return install_from_github(&url, workspace, &home, true);
+            return install_from_github(&url, workspace, &home, true, headless);
         }
-        return install_from_openclaw(rest, workspace, &home);
+        return install_from_openclaw(rest, workspace, &home, headless);
     }
 
     // 3. Native Namespace Alias (@org/repo) -> GitHub
     if let Some(repo) = source.strip_prefix('@') {
         let url = format!("https://github.com/{repo}");
-        return install_from_github(&url, workspace, &home, false);
+        return install_from_github(&url, workspace, &home, false, headless);
     }
 
     // 4. Raw GitHub URL
     if source.starts_with("github.com/") || source.starts_with("https://github.com/") {
-        return install_from_github(source, workspace, &home, false);
+        return install_from_github(source, workspace, &home, false, headless);
     }
 
     // 5. Fallback: Assume it's a local folder matching the given name
-    install_from_local(source, workspace, &home)
+    install_from_local(source, workspace, &home, headless)
 }
 
 pub(crate) fn install_from_github(
@@ -51,6 +51,7 @@ pub(crate) fn install_from_github(
     workspace: bool,
     home: &AstridHome,
     _is_openclaw: bool,
+    headless: bool,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
@@ -104,7 +105,7 @@ pub(crate) fn install_from_github(
                 let mut limited_stream = download_res.take(50 * 1024 * 1024);
                 std::io::copy(&mut limited_stream, &mut file)?;
 
-                return unpack_and_install(&download_path, workspace, home);
+                return unpack_and_install(&download_path, workspace, home, headless);
             }
         }
     }
@@ -159,9 +160,8 @@ pub(crate) fn install_from_github(
     for entry in std::fs::read_dir(&output_dir)? {
         let entry = entry?;
         if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
-            return unpack_and_install(&entry.path(), workspace, home);
-        }
-    }
+            return unpack_and_install(&entry.path(), workspace, home, headless);
+        }    }
 
     bail!("Universal Migrator failed to produce a .capsule archive.");
 }
@@ -170,6 +170,7 @@ pub(crate) fn install_from_openclaw(
     source: &str,
     workspace: bool,
     home: &AstridHome,
+    headless: bool,
 ) -> anyhow::Result<()> {
     let plugin_name = source.strip_prefix("openclaw:").unwrap_or(source);
     println!(
@@ -190,13 +191,14 @@ pub(crate) fn install_from_openclaw(
         );
     }
 
-    transpile_and_install(source_path, workspace, home)
+    transpile_and_install(source_path, workspace, home, headless)
 }
 
 pub(crate) fn transpile_and_install(
     source_path: &Path,
     workspace: bool,
     home: &AstridHome,
+    headless: bool,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
@@ -245,13 +247,14 @@ pub(crate) fn transpile_and_install(
 
     // 7. Proceed with standard installation from the temp directory
     println!("{}", Theme::success("  Transpilation successful."));
-    install_from_local_path(output_dir, workspace, home)
+    install_from_local_path(output_dir, workspace, home, headless)
 }
 
 pub(crate) fn install_from_local(
     source: &str,
     workspace: bool,
     home: &AstridHome,
+    headless: bool,
 ) -> anyhow::Result<()> {
     let source_path = Path::new(source);
     if !source_path.exists() {
@@ -262,12 +265,12 @@ pub(crate) fn install_from_local(
     if source_path.join("openclaw.plugin.json").exists()
         && !source_path.join("Capsule.toml").exists()
     {
-        return transpile_and_install(source_path, workspace, home);
+        return transpile_and_install(source_path, workspace, home, headless);
     }
 
     // Unpack .capsule archive if it is a file
     if source_path.is_file() && source.ends_with(".capsule") {
-        return unpack_and_install(source_path, workspace, home);
+        return unpack_and_install(source_path, workspace, home, headless);
     }
 
     // Auto-build Rust capsules if we point at a source directory with a Cargo.toml
@@ -287,19 +290,20 @@ pub(crate) fn install_from_local(
         for entry in std::fs::read_dir(&output_dir)? {
             let entry = entry?;
             if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
-                return unpack_and_install(&entry.path(), workspace, home);
+                return unpack_and_install(&entry.path(), workspace, home, headless);
             }
         }
         bail!("Failed to auto-build capsule from Cargo project.");
     }
 
-    install_from_local_path(source_path, workspace, home)
+    install_from_local_path(source_path, workspace, home, headless)
 }
 
 fn unpack_and_install(
     archive_path: &Path,
     workspace: bool,
     home: &AstridHome,
+    headless: bool,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
@@ -357,13 +361,14 @@ fn unpack_and_install(
             .with_context(|| format!("Failed to unpack file: {}", out_path.display()))?;
     }
 
-    install_from_local_path(unpack_dir, workspace, home)
+    install_from_local_path(unpack_dir, workspace, home, headless)
 }
 
 pub(crate) fn install_from_local_path(
     source_path: &Path,
     workspace: bool,
     home: &AstridHome,
+    headless: bool,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
@@ -382,10 +387,10 @@ pub(crate) fn install_from_local_path(
     let id = manifest.package.name.clone();
 
     // 1. Airlock Prompt
-    prompt_capabilities(&manifest)?;
+    prompt_capabilities(&manifest, headless)?;
 
     // 2. Elicit Environment Variables
-    let env_values = elicit_env(&manifest)?;
+    let env_values = elicit_env(&manifest, headless)?;
 
     // 3. Resolve Target Directory
     let target_dir = resolve_target_dir(home, &id, workspace)?;
@@ -432,7 +437,7 @@ pub(crate) fn install_from_local_path(
     Ok(())
 }
 
-fn prompt_capabilities(manifest: &CapsuleManifest) -> anyhow::Result<()> {
+fn prompt_capabilities(manifest: &CapsuleManifest, headless: bool) -> anyhow::Result<()> {
     let caps = &manifest.capabilities;
     let has_dangerous_caps = !caps.host_process.is_empty()
         || !caps.fs_read.is_empty()
@@ -466,25 +471,36 @@ fn prompt_capabilities(manifest: &CapsuleManifest) -> anyhow::Result<()> {
         }
 
         println!();
-        let confirm = Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt("Do you want to grant these capabilities and continue installation?")
-            .default(false)
-            .interact()?;
+        
+        if headless {
+            println!("{}", Theme::warning("Headless mode: Auto-approving capability request."));
+        } else {
+            let confirm = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Do you want to grant these capabilities and continue installation?")
+                .default(false)
+                .interact()?;
 
-        if !confirm {
-            bail!("Installation aborted by user due to capability request.");
+            if !confirm {
+                bail!("Installation aborted by user due to capability request.");
+            }
         }
     }
 
     Ok(())
 }
 
-fn elicit_env(manifest: &CapsuleManifest) -> anyhow::Result<HashMap<String, String>> {
+fn elicit_env(manifest: &CapsuleManifest, headless: bool) -> anyhow::Result<HashMap<String, String>> {
     let mut env_values = HashMap::new();
     let theme = ColorfulTheme::default();
 
     if !manifest.env.is_empty() {
         println!("\n{}", Theme::info("Capsule Environment Configuration:"));
+        
+        if headless {
+            println!("{}", Theme::warning("Headless mode: Skipping interactive environment variable prompts. You will need to configure these manually or via the OS Event Bus later."));
+            return Ok(env_values);
+        }
+        
         for (key, def) in &manifest.env {
             let default_prompt = format!("Please enter value for {key}");
             let prompt_text = def.request.as_deref().unwrap_or(&default_prompt);
