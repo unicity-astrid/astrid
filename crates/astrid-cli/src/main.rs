@@ -237,9 +237,26 @@ pub(crate) async fn run_or_connect(
     let socket_path = socket_client::proxy_socket_path(&session_id);
 
     // 2. Check if a Kernel is already running for this session
+    let mut needs_boot = !socket_path.exists();
+
     if socket_path.exists() {
-        println!("{}", theme::Theme::info(&format!("Connecting to existing Kernel at Session {}", session_id.0)));
-    } else {
+        // Test if the socket is actually alive by attempting a connection
+        match tokio::net::UnixStream::connect(&socket_path).await {
+            Ok(_) => {
+                println!("{}", theme::Theme::info(&format!("Connecting to existing Kernel at Session {}", session_id.0)));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                println!("{}", theme::Theme::warning("Found dead session socket. Cleaning up and rebooting kernel..."));
+                let _ = std::fs::remove_file(&socket_path);
+                needs_boot = true;
+            }
+            Err(e) => {
+                anyhow::bail!("Failed to check session socket: {e}");
+            }
+        }
+    }
+
+    if needs_boot {
         println!("{}", theme::Theme::info(&format!("Booting Local Kernel for Session {}", session_id.0)));
         let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         
