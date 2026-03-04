@@ -228,6 +228,14 @@ impl App {
                     description: "Clear conversation history".to_string(),
                 },
                 SlashCommandDef {
+                    name: "/install".to_string(),
+                    description: "Install a capsule from a path or registry".to_string(),
+                },
+                SlashCommandDef {
+                    name: "/refresh".to_string(),
+                    description: "Reload all installed capsules into the OS".to_string(),
+                },
+                SlashCommandDef {
                     name: "/quit".to_string(),
                     description: "Disconnect from the OS Kernel".to_string(),
                 },
