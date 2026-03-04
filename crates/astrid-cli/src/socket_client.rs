@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 
 /// Path to the local Unix Domain Socket managed by the CLI Proxy Capsule.
 #[must_use]
-pub fn proxy_socket_path(session_id: &SessionId) -> std::path::PathBuf {
+pub fn proxy_socket_path() -> std::path::PathBuf {
     use astrid_core::dirs::AstridHome;
     let base = match AstridHome::resolve() {
         Ok(home) => home.sessions_dir(),
@@ -18,7 +18,7 @@ pub fn proxy_socket_path(session_id: &SessionId) -> std::path::PathBuf {
             std::path::PathBuf::from("/tmp/.astrid/sessions")
         }
     };
-    base.join(session_id.0.to_string()).join("ipc.sock")
+    base.join("system.sock")
 }
 
 /// A client connection to the Kernel's Unix Domain Socket.
@@ -35,10 +35,10 @@ impl SocketClient {
     /// # Errors
     /// Returns an error if the socket file does not exist or connection fails.
     pub async fn connect(session_id: SessionId) -> Result<Self> {
-        let path = proxy_socket_path(&session_id);
+        let path = proxy_socket_path();
 
         if !path.exists() {
-            anyhow::bail!("Kernel socket for session {session_id} not found at {}", path.display());
+            anyhow::bail!("Global OS Socket not found at {}", path.display());
         }
 
         let stream = UnixStream::connect(&path).await.context("Failed to connect to IPC socket")?;

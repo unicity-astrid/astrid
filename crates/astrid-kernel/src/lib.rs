@@ -42,6 +42,8 @@ pub struct Kernel {
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
     pub workspace_root: PathBuf,
+    /// The natively bound Unix Socket for the CLI proxy.
+    pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
 }
 
 impl Kernel {
@@ -81,11 +83,8 @@ impl Kernel {
         // 3. Wrap in copy-on-write OverlayVfs
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
-        // Spawn the local Unix Domain Socket IPC bridge
-        drop(socket::spawn_socket_server(
-            session_id.clone(),
-            Arc::clone(&event_bus),
-        ));
+        // 4. Bind the secure Unix socket natively
+        let listener = socket::bind_session_socket()?;
 
         let kernel = Arc::new(Self {
             session_id,
@@ -95,6 +94,7 @@ impl Kernel {
             vfs: Arc::new(overlay_vfs),
             vfs_root_handle: root_handle,
             workspace_root,
+            cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
         });
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         Ok(kernel)

@@ -243,38 +243,40 @@ pub(crate) async fn run_or_connect(
         SessionId::from_uuid(Uuid::new_v4())
     };
 
-    let socket_path = socket_client::proxy_socket_path(&session_id);
+    let socket_path = socket_client::proxy_socket_path();
 
-    // 2. Check if a Kernel is already running for this session
+    // 2. Check if a Kernel is already running globally
     let mut needs_boot = !socket_path.exists();
 
     if socket_path.exists() {
         // Test if the socket is actually alive by attempting a connection
         match tokio::net::UnixStream::connect(&socket_path).await {
             Ok(_) => {
-                println!("{}", theme::Theme::info(&format!("Connecting to existing Kernel at Session {}", session_id.0)));
+                println!("{}", theme::Theme::info("Connecting to existing OS Kernel..."));
             }
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                println!("{}", theme::Theme::warning("Found dead session socket. Cleaning up and rebooting kernel..."));
+                println!("{}", theme::Theme::warning("Found dead OS socket. Cleaning up and rebooting kernel..."));
                 let _ = std::fs::remove_file(&socket_path);
                 needs_boot = true;
             }
             Err(e) => {
-                anyhow::bail!("Failed to check session socket: {e}");
+                anyhow::bail!("Failed to check OS socket: {e}");
             }
         }
     }
 
     if needs_boot {
-        println!("{}", theme::Theme::info(&format!("Booting Local Kernel for Session {}", session_id.0)));
+        println!("{}", theme::Theme::info("Booting Astrid OS Kernel..."));
         let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         
         let exe = std::env::current_exe().context("Failed to get current executable path")?;
         
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("daemon")
+           // We must give the background daemon a System Session ID so it can boot, 
+           // but it multiplexes all other sessions.
            .arg("--session")
-           .arg(session_id.0.to_string());
+           .arg("00000000-0000-0000-0000-000000000000");
            
         if let Some(ws_path) = ws.to_str() {
             cmd.arg("--workspace").arg(ws_path);
