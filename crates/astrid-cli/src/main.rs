@@ -52,6 +52,12 @@ enum Commands {
         session: Option<String>,
     },
 
+    /// Manage chat sessions
+    Session {
+        #[command(subcommand)]
+        command: SessionCommands,
+    },
+
     /// Manage capsules
     Capsule {
         #[command(subcommand)]
@@ -101,6 +107,22 @@ enum CapsuleCommands {
         /// Install to workspace instead of user-level
         #[arg(long)]
         workspace: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SessionCommands {
+    /// List all sessions
+    List,
+    /// Delete a session
+    Delete {
+        /// The session ID to delete
+        id: String,
+    },
+    /// Show information about a session
+    Info {
+        /// The session ID to query
+        id: String,
     },
 }
 
@@ -217,6 +239,9 @@ async fn main() -> Result<()> {
                     commands::capsule::install::install_capsule(&source, workspace)?;
                 },
             }
+        },
+        Some(Commands::Session { command }) => {
+            commands::sessions::handle_session_commands(command)?;
         },
     }
 
