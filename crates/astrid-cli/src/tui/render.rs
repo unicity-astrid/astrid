@@ -462,7 +462,7 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                                 }
                             }
                         },
-                        MessageRole::System => {
+                        MessageRole::LocalUi => {
                             let is_diff = msg.kind.is_some();
                             let style = match &msg.kind {
                                 Some(MessageKind::DiffHeader | MessageKind::DiffFooter) => {

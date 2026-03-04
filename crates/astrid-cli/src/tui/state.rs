@@ -46,7 +46,7 @@ pub(crate) enum UiState {
 pub(crate) enum MessageRole {
     User,
     Assistant,
-    System,
+    LocalUi,
 }
 
 /// Special message kinds for styled rendering.
@@ -298,7 +298,7 @@ impl App {
 
     /// Push a system notice.
     pub(crate) fn push_notice(&mut self, text: &str) {
-        self.push_message(MessageRole::System, text.to_string());
+        self.push_message(MessageRole::LocalUi, text.to_string());
     }
 
     /// Approve a pending tool call.
@@ -424,7 +424,7 @@ impl App {
                                 MessageRole::User => {
                                     parts.push(format!("> {}", msg.content));
                                 },
-                                MessageRole::Assistant | MessageRole::System => {
+                                MessageRole::Assistant | MessageRole::LocalUi => {
                                     parts.push(msg.content.clone());
                                 },
                             }

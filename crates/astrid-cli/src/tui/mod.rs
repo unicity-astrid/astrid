@@ -87,7 +87,7 @@ pub(crate) async fn run(
 
     // Initialize terminal — wrapped in a guard for proper cleanup.
     let (mut terminal, keyboard_enhanced) = init_terminal()?;
-    
+
     // Sync dynamic commands on startup.
     let req = astrid_events::kernel_api::KernelRequest::GetCommands;
     if let Ok(val) = serde_json::to_value(req) {
@@ -293,22 +293,22 @@ async fn handle_slash_command(
     match parts[0] {
         "/quit" | "/exit" | "/q" => {
             app.should_quit = true;
-        }
+        },
         "/clear" => {
             app.messages.clear();
             app.nexus_stream.clear();
             app.stream_buffer.clear();
             app.push_notice("Screen cleared.");
-        }
+        },
         "/help" => {
             app.push_message(MessageRole::User, cmd.to_string());
-            app.push_message(MessageRole::Assistant, 
+            app.push_message(
+                MessageRole::LocalUi,
                 "**Available UI Commands:**\n\
                  - `/help`   - Show this message\n\
                  - `/clear`  - Clear the local terminal screen\n\
-                 - `/quit`   - Disconnect from the OS Kernel\n\
-                 \n\
-                 *Note: Fetching dynamic capsule commands from the Kernel...*".to_string()
+                 - `/quit`   - Disconnect from the OS Kernel"
+                    .to_string(),
             );
 
             // Fetch dynamic commands from the Kernel
@@ -321,7 +321,7 @@ async fn handle_slash_command(
                 );
                 let _ = client.send_message(msg).await;
             }
-        }
+        },
         _ => {
             // It's a custom command! Route it to the Event Bus for capsules to handle.
             let msg = astrid_events::ipc::IpcMessage::new(
@@ -332,7 +332,7 @@ async fn handle_slash_command(
                 },
                 session_id.0,
             );
-            
+
             if let Err(e) = client.send_message(msg).await {
                 app.push_notice(&format!("Failed to send command to Kernel: {e}"));
             } else {
@@ -342,6 +342,6 @@ async fn handle_slash_command(
                     dots: 0,
                 };
             }
-        }
+        },
     }
 }
