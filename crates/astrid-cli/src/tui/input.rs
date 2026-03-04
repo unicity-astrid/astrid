@@ -40,14 +40,25 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
 
         // Enter: select palette command and submit, or normal submit
         (KeyCode::Enter, _) => {
+            let mut submit_immediately = false;
+
             if palette_is_active {
                 let filtered = app.palette_filtered();
                 if let Some(cmd) = filtered.get(app.palette_selected) {
-                    app.input = format!("{} ", cmd.name);
+                    if matches!(cmd.name.as_str(), "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh") {
+                        app.input = cmd.name.clone();
+                        submit_immediately = true;
+                    } else {
+                        app.input = format!("{} ", cmd.name);
+                    }
                     app.cursor_pos = app.input.len();
                 }
                 app.palette_reset();
-            } else if let Some(content) = app.submit_input() {
+            }
+
+            if (!palette_is_active || submit_immediately)
+                && let Some(content) = app.submit_input()
+            {
                 app.pending_actions.push(PendingAction::SendInput(content));
             }
         },
@@ -56,7 +67,12 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Tab, _) if palette_is_active => {
             let filtered = app.palette_filtered();
             if let Some(cmd) = filtered.get(app.palette_selected) {
-                app.input = format!("{} ", cmd.name);
+                // If the command is a simple action that never takes arguments, don't append a space.
+                if matches!(cmd.name.as_str(), "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh") {
+                    app.input = cmd.name.clone();
+                } else {
+                    app.input = format!("{} ", cmd.name);
+                }
                 app.cursor_pos = app.input.len();
             }
             app.palette_reset();
