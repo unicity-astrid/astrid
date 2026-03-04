@@ -43,12 +43,11 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             if palette_is_active {
                 let filtered = app.palette_filtered();
                 if let Some(cmd) = filtered.get(app.palette_selected) {
-                    app.input = cmd.name.clone();
+                    app.input = format!("{} ", cmd.name);
                     app.cursor_pos = app.input.len();
                 }
                 app.palette_reset();
-            }
-            if let Some(content) = app.submit_input() {
+            } else if let Some(content) = app.submit_input() {
                 app.pending_actions.push(PendingAction::SendInput(content));
             }
         },
@@ -57,7 +56,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Tab, _) if palette_is_active => {
             let filtered = app.palette_filtered();
             if let Some(cmd) = filtered.get(app.palette_selected) {
-                app.input = cmd.name.clone();
+                app.input = format!("{} ", cmd.name);
                 app.cursor_pos = app.input.len();
             }
             app.palette_reset();

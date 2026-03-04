@@ -332,9 +332,9 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
     lines
 }
 
-fn input_height(app: &App, content_width: u16) -> u16 {
+fn input_height(app: &App, frame_area: Rect) -> u16 {
     let prompt_len = 2u16;
-    let avail = content_width.saturating_sub(prompt_len + 1) as usize;
+    let avail = frame_area.width.saturating_sub(prompt_len + 1) as usize;
     let display_text = if app.input.starts_with('/') {
         &app.input[1..]
     } else {
@@ -347,9 +347,12 @@ fn input_height(app: &App, content_width: u16) -> u16 {
     if app.palette_active() {
         let n = app.palette_filtered().len();
         if n > 0 {
+            // Dynamic max height for palette: 1/3 of the total screen height
+            let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
+            
             // 1 for separator border + visible item rows
             #[allow(clippy::cast_possible_truncation)]
-            let palette_rows = 1u16.saturating_add(n.min(PALETTE_MAX_VISIBLE) as u16);
+            let palette_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
             return base.saturating_add(palette_rows);
         }
     }
@@ -364,7 +367,7 @@ pub(crate) fn render_frame(frame: &mut Frame, app: &App) {
     let theme = Theme::default();
 
     // Top-level layout: nexus + activity + input + status bar
-    let dyn_input_h = input_height(app, frame.area().width);
+    let dyn_input_h = input_height(app, frame.area());
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
