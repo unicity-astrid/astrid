@@ -96,7 +96,10 @@ impl Kernel {
             workspace_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
         });
+        
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
+        drop(spawn_idle_monitor(Arc::clone(&kernel)));
+        
         Ok(kernel)
     }
 
@@ -156,4 +159,50 @@ impl Kernel {
             }
         }
     }
+}
+
+/// Spawns a background task that cleanly shuts down the Kernel if there is no activity.
+/// 
+/// In the current "appable" iteration of the OS, this prevents the background daemon from 
+/// running forever when the user closes their CLI window. 
+/// In future iterations (like macOS menubar or unikernel), this monitor can be feature-gated.
+fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        // Give the OS a grace period to start up and allow clients to connect.
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+
+            // 1. Are there any active connections to the global socket?
+            // Since we handed the listener lock to the proxy capsule, we can't easily 
+            // query active TCP connections without exposing a status API from the proxy.
+            // But we CAN check the Event Bus subscriber count!
+            let active_subscribers = kernel.event_bus.subscriber_count();
+            
+            // 2. Are there any cron jobs or daemonize capabilities registered?
+            let has_daemons = {
+                let reg = kernel.capsules.read().await;
+                reg.values().any(|c| {
+                    let manifest = c.manifest();
+                    // If a capsule explicitly acts as an uplink or has cron jobs, 
+                    // the OS must stay alive to serve them.
+                    !manifest.uplinks.is_empty() || !manifest.cron_jobs.is_empty()
+                })
+            };
+
+            // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
+            // the OS is completely dormant.
+            if active_subscribers <= 1 && !has_daemons {
+                tracing::info!("OS Kernel has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources...");
+                
+                // Clean up the socket file so it doesn't leave a zombie
+                let socket_path = crate::socket::kernel_socket_path();
+                let _ = std::fs::remove_file(&socket_path);
+
+                // Exit the process
+                std::process::exit(0);
+            }
+        }
+    })
 }
