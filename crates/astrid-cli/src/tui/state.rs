@@ -237,7 +237,7 @@ impl App {
                 },
                 SlashCommandDef {
                     name: "/quit".to_string(),
-                    description: "Disconnect from the OS Kernel".to_string(),
+                    description: "Disconnect from the daemon".to_string(),
                 },
             ],
             palette_selected: 0,

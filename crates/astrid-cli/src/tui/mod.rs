@@ -204,7 +204,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 },
                 state::SlashCommandDef {
                     name: "/quit".to_string(),
-                    description: "Disconnect from the OS Kernel".to_string(),
+                    description: "Disconnect from the daemon".to_string(),
                 },
             ];
 
@@ -337,7 +337,7 @@ async fn handle_slash_command(
         },
         "/refresh" => {
             app.push_message(MessageRole::User, cmd.to_string());
-            app.push_notice("Sending refresh signal to OS Kernel...");
+            app.push_notice("Sending refresh signal to daemon...");
             let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
@@ -357,7 +357,7 @@ async fn handle_slash_command(
                  - `/clear`    - Clear the local terminal screen\n\
                  - `/install`  - Install and load a capsule\n\
                  - `/refresh`  - Reload all capsules into the OS\n\
-                 - `/quit`     - Disconnect from the OS Kernel\n\
+                 - `/quit`     - Disconnect from the daemon\n\
                  "
                 .to_string(),
             );

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Management API requests directed at the OS Kernel.
+/// Management API requests directed at the core daemon.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]
 pub enum KernelRequest {
@@ -26,7 +26,7 @@ pub enum KernelRequest {
     GetCommands,
 }
 
-/// Management API responses from the OS Kernel.
+/// Management API responses from the core daemon.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", content = "data")]
 pub enum KernelResponse {

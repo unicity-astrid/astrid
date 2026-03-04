@@ -194,7 +194,7 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
-                tracing::info!("OS Kernel has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources...");
+                tracing::info!("Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources...");
                 
                 // Clean up the socket file so it doesn't leave a zombie
                 let socket_path = crate::socket::kernel_socket_path();

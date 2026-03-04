@@ -82,9 +82,9 @@ enum Commands {
         from_mcp_json: Option<String>,
     },
 
-    /// Run the Astrid OS Kernel in the background for a specific session
+    /// Run the Astrid Daemon in the background for a specific session
     Daemon {
-        /// The session ID to bind the Kernel to
+        /// The session ID to bind the daemon to
         #[arg(short, long)]
         session: String,
         
@@ -277,21 +277,21 @@ pub(crate) async fn run_or_connect(
         // Test if the socket is actually alive by attempting a connection
         match tokio::net::UnixStream::connect(&socket_path).await {
             Ok(_) => {
-                println!("{}", theme::Theme::info("Connecting to existing OS Kernel..."));
+                println!("{}", theme::Theme::info("Connecting to existing Astrid daemon..."));
             }
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                println!("{}", theme::Theme::warning("Found dead OS socket. Cleaning up and rebooting kernel..."));
+                println!("{}", theme::Theme::warning("Found dead socket. Cleaning up and restarting daemon..."));
                 let _ = std::fs::remove_file(&socket_path);
                 needs_boot = true;
             }
             Err(e) => {
-                anyhow::bail!("Failed to check OS socket: {e}");
+                anyhow::bail!("Failed to check socket: {e}");
             }
         }
     }
 
     if needs_boot {
-        println!("{}", theme::Theme::info("Booting Astrid OS Kernel..."));
+        println!("{}", theme::Theme::info("Booting Astrid daemon..."));
         let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         
         let exe = std::env::current_exe().context("Failed to get current executable path")?;
