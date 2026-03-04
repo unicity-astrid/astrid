@@ -12,7 +12,7 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 pub mod config_bridge;
@@ -74,6 +74,17 @@ enum Commands {
         /// Import a legacy `mcp.json` to auto-convert
         #[arg(long)]
         from_mcp_json: Option<String>,
+    },
+
+    /// Run the Astrid OS Kernel in the background for a specific session
+    Daemon {
+        /// The session ID to bind the Kernel to
+        #[arg(short, long)]
+        session: String,
+        
+        /// Optional workspace root directory
+        #[arg(short, long)]
+        workspace: Option<std::path::PathBuf>,
     },
 
     /// Initialize a workspace
@@ -164,6 +175,25 @@ async fn main() -> Result<()> {
                         let workspace = std::env::current_dir().ok();
             run_or_connect(None, workspace, output_format).await?;
         },
+        Some(Commands::Daemon { session, workspace }) => {
+            let session_id = astrid_core::SessionId::from_uuid(
+                uuid::Uuid::parse_str(&session).map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?
+            );
+            let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+            
+            let kernel = astrid_kernel::Kernel::new(session_id.clone(), ws).await
+                .map_err(|e| anyhow::anyhow!("Failed to boot local Kernel: {e}"))?;
+                
+            // Load all plugins (auto-discovery)
+            kernel.load_all_capsules().await;
+            
+            println!("{}", theme::Theme::success(&format!("Kernel successfully booted for session {}", session_id.0)));
+            
+            // Sleep forever to keep the Kernel alive in the background
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        },
         Some(Commands::Build {
             path,
             output,
@@ -239,14 +269,32 @@ pub(crate) async fn run_or_connect(
         println!("{}", theme::Theme::info(&format!("Booting Local Kernel for Session {}", session_id.0)));
         let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         
-        let kernel = astrid_kernel::Kernel::new(session_id.clone(), ws).await
-            .map_err(|e| anyhow::anyhow!("Failed to boot local Kernel: {e}"))?;
-            
-        // Load all plugins (auto-discovery)
-        kernel.load_all_capsules().await;
+        let exe = std::env::current_exe().context("Failed to get current executable path")?;
         
-        // Wait a tiny moment for the socket task to bind
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("daemon")
+           .arg("--session")
+           .arg(session_id.0.to_string());
+           
+        if let Some(ws_path) = ws.to_str() {
+            cmd.arg("--workspace").arg(ws_path);
+        }
+        
+        // Detach the process from the current terminal's standard I/O
+        cmd.stdin(std::process::Stdio::null())
+           .stdout(std::process::Stdio::null())
+           .stderr(std::process::Stdio::null());
+           
+        // Spawn the background process
+        let child = cmd.spawn().context("Failed to spawn background Kernel daemon")?;
+        
+        // Disown the child so it survives when the CLI exits
+        // Note: Unix requires a double fork for true disowning, but dropping the child 
+        // handle prevents the CLI from wait()ing on it.
+        std::mem::drop(child);
+        
+        // Wait a tiny moment for the socket task to bind in the background process
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     // 3. Connect the dumb pipe
