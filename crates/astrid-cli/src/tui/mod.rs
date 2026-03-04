@@ -195,6 +195,14 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                     description: "Clear conversation history".to_string(),
                 },
                 state::SlashCommandDef {
+                    name: "/install".to_string(),
+                    description: "Install a capsule from a path or registry".to_string(),
+                },
+                state::SlashCommandDef {
+                    name: "/refresh".to_string(),
+                    description: "Reload all installed capsules into the OS".to_string(),
+                },
+                state::SlashCommandDef {
                     name: "/quit".to_string(),
                     description: "Disconnect from the OS Kernel".to_string(),
                 },
@@ -298,20 +306,61 @@ async fn handle_slash_command(
             app.messages.clear();
             app.nexus_stream.clear();
             app.stream_buffer.clear();
-            app.push_notice("Screen cleared.");
         },
-        "/help" => {
+        "/install" => {
+            app.push_message(MessageRole::User, cmd.to_string());
+            if parts.len() < 2 {
+                app.push_notice("Usage: /install <path-to-capsule-or-directory>");
+            } else {
+                let source = parts[1];
+                app.push_notice(&format!("Installing capsule from: {source}..."));
+                match crate::commands::capsule::install::install_capsule(source, false) {
+                    Ok(()) => {
+                        app.push_notice(
+                            "Installation complete. Sending refresh signal to Kernel...",
+                        );
+                        let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
+                        if let Ok(val) = serde_json::to_value(req) {
+                            let msg = astrid_events::ipc::IpcMessage::new(
+                                "kernel.request.reload_capsules",
+                                astrid_events::ipc::IpcPayload::RawJson(val),
+                                session_id.0,
+                            );
+                            let _ = client.send_message(msg).await;
+                        }
+                    },
+                    Err(e) => {
+                        app.push_notice(&format!("Failed to install capsule: {e}"));
+                    },
+                }
+            }
+        },
+        "/refresh" => {
+            app.push_message(MessageRole::User, cmd.to_string());
+            app.push_notice("Sending refresh signal to OS Kernel...");
+            let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
+            if let Ok(val) = serde_json::to_value(req) {
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "kernel.request.reload_capsules",
+                    astrid_events::ipc::IpcPayload::RawJson(val),
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            }
+        },
+        "/help" | "?" => {
             app.push_message(MessageRole::User, cmd.to_string());
             app.push_message(
                 MessageRole::LocalUi,
                 "**Available UI Commands:**\n\
-                 - `/help`   - Show this message\n\
-                 - `/clear`  - Clear the local terminal screen\n\
-                 - `/quit`   - Disconnect from the OS Kernel"
-                    .to_string(),
+                 - `/help`     - Show this message\n\
+                 - `/clear`    - Clear the local terminal screen\n\
+                 - `/install`  - Install and load a capsule\n\
+                 - `/refresh`  - Reload all capsules into the OS\n\
+                 - `/quit`     - Disconnect from the OS Kernel\n\
+                 "
+                .to_string(),
             );
-
-            // Fetch dynamic commands from the Kernel
             let req = astrid_events::kernel_api::KernelRequest::GetCommands;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(

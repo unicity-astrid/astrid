@@ -18,10 +18,10 @@ pub enum KernelRequest {
         /// Cryptographic signature proving Root Identity authorization.
         signature: String,
     },
-    /// Request the list of currently active sessions.
-    ListSessions,
     /// Request the list of currently loaded capsules.
     ListCapsules,
+    /// Reload all capsules from the file system.
+    ReloadCapsules,
     /// Request the list of globally registered slash commands.
     GetCommands,
 }
