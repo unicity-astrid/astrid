@@ -165,10 +165,26 @@ async fn run_loop(
 /// Map a `KernelEvent` to TUI state changes.
 #[allow(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
-    if let AstridEvent::Ipc { message, .. } = event
-        && let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = message.payload
-    {
-        app.stream_buffer.push_str(&text);
+    use std::fmt::Write as _;
+
+    if let AstridEvent::Ipc { message, .. } = event {
+        if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
+            app.stream_buffer.push_str(text);
+        } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
+            && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
+                serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
+            && !cmds.is_empty()
+        {
+            let mut cmd_str = String::from("**Dynamic Capsule Commands:**\n");
+            for cmd in cmds {
+                let _ = writeln!(
+                    cmd_str,
+                    "- `{}` - {} (via {})",
+                    cmd.name, cmd.description, cmd.provider_capsule
+                );
+            }
+            app.push_message(state::MessageRole::Assistant, cmd_str);
+        }
     }
 }
 
@@ -209,7 +225,7 @@ async fn handle_pending_actions(
             },
             PendingAction::SendInput(content) => {
                 if content.starts_with('/') {
-                    handle_slash_command(&content, app, client, session_id);
+                    handle_slash_command(&content, app, client, session_id).await;
                 } else {
                     // Add user message to the stream.
                     app.push_message(MessageRole::User, content.clone());
@@ -238,11 +254,11 @@ async fn handle_pending_actions(
 
 /// Handle slash commands, rendering output into the TUI nexus stream.
 #[allow(clippy::too_many_lines)]
-fn handle_slash_command(
+async fn handle_slash_command(
     cmd: &str,
     app: &mut App,
-    _client: &mut SocketClient,
-    _session_id: &SessionId,
+    client: &mut SocketClient,
+    session_id: &SessionId,
 ) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
@@ -267,11 +283,40 @@ fn handle_slash_command(
                  - `/clear`  - Clear the local terminal screen\n\
                  - `/quit`   - Disconnect from the OS Kernel\n\
                  \n\
-                 *Note: To manage sessions, use the native `astrid session` command outside the TUI.*".to_string()
+                 *Note: Fetching dynamic capsule commands from the Kernel...*".to_string()
             );
+
+            // Fetch dynamic commands from the Kernel
+            let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+            if let Ok(val) = serde_json::to_value(req) {
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "kernel.request.get_commands",
+                    astrid_events::ipc::IpcPayload::RawJson(val),
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            }
         }
         _ => {
-            app.push_notice(&format!("Unknown UI command: {cmd}. Type /help for available commands."));
+            // It's a custom command! Route it to the Event Bus for capsules to handle.
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "cli.command.execute",
+                astrid_events::ipc::IpcPayload::UserInput {
+                    text: cmd.to_string(),
+                    context: None,
+                },
+                session_id.0,
+            );
+            
+            if let Err(e) = client.send_message(msg).await {
+                app.push_notice(&format!("Failed to send command to Kernel: {e}"));
+            } else {
+                app.push_message(MessageRole::User, cmd.to_string());
+                app.state = UiState::Thinking {
+                    start_time: Instant::now(),
+                    dots: 0,
+                };
+            }
         }
     }
 }

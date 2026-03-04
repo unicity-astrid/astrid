@@ -22,6 +22,8 @@ pub enum KernelRequest {
     ListSessions,
     /// Request the list of currently loaded capsules.
     ListCapsules,
+    /// Request the list of globally registered slash commands.
+    GetCommands,
 }
 
 /// Management API responses from the OS Kernel.
@@ -30,6 +32,8 @@ pub enum KernelRequest {
 pub enum KernelResponse {
     /// The request succeeded.
     Success(serde_json::Value),
+    /// A list of available slash commands across all capsules.
+    Commands(Vec<CommandInfo>),
     /// The request failed.
     Error(String),
     /// The request requires user capability approval before it can proceed.
@@ -41,4 +45,15 @@ pub enum KernelResponse {
         /// The specific capabilities required (e.g. `["host_process", "fs_write"]`).
         capabilities: Vec<String>,
     },
+}
+
+/// Information about a registered slash command.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandInfo {
+    /// The slash command trigger (e.g. `/git`).
+    pub name: String,
+    /// A brief description of what the command does.
+    pub description: String,
+    /// The capsule that provides this command.
+    pub provider_capsule: String,
 }

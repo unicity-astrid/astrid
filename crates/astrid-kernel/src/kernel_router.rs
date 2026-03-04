@@ -63,6 +63,20 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                 list.push(c.to_string());
             }
             KernelResponse::Success(serde_json::json!(list))
+        }
+        KernelRequest::GetCommands => {
+            let reg = kernel.capsules.read().await;
+            let mut commands = Vec::new();
+            for c in reg.values() {
+                for cmd in &c.manifest().commands {
+                    commands.push(astrid_events::kernel_api::CommandInfo {
+                        name: cmd.name.clone(),
+                        description: cmd.description.clone().unwrap_or_else(|| "No description".to_string()),
+                        provider_capsule: c.id().to_string(),
+                    });
+                }
+            }
+            KernelResponse::Commands(commands)
         },
     };
 

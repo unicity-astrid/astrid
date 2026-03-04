@@ -150,6 +150,11 @@ impl CapsuleRegistry {
         self.capsules.keys().collect()
     }
 
+    /// Iterator over all registered capsules.
+    pub fn values(&self) -> impl Iterator<Item = &dyn Capsule> {
+        self.capsules.values().map(AsRef::as_ref)
+    }
+
     /// Number of registered capsules.
     #[must_use]
     pub fn len(&self) -> usize {
