@@ -7,14 +7,14 @@ use extism_pdk::FnResult;
 pub fn run() -> FnResult<()> {
     // 1. Fetch the caller context to determine our Session ID
     let caller = sys::get_caller().expect("Failed to get caller context");
-    let session_id = caller.session_id.unwrap_or_else(|| "default".to_string());
+    let _session_id = caller.session_id.unwrap_or_else(|| "default".to_string());
 
     // 2. Determine the physical socket path
-    let path = format!("/tmp/.astrid/sessions/{}/ipc.sock", session_id);
+    let path = "/tmp/.astrid/sessions/system.sock";
 
     // 3. Bind the Unix Domain Socket using the SDK Airlock
-    sys::log("info", format!("CLI Proxy binding to socket: {}", path))?;
-    let listener = bind_unix(&path).expect("Failed to bind to Unix Socket");
+    sys::log("info", format!("CLI Proxy binding to socket: {path}")).unwrap();
+    let listener = bind_unix(path).expect("Failed to bind to Unix Socket");
 
     // 4. Enter the blocking accept loop
     loop {
