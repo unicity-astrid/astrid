@@ -12,7 +12,7 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 pub mod config_bridge;
@@ -230,7 +230,7 @@ async fn main() -> Result<()> {
 /// Returns an error if the kernel fails to boot or the socket fails to connect.
 pub(crate) async fn run_or_connect(
     session: Option<String>,
-    workspace: Option<std::path::PathBuf>,
+    _workspace: Option<std::path::PathBuf>,
     format: formatter::OutputFormat,
 ) -> Result<()> {
     use astrid_core::SessionId;
@@ -245,64 +245,16 @@ pub(crate) async fn run_or_connect(
 
     let socket_path = socket_client::proxy_socket_path();
 
-    // 2. Check if a Kernel is already running globally
-    let mut needs_boot = !socket_path.exists();
-
-    if socket_path.exists() {
-        // Test if the socket is actually alive by attempting a connection
-        match tokio::net::UnixStream::connect(&socket_path).await {
-            Ok(_) => {
-                println!("{}", theme::Theme::info("Connecting to existing OS Kernel..."));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                println!("{}", theme::Theme::warning("Found dead OS socket. Cleaning up and rebooting kernel..."));
-                let _ = std::fs::remove_file(&socket_path);
-                needs_boot = true;
-            }
-            Err(e) => {
-                anyhow::bail!("Failed to check OS socket: {e}");
-            }
-        }
+    if !socket_path.exists() {
+        anyhow::bail!(
+            "Astrid OS is not running. Please start the background Kernel using `astrid daemon start`"
+        );
     }
 
-    if needs_boot {
-        println!("{}", theme::Theme::info("Booting Astrid OS Kernel..."));
-        let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-        
-        let exe = std::env::current_exe().context("Failed to get current executable path")?;
-        
-        let mut cmd = std::process::Command::new(exe);
-        cmd.arg("daemon")
-           // We must give the background daemon a System Session ID so it can boot, 
-           // but it multiplexes all other sessions.
-           .arg("--session")
-           .arg("00000000-0000-0000-0000-000000000000");
-           
-        if let Some(ws_path) = ws.to_str() {
-            cmd.arg("--workspace").arg(ws_path);
-        }
-        
-        // Detach the process from the current terminal's standard I/O
-        cmd.stdin(std::process::Stdio::null())
-           .stdout(std::process::Stdio::null())
-           .stderr(std::process::Stdio::null());
-           
-        // Spawn the background process
-        let child = cmd.spawn().context("Failed to spawn background Kernel daemon")?;
-        
-        // Disown the child so it survives when the CLI exits
-        // Note: Unix requires a double fork for true disowning, but dropping the child 
-        // handle prevents the CLI from wait()ing on it.
-        std::mem::drop(child);
-        
-        // Wait a tiny moment for the socket task to bind in the background process
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    // 3. Connect the dumb pipe
+    // 2. Connect the dumb pipe
     let mut client = socket_client::SocketClient::connect(session_id.clone()).await?;
     
-    // 4. Run the TUI or simple REPL loop
+    // 3. Run the TUI or simple REPL loop
     let workspace_root = std::env::current_dir().ok();
     let model_name = astrid_config::Config::load(workspace_root.as_deref())
         .ok()
