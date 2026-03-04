@@ -464,27 +464,38 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         },
                         MessageRole::LocalUi => {
                             let is_diff = msg.kind.is_some();
-                            let style = match &msg.kind {
-                                Some(MessageKind::DiffHeader | MessageKind::DiffFooter) => {
-                                    Style::default().fg(theme.diff_context)
-                                },
-                                Some(MessageKind::DiffRemoved) => {
-                                    Style::default().fg(theme.diff_removed)
-                                },
-                                Some(MessageKind::DiffAdded) => {
-                                    Style::default().fg(theme.diff_added)
-                                },
-                                Some(MessageKind::ToolResult(_)) => unreachable!(),
-                                None => Style::default()
-                                    .fg(theme.muted)
-                                    .add_modifier(Modifier::ITALIC),
-                            };
-                            let prefix = if is_diff { "  ⎿  " } else { "" };
-                            for line in msg.content.lines() {
-                                lines.push(Line::from(Span::styled(
-                                    format!("{prefix}{line}"),
-                                    style,
-                                )));
+                            if is_diff {
+                                let style = match &msg.kind {
+                                    Some(MessageKind::DiffHeader | MessageKind::DiffFooter) => {
+                                        Style::default().fg(theme.diff_context)
+                                    },
+                                    Some(MessageKind::DiffRemoved) => {
+                                        Style::default().fg(theme.diff_removed)
+                                    },
+                                    Some(MessageKind::DiffAdded) => {
+                                        Style::default().fg(theme.diff_added)
+                                    },
+                                    Some(MessageKind::ToolResult(_)) | None => unreachable!(),
+                                };
+                                let prefix = "  ⎿  ";
+                                for line in msg.content.lines() {
+                                    lines.push(Line::from(Span::styled(
+                                        format!("{prefix}{line}"),
+                                        style,
+                                    )));
+                                }
+                            } else {
+                                let content_lines: Vec<&str> = msg.content.lines().collect();
+                                let wrap_width = (area.width as usize).saturating_sub(2);
+                                
+                                for line in &content_lines {
+                                    let wrapped = word_wrap_line(line, wrap_width);
+                                    for sub in &wrapped {
+                                        let mut spans = vec![Span::styled("  ", Style::default())];
+                                        spans.extend(markdown_to_spans(sub, theme));
+                                        lines.push(Line::from(spans));
+                                    }
+                                }
                             }
                         },
                     }
