@@ -167,8 +167,9 @@ impl Kernel {
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
 
         // Partition: uplink/daemon capsules first, then the rest.
-        let (uplinks, others): (Vec<_>, Vec<_>) =
-            discovered.into_iter().partition(|(m, _)| m.capabilities.uplink);
+        let (uplinks, others): (Vec<_>, Vec<_>) = discovered
+            .into_iter()
+            .partition(|(m, _)| m.capabilities.uplink);
 
         // Load uplinks first so their event bus subscriptions are ready.
         for (manifest, dir) in &uplinks {
