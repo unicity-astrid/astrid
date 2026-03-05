@@ -193,7 +193,12 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
         if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
             app.stream_buffer.push_str(text);
-        } else if let astrid_events::ipc::IpcPayload::OnboardingRequired { capsule_id, missing_keys, prompts } = &message.payload {
+        } else if let astrid_events::ipc::IpcPayload::OnboardingRequired {
+            capsule_id,
+            missing_keys,
+            prompts,
+        } = &message.payload
+        {
             let msg = format!("Action required: Capsule '{capsule_id}' requires configuration.");
             app.push_notice(&msg);
             app.status_message = Some((msg, Instant::now()));
@@ -207,7 +212,8 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             };
             app.input.clear();
             app.cursor_pos = 0;
-        } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload            && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
+        } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
+            && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
         {
             // Reset the dynamic slash command palette to the hardcoded base commands
@@ -241,8 +247,6 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                     description: format!("{} (via {})", cmd.description, cmd.provider_capsule),
                 });
             }
-
-            app.push_notice("Dynamic capsule commands synced.");
         }
     }
 }
@@ -306,7 +310,10 @@ async fn handle_pending_actions(
                     }
                 }
             },
-            PendingAction::SubmitOnboarding { capsule_id, answers } => {
+            PendingAction::SubmitOnboarding {
+                capsule_id,
+                answers,
+            } => {
                 if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                     let env_path = home.capsules_dir().join(&capsule_id).join(".env.json");
                     if let Ok(json) = serde_json::to_string_pretty(&answers) {
@@ -368,7 +375,7 @@ async fn handle_slash_command(
                 let msg = format!("Installing capsule from: {source}...");
                 app.push_notice(&msg);
                 app.status_message = Some((msg, Instant::now()));
-                
+
                 // Force a redraw before starting blocking task
                 let _ = terminal.draw(|frame| render::render_frame(frame, app));
 
@@ -381,10 +388,11 @@ async fn handle_slash_command(
 
                 match result {
                     Ok(()) => {
-                        let success_msg = "Installation complete. Sending refresh signal to Kernel...";
+                        let success_msg =
+                            "Installation complete. Sending refresh signal to Kernel...";
                         app.push_notice(success_msg);
                         app.status_message = Some((success_msg.to_string(), Instant::now()));
-                        
+
                         let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
                         if let Ok(val) = serde_json::to_value(req) {
                             let msg = astrid_events::ipc::IpcMessage::new(

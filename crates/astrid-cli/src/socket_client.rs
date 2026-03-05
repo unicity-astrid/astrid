@@ -1,8 +1,8 @@
-use tokio::net::UnixStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use astrid_events::ipc::{IpcMessage, IpcPayload};
-use astrid_events::AstridEvent;
 use astrid_core::SessionId;
+use astrid_events::ipc::{IpcMessage, IpcPayload};
+use astrid_events::{AstridEvent, EventMetadata};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 use tracing::warn;
 
 use anyhow::{Context, Result};
@@ -16,7 +16,7 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
         Err(e) => {
             warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
             std::path::PathBuf::from("/tmp/.astrid/sessions")
-        }
+        },
     };
     base.join("system.sock")
 }
@@ -41,7 +41,9 @@ impl SocketClient {
             anyhow::bail!("Global OS Socket not found at {}", path.display());
         }
 
-        let stream = UnixStream::connect(&path).await.context("Failed to connect to IPC socket")?;
+        let stream = UnixStream::connect(&path)
+            .await
+            .context("Failed to connect to IPC socket")?;
         let (read_half, write_half) = stream.into_split();
 
         Ok(Self {
@@ -53,6 +55,10 @@ impl SocketClient {
 
     /// Read the next event from the Kernel.
     ///
+    /// The CLI proxy capsule sends individual `IpcMessage` objects over the
+    /// socket (not full `AstridEvent` wrappers). We deserialize the message
+    /// and wrap it as `AstridEvent::Ipc` for the TUI handler.
+    ///
     /// # Errors
     /// Returns an error if the message cannot be read or parsed.
     pub async fn read_event(&mut self) -> Result<Option<AstridEvent>> {
@@ -61,7 +67,7 @@ impl SocketClient {
             return Ok(None); // Connection closed
         }
         let len = u32::from_be_bytes(len_buf) as usize;
-        
+
         if len > 50 * 1024 * 1024 {
             anyhow::bail!("Message too large from kernel: {len} bytes");
         }
@@ -69,8 +75,12 @@ impl SocketClient {
         let mut payload = vec![0u8; len];
         self.read_half.read_exact(&mut payload).await?;
 
-        let event = serde_json::from_slice::<AstridEvent>(&payload)?;
-        Ok(Some(event))
+        // The proxy sends raw IpcMessage JSON — wrap it as AstridEvent::Ipc.
+        let message = serde_json::from_slice::<IpcMessage>(&payload)?;
+        Ok(Some(AstridEvent::Ipc {
+            metadata: EventMetadata::new("cli_proxy"),
+            message,
+        }))
     }
 
     /// Send a user input message to the Kernel.
@@ -82,16 +92,12 @@ impl SocketClient {
             text,
             context: None,
         };
-        
-        let msg = IpcMessage::new(
-            "user.prompt",
-            payload,
-            self.session_id.0,
-        );
+
+        let msg = IpcMessage::new("user.prompt", payload, self.session_id.0);
 
         self.send_message(msg).await
     }
-    
+
     /// Send a raw IPC message to the Kernel.
     ///
     /// # Errors
@@ -99,8 +105,8 @@ impl SocketClient {
     #[allow(clippy::cast_possible_truncation)]
     pub async fn send_message(&mut self, msg: IpcMessage) -> Result<()> {
         let bytes = serde_json::to_vec(&msg)?;
-        let len = bytes.len() as u32; 
-        
+        let len = bytes.len() as u32;
+
         self.write_half.write_all(&len.to_be_bytes()).await?;
         self.write_half.write_all(&bytes).await?;
         Ok(())

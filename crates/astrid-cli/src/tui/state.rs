@@ -273,7 +273,7 @@ impl App {
             copy_cursor: 0,
             copy_selected: HashSet::new(),
             copy_notice: None,
-            
+
             status_message: None,
         }
     }

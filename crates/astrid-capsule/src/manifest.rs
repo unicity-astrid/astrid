@@ -131,6 +131,10 @@ pub struct ComponentDef {
 /// A collection of capabilities the capsule requests from the OS.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CapabilitiesDef {
+    /// Whether the capsule acts as a long-lived uplink/daemon (e.g. the CLI proxy).
+    /// When true, the WASM execution timeout is disabled.
+    #[serde(default)]
+    pub uplink: bool,
     /// Network domains the capsule wants to access.
     #[serde(default)]
     pub net: Vec<String>,
@@ -149,6 +153,9 @@ pub struct CapabilitiesDef {
     /// Legacy host process executions (the "Airlock Override").
     #[serde(default)]
     pub host_process: Vec<String>,
+    /// Unix/TCP socket bind addresses the capsule requires.
+    #[serde(default)]
+    pub net_bind: Vec<String>,
 }
 
 /// An environment variable required by the capsule.

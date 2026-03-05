@@ -23,7 +23,12 @@ pub struct CapsuleContext {
 
 impl CapsuleContext {
     #[must_use]
-    pub fn new(workspace_root: PathBuf, kv: ScopedKvStore, event_bus: Arc<EventBus>, cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>) -> Self {
+    pub fn new(
+        workspace_root: PathBuf,
+        kv: ScopedKvStore,
+        event_bus: Arc<EventBus>,
+        cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
+    ) -> Self {
         Self {
             workspace_root,
             kv,

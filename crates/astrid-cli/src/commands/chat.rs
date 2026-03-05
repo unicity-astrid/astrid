@@ -7,9 +7,9 @@
 use astrid_core::SessionId;
 use colored::Colorize;
 
-use crate::socket_client::SocketClient;
 use crate::formatter::{OutputFormat, OutputFormatter, create_formatter};
 use crate::repl::ReadlineEvent;
+use crate::socket_client::SocketClient;
 use crate::theme::Theme;
 
 /// Run interactive chat mode via the daemon.
@@ -84,7 +84,9 @@ async fn run_json_chat(
                 return Ok(());
             };
 
-            let astrid_events::AstridEvent::Ipc { message, .. } = event else { continue };
+            let astrid_events::AstridEvent::Ipc { message, .. } = event else {
+                continue;
+            };
 
             match message.payload {
                 astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } => {
@@ -94,14 +96,14 @@ async fn run_json_chat(
                         break;
                     }
                 },
-                astrid_events::ipc::IpcPayload::LlmStreamEvent { event: astrid_events::llm::StreamEvent::ToolCallStart { id, name }, .. } => {
+                astrid_events::ipc::IpcPayload::LlmStreamEvent {
+                    event: astrid_events::llm::StreamEvent::ToolCallStart { id, name },
+                    ..
+                } => {
                     formatter.flush_markdown();
                     formatter.format_tool_start(&id, &name, &serde_json::Value::Null);
                 },
-                astrid_events::ipc::IpcPayload::ToolExecuteResult {
-                    call_id,
-                    result,
-                } => {
+                astrid_events::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
                     formatter.flush_markdown();
                     let res_val = serde_json::to_string(&result.content).unwrap_or_default();
                     formatter.format_tool_result(&call_id, &res_val, result.is_error);
@@ -112,18 +114,25 @@ async fn run_json_chat(
                     reason,
                 } => {
                     formatter.flush_markdown();
-                    println!("{}", Theme::warning(&format!("Approval required: {action} on {resource} ({reason})")));
+                    println!(
+                        "{}",
+                        Theme::warning(&format!(
+                            "Approval required: {action} on {resource} ({reason})"
+                        ))
+                    );
                     // TUI handles this correctly, JSON mode auto-aborts for safety unless headless approvals are enabled
-                    client.send_message(astrid_events::ipc::IpcMessage::new(
-                        "user.approval",
-                        astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
-                            "approved": false,
-                            "reason": "Approval not supported in JSON REPL mode"
-                        })),
-                        session_id.0
-                    )).await?;
+                    client
+                        .send_message(astrid_events::ipc::IpcMessage::new(
+                            "user.approval",
+                            astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
+                                "approved": false,
+                                "reason": "Approval not supported in JSON REPL mode"
+                            })),
+                            session_id.0,
+                        ))
+                        .await?;
                 },
-                _ => {} // Ignore other IPC payloads for now
+                _ => {}, // Ignore other IPC payloads for now
             }
         }
     }
@@ -131,10 +140,6 @@ async fn run_json_chat(
     Ok(())
 }
 
-fn handle_slash_command(
-    cmd: &str,
-    _client: &mut SocketClient,
-    _session_id: &SessionId,
-) {
+fn handle_slash_command(cmd: &str, _client: &mut SocketClient, _session_id: &SessionId) {
     println!("Slash commands temporarily disabled in JSON Mode during microkernel refactor: {cmd}");
 }

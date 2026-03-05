@@ -251,9 +251,9 @@ mod tests {
 
     // ── Dispatch integration tests ──────────────────────────────────
 
+    use async_trait::async_trait;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
-    use async_trait::async_trait;
 
     use crate::capsule::{Capsule, CapsuleId, CapsuleState};
     use crate::context::CapsuleContext;

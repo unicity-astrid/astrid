@@ -36,7 +36,8 @@ pub fn run() -> FnResult<()> {
                                     msg.get("topic").and_then(|t| t.as_str()),
                                     msg.get("payload"),
                                 ) {
-                                    ipc::publish_json(topic, payload).expect("Failed to publish IPC");
+                                    ipc::publish_json(topic, payload)
+                                        .expect("Failed to publish IPC");
                                 }
                             } else {
                                 sys::log("warn", "Received malformed IPC payload from socket")?;
@@ -49,22 +50,56 @@ pub fn run() -> FnResult<()> {
                     },
                 }
 
-                // 2. Poll Event Bus
+                // 2. Poll Event Bus — extract individual IpcMessages from the poll
+                //    envelope and forward each one to the CLI socket as a standalone
+                //    IpcMessage (the CLI client deserializes IpcMessage directly).
                 match ipc::poll_bytes(&sub_handle) {
                     Ok(bytes) => {
                         if !bytes.is_empty()
-                            && let Err(e) = write(&stream, &bytes)
+                            && let Err(()) = forward_poll_messages(&stream, &bytes)
                         {
-                            sys::log("error", format!("Socket write error: {:?}", e))?;
                             break;
                         }
                     },
                     Err(_) => {
                         // Polling error or closed channel
                         break;
-                    }
+                    },
                 }
             }
         }
     }
+}
+
+/// Parse the poll envelope `{"messages": [...], "dropped": N}` and write
+/// each `IpcMessage` individually to the CLI socket.
+fn forward_poll_messages(
+    stream: &astrid_sdk::net::StreamHandle,
+    poll_bytes: &[u8],
+) -> Result<(), ()> {
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = sys::log("warn", "Failed to parse poll envelope");
+            return Ok(());
+        },
+    };
+
+    let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(()),
+    };
+
+    for msg in messages {
+        let msg_bytes = match serde_json::to_vec(msg) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if let Err(e) = write(stream, &msg_bytes) {
+            let _ = sys::log("error", format!("Socket write error: {e:?}"));
+            return Err(());
+        }
+    }
+
+    Ok(())
 }

@@ -11,7 +11,7 @@ pub fn kernel_socket_path() -> PathBuf {
         Err(e) => {
             warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
             PathBuf::from("/tmp/.astrid/sessions")
-        }
+        },
     };
     base.join("system.sock")
 }
@@ -23,12 +23,12 @@ pub fn kernel_socket_path() -> PathBuf {
 /// Returns an error if the socket cannot be bound.
 pub fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
     let path = kernel_socket_path();
-    
+
     // Remove stale socket file if it exists
     if path.exists() {
         let _ = std::fs::remove_file(&path);
     }
-    
+
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }

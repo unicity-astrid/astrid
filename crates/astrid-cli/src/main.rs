@@ -15,13 +15,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
+mod commands;
 pub mod config_bridge;
-/// The socket client for interacting with the Kernel.
-pub mod socket_client;
 mod formatter;
 mod repl;
+/// The socket client for interacting with the Kernel.
+pub mod socket_client;
 mod theme;
-mod commands;
 mod tui;
 
 use theme::print_banner;
@@ -87,7 +87,7 @@ enum Commands {
         /// The session ID to bind the daemon to
         #[arg(short, long)]
         session: String,
-        
+
         /// Optional workspace root directory
         #[arg(short, long)]
         workspace: Option<std::path::PathBuf>,
@@ -96,7 +96,6 @@ enum Commands {
     /// Initialize a workspace
     Init,
 }
-
 
 #[derive(Subcommand)]
 enum CapsuleCommands {
@@ -133,44 +132,46 @@ fn ensure_global_config() {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-
-    // Load unified config for logging setup.
+fn init_logging(cli: &Cli) {
     let workspace_root = std::env::current_dir().ok();
     let unified_cfg = astrid_config::Config::load(workspace_root.as_deref())
         .ok()
         .map(|r| r.config);
 
-    // Set up logging from config, with --verbose override.
-        let log_config = if let Some(cfg) = &unified_cfg {
+    let needs_file_log = matches!(
+        cli.command,
+        Some(Commands::Chat { .. } | Commands::Daemon { .. }) | None
+    );
+
+    let log_config = if let Some(cfg) = &unified_cfg {
         let mut lc = config_bridge::to_log_config(cfg);
         if cli.verbose {
             "debug".clone_into(&mut lc.level);
         }
-        // Force file logging if running interactive Chat mode to prevent TUI corruption
-        if matches!(cli.command, Some(Commands::Chat { .. }) | None)
-            && let Ok(home) = astrid_core::dirs::AstridHome::resolve()
-        {
+        if needs_file_log && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
             lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
         }
         lc
     } else {
-        // Fallback if config loading fails.
         let level = if cli.verbose { "debug" } else { "info" };
         let mut lc = astrid_telemetry::LogConfig::new(level)
             .with_format(astrid_telemetry::LogFormat::Compact);
-        if matches!(cli.command, Some(Commands::Chat { .. }) | None)
-            && let Ok(home) = astrid_core::dirs::AstridHome::resolve()
-        {
+        if needs_file_log && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
             lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
         }
         lc
     };
+
     if let Err(e) = astrid_telemetry::setup_logging(&log_config) {
         eprintln!("Failed to initialize logging: {e}");
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    init_logging(&cli);
 
     // Parse output format.
     let output_format = match cli.format.as_str() {
@@ -185,7 +186,7 @@ async fn main() -> Result<()> {
                 print_banner();
             }
             ensure_global_config();
-                        let workspace = std::env::current_dir().ok();
+            let workspace = std::env::current_dir().ok();
             run_or_connect(session, workspace, output_format).await?;
         },
         None => {
@@ -194,23 +195,33 @@ async fn main() -> Result<()> {
                 print_banner();
             }
             ensure_global_config();
-                        let workspace = std::env::current_dir().ok();
+            let workspace = std::env::current_dir().ok();
             run_or_connect(None, workspace, output_format).await?;
         },
         Some(Commands::Daemon { session, workspace }) => {
             let session_id = astrid_core::SessionId::from_uuid(
-                uuid::Uuid::parse_str(&session).map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?
+                uuid::Uuid::parse_str(&session)
+                    .map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?,
             );
-            let ws = workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
-            
-            let kernel = astrid_kernel::Kernel::new(session_id.clone(), ws).await
+            let ws = workspace.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
+
+            let kernel = astrid_kernel::Kernel::new(session_id.clone(), ws)
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to boot local Kernel: {e}"))?;
-                
+
             // Load all plugins (auto-discovery)
             kernel.load_all_capsules().await;
-            
-            println!("{}", theme::Theme::success(&format!("Kernel successfully booted for session {}", session_id.0)));
-            
+
+            println!(
+                "{}",
+                theme::Theme::success(&format!(
+                    "Kernel successfully booted for session {}",
+                    session_id.0
+                ))
+            );
+
             // Sleep forever to keep the Kernel alive in the background
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
@@ -233,12 +244,10 @@ async fn main() -> Result<()> {
             commands::init::run_init()?;
         },
 
-        Some(Commands::Capsule { command }) => {
-            match command {
-                CapsuleCommands::Install { source, workspace } => {
-                    commands::capsule::install::install_capsule(&source, workspace)?;
-                },
-            }
+        Some(Commands::Capsule { command }) => match command {
+            CapsuleCommands::Install { source, workspace } => {
+                commands::capsule::install::install_capsule(&source, workspace)?;
+            },
         },
         Some(Commands::Session { command }) => {
             commands::sessions::handle_session_commands(command)?;
@@ -263,7 +272,9 @@ pub(crate) async fn run_or_connect(
 
     // 1. Resolve Session ID
     let session_id = if let Some(sid) = session {
-        SessionId::from_uuid(Uuid::parse_str(&sid).map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?)
+        SessionId::from_uuid(
+            Uuid::parse_str(&sid).map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?,
+        )
     } else {
         SessionId::from_uuid(Uuid::new_v4())
     };
@@ -277,59 +288,69 @@ pub(crate) async fn run_or_connect(
         // Test if the socket is actually alive by attempting a connection
         match tokio::net::UnixStream::connect(&socket_path).await {
             Ok(_) => {
-                println!("{}", theme::Theme::info("Connecting to existing Astrid daemon..."));
-            }
+                println!(
+                    "{}",
+                    theme::Theme::info("Connecting to existing Astrid daemon...")
+                );
+            },
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                println!("{}", theme::Theme::warning("Found dead socket. Cleaning up and restarting daemon..."));
+                println!(
+                    "{}",
+                    theme::Theme::warning(
+                        "Found dead socket. Cleaning up and restarting daemon..."
+                    )
+                );
                 let _ = std::fs::remove_file(&socket_path);
                 needs_boot = true;
-            }
+            },
             Err(e) => {
                 anyhow::bail!("Failed to check socket: {e}");
-            }
+            },
         }
     }
 
     if needs_boot {
         println!("{}", theme::Theme::info("Booting Astrid daemon..."));
         let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        
+
         let exe = std::env::current_exe().context("Failed to get current executable path")?;
-        
+
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("daemon")
            // We must give the background daemon a System Session ID so it can boot, 
            // but it multiplexes all other sessions.
            .arg("--session")
            .arg("00000000-0000-0000-0000-000000000000");
-           
+
         if let Some(ws_path) = ws.to_str() {
             cmd.arg("--workspace").arg(ws_path);
         }
-        
+
         // Detach the process from the current terminal's standard I/O
         cmd.stdin(std::process::Stdio::null())
-           .stdout(std::process::Stdio::null())
-           .stderr(std::process::Stdio::null());
-           
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+
         // Spawn the background process
-        let child = cmd.spawn().context("Failed to spawn background Kernel daemon")?;
-        
+        let child = cmd
+            .spawn()
+            .context("Failed to spawn background Kernel daemon")?;
+
         // Disown the child so it survives when the CLI exits
         std::mem::drop(child);
-        
+
         // Wait a tiny moment for the socket task to bind in the background process
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     // 3. Connect the dumb pipe
     let mut client = socket_client::SocketClient::connect(session_id.clone()).await?;
-    
+
     // 3. Run the TUI or simple REPL loop
     let workspace_root = std::env::current_dir().ok();
     let model_name = astrid_config::Config::load(workspace_root.as_deref())
         .ok()
         .map_or_else(|| "unknown".to_string(), |r| r.config.model.model);
-        
+
     crate::commands::chat::run_chat(&mut client, &session_id, &model_name, format).await
 }

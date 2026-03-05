@@ -48,7 +48,6 @@ pub(crate) fn install_from_github(
     home: &AstridHome,
     _is_openclaw: bool,
 ) -> anyhow::Result<()> {
-
     let client = reqwest::blocking::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(30))
@@ -64,7 +63,6 @@ pub(crate) fn install_from_github(
 
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
-
     let res = client.get(&api_url).send();
 
     if let Ok(response) = res
@@ -79,7 +77,6 @@ pub(crate) fn install_from_github(
                     .get("browser_download_url")
                     .and_then(serde_json::Value::as_str)
             {
-            
                 let tmp_dir = tempfile::tempdir()?;
                 let sanitized_name = Path::new(name).file_name().unwrap_or_default();
                 let download_path = tmp_dir.path().join(sanitized_name);
@@ -95,9 +92,6 @@ pub(crate) fn install_from_github(
             }
         }
     }
-
-
-
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
     let clone_dir = tmp_dir.path().join(repo);
@@ -126,7 +120,8 @@ pub(crate) fn install_from_github(
         let entry = entry?;
         if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
             return unpack_and_install(&entry.path(), workspace, home);
-        }    }
+        }
+    }
 
     bail!("Universal Migrator failed to produce a .capsule archive.");
 }
@@ -157,7 +152,6 @@ pub(crate) fn transpile_and_install(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
 
@@ -226,9 +220,9 @@ pub(crate) fn install_from_local(
 
     // Auto-build Rust capsules if we point at a source directory with a Cargo.toml
     if source_path.is_dir() && source_path.join("Cargo.toml").exists() {
-            let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
+        let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
         let output_dir = tmp_dir.path().join("dist");
-        
+
         crate::commands::build::run_build(
             Some(source),
             Some(output_dir.to_str().context("Invalid output dir path")?),
@@ -254,7 +248,6 @@ fn unpack_and_install(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for unpacking")?;
     let unpack_dir = tmp_dir.path();
 
@@ -311,7 +304,6 @@ pub(crate) fn install_from_local_path(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-
     let manifest_path = source_path.join("Capsule.toml");
     if !manifest_path.exists() {
         bail!("No Capsule.toml found in {}", source_path.display());
@@ -336,7 +328,7 @@ pub(crate) fn install_from_local_path(
     copy_plugin_dir(source_path, &target_dir)?;
 
     Ok(())
-    }
+}
 
 /// Recursively copy a directory tree.
 pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {

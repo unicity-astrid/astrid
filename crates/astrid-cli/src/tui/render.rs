@@ -358,7 +358,7 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
         if n > 0 {
             // Dynamic max height for palette: 1/3 of the total screen height
             let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
-            
+
             // 1 for separator border + visible item rows
             #[allow(clippy::cast_possible_truncation)]
             let palette_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
@@ -499,7 +499,7 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                             } else {
                                 let content_lines: Vec<&str> = msg.content.lines().collect();
                                 let wrap_width = (area.width as usize).saturating_sub(2);
-                                
+
                                 for line in &content_lines {
                                     let wrapped = word_wrap_line(line, wrap_width);
                                     for sub in &wrapped {
@@ -704,7 +704,10 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         UiState::Onboarding { .. } => {
             vec![
                 Span::styled("  ", Style::default()),
-                Span::styled("⚙ Configuration Required", Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "⚙ Configuration Required",
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     " · Please provide the required environment variables below.",
                     Style::default().fg(theme.muted),
@@ -771,7 +774,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let is_idle = matches!(app.state, UiState::Idle | UiState::Interrupted);
 
     // Dashed top border
-    let border_line = "╌".repeat(area.width as usize);
+    let border_line = "─".repeat(area.width as usize);
     let border = Paragraph::new(Line::from(Span::styled(
         border_line.clone(),
         Style::default().fg(theme.border),
@@ -793,7 +796,8 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if !palette_filtered.is_empty() {
             #[allow(clippy::cast_possible_truncation)]
             {
-                menu_rows = 1u16.saturating_add(palette_filtered.len().min(PALETTE_MAX_VISIBLE) as u16);
+                menu_rows =
+                    1u16.saturating_add(palette_filtered.len().min(PALETTE_MAX_VISIBLE) as u16);
             }
         }
     }
@@ -849,16 +853,24 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         };
 
         let mut is_secret = false;
-        if let UiState::Onboarding { missing_keys, current_idx, .. } = &app.state
+        if let UiState::Onboarding {
+            missing_keys,
+            current_idx,
+            ..
+        } = &app.state
             && *current_idx < missing_keys.len()
         {
             let key = &missing_keys[*current_idx];
             let key_lower = key.to_lowercase();
-            if key_lower.contains("secret") || key_lower.contains("key") || key_lower.contains("token") || key_lower.contains("password") {
+            if key_lower.contains("secret")
+                || key_lower.contains("key")
+                || key_lower.contains("token")
+                || key_lower.contains("password")
+            {
                 is_secret = true;
             }
         }
-        
+
         let display_str = if is_secret {
             "*".repeat(display_input.len())
         } else {
@@ -870,7 +882,13 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::styled(display_str, input_style),
             Span::styled(
                 "█",
-                Style::default().fg(if is_idle || matches!(app.state, UiState::Onboarding { .. }) { theme.cursor } else { theme.border }),
+                Style::default().fg(
+                    if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
+                        theme.cursor
+                    } else {
+                        theme.border
+                    },
+                ),
             ),
         ]))
         .wrap(Wrap { trim: false });
@@ -879,10 +897,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     // Render palette or onboarding menu below input
     if menu_rows > 0 {
-        let menu_y = area
-            .y
-            .saturating_add(area.height)
-            .saturating_sub(menu_rows);
+        let menu_y = area.y.saturating_add(area.height).saturating_sub(menu_rows);
 
         // Dashed separator
         let sep = Paragraph::new(Line::from(Span::styled(
@@ -898,8 +913,23 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             menu_rows.saturating_sub(1),
         );
 
-        if let UiState::Onboarding { capsule_id, missing_keys, prompts, current_idx, answers: _ } = &app.state {
-            render_onboarding_menu(frame, items_area, capsule_id, missing_keys, prompts, *current_idx, theme);
+        if let UiState::Onboarding {
+            capsule_id,
+            missing_keys,
+            prompts,
+            current_idx,
+            answers: _,
+        } = &app.state
+        {
+            render_onboarding_menu(
+                frame,
+                items_area,
+                capsule_id,
+                missing_keys,
+                prompts,
+                *current_idx,
+                theme,
+            );
         } else {
             render_palette_items(frame, items_area, app, &palette_filtered, theme);
         }
@@ -920,7 +950,10 @@ fn render_onboarding_menu(
 
     // Title line
     lines.push(Line::from(vec![
-        Span::styled("  ⚙  Capsule Configuration: ", Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "  ⚙  Capsule Configuration: ",
+            Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(capsule_id, Style::default().fg(theme.user)),
     ]));
 
@@ -945,16 +978,25 @@ fn render_onboarding_menu(
             "    "
         };
 
-        let mut spans = vec![
-            Span::styled(prefix, style),
-            Span::styled(key, style),
-        ];
+        let mut spans = vec![Span::styled(prefix, style), Span::styled(key, style)];
 
         if is_selected {
-            let prompt = prompts.get(key).map_or("Please enter a value", String::as_str);
-            spans.push(Span::styled(format!("  ← {prompt}"), Style::default().fg(theme.border).add_modifier(Modifier::ITALIC)));
+            let prompt = prompts
+                .get(key)
+                .map_or("Please enter a value", String::as_str);
+            spans.push(Span::styled(
+                format!("  ← {prompt}"),
+                Style::default()
+                    .fg(theme.border)
+                    .add_modifier(Modifier::ITALIC),
+            ));
         } else if is_done {
-            spans.push(Span::styled("  (saved)", Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC)));
+            spans.push(Span::styled(
+                "  (saved)",
+                Style::default()
+                    .fg(theme.muted)
+                    .add_modifier(Modifier::ITALIC),
+            ));
         }
 
         lines.push(Line::from(spans));

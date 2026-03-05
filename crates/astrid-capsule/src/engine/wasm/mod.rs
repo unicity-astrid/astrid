@@ -112,7 +112,7 @@ impl ExecutionEngine for WasmEngine {
             )));
         }
 
-        let (plugin, rx) = tokio::task::block_in_place(move || {
+        let (plugin, rx, has_run) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
             })?;
@@ -182,12 +182,16 @@ impl ExecutionEngine for WasmEngine {
             let user_data = UserData::new(host_state);
 
             let extism_wasm = Wasm::data(wasm_bytes);
-            let extism_manifest = Manifest::new([extism_wasm])
-                .with_timeout(std::time::Duration::from_secs(10)) // Reduced from 30s
-                .with_memory_max(1024); // 64MB
+            let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
 
-            // We will set instruction limits (fuel) when Wasmtime natively exposes it through Extism,
-            // but for now, the 10-second wall-clock timeout acts as our gas limit.
+            // Long-lived capsules (uplinks, cron, daemons) must not have a wall-clock
+            // timeout. Short-lived tool capsules get a 10-second safety timeout.
+            let is_daemon = !manifest.uplinks.is_empty()
+                || !manifest.cron_jobs.is_empty()
+                || manifest.capabilities.uplink;
+            if !is_daemon {
+                extism_manifest = extism_manifest.with_timeout(std::time::Duration::from_secs(10));
+            }
 
             let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
             let builder = register_host_functions(builder, user_data);
@@ -196,10 +200,24 @@ impl ExecutionEngine for WasmEngine {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to build Extism plugin: {e}"))
             })?;
 
-            Ok::<_, CapsuleError>((plugin, rx))
+            let has_run = plugin.function_exists("run");
+
+            Ok::<_, CapsuleError>((plugin, rx, has_run))
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
+
+        if has_run {
+            let plugin_clone = Arc::clone(&plugin_arc);
+            let capsule_name = self.manifest.package.name.clone();
+            tokio::task::spawn_blocking(move || {
+                tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
+                let mut p = plugin_clone.lock().unwrap();
+                if let Err(e) = p.call::<(), ()>("run", ()) {
+                    tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
+                }
+            });
+        }
 
         let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
         for t in &self.manifest.tools {

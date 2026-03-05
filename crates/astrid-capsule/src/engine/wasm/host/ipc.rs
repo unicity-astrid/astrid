@@ -51,24 +51,12 @@ pub(crate) fn astrid_ipc_publish_impl(
 
     let payload_bytes = util::get_safe_bytes(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;
 
-    // Parse as raw JSON Value first
+    // Parse as raw JSON Value, then try to deserialize as a known IpcPayload variant.
+    // If the payload matches any standard variant (RawJson, UserInput, OnboardingRequired, etc.),
+    // use it directly. Otherwise fall back to Custom.
     let payload = match serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
-        Ok(data) => {
-            // Check if it declares a standard payload type
-            if let Some(type_str) = data.get("type").and_then(|t| t.as_str()) {
-                match type_str {
-                    "user_input" | "agent_response" | "approval_required" | "custom" => {
-                        // Try to strictly parse as IpcPayload to catch schema typos
-                        serde_json::from_value::<IpcPayload>(data)
-                            .map_err(|e| Error::msg(format!("Invalid standard IPC schema: {e}")))?
-                    },
-                    _ => IpcPayload::Custom { data },
-                }
-            } else {
-                // Fallback for missing type
-                IpcPayload::Custom { data }
-            }
-        },
+        Ok(data) => serde_json::from_value::<IpcPayload>(data.clone())
+            .unwrap_or(IpcPayload::Custom { data }),
         Err(_) => return Err(Error::msg("IPC payload is not valid JSON")),
     };
 

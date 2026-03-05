@@ -65,7 +65,10 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                 for cmd in &c.manifest().commands {
                     commands.push(astrid_events::kernel_api::CommandInfo {
                         name: cmd.name.clone(),
-                        description: cmd.description.clone().unwrap_or_else(|| "No description".to_string()),
+                        description: cmd
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| "No description".to_string()),
                         provider_capsule: c.id().to_string(),
                     });
                 }
@@ -74,11 +77,11 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
         },
         KernelRequest::ReloadCapsules => {
             // Note: In a production kernel, this should probably diff and hot-reload gracefully.
-            // For now, we will just call load_all_capsules which skips already-registered ones, 
+            // For now, we will just call load_all_capsules which skips already-registered ones,
             // effectively just loading newly discovered ones.
             kernel.load_all_capsules().await;
             KernelResponse::Success(serde_json::json!({"status": "reloaded"}))
-        }
+        },
     };
 
     // Publish response back to the bus

@@ -105,7 +105,7 @@ fn parse_inline_markdown<'a>(text: &str, theme: &Theme) -> Vec<Span<'a>> {
                     bold_text,
                     base_style.add_modifier(Modifier::BOLD),
                 ));
-            },
+            }
             '`' => {
                 if !current.is_empty() {
                     spans.push(Span::styled(std::mem::take(&mut current), base_style));
@@ -118,10 +118,10 @@ fn parse_inline_markdown<'a>(text: &str, theme: &Theme) -> Vec<Span<'a>> {
                     code_text.push(cc);
                 }
                 spans.push(Span::styled(code_text, Style::default().fg(theme.tool)));
-            },
+            }
             _ => {
                 current.push(c);
-            },
+            }
         }
     }
 
@@ -169,13 +169,13 @@ pub(super) fn render_inline_tool(lines: &mut Vec<Line<'_>>, app: &App, idx: usiz
                 Span::styled("  ⎿ ", Style::default().fg(theme.border)),
                 Span::styled("Denied", Style::default().fg(theme.error)),
             ]));
-        },
+        }
         ToolStatusKind::Failed(err) => {
             lines.push(Line::from(vec![
                 Span::styled("  ⎿ ", Style::default().fg(theme.border)),
                 Span::styled(err.clone(), Style::default().fg(theme.error)),
             ]));
-        },
+        }
         _ => {
             if let Some(ref output) = tool.output {
                 let output_lines: Vec<&str> = output.lines().collect();
@@ -210,7 +210,7 @@ pub(super) fn render_inline_tool(lines: &mut Vec<Line<'_>>, app: &App, idx: usiz
                     ]));
                 }
             }
-        },
+        }
     }
 }
 
@@ -475,7 +475,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     Style::default().fg(theme.muted),
                 ),
             ]
-        },
+        }
         UiState::Streaming { start_time } => {
             let elapsed = start_time.elapsed();
             let spinner = theme.spinner.frame_at(elapsed.as_millis());
@@ -492,7 +492,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     Style::default().fg(theme.muted),
                 ),
             ]
-        },
+        }
         UiState::ToolRunning {
             tool_name,
             start_time,
@@ -518,7 +518,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     Style::default().fg(theme.muted),
                 ),
             ]
-        },
+        }
         UiState::Interrupted => {
             vec![
                 Span::styled("  ", Style::default()),
@@ -528,7 +528,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     Style::default().fg(theme.muted),
                 ),
             ]
-        },
+        }
         UiState::Idle | UiState::AwaitingApproval | UiState::Error { .. } => {
             if let Some((past_verb, duration)) = &app.last_completed
                 && let Some(completed_at) = app.last_completed_at
@@ -553,7 +553,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 }
             }
             vec![]
-        },
+        }
     };
 
     if spans.is_empty() {
@@ -603,7 +603,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let is_idle = matches!(app.state, UiState::Idle | UiState::Interrupted);
 
     // Dashed top border
-    let border_line = "╌".repeat(area.width as usize);
+    let border_line = "─".repeat(area.width as usize);
     let border = Paragraph::new(Line::from(Span::styled(
         border_line,
         Style::default().fg(theme.border),
@@ -672,7 +672,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Style::default().fg(if is_idle { theme.cursor } else { theme.border }),
             ),
         ]))
-        .wrap(Wrap { trim: false });
+            .wrap(Wrap { trim: false });
         frame.render_widget(para, input_area);
     }
 }

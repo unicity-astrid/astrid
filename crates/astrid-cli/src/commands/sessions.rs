@@ -79,7 +79,7 @@ fn session_info(id: &str) -> Result<()> {
 
     println!("{}", "Session Information".bold());
     println!("  ID: {}", Theme::session_id(id));
-    
+
     let sock_path = session_dir.join("ipc.sock");
     if sock_path.exists() {
         println!("  Status: {}", "Alive (Socket Active)".green());

@@ -119,7 +119,10 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             if palette_is_active {
                 let filtered = app.palette_filtered();
                 if let Some(cmd) = filtered.get(app.palette_selected) {
-                    if matches!(cmd.name.as_str(), "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh") {
+                    if matches!(
+                        cmd.name.as_str(),
+                        "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh"
+                    ) {
                         app.input = cmd.name.clone();
                         submit_immediately = true;
                     } else {
@@ -145,7 +148,10 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
             let filtered = app.palette_filtered();
             if let Some(cmd) = filtered.get(app.palette_selected) {
                 // If the command is a simple action that never takes arguments, don't append a space.
-                if matches!(cmd.name.as_str(), "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh") {
+                if matches!(
+                    cmd.name.as_str(),
+                    "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh"
+                ) {
                     app.input = cmd.name.clone();
                 } else {
                     app.input = format!("{} ", cmd.name);

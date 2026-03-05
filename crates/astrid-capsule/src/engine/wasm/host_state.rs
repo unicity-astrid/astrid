@@ -65,7 +65,8 @@ pub struct HostState {
     /// Optional natively bound unix listener.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Active, mapped UnixStreams from the socket listener.
-    pub active_streams: std::collections::HashMap<u64, Arc<tokio::sync::Mutex<tokio::net::UnixStream>>>,
+    pub active_streams:
+        std::collections::HashMap<u64, Arc<tokio::sync::Mutex<tokio::net::UnixStream>>>,
 }
 
 impl HostState {

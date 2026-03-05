@@ -147,7 +147,7 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         .context("Failed to parse Cargo metadata")?;
 
     // In a workspace, root_package() might be None if the current dir isn't a package.
-    // However, if we point it at a member crate directory, we need to extract the package 
+    // However, if we point it at a member crate directory, we need to extract the package
     // that matches the manifest path of the current directory.
     let package = meta
         .packages
@@ -163,7 +163,7 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
         })
         .or_else(|| meta.root_package())
         .context("No package found matching the target directory in Cargo.toml")?;
-        
+
     let crate_name = package.name.clone();
     let package_version = package.version.to_string();
     let wasm_name = crate_name.replace('-', "_");

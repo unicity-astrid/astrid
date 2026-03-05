@@ -1,8 +1,8 @@
-use extism::{CurrentPlugin, Error, UserData, Val};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
+use extism::{CurrentPlugin, Error, UserData, Val};
 
-// Note: `bind_unix` is ignored because the Kernel natively binds the socket and passes 
+// Note: `bind_unix` is ignored because the Kernel natively binds the socket and passes
 // it into the HostState. The WASM module just calls accept() directly.
 pub(crate) fn astrid_net_bind_unix_impl(
     _plugin: &mut CurrentPlugin,
@@ -22,16 +22,18 @@ pub(crate) fn astrid_net_accept_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let ud = user_data.get()?;
-    
+
     // We need to fetch the listener and the runtime handle out of the lock
     let (listener_arc, rt_handle) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        
-        let listener = state.cli_socket_listener.clone()
+
+        let listener = state
+            .cli_socket_listener
+            .clone()
             .ok_or_else(|| Error::msg("No CLI Socket Listener available in HostState"))?;
-            
+
         (listener, state.runtime_handle.clone())
     };
 
@@ -45,14 +47,17 @@ pub(crate) fn astrid_net_accept_impl(
     let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        
+
     let handle_id = state.active_streams.len() as u64 + 1;
-    state.active_streams.insert(handle_id, std::sync::Arc::new(tokio::sync::Mutex::new(stream)));
+    state.active_streams.insert(
+        handle_id,
+        std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
+    );
 
     // Return the handle ID as a string to the WASM plugin
     let mem = plugin.memory_new(handle_id.to_string())?;
     outputs[0] = plugin.memory_to_val(mem);
-    
+
     Ok(())
 }
 
@@ -63,13 +68,20 @@ pub(crate) fn astrid_net_read_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str.parse().map_err(|_| Error::msg("Invalid stream handle"))?;
+    let handle_id: u64 = handle_str
+        .parse()
+        .map_err(|_| Error::msg("Invalid stream handle"))?;
 
     let ud = user_data.get()?;
     let (stream_arc, rt_handle) = {
-        let state = ud.lock().map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        let stream = state.active_streams.get(&handle_id)
-            .ok_or_else(|| Error::msg("Stream handle not found"))?.clone();
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let stream = state
+            .active_streams
+            .get(&handle_id)
+            .ok_or_else(|| Error::msg("Stream handle not found"))?
+            .clone();
         (stream, state.runtime_handle.clone())
     };
 
@@ -80,13 +92,19 @@ pub(crate) fn astrid_net_read_impl(
     // For now, let's just do a blocking read into a buffer, but timeout after 50ms so we don't
     // lock the WASM engine if the CLI goes idle.
     use tokio::io::AsyncReadExt;
-    
+
     let result = rt_handle.block_on(async {
         let mut stream = stream_arc.lock().await;
         let mut len_buf = [0u8; 4];
-        
+
         // Wait for exactly 4 bytes (the length prefix used by the IPC protocol)
-        if tokio::time::timeout(std::time::Duration::from_millis(50), stream.read_exact(&mut len_buf)).await.is_err() {
+        if tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            stream.read_exact(&mut len_buf),
+        )
+        .await
+        .is_err()
+        {
             return Ok(Vec::new()); // Timeout, return empty
         }
 
@@ -97,7 +115,7 @@ pub(crate) fn astrid_net_read_impl(
 
         let mut payload = vec![0u8; len];
         stream.read_exact(&mut payload).await?;
-        
+
         Ok(payload)
     })?;
 
@@ -119,14 +137,21 @@ pub(crate) fn astrid_net_write_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str.parse().map_err(|_| Error::msg("Invalid stream handle"))?;
+    let handle_id: u64 = handle_str
+        .parse()
+        .map_err(|_| Error::msg("Invalid stream handle"))?;
     let data = util::get_safe_bytes(plugin, &inputs[1], 10 * 1024 * 1024)?;
 
     let ud = user_data.get()?;
     let (stream_arc, rt_handle) = {
-        let state = ud.lock().map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        let stream = state.active_streams.get(&handle_id)
-            .ok_or_else(|| Error::msg("Stream handle not found"))?.clone();
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let stream = state
+            .active_streams
+            .get(&handle_id)
+            .ok_or_else(|| Error::msg("Stream handle not found"))?
+            .clone();
         (stream, state.runtime_handle.clone())
     };
 

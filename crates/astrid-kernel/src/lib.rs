@@ -96,10 +96,10 @@ impl Kernel {
             workspace_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
         });
-        
+
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         drop(spawn_idle_monitor(Arc::clone(&kernel)));
-        
+
         Ok(kernel)
     }
 
@@ -127,7 +127,8 @@ impl Kernel {
         let env_path = dir.join(".env.json");
         if env_path.exists()
             && let Ok(contents) = std::fs::read_to_string(&env_path)
-            && let Ok(env_map) = serde_json::from_str::<std::collections::HashMap<String, String>>(&contents)
+            && let Ok(env_map) =
+                serde_json::from_str::<std::collections::HashMap<String, String>>(&contents)
         {
             for (k, v) in env_map {
                 let _ = kv.set(&k, v.into_bytes()).await;
@@ -138,7 +139,7 @@ impl Kernel {
             self.workspace_root.clone(),
             kv,
             Arc::clone(&self.event_bus),
-            None,
+            self.cli_socket_listener.clone(),
         );
 
         capsule.load(&ctx).await?;
@@ -152,6 +153,9 @@ impl Kernel {
     }
 
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/plugins` and `.astrid/plugins`).
+    ///
+    /// Uplink/daemon capsules are loaded first so their event bus subscriptions
+    /// are active before other capsules emit events (e.g. `OnboardingRequired`).
     pub async fn load_all_capsules(&self) {
         use astrid_core::dirs::AstridHome;
 
@@ -161,7 +165,30 @@ impl Kernel {
         }
 
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
-        for (manifest, dir) in discovered {
+
+        // Partition: uplink/daemon capsules first, then the rest.
+        let (uplinks, others): (Vec<_>, Vec<_>) =
+            discovered.into_iter().partition(|(m, _)| m.capabilities.uplink);
+
+        // Load uplinks first so their event bus subscriptions are ready.
+        for (manifest, dir) in &uplinks {
+            if let Err(e) = self.load_capsule(dir.clone()).await {
+                tracing::warn!(
+                    capsule = %manifest.package.name,
+                    error = %e,
+                    "Failed to load uplink capsule during discovery"
+                );
+            }
+        }
+
+        // Brief yield to let spawned background `run()` tasks initialize
+        // their event bus subscriptions before we load capsules that may
+        // emit events like OnboardingRequired.
+        if !uplinks.is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        for (manifest, dir) in &others {
             if let Err(e) = self.load_capsule(dir.clone()).await {
                 tracing::warn!(
                     capsule = %manifest.package.name,
@@ -174,9 +201,9 @@ impl Kernel {
 }
 
 /// Spawns a background task that cleanly shuts down the Kernel if there is no activity.
-/// 
-/// In the current "appable" iteration of the OS, this prevents the background daemon from 
-/// running forever when the user closes their CLI window. 
+///
+/// In the current "appable" iteration of the OS, this prevents the background daemon from
+/// running forever when the user closes their CLI window.
 /// In future iterations (like macOS menubar or unikernel), this monitor can be feature-gated.
 fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -187,17 +214,17 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
             // 1. Are there any active connections to the global socket?
-            // Since we handed the listener lock to the proxy capsule, we can't easily 
+            // Since we handed the listener lock to the proxy capsule, we can't easily
             // query active TCP connections without exposing a status API from the proxy.
             // But we CAN check the Event Bus subscriber count!
             let active_subscribers = kernel.event_bus.subscriber_count();
-            
+
             // 2. Are there any cron jobs or daemonize capabilities registered?
             let has_daemons = {
                 let reg = kernel.capsules.read().await;
                 reg.values().any(|c| {
                     let manifest = c.manifest();
-                    // If a capsule explicitly acts as an uplink or has cron jobs, 
+                    // If a capsule explicitly acts as an uplink or has cron jobs,
                     // the OS must stay alive to serve them.
                     !manifest.uplinks.is_empty() || !manifest.cron_jobs.is_empty()
                 })
@@ -206,17 +233,20 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
-                tracing::info!("Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources...");
+                tracing::info!(
+                    "Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources..."
+                );
 
                 // Clean up the socket file so it doesn't leave a zombie
                 let socket_path = crate::socket::kernel_socket_path();
                 let _ = std::fs::remove_file(&socket_path);
 
-                // FIXME(Phase 8): The async proxy bridge is currently stubbed, so the CLI 
-                // capsule does not register an EventBus subscriber yet. This causes the 
-                // idle monitor to instantly kill the daemon after 70 seconds. 
+                // FIXME(Phase 8): The async proxy bridge is currently stubbed, so the CLI
+                // capsule does not register an EventBus subscriber yet. This causes the
+                // idle monitor to instantly kill the daemon after 70 seconds.
                 // Temporarily disabling exit until the bridge is wired up.
                 // std::process::exit(0);
-            }        }
+            }
+        }
     })
 }
