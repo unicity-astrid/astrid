@@ -114,13 +114,25 @@ impl Kernel {
             .map_err(|e| anyhow::anyhow!(e))?;
 
         let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp_client.clone());
-        let mut capsule = loader.create_capsule(manifest, dir)?;
+        let mut capsule = loader.create_capsule(manifest, dir.clone())?;
 
         // Build the context
+        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = astrid_storage::ScopedKvStore::new(
-            Arc::new(astrid_storage::MemoryKvStore::new()),
+            kv_store.clone(),
             format!("capsule:{}", capsule.id()),
         )?;
+
+        // Pre-load `.env.json` into the KV store if it exists
+        let env_path = dir.join(".env.json");
+        if env_path.exists()
+            && let Ok(contents) = std::fs::read_to_string(&env_path)
+            && let Ok(env_map) = serde_json::from_str::<std::collections::HashMap<String, String>>(&contents)
+        {
+            for (k, v) in env_map {
+                let _ = kv.set(&k, v.into_bytes()).await;
+            }
+        }
 
         let ctx = astrid_capsule::context::CapsuleContext::new(
             self.workspace_root.clone(),

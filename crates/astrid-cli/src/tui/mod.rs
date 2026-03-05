@@ -198,17 +198,16 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             app.push_notice(&msg);
             app.status_message = Some((msg, Instant::now()));
 
-            // In Phase 8, we would normally emit an ApprovalRequired or show an interactive
-            // dialoguer prompt here. For now, since we cannot pause the TUI async loop directly 
-            // inside `handle_daemon_event` without deadlocking, we will just print the requirements.
-            // A full fix will require sending a `PendingAction::Onboard` back up to the run loop.
-            app.push_notice("Please restart the CLI to complete installation.");
-            for key in missing_keys {
-                let prompt = prompts.get(key).unwrap_or(key);
-                app.push_notice(&format!(" - Missing: {key} ({prompt})"));
-            }
-        } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
-            && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
+            app.state = UiState::Onboarding {
+                capsule_id: capsule_id.clone(),
+                missing_keys: missing_keys.clone(),
+                prompts: prompts.clone(),
+                current_idx: 0,
+                answers: std::collections::HashMap::new(),
+            };
+            app.input.clear();
+            app.cursor_pos = 0;
+        } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload            && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
         {
             // Reset the dynamic slash command palette to the hardcoded base commands
@@ -304,6 +303,30 @@ async fn handle_pending_actions(
                         app.state = UiState::Error {
                             message: format!("Send failed: {e}"),
                         };
+                    }
+                }
+            },
+            PendingAction::SubmitOnboarding { capsule_id, answers } => {
+                if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                    let env_path = home.capsules_dir().join(&capsule_id).join(".env.json");
+                    if let Ok(json) = serde_json::to_string_pretty(&answers) {
+                        if let Err(e) = std::fs::write(&env_path, json) {
+                            app.push_notice(&format!("Failed to save configuration: {e}"));
+                        } else {
+                            let msg = "Configuration saved. Refreshing Kernel...";
+                            app.push_notice(msg);
+                            app.status_message = Some((msg.to_string(), Instant::now()));
+
+                            let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
+                            if let Ok(val) = serde_json::to_value(req) {
+                                let ipc_msg = astrid_events::ipc::IpcMessage::new(
+                                    "kernel.request.reload_capsules",
+                                    astrid_events::ipc::IpcPayload::RawJson(val),
+                                    session_id.0,
+                                );
+                                let _ = client.send_message(ipc_msg).await;
+                            }
+                        }
                     }
                 }
             },

@@ -37,6 +37,14 @@ pub(crate) enum UiState {
     Interrupted,
     /// Copy mode — keyboard-driven block selection for clean text copying.
     CopyMode,
+    /// Capsule Onboarding (configuring environment variables).
+    Onboarding {
+        capsule_id: String,
+        missing_keys: Vec<String>,
+        prompts: std::collections::HashMap<String, String>,
+        current_idx: usize,
+        answers: std::collections::HashMap<String, String>,
+    },
 }
 
 // ─── Messages ────────────────────────────────────────────────────
@@ -141,6 +149,10 @@ pub(crate) enum PendingAction {
     },
     SendInput(String),
     CancelTurn,
+    SubmitOnboarding {
+        capsule_id: String,
+        answers: std::collections::HashMap<String, String>,
+    },
 }
 
 /// What the user chose for approval.

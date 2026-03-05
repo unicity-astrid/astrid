@@ -344,6 +344,15 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
     let text_lines = wrapped_line_count(display_text, avail) as u16;
     let base = (1u16.saturating_add(text_lines)).clamp(3, 8);
 
+    if let UiState::Onboarding { missing_keys, .. } = &app.state {
+        // 1 title row + N keys
+        let n = missing_keys.len().saturating_add(1);
+        let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
+        #[allow(clippy::cast_possible_truncation)]
+        let menu_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
+        return base.saturating_add(menu_rows);
+    }
+
     if app.palette_active() {
         let n = app.palette_filtered().len();
         if n > 0 {
@@ -692,6 +701,16 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Span::styled(" Cancel", Style::default().fg(theme.muted)),
             ]
         },
+        UiState::Onboarding { .. } => {
+            vec![
+                Span::styled("  ", Style::default()),
+                Span::styled("⚙ Configuration Required", Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    " · Please provide the required environment variables below.",
+                    Style::default().fg(theme.muted),
+                ),
+            ]
+        },
         UiState::Idle | UiState::AwaitingApproval | UiState::Error { .. } => {
             // Show copy notice for a few seconds
             if let Some((notice, at)) = &app.copy_notice {
@@ -747,6 +766,7 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 // ─── Input Area ──────────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let is_idle = matches!(app.state, UiState::Idle | UiState::Interrupted);
 
@@ -758,26 +778,31 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     )));
     frame.render_widget(border, Rect::new(area.x, area.y, area.width, 1));
 
-    // Calculate how much space the palette needs
-    let filtered = if app.palette_active() {
-        app.palette_filtered()
-    } else {
-        Vec::new()
-    };
-    let palette_rows = if filtered.is_empty() {
-        0u16
-    } else {
+    // Calculate how much space the palette or onboarding menu needs
+    let mut menu_rows = 0u16;
+    let mut palette_filtered = Vec::new();
+
+    if let UiState::Onboarding { missing_keys, .. } = &app.state {
+        let n = missing_keys.len().saturating_add(1);
         #[allow(clippy::cast_possible_truncation)]
-        let rows = 1u16.saturating_add(filtered.len().min(PALETTE_MAX_VISIBLE) as u16);
-        rows
-    };
+        {
+            menu_rows = 1u16.saturating_add(n.min(15) as u16);
+        }
+    } else if app.palette_active() {
+        palette_filtered = app.palette_filtered();
+        if !palette_filtered.is_empty() {
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                menu_rows = 1u16.saturating_add(palette_filtered.len().min(PALETTE_MAX_VISIBLE) as u16);
+            }
+        }
+    }
 
     let input_area = Rect::new(
         area.x,
         area.y.saturating_add(1),
         area.width,
-        area.height
-            .saturating_sub(1u16.saturating_add(palette_rows)),
+        area.height.saturating_sub(1u16.saturating_add(menu_rows)),
     );
 
     if app.quit_pending {
@@ -789,13 +814,13 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         return;
     }
 
-    let input_style = if is_idle {
+    let input_style = if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
         Style::default().fg(theme.user)
     } else {
         Style::default().fg(theme.muted)
     };
 
-    let prompt = if !is_idle {
+    let prompt = if matches!(app.state, UiState::Onboarding { .. }) || !is_idle {
         "  "
     } else if app.input.starts_with('/') {
         "/ "
@@ -817,46 +842,126 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             input_area,
         );
     } else {
-        let display_input = if app.input.starts_with('/') {
+        let display_input = if app.input.starts_with('/') && is_idle {
             &app.input[1..]
         } else {
             &app.input
         };
 
+        let mut is_secret = false;
+        if let UiState::Onboarding { missing_keys, current_idx, .. } = &app.state
+            && *current_idx < missing_keys.len()
+        {
+            let key = &missing_keys[*current_idx];
+            let key_lower = key.to_lowercase();
+            if key_lower.contains("secret") || key_lower.contains("key") || key_lower.contains("token") || key_lower.contains("password") {
+                is_secret = true;
+            }
+        }
+        
+        let display_str = if is_secret {
+            "*".repeat(display_input.len())
+        } else {
+            display_input.to_string()
+        };
+
         let para = Paragraph::new(Line::from(vec![
             Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-            Span::styled(display_input.to_string(), input_style),
+            Span::styled(display_str, input_style),
             Span::styled(
                 "█",
-                Style::default().fg(if is_idle { theme.cursor } else { theme.border }),
+                Style::default().fg(if is_idle || matches!(app.state, UiState::Onboarding { .. }) { theme.cursor } else { theme.border }),
             ),
         ]))
         .wrap(Wrap { trim: false });
         frame.render_widget(para, input_area);
     }
 
-    // Render palette below input
-    if !filtered.is_empty() {
-        let palette_y = area
+    // Render palette or onboarding menu below input
+    if menu_rows > 0 {
+        let menu_y = area
             .y
             .saturating_add(area.height)
-            .saturating_sub(palette_rows);
+            .saturating_sub(menu_rows);
 
-        // Dashed separator between input and palette
+        // Dashed separator
         let sep = Paragraph::new(Line::from(Span::styled(
-            border_line,
+            border_line.clone(),
             Style::default().fg(theme.border),
         )));
-        frame.render_widget(sep, Rect::new(area.x, palette_y, area.width, 1));
+        frame.render_widget(sep, Rect::new(area.x, menu_y, area.width, 1));
 
         let items_area = Rect::new(
             area.x,
-            palette_y.saturating_add(1),
+            menu_y.saturating_add(1),
             area.width,
-            palette_rows.saturating_sub(1),
+            menu_rows.saturating_sub(1),
         );
-        render_palette_items(frame, items_area, app, &filtered, theme);
+
+        if let UiState::Onboarding { capsule_id, missing_keys, prompts, current_idx, answers: _ } = &app.state {
+            render_onboarding_menu(frame, items_area, capsule_id, missing_keys, prompts, *current_idx, theme);
+        } else {
+            render_palette_items(frame, items_area, app, &palette_filtered, theme);
+        }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_onboarding_menu(
+    frame: &mut Frame,
+    area: Rect,
+    capsule_id: &str,
+    missing_keys: &[String],
+    prompts: &std::collections::HashMap<String, String>,
+    current_idx: usize,
+    theme: &Theme,
+) {
+    let mut lines = Vec::new();
+
+    // Title line
+    lines.push(Line::from(vec![
+        Span::styled("  ⚙  Capsule Configuration: ", Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)),
+        Span::styled(capsule_id, Style::default().fg(theme.user)),
+    ]));
+
+    // List out the keys
+    for (i, key) in missing_keys.iter().enumerate() {
+        let is_selected = i == current_idx;
+        let is_done = i < current_idx;
+
+        let style = if is_selected {
+            Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)
+        } else if is_done {
+            Style::default().fg(theme.success)
+        } else {
+            Style::default().fg(theme.muted)
+        };
+
+        let prefix = if is_selected {
+            "  ▶ "
+        } else if is_done {
+            "  ✓ "
+        } else {
+            "    "
+        };
+
+        let mut spans = vec![
+            Span::styled(prefix, style),
+            Span::styled(key, style),
+        ];
+
+        if is_selected {
+            let prompt = prompts.get(key).map_or("Please enter a value", String::as_str);
+            spans.push(Span::styled(format!("  ← {prompt}"), Style::default().fg(theme.border).add_modifier(Modifier::ITALIC)));
+        } else if is_done {
+            spans.push(Span::styled("  (saved)", Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC)));
+        }
+
+        lines.push(Line::from(spans));
+    }
+
+    let p = Paragraph::new(lines);
+    frame.render_widget(p, area);
 }
 
 fn render_palette_items(
