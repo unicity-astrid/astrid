@@ -77,6 +77,15 @@ pub enum IpcPayload {
         /// Justification.
         reason: String,
     },
+    /// A capsule needs environment variables to be provided by the user.
+    OnboardingRequired {
+        /// The ID of the capsule requiring onboarding.
+        capsule_id: String,
+        /// A list of environment variable keys that are missing.
+        missing_keys: Vec<String>,
+        /// The prompt/request strings defined in the manifest for these keys.
+        prompts: std::collections::HashMap<String, String>,
+    },
     /// Request an LLM provider capsule to generate a response.
     LlmRequest {
         /// The unique ID of the request, used for routing the response stream back.

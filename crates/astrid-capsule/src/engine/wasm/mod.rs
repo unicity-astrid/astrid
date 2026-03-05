@@ -67,14 +67,49 @@ impl ExecutionEngine for WasmEngine {
         let manifest = self.manifest.clone();
 
         let mut wasm_config = std::collections::HashMap::new();
+        let mut missing_keys = Vec::new();
+        let mut prompts = std::collections::HashMap::new();
+
         for (key, def) in &self.manifest.env {
             if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
                 if let Ok(val) = String::from_utf8(val_bytes) {
                     wasm_config.insert(key.clone(), serde_json::Value::String(val));
+                } else {
+                    missing_keys.push(key.clone());
+                    if let Some(req) = &def.request {
+                        prompts.insert(key.clone(), req.clone());
+                    }
                 }
             } else if let Some(default_val) = &def.default {
                 wasm_config.insert(key.clone(), default_val.clone());
+            } else {
+                // Key is missing and has no default
+                missing_keys.push(key.clone());
+                if let Some(req) = &def.request {
+                    prompts.insert(key.clone(), req.clone());
+                }
             }
+        }
+
+        if !missing_keys.is_empty() {
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "system.onboarding.required",
+                astrid_events::ipc::IpcPayload::OnboardingRequired {
+                    capsule_id: self.manifest.package.name.clone(),
+                    missing_keys: missing_keys.clone(),
+                    prompts,
+                },
+                uuid::Uuid::nil(), // Broadcast or global event for onboarding
+            );
+            let _ = ctx.event_bus.publish(astrid_events::AstridEvent::Ipc {
+                metadata: astrid_events::EventMetadata::new("wasm_engine"),
+                message: msg,
+            });
+
+            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                "Missing required environment variables: {}",
+                missing_keys.join(", ")
+            )));
         }
 
         let (plugin, rx) = tokio::task::block_in_place(move || {
