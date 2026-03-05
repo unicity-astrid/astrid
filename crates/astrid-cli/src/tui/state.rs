@@ -197,6 +197,9 @@ pub(crate) struct App {
     pub copy_cursor: usize,
     pub copy_selected: HashSet<usize>,
     pub copy_notice: Option<(String, Instant)>,
+
+    // ── Status Bar ──
+    pub status_message: Option<(String, Instant)>,
 }
 
 impl App {
@@ -258,6 +261,8 @@ impl App {
             copy_cursor: 0,
             copy_selected: HashSet::new(),
             copy_notice: None,
+            
+            status_message: None,
         }
     }
 

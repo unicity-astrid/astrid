@@ -959,6 +959,15 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ));
     }
 
+    // Dynamic Progress / Status Message
+    if let Some((msg, _)) = &app.status_message {
+        spans.push(Span::styled("  |  ", Style::default().fg(theme.border)));
+        spans.push(Span::styled(
+            msg.clone(),
+            Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+        ));
+    }
+
     // Right: model + context progress bar
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let context_pct = (app.context_usage * 100.0) as u8;

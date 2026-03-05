@@ -133,6 +133,13 @@ async fn run_loop(
             input::handle_input(app)?;
         }
 
+        // Clear transient status messages after 5 seconds
+        if let Some((_, time)) = &app.status_message
+            && time.elapsed() > Duration::from_secs(5)
+        {
+            app.status_message = None;
+        }
+
         // Poll for kernel events (non-blocking via timeout).
         match tokio::time::timeout(Duration::from_millis(1), client.read_event()).await {
             Ok(Ok(Some(event))) => {
@@ -142,11 +149,17 @@ async fn run_loop(
                 // Connection closed.
                 app.push_notice("Connection to kernel lost.");
                 app.state = UiState::Error {
-                    message: "Connection to kernel lost".to_string(),
+                    message: "Connection to kernel lost. Press Q to quit.".to_string(),
                 };
+                // Don't break immediately, let the user read the error and quit.
+                // But we must prevent an infinite loop of pushing notices.
+                // Wait, if we don't break, `read_event` will instantly return `Ok(None)` again and again.
+                // Let's just set the state and break, or use a flag.
+                break;
             },
             Ok(Err(e)) => {
                 app.push_notice(&format!("Event error: {e}"));
+                break;
             },
             Err(_) => {
                 // Timeout — no event this tick, continue.
@@ -293,7 +306,7 @@ async fn handle_slash_command(
     app: &mut App,
     client: &mut SocketClient,
     session_id: &SessionId,
-    _terminal: &mut Term,
+    terminal: &mut Term,
 ) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
@@ -315,15 +328,26 @@ async fn handle_slash_command(
                 app.push_notice("Usage: /install <path-to-capsule-or-directory>");
             } else {
                 let source = parts[1];
-                app.push_notice(&format!("Installing capsule from: {source} (headless mode)..."));
+                let msg = format!("Installing capsule from: {source} (headless mode)...");
+                app.push_notice(&msg);
+                app.status_message = Some((msg, Instant::now()));
                 
-                let result = crate::commands::capsule::install::install_capsule(source, false, true);
+                // Force a redraw before starting blocking task
+                let _ = terminal.draw(|frame| render::render_frame(frame, app));
+
+                let source_owned = source.to_string();
+                let result = tokio::task::spawn_blocking(move || {
+                    crate::commands::capsule::install::install_capsule(&source_owned, false, true)
+                })
+                .await
+                .unwrap_or_else(|e| Err(anyhow::anyhow!("Task panicked: {e}")));
 
                 match result {
                     Ok(()) => {
-                        app.push_notice(
-                            "Installation complete. Sending refresh signal to Kernel...",
-                        );
+                        let success_msg = "Installation complete. Sending refresh signal to Kernel...";
+                        app.push_notice(success_msg);
+                        app.status_message = Some((success_msg.to_string(), Instant::now()));
+                        
                         let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
                         if let Ok(val) = serde_json::to_value(req) {
                             let msg = astrid_events::ipc::IpcMessage::new(

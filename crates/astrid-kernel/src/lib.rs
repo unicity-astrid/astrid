@@ -195,14 +195,16 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
                 tracing::info!("Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources...");
-                
+
                 // Clean up the socket file so it doesn't leave a zombie
                 let socket_path = crate::socket::kernel_socket_path();
                 let _ = std::fs::remove_file(&socket_path);
 
-                // Exit the process
-                std::process::exit(0);
-            }
-        }
+                // FIXME(Phase 8): The async proxy bridge is currently stubbed, so the CLI 
+                // capsule does not register an EventBus subscriber yet. This causes the 
+                // idle monitor to instantly kill the daemon after 70 seconds. 
+                // Temporarily disabling exit until the bridge is wired up.
+                // std::process::exit(0);
+            }        }
     })
 }
