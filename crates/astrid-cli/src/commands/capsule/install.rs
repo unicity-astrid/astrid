@@ -9,8 +9,6 @@ use anyhow::{Context, bail};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
-use crate::theme::Theme;
-
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
@@ -50,10 +48,6 @@ pub(crate) fn install_from_github(
     home: &AstridHome,
     _is_openclaw: bool,
 ) -> anyhow::Result<()> {
-    println!(
-        "{}",
-        Theme::info(&format!("Fetching capsule from GitHub: {url}"))
-    );
 
     let client = reqwest::blocking::Client::builder()
         .user_agent("astrid-cli")
@@ -70,7 +64,6 @@ pub(crate) fn install_from_github(
 
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
-    println!("{}", Theme::dimmed("  Checking for latest release..."));
 
     let res = client.get(&api_url).send();
 
@@ -86,11 +79,7 @@ pub(crate) fn install_from_github(
                     .get("browser_download_url")
                     .and_then(serde_json::Value::as_str)
             {
-                println!(
-                    "{}",
-                    Theme::success(&format!("  Found pre-compiled capsule: {name}"))
-                );
-
+            
                 let tmp_dir = tempfile::tempdir()?;
                 let sanitized_name = Path::new(name).file_name().unwrap_or_default();
                 let download_path = tmp_dir.path().join(sanitized_name);
@@ -107,20 +96,12 @@ pub(crate) fn install_from_github(
         }
     }
 
-    println!(
-        "{}",
-        Theme::dimmed("  No pre-compiled `.capsule` release found.")
-    );
 
 
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
     let clone_dir = tmp_dir.path().join(repo);
 
-    println!(
-        "{}",
-        Theme::dimmed("  Cloning repository to temporary directory...")
-    );
     let status = std::process::Command::new("git")
         .args(["clone", "--depth", "1", url, &clone_dir.to_string_lossy()])
         .status()
@@ -130,10 +111,6 @@ pub(crate) fn install_from_github(
         bail!("Failed to clone repository from GitHub.");
     }
 
-    println!(
-        "{}",
-        Theme::info("  Building capsule using Universal Migrator...")
-    );
     let output_dir = tmp_dir.path().join("dist");
     std::fs::create_dir_all(&output_dir)?;
 
@@ -160,12 +137,6 @@ pub(crate) fn install_from_openclaw(
     home: &AstridHome,
 ) -> anyhow::Result<()> {
     let plugin_name = source.strip_prefix("openclaw:").unwrap_or(source);
-    println!(
-        "{}",
-        Theme::info(&format!(
-            "Installing OpenClaw plugin from registry: {plugin_name}"
-        ))
-    );
 
     // Step 1: Mock Registry Fetch
     // In a real implementation, this would hit https://registry.openclaw.io
@@ -186,10 +157,6 @@ pub(crate) fn transpile_and_install(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-    println!(
-        "{}",
-        Theme::info("  Detected OpenClaw plugin. Transpiling to Astrid Capsule...")
-    );
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
@@ -232,7 +199,6 @@ pub(crate) fn transpile_and_install(
     .map_err(|e| anyhow::anyhow!("failed to generate Capsule.toml: {e}"))?;
 
     // 7. Proceed with standard installation from the temp directory
-    println!("{}", Theme::success("  Transpilation successful."));
     install_from_local_path(output_dir, workspace, home)
 }
 
@@ -260,8 +226,7 @@ pub(crate) fn install_from_local(
 
     // Auto-build Rust capsules if we point at a source directory with a Cargo.toml
     if source_path.is_dir() && source_path.join("Cargo.toml").exists() {
-        println!("{}", Theme::info(&format!("Detected Cargo project at {}. Auto-building capsule...", source_path.display())));
-        let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
+            let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
         let output_dir = tmp_dir.path().join("dist");
         
         crate::commands::build::run_build(
@@ -289,13 +254,6 @@ fn unpack_and_install(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-    println!(
-        "{}",
-        Theme::info(&format!(
-            "Unpacking capsule archive: {}",
-            archive_path.display()
-        ))
-    );
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for unpacking")?;
     let unpack_dir = tmp_dir.path();
@@ -353,13 +311,6 @@ pub(crate) fn install_from_local_path(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-    println!(
-        "{}",
-        Theme::info(&format!(
-            "Installing Capsule from: {}",
-            source_path.display()
-        ))
-    );
 
     let manifest_path = source_path.join("Capsule.toml");
     if !manifest_path.exists() {
@@ -376,7 +327,6 @@ pub(crate) fn install_from_local_path(
         .with_context(|| format!("failed to create {}", parent.display()))?;
 
     // 4. Copy Capsule
-    println!("{}", Theme::dimmed(&format!("  Copying capsule '{id}'...")));
 
     // Backup existing target if present.
     if target_dir.exists() {
@@ -385,14 +335,8 @@ pub(crate) fn install_from_local_path(
 
     copy_plugin_dir(source_path, &target_dir)?;
 
-    println!("{}", Theme::success(&format!("Installed capsule '{id}'")));
-
-    if workspace {
-        println!("{}", Theme::dimmed("  Location: .astrid/plugins/"));
-    }
-
     Ok(())
-}
+    }
 
 /// Recursively copy a directory tree.
 pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
