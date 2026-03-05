@@ -48,7 +48,9 @@ pub(crate) fn astrid_net_accept_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let handle_id = state.active_streams.len() as u64 + 1;
+    // Use a monotonic counter to avoid handle ID reuse after stream removal.
+    let handle_id = state.next_stream_id;
+    state.next_stream_id = state.next_stream_id.wrapping_add(1);
     state.active_streams.insert(
         handle_id,
         std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
@@ -97,15 +99,18 @@ pub(crate) fn astrid_net_read_impl(
         let mut stream = stream_arc.lock().await;
         let mut len_buf = [0u8; 4];
 
-        // Wait for exactly 4 bytes (the length prefix used by the IPC protocol)
-        if tokio::time::timeout(
+        // Wait for exactly 4 bytes (the length prefix used by the IPC protocol).
+        // Distinguish between a genuine timeout (no data yet) and an I/O error
+        // (peer disconnect, broken pipe) to avoid spin-looping on dead connections.
+        match tokio::time::timeout(
             std::time::Duration::from_millis(50),
             stream.read_exact(&mut len_buf),
         )
         .await
-        .is_err()
         {
-            return Ok(Vec::new()); // Timeout, return empty
+            Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
+            Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
+            Ok(Ok(_)) => {}, // Got the 4-byte length prefix
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;

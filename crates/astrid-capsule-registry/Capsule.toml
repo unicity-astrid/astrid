@@ -1,0 +1,17 @@
+[package]
+name = "astrid-capsule-registry"
+version = "0.1.0"
+description = "LLM provider registry — discovers and manages available models"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "registry"
+file = "astrid_capsule_registry.wasm"
+
+[capabilities]
+uplink = true
+
+[[command]]
+name = "models"
+description = "List available LLM models or switch the active model"

@@ -24,6 +24,9 @@ pub enum KernelRequest {
     ReloadCapsules,
     /// Request the list of globally registered slash commands.
     GetCommands,
+    /// Request metadata about loaded capsules (manifests, providers, interceptors).
+    /// The kernel's equivalent of `/proc` — exposing process table info.
+    GetCapsuleMetadata,
 }
 
 /// Management API responses from the core daemon.
@@ -34,6 +37,8 @@ pub enum KernelResponse {
     Success(serde_json::Value),
     /// A list of available slash commands across all capsules.
     Commands(Vec<CommandInfo>),
+    /// Metadata about loaded capsules.
+    CapsuleMetadata(Vec<CapsuleMetadataEntry>),
     /// The request failed.
     Error(String),
     /// The request requires user capability approval before it can proceed.
@@ -45,6 +50,28 @@ pub enum KernelResponse {
         /// The specific capabilities required (e.g. `["host_process", "fs_write"]`).
         capabilities: Vec<String>,
     },
+}
+
+/// Metadata entry for a loaded capsule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapsuleMetadataEntry {
+    /// The capsule's unique name.
+    pub name: String,
+    /// LLM providers declared by this capsule.
+    pub llm_providers: Vec<LlmProviderInfo>,
+    /// Interceptor event patterns declared by this capsule.
+    pub interceptor_events: Vec<String>,
+}
+
+/// Information about an available LLM provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderInfo {
+    /// The model ID (e.g. `"claude-3-5-sonnet-20241022"`).
+    pub id: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Capabilities (e.g. `["text", "vision", "tools"]`).
+    pub capabilities: Vec<String>,
 }
 
 /// Information about a registered slash command.

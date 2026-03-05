@@ -171,6 +171,7 @@ impl ExecutionEngine for WasmEngine {
                 config: wasm_config,
                 cli_socket_listener: ctx.cli_socket_listener.clone(),
                 active_streams: std::collections::HashMap::new(),
+                next_stream_id: 1,
                 security: Some(security_gate),
                 hook_manager: None, // Will be injected by Gateway
                 runtime_handle: tokio::runtime::Handle::current(),
@@ -208,30 +209,35 @@ impl ExecutionEngine for WasmEngine {
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
         if has_run {
-            let plugin_clone = Arc::clone(&plugin_arc);
+            // The run loop holds the plugin mutex for its entire lifetime.
+            // We must NOT store the plugin in self.plugin, because the
+            // dispatcher's invoke_interceptor() would try to acquire the same
+            // mutex — causing a deadlock. Run-loop capsules handle events
+            // internally via ipc::subscribe, so they don't need host-side
+            // interceptor dispatch.
             let capsule_name = self.manifest.package.name.clone();
             tokio::task::spawn_blocking(move || {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
-                let mut p = plugin_clone.lock().expect("WASM plugin lock was poisoned");
+                let mut p = plugin_arc.lock().expect("WASM plugin lock was poisoned");
                 if let Err(e) = p.call::<(), ()>("run", ()) {
                     tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                 }
             });
+            // plugin_arc moved into the spawn — self.plugin stays None.
+        } else {
+            let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
+            for t in &self.manifest.tools {
+                tools.push(Arc::new(tool::WasmCapsuleTool::new(
+                    t.name.clone(),
+                    t.description.clone(),
+                    t.input_schema.clone(),
+                    Arc::clone(&plugin_arc),
+                )));
+            }
+            self.tools = tools;
+            self.plugin = Some(plugin_arc);
         }
-
-        let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
-        for t in &self.manifest.tools {
-            tools.push(Arc::new(tool::WasmCapsuleTool::new(
-                t.name.clone(),
-                t.description.clone(),
-                t.input_schema.clone(),
-                Arc::clone(&plugin_arc),
-            )));
-        }
-
-        self.plugin = Some(plugin_arc);
         self.inbound_rx = rx;
-        self.tools = tools;
 
         Ok(())
     }

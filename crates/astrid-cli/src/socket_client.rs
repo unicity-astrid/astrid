@@ -102,13 +102,14 @@ impl SocketClient {
     ///
     /// # Errors
     /// Returns an error if the message cannot be serialized or sent.
-    #[allow(clippy::cast_possible_truncation)]
     pub async fn send_message(&mut self, msg: IpcMessage) -> Result<()> {
         let bytes = serde_json::to_vec(&msg)?;
-        let len = bytes.len() as u32;
+        let len =
+            u32::try_from(bytes.len()).context("IPC message too large (exceeds 4 GiB limit)")?;
 
         self.write_half.write_all(&len.to_be_bytes()).await?;
         self.write_half.write_all(&bytes).await?;
+        self.write_half.flush().await?;
         Ok(())
     }
 }

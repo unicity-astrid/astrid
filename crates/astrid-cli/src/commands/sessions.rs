@@ -57,6 +57,9 @@ fn list_sessions() -> Result<()> {
 }
 
 fn delete_session(id: &str) -> Result<()> {
+    // Validate as UUID to prevent path traversal (e.g. "../../config")
+    uuid::Uuid::parse_str(id)
+        .map_err(|_| anyhow::anyhow!("Invalid session ID (must be a UUID): {id}"))?;
     let home = AstridHome::resolve().context("Failed to resolve Astrid home directory")?;
     let session_dir = home.sessions_dir().join(id);
 
@@ -70,6 +73,8 @@ fn delete_session(id: &str) -> Result<()> {
 }
 
 fn session_info(id: &str) -> Result<()> {
+    uuid::Uuid::parse_str(id)
+        .map_err(|_| anyhow::anyhow!("Invalid session ID (must be a UUID): {id}"))?;
     let home = AstridHome::resolve().context("Failed to resolve Astrid home directory")?;
     let session_dir = home.sessions_dir().join(id);
 
@@ -80,9 +85,10 @@ fn session_info(id: &str) -> Result<()> {
     println!("{}", "Session Information".bold());
     println!("  ID: {}", Theme::session_id(id));
 
-    let sock_path = session_dir.join("ipc.sock");
+    // The global daemon socket lives at sessions_dir/system.sock, not per-session.
+    let sock_path = home.sessions_dir().join("system.sock");
     if sock_path.exists() {
-        println!("  Status: {}", "Alive (Socket Active)".green());
+        println!("  Status: {}", "Alive (Daemon Running)".green());
     } else {
         println!("  Status: {}", "Dormant".yellow());
     }

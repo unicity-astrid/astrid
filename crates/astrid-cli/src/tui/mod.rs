@@ -7,7 +7,7 @@ mod render;
 pub(crate) mod state;
 mod theme;
 
-use std::io::{self, Stdout};
+use std::io::{self, Stdout, Write as _};
 use std::time::{Duration, Instant};
 
 use astrid_core::SessionId;
@@ -191,8 +191,24 @@ async fn run_loop(
 #[allow(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
-        if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
+        if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } = &message.payload {
+            // Transition to streaming state on first delta
+            if !text.is_empty() && !matches!(app.state, UiState::Streaming { .. }) && !*is_final {
+                app.state = UiState::Streaming {
+                    start_time: Instant::now(),
+                };
+            }
             app.stream_buffer.push_str(text);
+
+            if *is_final {
+                // Flush the accumulated stream buffer as an assistant message
+                if !app.stream_buffer.is_empty() {
+                    let response = std::mem::take(&mut app.stream_buffer);
+                    app.push_message(MessageRole::Assistant, response);
+                }
+                app.state = UiState::Idle;
+                app.scroll_offset = 0;
+            }
         } else if let astrid_events::ipc::IpcPayload::OnboardingRequired {
             capsule_id,
             missing_keys,
@@ -247,6 +263,46 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                     description: format!("{} (via {})", cmd.description, cmd.provider_capsule),
                 });
             }
+        }
+
+        // Registry responses
+        if message.topic == "registry.response.get_providers" {
+            if let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
+                && let Some(providers) = data.as_array()
+            {
+                if providers.is_empty() {
+                    app.push_notice("No LLM providers are currently loaded.");
+                } else {
+                    use std::fmt::Write as _;
+                    let mut text = String::from("Available Models:\n");
+                    for p in providers {
+                        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                        let desc = p.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                        let capsule = p.get("capsule").and_then(|v| v.as_str()).unwrap_or("?");
+                        let _ = writeln!(text, "  - {id} — {desc} (via {capsule})");
+                    }
+                    text.push_str("\nUse /models <model_id> to switch.");
+                    app.push_message(MessageRole::LocalUi, text);
+                }
+            }
+        } else if message.topic == "registry.response.set_active_model" {
+            if let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload {
+                if let Some(model) = data
+                    .get("active_model")
+                    .and_then(|m| m.get("id"))
+                    .and_then(|v| v.as_str())
+                {
+                    app.push_notice(&format!("Active model set to: {model}"));
+                    app.model_name = model.to_string();
+                } else if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                    app.push_notice(&format!("Failed to set model: {err}"));
+                }
+            }
+        } else if message.topic == "registry.active_model_changed"
+            && let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
+            && let Some(id) = data.get("id").and_then(|v| v.as_str())
+        {
+            app.model_name = id.to_string();
         }
     }
 }
@@ -317,7 +373,7 @@ async fn handle_pending_actions(
                 if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                     let env_path = home.capsules_dir().join(&capsule_id).join(".env.json");
                     if let Ok(json) = serde_json::to_string_pretty(&answers) {
-                        if let Err(e) = std::fs::write(&env_path, json) {
+                        if let Err(e) = write_env_file(&env_path, &json) {
                             app.push_notice(&format!("Failed to save configuration: {e}"));
                         } else {
                             let msg = "Configuration saved. Refreshing Kernel...";
@@ -431,6 +487,7 @@ async fn handle_slash_command(
                  - `/clear`    - Clear the local terminal screen\n\
                  - `/install`  - Install and load a capsule\n\
                  - `/refresh`  - Reload all capsules into the OS\n\
+                 - `/models`   - List or switch LLM models\n\
                  - `/quit`     - Disconnect from the daemon\n\
                  "
                 .to_string(),
@@ -440,6 +497,33 @@ async fn handle_slash_command(
                 let msg = astrid_events::ipc::IpcMessage::new(
                     "kernel.request.get_commands",
                     astrid_events::ipc::IpcPayload::RawJson(val),
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            }
+        },
+        "/models" => {
+            app.push_message(MessageRole::User, cmd.to_string());
+            if parts.len() < 2 {
+                // List available models
+                app.push_notice("Fetching available models...");
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "registry.get_providers",
+                    astrid_events::ipc::IpcPayload::Custom {
+                        data: serde_json::json!({}),
+                    },
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            } else {
+                // Set active model
+                let model_id = parts[1];
+                app.push_notice(&format!("Switching to model: {model_id}..."));
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "registry.set_active_model",
+                    astrid_events::ipc::IpcPayload::Custom {
+                        data: serde_json::json!({"model_id": model_id}),
+                    },
                     session_id.0,
                 );
                 let _ = client.send_message(msg).await;
@@ -466,5 +550,25 @@ async fn handle_slash_command(
                 };
             }
         },
+    }
+}
+
+/// Write `.env.json` with restricted permissions (0o600 on Unix).
+fn write_env_file(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?
+            .write_all(contents.as_bytes())?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents)
     }
 }

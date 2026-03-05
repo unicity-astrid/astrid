@@ -20,12 +20,17 @@ action = "handle_user_prompt"
 event = "identity.response.ready"
 action = "handle_identity_response"
 
-# LLM streaming events from provider capsules
+# LLM streaming events from any provider capsule
 [[interceptor]]
-event = "llm.stream.anthropic"
+event = "llm.stream.*"
 action = "handle_llm_stream"
 
 # Tool execution results from the tool router
 [[interceptor]]
 event = "tool.execute.result"
 action = "handle_tool_result"
+
+# Active model changed by the registry capsule
+[[interceptor]]
+event = "registry.active_model_changed"
+action = "handle_model_changed"

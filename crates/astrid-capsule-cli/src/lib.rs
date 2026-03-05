@@ -20,55 +20,58 @@ pub fn run() -> FnResult<()> {
 
     // 4. Enter the blocking accept loop
     loop {
-        if let Ok(stream) = accept(&listener) {
-            let _ = sys::log("info", "CLI client connected to proxy");
+        let stream = match accept(&listener) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = sys::log("warn", format!("Accept error: {e:?}, backing off"));
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            },
+        };
+        let _ = sys::log("info", "CLI client connected to proxy");
 
-            // Spawn a loop to read messages from the client
-            loop {
-                // 1. Read from socket (has 50ms timeout on the host side)
-                match read(&stream) {
-                    Ok(bytes) => {
-                        if !bytes.is_empty() {
-                            // Parse the incoming JSON into an IpcMessage
-                            if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                if let (Some(topic), Some(payload)) = (
-                                    msg.get("topic").and_then(|t| t.as_str()),
-                                    msg.get("payload"),
-                                ) && let Err(e) = ipc::publish_json(topic, payload)
-                                {
-                                    let _ = sys::log(
-                                        "error",
-                                        format!("Failed to publish IPC: {:?}", e),
-                                    );
-                                }
-                            } else {
+        // Inner loop to read messages from the client
+        loop {
+            // 1. Read from socket (has 50ms timeout on the host side)
+            match read(&stream) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        // Parse the incoming JSON into an IpcMessage
+                        if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            if let (Some(topic), Some(payload)) = (
+                                msg.get("topic").and_then(|t| t.as_str()),
+                                msg.get("payload"),
+                            ) && let Err(e) = ipc::publish_json(topic, payload)
+                            {
                                 let _ =
-                                    sys::log("warn", "Received malformed IPC payload from socket");
+                                    sys::log("error", format!("Failed to publish IPC: {:?}", e));
                             }
+                        } else {
+                            let _ = sys::log("warn", "Received malformed IPC payload from socket");
                         }
-                    },
-                    Err(e) => {
-                        let _ = sys::log("error", format!("Socket read error: {:?}", e));
-                        break;
-                    },
-                }
+                    }
+                },
+                Err(e) => {
+                    let _ = sys::log("error", format!("Socket read error: {:?}", e));
+                    break;
+                },
+            }
 
-                // 2. Poll Event Bus — extract individual IpcMessages from the poll
-                //    envelope and forward each one to the CLI socket as a standalone
-                //    IpcMessage (the CLI client deserializes IpcMessage directly).
-                match ipc::poll_bytes(&sub_handle) {
-                    Ok(bytes) => {
-                        if !bytes.is_empty()
-                            && let Err(()) = forward_poll_messages(&stream, &bytes)
-                        {
-                            break;
-                        }
-                    },
-                    Err(_) => {
-                        // Polling error or closed channel
+            // 2. Poll Event Bus — extract individual IpcMessages from the poll
+            //    envelope and forward each one to the CLI socket as a standalone
+            //    IpcMessage (the CLI client deserializes IpcMessage directly).
+            match ipc::poll_bytes(&sub_handle) {
+                Ok(bytes) => {
+                    if !bytes.is_empty()
+                        && let Err(()) = forward_poll_messages(&stream, &bytes)
+                    {
                         break;
-                    },
-                }
+                    }
+                },
+                Err(_) => {
+                    // Polling error or closed channel
+                    break;
+                },
             }
         }
     }

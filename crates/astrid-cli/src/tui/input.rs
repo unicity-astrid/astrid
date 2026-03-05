@@ -43,7 +43,10 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
                 answers,
             } = &mut app.state
             {
-                let key_name = missing_keys[*current_idx].clone();
+                let Some(key_name) = missing_keys.get(*current_idx).cloned() else {
+                    app.state = UiState::Idle;
+                    return;
+                };
                 answers.insert(key_name, answer);
                 *current_idx = current_idx.saturating_add(1);
 

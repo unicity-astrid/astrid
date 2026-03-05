@@ -249,7 +249,7 @@ impl Orchestrator {
                         is_final: false,
                     },
                 );
-            }
+            },
             StreamEvent::ToolCallStart { id, name } => {
                 state.pending_stream_tools.push(PendingToolCall {
                     id,
@@ -257,21 +257,21 @@ impl Orchestrator {
                     args_json: String::new(),
                     complete: false,
                 });
-            }
+            },
             StreamEvent::ToolCallDelta { id, args_delta } => {
                 if let Some(tc) = state.pending_stream_tools.iter_mut().find(|t| t.id == id) {
                     tc.args_json.push_str(&args_delta);
                 }
-            }
+            },
             StreamEvent::ToolCallEnd { id } => {
                 if let Some(tc) = state.pending_stream_tools.iter_mut().find(|t| t.id == id) {
                     tc.complete = true;
                 }
-            }
+            },
             StreamEvent::Done => {
                 state.save(DEFAULT_SESSION_ID)?;
                 return Self::handle_stream_done(&mut state);
-            }
+            },
             StreamEvent::Error(err) => {
                 let _ = sys::log("error", format!("LLM stream error: {err}"));
                 // Publish error to frontend and reset to idle
@@ -285,9 +285,9 @@ impl Orchestrator {
                 state.phase = Phase::Idle;
                 state.save(DEFAULT_SESSION_ID)?;
                 return Ok(());
-            }
+            },
             // Usage and ReasoningDelta are informational, no state change needed
-            _ => {}
+            _ => {},
         }
 
         state.save(DEFAULT_SESSION_ID)?;
@@ -355,6 +355,20 @@ impl Orchestrator {
 
         Self::publish_llm_request(&state)
     }
+
+    /// Handle active model change from the registry capsule.
+    ///
+    /// Stores the new provider topic in KV so subsequent LLM requests
+    /// route to the correct provider.
+    #[astrid::interceptor("handle_model_changed")]
+    pub fn handle_model_changed(&self, payload: IpcPayload) -> Result<(), SysError> {
+        if let IpcPayload::Custom { data } = payload {
+            if let Some(topic) = data.get("request_topic").and_then(|t| t.as_str()) {
+                kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Orchestrator {
@@ -379,7 +393,7 @@ impl Orchestrator {
                             ),
                         );
                         serde_json::Value::Object(serde_json::Map::new())
-                    }
+                    },
                 };
 
                 dispatched.push(DispatchedToolCall {
@@ -437,8 +451,16 @@ impl Orchestrator {
 
         let tools = Self::load_tool_schemas();
 
-        let llm_topic = sys::get_config_string("llm_provider_topic")
-            .unwrap_or_else(|_| "llm.request.generate.anthropic".into());
+        // Read the active provider topic from KV (set by the registry capsule),
+        // falling back to static config, then to the default.
+        let llm_topic = kv::get_bytes("llm_provider_topic")
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                sys::get_config_string("llm_provider_topic")
+                    .unwrap_or_else(|_| "llm.request.generate.anthropic".into())
+            });
 
         ipc::publish_json(
             &llm_topic,

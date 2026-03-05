@@ -31,6 +31,7 @@ pub fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandl
     })
 }
 
+#[allow(clippy::too_many_lines)]
 async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelRequest) {
     let response_topic = topic.replace("kernel.request.", "kernel.response.");
 
@@ -76,11 +77,55 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
             KernelResponse::Commands(commands)
         },
         KernelRequest::ReloadCapsules => {
-            // Note: In a production kernel, this should probably diff and hot-reload gracefully.
-            // For now, we will just call load_all_capsules which skips already-registered ones,
-            // effectively just loading newly discovered ones.
+            // Unregister capsules in a Failed state so they can be re-loaded
+            // with fresh configuration (e.g. after onboarding writes .env.json).
+            {
+                let reg = kernel.capsules.read().await;
+                let failed_ids: Vec<_> = reg
+                    .list()
+                    .into_iter()
+                    .filter(|id| {
+                        reg.get(id).is_some_and(|c| {
+                            matches!(c.state(), astrid_capsule::capsule::CapsuleState::Failed(_))
+                        })
+                    })
+                    .cloned()
+                    .collect();
+                drop(reg);
+
+                let mut reg = kernel.capsules.write().await;
+                for id in failed_ids {
+                    let _ = reg.unregister(&id);
+                }
+            }
+
             kernel.load_all_capsules().await;
             KernelResponse::Success(serde_json::json!({"status": "reloaded"}))
+        },
+        KernelRequest::GetCapsuleMetadata => {
+            let reg = kernel.capsules.read().await;
+            let mut entries = Vec::new();
+            for capsule in reg.values() {
+                let manifest = capsule.manifest();
+                entries.push(astrid_events::kernel_api::CapsuleMetadataEntry {
+                    name: manifest.package.name.clone(),
+                    llm_providers: manifest
+                        .llm_providers
+                        .iter()
+                        .map(|p| astrid_events::kernel_api::LlmProviderInfo {
+                            id: p.id.clone(),
+                            description: p.description.clone().unwrap_or_default(),
+                            capabilities: p.capabilities.clone(),
+                        })
+                        .collect(),
+                    interceptor_events: manifest
+                        .interceptors
+                        .iter()
+                        .map(|i| i.event.clone())
+                        .collect(),
+                });
+            }
+            KernelResponse::CapsuleMetadata(entries)
         },
     };
 

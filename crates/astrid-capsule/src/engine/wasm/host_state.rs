@@ -67,6 +67,8 @@ pub struct HostState {
     /// Active, mapped UnixStreams from the socket listener.
     pub active_streams:
         std::collections::HashMap<u64, Arc<tokio::sync::Mutex<tokio::net::UnixStream>>>,
+    /// Monotonic counter for stream handle IDs (avoids reuse after removal).
+    pub next_stream_id: u64,
 }
 
 impl HostState {
@@ -156,6 +158,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         let debug = format!("{state:?}");
@@ -199,6 +202,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         assert!(state.connectors().is_empty());
@@ -246,6 +250,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -290,6 +295,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         // Fill to the limit
@@ -352,6 +358,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
