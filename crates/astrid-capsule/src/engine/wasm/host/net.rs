@@ -5,10 +5,10 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 // Note: `bind_unix` is ignored because the Kernel natively binds the socket and passes
 // it into the HostState. The WASM module just calls accept() directly.
 pub(crate) fn astrid_net_bind_unix_impl(
-    _plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
+    _: &mut CurrentPlugin,
+    _: &[Val],
     outputs: &mut [Val],
-    _user_data: UserData<HostState>,
+    _: UserData<HostState>,
 ) -> Result<(), Error> {
     // Return a dummy handle, since the socket is pre-bound.
     outputs[0] = Val::I64(1);
@@ -17,7 +17,7 @@ pub(crate) fn astrid_net_bind_unix_impl(
 
 pub(crate) fn astrid_net_accept_impl(
     plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
+    _: &[Val],
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
@@ -133,7 +133,7 @@ pub(crate) fn astrid_net_read_impl(
 pub(crate) fn astrid_net_write_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
-    _outputs: &mut [Val],
+    _: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;

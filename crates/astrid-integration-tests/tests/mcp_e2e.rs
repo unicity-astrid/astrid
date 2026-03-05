@@ -33,10 +33,12 @@ async fn test_mcp_host_engine_capability_validation() {
         dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
+            net_bind: vec![],
             kv: vec![],
             fs_read: vec![],
             fs_write: vec![],
             host_process: vec!["npx".into()], // Only "npx" is allowed
+            uplink: false,
         },
         env: std::collections::HashMap::default(),
         context_files: vec![],

@@ -373,10 +373,12 @@ mod tests {
             dependencies: Default::default(),
             capabilities: CapabilitiesDef {
                 net: net.into_iter().map(String::from).collect(),
+                net_bind: vec![],
                 kv: vec![],
                 fs_read: fs_read.into_iter().map(String::from).collect(),
                 fs_write: fs_write.into_iter().map(String::from).collect(),
                 host_process: vec![],
+                uplink: false,
             },
             env: Default::default(),
             context_files: vec![],

@@ -65,10 +65,12 @@ async fn setup_test_capsule(
         dependencies: std::collections::HashMap::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,
+            net_bind: vec![],
             kv: vec!["*".into()],
             fs_read: fs_read_caps,
             fs_write: fs_write_caps,
             host_process: vec![],
+            uplink: false,
         },
         env: std::collections::HashMap::default(),
         context_files: vec![],
