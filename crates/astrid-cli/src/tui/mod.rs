@@ -193,6 +193,20 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
         if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
             app.stream_buffer.push_str(text);
+        } else if let astrid_events::ipc::IpcPayload::OnboardingRequired { capsule_id, missing_keys, prompts } = &message.payload {
+            let msg = format!("Action required: Capsule '{capsule_id}' requires configuration.");
+            app.push_notice(&msg);
+            app.status_message = Some((msg, Instant::now()));
+
+            // In Phase 8, we would normally emit an ApprovalRequired or show an interactive
+            // dialoguer prompt here. For now, since we cannot pause the TUI async loop directly 
+            // inside `handle_daemon_event` without deadlocking, we will just print the requirements.
+            // A full fix will require sending a `PendingAction::Onboard` back up to the run loop.
+            app.push_notice("Please restart the CLI to complete installation.");
+            for key in missing_keys {
+                let prompt = prompts.get(key).unwrap_or(key);
+                app.push_notice(&format!(" - Missing: {key} ({prompt})"));
+            }
         } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
             && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())

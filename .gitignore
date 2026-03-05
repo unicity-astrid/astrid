@@ -2,6 +2,7 @@
 /target
 **/target
 Cargo.lock
+dist/
 
 # IDE
 .idea/
