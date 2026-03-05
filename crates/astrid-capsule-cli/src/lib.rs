@@ -34,8 +34,7 @@ pub fn run() -> FnResult<()> {
                                 if let (Some(topic), Some(payload)) = (
                                     msg.get("topic").and_then(|t| t.as_str()),
                                     msg.get("payload"),
-                                )
-                                    && let Err(e) = ipc::publish_json(topic, payload)
+                                ) && let Err(e) = ipc::publish_json(topic, payload)
                                 {
                                     let _ = sys::log(
                                         "error",
@@ -43,10 +42,8 @@ pub fn run() -> FnResult<()> {
                                     );
                                 }
                             } else {
-                                let _ = sys::log(
-                                    "warn",
-                                    "Received malformed IPC payload from socket",
-                                );
+                                let _ =
+                                    sys::log("warn", "Received malformed IPC payload from socket");
                             }
                         }
                     },
