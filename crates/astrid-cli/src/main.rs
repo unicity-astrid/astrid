@@ -236,7 +236,7 @@ async fn main() -> Result<()> {
         Some(Commands::Capsule { command }) => {
             match command {
                 CapsuleCommands::Install { source, workspace } => {
-                    commands::capsule::install::install_capsule(&source, workspace, false)?;
+                    commands::capsule::install::install_capsule(&source, workspace)?;
                 },
             }
         },

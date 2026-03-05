@@ -342,7 +342,7 @@ async fn handle_slash_command(
                 app.push_notice("Usage: /install <path-to-capsule-or-directory>");
             } else {
                 let source = parts[1];
-                let msg = format!("Installing capsule from: {source} (headless mode)...");
+                let msg = format!("Installing capsule from: {source}...");
                 app.push_notice(&msg);
                 app.status_message = Some((msg, Instant::now()));
                 
@@ -351,7 +351,7 @@ async fn handle_slash_command(
 
                 let source_owned = source.to_string();
                 let result = tokio::task::spawn_blocking(move || {
-                    crate::commands::capsule::install::install_capsule(&source_owned, false, true)
+                    crate::commands::capsule::install::install_capsule(&source_owned, false)
                 })
                 .await
                 .unwrap_or_else(|e| Err(anyhow::anyhow!("Task panicked: {e}")));
