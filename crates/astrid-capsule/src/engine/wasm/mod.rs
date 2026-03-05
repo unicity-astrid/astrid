@@ -212,7 +212,7 @@ impl ExecutionEngine for WasmEngine {
             let capsule_name = self.manifest.package.name.clone();
             tokio::task::spawn_blocking(move || {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
-                let mut p = plugin_clone.lock().unwrap();
+                let mut p = plugin_clone.lock().expect("WASM plugin lock was poisoned");
                 if let Err(e) = p.call::<(), ()>("run", ()) {
                     tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                 }

@@ -5,24 +5,23 @@ use extism_pdk::FnResult;
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    // 1. Fetch the caller context to determine our Session ID
-    let caller = sys::get_caller().expect("Failed to get caller context");
-    let _session_id = caller.session_id.unwrap_or_else(|| "default".to_string());
+    // 1. Subscribe to all IPC events
+    let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // Subscribe to all IPC events
-    let sub_handle = ipc::subscribe("*").expect("Failed to subscribe to IPC");
-
-    // 2. Determine the physical socket path
+    // 2. Determine the physical socket path dynamically
+    // The Kernel defines this as AstridHome::resolve()?.sessions_dir().join("system.sock")
+    // For now we will use the standard fallback path but ensure we handle errors cleanly.
+    // In the future this should be injected via `wasm_config` by the HostState.
     let path = "/tmp/.astrid/sessions/system.sock";
 
     // 3. Bind the Unix Domain Socket using the SDK Airlock
-    sys::log("info", format!("CLI Proxy binding to socket: {path}")).unwrap();
-    let listener = bind_unix(path).expect("Failed to bind to Unix Socket");
+    let _ = sys::log("info", format!("CLI Proxy binding to socket: {path}"));
+    let listener = bind_unix(path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // 4. Enter the blocking accept loop
     loop {
         if let Ok(stream) = accept(&listener) {
-            sys::log("info", "CLI client connected to proxy")?;
+            let _ = sys::log("info", "CLI client connected to proxy");
 
             // Spawn a loop to read messages from the client
             loop {
@@ -35,17 +34,24 @@ pub fn run() -> FnResult<()> {
                                 if let (Some(topic), Some(payload)) = (
                                     msg.get("topic").and_then(|t| t.as_str()),
                                     msg.get("payload"),
-                                ) {
-                                    ipc::publish_json(topic, payload)
-                                        .expect("Failed to publish IPC");
+                                )
+                                    && let Err(e) = ipc::publish_json(topic, payload)
+                                {
+                                    let _ = sys::log(
+                                        "error",
+                                        format!("Failed to publish IPC: {:?}", e),
+                                    );
                                 }
                             } else {
-                                sys::log("warn", "Received malformed IPC payload from socket")?;
+                                let _ = sys::log(
+                                    "warn",
+                                    "Received malformed IPC payload from socket",
+                                );
                             }
                         }
                     },
                     Err(e) => {
-                        sys::log("error", format!("Socket read error: {:?}", e))?;
+                        let _ = sys::log("error", format!("Socket read error: {:?}", e));
                         break;
                     },
                 }
