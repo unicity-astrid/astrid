@@ -41,6 +41,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         // Enter: select palette command and submit, or normal submit
         (KeyCode::Enter, _) => {
             let mut submit_immediately = false;
+            let mut selected_from_palette = false;
 
             if palette_is_active {
                 let filtered = app.palette_filtered();
@@ -52,11 +53,14 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                         app.input = format!("{} ", cmd.name);
                     }
                     app.cursor_pos = app.input.len();
+                    selected_from_palette = true;
                 }
                 app.palette_reset();
             }
 
-            if (!palette_is_active || submit_immediately)
+            // Submit if we aren't using the palette to auto-complete, or if the auto-completed command requires immediate submission.
+            // If the user already typed a full command with arguments, `selected_from_palette` will be false because `filtered` is empty.
+            if (!palette_is_active || !selected_from_palette || submit_immediately)
                 && let Some(content) = app.submit_input()
             {
                 app.pending_actions.push(PendingAction::SendInput(content));
