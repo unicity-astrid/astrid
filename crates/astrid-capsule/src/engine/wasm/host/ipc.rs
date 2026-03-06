@@ -182,7 +182,8 @@ pub(crate) fn astrid_ipc_poll_impl(
     }
 
     let handle_id_bytes = util::get_safe_bytes(plugin, &inputs[0], 32)?;
-    let handle_id_str = String::from_utf8(handle_id_bytes).unwrap_or_default();
+    let handle_id_str = String::from_utf8(handle_id_bytes)
+        .map_err(|e| Error::msg(format!("Subscription handle is not valid UTF-8: {e}")))?;
     let handle_id: u64 = handle_id_str
         .parse()
         .map_err(|_| Error::msg("Invalid subscription handle format"))?;
@@ -249,7 +250,8 @@ pub(crate) fn astrid_ipc_unsubscribe_impl(
     }
 
     let handle_id_bytes = util::get_safe_bytes(plugin, &inputs[0], 32)?;
-    let handle_id_str = String::from_utf8(handle_id_bytes).unwrap_or_default();
+    let handle_id_str = String::from_utf8(handle_id_bytes)
+        .map_err(|e| Error::msg(format!("Subscription handle is not valid UTF-8: {e}")))?;
     let handle_id: u64 = handle_id_str
         .parse()
         .map_err(|_| Error::msg("Invalid subscription handle format"))?;
