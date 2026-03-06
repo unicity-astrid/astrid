@@ -43,9 +43,9 @@ impl EventDispatcher {
     }
 
     /// Create a new event dispatcher with a custom interceptor timeout.
-    #[cfg(test)]
     #[must_use]
-    fn with_timeout(
+    #[allow(dead_code)]
+    pub(crate) fn with_timeout(
         registry: Arc<RwLock<CapsuleRegistry>>,
         event_bus: Arc<EventBus>,
         interceptor_timeout: Duration,
@@ -68,7 +68,7 @@ impl EventDispatcher {
 
         while let Some(event) = receiver.recv().await {
             if let AstridEvent::Ipc { message, .. } = &*event {
-                self.dispatch(message).await;
+                self.dispatch(message);
             }
         }
 
@@ -76,34 +76,16 @@ impl EventDispatcher {
     }
 
     /// Match an IPC event against all registered interceptors and invoke matches.
-    async fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
-        let topic = &message.topic;
+    ///
+    /// Interceptors are dispatched concurrently — each gets its own spawned task
+    /// with an independent timeout. This method returns immediately after spawning,
+    /// so the event loop is never blocked by slow or misbehaving interceptors.
+    fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
+        let topic = message.topic.clone();
+        let registry = Arc::clone(&self.registry);
+        let timeout = self.interceptor_timeout;
 
-        // Collect matches under a brief read lock, then release it.
-        let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
-            let registry = self.registry.read().await;
-            let mut matches = Vec::new();
-            for capsule_id in registry.list() {
-                if let Some(capsule) = registry.get(capsule_id) {
-                    if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-                        continue;
-                    }
-                    for interceptor in &capsule.manifest().interceptors {
-                        if topic_matches(topic, &interceptor.event) {
-                            matches.push((Arc::clone(&capsule), interceptor.action.clone()));
-                        }
-                    }
-                }
-            }
-            matches
-            // Read lock dropped here.
-        };
-
-        if matches.is_empty() {
-            return;
-        }
-
-        // Serialize the FULL message once for all invocations so capsules get metadata.
+        // Serialize payload eagerly so all interceptors share the same bytes.
         let payload_bytes = match serde_json::to_vec(message) {
             Ok(bytes) => Arc::new(bytes),
             Err(e) => {
@@ -112,62 +94,89 @@ impl EventDispatcher {
             },
         };
 
-        let timeout = self.interceptor_timeout;
-        for (capsule, action) in matches {
-            let capsule_id = capsule.id().clone();
-            debug!(
-                capsule_id = %capsule_id,
-                action = %action,
-                topic,
-                "Dispatching interceptor"
-            );
+        // Spawn a lightweight coordinator task that collects matches under a
+        // brief read lock, then fans out each interceptor as its own task.
+        tokio::task::spawn(async move {
+            let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
+                let registry = registry.read().await;
+                let mut matches = Vec::new();
+                for capsule_id in registry.list() {
+                    if let Some(capsule) = registry.get(capsule_id) {
+                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                            continue;
+                        }
+                        for interceptor in &capsule.manifest().interceptors {
+                            if topic_matches(&topic, &interceptor.event) {
+                                matches.push((Arc::clone(&capsule), interceptor.action.clone()));
+                            }
+                        }
+                    }
+                }
+                matches
+                // Read lock dropped here.
+            };
 
-            let act = action.clone();
-            let payload = Arc::clone(&payload_bytes);
+            for (capsule, action) in matches {
+                let capsule_id = capsule.id().clone();
+                let act = action.clone();
+                let payload = Arc::clone(&payload_bytes);
+                let topic = topic.clone();
 
-            // Spawn on a worker thread so block_in_place (used by
-            // invoke_interceptor and WASM host functions) works correctly.
-            // The registry lock is NOT held during WASM execution — only an
-            // Arc<dyn Capsule> clone keeps the capsule alive.
-            let mut handle =
-                tokio::task::spawn(async move { capsule.invoke_interceptor(&act, &payload) });
-
-            match tokio::time::timeout(timeout, &mut handle).await {
-                Ok(Ok(Ok(_))) => {
+                // Each interceptor runs independently with its own timeout.
+                // Spawned on a Tokio worker thread so block_in_place (used by
+                // invoke_interceptor and WASM host functions) works correctly.
+                // Requires a multi-thread Tokio runtime.
+                tokio::task::spawn(async move {
                     debug!(
                         capsule_id = %capsule_id,
-                        action = %action,
-                        "Interceptor completed"
-                    );
-                },
-                Ok(Ok(Err(e))) => {
-                    warn!(
-                        capsule_id = %capsule_id,
-                        action = %action,
+                        action = %act,
                         topic,
-                        error = %e,
-                        "Interceptor invocation failed"
+                        "Dispatching interceptor"
                     );
-                },
-                Ok(Err(e)) => {
-                    warn!(
-                        capsule_id = %capsule_id,
-                        action = %action,
-                        error = %e,
-                        "Interceptor task panicked"
-                    );
-                },
-                Err(_) => {
-                    handle.abort();
-                    warn!(
-                        capsule_id = %capsule_id,
-                        action = %action,
-                        topic,
-                        "Interceptor timed out after {timeout:?}, aborting task"
-                    );
-                },
+
+                    let mut handle =
+                        tokio::task::spawn(
+                            async move { capsule.invoke_interceptor(&act, &payload) },
+                        );
+
+                    match tokio::time::timeout(timeout, &mut handle).await {
+                        Ok(Ok(Ok(_))) => {
+                            debug!(
+                                capsule_id = %capsule_id,
+                                action,
+                                "Interceptor completed"
+                            );
+                        },
+                        Ok(Ok(Err(e))) => {
+                            warn!(
+                                capsule_id = %capsule_id,
+                                action,
+                                topic,
+                                error = %e,
+                                "Interceptor invocation failed"
+                            );
+                        },
+                        Ok(Err(e)) => {
+                            warn!(
+                                capsule_id = %capsule_id,
+                                action,
+                                error = %e,
+                                "Interceptor task panicked"
+                            );
+                        },
+                        Err(_) => {
+                            handle.abort();
+                            warn!(
+                                capsule_id = %capsule_id,
+                                action,
+                                topic,
+                                "Interceptor timed out after {timeout:?}, aborting task"
+                            );
+                        },
+                    }
+                });
             }
-        }
+        });
     }
 }
 

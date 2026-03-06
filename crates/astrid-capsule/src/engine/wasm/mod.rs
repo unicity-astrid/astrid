@@ -26,6 +26,7 @@ pub struct WasmEngine {
     plugin: Option<Arc<Mutex<extism::Plugin>>>,
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
     tools: Vec<Arc<dyn crate::tool::CapsuleTool>>,
+    run_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl WasmEngine {
@@ -36,6 +37,7 @@ impl WasmEngine {
             plugin: None,
             inbound_rx: None,
             tools: Vec::new(),
+            run_handle: None,
         }
     }
 }
@@ -250,8 +252,8 @@ impl ExecutionEngine for WasmEngine {
             let capsule_name = self.manifest.package.name.clone();
             // Must spawn on a worker thread (not spawn_blocking) because WASM
             // host functions (fs, http, kv, etc.) use block_in_place internally,
-            // which panics on spawn_blocking threads.
-            tokio::task::spawn(async move {
+            // which panics on spawn_blocking threads. Requires multi-thread runtime.
+            self.run_handle = Some(tokio::task::spawn(async move {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
                 tokio::task::block_in_place(|| {
                     let mut p = match plugin_arc.lock() {
@@ -265,7 +267,7 @@ impl ExecutionEngine for WasmEngine {
                         tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                     }
                 });
-            });
+            }));
             // plugin_arc moved into the spawn — self.plugin stays None.
         } else {
             let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
@@ -290,6 +292,9 @@ impl ExecutionEngine for WasmEngine {
             capsule = %self.manifest.package.name,
             "Unloading WASM component"
         );
+        if let Some(handle) = self.run_handle.take() {
+            handle.abort();
+        }
         self.plugin = None; // Drop releases WASM memory
         self.tools.clear();
         Ok(())
