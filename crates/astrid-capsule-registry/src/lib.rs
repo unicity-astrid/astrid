@@ -17,9 +17,13 @@
 //! **Events** (published by registry):
 //! - `registry.active_model_changed` — payload: `ProviderEntry`, emitted on model change
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use astrid_events::kernel_api::{
     CapsuleMetadataEntry, KernelRequest, KernelResponse, SYSTEM_SESSION_UUID,
 };
+
+static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 use astrid_sdk::prelude::*;
 use extism_pdk::FnResult;
 use serde::{Deserialize, Serialize};
@@ -596,11 +600,12 @@ fn emit_model_selection() {
         .collect();
 
     let request_id = format!(
-        "models-{}",
+        "models-{}-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis()
+            .as_millis(),
+        REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
 
     // Emit SelectionRequired payload — the host will deserialize this as
