@@ -72,7 +72,7 @@ fn capsule_impl(
             // Determine if this method is marked as mutable (check before iterating)
             let is_mutable = extracted_attrs
                 .iter()
-                .any(|a| a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable");
+                .any(|a| a.path().segments[1].ident == "mutable");
 
             for attr in &extracted_attrs {
                 // All attrs here have exactly 2 segments (enforced by the retain
