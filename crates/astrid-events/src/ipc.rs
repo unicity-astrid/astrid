@@ -129,11 +129,37 @@ pub enum IpcPayload {
         /// The result of the execution.
         result: crate::llm::ToolCallResult,
     },
+    /// A capsule is requesting the user to select from a list of options.
+    ///
+    /// Frontends render a generic picker UI; the user's choice is published
+    /// back to the capsule on `callback_topic`.
+    SelectionRequired {
+        /// Opaque ID so the capsule can correlate the response.
+        request_id: String,
+        /// Title/prompt shown above the list.
+        title: String,
+        /// The selectable options.
+        options: Vec<SelectionOption>,
+        /// IPC topic to publish the user's choice back on.
+        callback_topic: String,
+    },
     /// Arbitrary JSON data for unstructured plugins.
     Custom {
         /// Raw data.
         data: Value,
     },
+}
+
+/// A single option in a `SelectionRequired` picker.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelectionOption {
+    /// Machine-readable identifier sent back to the capsule.
+    pub id: String,
+    /// Human-readable label shown in the picker.
+    pub label: String,
+    /// Optional description shown alongside the label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Errors that can occur when checking IPC quota.

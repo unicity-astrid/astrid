@@ -67,10 +67,32 @@ impl ExecutionEngine for WasmEngine {
         let manifest = self.manifest.clone();
 
         let mut wasm_config = std::collections::HashMap::new();
+
+        // Inject the kernel socket path so capsules can discover it via
+        // `sys::socket_path()` instead of hardcoding.
+        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+            wasm_config.insert(
+                "ASTRID_SOCKET_PATH".to_string(),
+                serde_json::Value::String(home.socket_path().to_string_lossy().into_owned()),
+            );
+        }
+
         let mut missing_keys = Vec::new();
         let mut prompts = std::collections::HashMap::new();
 
+        // Collect reserved kernel-injected keys so the env loop cannot override them.
+        let reserved_keys: Vec<String> = wasm_config.keys().cloned().collect();
+
         for (key, def) in &self.manifest.env {
+            // Reject manifest [env] entries that collide with kernel-injected config.
+            if reserved_keys.iter().any(|k| k == key) {
+                tracing::warn!(
+                    capsule = %self.manifest.package.name,
+                    key = %key,
+                    "Capsule manifest [env] declares reserved key — ignoring"
+                );
+                continue;
+            }
             if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
                 if let Ok(val) = String::from_utf8(val_bytes) {
                     wasm_config.insert(key.clone(), serde_json::Value::String(val));
@@ -169,8 +191,10 @@ impl ExecutionEngine for WasmEngine {
                 subscriptions: std::collections::HashMap::new(),
                 next_subscription_id,
                 config: wasm_config,
+                ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
                 cli_socket_listener: ctx.cli_socket_listener.clone(),
                 active_streams: std::collections::HashMap::new(),
+                next_stream_id: 1,
                 security: Some(security_gate),
                 hook_manager: None, // Will be injected by Gateway
                 runtime_handle: tokio::runtime::Handle::current(),
@@ -208,30 +232,44 @@ impl ExecutionEngine for WasmEngine {
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
         if has_run {
-            let plugin_clone = Arc::clone(&plugin_arc);
+            // The run loop holds the plugin mutex for its entire lifetime.
+            // We must NOT store the plugin in self.plugin, because the
+            // dispatcher's invoke_interceptor() would try to acquire the same
+            // mutex — causing a deadlock. Run-loop capsules handle events
+            // internally via ipc::subscribe, so they don't need host-side
+            // interceptor dispatch.
+            if !self.manifest.interceptors.is_empty() {
+                tracing::warn!(
+                    capsule = %self.manifest.package.name,
+                    "Capsule declares both run() and [[interceptor]] entries. \
+                     Interceptors will NOT be dispatched for run-loop capsules \
+                     (plugin is exclusively held by the run loop). Move event \
+                     handling into the run() function via ipc::subscribe instead."
+                );
+            }
             let capsule_name = self.manifest.package.name.clone();
             tokio::task::spawn_blocking(move || {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
-                let mut p = plugin_clone.lock().expect("WASM plugin lock was poisoned");
+                let mut p = plugin_arc.lock().expect("WASM plugin lock was poisoned");
                 if let Err(e) = p.call::<(), ()>("run", ()) {
                     tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                 }
             });
+            // plugin_arc moved into the spawn — self.plugin stays None.
+        } else {
+            let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
+            for t in &self.manifest.tools {
+                tools.push(Arc::new(tool::WasmCapsuleTool::new(
+                    t.name.clone(),
+                    t.description.clone(),
+                    t.input_schema.clone(),
+                    Arc::clone(&plugin_arc),
+                )));
+            }
+            self.tools = tools;
+            self.plugin = Some(plugin_arc);
         }
-
-        let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
-        for t in &self.manifest.tools {
-            tools.push(Arc::new(tool::WasmCapsuleTool::new(
-                t.name.clone(),
-                t.description.clone(),
-                t.input_schema.clone(),
-                Arc::clone(&plugin_arc),
-            )));
-        }
-
-        self.plugin = Some(plugin_arc);
         self.inbound_rx = rx;
-        self.tools = tools;
 
         Ok(())
     }

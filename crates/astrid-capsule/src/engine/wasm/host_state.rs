@@ -43,6 +43,9 @@ pub struct HostState {
     pub next_subscription_id: u64,
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
+    /// IPC topic patterns this capsule is allowed to publish to.
+    /// Empty means unrestricted (backwards-compatible default).
+    pub ipc_publish_patterns: Vec<String>,
     /// Optional security gate for gated operations (HTTP, file I/O).
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Hook manager for executing user scripts synchronously via airlock.
@@ -67,6 +70,10 @@ pub struct HostState {
     /// Active, mapped UnixStreams from the socket listener.
     pub active_streams:
         std::collections::HashMap<u64, Arc<tokio::sync::Mutex<tokio::net::UnixStream>>>,
+    /// Monotonic counter for stream handle IDs (avoids reuse after removal).
+    /// Starts at 1 so that handle ID 0 is never issued — 0 is reserved as a
+    /// sentinel / "no handle" value in the WASM ABI.
+    pub next_stream_id: u64,
 }
 
 impl HostState {
@@ -148,6 +155,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -156,6 +164,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         let debug = format!("{state:?}");
@@ -191,6 +200,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -199,6 +209,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         assert!(state.connectors().is_empty());
@@ -238,6 +249,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -246,6 +258,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -282,6 +295,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -290,6 +304,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         // Fill to the limit
@@ -344,6 +359,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -352,6 +368,7 @@ mod tests {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
 
         let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)

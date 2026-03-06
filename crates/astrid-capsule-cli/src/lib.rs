@@ -8,67 +8,76 @@ pub fn run() -> FnResult<()> {
     // 1. Subscribe to all IPC events
     let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // 2. Determine the physical socket path dynamically
-    // The Kernel defines this as AstridHome::resolve()?.sessions_dir().join("system.sock")
-    // For now we will use the standard fallback path but ensure we handle errors cleanly.
-    // In the future this should be injected via `wasm_config` by the HostState.
-    let path = "/tmp/.astrid/sessions/system.sock";
+    // 2. Resolve the socket path from the kernel-injected config.
+    // bind_unix is a no-op on the host side (the kernel pre-binds the socket),
+    // but the path is used for logging and future diagnostics.
+    let path = sys::socket_path()
+        .map_err(|e| extism_pdk::Error::msg(format!("Failed to resolve socket path: {e}")))?;
 
-    // 3. Bind the Unix Domain Socket using the SDK Airlock
-    let _ = sys::log("info", format!("CLI Proxy binding to socket: {path}"));
-    let listener = bind_unix(path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+    let _ = sys::log(
+        "info",
+        format!("CLI Proxy: accepting connections on {path}"),
+    );
+    let listener = bind_unix(&path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // 4. Enter the blocking accept loop
+    // 4. Enter the blocking accept loop.
+    // NOTE: This is a single-client design — only one CLI connection is
+    // serviced at a time. A second `astrid chat` invocation will block at
+    // accept() until the first disconnects. Spawning a task per connection
+    // requires WASM threading or an async runtime, which is out of scope.
     loop {
-        if let Ok(stream) = accept(&listener) {
-            let _ = sys::log("info", "CLI client connected to proxy");
+        let stream = match accept(&listener) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = sys::log("warn", format!("Accept error: {e:?}, backing off"));
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            },
+        };
+        let _ = sys::log("info", "CLI client connected to proxy");
 
-            // Spawn a loop to read messages from the client
-            loop {
-                // 1. Read from socket (has 50ms timeout on the host side)
-                match read(&stream) {
-                    Ok(bytes) => {
-                        if !bytes.is_empty() {
-                            // Parse the incoming JSON into an IpcMessage
-                            if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                if let (Some(topic), Some(payload)) = (
-                                    msg.get("topic").and_then(|t| t.as_str()),
-                                    msg.get("payload"),
-                                ) && let Err(e) = ipc::publish_json(topic, payload)
-                                {
-                                    let _ = sys::log(
-                                        "error",
-                                        format!("Failed to publish IPC: {:?}", e),
-                                    );
-                                }
-                            } else {
+        // Inner loop to read messages from the client
+        loop {
+            // 1. Read from socket (has 50ms timeout on the host side)
+            match read(&stream) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        // Parse the incoming JSON into an IpcMessage
+                        if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            if let (Some(topic), Some(payload)) = (
+                                msg.get("topic").and_then(|t| t.as_str()),
+                                msg.get("payload"),
+                            ) && let Err(e) = ipc::publish_json(topic, payload)
+                            {
                                 let _ =
-                                    sys::log("warn", "Received malformed IPC payload from socket");
+                                    sys::log("error", format!("Failed to publish IPC: {:?}", e));
                             }
+                        } else {
+                            let _ = sys::log("warn", "Received malformed IPC payload from socket");
                         }
-                    },
-                    Err(e) => {
-                        let _ = sys::log("error", format!("Socket read error: {:?}", e));
-                        break;
-                    },
-                }
+                    }
+                },
+                Err(e) => {
+                    let _ = sys::log("error", format!("Socket read error: {:?}", e));
+                    break;
+                },
+            }
 
-                // 2. Poll Event Bus — extract individual IpcMessages from the poll
-                //    envelope and forward each one to the CLI socket as a standalone
-                //    IpcMessage (the CLI client deserializes IpcMessage directly).
-                match ipc::poll_bytes(&sub_handle) {
-                    Ok(bytes) => {
-                        if !bytes.is_empty()
-                            && let Err(()) = forward_poll_messages(&stream, &bytes)
-                        {
-                            break;
-                        }
-                    },
-                    Err(_) => {
-                        // Polling error or closed channel
+            // 2. Poll Event Bus — extract individual IpcMessages from the poll
+            //    envelope and forward each one to the CLI socket as a standalone
+            //    IpcMessage (the CLI client deserializes IpcMessage directly).
+            match ipc::poll_bytes(&sub_handle) {
+                Ok(bytes) => {
+                    if !bytes.is_empty()
+                        && let Err(()) = forward_poll_messages(&stream, &bytes)
+                    {
                         break;
-                    },
-                }
+                    }
+                },
+                Err(_) => {
+                    // Polling error or closed channel
+                    break;
+                },
             }
         }
     }
@@ -87,6 +96,17 @@ fn forward_poll_messages(
             return Ok(());
         },
     };
+
+    // Warn if the event bus reports dropped messages — a dropped
+    // AgentResponse with is_final=true would leave the TUI stuck in Streaming.
+    if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
+        && dropped > 0
+    {
+        let _ = sys::log(
+            "warn",
+            format!("Event bus dropped {dropped} messages — TUI may be stale"),
+        );
+    }
 
     let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
         Some(arr) => arr,

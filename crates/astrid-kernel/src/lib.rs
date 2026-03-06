@@ -44,6 +44,8 @@ pub struct Kernel {
     pub workspace_root: PathBuf,
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
+    /// Shared KV store backing all capsule-scoped stores and kernel state.
+    pub kv: Arc<astrid_storage::MemoryKvStore>,
 }
 
 impl Kernel {
@@ -86,6 +88,8 @@ impl Kernel {
         // 4. Bind the secure Unix socket natively
         let listener = socket::bind_session_socket()?;
 
+        let kv = Arc::new(astrid_storage::MemoryKvStore::new());
+
         let kernel = Arc::new(Self {
             session_id,
             event_bus,
@@ -95,6 +99,7 @@ impl Kernel {
             vfs_root_handle: root_handle,
             workspace_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
+            kv,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -116,10 +121,10 @@ impl Kernel {
         let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp_client.clone());
         let mut capsule = loader.create_capsule(manifest, dir.clone())?;
 
-        // Build the context
-        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
+        // Build the context — use the shared kernel KV so capsules can
+        // communicate state through overlapping KV namespaces.
         let kv = astrid_storage::ScopedKvStore::new(
-            kv_store.clone(),
+            Arc::clone(&self.kv) as Arc<dyn astrid_storage::KvStore>,
             format!("capsule:{}", capsule.id()),
         )?;
 
@@ -198,6 +203,19 @@ impl Kernel {
                 );
             }
         }
+
+        // Signal that all capsules have been loaded so uplink capsules
+        // (like the registry) can proceed with discovery instead of
+        // polling with arbitrary timeouts.
+        let msg = astrid_events::ipc::IpcMessage::new(
+            "kernel.capsules_loaded",
+            astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({"status": "ready"})),
+            self.session_id.0,
+        );
+        let _ = self.event_bus.publish(astrid_events::AstridEvent::Ipc {
+            metadata: astrid_events::EventMetadata::new("kernel"),
+            message: msg,
+        });
     }
 }
 
@@ -234,18 +252,16 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
-                tracing::info!(
-                    "Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources..."
+                tracing::debug!(
+                    "Astrid daemon idle with no active sessions or daemons (auto-shutdown disabled pending Phase 8)"
                 );
 
-                // Clean up the socket file so it doesn't leave a zombie
-                let socket_path = crate::socket::kernel_socket_path();
-                let _ = std::fs::remove_file(&socket_path);
-
-                // FIXME(Phase 8): The async proxy bridge is currently stubbed, so the CLI
-                // capsule does not register an EventBus subscriber yet. This causes the
-                // idle monitor to instantly kill the daemon after 70 seconds.
-                // Temporarily disabling exit until the bridge is wired up.
+                // FIXME(Phase 8): The CLI capsule's event bus subscription count
+                // is not yet visible to this heuristic, so the idle monitor may
+                // fire prematurely. Disabled until the proxy bridge properly
+                // registers subscribers.
+                // let socket_path = crate::socket::kernel_socket_path();
+                // let _ = std::fs::remove_file(&socket_path);
                 // std::process::exit(0);
             }
         }

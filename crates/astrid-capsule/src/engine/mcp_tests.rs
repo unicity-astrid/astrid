@@ -39,6 +39,7 @@ mod tests {
                 fs_write: vec![],
                 host_process: allowed_commands.into_iter().map(String::from).collect(),
                 uplink: false,
+                ipc_publish: vec![],
             },
             env: HashMap::new(),
             tools: vec![],

@@ -10,3 +10,11 @@ file = "astrid_capsule_cli.wasm"
 [capabilities]
 uplink = true
 net_bind = ["unix:*"]
+ipc_publish = [
+    "user.prompt",
+    "registry.get_providers",
+    "registry.set_active_model",
+    "registry.selection.*",
+    "kernel.request.*",
+    "cli.command.execute",
+]

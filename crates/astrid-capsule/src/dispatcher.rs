@@ -13,9 +13,13 @@
 //!   `tool.execute.search.result` but not `tool.execute.result`
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
+
+/// Maximum time an interceptor invocation may run before being detached.
+const INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(15);
 
 use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
@@ -113,15 +117,15 @@ impl EventDispatcher {
                     .map(|capsule| capsule.invoke_interceptor(&act, &payload))
             });
 
-            match handle.await {
-                Ok(Some(Ok(_))) => {
+            match tokio::time::timeout(INTERCEPTOR_TIMEOUT, handle).await {
+                Ok(Ok(Some(Ok(_)))) => {
                     debug!(
                         capsule_id = %capsule_id,
                         action = %action,
                         "Interceptor completed"
                     );
                 },
-                Ok(Some(Err(e))) => {
+                Ok(Ok(Some(Err(e)))) => {
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
@@ -130,18 +134,26 @@ impl EventDispatcher {
                         "Interceptor invocation failed"
                     );
                 },
-                Ok(None) => {
+                Ok(Ok(None)) => {
                     debug!(
                         capsule_id = %capsule_id,
                         "Capsule no longer registered, skipping interceptor"
                     );
                 },
-                Err(e) => {
+                Ok(Err(e)) => {
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
                         error = %e,
                         "Interceptor task panicked"
+                    );
+                },
+                Err(_) => {
+                    warn!(
+                        capsule_id = %capsule_id,
+                        action = %action,
+                        topic,
+                        "Interceptor timed out after {INTERCEPTOR_TIMEOUT:?}, detaching"
                     );
                 },
             }

@@ -10,6 +10,9 @@ id = "router"
 file = "astrid_capsule_router.wasm"
 type = "executable"
 
+[capabilities]
+ipc_publish = ["tool.execute.*", "tool.execute.result"]
+
 # Tool execution requests from the orchestrator
 [[interceptor]]
 event = "tool.request.execute"

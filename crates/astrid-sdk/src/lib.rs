@@ -242,6 +242,13 @@ pub mod types;
 pub mod sys {
     use super::*;
 
+    /// Well-known config key for the kernel's Unix domain socket path.
+    ///
+    /// Injected automatically by the kernel into every capsule's config.
+    /// Capsules that need to accept CLI connections should use
+    /// [`socket_path()`] instead of hardcoding paths.
+    pub const CONFIG_SOCKET_PATH: &str = "ASTRID_SOCKET_PATH";
+
     pub fn log(level: impl AsRef<[u8]>, message: impl AsRef<[u8]>) -> Result<(), SysError> {
         unsafe { astrid_log(level.as_ref().to_vec(), message.as_ref().to_vec())? };
         Ok(())
@@ -255,6 +262,33 @@ pub mod sys {
     pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
         let bytes = get_config_bytes(key)?;
         String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
+    }
+
+    /// Returns the kernel's Unix domain socket path.
+    ///
+    /// Reads from the well-known `ASTRID_SOCKET_PATH` config key that the
+    /// kernel injects into every capsule at load time.
+    pub fn socket_path() -> Result<String, SysError> {
+        let raw = get_config_string(CONFIG_SOCKET_PATH)?;
+        // get_config_string returns JSON-encoded values (quoted strings).
+        // Use proper JSON parsing to handle escape sequences correctly.
+        let path = serde_json::from_str::<String>(raw.trim()).or_else(|_| {
+            // Fallback: if the value isn't valid JSON, use it raw.
+            if raw.is_empty() {
+                Err(SysError::ApiError(
+                    "ASTRID_SOCKET_PATH config key is empty".to_string(),
+                ))
+            } else {
+                Ok(raw)
+            }
+        })?;
+        // Reject paths with null bytes — they would silently truncate at the OS level.
+        if path.contains('\0') {
+            return Err(SysError::ApiError(
+                "ASTRID_SOCKET_PATH contains null byte".to_string(),
+            ));
+        }
+        Ok(path)
     }
 
     /// Retrieves the caller context (User ID and Session ID) for the current execution.

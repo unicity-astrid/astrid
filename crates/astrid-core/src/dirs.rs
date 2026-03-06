@@ -199,6 +199,12 @@ impl AstridHome {
         self.root.join("sessions")
     }
 
+    /// Path to the kernel's Unix domain socket (`~/.astrid/sessions/system.sock`).
+    #[must_use]
+    pub fn socket_path(&self) -> PathBuf {
+        self.sessions_dir().join("system.sock")
+    }
+
     /// Path to the workspace state database directory (`SurrealKV`).
     #[must_use]
     pub fn state_db_path(&self) -> PathBuf {

@@ -203,6 +203,7 @@ impl WasmHandler {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: vec!["hook.result.*".into()],
             security: None,
             hook_manager: None,
             runtime_handle: tokio::runtime::Handle::current(),
@@ -211,6 +212,7 @@ impl WasmHandler {
             registered_connectors: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
+            next_stream_id: 1,
         };
         let user_data = UserData::new(host_state);
 

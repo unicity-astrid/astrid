@@ -11,6 +11,9 @@ file = "astrid_capsule_identity.wasm"
 type = "executable"
 capabilities = { fs_read = ["workspace://"] }
 
+[capabilities]
+ipc_publish = ["identity.response.ready"]
+
 [[interceptor]]
 event = "identity.request.build"
 action = "handle_build_request"

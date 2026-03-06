@@ -379,6 +379,7 @@ mod tests {
                 fs_write: fs_write.into_iter().map(String::from).collect(),
                 host_process: vec![],
                 uplink: false,
+                ipc_publish: vec![],
             },
             env: Default::default(),
             context_files: vec![],

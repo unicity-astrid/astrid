@@ -7,7 +7,7 @@ mod render;
 pub(crate) mod state;
 mod theme;
 
-use std::io::{self, Stdout};
+use std::io::{self, Stdout, Write as _};
 use std::time::{Duration, Instant};
 
 use astrid_core::SessionId;
@@ -191,8 +191,24 @@ async fn run_loop(
 #[allow(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
-        if let astrid_events::ipc::IpcPayload::AgentResponse { text, .. } = &message.payload {
+        if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } = &message.payload {
+            // Transition to streaming state on first non-empty delta
+            if !text.is_empty() && !matches!(app.state, UiState::Streaming { .. }) {
+                app.state = UiState::Streaming {
+                    start_time: Instant::now(),
+                };
+            }
             app.stream_buffer.push_str(text);
+
+            if *is_final {
+                // Flush the accumulated stream buffer as an assistant message
+                if !app.stream_buffer.is_empty() {
+                    let response = std::mem::take(&mut app.stream_buffer);
+                    app.push_message(MessageRole::Assistant, response);
+                }
+                app.state = UiState::Idle;
+                app.scroll_offset = 0;
+            }
         } else if let astrid_events::ipc::IpcPayload::OnboardingRequired {
             capsule_id,
             missing_keys,
@@ -212,6 +228,25 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             };
             app.input.clear();
             app.cursor_pos = 0;
+        } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
+            request_id,
+            title,
+            options,
+            callback_topic,
+        } = &message.payload
+        {
+            if options.is_empty() {
+                app.push_notice("No options available.");
+            } else {
+                app.state = UiState::Selection {
+                    title: title.clone(),
+                    options: options.clone(),
+                    selected: 0,
+                    scroll_offset: 0,
+                    callback_topic: callback_topic.clone(),
+                    request_id: request_id.clone(),
+                };
+            }
         } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
             && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
@@ -241,16 +276,70 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             ];
 
             // Append all dynamically discovered capsule commands
-            for cmd in cmds {
+            for cmd in &cmds {
                 app.slash_commands.push(state::SlashCommandDef {
                     name: format!("/{}", cmd.name),
                     description: format!("{} (via {})", cmd.description, cmd.provider_capsule),
                 });
             }
+            tracing::debug!(
+                dynamic_commands = cmds.len(),
+                total = app.slash_commands.len(),
+                "Refreshed slash command palette"
+            );
+        }
+
+        // When the kernel finishes loading all capsules, re-fetch commands
+        // so dynamic slash commands (like /models) appear even if the CLI
+        // connected before non-uplink capsules were loaded.
+        if message.topic == "kernel.capsules_loaded" {
+            app.pending_actions
+                .push(state::PendingAction::RefreshCommands);
+        }
+
+        // Registry responses
+        if message.topic == "registry.response.get_providers" {
+            if let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
+                && let Some(providers) = data.as_array()
+            {
+                if providers.is_empty() {
+                    app.push_notice("No LLM providers are currently loaded.");
+                } else {
+                    use std::fmt::Write as _;
+                    let mut text = String::from("Available Models:\n");
+                    for p in providers {
+                        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                        let desc = p.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                        let capsule = p.get("capsule").and_then(|v| v.as_str()).unwrap_or("?");
+                        let _ = writeln!(text, "  - {id} — {desc} (via {capsule})");
+                    }
+                    text.push_str("\nUse /models <model_id> to switch.");
+                    app.push_message(MessageRole::LocalUi, text);
+                }
+            }
+        } else if message.topic == "registry.response.set_active_model" {
+            if let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload {
+                if let Some(model) = data
+                    .get("active_model")
+                    .and_then(|m| m.get("id"))
+                    .and_then(|v| v.as_str())
+                {
+                    app.push_notice(&format!("Active model set to: {model}"));
+                    app.model_name = model.to_string();
+                } else if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                    app.push_notice(&format!("Failed to set model: {err}"));
+                }
+            }
+        } else if message.topic == "registry.active_model_changed"
+            && let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
+            && let Some(id) = data.get("id").and_then(|v| v.as_str())
+        {
+            app.model_name = id.to_string();
         }
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn handle_pending_actions(
     app: &mut App,
     client: &mut SocketClient,
@@ -310,6 +399,36 @@ async fn handle_pending_actions(
                     }
                 }
             },
+            PendingAction::SubmitSelection {
+                callback_topic,
+                request_id,
+                selected_id,
+                selected_label,
+            } => {
+                app.push_notice(&format!("Selected: {selected_label}"));
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    callback_topic,
+                    astrid_events::ipc::IpcPayload::Custom {
+                        data: serde_json::json!({
+                            "request_id": request_id,
+                            "selected_id": selected_id,
+                        }),
+                    },
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            },
+            PendingAction::RefreshCommands => {
+                let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+                if let Ok(val) = serde_json::to_value(req) {
+                    let msg = astrid_events::ipc::IpcMessage::new(
+                        "kernel.request.get_commands",
+                        astrid_events::ipc::IpcPayload::RawJson(val),
+                        session_id.0,
+                    );
+                    let _ = client.send_message(msg).await;
+                }
+            },
             PendingAction::SubmitOnboarding {
                 capsule_id,
                 answers,
@@ -317,7 +436,7 @@ async fn handle_pending_actions(
                 if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                     let env_path = home.capsules_dir().join(&capsule_id).join(".env.json");
                     if let Ok(json) = serde_json::to_string_pretty(&answers) {
-                        if let Err(e) = std::fs::write(&env_path, json) {
+                        if let Err(e) = write_env_file(&env_path, &json) {
                             app.push_notice(&format!("Failed to save configuration: {e}"));
                         } else {
                             let msg = "Configuration saved. Refreshing Kernel...";
@@ -402,6 +521,18 @@ async fn handle_slash_command(
                             );
                             let _ = client.send_message(msg).await;
                         }
+
+                        // Refresh the slash command palette so newly installed
+                        // capsule commands appear without restarting the CLI.
+                        let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+                        if let Ok(val) = serde_json::to_value(req) {
+                            let msg = astrid_events::ipc::IpcMessage::new(
+                                "kernel.request.get_commands",
+                                astrid_events::ipc::IpcPayload::RawJson(val),
+                                session_id.0,
+                            );
+                            let _ = client.send_message(msg).await;
+                        }
                     },
                     Err(e) => {
                         app.push_notice(&format!("Failed to install capsule: {e}"));
@@ -421,6 +552,17 @@ async fn handle_slash_command(
                 );
                 let _ = client.send_message(msg).await;
             }
+
+            // Refresh the slash command palette after reload.
+            let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+            if let Ok(val) = serde_json::to_value(req) {
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "kernel.request.get_commands",
+                    astrid_events::ipc::IpcPayload::RawJson(val),
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            }
         },
         "/help" | "?" => {
             app.push_message(MessageRole::User, cmd.to_string());
@@ -432,8 +574,9 @@ async fn handle_slash_command(
                  - `/install`  - Install and load a capsule\n\
                  - `/refresh`  - Reload all capsules into the OS\n\
                  - `/quit`     - Disconnect from the daemon\n\
-                 "
-                .to_string(),
+                 \n\
+                 Capsule commands (from installed capsules) also appear in the palette."
+                    .to_string(),
             );
             let req = astrid_events::kernel_api::KernelRequest::GetCommands;
             if let Ok(val) = serde_json::to_value(req) {
@@ -466,5 +609,30 @@ async fn handle_slash_command(
                 };
             }
         },
+    }
+}
+
+/// Write `.env.json` with restricted permissions (0o600 on Unix).
+fn write_env_file(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    // Ensure parent directory exists (capsule dir may not have been written to yet).
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(contents.as_bytes())?;
+        file.flush()?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents)
     }
 }

@@ -6,14 +6,13 @@ use tracing::warn;
 #[must_use]
 pub fn kernel_socket_path() -> PathBuf {
     use astrid_core::dirs::AstridHome;
-    let base = match AstridHome::resolve() {
-        Ok(home) => home.sessions_dir(),
+    match AstridHome::resolve() {
+        Ok(home) => home.socket_path(),
         Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
-            PathBuf::from("/tmp/.astrid/sessions")
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.sock");
+            PathBuf::from("/tmp/.astrid/sessions/system.sock")
         },
-    };
-    base.join("system.sock")
+    }
 }
 
 /// Binds a local Unix Domain Socket for the OS.
@@ -30,7 +29,12 @@ pub fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
     }
 
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent).map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to create socket parent directory {}: {e}",
+                parent.display()
+            ))
+        })?;
     }
 
     UnixListener::bind(&path)

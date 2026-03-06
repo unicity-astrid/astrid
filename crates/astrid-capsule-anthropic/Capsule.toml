@@ -11,6 +11,9 @@ file = "astrid_capsule_anthropic.wasm"
 type = "executable"
 capabilities = { net = ["api.anthropic.com"] }
 
+[capabilities]
+ipc_publish = ["llm.stream.anthropic"]
+
 [env]
 anthropic_api_key = { type = "secret", request = "Please enter your Anthropic API Key" }
 

@@ -8,9 +8,9 @@
 #![deny(missing_docs)]
 #![deny(clippy::all)]
 #![warn(unreachable_pub)]
-#![allow(dead_code)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
+#![allow(dead_code)]
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -317,10 +317,10 @@ pub(crate) async fn run_or_connect(
 
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("daemon")
-           // We must give the background daemon a System Session ID so it can boot, 
-           // but it multiplexes all other sessions.
+           // The daemon uses the well-known system session UUID so kernel
+           // IPC responses can be verified by consumers (e.g. the registry).
            .arg("--session")
-           .arg("00000000-0000-0000-0000-000000000000");
+           .arg(astrid_core::SessionId::SYSTEM.0.to_string());
 
         if let Some(ws_path) = ws.to_str() {
             cmd.arg("--workspace").arg(ws_path);
@@ -339,14 +339,28 @@ pub(crate) async fn run_or_connect(
         // Disown the child so it survives when the CLI exits
         std::mem::drop(child);
 
-        // Wait a tiny moment for the socket task to bind in the background process
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // Poll for the socket to appear instead of a fixed sleep.
+        // The daemon may take variable time to bind depending on capsule count.
+        let mut connected = false;
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if socket_path.exists() {
+                connected = true;
+                break;
+            }
+        }
+        if !connected {
+            anyhow::bail!(
+                "Daemon failed to bind socket within 5 seconds at {}",
+                socket_path.display()
+            );
+        }
     }
 
     // 3. Connect the dumb pipe
     let mut client = socket_client::SocketClient::connect(session_id.clone()).await?;
 
-    // 3. Run the TUI or simple REPL loop
+    // 4. Run the TUI or simple REPL loop
     let workspace_root = std::env::current_dir().ok();
     let model_name = astrid_config::Config::load(workspace_root.as_deref())
         .ok()

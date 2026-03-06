@@ -15,11 +15,73 @@ pub(crate) fn handle_input(app: &mut App) -> io::Result<()> {
             },
             UiState::Interrupted => handle_interrupted_input(app, key),
             UiState::CopyMode => handle_copy_input(app, key),
+            UiState::Selection { .. } => handle_selection_input(app, key),
             UiState::Onboarding { .. } => handle_onboarding_input(app, key),
             UiState::Error { .. } => handle_error_input(app, key),
         }
     }
     Ok(())
+}
+
+fn handle_selection_input(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.push_notice("Selection cancelled.");
+            app.state = UiState::Idle;
+        },
+        KeyCode::Up => {
+            if let UiState::Selection {
+                selected,
+                scroll_offset,
+                ..
+            } = &mut app.state
+                && *selected > 0
+            {
+                *selected = selected.saturating_sub(1);
+                if *selected < *scroll_offset {
+                    *scroll_offset = *selected;
+                }
+            }
+        },
+        KeyCode::Down => {
+            if let UiState::Selection {
+                selected,
+                scroll_offset,
+                options,
+                ..
+            } = &mut app.state
+                && selected.saturating_add(1) < options.len()
+            {
+                *selected = selected.saturating_add(1);
+                // Keep selection visible (max 8 visible items)
+                if *selected >= scroll_offset.saturating_add(PALETTE_MAX_VISIBLE) {
+                    *scroll_offset = selected
+                        .saturating_add(1)
+                        .saturating_sub(PALETTE_MAX_VISIBLE);
+                }
+            }
+        },
+        KeyCode::Enter => {
+            if let UiState::Selection {
+                options,
+                selected,
+                callback_topic,
+                request_id,
+                ..
+            } = &app.state
+                && let Some(opt) = options.get(*selected)
+            {
+                app.pending_actions.push(PendingAction::SubmitSelection {
+                    callback_topic: callback_topic.clone(),
+                    request_id: request_id.clone(),
+                    selected_id: opt.id.clone(),
+                    selected_label: opt.label.clone(),
+                });
+            }
+            app.state = UiState::Idle;
+        },
+        _ => {},
+    }
 }
 
 fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
@@ -43,7 +105,10 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
                 answers,
             } = &mut app.state
             {
-                let key_name = missing_keys[*current_idx].clone();
+                let Some(key_name) = missing_keys.get(*current_idx).cloned() else {
+                    app.state = UiState::Idle;
+                    return;
+                };
                 answers.insert(key_name, answer);
                 *current_idx = current_idx.saturating_add(1);
 

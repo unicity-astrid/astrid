@@ -148,6 +148,12 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    // We inline the same pattern that `#[extism_pdk::plugin_fn]` would emit,
+    // but with `#[doc]` attributes so that `#![warn(missing_docs)]` is satisfied
+    // even when downstream crates compile with `-D warnings`.
+    // `plugin_fn` strips all outer attributes and generates a bare `#[no_mangle]`
+    // wrapper, losing any `#[allow(missing_docs)]` we attach — so we bypass it.
+
     let expanded = quote! {
         #input
 
@@ -170,67 +176,133 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #instance_block
 
-        /// Executed by the LLM Agent via the OS Event Bus.
-        #[allow(missing_docs)]
-        #[::extism_pdk::plugin_fn]
-        pub fn astrid_tool_call(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
-            let req: __AstridToolRequest = ::serde_json::from_slice(&input)
-                .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-
-            match req.name.as_str() {
-                #( #tool_arms )*
-                _ => return Err(::extism_pdk::Error::msg("Unknown tool").into()),
+        /// WASM ABI: Executed by the LLM Agent via the OS Event Bus.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn astrid_tool_call() -> i32 {
+            fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                let req: __AstridToolRequest = ::serde_json::from_slice(&input)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                match req.name.as_str() {
+                    #( #tool_arms )*
+                    _ => return Err(::extism_pdk::Error::msg("Unknown tool").into()),
+                }
             }
+            let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+            let output = match inner(input) {
+                core::result::Result::Ok(x) => x,
+                core::result::Result::Err(rc) => {
+                    let err = format!("{:?}", rc.0);
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                        unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                    }
+                    return rc.1;
+                }
+            };
+            ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+            0
         }
 
-        /// Executed by a human typing a slash-command in an Uplink (CLI/Telegram).
-        #[allow(missing_docs)]
-        #[::extism_pdk::plugin_fn]
-        pub fn astrid_command_run(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
-            let req: __AstridToolRequest = ::serde_json::from_slice(&input)
-                .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-
-            match req.name.as_str() {
-                #( #command_arms )*
-                _ => return Err(::extism_pdk::Error::msg("Unknown command").into()),
+        /// WASM ABI: Executed by a human typing a slash-command in an Uplink (CLI/Telegram).
+        #[unsafe(no_mangle)]
+        pub extern "C" fn astrid_command_run() -> i32 {
+            fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                let req: __AstridToolRequest = ::serde_json::from_slice(&input)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                match req.name.as_str() {
+                    #( #command_arms )*
+                    _ => return Err(::extism_pdk::Error::msg("Unknown command").into()),
+                }
             }
+            let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+            let output = match inner(input) {
+                core::result::Result::Ok(x) => x,
+                core::result::Result::Err(rc) => {
+                    let err = format!("{:?}", rc.0);
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                        unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                    }
+                    return rc.1;
+                }
+            };
+            ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+            0
         }
 
-        /// Executed synchronously by the Kernel during OS lifecycle events (Interceptors).
-        #[allow(missing_docs)]
-        #[::extism_pdk::plugin_fn]
-        pub fn astrid_hook_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
-            let req: __AstridToolRequest = ::serde_json::from_slice(&input)
-                .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-
-            match req.name.as_str() {
-                #( #hook_arms )*
-                _ => return Err(::extism_pdk::Error::msg("Unknown hook").into()),
+        /// WASM ABI: Executed synchronously by the Kernel during OS lifecycle events (Interceptors).
+        #[unsafe(no_mangle)]
+        pub extern "C" fn astrid_hook_trigger() -> i32 {
+            fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                let req: __AstridToolRequest = ::serde_json::from_slice(&input)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                match req.name.as_str() {
+                    #( #hook_arms )*
+                    _ => return Err(::extism_pdk::Error::msg("Unknown hook").into()),
+                }
             }
+            let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+            let output = match inner(input) {
+                core::result::Result::Ok(x) => x,
+                core::result::Result::Err(rc) => {
+                    let err = format!("{:?}", rc.0);
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                        unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                    }
+                    return rc.1;
+                }
+            };
+            ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+            0
         }
 
-        /// Executed by the Kernel's scheduler when a static or dynamic cron job fires.
-        #[allow(missing_docs)]
-        #[::extism_pdk::plugin_fn]
-        pub fn astrid_cron_trigger(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
-            let req: __AstridToolRequest = ::serde_json::from_slice(&input)
-                .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
-
-            match req.name.as_str() {
-                #( #cron_arms )*
-                _ => return Err(::extism_pdk::Error::msg("Unknown cron job").into()),
+        /// WASM ABI: Executed by the Kernel's scheduler when a static or dynamic cron job fires.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn astrid_cron_trigger() -> i32 {
+            fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                let req: __AstridToolRequest = ::serde_json::from_slice(&input)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                match req.name.as_str() {
+                    #( #cron_arms )*
+                    _ => return Err(::extism_pdk::Error::msg("Unknown cron job").into()),
+                }
             }
+            let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+            let output = match inner(input) {
+                core::result::Result::Ok(x) => x,
+                core::result::Result::Err(rc) => {
+                    let err = format!("{:?}", rc.0);
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                        unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                    }
+                    return rc.1;
+                }
+            };
+            ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+            0
         }
 
-        /// Auto-generated schema export for CLI builders.
-        /// Extracts all JSON schemas for tools defined in this capsule.
-        #[allow(missing_docs)]
-        #[::extism_pdk::plugin_fn]
-        pub fn astrid_export_schemas(_input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
-            let mut map: ::std::collections::HashMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::HashMap::new();
-            #( #schema_arms )*
-            let json = ::serde_json::to_vec(&map).unwrap_or_default();
-            Ok(json)
+        /// WASM ABI: Auto-generated schema export for CLI builders.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn astrid_export_schemas() -> i32 {
+            fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                let _ = input;
+                let mut map: ::std::collections::HashMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::HashMap::new();
+                #( #schema_arms )*
+                let json = ::serde_json::to_vec(&map).unwrap_or_default();
+                Ok(json)
+            }
+            let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+            let output = match inner(input) {
+                core::result::Result::Ok(x) => x,
+                core::result::Result::Err(rc) => {
+                    let err = format!("{:?}", rc.0);
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                        unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                    }
+                    return rc.1;
+                }
+            };
+            ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+            0
         }
     };
 
