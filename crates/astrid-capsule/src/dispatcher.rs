@@ -13,13 +13,9 @@
 //!   `tool.execute.search.result` but not `tool.execute.result`
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
-
-/// Default timeout for interceptor invocations.
-const DEFAULT_INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(15);
 
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
@@ -28,7 +24,6 @@ use astrid_events::{AstridEvent, EventBus};
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
-    interceptor_timeout: Duration,
 }
 
 impl EventDispatcher {
@@ -38,22 +33,6 @@ impl EventDispatcher {
         Self {
             registry,
             event_bus,
-            interceptor_timeout: DEFAULT_INTERCEPTOR_TIMEOUT,
-        }
-    }
-
-    /// Create a new event dispatcher with a custom interceptor timeout.
-    #[must_use]
-    #[allow(dead_code)]
-    pub(crate) fn with_timeout(
-        registry: Arc<RwLock<CapsuleRegistry>>,
-        event_bus: Arc<EventBus>,
-        interceptor_timeout: Duration,
-    ) -> Self {
-        Self {
-            registry,
-            event_bus,
-            interceptor_timeout,
         }
     }
 
@@ -78,12 +57,11 @@ impl EventDispatcher {
     /// Match an IPC event against all registered interceptors and invoke matches.
     ///
     /// Interceptors are dispatched concurrently — each gets its own spawned task
-    /// with an independent timeout. This method returns immediately after spawning,
-    /// so the event loop is never blocked by slow or misbehaving interceptors.
+    /// that runs to completion. This method returns immediately after spawning,
+    /// so the event loop is never blocked by slow or long-running interceptors.
     fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
         let topic = message.topic.clone();
         let registry = Arc::clone(&self.registry);
-        let timeout = self.interceptor_timeout;
 
         // Serialize payload eagerly so all interceptors share the same bytes.
         let payload_bytes = match serde_json::to_vec(message) {
@@ -122,8 +100,8 @@ impl EventDispatcher {
                 let payload = Arc::clone(&payload_bytes);
                 let topic = topic.clone();
 
-                // Each interceptor runs independently with its own timeout.
-                // Spawned on a Tokio worker thread so block_in_place (used by
+                // Each interceptor runs independently to completion. Spawned on
+                // a Tokio worker thread so block_in_place (used by
                 // invoke_interceptor and WASM host functions) works correctly.
                 // Requires a multi-thread Tokio runtime.
                 tokio::task::spawn(async move {
@@ -134,43 +112,21 @@ impl EventDispatcher {
                         "Dispatching interceptor"
                     );
 
-                    let mut handle =
-                        tokio::task::spawn(
-                            async move { capsule.invoke_interceptor(&act, &payload) },
-                        );
-
-                    match tokio::time::timeout(timeout, &mut handle).await {
-                        Ok(Ok(Ok(_))) => {
+                    match capsule.invoke_interceptor(&act, &payload) {
+                        Ok(_) => {
                             debug!(
                                 capsule_id = %capsule_id,
-                                action,
+                                action = %act,
                                 "Interceptor completed"
                             );
                         },
-                        Ok(Ok(Err(e))) => {
+                        Err(e) => {
                             warn!(
                                 capsule_id = %capsule_id,
-                                action,
+                                action = %act,
                                 topic,
                                 error = %e,
                                 "Interceptor invocation failed"
-                            );
-                        },
-                        Ok(Err(e)) => {
-                            warn!(
-                                capsule_id = %capsule_id,
-                                action,
-                                error = %e,
-                                "Interceptor task panicked"
-                            );
-                        },
-                        Err(_) => {
-                            handle.abort();
-                            warn!(
-                                capsule_id = %capsule_id,
-                                action,
-                                topic,
-                                "Interceptor timed out after {timeout:?}, aborting task"
                             );
                         },
                     }
@@ -354,16 +310,10 @@ mod tests {
         id: CapsuleId,
         manifest: CapsuleManifest,
         invoked: Arc<AtomicBool>,
-        /// When `true`, `invoke_interceptor` blocks forever (for timeout tests).
-        block_forever: bool,
     }
 
     impl MockCapsule {
-        fn new(
-            name: &str,
-            interceptor_event: &str,
-            block_forever: bool,
-        ) -> (Self, Arc<AtomicBool>) {
+        fn new(name: &str, interceptor_event: &str) -> (Self, Arc<AtomicBool>) {
             let invoked = Arc::new(AtomicBool::new(false));
             let manifest = CapsuleManifest {
                 package: PackageDef {
@@ -406,7 +356,6 @@ mod tests {
                 id: CapsuleId::from_static(name),
                 manifest,
                 invoked: Arc::clone(&invoked),
-                block_forever,
             };
             (capsule, invoked)
         }
@@ -434,12 +383,6 @@ mod tests {
         }
         fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
             self.invoked.store(true, Ordering::SeqCst);
-            if self.block_forever {
-                // Simulate a hung interceptor. Sleeps for 5s which is longer
-                // than the test timeout (500ms), so the dispatcher must abort
-                // this task and continue processing.
-                std::thread::sleep(Duration::from_secs(5));
-            }
             Ok(Vec::new())
         }
     }
@@ -461,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_routes_to_matching_interceptor() {
-        let (capsule, invoked) = MockCapsule::new("test-capsule", "test.topic", false);
+        let (capsule, invoked) = MockCapsule::new("test-capsule", "test.topic");
 
         let mut registry = CapsuleRegistry::new();
         registry.register(Box::new(capsule)).unwrap();
@@ -489,7 +432,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_skips_non_matching_topic() {
-        let (capsule, invoked) = MockCapsule::new("test-capsule-skip", "specific.topic", false);
+        let (capsule, invoked) = MockCapsule::new("test-capsule-skip", "specific.topic");
 
         let mut registry = CapsuleRegistry::new();
         registry.register(Box::new(capsule)).unwrap();
@@ -514,50 +457,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_timeout_aborts_and_continues() {
-        // Blocking capsule sleeps for 5s, but we set the timeout to 500ms.
-        let (blocking_capsule, blocking_invoked) =
-            MockCapsule::new("blocking-capsule", "block.topic", true);
-        let (normal_capsule, normal_invoked) =
-            MockCapsule::new("normal-capsule", "normal.topic", false);
+    async fn dispatch_concurrent_does_not_block() {
+        // Both capsules match different topics. With concurrent dispatch,
+        // the second event is processed immediately without waiting for
+        // the first interceptor to complete.
+        let (cap_a, invoked_a) = MockCapsule::new("capsule-a", "topic.a");
+        let (cap_b, invoked_b) = MockCapsule::new("capsule-b", "topic.b");
 
         let mut registry = CapsuleRegistry::new();
-        registry.register(Box::new(blocking_capsule)).unwrap();
-        registry.register(Box::new(normal_capsule)).unwrap();
+        registry.register(Box::new(cap_a)).unwrap();
+        registry.register(Box::new(cap_b)).unwrap();
         let registry = Arc::new(RwLock::new(registry));
 
         let bus = Arc::new(EventBus::with_capacity(64));
-        let dispatcher = EventDispatcher::with_timeout(
-            Arc::clone(&registry),
-            Arc::clone(&bus),
-            Duration::from_millis(500),
-        );
+        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
         let handle = tokio::spawn(dispatcher.run());
 
         tokio::task::yield_now().await;
 
-        // Publish to the blocking capsule first, then the normal one.
-        publish_ipc(&bus, "block.topic");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        publish_ipc(&bus, "normal.topic");
+        publish_ipc(&bus, "topic.a");
+        publish_ipc(&bus, "topic.b");
 
-        // The 500ms timeout fires, the blocking task is aborted, and the
-        // dispatcher continues to process the normal event. Wait up to 2s.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        while !normal_invoked.load(Ordering::SeqCst) {
-            if tokio::time::Instant::now() > deadline {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         assert!(
-            blocking_invoked.load(Ordering::SeqCst),
-            "blocking interceptor should have been entered before timeout"
+            invoked_a.load(Ordering::SeqCst),
+            "capsule-a interceptor should have been invoked"
         );
         assert!(
-            normal_invoked.load(Ordering::SeqCst),
-            "normal interceptor should have been invoked after timeout abort"
+            invoked_b.load(Ordering::SeqCst),
+            "capsule-b interceptor should have been invoked"
         );
 
         handle.abort();
