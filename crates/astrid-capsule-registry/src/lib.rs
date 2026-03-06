@@ -60,23 +60,27 @@ fn save_state(state: &RegistryState) {
 
 /// Query the kernel for capsule metadata and resolve LLM providers.
 fn discover_providers() -> Vec<ProviderEntry> {
-    let req = KernelRequest::GetCapsuleMetadata;
-    let val = match serde_json::to_value(req) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-
-    // Publish the request and wait for the response
-    if ipc::publish_json("kernel.request.get_capsule_metadata", &val).is_err() {
-        return Vec::new();
-    }
-
-    // The response will come back on the event bus — but we're in a synchronous
-    // WASM context. We need to poll for it.
+    // Subscribe BEFORE publishing the request. Broadcast channels do not
+    // replay missed messages, so if we publish first the kernel response
+    // could arrive before our subscription is active and be permanently lost.
     let sub = match ipc::subscribe("kernel.response.get_capsule_metadata") {
         Ok(h) => h,
         Err(_) => return Vec::new(),
     };
+
+    let req = KernelRequest::GetCapsuleMetadata;
+    let val = match serde_json::to_value(req) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = ipc::unsubscribe(&sub);
+            return Vec::new();
+        },
+    };
+
+    if ipc::publish_json("kernel.request.get_capsule_metadata", &val).is_err() {
+        let _ = ipc::unsubscribe(&sub);
+        return Vec::new();
+    }
 
     // Poll with a yield between iterations to avoid busy-spinning.
     // The kernel router responds nearly instantly but we must not
@@ -210,8 +214,19 @@ fn handle_get_active_model() {
 }
 
 /// Handle a `registry.set_active_model` request.
+///
+/// The payload is the serialized `IpcPayload` from the IPC message.
+/// For `IpcPayload::Custom { data }`, the JSON shape is
+/// `{"type": "custom", "data": {"model_id": "..."}}`.
 fn handle_set_active_model(payload: &serde_json::Value) {
-    let model_id = match payload.get("model_id").and_then(|v| v.as_str()) {
+    // Extract model_id from inside the Custom payload's `data` field,
+    // falling back to a top-level lookup for forward compatibility.
+    let model_id = match payload
+        .get("data")
+        .and_then(|d| d.get("model_id"))
+        .and_then(|v| v.as_str())
+        .or_else(|| payload.get("model_id").and_then(|v| v.as_str()))
+    {
         Some(id) => id.to_string(),
         None => {
             let _ = ipc::publish_json(
@@ -299,6 +314,10 @@ pub fn run() -> FnResult<()> {
     save_state(&state);
     auto_select_if_single(&mut state);
 
+    // Also subscribe to capsules_loaded so we re-discover after /refresh (ReloadCapsules).
+    let reload_sub = ipc::subscribe("kernel.capsules_loaded")
+        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+
     // Event loop
     loop {
         match ipc::poll_bytes(&sub) {
@@ -308,6 +327,21 @@ pub fn run() -> FnResult<()> {
                 }
             },
             Err(_) => break,
+        }
+
+        // Check for capsule reload events — re-discover providers when
+        // the kernel signals that capsules were reloaded (e.g. after /refresh).
+        if let Ok(bytes) = ipc::poll_bytes(&reload_sub) {
+            if !bytes.is_empty() {
+                let _ = sys::log("info", "Capsules reloaded — re-discovering providers");
+                let providers = discover_providers();
+                let mut state = load_state();
+                if !providers.is_empty() {
+                    state.providers = providers;
+                    save_state(&state);
+                    auto_select_if_single(&mut state);
+                }
+            }
         }
 
         // Brief sleep to avoid busy-spinning
@@ -323,6 +357,15 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
         Ok(v) => v,
         Err(_) => return,
     };
+
+    if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64()) {
+        if dropped > 0 {
+            let _ = sys::log(
+                "warn",
+                format!("Event bus dropped {dropped} messages in registry poll"),
+            );
+        }
+    }
 
     let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
         Some(arr) => arr,

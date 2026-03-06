@@ -95,6 +95,17 @@ fn forward_poll_messages(
         },
     };
 
+    // Warn if the event bus reports dropped messages — a dropped
+    // AgentResponse with is_final=true would leave the TUI stuck in Streaming.
+    if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
+        && dropped > 0
+    {
+        let _ = sys::log(
+            "warn",
+            format!("Event bus dropped {dropped} messages — TUI may be stale"),
+        );
+    }
+
     let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
         Some(arr) => arr,
         None => return Ok(()),

@@ -215,6 +215,15 @@ impl ExecutionEngine for WasmEngine {
             // mutex — causing a deadlock. Run-loop capsules handle events
             // internally via ipc::subscribe, so they don't need host-side
             // interceptor dispatch.
+            if !self.manifest.interceptors.is_empty() {
+                tracing::warn!(
+                    capsule = %self.manifest.package.name,
+                    "Capsule declares both run() and [[interceptor]] entries. \
+                     Interceptors will NOT be dispatched for run-loop capsules \
+                     (plugin is exclusively held by the run loop). Move event \
+                     handling into the run() function via ipc::subscribe instead."
+                );
+            }
             let capsule_name = self.manifest.package.name.clone();
             tokio::task::spawn_blocking(move || {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");

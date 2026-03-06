@@ -362,6 +362,15 @@ impl Orchestrator {
     /// route to the correct provider. Validates that the topic follows
     /// the expected `llm.request.generate.*` pattern to prevent
     /// untrusted capsules from redirecting LLM traffic.
+    ///
+    /// # Trust boundary
+    ///
+    /// The event bus does not yet enforce topic ownership — any capsule
+    /// can publish `registry.active_model_changed`. The topic prefix
+    /// check limits damage (only `llm.request.generate.*` is accepted),
+    /// but a malicious capsule that registers its own `llm.request.generate.evil`
+    /// interceptor could still redirect traffic. Full mitigation requires
+    /// kernel-side ACLs restricting `registry.*` publishing to uplink capsules.
     #[astrid::interceptor("handle_model_changed")]
     pub fn handle_model_changed(&self, payload: IpcPayload) -> Result<(), SysError> {
         if let IpcPayload::Custom { data } = payload {

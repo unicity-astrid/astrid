@@ -86,11 +86,12 @@ fn session_info(id: &str) -> Result<()> {
     println!("  ID: {}", Theme::session_id(id));
 
     // The global daemon socket lives at sessions_dir/system.sock, not per-session.
+    // This shows daemon health, not session-specific status (all sessions share one daemon).
     let sock_path = home.sessions_dir().join("system.sock");
     if sock_path.exists() {
-        println!("  Status: {}", "Alive (Daemon Running)".green());
+        println!("  Daemon: {}", "Running".green());
     } else {
-        println!("  Status: {}", "Dormant".yellow());
+        println!("  Daemon: {}", "Not Running".yellow());
     }
 
     Ok(())

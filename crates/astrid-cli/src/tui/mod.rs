@@ -562,13 +562,14 @@ fn write_env_file(path: &std::path::Path, contents: &str) -> std::io::Result<()>
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
+        let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(path)?
-            .write_all(contents.as_bytes())?;
+            .open(path)?;
+        file.write_all(contents.as_bytes())?;
+        file.flush()?;
         Ok(())
     }
     #[cfg(not(unix))]
