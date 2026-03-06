@@ -211,20 +211,12 @@ impl ManifestSecurityGate {
             if entry == "*" {
                 resolved.push("*".to_string());
             } else if let Some(suffix) = entry.strip_prefix("workspace://") {
-                let mut p = canonical_ws.to_string_lossy().to_string();
-                if !p.ends_with('/') {
-                    p.push('/');
-                }
-                p.push_str(suffix);
-                resolved.push(p);
+                let path = canonical_ws.join(suffix);
+                resolved.push(path.to_string_lossy().to_string());
             } else if let Some(suffix) = entry.strip_prefix("global://") {
                 if let Some(ref g_root) = canonical_global {
-                    let mut p = g_root.to_string_lossy().to_string();
-                    if !p.ends_with('/') {
-                        p.push('/');
-                    }
-                    p.push_str(suffix);
-                    resolved.push(p);
+                    let path = g_root.join(suffix);
+                    resolved.push(path.to_string_lossy().to_string());
                 }
                 // If no global root is configured, silently drop this entry
                 // so the capsule simply cannot access global paths.
