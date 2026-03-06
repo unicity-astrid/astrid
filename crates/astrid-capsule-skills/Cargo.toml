@@ -1,8 +1,8 @@
 [package]
-name = "astrid-capsule-fs"
+name = "astrid-capsule-skills"
 version = "0.1.0"
 edition = "2024"
-description = "Core filesystem tools for the Astrid microkernel"
+description = "Skills Loader for the Astrid OS"
 publish = false
 
 [lib]

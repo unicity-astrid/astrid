@@ -9,6 +9,7 @@
 //! securely in the host-level Escape Hatch (Seatbelt/bwrap).
 
 use astrid_sdk::prelude::*;
+use astrid_sdk::schemars;
 use serde::Deserialize;
 
 /// The main entry point for the Shell Tools capsule.
@@ -16,7 +17,7 @@ use serde::Deserialize;
 pub struct ShellTools;
 
 /// Input arguments for the `run_shell_command` tool.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct RunShellArgs {
     /// The exact bash command to execute.
     pub command: String,
