@@ -62,7 +62,6 @@ impl EventDispatcher {
     /// Match an IPC event against all registered interceptors and invoke matches.
     async fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
         let topic = &message.topic;
-        // Phase 1: collect matches under a brief read lock.
         let matches: Vec<(CapsuleId, String)> = {
             let registry = self.registry.read().await;
             let mut matches = Vec::new();
@@ -94,9 +93,6 @@ impl EventDispatcher {
             },
         };
 
-        // Phase 2: invoke each matching interceptor via spawn_blocking so that
-        // WASM execution (which uses block_in_place internally) doesn't stall
-        // the dispatcher's async task. Each invocation is wrapped in a timeout.
         for (capsule_id, action) in matches {
             debug!(
                 capsule_id = %capsule_id,
@@ -105,16 +101,23 @@ impl EventDispatcher {
                 "Dispatching interceptor"
             );
 
-            let registry = Arc::clone(&self.registry);
-            let payload = Arc::clone(&payload_bytes);
             let cid = capsule_id.clone();
             let act = action.clone();
+            let payload = Arc::clone(&payload_bytes);
 
-            let handle = tokio::task::spawn_blocking(move || {
-                let registry = registry.blocking_read();
-                registry
-                    .get(&cid)
-                    .map(|capsule| capsule.invoke_interceptor(&act, &payload))
+            // Use spawn (not spawn_blocking) so this runs on a Tokio worker
+            // thread. invoke_interceptor and the WASM host functions it triggers
+            // use block_in_place internally, which panics on spawn_blocking
+            // threads. The read lock is held for the duration of WASM execution
+            // but is bounded by INTERCEPTOR_TIMEOUT.
+            let handle = tokio::task::spawn({
+                let registry = Arc::clone(&self.registry);
+                async move {
+                    let registry = registry.read().await;
+                    registry
+                        .get(&cid)
+                        .map(|capsule| capsule.invoke_interceptor(&act, &payload))
+                }
             });
 
             match tokio::time::timeout(INTERCEPTOR_TIMEOUT, handle).await {

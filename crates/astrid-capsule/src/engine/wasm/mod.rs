@@ -316,6 +316,10 @@ impl ExecutionEngine for WasmEngine {
             CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
         })?;
 
+        // block_in_place is required because Extism host functions (fs, http,
+        // kv, etc.) also call block_in_place internally during plugin.call().
+        // The caller MUST invoke this from a Tokio worker thread (e.g. via
+        // tokio::task::spawn), never from spawn_blocking.
         tokio::task::block_in_place(|| {
             let mut plugin = plugin
                 .lock()
