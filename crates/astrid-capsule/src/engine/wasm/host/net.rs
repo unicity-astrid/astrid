@@ -121,12 +121,20 @@ pub(crate) fn astrid_net_read_impl(
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;
-        if len > 50 * 1024 * 1024 {
-            return Err(Error::msg("Payload too large"));
+        if len > 10 * 1024 * 1024 {
+            return Err(Error::msg("Payload too large (max 10MB)"));
         }
 
         let mut payload = vec![0u8; len];
-        stream.read_exact(&mut payload).await?;
+        // Timeout proportional to payload size: 5s base + 1s per MB.
+        let timeout_ms = 5000 + (len as u64 / 1024);
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            stream.read_exact(&mut payload),
+        )
+        .await
+        .map_err(|_| Error::msg("Payload read timed out"))?
+        .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
 
         Ok(payload)
     })?;
