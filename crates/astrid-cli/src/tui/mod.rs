@@ -257,12 +257,17 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             ];
 
             // Append all dynamically discovered capsule commands
-            for cmd in cmds {
+            for cmd in &cmds {
                 app.slash_commands.push(state::SlashCommandDef {
                     name: format!("/{}", cmd.name),
                     description: format!("{} (via {})", cmd.description, cmd.provider_capsule),
                 });
             }
+            tracing::debug!(
+                dynamic_commands = cmds.len(),
+                total = app.slash_commands.len(),
+                "Refreshed slash command palette"
+            );
         }
 
         // Registry responses
@@ -458,6 +463,18 @@ async fn handle_slash_command(
                             );
                             let _ = client.send_message(msg).await;
                         }
+
+                        // Refresh the slash command palette so newly installed
+                        // capsule commands appear without restarting the CLI.
+                        let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+                        if let Ok(val) = serde_json::to_value(req) {
+                            let msg = astrid_events::ipc::IpcMessage::new(
+                                "kernel.request.get_commands",
+                                astrid_events::ipc::IpcPayload::RawJson(val),
+                                session_id.0,
+                            );
+                            let _ = client.send_message(msg).await;
+                        }
                     },
                     Err(e) => {
                         app.push_notice(&format!("Failed to install capsule: {e}"));
@@ -472,6 +489,17 @@ async fn handle_slash_command(
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
                     "kernel.request.reload_capsules",
+                    astrid_events::ipc::IpcPayload::RawJson(val),
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
+            }
+
+            // Refresh the slash command palette after reload.
+            let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+            if let Ok(val) = serde_json::to_value(req) {
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    "kernel.request.get_commands",
                     astrid_events::ipc::IpcPayload::RawJson(val),
                     session_id.0,
                 );

@@ -74,6 +74,13 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                     });
                 }
             }
+            info!(
+                count = commands.len(),
+                capsules = reg.len(),
+                "GetCommands: returning {} commands from {} capsules",
+                commands.len(),
+                reg.len()
+            );
             KernelResponse::Commands(commands)
         },
         KernelRequest::ReloadCapsules => {
