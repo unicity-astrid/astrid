@@ -186,7 +186,7 @@ pub(crate) fn astrid_ipc_poll_impl(
         .map_err(|e| Error::msg(format!("Subscription handle is not valid UTF-8: {e}")))?;
     let handle_id: u64 = handle_id_str
         .parse()
-        .map_err(|_| Error::msg("Invalid subscription handle format"))?;
+        .map_err(|e| Error::msg(format!("Invalid subscription handle format: {e}")))?;
 
     let ud = user_data.get()?;
     let mut state = ud
@@ -254,7 +254,7 @@ pub(crate) fn astrid_ipc_unsubscribe_impl(
         .map_err(|e| Error::msg(format!("Subscription handle is not valid UTF-8: {e}")))?;
     let handle_id: u64 = handle_id_str
         .parse()
-        .map_err(|_| Error::msg("Invalid subscription handle format"))?;
+        .map_err(|e| Error::msg(format!("Invalid subscription handle format: {e}")))?;
 
     let ud = user_data.get()?;
     let mut state = ud
