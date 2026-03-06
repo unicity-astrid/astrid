@@ -128,16 +128,13 @@ pub(crate) fn astrid_net_read_impl(
         let mut payload = vec![0u8; len];
         // Timeout proportional to payload size: 5s base + 1s per MB.
         let timeout_ms = 5000 + (len as u64 / 1024);
-        match tokio::time::timeout(
+        tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             stream.read_exact(&mut payload),
         )
         .await
-        {
-            Err(_) => return Err(Error::msg("Payload read timed out")),
-            Ok(Err(e)) => return Err(Error::msg(format!("socket payload read error: {e}"))),
-            Ok(Ok(_)) => {},
-        }
+        .map_err(|_| Error::msg("Payload read timed out"))?
+        .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
 
         Ok(payload)
     })?;
