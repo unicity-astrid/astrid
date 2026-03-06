@@ -115,7 +115,7 @@ pub(crate) fn astrid_trigger_hook_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    // In Phase 7, the HookManager is passed into HostState so we can execute hooks synchronously.
+    // The HookManager is passed into HostState so we can execute hooks synchronously.
     let result_bytes = if let Some(_hook_manager) = &state.hook_manager {
         // We use block_in_place because Extism host functions are synchronous,
         // but our HookManager executes shell scripts/HTTP asynchronously.

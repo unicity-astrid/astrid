@@ -3,15 +3,15 @@
 //! This crate provides types and logic for the approval workflow that gates
 //! sensitive agent operations behind explicit human confirmation.
 //!
-//! # Phase 2 Components
+//! # Components
 //!
-//! - **2.1 Approval Types** (this phase): [`SensitiveAction`], [`RiskAssessment`],
+//! - **Approval Types**: [`SensitiveAction`], [`RiskAssessment`],
 //!   [`ApprovalRequest`], [`ApprovalDecision`], [`ApprovalResponse`]
-//! - **2.2 Allowance System**: [`Allowance`], [`AllowancePattern`], `AllowanceStore`
-//! - **2.3 Approval Manager**: Orchestrates the full approval flow
-//! - **2.4 Budget Tracking**: Session and per-action spending limits
-//! - **2.5 Security Policy**: Hard boundaries (blocked/approval-required tools)
-//! - **2.6 Security Interceptor**: Combines all layers (intersection semantics)
+//! - **Allowance System**: [`Allowance`], [`AllowancePattern`], `AllowanceStore`
+//! - **Approval Manager**: Orchestrates the full approval flow
+//! - **Budget Tracking**: Session and per-action spending limits
+//! - **Security Policy**: Hard boundaries (blocked/approval-required tools)
+//! - **Security Interceptor**: Combines all layers (intersection semantics)
 //!
 //! # Relationship to Frontend Types
 //!

@@ -196,6 +196,11 @@ impl WasmHandler {
             workspace_root: self.workspace_root.clone(),
             vfs: Arc::new(vfs),
             vfs_root_handle: root_handle,
+            // Hooks intentionally do not support global:// access — they run
+            // outside the full capsule manifest/security-gate lifecycle.
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),

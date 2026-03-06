@@ -42,6 +42,12 @@ pub struct Kernel {
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
     pub workspace_root: PathBuf,
+    /// The global shared resources directory (`~/.astrid/shared/`). Capsules
+    /// declaring `fs_read = ["global://"]` can read files under this root.
+    /// Scoped to `shared/` so that keys, databases, and capsule .env files in
+    /// `~/.astrid/` are NOT accessible. Write access is intentionally not
+    /// granted to any shipped capsule.
+    pub global_root: Option<PathBuf>,
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Shared KV store backing all capsule-scoped stores and kernel state.
@@ -58,8 +64,23 @@ impl Kernel {
         session_id: SessionId,
         workspace_root: PathBuf,
     ) -> Result<Arc<Self>, std::io::Error> {
+        use astrid_core::dirs::AstridHome;
+
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
+
+        // Resolve the global shared directory for the `global://` VFS scheme.
+        // Scoped to `~/.astrid/shared/` — NOT the full `~/.astrid/` root — so
+        // capsules cannot access keys, databases, or capsule .env files.
+        let global_root = match AstridHome::resolve() {
+            Ok(home) => Some(home.shared_dir()),
+            Err(e) => {
+                tracing::warn!(
+                    "Could not resolve global Astrid home, global:// will be unavailable: {e}"
+                );
+                None
+            },
+        };
 
         // 1. Initialize MCP process manager
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
@@ -98,6 +119,7 @@ impl Kernel {
             vfs: Arc::new(overlay_vfs),
             vfs_root_handle: root_handle,
             workspace_root,
+            global_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
         });
@@ -142,6 +164,7 @@ impl Kernel {
 
         let ctx = astrid_capsule::context::CapsuleContext::new(
             self.workspace_root.clone(),
+            self.global_root.clone(),
             kv,
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
@@ -253,10 +276,10 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
                 tracing::debug!(
-                    "Astrid daemon idle with no active sessions or daemons (auto-shutdown disabled pending Phase 8)"
+                    "Astrid daemon idle with no active sessions or daemons (auto-shutdown disabled — see FIXME above)"
                 );
 
-                // FIXME(Phase 8): The CLI capsule's event bus subscription count
+                // FIXME: The CLI capsule's event bus subscription count
                 // is not yet visible to this heuristic, so the idle monitor may
                 // fire prematurely. Disabled until the proxy bridge properly
                 // registers subscribers.

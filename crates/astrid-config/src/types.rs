@@ -653,7 +653,7 @@ pub struct GatewaySection {
     pub session_cleanup_interval_secs: u64,
     /// When `true`, `send_input` publishes a `user.prompt` IPC event to the
     /// capsule pipeline instead of running the monolithic runtime turn.
-    /// Default: `false`. Use for testing the Phase 7 capsule pipeline.
+    /// Default: `false`. Use for testing the capsule pipeline.
     pub use_capsule_pipeline: bool,
 }
 

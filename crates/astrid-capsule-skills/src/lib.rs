@@ -9,11 +9,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub struct SkillsLoader;
 
-#[derive(Debug, Deserialize)]
-struct VfsDirEntry {
-    name: String,
-    is_dir: bool,
-}
+// Note: the host readdir returns a JSON array of entry name strings.
+// We parse them directly rather than using a struct with `is_dir`,
+// and attempt to read SKILL.md from each entry — non-directories
+// simply fail the read and are skipped.
 
 #[derive(Debug, PartialEq)]
 struct SkillFrontmatter {
@@ -30,13 +29,18 @@ struct SkillInfo {
 
 #[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
 pub struct ListSkillsArgs {
-    /// Directory containing the skills (e.g., ".gemini/skills")
+    /// Directory containing the skills (e.g., ".gemini/skills").
+    /// The capsule will search both the workspace and the global
+    /// (`global://`) directory, merging results (workspace wins on
+    /// duplicate skill IDs).
     pub dir_path: String,
 }
 
 #[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
 pub struct ReadSkillArgs {
-    /// Directory containing the skills (e.g., ".gemini/skills")
+    /// Directory containing the skills (e.g., ".gemini/skills").
+    /// The capsule checks the workspace first, then falls back to
+    /// the global (`global://`) directory.
     pub dir_path: String,
     /// The ID/folder name of the skill to read
     pub skill_id: String,
@@ -46,49 +50,17 @@ pub struct ReadSkillArgs {
 impl SkillsLoader {
     #[astrid::tool("list_skills")]
     pub fn list_skills(&self, args: ListSkillsArgs) -> Result<String, SysError> {
-        let clean_dir = validate_dir_path(&args.dir_path)?;
-
-        let bytes = match fs::readdir(clean_dir) {
-            Ok(b) => b,
-            Err(e) => {
-                let err_str = e.to_string().to_lowercase();
-                if err_str.contains("not found") || err_str.contains("no such file") {
-                    return Ok("[]".to_string());
-                }
-                return Err(e);
-            },
-        };
-
-        let entries: Vec<VfsDirEntry> = serde_json::from_slice(&bytes)
-            .map_err(|e| SysError::ApiError(format!("Failed to parse dir entries: {e}")))?;
+        let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
 
         let mut skills = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
 
-        for entry in entries {
-            if !entry.is_dir || !is_safe_name(&entry.name) {
-                continue;
-            }
-            let skill_path = format!("{}/{}/SKILL.md", clean_dir, entry.name);
-            if let Ok(content) = fs::read_string(&skill_path) {
-                if let Some(fm) = parse_frontmatter(&content) {
-                    skills.push(SkillInfo {
-                        id: entry.name.clone(),
-                        name: fm.name,
-                        description: fm.description,
-                    });
-                } else {
-                    let _ = sys::log(
-                        "warn",
-                        format!("skipping {}: invalid frontmatter", entry.name),
-                    );
-                }
-            } else {
-                let _ = sys::log(
-                    "debug",
-                    format!("skipping {}: no SKILL.md found", entry.name),
-                );
-            }
-        }
+        // Scan workspace first (takes priority on duplicate IDs)
+        collect_skills_from(bare_dir, &mut skills, &mut seen_ids);
+
+        // Scan global directory (new skills only, no overrides)
+        let global_dir = format!("global://{bare_dir}");
+        collect_skills_from(&global_dir, &mut skills, &mut seen_ids);
 
         let json = serde_json::to_string(&skills)?;
         Ok(json)
@@ -96,8 +68,27 @@ impl SkillsLoader {
 
     #[astrid::tool("read_skill")]
     pub fn read_skill(&self, args: ReadSkillArgs) -> Result<String, SysError> {
-        let skill_path = resolve_skill_path(&args.dir_path, &args.skill_id)?;
+        let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
+        let skill_path = resolve_skill_path(bare_dir, &args.skill_id)?;
+
+        // Try workspace first — only fall back to global if the file is absent.
+        // Permission errors or other I/O failures are surfaced immediately.
         match fs::read_string(&skill_path) {
+            Ok(content) => return Ok(content),
+            Err(e) => {
+                if !is_not_found_error(&e) {
+                    return Err(SysError::ApiError(format!(
+                        "Failed to read skill '{}' from workspace: {}",
+                        args.skill_id, e
+                    )));
+                }
+            },
+        }
+
+        // Workspace file absent — fall back to global
+        let global_skill_path =
+            resolve_skill_path(&format!("global://{bare_dir}"), &args.skill_id)?;
+        match fs::read_string(&global_skill_path) {
             Ok(content) => Ok(content),
             Err(e) => {
                 let _ = sys::log(
@@ -113,6 +104,16 @@ impl SkillsLoader {
     }
 }
 
+/// Returns true if the error string looks like a "file not found" error.
+///
+/// Checks for `VfsError::NotFound` ("not found"), `std::io::ErrorKind::NotFound`
+/// ("no such file"), and the IO error wrapper ("io error") to handle locale
+/// variants where the OS error string may not be in English.
+fn is_not_found_error(err: &SysError) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("not found") || msg.contains("no such file") || msg.contains("io error")
+}
+
 /// Returns true if `name` is a safe single path component (no traversal).
 fn is_safe_name(name: &str) -> bool {
     !name.is_empty()
@@ -123,9 +124,30 @@ fn is_safe_name(name: &str) -> bool {
         && !name.contains("..")
 }
 
+/// Strip any `global://` scheme prefix, returning the bare relative path.
+///
+/// Caller must ensure `path` has been validated (e.g. via `validate_dir_path`)
+/// before calling — `bare_path("global://")` returns `""`.
+fn bare_path(path: &str) -> &str {
+    path.strip_prefix("global://").unwrap_or(path)
+}
+
 /// Validates `dir_path` and returns a cleaned version with trailing slashes removed.
+/// Allows the `global://` scheme prefix.
 fn validate_dir_path(dir_path: &str) -> Result<&str, SysError> {
-    if dir_path.contains("..") || dir_path.contains('\0') {
+    // Strip scheme prefix for validation, then re-include it in the result
+    let path_to_check = dir_path.strip_prefix("global://").unwrap_or(dir_path);
+    if path_to_check.is_empty() {
+        return Err(SysError::ApiError(
+            "Invalid dir_path: path must not be empty".into(),
+        ));
+    }
+    if path_to_check.contains("://") {
+        return Err(SysError::ApiError(
+            "Invalid dir_path: unknown scheme".into(),
+        ));
+    }
+    if path_to_check.contains("..") || path_to_check.contains('\0') {
         return Err(SysError::ApiError(
             "Invalid dir_path: path traversal detected".into(),
         ));
@@ -143,6 +165,57 @@ fn resolve_skill_path(dir_path: &str, skill_id: &str) -> Result<String, SysError
     }
 
     Ok(format!("{}/{}/SKILL.md", clean_dir, skill_id))
+}
+
+/// Scan a single directory for skills and append results. Skips silently
+/// if the directory doesn't exist (e.g. global skills dir not created yet).
+fn collect_skills_from(
+    dir: &str,
+    skills: &mut Vec<SkillInfo>,
+    seen_ids: &mut std::collections::HashSet<String>,
+) {
+    let bytes = match fs::readdir(dir) {
+        Ok(b) => b,
+        Err(e) => {
+            if !is_not_found_error(&e) {
+                let _ = sys::log("warn", format!("readdir failed for {dir}: {e}"));
+            }
+            return;
+        },
+    };
+
+    let entry_names: Vec<String> = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = sys::log("warn", format!("parse dir entries failed for {dir}: {e}"));
+            return;
+        },
+    };
+
+    for name in entry_names {
+        if !is_safe_name(&name) || seen_ids.contains(&name) {
+            continue;
+        }
+        let skill_path = format!("{}/{}/SKILL.md", dir, name);
+        if let Ok(content) = fs::read_string(&skill_path) {
+            // Reserve the ID when SKILL.md exists — even if frontmatter is
+            // invalid — so a broken workspace skill blocks the global version
+            // (workspace wins). Directories without SKILL.md are not skills.
+            seen_ids.insert(name.clone());
+            if let Some(fm) = parse_frontmatter(&content) {
+                skills.push(SkillInfo {
+                    id: name,
+                    name: fm.name,
+                    description: fm.description,
+                });
+            } else {
+                let _ = sys::log(
+                    "warn",
+                    format!("skipping {dir}/{name}: invalid frontmatter"),
+                );
+            }
+        }
+    }
 }
 
 /// Parse YAML frontmatter from a SKILL.md file.
@@ -293,5 +366,42 @@ mod tests {
 
         let valid2 = resolve_skill_path("skills", "skill_version_2").unwrap();
         assert_eq!(valid2, "skills/skill_version_2/SKILL.md");
+    }
+
+    #[test]
+    fn test_bare_path_strips_global_prefix() {
+        assert_eq!(bare_path("global://skills"), "skills");
+        assert_eq!(bare_path("skills"), "skills");
+        assert_eq!(bare_path("global://"), "");
+        assert_eq!(bare_path(".gemini/skills"), ".gemini/skills");
+    }
+
+    #[test]
+    fn test_validate_dir_path_with_global_prefix() {
+        assert_eq!(
+            validate_dir_path("global://skills").unwrap(),
+            "global://skills"
+        );
+        assert!(validate_dir_path("global://../escape").is_err());
+        assert!(validate_dir_path("global://skills\0evil").is_err());
+    }
+
+    #[test]
+    fn test_validate_dir_path_rejects_empty() {
+        assert!(validate_dir_path("").is_err());
+        assert!(validate_dir_path("global://").is_err());
+    }
+
+    #[test]
+    fn test_validate_dir_path_rejects_unknown_scheme() {
+        assert!(validate_dir_path("workspace://skills").is_err());
+        assert!(validate_dir_path("http://evil.com").is_err());
+        assert!(validate_dir_path("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_resolve_skill_path_with_global_prefix() {
+        let path = resolve_skill_path("global://skills", "my-skill").unwrap();
+        assert_eq!(path, "global://skills/my-skill/SKILL.md");
     }
 }

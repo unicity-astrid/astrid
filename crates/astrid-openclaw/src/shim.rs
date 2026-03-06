@@ -322,7 +322,7 @@ function _ensureActivated() {
 
 // ── Extism exports ─────────────────────────────────────────────────
 // Note: describe-tools is kept for backwards compatibility with dynamic discovery,
-// but astrid_tool_call and astrid_hook_trigger are the new Phase 4 Inbound ABI.
+// but astrid_tool_call and astrid_hook_trigger are the current Inbound ABI.
 module.exports["describe-tools"] = function() {
   _ensureActivated();
   var tools = [];

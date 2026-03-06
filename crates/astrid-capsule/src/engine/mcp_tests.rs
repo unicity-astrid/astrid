@@ -91,6 +91,7 @@ mod tests {
         let kv = astrid_storage::ScopedKvStore::new(mem_kv, "test").unwrap();
         let ctx = CapsuleContext {
             workspace_root: std::path::PathBuf::from("/"),
+            global_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,
@@ -146,6 +147,7 @@ mod tests {
         let kv = astrid_storage::ScopedKvStore::new(mem_kv, "test").unwrap();
         let ctx = CapsuleContext {
             workspace_root: std::path::PathBuf::from("/"),
+            global_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,
@@ -198,6 +200,7 @@ mod tests {
         let kv = astrid_storage::ScopedKvStore::new(mem_kv, "test").unwrap();
         let ctx = CapsuleContext {
             workspace_root: std::path::PathBuf::from("/"),
+            global_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,

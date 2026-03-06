@@ -9,6 +9,8 @@ astrid-version = ">=0.1.0"
 id = "identity-builder"
 file = "astrid_capsule_identity.wasm"
 type = "executable"
+# Identity builder only reads workspace files (AGENTS.md, .astridignore).
+# global:// is not needed — add it here if/when global identity config is supported.
 capabilities = { fs_read = ["workspace://"] }
 
 [capabilities]

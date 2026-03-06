@@ -211,6 +211,16 @@ impl AstridHome {
         self.root.join("state.db")
     }
 
+    /// Shared resources directory (`~/.astrid/shared/`).
+    ///
+    /// Capsules with `global://` in their manifest can read from this directory.
+    /// Unlike the rest of `~/.astrid/` (keys, databases, capsule .env files),
+    /// this directory is explicitly designed to be VFS-accessible.
+    #[must_use]
+    pub fn shared_dir(&self) -> PathBuf {
+        self.root.join("shared")
+    }
+
     /// Installed plugins directory (`~/.astrid/plugins/`).
     #[must_use]
     pub fn capsules_dir(&self) -> PathBuf {

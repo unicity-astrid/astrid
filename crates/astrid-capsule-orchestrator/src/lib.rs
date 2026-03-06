@@ -31,7 +31,7 @@ use uuid::Uuid;
 ///
 /// State is keyed as `orchestrator.session.{session_id}` to support
 /// concurrent sessions. Currently uses a fixed `"default"` session
-/// until `UserInput` carries a session ID (Phase 8).
+/// TODO: use real session ID once `UserInput` carries one.
 const STATE_KEY_PREFIX: &str = "orchestrator.session";
 
 /// Default session ID used when the IPC payload does not specify one.
