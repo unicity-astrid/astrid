@@ -109,15 +109,13 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                     // Automatically generate schemars extraction for this tool
                     if let Some(ty) = &arg_type {
                         schema_arms.push(quote! {
-                                let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
-                                if let ::astrid_sdk::schemars::schema::Schema::Object(ref mut obj) = schema.schema {
-                                    let mut ext = std::collections::BTreeMap::new();
-                                    ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
-                                    let meta = obj.metadata.get_or_insert_with(Box::default);
-                                    meta.extensions = ext;
-                                }
-                                map.insert(#name_val.to_string(), schema);
-                            });
+                            let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
+                            schema.schema.extensions.insert(
+                                "mutable".to_string(),
+                                ::serde_json::json!(#is_mutable),
+                            );
+                            map.insert(#name_val.to_string(), schema);
+                        });
                     }
                 } else if attr_name == "command" {
                     command_arms.push(quote! {
@@ -285,9 +283,10 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub extern "C" fn astrid_export_schemas() -> i32 {
             fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
                 let _ = input;
-                let mut map: ::std::collections::HashMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::HashMap::new();
+                let mut map: ::std::collections::BTreeMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::BTreeMap::new();
                 #( #schema_arms )*
-                let json = ::serde_json::to_vec(&map).unwrap_or_default();
+                let json = ::serde_json::to_vec(&map)
+                    .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize schemas: {}", e)))?;
                 Ok(json)
             }
             let input = ::extism_pdk::unwrap!(::extism_pdk::input());
