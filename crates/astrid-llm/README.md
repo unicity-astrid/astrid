@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/astrid-llm)](https://crates.io/crates/astrid-llm)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
-[![MSRV: 1.93](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org)
+[![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
 A unified, streaming-first abstraction layer for Large Language Models within the Astralis OS.
 

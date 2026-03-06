@@ -30,7 +30,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.94"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -55,7 +55,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.94"
           components: rustfmt
 
       - name: Run cargo fmt
@@ -70,7 +70,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.94"
           components: clippy
 
       - name: Cache cargo registry
@@ -99,7 +99,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93"
+          toolchain: "1.94"
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry

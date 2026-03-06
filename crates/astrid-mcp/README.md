@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/astrid-mcp)](https://crates.io/crates/astrid-mcp)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
-[![MSRV: 1.93](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org)
+[![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
 Robust MCP client integration and server lifecycle management for the Astralis OS.
 

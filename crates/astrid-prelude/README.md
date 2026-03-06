@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/astrid-prelude)](https://crates.io/crates/astrid-prelude)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
-[![MSRV: 1.93](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org)
+[![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
 Within the Astralis OS architecture, `astrid-prelude` serves as the centralized namespace and orchestration layer for workspace-wide types. The system is intentionally fractured into highly isolated, domain-specific crates to enforce strict security and capability boundaries. This crate bridges the gap for high-level consumers—such as daemons, CLI frontends, and integration tests—by aggregating the public API surface of the entire OS into a single, cohesive import without compromising the underlying micro-kernel isolation.
 

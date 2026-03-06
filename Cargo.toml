@@ -62,7 +62,7 @@ version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/unicity-astrid/astrid"
-rust-version = "1.93"
+rust-version = "1.94"
 
 [workspace.dependencies]
 # Internal crates - Core (Phase 1)

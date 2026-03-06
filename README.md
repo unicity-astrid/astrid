@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/astrid/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 [![Rust](https://img.shields.io/badge/Rust-2024_edition-orange)](https://www.rust-lang.org)
 
 ---
@@ -251,7 +251,7 @@ The `Frontend` trait is how you plug in new UIs. Every frontend shares the same 
 
 ### Prerequisites
 
-- Rust 1.93+ (edition 2024)
+- Rust 1.94+ (edition 2024)
 - An Anthropic API key (or any OpenAI-compatible provider)
 
 ### Install from source
