@@ -46,12 +46,7 @@ pub struct ReadSkillArgs {
 impl SkillsLoader {
     #[astrid::tool("list_skills")]
     pub fn list_skills(&self, args: ListSkillsArgs) -> Result<String, SysError> {
-        if args.dir_path.contains("..") || args.dir_path.contains('\0') {
-            return Err(SysError::ApiError(
-                "Invalid dir_path: path traversal detected".into(),
-            ));
-        }
-        let clean_dir = args.dir_path.trim_end_matches('/');
+        let clean_dir = validate_dir_path(&args.dir_path)?;
 
         let bytes = match fs::readdir(clean_dir) {
             Ok(b) => b,
@@ -104,10 +99,16 @@ impl SkillsLoader {
         let skill_path = resolve_skill_path(&args.dir_path, &args.skill_id)?;
         match fs::read_string(&skill_path) {
             Ok(content) => Ok(content),
-            Err(_) => Err(SysError::ApiError(format!(
-                "Skill '{}' not found",
-                args.skill_id
-            ))),
+            Err(e) => {
+                let _ = sys::log(
+                    "warn",
+                    format!("failed to read skill '{}': {}", args.skill_id, e),
+                );
+                Err(SysError::ApiError(format!(
+                    "Skill '{}' could not be read",
+                    args.skill_id
+                )))
+            },
         }
     }
 }
@@ -122,13 +123,18 @@ fn is_safe_name(name: &str) -> bool {
         && !name.contains("..")
 }
 
-fn resolve_skill_path(dir_path: &str, skill_id: &str) -> Result<String, SysError> {
+/// Validates `dir_path` and returns a cleaned version with trailing slashes removed.
+fn validate_dir_path(dir_path: &str) -> Result<&str, SysError> {
     if dir_path.contains("..") || dir_path.contains('\0') {
         return Err(SysError::ApiError(
             "Invalid dir_path: path traversal detected".into(),
         ));
     }
-    let clean_dir = dir_path.trim_end_matches('/');
+    Ok(dir_path.trim_end_matches('/'))
+}
+
+fn resolve_skill_path(dir_path: &str, skill_id: &str) -> Result<String, SysError> {
+    let clean_dir = validate_dir_path(dir_path)?;
 
     if !is_safe_name(skill_id) {
         return Err(SysError::ApiError(
@@ -142,8 +148,15 @@ fn resolve_skill_path(dir_path: &str, skill_id: &str) -> Result<String, SysError
 /// Parse YAML frontmatter from a SKILL.md file.
 ///
 /// Extracts `name` and `description` fields from the `---` delimited header.
-/// Uses manual key: value parsing to avoid pulling in a YAML library for
+/// Uses manual `key: value` parsing to avoid pulling in a YAML library for
 /// two trivial fields — and to guarantee WASM compatibility.
+///
+/// **Limitations:** This is not a general YAML parser. It only supports simple
+/// `key: value` pairs on single lines. Quoted strings (`"value"`), multi-line
+/// values (`|`, `>`), nested mappings, and sequences are not handled. Values
+/// containing colons are supported (via `split_once`), but surrounding quotes
+/// are preserved verbatim. This is sufficient for the `name`/`description`
+/// fields in SKILL.md files.
 fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
     // Skip the opening delimiter and any trailing whitespace on that line
     let rest = content.strip_prefix("---")?;
