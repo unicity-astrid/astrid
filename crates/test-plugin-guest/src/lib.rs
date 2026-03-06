@@ -11,6 +11,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use astrid_sdk::prelude::*;
+use astrid_sdk::schemars;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -22,46 +23,46 @@ struct ToolOutput {
     is_error: bool,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestLogArgs {
     message: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestConfigArgs {
     key: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestKvArgs {
     key: Option<String>,
     value: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestFileWriteArgs {
     path: Option<String>,
     content: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestFileReadArgs {
     path: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestRoundtripArgs {
     data: serde_json::Value,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestRegisterConnectorArgs {
     name: Option<String>,
     platform: Option<String>,
     profile: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestChannelSendArgs {
     connector_name: Option<String>,
     platform: Option<String>,
@@ -69,23 +70,23 @@ struct TestChannelSendArgs {
     message: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestIpcArgs {
     topic: Option<String>,
     payload: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestIpcLimitsArgs {
     test_type: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestHttpArgs {
     request: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, schemars::JsonSchema)]
 struct EmptyArgs {}
 
 #[capsule]
