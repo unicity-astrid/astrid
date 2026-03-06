@@ -60,14 +60,14 @@ impl EventDispatcher {
     /// that runs to completion. This method returns immediately after spawning,
     /// so the event loop is never blocked by slow or long-running interceptors.
     fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
-        let topic = message.topic.clone();
+        let topic = Arc::new(message.topic.clone());
         let registry = Arc::clone(&self.registry);
 
         // Serialize payload eagerly so all interceptors share the same bytes.
         let payload_bytes = match serde_json::to_vec(message) {
             Ok(bytes) => Arc::new(bytes),
             Err(e) => {
-                warn!(topic, error = %e, "Failed to serialize IPC message for dispatch");
+                warn!(topic = %topic, error = %e, "Failed to serialize IPC message for dispatch");
                 return;
             },
         };
@@ -96,9 +96,8 @@ impl EventDispatcher {
 
             for (capsule, action) in matches {
                 let capsule_id = capsule.id().clone();
-                let act = action.clone();
                 let payload = Arc::clone(&payload_bytes);
-                let topic = topic.clone();
+                let topic = Arc::clone(&topic);
 
                 // Each interceptor runs independently to completion. Spawned on
                 // a Tokio worker thread so block_in_place (used by
@@ -107,24 +106,24 @@ impl EventDispatcher {
                 tokio::task::spawn(async move {
                     debug!(
                         capsule_id = %capsule_id,
-                        action = %act,
-                        topic,
+                        action = %action,
+                        topic = %topic,
                         "Dispatching interceptor"
                     );
 
-                    match capsule.invoke_interceptor(&act, &payload) {
+                    match capsule.invoke_interceptor(&action, &payload) {
                         Ok(_) => {
                             debug!(
                                 capsule_id = %capsule_id,
-                                action = %act,
+                                action = %action,
                                 "Interceptor completed"
                             );
                         },
                         Err(e) => {
                             warn!(
                                 capsule_id = %capsule_id,
-                                action = %act,
-                                topic,
+                                action = %action,
+                                topic = %topic,
                                 error = %e,
                                 "Interceptor invocation failed"
                             );
