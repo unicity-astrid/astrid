@@ -74,16 +74,42 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                     a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable"
                 });
 
+                let call_expr = if arg_type.is_some() {
+                    quote! {
+                        {
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
+                            instance.#method_name(args)?
+                        }
+                    }
+                } else {
+                    quote! {
+                        instance.#method_name()?
+                    }
+                };
+
+                let call_expr_stateless = if arg_type.is_some() {
+                    quote! {
+                        {
+                            let args = ::serde_json::from_slice(&req.arguments)
+                                .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
+                            get_instance().#method_name(args)?
+                        }
+                    }
+                } else {
+                    quote! {
+                        get_instance().#method_name()?
+                    }
+                };
+
                 let execute_block = if is_stateful {
                     quote! {
-                        let args = ::serde_json::from_slice(&req.arguments)
-                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
                         let mut instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
                             Ok(state) => state,
                             Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
                             Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
                         };
-                        let result = instance.#method_name(args)?;
+                        let result = #call_expr;
                         ::astrid_sdk::prelude::kv::set_json("__state", &instance)
                             .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
                         let res_json = ::serde_json::to_vec(&result)
@@ -92,9 +118,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 } else {
                     quote! {
-                        let args = ::serde_json::from_slice(&req.arguments)
-                            .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse arguments: {}", e)))?;
-                        let result = get_instance().#method_name(args)?;
+                        let result = #call_expr_stateless;
                         let res_json = ::serde_json::to_vec(&result)
                             .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize result: {}", e)))?;
                         return Ok(res_json);
@@ -114,6 +138,27 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 "mutable".to_string(),
                                 ::serde_json::json!(#is_mutable),
                             );
+                            map.insert(#name_val.to_string(), schema);
+                        });
+                    } else {
+                        schema_arms.push(quote! {
+                            // For parameterless tools, we generate an empty object schema
+                            let mut obj = ::astrid_sdk::schemars::schema::SchemaObject {
+                                instance_type: Some(::astrid_sdk::schemars::schema::SingleOrVec::Single(
+                                    Box::new(::astrid_sdk::schemars::schema::InstanceType::Object)
+                                )),
+                                ..Default::default()
+                            };
+                            obj.extensions.insert(
+                                "mutable".to_string(),
+                                ::serde_json::json!(#is_mutable),
+                            );
+
+                            let schema = ::astrid_sdk::schemars::schema::RootSchema {
+                                meta_schema: Some("http://json-schema.org/draft-07/schema#".to_string()),
+                                schema: obj,
+                                definitions: ::std::collections::BTreeMap::new(),
+                            };
                             map.insert(#name_val.to_string(), schema);
                         });
                     }
