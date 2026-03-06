@@ -250,7 +250,13 @@ impl ExecutionEngine for WasmEngine {
             let capsule_name = self.manifest.package.name.clone();
             tokio::task::spawn_blocking(move || {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
-                let mut p = plugin_arc.lock().expect("WASM plugin lock was poisoned");
+                let mut p = match plugin_arc.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        tracing::error!(capsule = %capsule_name, error = %e, "WASM plugin lock was poisoned");
+                        return;
+                    },
+                };
                 if let Err(e) = p.call::<(), ()>("run", ()) {
                     tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                 }
@@ -318,5 +324,70 @@ impl ExecutionEngine for WasmEngine {
                 .call::<&[u8], Vec<u8>>("astrid_hook_trigger", &input)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Poisons a mutex by panicking while holding the lock.
+    fn poison_mutex<T: Send + 'static>(mutex: &Arc<Mutex<T>>) {
+        let m = Arc::clone(mutex);
+        let _ = std::thread::spawn(move || {
+            let _guard = m.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        })
+        .join();
+    }
+
+    /// Verifies that a poisoned mutex in the run-loop pattern (spawn_blocking)
+    /// completes without panicking — matching the exact pattern at lines 253-259.
+    #[tokio::test]
+    async fn poisoned_lock_in_run_loop_does_not_panic() {
+        let plugin_arc: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_plugin".into()));
+        poison_mutex(&plugin_arc);
+
+        let handle = tokio::task::spawn_blocking(move || {
+            let capsule_name = "test-capsule";
+            let _p = match plugin_arc.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    tracing::error!(capsule = %capsule_name, error = %e, "WASM plugin lock was poisoned");
+                    return false;
+                },
+            };
+            true
+        });
+
+        let result = handle.await;
+        assert!(result.is_ok(), "spawn_blocking should not panic");
+        assert!(!result.unwrap(), "should have taken the poison error path");
+    }
+
+    /// Verifies that a poisoned mutex in the invoke_interceptor pattern
+    /// returns a WasmError instead of panicking — matching lines 320-322.
+    #[test]
+    fn poisoned_lock_in_interceptor_returns_error() {
+        let plugin: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_plugin".into()));
+        poison_mutex(&plugin);
+
+        let result: CapsuleResult<Vec<u8>> = plugin
+            .lock()
+            .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))
+            .map(|_guard| vec![]);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, CapsuleError::WasmError(_)),
+            "expected WasmError, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("poisoned"),
+            "error message should mention poisoning: {msg}"
+        );
     }
 }
