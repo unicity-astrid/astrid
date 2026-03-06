@@ -344,6 +344,14 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
     let text_lines = wrapped_line_count(display_text, avail) as u16;
     let base = (1u16.saturating_add(text_lines)).clamp(3, 8);
 
+    if let UiState::Selection { options, .. } = &app.state {
+        let n = options.len().saturating_add(1);
+        let dynamic_max_visible = (frame_area.height / 3).clamp(5, 10) as usize;
+        #[allow(clippy::cast_possible_truncation)]
+        let menu_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
+        return base.saturating_add(menu_rows);
+    }
+
     if let UiState::Onboarding { missing_keys, .. } = &app.state {
         // 1 title row + N keys
         let n = missing_keys.len().saturating_add(1);
@@ -701,6 +709,19 @@ fn render_activity(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 Span::styled(" Cancel", Style::default().fg(theme.muted)),
             ]
         },
+        UiState::Selection { title, .. } => {
+            vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!("▸ {title}"),
+                    Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    " · ↑↓ Navigate  Enter Select  Esc Cancel",
+                    Style::default().fg(theme.muted),
+                ),
+            ]
+        },
         UiState::Onboarding { .. } => {
             vec![
                 Span::styled("  ", Style::default()),
@@ -785,7 +806,14 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut menu_rows = 0u16;
     let mut palette_filtered = Vec::new();
 
-    if let UiState::Onboarding { missing_keys, .. } = &app.state {
+    if let UiState::Selection { options, .. } = &app.state {
+        // title + options (capped at 10 visible)
+        let n = options.len().saturating_add(1);
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            menu_rows = 1u16.saturating_add(n.min(10) as u16);
+        }
+    } else if let UiState::Onboarding { missing_keys, .. } = &app.state {
         let n = missing_keys.len().saturating_add(1);
         #[allow(clippy::cast_possible_truncation)]
         {
@@ -818,13 +846,21 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         return;
     }
 
-    let input_style = if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
+    let input_style = if is_idle
+        || matches!(
+            app.state,
+            UiState::Onboarding { .. } | UiState::Selection { .. }
+        ) {
         Style::default().fg(theme.user)
     } else {
         Style::default().fg(theme.muted)
     };
 
-    let prompt = if matches!(app.state, UiState::Onboarding { .. }) || !is_idle {
+    let prompt = if matches!(
+        app.state,
+        UiState::Onboarding { .. } | UiState::Selection { .. }
+    ) || !is_idle
+    {
         "  "
     } else if app.input.starts_with('/') {
         "/ "
@@ -913,7 +949,24 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             menu_rows.saturating_sub(1),
         );
 
-        if let UiState::Onboarding {
+        if let UiState::Selection {
+            title,
+            options,
+            selected,
+            scroll_offset,
+            ..
+        } = &app.state
+        {
+            render_selection_picker(
+                frame,
+                items_area,
+                title,
+                options,
+                *selected,
+                *scroll_offset,
+                theme,
+            );
+        } else if let UiState::Onboarding {
             capsule_id,
             missing_keys,
             prompts,
@@ -937,6 +990,61 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn render_selection_picker(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    options: &[astrid_events::ipc::SelectionOption],
+    selected: usize,
+    scroll_offset: usize,
+    theme: &Theme,
+) {
+    let mut lines = Vec::new();
+
+    lines.push(Line::from(vec![Span::styled(
+        format!("  {title}"),
+        Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
+    )]));
+
+    let visible_count = area.height.saturating_sub(1) as usize; // -1 for title
+    let end = options
+        .len()
+        .min(scroll_offset.saturating_add(visible_count));
+
+    for (i, opt) in options
+        .iter()
+        .enumerate()
+        .skip(scroll_offset)
+        .take(end.saturating_sub(scroll_offset))
+    {
+        let is_selected = i == selected;
+
+        let prefix = if is_selected { "  ▸ " } else { "    " };
+        let style = if is_selected {
+            Style::default().fg(theme.user).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.assistant)
+        };
+
+        let mut spans = vec![Span::styled(prefix, style), Span::styled(&opt.label, style)];
+
+        if let Some(desc) = &opt.description {
+            spans.push(Span::styled(
+                format!("  — {desc}"),
+                if is_selected {
+                    Style::default().fg(theme.border)
+                } else {
+                    Style::default().fg(theme.muted)
+                },
+            ));
+        }
+
+        lines.push(Line::from(spans));
+    }
+
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
 fn render_onboarding_menu(
     frame: &mut Frame,
     area: Rect,

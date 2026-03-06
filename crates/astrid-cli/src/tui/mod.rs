@@ -228,6 +228,25 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             };
             app.input.clear();
             app.cursor_pos = 0;
+        } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
+            request_id,
+            title,
+            options,
+            callback_topic,
+        } = &message.payload
+        {
+            if options.is_empty() {
+                app.push_notice("No options available.");
+            } else {
+                app.state = UiState::Selection {
+                    title: title.clone(),
+                    options: options.clone(),
+                    selected: 0,
+                    scroll_offset: 0,
+                    callback_topic: callback_topic.clone(),
+                    request_id: request_id.clone(),
+                };
+            }
         } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
             && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
@@ -320,6 +339,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn handle_pending_actions(
     app: &mut App,
     client: &mut SocketClient,
@@ -378,6 +398,25 @@ async fn handle_pending_actions(
                         };
                     }
                 }
+            },
+            PendingAction::SubmitSelection {
+                callback_topic,
+                request_id,
+                selected_id,
+                selected_label,
+            } => {
+                app.push_notice(&format!("Selected: {selected_label}"));
+                let msg = astrid_events::ipc::IpcMessage::new(
+                    callback_topic,
+                    astrid_events::ipc::IpcPayload::Custom {
+                        data: serde_json::json!({
+                            "request_id": request_id,
+                            "selected_id": selected_id,
+                        }),
+                    },
+                    session_id.0,
+                );
+                let _ = client.send_message(msg).await;
             },
             PendingAction::RefreshCommands => {
                 let req = astrid_events::kernel_api::KernelRequest::GetCommands;
@@ -534,43 +573,16 @@ async fn handle_slash_command(
                  - `/clear`    - Clear the local terminal screen\n\
                  - `/install`  - Install and load a capsule\n\
                  - `/refresh`  - Reload all capsules into the OS\n\
-                 - `/models`   - List or switch LLM models\n\
                  - `/quit`     - Disconnect from the daemon\n\
-                 "
-                .to_string(),
+                 \n\
+                 Capsule commands (from installed capsules) also appear in the palette."
+                    .to_string(),
             );
             let req = astrid_events::kernel_api::KernelRequest::GetCommands;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
                     "kernel.request.get_commands",
                     astrid_events::ipc::IpcPayload::RawJson(val),
-                    session_id.0,
-                );
-                let _ = client.send_message(msg).await;
-            }
-        },
-        "/models" => {
-            app.push_message(MessageRole::User, cmd.to_string());
-            if parts.len() < 2 {
-                // List available models
-                app.push_notice("Fetching available models...");
-                let msg = astrid_events::ipc::IpcMessage::new(
-                    "registry.get_providers",
-                    astrid_events::ipc::IpcPayload::Custom {
-                        data: serde_json::json!({}),
-                    },
-                    session_id.0,
-                );
-                let _ = client.send_message(msg).await;
-            } else {
-                // Set active model
-                let model_id = parts[1];
-                app.push_notice(&format!("Switching to model: {model_id}..."));
-                let msg = astrid_events::ipc::IpcMessage::new(
-                    "registry.set_active_model",
-                    astrid_events::ipc::IpcPayload::Custom {
-                        data: serde_json::json!({"model_id": model_id}),
-                    },
                     session_id.0,
                 );
                 let _ = client.send_message(msg).await;

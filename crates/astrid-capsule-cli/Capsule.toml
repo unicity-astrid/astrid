@@ -14,6 +14,7 @@ ipc_publish = [
     "user.prompt",
     "registry.get_providers",
     "registry.set_active_model",
+    "registry.selection.*",
     "kernel.request.*",
     "cli.command.execute",
 ]

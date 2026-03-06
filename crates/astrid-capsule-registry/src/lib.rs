@@ -328,6 +328,14 @@ pub fn run() -> FnResult<()> {
 
     let sub = ipc::subscribe("registry.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
+    // Subscribe to CLI command execution so we can handle `/models`.
+    let cmd_sub =
+        ipc::subscribe("cli.command.execute").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+
+    // Subscribe to model selection callbacks from the TUI picker.
+    let selection_sub = ipc::subscribe("registry.selection.callback")
+        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+
     // Single subscription for kernel.capsules_loaded — used for both initial
     // readiness wait AND reload re-discovery in the event loop. Avoids the
     // race window of unsubscribe + resubscribe where a message could be missed.
@@ -381,6 +389,20 @@ pub fn run() -> FnResult<()> {
             Err(_) => break,
         }
 
+        // Poll CLI command execution messages.
+        if let Ok(bytes) = ipc::poll_bytes(&cmd_sub)
+            && !bytes.is_empty()
+        {
+            handle_command_envelope(&bytes);
+        }
+
+        // Poll model selection callbacks from the TUI picker.
+        if let Ok(bytes) = ipc::poll_bytes(&selection_sub)
+            && !bytes.is_empty()
+        {
+            handle_selection_envelope(&bytes);
+        }
+
         // Check for capsule reload events — re-discover providers when
         // the kernel signals that capsules were reloaded (e.g. after /refresh).
         if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
@@ -403,6 +425,8 @@ pub fn run() -> FnResult<()> {
     }
 
     let _ = ipc::unsubscribe(&sub);
+    let _ = ipc::unsubscribe(&cmd_sub);
+    let _ = ipc::unsubscribe(&selection_sub);
     let _ = ipc::unsubscribe(&capsules_loaded_sub);
 
     Ok(())
@@ -451,4 +475,143 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
             _ => {},
         }
     }
+}
+
+/// Parse `cli.command.execute` envelopes and handle `/models`.
+fn handle_command_envelope(poll_bytes: &[u8]) {
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
+        Some(arr) => arr,
+        None => return,
+    };
+
+    for msg in messages {
+        let payload = match msg.get("payload") {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // IpcPayload::UserInput has `"type": "user_input"` and `"text": "..."`
+        let text = payload.get("text").and_then(|t| t.as_str()).unwrap_or("");
+
+        let parts: Vec<&str> = text.split_whitespace().collect();
+        let cmd = parts.first().copied().unwrap_or("");
+
+        if cmd == "/models" {
+            if parts.len() >= 2 {
+                // Direct model switch: `/models <model_id>`
+                handle_set_active_model_by_id(parts[1]);
+            } else {
+                // Show selection picker
+                emit_model_selection();
+            }
+        }
+    }
+}
+
+/// Parse selection callback envelopes and apply the user's model choice.
+fn handle_selection_envelope(poll_bytes: &[u8]) {
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
+        Some(arr) => arr,
+        None => return,
+    };
+
+    for msg in messages {
+        let payload = match msg.get("payload") {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // The TUI sends IpcPayload::Custom { data: {"request_id": ..., "selected_id": ...} }
+        let selected_id = payload
+            .get("data")
+            .and_then(|d| d.get("selected_id"))
+            .and_then(|v| v.as_str())
+            .or_else(|| payload.get("selected_id").and_then(|v| v.as_str()));
+
+        if let Some(model_id) = selected_id {
+            handle_set_active_model_by_id(model_id);
+        }
+    }
+}
+
+/// Set the active model by ID (extracted helper for reuse).
+fn handle_set_active_model_by_id(model_id: &str) {
+    let mut state = load_state();
+
+    if state.providers.is_empty() {
+        state.providers = discover_providers();
+    }
+
+    if let Some(provider) = state.providers.iter().find(|p| p.id == model_id).cloned() {
+        state.active_model_id = Some(model_id.to_string());
+        save_state(&state);
+        publish_model_changed(&provider);
+        let _ = ipc::publish_json(
+            "registry.response.set_active_model",
+            &serde_json::json!({"status": "ok", "active_model": provider}),
+        );
+    } else {
+        let _ = ipc::publish_json(
+            "registry.response.set_active_model",
+            &serde_json::json!({"error": format!("unknown model: {model_id}")}),
+        );
+    }
+}
+
+/// Discover providers and emit a `SelectionRequired` IPC payload for the TUI.
+fn emit_model_selection() {
+    let providers = discover_providers();
+    let mut state = load_state();
+
+    if !providers.is_empty() {
+        state.providers = providers;
+        save_state(&state);
+    }
+
+    if state.providers.is_empty() {
+        let _ = sys::log("warn", "No LLM providers found for /models selection");
+        return;
+    }
+
+    let options: Vec<serde_json::Value> = state
+        .providers
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "label": p.id,
+                "description": p.description,
+            })
+        })
+        .collect();
+
+    let request_id = format!(
+        "models-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
+
+    // Emit SelectionRequired payload — the host will deserialize this as
+    // IpcPayload::SelectionRequired because it matches the serde shape.
+    let selection = serde_json::json!({
+        "type": "selection_required",
+        "request_id": request_id,
+        "title": "Select LLM Model",
+        "options": options,
+        "callback_topic": "registry.selection.callback",
+    });
+
+    let _ = ipc::publish_json("registry.response.models", &selection);
 }

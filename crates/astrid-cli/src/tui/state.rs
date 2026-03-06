@@ -37,6 +37,15 @@ pub(crate) enum UiState {
     Interrupted,
     /// Copy mode — keyboard-driven block selection for clean text copying.
     CopyMode,
+    /// Generic selection picker driven by a capsule.
+    Selection {
+        title: String,
+        options: Vec<astrid_events::ipc::SelectionOption>,
+        selected: usize,
+        scroll_offset: usize,
+        callback_topic: String,
+        request_id: String,
+    },
     /// Capsule Onboarding (configuring environment variables).
     Onboarding {
         capsule_id: String,
@@ -155,6 +164,13 @@ pub(crate) enum PendingAction {
     },
     /// Re-fetch the dynamic slash command palette from the kernel.
     RefreshCommands,
+    /// Send the user's selection back to a capsule.
+    SubmitSelection {
+        callback_topic: String,
+        request_id: String,
+        selected_id: String,
+        selected_label: String,
+    },
 }
 
 /// What the user chose for approval.
