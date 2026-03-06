@@ -192,8 +192,8 @@ async fn run_loop(
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
         if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } = &message.payload {
-            // Transition to streaming state on first delta
-            if !text.is_empty() && !matches!(app.state, UiState::Streaming { .. }) && !*is_final {
+            // Transition to streaming state on first non-empty delta
+            if !text.is_empty() && !matches!(app.state, UiState::Streaming { .. }) {
                 app.state = UiState::Streaming {
                     start_time: Instant::now(),
                 };
@@ -555,6 +555,10 @@ async fn handle_slash_command(
 
 /// Write `.env.json` with restricted permissions (0o600 on Unix).
 fn write_env_file(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    // Ensure parent directory exists (capsule dir may not have been written to yet).
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;

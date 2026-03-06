@@ -17,7 +17,9 @@
 //! **Events** (published by registry):
 //! - `registry.active_model_changed` — payload: `ProviderEntry`, emitted on model change
 
-use astrid_events::kernel_api::{CapsuleMetadataEntry, KernelRequest, KernelResponse};
+use astrid_events::kernel_api::{
+    CapsuleMetadataEntry, KernelRequest, KernelResponse, SYSTEM_SESSION_UUID,
+};
 use astrid_sdk::prelude::*;
 use extism_pdk::FnResult;
 use serde::{Deserialize, Serialize};
@@ -94,10 +96,6 @@ fn discover_providers() -> Vec<ProviderEntry> {
     Vec::new()
 }
 
-/// The kernel's system session UUID. Only accept metadata responses from this source
-/// to prevent untrusted capsules from spoofing provider discovery.
-const KERNEL_SYSTEM_UUID: &str = "00000000-0000-0000-0000-000000000000";
-
 /// Parse the poll envelope and extract provider entries from the kernel response.
 /// Only accepts messages whose `source_id` matches the kernel's system UUID.
 fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
@@ -114,7 +112,7 @@ fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
     for msg in messages {
         // Verify the message came from the kernel router (system session)
         let source = msg.get("source_id").and_then(|s| s.as_str()).unwrap_or("");
-        if source != KERNEL_SYSTEM_UUID {
+        if source != SYSTEM_SESSION_UUID {
             let _ = sys::log(
                 "warn",
                 format!("Ignoring metadata response from untrusted source: {source}"),
@@ -182,8 +180,20 @@ fn publish_model_changed(provider: &ProviderEntry) {
 fn handle_get_providers() {
     let providers = discover_providers();
     let mut state = load_state();
-    state.providers = providers;
-    save_state(&state);
+
+    // Only overwrite providers if discovery returned results.
+    // An empty result (timeout, capsule not loaded) must not clobber
+    // a previously known-good list, as that would break active_model_id
+    // references and cause the TUI to show no models.
+    if !providers.is_empty() {
+        state.providers = providers;
+        save_state(&state);
+    } else if state.providers.is_empty() {
+        let _ = sys::log(
+            "warn",
+            "Provider discovery returned empty and no cached providers exist",
+        );
+    }
 
     let _ = ipc::publish_json("registry.response.get_providers", &state.providers);
 }
@@ -324,6 +334,11 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
             Some(t) => t,
             None => continue,
         };
+
+        // Skip our own response messages to avoid unnecessary processing.
+        if topic.starts_with("registry.response.") || topic == "registry.active_model_changed" {
+            continue;
+        }
 
         match topic {
             "registry.get_providers" => handle_get_providers(),

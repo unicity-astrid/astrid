@@ -18,7 +18,11 @@ pub fn run() -> FnResult<()> {
     let _ = sys::log("info", format!("CLI Proxy binding to socket: {path}"));
     let listener = bind_unix(path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // 4. Enter the blocking accept loop
+    // 4. Enter the blocking accept loop.
+    // NOTE: This is a single-client design — only one CLI connection is
+    // serviced at a time. A second `astrid chat` invocation will block at
+    // accept() until the first disconnects. Spawning a task per connection
+    // requires WASM threading or an async runtime, which is out of scope.
     loop {
         let stream = match accept(&listener) {
             Ok(s) => s,

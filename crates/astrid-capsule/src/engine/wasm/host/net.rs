@@ -50,7 +50,14 @@ pub(crate) fn astrid_net_accept_impl(
 
     // Use a monotonic counter to avoid handle ID reuse after stream removal.
     let handle_id = state.next_stream_id;
-    state.next_stream_id = state.next_stream_id.wrapping_add(1);
+    state.next_stream_id = state
+        .next_stream_id
+        .checked_add(1)
+        .ok_or_else(|| Error::msg("stream handle ID space exhausted"))?;
+    debug_assert!(
+        !state.active_streams.contains_key(&handle_id),
+        "stream handle ID collision"
+    );
     state.active_streams.insert(
         handle_id,
         std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
@@ -164,7 +171,8 @@ pub(crate) fn astrid_net_write_impl(
     rt_handle.block_on(async {
         let mut stream = stream_arc.lock().await;
         // In the CLI architecture, we expect length-prefixed writes back to the client as well
-        let len = data.len() as u32;
+        let len = u32::try_from(data.len())
+            .map_err(|_| std::io::Error::other("write payload too large for length prefix"))?;
         stream.write_all(&len.to_be_bytes()).await?;
         stream.write_all(&data).await?;
         stream.flush().await?;

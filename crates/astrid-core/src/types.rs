@@ -40,6 +40,14 @@ impl fmt::Display for AgentId {
 pub struct SessionId(pub Uuid);
 
 impl SessionId {
+    /// The well-known system session UUID used by the background daemon.
+    ///
+    /// All kernel-internal IPC messages (e.g. `kernel.response.*`) are
+    /// published with this `source_id`. Consumers that verify message
+    /// provenance should compare against this constant rather than
+    /// hardcoding the UUID string.
+    pub const SYSTEM: Self = Self(Uuid::nil());
+
     /// Create a new random session ID.
     #[must_use]
     pub fn new() -> Self {

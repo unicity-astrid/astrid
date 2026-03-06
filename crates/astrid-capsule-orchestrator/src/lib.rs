@@ -378,6 +378,11 @@ impl Orchestrator {
                 }
                 kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
             }
+        } else {
+            let _ = sys::log(
+                "warn",
+                "handle_model_changed: unexpected payload type, ignoring",
+            );
         }
         Ok(())
     }

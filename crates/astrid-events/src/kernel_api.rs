@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+/// The well-known system session UUID string used by the background daemon.
+///
+/// All kernel-internal IPC messages are published with this `source_id`.
+/// WASM capsules that verify message provenance should compare against
+/// this constant. Mirrors `astrid_core::SessionId::SYSTEM`.
+pub const SYSTEM_SESSION_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
 /// Management API requests directed at the core daemon.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]

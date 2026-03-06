@@ -252,8 +252,8 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
             // the OS is completely dormant.
             if active_subscribers <= 1 && !has_daemons {
-                tracing::info!(
-                    "Astrid daemon has been idle with no active sessions or daemons. Initiating auto-shutdown to save resources..."
+                tracing::debug!(
+                    "Astrid daemon idle with no active sessions or daemons (auto-shutdown disabled pending Phase 8)"
                 );
 
                 // FIXME(Phase 8): The CLI capsule's event bus subscription count

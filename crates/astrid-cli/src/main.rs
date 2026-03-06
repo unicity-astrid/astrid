@@ -317,10 +317,10 @@ pub(crate) async fn run_or_connect(
 
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("daemon")
-           // We must give the background daemon a System Session ID so it can boot, 
-           // but it multiplexes all other sessions.
+           // The daemon uses the well-known system session UUID so kernel
+           // IPC responses can be verified by consumers (e.g. the registry).
            .arg("--session")
-           .arg("00000000-0000-0000-0000-000000000000");
+           .arg(astrid_core::SessionId::SYSTEM.0.to_string());
 
         if let Some(ws_path) = ws.to_str() {
             cmd.arg("--workspace").arg(ws_path);
