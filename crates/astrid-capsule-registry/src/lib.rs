@@ -58,6 +58,19 @@ fn save_state(state: &RegistryState) {
     let _ = kv::set_json(STATE_KEY, state);
 }
 
+/// Wrap a `KernelRequest` value in the `IpcPayload::RawJson` JSON shape
+/// so the host deserializes it as `IpcPayload::RawJson(inner)` instead of
+/// falling back to `IpcPayload::Custom`.
+///
+/// `IpcPayload` uses `#[serde(tag = "type", rename_all = "snake_case")]`,
+/// so `RawJson(value)` serializes as the inner object with `"type": "raw_json"` merged.
+fn wrap_as_raw_json(req: &KernelRequest) -> Option<serde_json::Value> {
+    let mut val = serde_json::to_value(req).ok()?;
+    val.as_object_mut()?
+        .insert("type".to_string(), serde_json::json!("raw_json"));
+    Some(val)
+}
+
 /// Query the kernel for capsule metadata and resolve LLM providers.
 fn discover_providers() -> Vec<ProviderEntry> {
     // Subscribe BEFORE publishing the request. Broadcast channels do not
@@ -68,16 +81,15 @@ fn discover_providers() -> Vec<ProviderEntry> {
         Err(_) => return Vec::new(),
     };
 
-    let req = KernelRequest::GetCapsuleMetadata;
-    let val = match serde_json::to_value(req) {
-        Ok(v) => v,
-        Err(_) => {
+    let wrapped = match wrap_as_raw_json(&KernelRequest::GetCapsuleMetadata) {
+        Some(v) => v,
+        None => {
             let _ = ipc::unsubscribe(&sub);
             return Vec::new();
         },
     };
 
-    if ipc::publish_json("kernel.request.get_capsule_metadata", &val).is_err() {
+    if ipc::publish_json("kernel.request.get_capsule_metadata", &wrapped).is_err() {
         let _ = ipc::unsubscribe(&sub);
         return Vec::new();
     }
@@ -86,18 +98,36 @@ fn discover_providers() -> Vec<ProviderEntry> {
     // The kernel router responds nearly instantly but we must not
     // consume CPU while waiting.
     for _ in 0..100 {
-        if let Ok(bytes) = ipc::poll_bytes(&sub) {
-            if !bytes.is_empty() {
-                // Verify the response came from the kernel (source_id = system session UUID)
-                // by checking the source_id field in the poll envelope messages.
-                let _ = ipc::unsubscribe(&sub);
-                return parse_metadata_response(&bytes);
-            }
+        if let Ok(bytes) = ipc::poll_bytes(&sub)
+            && !bytes.is_empty()
+        {
+            // Verify the response came from the kernel (source_id = system session UUID)
+            // by checking the source_id field in the poll envelope messages.
+            let _ = ipc::unsubscribe(&sub);
+            return parse_metadata_response(&bytes);
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let _ = ipc::unsubscribe(&sub);
     Vec::new()
+}
+
+/// Check whether a poll envelope contains at least one message from the kernel.
+fn is_from_kernel(poll_bytes: &[u8]) -> bool {
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    envelope
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .is_some_and(|msgs| {
+            msgs.iter().any(|msg| {
+                msg.get("source_id")
+                    .and_then(|s| s.as_str())
+                    .is_some_and(|s| s == SYSTEM_SESSION_UUID)
+            })
+        })
 }
 
 /// Parse the poll envelope and extract provider entries from the kernel response.
@@ -129,14 +159,14 @@ fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
             None => continue,
         };
 
-        // The payload is IpcPayload::RawJson containing a KernelResponse
-        let inner = match payload.get("data") {
-            Some(d) => d,
-            None => continue,
-        };
-
+        // The payload is IpcPayload::RawJson wrapping a KernelResponse.
+        // With internal tagging, the serialized form merges the `"type": "raw_json"`
+        // tag into the KernelResponse object, e.g.:
+        //   {"type": "raw_json", "status": "CapsuleMetadata", "data": [...]}
+        // Deserialize the full payload as KernelResponse — serde ignores the
+        // extra "type" field since KernelResponse uses its own tag ("status").
         if let Ok(KernelResponse::CapsuleMetadata(entries)) =
-            serde_json::from_value::<KernelResponse>(inner.clone())
+            serde_json::from_value::<KernelResponse>(payload.clone())
         {
             return resolve_providers(&entries);
         }
@@ -280,25 +310,25 @@ pub fn run() -> FnResult<()> {
 
     let sub = ipc::subscribe("registry.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // Wait for the kernel to signal that all capsules have been loaded.
-    // This is event-driven: the kernel publishes `kernel.capsules_loaded`
-    // after `load_all_capsules()` completes, so we don't need arbitrary
-    // sleeps or retry loops.
-    let loaded_sub = ipc::subscribe("kernel.capsules_loaded")
+    // Single subscription for kernel.capsules_loaded — used for both initial
+    // readiness wait AND reload re-discovery in the event loop. Avoids the
+    // race window of unsubscribe + resubscribe where a message could be missed.
+    let capsules_loaded_sub = ipc::subscribe("kernel.capsules_loaded")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
+    // Wait for the kernel to signal that all capsules have been loaded.
     let mut capsules_ready = false;
     for _ in 0..500 {
         // 500 × 10ms = 5s max wait
-        if let Ok(bytes) = ipc::poll_bytes(&loaded_sub) {
-            if !bytes.is_empty() {
-                capsules_ready = true;
-                break;
-            }
+        if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
+            && !bytes.is_empty()
+            && is_from_kernel(&bytes)
+        {
+            capsules_ready = true;
+            break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    let _ = ipc::unsubscribe(&loaded_sub);
 
     if !capsules_ready {
         let _ = sys::log(
@@ -314,11 +344,7 @@ pub fn run() -> FnResult<()> {
     save_state(&state);
     auto_select_if_single(&mut state);
 
-    // Also subscribe to capsules_loaded so we re-discover after /refresh (ReloadCapsules).
-    let reload_sub = ipc::subscribe("kernel.capsules_loaded")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-
-    // Event loop
+    // Event loop — also polls capsules_loaded_sub for reload re-discovery.
     loop {
         match ipc::poll_bytes(&sub) {
             Ok(bytes) => {
@@ -331,16 +357,17 @@ pub fn run() -> FnResult<()> {
 
         // Check for capsule reload events — re-discover providers when
         // the kernel signals that capsules were reloaded (e.g. after /refresh).
-        if let Ok(bytes) = ipc::poll_bytes(&reload_sub) {
-            if !bytes.is_empty() {
-                let _ = sys::log("info", "Capsules reloaded — re-discovering providers");
-                let providers = discover_providers();
-                let mut state = load_state();
-                if !providers.is_empty() {
-                    state.providers = providers;
-                    save_state(&state);
-                    auto_select_if_single(&mut state);
-                }
+        if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
+            && !bytes.is_empty()
+            && is_from_kernel(&bytes)
+        {
+            let _ = sys::log("info", "Capsules reloaded — re-discovering providers");
+            let providers = discover_providers();
+            let mut state = load_state();
+            if !providers.is_empty() {
+                state.providers = providers;
+                save_state(&state);
+                auto_select_if_single(&mut state);
             }
         }
 
@@ -358,13 +385,13 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
         Err(_) => return,
     };
 
-    if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64()) {
-        if dropped > 0 {
-            let _ = sys::log(
-                "warn",
-                format!("Event bus dropped {dropped} messages in registry poll"),
-            );
-        }
+    if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
+        && dropped > 0
+    {
+        let _ = sys::log(
+            "warn",
+            format!("Event bus dropped {dropped} messages in registry poll"),
+        );
     }
 
     let messages = match envelope.get("messages").and_then(|m| m.as_array()) {

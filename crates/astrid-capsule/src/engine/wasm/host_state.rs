@@ -68,6 +68,8 @@ pub struct HostState {
     pub active_streams:
         std::collections::HashMap<u64, Arc<tokio::sync::Mutex<tokio::net::UnixStream>>>,
     /// Monotonic counter for stream handle IDs (avoids reuse after removal).
+    /// Starts at 1 so that handle ID 0 is never issued — 0 is reserved as a
+    /// sentinel / "no handle" value in the WASM ABI.
     pub next_stream_id: u64,
 }
 
