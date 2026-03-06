@@ -135,6 +135,33 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
             message: e.to_string(),
         })?;
 
+    // Validate ipc_publish patterns contain no empty segments.
+    for pattern in &manifest.capabilities.ipc_publish {
+        if !crate::dispatcher::has_valid_segments(pattern) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "ipc_publish pattern '{pattern}' contains empty segments \
+                     (consecutive dots, leading/trailing dots, or is empty)"
+                ),
+            });
+        }
+    }
+
+    // Validate interceptor event patterns contain no empty segments.
+    for interceptor in &manifest.interceptors {
+        if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "interceptor event pattern '{}' contains empty segments \
+                     (consecutive dots, leading/trailing dots, or is empty)",
+                    interceptor.event
+                ),
+            });
+        }
+    }
+
     Ok(manifest)
 }
 
@@ -142,4 +169,68 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
 #[must_use]
 pub fn workspace_plugins_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".astrid").join("plugins")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Write a TOML string to a temp file and call `load_manifest`.
+    fn load_from_toml(toml: &str) -> CapsuleResult<crate::manifest::CapsuleManifest> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Capsule.toml");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(toml.as_bytes()).unwrap();
+        load_manifest(&path)
+    }
+
+    const VALID_HEADER: &str = r#"
+[package]
+name = "test-capsule"
+version = "0.1.0"
+"#;
+
+    #[test]
+    fn load_manifest_accepts_valid_ipc_publish() {
+        let toml = format!(
+            "{VALID_HEADER}\n[capabilities]\nipc_publish = [\"registry.*\", \"llm.stream.anthropic\"]"
+        );
+        assert!(load_from_toml(&toml).is_ok());
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_segment_in_ipc_publish() {
+        for bad in &["a..b", ".a.b", "a.b.", "", ".", "a...b"] {
+            let toml = format!("{VALID_HEADER}\n[capabilities]\nipc_publish = [\"{bad}\"]");
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("empty segments"),
+                "expected 'empty segments' error for pattern '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_segment_in_interceptor_event() {
+        for bad in &["a..b", ".event", "event.", "", ".", "a...b"] {
+            let toml =
+                format!("{VALID_HEADER}\n[[interceptor]]\nevent = \"{bad}\"\naction = \"handle\"");
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("empty segments"),
+                "expected 'empty segments' error for event '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn load_manifest_accepts_valid_interceptor_event() {
+        let toml = format!(
+            "{VALID_HEADER}\n[[interceptor]]\nevent = \"user.prompt\"\naction = \"handle\""
+        );
+        assert!(load_from_toml(&toml).is_ok());
+    }
 }

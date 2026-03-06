@@ -38,7 +38,15 @@ pub(crate) fn astrid_ipc_publish_impl(
     }
 
     let topic_bytes = util::get_safe_bytes(plugin, &inputs[0], 256)?;
-    let topic = String::from_utf8(topic_bytes).unwrap_or_default();
+    let topic =
+        String::from_utf8(topic_bytes).map_err(|_| Error::msg("Topic is not valid UTF-8"))?;
+
+    // Reject malformed topic structure before any matching or routing.
+    if !crate::dispatcher::has_valid_segments(&topic) {
+        return Err(Error::msg(
+            "Topic contains empty segments (consecutive dots, leading/trailing dots, or is empty)",
+        ));
+    }
 
     if topic.split('.').count() > 8 {
         return Err(Error::msg("Topic exceeds maximum allowed segments (8)"));
@@ -108,7 +116,15 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     }
 
     let topic_pattern_bytes = util::get_safe_bytes(plugin, &inputs[0], 256)?;
-    let topic_pattern = String::from_utf8(topic_pattern_bytes).unwrap_or_default();
+    let topic_pattern = String::from_utf8(topic_pattern_bytes)
+        .map_err(|_| Error::msg("Topic pattern is not valid UTF-8"))?;
+
+    // Reject malformed subscription pattern structure before registration.
+    if !crate::dispatcher::has_valid_segments(&topic_pattern) {
+        return Err(Error::msg(
+            "Topic pattern contains empty segments (consecutive dots, leading/trailing dots, or is empty)",
+        ));
+    }
 
     let ud = user_data.get()?;
     let mut state = ud
