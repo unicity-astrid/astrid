@@ -1,8 +1,7 @@
-//! Agent hook handler (stubbed for Phase 3).
+//! Agent hook handler (stubbed).
 //!
 //! This module provides the interface for LLM-based hook handlers.
-//! The actual implementation will be added in Phase 3 when the LLM
-//! integration is more mature.
+//! TODO: implement real agent handler when the LLM integration is more mature.
 
 use std::time::Duration;
 use tracing::warn;
@@ -14,7 +13,7 @@ use crate::result::{HookContext, HookExecutionResult};
 /// Handler for LLM-based agents (stubbed).
 ///
 /// This handler will invoke an LLM to process hook events
-/// in Phase 3. For now, it returns a stub response.
+/// TODO: implement real agent handler. For now, it returns a stub response.
 #[derive(Debug, Clone, Default)]
 pub struct AgentHandler;
 
@@ -52,7 +51,7 @@ impl AgentHandler {
             prompt_template = %prompt_template,
             model = ?model,
             max_tokens = ?max_tokens,
-            "Agent handler is stubbed - will be implemented in Phase 3"
+            "Agent handler is stubbed - not yet implemented"
         );
 
         // For now, return a skipped result
@@ -66,14 +65,14 @@ impl AgentHandler {
 
     /// Check if the agent runtime is available.
     ///
-    /// Always returns `false` until Phase 3 implementation.
+    /// Always returns `false` until the agent handler is implemented.
     #[must_use]
     pub fn is_available() -> bool {
         false
     }
 }
 
-/// Configuration for agent execution (for Phase 3).
+/// Configuration for agent execution.
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     /// Default model to use.

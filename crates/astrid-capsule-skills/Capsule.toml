@@ -9,7 +9,9 @@ astrid-version = ">=0.1.0"
 id = "skills-loader"
 file = "astrid_capsule_skills.wasm"
 type = "executable"
-capabilities = { fs_read = ["workspace://"] }
+# Broad global:// read needed — callers pass arbitrary dir_path (e.g. ".gemini/skills")
+# and the capsule scans both workspace and global trees under that path.
+capabilities = { fs_read = ["workspace://", "global://"] }
 
 [[tool]]
 name = "list_skills"

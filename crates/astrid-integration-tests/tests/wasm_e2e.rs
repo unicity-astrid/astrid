@@ -98,6 +98,7 @@ async fn setup_test_capsule(
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
         temp_workspace.path().to_path_buf(),
+        None,
         kv.clone(),
         event_bus.clone(),
         None,
@@ -113,6 +114,114 @@ async fn setup_test_capsule(
     );
 
     Some((capsule, tool_ctx, temp_workspace))
+}
+
+/// Like `setup_test_capsule` but with a separate global root directory for
+/// testing the `global://` VFS scheme end-to-end.
+async fn setup_test_capsule_with_global(
+    tools: Vec<ToolDef>,
+    fs_read_caps: Vec<String>,
+    fs_write_caps: Vec<String>,
+) -> Option<(
+    Box<dyn astrid_capsule::capsule::Capsule>,
+    CapsuleToolContext,
+    tempfile::TempDir,
+    tempfile::TempDir,
+)> {
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("test-all-endpoints.wasm");
+
+    if !fixture_path.exists() {
+        eprintln!(
+            "Skipping test: Fixture not found at {}",
+            fixture_path.display()
+        );
+        return None;
+    }
+
+    let manifest = CapsuleManifest {
+        package: PackageDef {
+            name: "test-plugin-global".into(),
+            version: "0.1.0".into(),
+            description: None,
+            authors: vec![],
+            repository: None,
+            homepage: None,
+            documentation: None,
+            license: None,
+            license_file: None,
+            readme: None,
+            keywords: vec![],
+            categories: vec![],
+            astrid_version: None,
+            publish: None,
+            include: None,
+            exclude: None,
+            metadata: None,
+        },
+        components: vec![ComponentDef {
+            id: "default".to_string(),
+            path: fixture_path.clone(),
+            hash: None,
+            r#type: "executable".to_string(),
+            link: vec![],
+            capabilities: None,
+        }],
+        dependencies: std::collections::HashMap::default(),
+        capabilities: CapabilitiesDef {
+            net: vec![],
+            net_bind: vec![],
+            kv: vec!["*".into()],
+            fs_read: fs_read_caps,
+            fs_write: fs_write_caps,
+            host_process: vec![],
+            uplink: false,
+            ipc_publish: vec![],
+        },
+        env: std::collections::HashMap::default(),
+        context_files: vec![],
+        commands: vec![],
+        mcp_servers: vec![],
+        skills: vec![],
+        uplinks: vec![],
+        llm_providers: vec![],
+        interceptors: vec![],
+        cron_jobs: vec![],
+        tools,
+    };
+
+    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+    let loader = CapsuleLoader::new(mcp_client);
+
+    let mut capsule = loader
+        .create_capsule(manifest, fixture_path.parent().unwrap().to_path_buf())
+        .expect("Failed to create capsule");
+
+    let temp_workspace = tempfile::tempdir().unwrap();
+    let temp_global = tempfile::tempdir().unwrap();
+
+    let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-plugin-global").unwrap();
+    let event_bus = Arc::new(EventBus::with_capacity(128));
+    let ctx = CapsuleContext::new(
+        temp_workspace.path().to_path_buf(),
+        Some(temp_global.path().to_path_buf()),
+        kv.clone(),
+        event_bus.clone(),
+        None,
+    );
+
+    capsule.load(&ctx).await.expect("Failed to load capsule");
+    assert_eq!(capsule.state(), CapsuleState::Ready);
+
+    let tool_ctx = CapsuleToolContext::new(
+        capsule.id().clone(),
+        temp_workspace.path().to_path_buf(),
+        kv.clone(),
+    );
+
+    Some((capsule, tool_ctx, temp_workspace, temp_global))
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -279,7 +388,7 @@ async fn test_wasm_capsule_e2e_vfs_path_traversal() {
     assert!(result.is_err());
     let err_str = result.unwrap_err().to_string();
     assert!(
-        err_str.contains("escapes workspace boundary"),
+        err_str.contains("escapes root boundary"),
         "Actual error: {err_str}"
     );
 }
@@ -433,4 +542,80 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
 
     // Cleanup
     let _ = std::fs::remove_file(file_path_str);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wasm_capsule_e2e_global_vfs_read() {
+    let tools = vec![ToolDef {
+        name: "test-file-read".into(),
+        description: "Read tool".into(),
+        input_schema: json!({ "type": "object" }),
+    }];
+    // Grant both workspace:// and global:// read access
+    let Some((capsule, tool_ctx, _temp_ws, temp_global)) = setup_test_capsule_with_global(
+        tools,
+        vec!["workspace://".into(), "global://".into()],
+        vec![],
+    )
+    .await
+    else {
+        return;
+    };
+
+    // Write a file directly to the global temp dir (simulating ~/.astrid/ content)
+    let global_file = temp_global.path().join("test-global.txt");
+    std::fs::write(&global_file, "hello from global").unwrap();
+
+    let read_tool = capsule
+        .tools()
+        .iter()
+        .find(|t| t.name() == "test-file-read")
+        .unwrap();
+
+    // Read via global:// prefix — exercises the full resolve_path → gate → resolve_vfs pipeline
+    let result = read_tool
+        .execute(json!({ "path": "global://test-global.txt" }), &tool_ctx)
+        .await;
+    assert!(result.is_ok(), "global:// read failed: {result:?}");
+
+    let output: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+    let inner: serde_json::Value =
+        serde_json::from_str(output["content"].as_str().unwrap()).unwrap();
+    assert_eq!(inner["content"], "hello from global");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wasm_capsule_e2e_global_vfs_denied_without_capability() {
+    let tools = vec![ToolDef {
+        name: "test-file-read".into(),
+        description: "Read tool".into(),
+        input_schema: json!({ "type": "object" }),
+    }];
+    // Only workspace:// read — no global:// capability
+    let Some((capsule, tool_ctx, _temp_ws, temp_global)) =
+        setup_test_capsule_with_global(tools, vec!["workspace://".into()], vec![]).await
+    else {
+        return;
+    };
+
+    // Write a file to the global dir
+    let global_file = temp_global.path().join("secret.txt");
+    std::fs::write(&global_file, "secret data").unwrap();
+
+    let read_tool = capsule
+        .tools()
+        .iter()
+        .find(|t| t.name() == "test-file-read")
+        .unwrap();
+
+    // Attempt to read via global:// — should be denied by security gate
+    let result = read_tool
+        .execute(json!({ "path": "global://secret.txt" }), &tool_ctx)
+        .await;
+    assert!(result.is_err(), "global:// read should have been denied");
+    let err_str = result.unwrap_err().to_string();
+    assert!(
+        err_str.contains("security denied") || err_str.contains("not declared in manifest"),
+        "Expected security denial, got: {err_str}"
+    );
 }

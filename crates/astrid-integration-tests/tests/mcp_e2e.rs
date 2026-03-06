@@ -70,6 +70,7 @@ async fn test_mcp_host_engine_capability_validation() {
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
         std::env::current_dir().unwrap(),
+        None,
         kv.clone(),
         event_bus.clone(),
         None,

@@ -290,7 +290,7 @@ impl CompilationCache {
             entries.push((path, meta, size));
         }
 
-        // Phase 1: Evict entries older than max_age
+        // Evict entries older than max_age
         entries.retain(|(path, meta, size)| {
             if now.signed_duration_since(meta.compiled_at) > max_age {
                 let _ = fs::remove_dir_all(path);
@@ -302,7 +302,7 @@ impl CompilationCache {
             }
         });
 
-        // Phase 2: Evict oldest entries until total size is under max_size_bytes
+        // Evict oldest entries until total size is under max_size_bytes
         let total_size: u64 = entries.iter().map(|(_, _, s)| s).sum();
         if total_size > max_size_bytes {
             // Sort oldest first

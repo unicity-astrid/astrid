@@ -16,6 +16,12 @@ use crate::capsule::CapsuleId;
 #[derive(Clone)]
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
+    /// Global shared resources directory (`~/.astrid/shared/`). When set,
+    /// capsules declaring `fs_read = ["global://"]` can read files under
+    /// this root via the `global://` path prefix. This is scoped to the
+    /// `shared/` subdirectory — keys, databases, and capsule secrets in
+    /// `~/.astrid/` are NOT accessible through this path.
+    pub global_root: Option<PathBuf>,
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -25,12 +31,14 @@ impl CapsuleContext {
     #[must_use]
     pub fn new(
         workspace_root: PathBuf,
+        global_root: Option<PathBuf>,
         kv: ScopedKvStore,
         event_bus: Arc<EventBus>,
         cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     ) -> Self {
         Self {
             workspace_root,
+            global_root,
             kv,
             event_bus,
             cli_socket_listener,

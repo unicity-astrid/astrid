@@ -30,7 +30,7 @@ impl StaticEngine {
 #[async_trait]
 impl ExecutionEngine for StaticEngine {
     async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
-        // In Phase 5, this will read `self.manifest.context_files` and `skills`
+        // TODO: Read `self.manifest.context_files` and `skills`
         // from `self.capsule_dir` and publish them to the OS Event Bus or LLM Router.
 
         // For now, loading static files is instantaneous and infallible.

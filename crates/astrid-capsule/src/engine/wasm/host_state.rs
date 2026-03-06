@@ -29,6 +29,14 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
+    /// Global shared resources directory (`~/.astrid/shared/`). Paths prefixed
+    /// with `global://` are resolved relative to this root.
+    pub global_root: Option<PathBuf>,
+    /// VFS instance for the global shared root. This is a direct `HostVfs` —
+    /// writes are permanent (no OverlayVfs CoW layer).
+    pub global_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    /// Capability handle for the global shared VFS root.
+    pub global_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// Reference to the ephemeral upper directory to keep it alive for the session.
     pub upper_dir: Option<Arc<tempfile::TempDir>>,
     /// Plugin-scoped KV store (`plugin:{capsule_id}` namespace).
@@ -121,6 +129,7 @@ impl std::fmt::Debug for HostState {
             .field("capsule_id", &self.capsule_id)
             .field("workspace_root", &self.workspace_root)
             .field("vfs_root_handle", &self.vfs_root_handle)
+            .field("has_global_root", &self.global_root.is_some())
             .field("has_security", &self.security.is_some())
             .field("has_connector_capability", &self.has_connector_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
@@ -148,6 +157,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
@@ -193,6 +205,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
@@ -242,6 +257,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
@@ -288,6 +306,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),
@@ -352,6 +373,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            global_root: None,
+            global_vfs: None,
+            global_vfs_root_handle: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),

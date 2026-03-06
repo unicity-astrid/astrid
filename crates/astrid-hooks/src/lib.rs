@@ -17,8 +17,8 @@
 //! Hooks can be implemented using different handlers:
 //! - **Command**: Execute shell commands
 //! - **HTTP**: Call webhooks
-//! - **WASM**: Run WebAssembly modules (Phase 3)
-//! - **Agent**: Invoke LLM-based handlers (Phase 3)
+//! - **WASM**: Run WebAssembly modules
+//! - **Agent**: Invoke LLM-based handlers (stubbed)
 //!
 //! # Example
 //!

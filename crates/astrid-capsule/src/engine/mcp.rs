@@ -131,7 +131,7 @@ impl ExecutionEngine for McpHostEngine {
             name: server_id.clone(),
             command: Some(command_str),
             args: self.server_def.args.clone(),
-            env: std::collections::HashMap::new(), // In Phase 6/7, inject [env] vars here
+            env: std::collections::HashMap::new(), // TODO: inject [env] vars here
             cwd: Some(self.capsule_dir.clone()),
             restart_policy: astrid_mcp::RestartPolicy::Always, // Host engines should restart on crash
             ..Default::default()

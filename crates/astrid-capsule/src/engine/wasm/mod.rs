@@ -152,6 +152,7 @@ impl ExecutionEngine for WasmEngine {
             let lower_vfs = astrid_vfs::HostVfs::new();
             let upper_vfs = astrid_vfs::HostVfs::new();
             let root_handle = astrid_capabilities::DirHandle::new();
+            let global_root = ctx.global_root.clone();
 
             tokio::runtime::Handle::current()
                 .block_on(async {
@@ -169,14 +170,61 @@ impl ExecutionEngine for WasmEngine {
                     ))
                 })?;
 
-            // NOTE: In Phase 4, OverlayVfs upper and lower layers share the same physical
+            // Set up the global VFS (backed by ~/.astrid/shared/). Writes go
+            // directly to disk — there is no OverlayVfs CoW layer here,
+            // unlike the workspace VFS. Only mount if the directory exists
+            // to avoid failing capsule load on fresh installs.
+            let (global_vfs, global_vfs_root_handle): (
+                Option<Arc<dyn astrid_vfs::Vfs>>,
+                Option<astrid_capabilities::DirHandle>,
+            ) = if let Some(ref g_root) = global_root {
+                if g_root.exists() {
+                    let g_vfs = astrid_vfs::HostVfs::new();
+                    let g_handle = astrid_capabilities::DirHandle::new();
+                    tokio::runtime::Handle::current()
+                        .block_on(async {
+                            g_vfs.register_dir(g_handle.clone(), g_root.clone()).await
+                        })
+                        .map_err(|e| {
+                            CapsuleError::UnsupportedEntryPoint(format!(
+                                "Failed to register global VFS directory: {e}"
+                            ))
+                        })?;
+                    (
+                        Some(Arc::new(g_vfs) as Arc<dyn astrid_vfs::Vfs>),
+                        Some(g_handle),
+                    )
+                } else {
+                    tracing::warn!(
+                        global_root = %g_root.display(),
+                        "global:// VFS not mounted: directory does not exist. \
+                         Capsules requesting global:// paths will receive errors \
+                         until the directory is created and the kernel is restarted."
+                    );
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            };
+
+            // TODO: OverlayVfs upper and lower layers currently share the same physical
             // workspace root, meaning CoW semantics act as a direct pass-through.
-            // In Phase 5+, upper_vfs will point to a temporary session overlay directory.
+            // upper_vfs should point to a temporary session overlay directory.
             let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
             let next_subscription_id = 1;
-            let security_gate =
-                Arc::new(crate::security::ManifestSecurityGate::new(manifest.clone()));
+            // Only resolve global:// in the gate if we actually mounted the VFS.
+            // Otherwise the gate would approve paths the VFS can't serve.
+            let gate_global_root = if global_vfs.is_some() {
+                global_root.clone()
+            } else {
+                None
+            };
+            let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(
+                manifest.clone(),
+                workspace_root.clone(),
+                gate_global_root,
+            ));
 
             let host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
@@ -186,6 +234,9 @@ impl ExecutionEngine for WasmEngine {
                 workspace_root,
                 vfs: Arc::new(overlay_vfs),
                 vfs_root_handle: root_handle,
+                global_root,
+                global_vfs,
+                global_vfs_root_handle,
                 upper_dir: None,
                 kv,
                 event_bus,

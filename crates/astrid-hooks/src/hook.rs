@@ -48,7 +48,7 @@ pub enum HookHandler {
         #[serde(default = "default_wasm_function")]
         function: String,
     },
-    /// Invoke an LLM-based agent handler (stubbed - Phase 3).
+    /// Invoke an LLM-based agent handler (stubbed).
     Agent {
         /// Agent prompt template.
         prompt_template: String,

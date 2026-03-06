@@ -4,7 +4,7 @@
 //! They are richer than the Frontend-facing types in `astrid-core::frontend`,
 //! which are simplified for UI rendering.
 //!
-//! The approval manager (phase 2.3) converts between internal and frontend types
+//! The approval manager converts between internal and frontend types
 //! when presenting requests to users.
 
 use astrid_core::types::{RiskLevel, Timestamp};
