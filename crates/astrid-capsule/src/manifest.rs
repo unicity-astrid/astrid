@@ -160,9 +160,9 @@ pub struct CapabilitiesDef {
     ///
     /// Supports exact matches and `*` wildcards per segment
     /// (e.g. `registry.*`, `llm.stream.anthropic`).
-    /// An empty list means the capsule may publish to any topic
-    /// (backwards-compatible default). Once populated, the host
-    /// rejects publishes to non-matching topics.
+    /// An empty list means the capsule may NOT publish to any topic
+    /// (fail-closed). Capsules must explicitly declare at least one
+    /// pattern to be allowed to publish.
     #[serde(default)]
     pub ipc_publish: Vec<String>,
 }

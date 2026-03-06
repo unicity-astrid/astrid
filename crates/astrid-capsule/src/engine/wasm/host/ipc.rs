@@ -126,6 +126,21 @@ pub(crate) fn astrid_ipc_subscribe_impl(
         ));
     }
 
+    // EventReceiver::matches only supports trailing-suffix wildcards (e.g. `foo.bar.*`)
+    // and exact matches. Mid-segment wildcards like `a.*.b` would silently never fire.
+    // Reject them upfront with a clear error.
+    {
+        let segments: Vec<&str> = topic_pattern.split('.').collect();
+        for (i, seg) in segments.iter().enumerate() {
+            if *seg == "*" && i != segments.len() - 1 {
+                return Err(Error::msg(
+                    "Wildcard `*` is only supported as the last segment (e.g. `foo.bar.*`). \
+                     Mid-segment wildcards like `a.*.b` are not supported by the event bus.",
+                ));
+            }
+        }
+    }
+
     let ud = user_data.get()?;
     let mut state = ud
         .lock()

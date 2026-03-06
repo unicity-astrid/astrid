@@ -186,8 +186,8 @@ impl WasmHandler {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
                 .block_on(vfs.register_dir(root_handle.clone(), self.workspace_root.clone()))
-                .expect("Failed to register VFS root dir");
-        });
+        })
+        .map_err(|e| HandlerError::WasmFailed(format!("Failed to register VFS root dir: {e}")))?;
 
         let host_state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
