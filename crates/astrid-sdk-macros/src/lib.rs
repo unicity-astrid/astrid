@@ -15,7 +15,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{ImplItem, ItemImpl, LitStr, parse_macro_input};
+use syn::{ImplItem, ItemImpl, LitStr};
 
 /// Marks an `impl` block as the entry point for an Astrid Capsule.
 ///
@@ -24,7 +24,17 @@ use syn::{ImplItem, ItemImpl, LitStr, parse_macro_input};
 /// requests to the appropriately annotated methods within the block.
 #[proc_macro_attribute]
 pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(item as ItemImpl);
+    capsule_impl(attr.into(), item.into()).into()
+}
+
+fn capsule_impl(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let mut input: ItemImpl = match syn::parse2(item) {
+        Ok(i) => i,
+        Err(e) => return e.into_compile_error(),
+    };
     let struct_name = &input.self_ty.clone();
 
     let is_stateful = attr.to_string().trim() == "state";
@@ -59,7 +69,17 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             });
 
-            for attr in extracted_attrs {
+            // Determine if this method is marked as mutable (check before iterating)
+            let is_mutable = extracted_attrs
+                .iter()
+                .any(|a| a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable");
+
+            for attr in &extracted_attrs {
+                // All attrs here have exactly 2 segments (enforced by the retain
+                // filter above), but guard defensively in case that changes.
+                if attr.path().segments.len() < 2 {
+                    continue;
+                }
                 let attr_name = &attr.path().segments[1].ident;
 
                 // Allow inferring the name from the function if no string argument is provided.
@@ -68,11 +88,6 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 } else {
                     method_name.to_string()
                 };
-
-                // Determine if this tool is marked as mutable
-                let is_mutable = method.attrs.iter().any(|a| {
-                    a.path().segments.len() == 2 && a.path().segments[1].ident == "mutable"
-                });
 
                 let execute_block = if is_stateful {
                     quote! {
@@ -109,15 +124,13 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                     // Automatically generate schemars extraction for this tool
                     if let Some(ty) = &arg_type {
                         schema_arms.push(quote! {
-                                let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
-                                if let ::astrid_sdk::schemars::schema::Schema::Object(ref mut obj) = schema.schema {
-                                    let mut ext = std::collections::BTreeMap::new();
-                                    ext.insert("mutable".to_string(), ::astrid_sdk::schemars::schema::Schema::Bool(#is_mutable));
-                                    let meta = obj.metadata.get_or_insert_with(Box::default);
-                                    meta.extensions = ext;
-                                }
-                                map.insert(#name_val.to_string(), schema);
-                            });
+                            let mut schema = ::astrid_sdk::schemars::schema_for!(#ty);
+                            schema.schema.extensions.insert(
+                                "mutable".to_string(),
+                                ::serde_json::json!(#is_mutable),
+                            );
+                            map.insert(#name_val.to_string(), schema);
+                        });
                     }
                 } else if attr_name == "command" {
                     command_arms.push(quote! {
@@ -285,9 +298,10 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         pub extern "C" fn astrid_export_schemas() -> i32 {
             fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
                 let _ = input;
-                let mut map: ::std::collections::HashMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::HashMap::new();
+                let mut map: ::std::collections::BTreeMap<String, ::astrid_sdk::schemars::schema::RootSchema> = ::std::collections::BTreeMap::new();
                 #( #schema_arms )*
-                let json = ::serde_json::to_vec(&map).unwrap_or_default();
+                let json = ::serde_json::to_vec(&map)
+                    .map_err(|e| ::extism_pdk::Error::msg(format!("failed to serialize schemas: {}", e)))?;
                 Ok(json)
             }
             let input = ::extism_pdk::unwrap!(::extism_pdk::input());
@@ -306,5 +320,113 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    TokenStream::from(expanded)
+    expanded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Note: proc_macro2::TokenStream::to_string() serialises `json!(true)` as
+    // "json ! (true)" with spaces around the bang and parens. These assertions
+    // rely on that stable (but undocumented) formatting.
+
+    #[test]
+    fn mutable_attr_sets_true_in_schema() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("write_file")]
+                #[astrid::mutable]
+                fn write_file(&self, args: WriteArgs) -> Result<WriteResult, Error> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+
+        assert!(
+            output.contains("json ! (true)"),
+            "Expected json!(true) in generated schema, but got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn non_mutable_tool_sets_false_in_schema() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("read_file")]
+                fn read_file(&self, args: ReadArgs) -> Result<ReadResult, Error> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+
+        assert!(
+            output.contains("json ! (false)"),
+            "Expected json!(false) in generated schema, but got:\n{output}"
+        );
+        assert!(
+            !output.contains("json ! (true)"),
+            "Non-mutable tool should not have json!(true)"
+        );
+    }
+
+    /// `#[astrid::mutable]` listed before `#[astrid::tool]` must still work.
+    #[test]
+    fn mutable_before_tool_attr_order() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::mutable]
+                #[astrid::tool("delete_file")]
+                fn delete_file(&self, args: DeleteArgs) -> Result<DeleteResult, Error> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+
+        assert!(
+            output.contains("json ! (true)"),
+            "Mutable-before-tool should still produce json!(true), got:\n{output}"
+        );
+    }
+
+    /// Multiple tools in one impl block — only the mutable one gets `true`.
+    #[test]
+    fn multi_tool_mixed_mutability() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("read_file")]
+                fn read_file(&self, args: ReadArgs) -> Result<ReadResult, Error> {
+                    todo!()
+                }
+
+                #[astrid::tool("write_file")]
+                #[astrid::mutable]
+                fn write_file(&self, args: WriteArgs) -> Result<WriteResult, Error> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+
+        // Both json!(false) and json!(true) must appear — one per tool
+        assert!(
+            output.contains("json ! (false)"),
+            "read_file should have json!(false), got:\n{output}"
+        );
+        assert!(
+            output.contains("json ! (true)"),
+            "write_file should have json!(true), got:\n{output}"
+        );
+    }
 }
