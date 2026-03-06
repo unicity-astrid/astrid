@@ -10,3 +10,6 @@ id = "fs-tools"
 file = "astrid_capsule_fs.wasm"
 type = "executable"
 capabilities = { fs_read = ["workspace://"], fs_write = ["workspace://"] }
+
+[capabilities]
+ipc_publish = []

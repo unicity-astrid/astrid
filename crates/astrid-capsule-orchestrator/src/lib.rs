@@ -269,7 +269,6 @@ impl Orchestrator {
                 }
             },
             StreamEvent::Done => {
-                state.save(DEFAULT_SESSION_ID)?;
                 return Self::handle_stream_done(&mut state);
             },
             StreamEvent::Error(err) => {

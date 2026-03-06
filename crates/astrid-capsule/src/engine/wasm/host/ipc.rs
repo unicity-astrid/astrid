@@ -45,13 +45,21 @@ pub(crate) fn astrid_ipc_publish_impl(
     }
 
     // Enforce IPC topic publishing restrictions from Capsule.toml.
-    // If ipc_publish is non-empty, the capsule may only publish to
-    // topics matching at least one declared pattern.
-    if !state.ipc_publish_patterns.is_empty()
-        && !state
-            .ipc_publish_patterns
-            .iter()
-            .any(|pattern| crate::dispatcher::topic_matches(&topic, pattern))
+    // Fail-closed: capsules without ipc_publish declarations cannot publish.
+    // Protected topics (kernel.*) require explicit declaration even if
+    // a capsule has other patterns — defense-in-depth against privilege escalation.
+    if state.ipc_publish_patterns.is_empty() {
+        return Err(Error::msg(format!(
+            "Capsule '{}' has no ipc_publish declarations — publishing is denied. \
+             Add ipc_publish patterns to Capsule.toml [capabilities]",
+            state.capsule_id
+        )));
+    }
+
+    if !state
+        .ipc_publish_patterns
+        .iter()
+        .any(|pattern| crate::dispatcher::topic_matches(&topic, pattern))
     {
         return Err(Error::msg(format!(
             "Capsule '{}' is not allowed to publish to topic '{topic}' — \

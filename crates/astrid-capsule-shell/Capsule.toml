@@ -12,6 +12,7 @@ type = "executable"
 
 [capabilities]
 host_process = ["bash", "sh", "zsh"]
+ipc_publish = []
 
 [[tool]]
 name = "run_shell_command"

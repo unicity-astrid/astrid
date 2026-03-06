@@ -402,6 +402,9 @@ pub fn run() -> FnResult<()> {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
+    let _ = ipc::unsubscribe(&sub);
+    let _ = ipc::unsubscribe(&capsules_loaded_sub);
+
     Ok(())
 }
 

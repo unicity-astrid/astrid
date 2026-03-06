@@ -80,7 +80,19 @@ impl ExecutionEngine for WasmEngine {
         let mut missing_keys = Vec::new();
         let mut prompts = std::collections::HashMap::new();
 
+        // Collect reserved kernel-injected keys so the env loop cannot override them.
+        let reserved_keys: Vec<String> = wasm_config.keys().cloned().collect();
+
         for (key, def) in &self.manifest.env {
+            // Reject manifest [env] entries that collide with kernel-injected config.
+            if reserved_keys.iter().any(|k| k == key) {
+                tracing::warn!(
+                    capsule = %self.manifest.package.name,
+                    key = %key,
+                    "Capsule manifest [env] declares reserved key — ignoring"
+                );
+                continue;
+            }
             if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
                 if let Ok(val) = String::from_utf8(val_bytes) {
                     wasm_config.insert(key.clone(), serde_json::Value::String(val));

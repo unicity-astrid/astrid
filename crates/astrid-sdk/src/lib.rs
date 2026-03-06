@@ -272,7 +272,7 @@ pub mod sys {
         let raw = get_config_string(CONFIG_SOCKET_PATH)?;
         // get_config_string returns JSON-encoded values (quoted strings).
         // Use proper JSON parsing to handle escape sequences correctly.
-        serde_json::from_str::<String>(raw.trim()).or_else(|_| {
+        let path = serde_json::from_str::<String>(raw.trim()).or_else(|_| {
             // Fallback: if the value isn't valid JSON, use it raw.
             if raw.is_empty() {
                 Err(SysError::ApiError(
@@ -281,7 +281,14 @@ pub mod sys {
             } else {
                 Ok(raw)
             }
-        })
+        })?;
+        // Reject paths with null bytes — they would silently truncate at the OS level.
+        if path.contains('\0') {
+            return Err(SysError::ApiError(
+                "ASTRID_SOCKET_PATH contains null byte".to_string(),
+            ));
+        }
+        Ok(path)
     }
 
     /// Retrieves the caller context (User ID and Session ID) for the current execution.

@@ -203,7 +203,7 @@ impl WasmHandler {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
+            ipc_publish_patterns: vec!["hook.result.*".into()],
             security: None,
             hook_manager: None,
             runtime_handle: tokio::runtime::Handle::current(),
