@@ -251,10 +251,6 @@ impl App {
                     description: "Reload all installed capsules into the OS".to_string(),
                 },
                 SlashCommandDef {
-                    name: "/models".to_string(),
-                    description: "List available LLM models and switch provider".to_string(),
-                },
-                SlashCommandDef {
                     name: "/quit".to_string(),
                     description: "Disconnect from the daemon".to_string(),
                 },
