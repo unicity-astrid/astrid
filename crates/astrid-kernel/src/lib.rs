@@ -203,6 +203,19 @@ impl Kernel {
                 );
             }
         }
+
+        // Signal that all capsules have been loaded so uplink capsules
+        // (like the registry) can proceed with discovery instead of
+        // polling with arbitrary timeouts.
+        let msg = astrid_events::ipc::IpcMessage::new(
+            "kernel.capsules_loaded",
+            astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({"status": "ready"})),
+            self.session_id.0,
+        );
+        let _ = self.event_bus.publish(astrid_events::AstridEvent::Ipc {
+            metadata: astrid_events::EventMetadata::new("kernel"),
+            message: msg,
+        });
     }
 }
 

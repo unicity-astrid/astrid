@@ -255,22 +255,39 @@ pub fn run() -> FnResult<()> {
 
     let sub = ipc::subscribe("registry.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // Initial discovery with retry — provider capsules may still be loading.
-    // The kernel loads uplinks (like us) first, then other capsules, so we
-    // retry a few times with backoff to catch late arrivals.
-    let mut state = load_state();
-    for attempt in 0..5 {
-        if attempt > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(200));
+    // Wait for the kernel to signal that all capsules have been loaded.
+    // This is event-driven: the kernel publishes `kernel.capsules_loaded`
+    // after `load_all_capsules()` completes, so we don't need arbitrary
+    // sleeps or retry loops.
+    let loaded_sub = ipc::subscribe("kernel.capsules_loaded")
+        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+
+    let mut capsules_ready = false;
+    for _ in 0..500 {
+        // 500 × 10ms = 5s max wait
+        if let Ok(bytes) = ipc::poll_bytes(&loaded_sub) {
+            if !bytes.is_empty() {
+                capsules_ready = true;
+                break;
+            }
         }
-        let providers = discover_providers();
-        if !providers.is_empty() {
-            state.providers = providers;
-            save_state(&state);
-            auto_select_if_single(&mut state);
-            break;
-        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
+    let _ = ipc::unsubscribe(&loaded_sub);
+
+    if !capsules_ready {
+        let _ = sys::log(
+            "warn",
+            "Timed out waiting for kernel.capsules_loaded — proceeding with discovery anyway",
+        );
+    }
+
+    // Now that all capsules are loaded, discover providers.
+    let providers = discover_providers();
+    let mut state = load_state();
+    state.providers = providers;
+    save_state(&state);
+    auto_select_if_single(&mut state);
 
     // Event loop
     loop {
