@@ -9,37 +9,38 @@
 //! and `grep_search` tools to agents.
 
 use astrid_sdk::prelude::*;
+use astrid_sdk::schemars;
 use serde::Deserialize;
 
 #[derive(Default)]
 pub struct FsTools;
 
-#[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct ReadFileArgs {
     pub file_path: String,
     pub start_line: Option<usize>,
     pub end_line: Option<usize>,
 }
 
-#[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct WriteFileArgs {
     pub file_path: String,
     pub content: String,
 }
 
-#[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct ReplaceInFileArgs {
     pub file_path: String,
     pub old_string: String,
     pub new_string: String,
 }
 
-#[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct ListDirectoryArgs {
     pub dir_path: String,
 }
 
-#[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct GrepSearchArgs {
     pub dir_path: Option<String>,
     pub pattern: String,

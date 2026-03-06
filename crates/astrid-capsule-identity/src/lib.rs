@@ -10,6 +10,7 @@
 //! configuration files (AGENTS.md, .astridignore) and the spark identity.
 
 use astrid_sdk::prelude::*;
+use astrid_sdk::schemars;
 use serde::{Deserialize, Serialize};
 
 /// Identity builder capsule. Stateless — reads workspace files on each request.
