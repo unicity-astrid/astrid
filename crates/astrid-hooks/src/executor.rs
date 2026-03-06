@@ -11,7 +11,7 @@ use crate::result::{HookContext, HookExecution, HookExecutionResult, HookResult}
 
 /// Executes hooks using the appropriate handler.
 #[derive(Debug)]
-#[allow(clippy::struct_field_names)]
+#[expect(clippy::struct_field_names)]
 pub struct HookExecutor {
     command_handler: CommandHandler,
     http_handler: HttpHandler,
@@ -116,9 +116,9 @@ impl HookExecutor {
         };
 
         let completed_at = Utc::now();
-        #[allow(clippy::cast_sign_loss)]
+        #[expect(clippy::cast_sign_loss)]
         // Safety: chrono DateTime subtraction cannot overflow for reasonable time values
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let duration_ms = (completed_at - started_at).num_milliseconds().max(0) as u64;
 
         let execution_result = match result {
@@ -154,7 +154,6 @@ impl HookExecutor {
     }
 
     /// Execute multiple hooks in sequence.
-    #[allow(clippy::missing_panics_doc)]
     pub async fn execute_all(
         &self,
         hooks: &[Hook],

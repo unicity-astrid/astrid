@@ -108,7 +108,7 @@ impl AllowancePattern {
     /// * `workspace_root` — The current workspace root. For `WorkspaceRelative` patterns,
     ///   the action path must fall under this root for the match to succeed.
     #[must_use]
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub fn matches(&self, action: &SensitiveAction, workspace_root: Option<&Path>) -> bool {
         match (self, action) {
             // ExactTool: exact server + tool match

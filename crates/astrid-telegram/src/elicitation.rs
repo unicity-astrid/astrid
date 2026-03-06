@@ -16,7 +16,7 @@ use crate::format::html_escape;
 use crate::session::SessionMap;
 
 /// Pending elicitations older than this are automatically reaped.
-const PENDING_TTL: Duration = Duration::from_secs(5 * 60);
+const PENDING_TTL: Duration = Duration::from_mins(5);
 
 /// A pending elicitation waiting for a text reply from the user.
 struct PendingTextReply {

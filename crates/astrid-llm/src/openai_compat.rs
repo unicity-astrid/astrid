@@ -253,9 +253,9 @@ fn convert_message(msg: &Message) -> Value {
 }
 
 #[async_trait]
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 impl LlmProvider for OpenAiCompatProvider {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
         "openai-compat"
     }
@@ -321,7 +321,7 @@ impl LlmProvider for OpenAiCompatProvider {
             )));
         }
 
-        #[allow(clippy::collapsible_if)]
+        #[expect(clippy::collapsible_if)]
         let stream = try_stream! {
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
@@ -338,7 +338,7 @@ impl LlmProvider for OpenAiCompatProvider {
                 while let Some(event_end) = buffer.find("\n\n") {
                     let event_data = buffer[..event_end].to_string();
                     // Safety: event_end from find() is within bounds, +2 for "\n\n" length
-                    #[allow(clippy::arithmetic_side_effects)]
+                    #[expect(clippy::arithmetic_side_effects)]
                     let rest_start = event_end + 2;
                     buffer = buffer[rest_start..].to_string();
 
@@ -354,10 +354,10 @@ impl LlmProvider for OpenAiCompatProvider {
                             if let Ok(event) = serde_json::from_str::<OpenAiStreamEvent>(data) {
                                 if let Some(choice) = event.choices.first() {
                                     // Handle content delta
-                                    if let Some(content) = &choice.delta.content {
-                                        if !content.is_empty() {
-                                            yield StreamEvent::TextDelta(content.clone());
-                                        }
+                                    if let Some(content) = &choice.delta.content
+                                        && !content.is_empty()
+                                    {
+                                        yield StreamEvent::TextDelta(content.clone());
                                     }
 
                                     // Handle tool calls
@@ -384,13 +384,13 @@ impl LlmProvider for OpenAiCompatProvider {
                                                 }
 
                                                 // Append arguments
-                                                if let Some(args) = &function.arguments {
-                                                    if let Some(ref tc_id) = current_tool_call {
-                                                        yield StreamEvent::ToolCallDelta {
-                                                            id: tc_id.clone(),
-                                                            args_delta: args.clone(),
-                                                        };
-                                                    }
+                                                if let Some(args) = &function.arguments
+                                                    && let Some(ref tc_id) = current_tool_call
+                                                {
+                                                    yield StreamEvent::ToolCallDelta {
+                                                        id: tc_id.clone(),
+                                                        args_delta: args.clone(),
+                                                    };
                                                 }
                                             }
                                         }

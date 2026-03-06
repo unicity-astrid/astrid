@@ -93,7 +93,7 @@ impl Default for FileLogConfig {
 
 /// Logging configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct LogConfig {
     /// Log level filter (e.g., "info", "debug", "trace").
     #[serde(default = "default_level")]
@@ -277,7 +277,6 @@ impl LogConfig {
 /// # Errors
 ///
 /// Returns an error if the configuration is invalid or logging cannot be initialized.
-#[allow(clippy::too_many_lines)]
 pub fn setup_logging(config: &LogConfig) -> TelemetryResult<()> {
     let filter = config.build_filter()?;
 

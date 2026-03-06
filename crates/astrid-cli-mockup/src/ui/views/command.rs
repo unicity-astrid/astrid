@@ -90,7 +90,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     frame.render_widget(para, area);
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn render_table(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
@@ -203,7 +203,7 @@ fn render_table(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         };
 
         // Context bar
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let ctx_pct = (agent.context_usage * 100.0) as u8;
         let bar_width = 8usize;
         let filled = (usize::from(ctx_pct) * bar_width) / 100;

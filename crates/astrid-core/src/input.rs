@@ -124,7 +124,7 @@ pub struct TaggedMessage {
 impl TaggedMessage {
     /// Create a new tagged message.
     #[must_use]
-    #[allow(clippy::similar_names)] // context and content are both meaningful names
+    #[expect(clippy::similar_names)] // context and content are both meaningful names
     pub fn new(
         message_id: MessageId,
         astrid_user_id: AstridUserId,

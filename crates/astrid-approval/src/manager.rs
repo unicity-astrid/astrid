@@ -30,7 +30,7 @@ use crate::deferred::{
 use crate::request::{ApprovalDecision, ApprovalRequest, ApprovalResponse};
 
 /// Default approval timeout (5 minutes).
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const DEFAULT_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Trait for UI implementations that present approval requests to users.
 ///

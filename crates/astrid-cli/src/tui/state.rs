@@ -68,7 +68,7 @@ pub(crate) enum MessageRole {
 
 /// Special message kinds for styled rendering.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum MessageKind {
     DiffHeader,
     DiffRemoved,
@@ -83,7 +83,7 @@ pub(crate) enum MessageKind {
 pub(crate) struct Message {
     pub role: MessageRole,
     pub content: String,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub timestamp: Instant,
     pub kind: Option<MessageKind>,
     /// Whether to add a blank line after this message.
@@ -114,7 +114,7 @@ pub(crate) struct ToolStatus {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum ToolStatusKind {
     Pending,
     Running,

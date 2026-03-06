@@ -66,7 +66,7 @@ pub struct SecurityInterceptor {
 impl SecurityInterceptor {
     /// Create a new security interceptor.
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         capability_store: Arc<CapabilityStore>,
         approval_manager: Arc<ApprovalManager>,
@@ -104,7 +104,7 @@ impl SecurityInterceptor {
     ///
     /// Returns `ApprovalError` if the action is denied by policy, budget,
     /// or user decision.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub async fn intercept(
         &self,
         action: &SensitiveAction,
@@ -645,7 +645,7 @@ mod tests {
         };
 
         // Assert budget spent is 0
-        #[allow(clippy::float_cmp)]
+        #[expect(clippy::float_cmp)]
         {
             assert_eq!(interceptor.budget_tracker().spent(), 0.0);
         }
@@ -655,7 +655,7 @@ mod tests {
         assert!(result.is_err());
 
         // Assert budget spent is back to 0
-        #[allow(clippy::float_cmp)]
+        #[expect(clippy::float_cmp)]
         {
             assert_eq!(interceptor.budget_tracker().spent(), 0.0);
         }
@@ -686,7 +686,7 @@ mod tests {
         };
 
         // Assert budget spent is 0
-        #[allow(clippy::float_cmp)]
+        #[expect(clippy::float_cmp)]
         {
             assert_eq!(interceptor.budget_tracker().spent(), 0.0);
         }
@@ -699,7 +699,7 @@ mod tests {
 
         // The timeout drops the future, which drops the budget reservation guard.
         // Assert budget spent is back to 0
-        #[allow(clippy::float_cmp)]
+        #[expect(clippy::float_cmp)]
         {
             assert_eq!(interceptor.budget_tracker().spent(), 0.0);
         }
@@ -842,7 +842,7 @@ mod tests {
         assert!(err_msg.contains("budget exceeded (session budget)"));
 
         // Critically, the workspace budget should STILL BE 100.0 (not deducted).
-        #[allow(clippy::float_cmp)]
+        #[expect(clippy::float_cmp)]
         {
             assert_eq!(ws_tracker.spent(), 0.0);
             assert_eq!(ws_tracker.remaining(), Some(100.0));

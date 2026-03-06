@@ -19,7 +19,7 @@ pub const MAX_KEY_LEN: u64 = 4 * 1024;
 /// # Errors
 /// Returns an error if the value is not a valid pointer or if the memory allocation
 /// exceeds the specified limit.
-#[allow(clippy::cast_sign_loss)]
+#[expect(clippy::cast_sign_loss)]
 pub fn get_safe_string(plugin: &mut CurrentPlugin, val: &Val, limit: u64) -> Result<String, Error> {
     let ptr = match val {
         Val::I64(v) => *v as u64,
@@ -34,8 +34,8 @@ pub fn get_safe_string(plugin: &mut CurrentPlugin, val: &Val, limit: u64) -> Res
         )));
     }
 
-    #[allow(clippy::cast_possible_wrap)]
-    let safe_val = Val::I64(ptr as i64);
+    let safe_val =
+        Val::I64(i64::try_from(ptr).map_err(|_| Error::msg("pointer value out of i64 range"))?);
     plugin.memory_get_val(&safe_val)
 }
 
@@ -44,7 +44,7 @@ pub fn get_safe_string(plugin: &mut CurrentPlugin, val: &Val, limit: u64) -> Res
 /// # Errors
 /// Returns an error if the value is not a valid pointer or if the memory allocation
 /// exceeds the specified limit.
-#[allow(clippy::cast_sign_loss)]
+#[expect(clippy::cast_sign_loss)]
 pub fn get_safe_bytes(plugin: &mut CurrentPlugin, val: &Val, limit: u64) -> Result<Vec<u8>, Error> {
     let ptr = match val {
         Val::I64(v) => *v as u64,
@@ -59,8 +59,8 @@ pub fn get_safe_bytes(plugin: &mut CurrentPlugin, val: &Val, limit: u64) -> Resu
         )));
     }
 
-    #[allow(clippy::cast_possible_wrap)]
-    let safe_val = Val::I64(ptr as i64);
+    let safe_val =
+        Val::I64(i64::try_from(ptr).map_err(|_| Error::msg("pointer value out of i64 range"))?);
     let memory: Vec<u8> = plugin.memory_get_val(&safe_val)?;
     Ok(memory)
 }

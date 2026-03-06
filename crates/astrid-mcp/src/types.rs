@@ -387,7 +387,7 @@ impl PromptContent {
 
 /// Server capabilities.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct ServerCapabilities {
     /// Whether the server supports tools.
     #[serde(default)]

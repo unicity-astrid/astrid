@@ -105,7 +105,7 @@ impl RequestContext {
     #[must_use]
     pub fn elapsed(&self) -> chrono::Duration {
         // Utc::now() >= self.started_at by construction (started_at is set at creation time)
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let elapsed = Utc::now() - self.started_at;
         elapsed
     }
@@ -151,7 +151,7 @@ impl Default for RequestContext {
 pub struct RequestGuard {
     context: RequestContext,
     /// Held to keep the span active until the guard is dropped.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     span: tracing::span::EnteredSpan,
 }
 

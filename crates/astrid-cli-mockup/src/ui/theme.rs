@@ -4,7 +4,7 @@ use ratatui::style::Color;
 
 /// Spinner animation style
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum SpinnerStyle {
     #[default]
     Stellar, // ✧ ✦ ✶ ✴ ✸ (celestial brand)
@@ -30,7 +30,7 @@ impl SpinnerStyle {
         let frames = self.frames();
         let interval = 120u128;
         // Safety: division and modulo by nonzero values (interval=120, frames.len()>0)
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let idx = (elapsed_ms / interval % frames.len() as u128) as usize;
         frames[idx]
     }
@@ -38,7 +38,7 @@ impl SpinnerStyle {
 
 /// Color theme - works on both light and dark terminals
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct Theme {
     // ── Base colors ──
     /// User input text
@@ -72,13 +72,13 @@ pub(crate) struct Theme {
 
     // ── File status colors ──
     /// File added indicator (for Stellar view)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub file_added: Color,
     /// File modified indicator (for Stellar view)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub file_modified: Color,
     /// File deleted indicator (for Stellar view)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub file_deleted: Color,
 
     // ── Agent status colors ──
@@ -164,7 +164,7 @@ impl Default for Theme {
 
 impl Theme {
     /// High contrast theme for accessibility
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn high_contrast() -> Self {
         Self {
             user: Color::White,
@@ -200,7 +200,7 @@ impl Theme {
     }
 
     /// Light terminal theme
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn light() -> Self {
         Self {
             user: Color::Black,

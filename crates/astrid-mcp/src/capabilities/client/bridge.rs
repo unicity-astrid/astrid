@@ -47,7 +47,7 @@ pub struct BridgeChannelDefinition {
 /// All flags default to `false` (least privilege).
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct BridgeChannelCapabilities {
     /// Can receive inbound messages from users.
     #[serde(default)]

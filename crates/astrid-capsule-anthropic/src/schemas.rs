@@ -117,7 +117,7 @@ pub struct HttpResponse {
     /// HTTP status code.
     pub status: u16,
     /// Response headers.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub headers: std::collections::HashMap<String, String>,
     /// Response body.
     pub body: String,

@@ -284,7 +284,7 @@ fn format_uptime(d: std::time::Duration) -> String {
     format!("{hours}h {mins:02}m {s:02}s")
 }
 
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss)]
 fn format_tokens(tokens: usize) -> String {
     if tokens >= 1000 {
         format!("{:.1}k", tokens as f64 / 1000.0)

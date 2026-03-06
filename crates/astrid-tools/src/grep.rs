@@ -54,7 +54,7 @@ impl BuiltinTool for GrepTool {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     async fn execute(&self, args: Value, ctx: &ToolContext) -> ToolResult {
         let pattern_str = args
             .get("pattern")
@@ -196,14 +196,14 @@ fn write_context_lines(
     context: usize,
 ) {
     // Safety: idx is a valid index into lines from enumerate(), so idx+1 won't overflow
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let line_num = idx + 1;
 
     // Context before
     let start = idx.saturating_sub(context);
     for (i, line) in lines[start..idx].iter().enumerate() {
         // Safety: start <= idx and i < idx-start, so start+i+1 won't overflow
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let display_num = start + i + 1;
         let _ = writeln!(output, "{}:{display_num}-{}", path.display(), line);
     }
@@ -217,11 +217,11 @@ fn write_context_lines(
         .saturating_add(context)
         .min(lines.len());
     // Safety: line_num = idx+1, so idx+1 won't overflow; i is bounded by end-idx-1
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let after_start = idx + 1;
     for (i, line) in lines[after_start..end].iter().enumerate() {
         // Safety: idx+2+i bounded by lines.len()
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let display_num = idx + 2 + i;
         let _ = writeln!(output, "{}:{display_num}-{}", path.display(), line);
     }

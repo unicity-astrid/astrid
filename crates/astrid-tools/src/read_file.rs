@@ -102,15 +102,11 @@ impl BuiltinTool for ReadFileTool {
         let mut output = String::new();
         for (idx, &line) in lines[start..end].iter().enumerate() {
             // Safety: start and idx are bounded by total_lines, +1 for 1-based display
-            #[allow(clippy::arithmetic_side_effects)]
+            #[expect(clippy::arithmetic_side_effects)]
             let line_num = start + idx + 1;
             let display_line = if line.len() > MAX_LINE_LENGTH {
                 // Find a safe truncation point at a char boundary
-                let mut end = MAX_LINE_LENGTH;
-                while end > 0 && !line.is_char_boundary(end) {
-                    end = end.saturating_sub(1);
-                }
-                &line[..end]
+                &line[..line.floor_char_boundary(MAX_LINE_LENGTH)]
             } else {
                 line
             };

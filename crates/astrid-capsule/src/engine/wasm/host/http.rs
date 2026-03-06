@@ -27,7 +27,7 @@ struct HttpResponse {
     body: String,
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_http_request_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],

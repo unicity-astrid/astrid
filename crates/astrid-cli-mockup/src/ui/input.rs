@@ -33,7 +33,7 @@ pub(crate) fn handle_input(app: &mut App) -> io::Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn handle_idle_input(app: &mut App, key: KeyEvent) {
     match (key.code, key.modifiers) {
         // Quit: double Ctrl+C to confirm
@@ -80,7 +80,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                             // the < check will fail and we go to the else branch
                             if idx.saturating_add(1) < agent_names.len() {
                                 // Safety: idx + 1 < agent_names.len() checked above
-                                #[allow(clippy::arithmetic_side_effects)]
+                                #[expect(clippy::arithmetic_side_effects)]
                                 let next_idx = idx + 1;
                                 app.nexus_agent_filter = Some(agent_names[next_idx].clone());
                             } else {
@@ -166,7 +166,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Backspace, _) => {
             if app.cursor_pos > 0 {
                 // Safety: cursor_pos > 0, so subtraction won't underflow
-                #[allow(clippy::arithmetic_side_effects)]
+                #[expect(clippy::arithmetic_side_effects)]
                 {
                     app.cursor_pos -= 1;
                 }
@@ -336,7 +336,7 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
         KeyCode::Tab | KeyCode::Down => {
             if !app.pending_approvals.is_empty() {
                 // Safety: modulo by len() which is > 0 (checked above), cannot divide by zero
-                #[allow(clippy::arithmetic_side_effects)]
+                #[expect(clippy::arithmetic_side_effects)]
                 {
                     app.selected_approval =
                         app.selected_approval.saturating_add(1) % app.pending_approvals.len();

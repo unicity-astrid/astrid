@@ -29,7 +29,7 @@ impl AgentHandler {
     /// # Errors
     ///
     /// Returns an error if the handler configuration is invalid.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub async fn execute(
         &self,
         handler: &HookHandler,

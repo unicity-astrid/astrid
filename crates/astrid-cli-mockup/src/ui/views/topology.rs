@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
@@ -110,7 +110,7 @@ pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &
             } else {
                 for (i, child) in children.iter().enumerate() {
                     // Safety: children is non-empty (we're iterating), so len() - 1 is valid
-                    #[allow(clippy::arithmetic_side_effects)]
+                    #[expect(clippy::arithmetic_side_effects)]
                     let is_last = i == children.len() - 1;
                     lines.push(render_tree_node(child, is_last, theme));
 
@@ -123,7 +123,7 @@ pub(crate) fn render_topology(frame: &mut Frame, area: Rect, app: &App, theme: &
 
                     for (j, grandchild) in grandchildren.iter().enumerate() {
                         // Safety: grandchildren is non-empty (we're iterating), so len() - 1 is valid
-                        #[allow(clippy::arithmetic_side_effects)]
+                        #[expect(clippy::arithmetic_side_effects)]
                         let is_last_gc = j == grandchildren.len() - 1;
                         lines.push(render_tree_node(grandchild, is_last_gc, theme));
                     }

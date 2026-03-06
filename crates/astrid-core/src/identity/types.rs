@@ -296,7 +296,7 @@ impl fmt::Display for FrontendType {
 }
 
 // Serde's serialize_with requires &Option<T> signature, not Option<&T>
-#[allow(clippy::ref_option)]
+#[expect(clippy::ref_option)]
 fn serialize_optional_key<S>(key: &Option<[u8; 32]>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

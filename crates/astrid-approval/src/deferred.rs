@@ -232,7 +232,7 @@ impl DeferredResolution {
     #[must_use]
     pub fn is_older_than(&self, max_age: Duration) -> bool {
         // Safety: chrono Duration subtraction from DateTime cannot overflow for reasonable durations
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let cutoff = Timestamp::from_datetime(chrono::Utc::now() - max_age);
         self.queued_at < cutoff
     }

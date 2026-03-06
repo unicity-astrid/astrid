@@ -127,7 +127,7 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
     ]
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
     info!("🔨 Building Rust WASM capsule from {}", dir.display());
 
@@ -330,13 +330,13 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 fn build_interactive_mcp_capsule(_dir: &Path, _output: Option<&str>) {
     // TODO: Implement the interactive dialoguer wizard for Legacy MCP
     warn!("Interactive MCP builder is currently a stub.");
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str>) -> Result<()> {
     let json_path = dir.join(json_filename);
     info!(

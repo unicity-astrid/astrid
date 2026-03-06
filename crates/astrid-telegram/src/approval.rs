@@ -16,7 +16,7 @@ use crate::format::html_escape;
 use crate::session::SessionMap;
 
 /// Pending approvals older than this are automatically reaped.
-const PENDING_TTL: Duration = Duration::from_secs(5 * 60);
+const PENDING_TTL: Duration = Duration::from_mins(5);
 
 /// A pending approval waiting for the user to press a button.
 struct PendingApproval {

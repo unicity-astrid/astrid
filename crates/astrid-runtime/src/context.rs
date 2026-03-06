@@ -70,7 +70,7 @@ impl ContextManager {
         }
 
         // Safety: checked `len() > keep_recent_count` above
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let evict_count = session.messages.len() - self.keep_recent_count;
         let messages_to_summarize: Vec<_> = session.messages.drain(..evict_count).collect();
 
@@ -119,7 +119,7 @@ impl ContextManager {
 
     /// Get context statistics.
     #[must_use]
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_precision_loss)]
     pub fn stats(&self, session: &AgentSession) -> ContextStats {
         let utilization = session.token_count as f32 / self.max_context_tokens as f32;
 

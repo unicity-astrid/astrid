@@ -169,7 +169,7 @@ fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfs
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_exists_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -232,7 +232,7 @@ pub(crate) fn astrid_fs_exists_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_mkdir_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -282,7 +282,7 @@ pub(crate) fn astrid_fs_mkdir_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_readdir_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -340,7 +340,7 @@ pub(crate) fn astrid_fs_readdir_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_stat_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -400,7 +400,7 @@ pub(crate) fn astrid_fs_stat_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_fs_unlink_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -451,7 +451,7 @@ pub(crate) fn astrid_fs_unlink_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_read_file_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -524,7 +524,7 @@ pub(crate) fn astrid_read_file_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_write_file_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],

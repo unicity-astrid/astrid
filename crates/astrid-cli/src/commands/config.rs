@@ -22,7 +22,7 @@ pub(crate) fn show_config(format: &str, section: Option<&str>) -> Result<()> {
 }
 
 /// Validate the current configuration.
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn validate_config() -> Result<()> {
     let workspace_root = std::env::current_dir().ok();
 
@@ -45,7 +45,7 @@ pub(crate) fn validate_config() -> Result<()> {
 }
 
 /// Show all config file paths that are checked.
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn show_paths() -> Result<()> {
     let home = directories::BaseDirs::new().map(|d| d.home_dir().to_string_lossy().to_string());
 

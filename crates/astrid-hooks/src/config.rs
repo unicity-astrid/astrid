@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 /// Configuration for the hooks system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct HooksConfig {
     /// Whether hooks are enabled.
     #[serde(default = "default_enabled")]

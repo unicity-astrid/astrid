@@ -129,7 +129,7 @@ fn render_chain_filters(frame: &mut Frame, area: Rect, app: &App, theme: &Theme)
     frame.render_widget(para, area);
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn render_chain_entries(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if app.audit_entries.is_empty() {
         let para = Paragraph::new(vec![
@@ -175,7 +175,7 @@ fn render_chain_entries(frame: &mut Frame, area: Rect, app: &App, theme: &Theme)
 
     // Apply scroll
     // Safety: division by nonzero literal 3
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let visible_count = (area.height as usize) / 3; // ~3 lines per entry
     let start = filtered
         .len()

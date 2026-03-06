@@ -142,7 +142,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// Accepts an optional `HookManager` since `with_hooks()` can't be chained after
     /// Arc wrapping. Accepts an optional `PluginRegistry` for capsule tool integration.
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn new_arc(
         llm: P,
         mcp: McpClient,
@@ -386,7 +386,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     }
 
     /// Build a hook context with session info.
-    #[allow(clippy::unused_self)]
+    #[expect(clippy::unused_self)]
     pub(super) fn build_hook_context(
         &self,
         session: &AgentSession,
@@ -427,7 +427,7 @@ const INPUT_RATE_PER_1K: f64 = 0.003; // $3 per million input tokens
 const OUTPUT_RATE_PER_1K: f64 = 0.015; // $15 per million output tokens
 
 /// Convert token counts to estimated USD cost.
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss)]
 pub(super) fn tokens_to_usd(input_tokens: usize, output_tokens: usize) -> f64 {
     let input_cost = (input_tokens as f64 / 1000.0) * INPUT_RATE_PER_1K;
     let output_cost = (output_tokens as f64 / 1000.0) * OUTPUT_RATE_PER_1K;

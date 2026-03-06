@@ -23,7 +23,7 @@ pub struct RunShellArgs {
     pub command: String,
 }
 
-#[allow(missing_docs)]
+#[expect(missing_docs)]
 #[capsule]
 impl ShellTools {
     /// Executes a given shell command via the host sandbox escape hatch.

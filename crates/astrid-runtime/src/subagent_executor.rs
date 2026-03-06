@@ -48,7 +48,7 @@ pub struct SubAgentExecutor<P: LlmProvider, F: Frontend + 'static> {
 
 impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
     /// Create a new sub-agent executor.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         runtime: Arc<AgentRuntime<P>>,
         pool: Arc<SubAgentPool>,
@@ -82,7 +82,7 @@ impl<P: LlmProvider, F: Frontend + 'static> SubAgentExecutor<P, F> {
 
 #[async_trait::async_trait]
 impl<P: LlmProvider + 'static, F: Frontend + 'static> SubAgentSpawner for SubAgentExecutor<P, F> {
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     async fn spawn(&self, request: SubAgentRequest) -> Result<SubAgentResult, String> {
         let start = std::time::Instant::now();
         let timeout = request.timeout.unwrap_or(self.default_timeout);
@@ -205,7 +205,7 @@ impl<P: LlmProvider + 'static, F: Frontend + 'static> SubAgentSpawner for SubAge
         // 7. Process result
         let tool_call_count = session.metadata.tool_call_count;
         // Sub-agent timeout is at most 5 minutes, so millis always fits in u64.
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         let duration_ms = start.elapsed().as_millis() as u64;
 
         let result = match loop_result {

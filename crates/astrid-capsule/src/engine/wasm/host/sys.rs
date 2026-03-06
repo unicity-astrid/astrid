@@ -4,7 +4,7 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_log_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -44,7 +44,7 @@ pub(crate) fn astrid_log_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_get_config_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -71,7 +71,7 @@ pub(crate) fn astrid_get_config_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_get_caller_impl(
     plugin: &mut CurrentPlugin,
     _inputs: &[Val],
@@ -101,7 +101,7 @@ pub(crate) fn astrid_get_caller_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_trigger_hook_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],

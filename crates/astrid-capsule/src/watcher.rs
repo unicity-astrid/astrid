@@ -226,7 +226,7 @@ impl CapsuleWatcher {
                     kind = ?event.kind,
                     "File change detected in capsule"
                 );
-                #[allow(clippy::arithmetic_side_effects)]
+                #[expect(clippy::arithmetic_side_effects)]
                 // Instant + Duration cannot overflow in practice
                 let deadline = tokio::time::Instant::now() + debounce;
                 pending.insert(capsule_dir, deadline);

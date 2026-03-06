@@ -3,7 +3,7 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_kv_get_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -35,7 +35,7 @@ pub(crate) fn astrid_kv_get_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_kv_set_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
