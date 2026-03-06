@@ -18,10 +18,9 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
-/// Maximum time an interceptor invocation may run before being detached.
-const INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(15);
+/// Default timeout for interceptor invocations.
+const DEFAULT_INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(15);
 
-use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
 
@@ -29,6 +28,7 @@ use astrid_events::{AstridEvent, EventBus};
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
+    interceptor_timeout: Duration,
 }
 
 impl EventDispatcher {
@@ -38,6 +38,22 @@ impl EventDispatcher {
         Self {
             registry,
             event_bus,
+            interceptor_timeout: DEFAULT_INTERCEPTOR_TIMEOUT,
+        }
+    }
+
+    /// Create a new event dispatcher with a custom interceptor timeout.
+    #[cfg(test)]
+    #[must_use]
+    fn with_timeout(
+        registry: Arc<RwLock<CapsuleRegistry>>,
+        event_bus: Arc<EventBus>,
+        interceptor_timeout: Duration,
+    ) -> Self {
+        Self {
+            registry,
+            event_bus,
+            interceptor_timeout,
         }
     }
 
@@ -62,7 +78,9 @@ impl EventDispatcher {
     /// Match an IPC event against all registered interceptors and invoke matches.
     async fn dispatch(&self, message: &astrid_events::ipc::IpcMessage) {
         let topic = &message.topic;
-        let matches: Vec<(CapsuleId, String)> = {
+
+        // Collect matches under a brief read lock, then release it.
+        let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
             let registry = self.registry.read().await;
             let mut matches = Vec::new();
             for capsule_id in registry.list() {
@@ -72,12 +90,13 @@ impl EventDispatcher {
                     }
                     for interceptor in &capsule.manifest().interceptors {
                         if topic_matches(topic, &interceptor.event) {
-                            matches.push((capsule_id.clone(), interceptor.action.clone()));
+                            matches.push((Arc::clone(&capsule), interceptor.action.clone()));
                         }
                     }
                 }
             }
             matches
+            // Read lock dropped here.
         };
 
         if matches.is_empty() {
@@ -93,7 +112,9 @@ impl EventDispatcher {
             },
         };
 
-        for (capsule_id, action) in matches {
+        let timeout = self.interceptor_timeout;
+        for (capsule, action) in matches {
+            let capsule_id = capsule.id().clone();
             debug!(
                 capsule_id = %capsule_id,
                 action = %action,
@@ -101,46 +122,31 @@ impl EventDispatcher {
                 "Dispatching interceptor"
             );
 
-            let cid = capsule_id.clone();
             let act = action.clone();
             let payload = Arc::clone(&payload_bytes);
 
-            // Use spawn (not spawn_blocking) so this runs on a Tokio worker
-            // thread. invoke_interceptor and the WASM host functions it triggers
-            // use block_in_place internally, which panics on spawn_blocking
-            // threads. The read lock is held for the duration of WASM execution
-            // but is bounded by INTERCEPTOR_TIMEOUT.
-            let handle = tokio::task::spawn({
-                let registry = Arc::clone(&self.registry);
-                async move {
-                    let registry = registry.read().await;
-                    registry
-                        .get(&cid)
-                        .map(|capsule| capsule.invoke_interceptor(&act, &payload))
-                }
-            });
+            // Spawn on a worker thread so block_in_place (used by
+            // invoke_interceptor and WASM host functions) works correctly.
+            // The registry lock is NOT held during WASM execution — only an
+            // Arc<dyn Capsule> clone keeps the capsule alive.
+            let mut handle =
+                tokio::task::spawn(async move { capsule.invoke_interceptor(&act, &payload) });
 
-            match tokio::time::timeout(INTERCEPTOR_TIMEOUT, handle).await {
-                Ok(Ok(Some(Ok(_)))) => {
+            match tokio::time::timeout(timeout, &mut handle).await {
+                Ok(Ok(Ok(_))) => {
                     debug!(
                         capsule_id = %capsule_id,
                         action = %action,
                         "Interceptor completed"
                     );
                 },
-                Ok(Ok(Some(Err(e)))) => {
+                Ok(Ok(Err(e))) => {
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
                         topic,
                         error = %e,
                         "Interceptor invocation failed"
-                    );
-                },
-                Ok(Ok(None)) => {
-                    debug!(
-                        capsule_id = %capsule_id,
-                        "Capsule no longer registered, skipping interceptor"
                     );
                 },
                 Ok(Err(e)) => {
@@ -152,11 +158,12 @@ impl EventDispatcher {
                     );
                 },
                 Err(_) => {
+                    handle.abort();
                     warn!(
                         capsule_id = %capsule_id,
                         action = %action,
                         topic,
-                        "Interceptor timed out after {INTERCEPTOR_TIMEOUT:?}, detaching"
+                        "Interceptor timed out after {timeout:?}, aborting task"
                     );
                 },
             }
@@ -419,12 +426,10 @@ mod tests {
         fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
             self.invoked.store(true, Ordering::SeqCst);
             if self.block_forever {
-                // Simulate a hung interceptor. The dispatcher's timeout should
-                // detach this thread and continue processing. Uses a sleep
-                // longer than the test timeout (1s) so the dispatcher must
-                // detach rather than wait. Kept short (3s) to avoid blocking
-                // test runtime shutdown.
-                std::thread::sleep(Duration::from_secs(3));
+                // Simulate a hung interceptor. Sleeps for 5s which is longer
+                // than the test timeout (500ms), so the dispatcher must abort
+                // this task and continue processing.
+                std::thread::sleep(Duration::from_secs(5));
             }
             Ok(Vec::new())
         }
@@ -500,11 +505,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_timeout_does_not_block_dispatcher() {
-        // Create a capsule that blocks for 60s on invoke.
+    async fn dispatch_timeout_aborts_and_continues() {
+        // Blocking capsule sleeps for 5s, but we set the timeout to 500ms.
         let (blocking_capsule, blocking_invoked) =
             MockCapsule::new("blocking-capsule", "block.topic", true);
-        // Create a normal capsule on a different topic.
         let (normal_capsule, normal_invoked) =
             MockCapsule::new("normal-capsule", "normal.topic", false);
 
@@ -514,8 +518,11 @@ mod tests {
         let registry = Arc::new(RwLock::new(registry));
 
         let bus = Arc::new(EventBus::with_capacity(64));
-        // Use a 1-second timeout for fast tests.
-        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
+        let dispatcher = EventDispatcher::with_timeout(
+            Arc::clone(&registry),
+            Arc::clone(&bus),
+            Duration::from_millis(500),
+        );
         let handle = tokio::spawn(dispatcher.run());
 
         tokio::task::yield_now().await;
@@ -525,23 +532,23 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
         publish_ipc(&bus, "normal.topic");
 
-        // The timeout is 1s. The normal capsule should be invoked shortly
-        // after the blocking capsule's timeout fires. Wait up to 5s.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        // The 500ms timeout fires, the blocking task is aborted, and the
+        // dispatcher continues to process the normal event. Wait up to 2s.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while !normal_invoked.load(Ordering::SeqCst) {
             if tokio::time::Instant::now() > deadline {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
         assert!(
             blocking_invoked.load(Ordering::SeqCst),
-            "blocking interceptor should have been entered"
+            "blocking interceptor should have been entered before timeout"
         );
         assert!(
             normal_invoked.load(Ordering::SeqCst),
-            "normal interceptor should have been invoked despite blocking capsule"
+            "normal interceptor should have been invoked after timeout abort"
         );
 
         handle.abort();

@@ -21,6 +21,9 @@ pub enum CapsuleError {
     /// An error originated inside the WASM VM runtime.
     #[error("WASM error: {0}")]
     WasmError(String),
+    /// The engine does not support the requested operation.
+    #[error("Not supported: {0}")]
+    NotSupported(String),
 }
 
 /// A specialized Result type for capsule operations.

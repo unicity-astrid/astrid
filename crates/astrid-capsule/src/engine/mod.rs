@@ -52,7 +52,7 @@ pub trait ExecutionEngine: Send + Sync {
     /// The default implementation returns an error. Engines that support
     /// interceptors (e.g., `WasmEngine`) override this.
     fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
-        Err(crate::error::CapsuleError::ExecutionFailed(
+        Err(crate::error::CapsuleError::NotSupported(
             "interceptors not supported by this engine".into(),
         ))
     }

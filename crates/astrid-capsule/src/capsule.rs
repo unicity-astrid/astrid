@@ -119,7 +119,7 @@ pub trait Capsule: Send + Sync {
     /// handler name (e.g., `handle_user_prompt`), `payload` is the
     /// serialized IPC payload bytes.
     fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
-        Err(CapsuleError::ExecutionFailed(
+        Err(CapsuleError::NotSupported(
             "interceptors not supported".into(),
         ))
     }
@@ -218,11 +218,11 @@ impl Capsule for CompositeCapsule {
             match engine.invoke_interceptor(action, payload) {
                 Ok(result) => return Ok(result),
                 // Engine doesn't support interceptors — try the next one.
-                Err(CapsuleError::ExecutionFailed(_)) => continue,
+                Err(CapsuleError::NotSupported(_)) => continue,
                 Err(e) => return Err(e),
             }
         }
-        Err(CapsuleError::ExecutionFailed(
+        Err(CapsuleError::NotSupported(
             "no engine supports interceptors".into(),
         ))
     }

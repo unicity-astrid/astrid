@@ -39,7 +39,7 @@ pub struct CapsuleToolDefinition {
 /// Parallel to `ToolRegistry` in `astrid-tools`. Stores capsules keyed by
 /// their `CapsuleId` and provides cross-capsule tool lookup.
 pub struct CapsuleRegistry {
-    capsules: HashMap<CapsuleId, Box<dyn Capsule>>,
+    capsules: HashMap<CapsuleId, Arc<dyn Capsule>>,
     connectors: HashMap<ConnectorId, (CapsuleId, ConnectorDescriptor)>,
 }
 
@@ -60,6 +60,7 @@ impl CapsuleRegistry {
     /// Returns [`CapsuleError::AlreadyRegistered`] if a capsule with the same
     /// ID is already in the registry.
     pub fn register(&mut self, capsule: Box<dyn Capsule>) -> CapsuleResult<()> {
+        let capsule: Arc<dyn Capsule> = Arc::from(capsule);
         let id = capsule.id().clone();
         if self.capsules.contains_key(&id) {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
@@ -103,7 +104,7 @@ impl CapsuleRegistry {
     /// # Errors
     ///
     /// Returns [`CapsuleError::NotFound`] if no capsule with the given ID exists.
-    pub fn unregister(&mut self, id: &CapsuleId) -> CapsuleResult<Box<dyn Capsule>> {
+    pub fn unregister(&mut self, id: &CapsuleId) -> CapsuleResult<Arc<dyn Capsule>> {
         let capsule = self
             .capsules
             .remove(id)
@@ -125,23 +126,30 @@ impl CapsuleRegistry {
         for id in ids {
             if let Some(mut capsule) = self.capsules.remove(&id) {
                 self.unregister_capsule_connectors(&id);
-                if let Err(e) = capsule.unload().await {
-                    tracing::warn!(capsule_id = %id, error = %e, "Capsule unload error during unload_all");
+                match Arc::get_mut(&mut capsule) {
+                    Some(capsule) => {
+                        if let Err(e) = capsule.unload().await {
+                            tracing::warn!(capsule_id = %id, error = %e, "Capsule unload error during unload_all");
+                        }
+                    },
+                    None => {
+                        tracing::warn!(
+                            capsule_id = %id,
+                            "Cannot unload capsule: still referenced by in-flight interceptor tasks"
+                        );
+                    },
                 }
             }
         }
     }
 
-    /// Get a reference to a capsule by ID.
+    /// Get a shared reference to a capsule by ID.
+    ///
+    /// Returns a cloned `Arc` so callers can use the capsule after releasing
+    /// the registry lock.
     #[must_use]
-    pub fn get(&self, id: &CapsuleId) -> Option<&dyn Capsule> {
-        self.capsules.get(id).map(AsRef::as_ref)
-    }
-
-    /// Get a mutable reference to a capsule by ID.
-    #[must_use]
-    pub fn get_mut(&mut self, id: &CapsuleId) -> Option<&mut Box<dyn Capsule>> {
-        self.capsules.get_mut(id)
+    pub fn get(&self, id: &CapsuleId) -> Option<Arc<dyn Capsule>> {
+        self.capsules.get(id).cloned()
     }
 
     /// List all registered capsule IDs.
@@ -151,8 +159,8 @@ impl CapsuleRegistry {
     }
 
     /// Iterator over all registered capsules.
-    pub fn values(&self) -> impl Iterator<Item = &dyn Capsule> {
-        self.capsules.values().map(AsRef::as_ref)
+    pub fn values(&self) -> impl Iterator<Item = &(dyn Capsule + '_)> {
+        self.capsules.values().map(|c| c.as_ref())
     }
 
     /// Number of registered capsules.
@@ -264,7 +272,10 @@ impl CapsuleRegistry {
 
     /// Find a tool by its fully qualified name (`capsule:{capsule_id}:{tool_name}`).
     #[must_use]
-    pub fn find_tool(&self, qualified_name: &str) -> Option<(&dyn Capsule, Arc<dyn CapsuleTool>)> {
+    pub fn find_tool(
+        &self,
+        qualified_name: &str,
+    ) -> Option<(Arc<dyn Capsule>, Arc<dyn CapsuleTool>)> {
         let rest = qualified_name.strip_prefix("capsule:")?;
         let (capsule_id_str, tool_name) = rest.split_once(':')?;
 
@@ -283,7 +294,7 @@ impl CapsuleRegistry {
             tool_name,
             "Found capsule tool"
         );
-        Some((capsule.as_ref(), Arc::clone(tool)))
+        Some((Arc::clone(capsule), Arc::clone(tool)))
     }
 
     /// Check if a tool name refers to a capsule tool (`capsule:{valid_id}:{tool}`).
