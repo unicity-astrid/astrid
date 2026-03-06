@@ -11,14 +11,13 @@ use anyhow::{Context, Result};
 #[must_use]
 pub fn proxy_socket_path() -> std::path::PathBuf {
     use astrid_core::dirs::AstridHome;
-    let base = match AstridHome::resolve() {
-        Ok(home) => home.sessions_dir(),
+    match AstridHome::resolve() {
+        Ok(home) => home.socket_path(),
         Err(e) => {
             warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
-            std::path::PathBuf::from("/tmp/.astrid/sessions")
+            std::path::PathBuf::from("/tmp/.astrid/sessions/system.sock")
         },
-    };
-    base.join("system.sock")
+    }
 }
 
 /// A client connection to the Kernel's Unix Domain Socket.

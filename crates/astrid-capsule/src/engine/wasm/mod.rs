@@ -67,6 +67,16 @@ impl ExecutionEngine for WasmEngine {
         let manifest = self.manifest.clone();
 
         let mut wasm_config = std::collections::HashMap::new();
+
+        // Inject the kernel socket path so capsules can discover it via
+        // `sys::socket_path()` instead of hardcoding.
+        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+            wasm_config.insert(
+                "ASTRID_SOCKET_PATH".to_string(),
+                serde_json::Value::String(home.socket_path().to_string_lossy().into_owned()),
+            );
+        }
+
         let mut missing_keys = Vec::new();
         let mut prompts = std::collections::HashMap::new();
 

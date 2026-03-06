@@ -242,6 +242,13 @@ pub mod types;
 pub mod sys {
     use super::*;
 
+    /// Well-known config key for the kernel's Unix domain socket path.
+    ///
+    /// Injected automatically by the kernel into every capsule's config.
+    /// Capsules that need to accept CLI connections should use
+    /// [`socket_path()`] instead of hardcoding paths.
+    pub const CONFIG_SOCKET_PATH: &str = "ASTRID_SOCKET_PATH";
+
     pub fn log(level: impl AsRef<[u8]>, message: impl AsRef<[u8]>) -> Result<(), SysError> {
         unsafe { astrid_log(level.as_ref().to_vec(), message.as_ref().to_vec())? };
         Ok(())
@@ -255,6 +262,22 @@ pub mod sys {
     pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
         let bytes = get_config_bytes(key)?;
         String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
+    }
+
+    /// Returns the kernel's Unix domain socket path.
+    ///
+    /// Reads from the well-known `ASTRID_SOCKET_PATH` config key that the
+    /// kernel injects into every capsule at load time.
+    pub fn socket_path() -> Result<String, SysError> {
+        let raw = get_config_string(CONFIG_SOCKET_PATH)?;
+        // get_config_string returns JSON-encoded values (quoted strings).
+        // Strip the surrounding quotes if present.
+        let trimmed = raw.trim();
+        if trimmed.starts_with('"') && trimmed.ends_with('"') {
+            Ok(trimmed[1..trimmed.len() - 1].to_string())
+        } else {
+            Ok(raw)
+        }
     }
 
     /// Retrieves the caller context (User ID and Session ID) for the current execution.

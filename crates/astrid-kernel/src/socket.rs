@@ -6,14 +6,13 @@ use tracing::warn;
 #[must_use]
 pub fn kernel_socket_path() -> PathBuf {
     use astrid_core::dirs::AstridHome;
-    let base = match AstridHome::resolve() {
-        Ok(home) => home.sessions_dir(),
+    match AstridHome::resolve() {
+        Ok(home) => home.socket_path(),
         Err(e) => {
             warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
-            PathBuf::from("/tmp/.astrid/sessions")
+            PathBuf::from("/tmp/.astrid/sessions/system.sock")
         },
-    };
-    base.join("system.sock")
+    }
 }
 
 /// Binds a local Unix Domain Socket for the OS.

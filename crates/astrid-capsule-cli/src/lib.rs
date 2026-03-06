@@ -8,19 +8,17 @@ pub fn run() -> FnResult<()> {
     // 1. Subscribe to all IPC events
     let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // 2. Determine the physical socket path dynamically
-    // The path argument is ignored by the host — bind_unix is a no-op because
-    // the Kernel natively binds the socket and passes it into the HostState.
-    // The actual socket path is AstridHome::resolve()?.sessions_dir().join("system.sock").
-    // TODO: Inject the real path via wasm_config so this value is accurate.
-    let path = "system.sock";
+    // 2. Resolve the socket path from the kernel-injected config.
+    // bind_unix is a no-op on the host side (the kernel pre-binds the socket),
+    // but the path is used for logging and future diagnostics.
+    let path = sys::socket_path()
+        .map_err(|e| extism_pdk::Error::msg(format!("Failed to resolve socket path: {e}")))?;
 
-    // 3. Bind the Unix Domain Socket using the SDK Airlock (no-op on host side)
     let _ = sys::log(
         "info",
-        "CLI Proxy: accepting connections on kernel-bound socket",
+        format!("CLI Proxy: accepting connections on {path}"),
     );
-    let listener = bind_unix(path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+    let listener = bind_unix(&path).map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // 4. Enter the blocking accept loop.
     // NOTE: This is a single-client design — only one CLI connection is
