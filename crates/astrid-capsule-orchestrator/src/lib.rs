@@ -359,11 +359,23 @@ impl Orchestrator {
     /// Handle active model change from the registry capsule.
     ///
     /// Stores the new provider topic in KV so subsequent LLM requests
-    /// route to the correct provider.
+    /// route to the correct provider. Validates that the topic follows
+    /// the expected `llm.request.generate.*` pattern to prevent
+    /// untrusted capsules from redirecting LLM traffic.
     #[astrid::interceptor("handle_model_changed")]
     pub fn handle_model_changed(&self, payload: IpcPayload) -> Result<(), SysError> {
         if let IpcPayload::Custom { data } = payload {
             if let Some(topic) = data.get("request_topic").and_then(|t| t.as_str()) {
+                // Only accept topics that match the canonical LLM request pattern.
+                // This prevents a malicious capsule from redirecting traffic to
+                // an arbitrary IPC topic via a spoofed model-changed event.
+                if !topic.starts_with("llm.request.generate.") {
+                    let _ = sys::log(
+                        "warn",
+                        format!("Rejected model change with invalid topic: {topic}"),
+                    );
+                    return Ok(());
+                }
                 kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
             }
         }

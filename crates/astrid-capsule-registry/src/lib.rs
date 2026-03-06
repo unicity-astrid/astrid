@@ -76,21 +76,30 @@ fn discover_providers() -> Vec<ProviderEntry> {
         Err(_) => return Vec::new(),
     };
 
-    // Poll with a short spin — the kernel router responds nearly instantly
+    // Poll with a yield between iterations to avoid busy-spinning.
+    // The kernel router responds nearly instantly but we must not
+    // consume CPU while waiting.
     for _ in 0..100 {
         if let Ok(bytes) = ipc::poll_bytes(&sub) {
-            if bytes.is_empty() {
-                continue;
+            if !bytes.is_empty() {
+                // Verify the response came from the kernel (source_id = system session UUID)
+                // by checking the source_id field in the poll envelope messages.
+                let _ = ipc::unsubscribe(&sub);
+                return parse_metadata_response(&bytes);
             }
-            let _ = ipc::unsubscribe(&sub);
-            return parse_metadata_response(&bytes);
         }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let _ = ipc::unsubscribe(&sub);
     Vec::new()
 }
 
+/// The kernel's system session UUID. Only accept metadata responses from this source
+/// to prevent untrusted capsules from spoofing provider discovery.
+const KERNEL_SYSTEM_UUID: &str = "00000000-0000-0000-0000-000000000000";
+
 /// Parse the poll envelope and extract provider entries from the kernel response.
+/// Only accepts messages whose `source_id` matches the kernel's system UUID.
 fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
@@ -103,6 +112,16 @@ fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
     };
 
     for msg in messages {
+        // Verify the message came from the kernel router (system session)
+        let source = msg.get("source_id").and_then(|s| s.as_str()).unwrap_or("");
+        if source != KERNEL_SYSTEM_UUID {
+            let _ = sys::log(
+                "warn",
+                format!("Ignoring metadata response from untrusted source: {source}"),
+            );
+            continue;
+        }
+
         let payload = match msg.get("payload") {
             Some(p) => p,
             None => continue,
@@ -236,16 +255,22 @@ pub fn run() -> FnResult<()> {
 
     let sub = ipc::subscribe("registry.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
-    // Initial discovery — give other capsules time to load
-    // (the kernel loads uplinks first, then others, so we should be
-    // among the first to run, but providers load after us)
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    let providers = discover_providers();
+    // Initial discovery with retry — provider capsules may still be loading.
+    // The kernel loads uplinks (like us) first, then other capsules, so we
+    // retry a few times with backoff to catch late arrivals.
     let mut state = load_state();
-    state.providers = providers;
-    save_state(&state);
-    auto_select_if_single(&mut state);
+    for attempt in 0..5 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let providers = discover_providers();
+        if !providers.is_empty() {
+            state.providers = providers;
+            save_state(&state);
+            auto_select_if_single(&mut state);
+            break;
+        }
+    }
 
     // Event loop
     loop {
