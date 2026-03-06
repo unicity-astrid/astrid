@@ -190,17 +190,14 @@ pub(crate) fn topic_matches(topic: &str, pattern: &str) -> bool {
         return false;
     }
 
-    let topic_parts: Vec<&str> = topic.split('.').collect();
-    let pattern_parts: Vec<&str> = pattern.split('.').collect();
-
-    if topic_parts.len() != pattern_parts.len() {
+    if topic.split('.').count() != pattern.split('.').count() {
         return false;
     }
 
-    topic_parts
-        .iter()
-        .zip(pattern_parts.iter())
-        .all(|(t, p)| *p == "*" || t == p)
+    topic
+        .split('.')
+        .zip(pattern.split('.'))
+        .all(|(t, p)| p == "*" || t == p)
 }
 
 #[cfg(test)]

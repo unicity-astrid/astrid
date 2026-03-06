@@ -135,28 +135,24 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
             message: e.to_string(),
         })?;
 
-    // Validate ipc_publish patterns contain no empty segments.
-    for pattern in &manifest.capabilities.ipc_publish {
+    // Validate ipc_publish and interceptor patterns for empty segments.
+    let ipc_patterns = manifest
+        .capabilities
+        .ipc_publish
+        .iter()
+        .map(|p| ("ipc_publish pattern", p.as_str()));
+    let interceptor_patterns = manifest
+        .interceptors
+        .iter()
+        .map(|i| ("interceptor event pattern", i.event.as_str()));
+
+    for (kind, pattern) in ipc_patterns.chain(interceptor_patterns) {
         if !crate::dispatcher::has_valid_segments(pattern) {
             return Err(CapsuleError::ManifestParseError {
                 path: path.to_path_buf(),
                 message: format!(
-                    "ipc_publish pattern '{pattern}' contains empty segments \
+                    "{kind} '{pattern}' contains empty segments \
                      (consecutive dots, leading/trailing dots, or is empty)"
-                ),
-            });
-        }
-    }
-
-    // Validate interceptor event patterns contain no empty segments.
-    for interceptor in &manifest.interceptors {
-        if !crate::dispatcher::has_valid_segments(&interceptor.event) {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!(
-                    "interceptor event pattern '{}' contains empty segments \
-                     (consecutive dots, leading/trailing dots, or is empty)",
-                    interceptor.event
                 ),
             });
         }
