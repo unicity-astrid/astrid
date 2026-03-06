@@ -240,7 +240,7 @@ fn set_field_from_string(root: &mut toml::Value, path: &str, val: &str) {
     // Navigate to the parent and insert.
     let mut current = root;
     // Safety: segments is non-empty (path contains at least one segment)
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let parent_segments = &segments[..segments.len() - 1];
     for segment in parent_segments {
         if !current.as_table().is_some_and(|t| t.contains_key(*segment)) {
@@ -260,7 +260,7 @@ fn set_field_from_string(root: &mut toml::Value, path: &str, val: &str) {
 
     if let Some(table) = current.as_table_mut() {
         // Safety: segments is non-empty (path contains at least one segment)
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let leaf = segments[segments.len() - 1];
         table.insert(leaf.to_owned(), toml_val);
     }

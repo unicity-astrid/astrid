@@ -12,7 +12,7 @@ pub(crate) use render::{FUN_VERBS, render_frame};
 pub(crate) use state::{App, Message, MessageRole};
 
 // Re-export types for potential external use
-#[allow(unused_imports)]
+#[expect(unused_imports)]
 pub(crate) use state::{ApprovalRequest, ToolStatus, UiState};
 pub(crate) use theme::Theme;
 

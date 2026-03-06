@@ -26,7 +26,7 @@ const DEFAULT_CLOCK_SKEW_SECS: i64 = 30;
 /// Write a length-prefixed byte slice to the output buffer.
 ///
 /// Format: 4-byte little-endian length followed by the data.
-#[allow(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_possible_truncation)]
 fn write_length_prefixed(data: &mut Vec<u8>, bytes: &[u8]) {
     // Length is limited to u32::MAX; larger slices would be truncated.
     // This is acceptable as capability token fields are small.
@@ -135,7 +135,7 @@ impl CapabilityToken {
     ///
     /// This is typically called by the runtime after user approval.
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn create_with_options(
         resource: ResourcePattern,
         permissions: Vec<Permission>,
@@ -150,7 +150,7 @@ impl CapabilityToken {
         let issued_at = Timestamp::now();
         let expires_at = ttl.map(|d| {
             // Safety: chrono Duration addition to DateTime cannot overflow for reasonable durations
-            #[allow(clippy::arithmetic_side_effects)]
+            #[expect(clippy::arithmetic_side_effects)]
             let expiry = Utc::now() + d;
             Timestamp::from_datetime(expiry)
         });
@@ -195,7 +195,7 @@ impl CapabilityToken {
     /// - Length-prefixed audit entry ID (UUID bytes)
     /// - 1 byte: `single_use` flag
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     pub fn signing_data(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(512);
 
@@ -270,7 +270,7 @@ impl CapabilityToken {
         self.expires_at.as_ref().is_some_and(|exp| {
             let now = Utc::now();
             // Safety: chrono Duration addition to DateTime cannot overflow for reasonable skew values
-            #[allow(clippy::arithmetic_side_effects)]
+            #[expect(clippy::arithmetic_side_effects)]
             let adjusted_expiry = exp.0 + Duration::seconds(skew_secs);
             now > adjusted_expiry
         })

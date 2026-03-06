@@ -26,7 +26,7 @@ pub(crate) struct DemoScenario {
 
 /// A step in a demo scenario
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum DemoStep {
     /// Pause before next step
     Pause(Duration),
@@ -177,7 +177,7 @@ pub(crate) enum DemoStep {
 
 /// Agent status for demo steps
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum AgentStatusDemo {
     Ready,
     Busy,
@@ -188,7 +188,7 @@ pub(crate) enum AgentStatusDemo {
 
 /// Audit outcome for demo steps
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum AuditOutcomeDemo {
     Success,
     Failure,
@@ -198,7 +198,7 @@ pub(crate) enum AuditOutcomeDemo {
 
 /// Health status for demo steps
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum HealthStatusDemo {
     Ok,
     Degraded,
@@ -207,7 +207,7 @@ pub(crate) enum HealthStatusDemo {
 
 /// Threat level for demo steps
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum ThreatLevelDemo {
     Low,
     Elevated,
@@ -223,7 +223,7 @@ pub(crate) enum ToolRisk {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum ApprovalChoice {
     AllowOnce,
     AllowAlways,
@@ -233,7 +233,7 @@ pub(crate) enum ApprovalChoice {
 
 /// Available views in the dashboard
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum View {
     Nexus,    // Unified stream / conversation
     Missions, // Task board
@@ -248,7 +248,7 @@ pub(crate) enum View {
 
 /// Nexus filter category for demo steps
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum NexusCategoryDemo {
     All,
     Conversation,
@@ -262,7 +262,7 @@ pub(crate) enum NexusCategoryDemo {
 
 /// Sidebar display state
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum SidebarState {
     Expanded,
     Collapsed,
@@ -271,7 +271,7 @@ pub(crate) enum SidebarState {
 
 /// Task status for Missions view
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum TaskStatus {
     Backlog,
     Active,
@@ -282,7 +282,7 @@ pub(crate) enum TaskStatus {
 
 /// File change status for Stellar view
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum FileStatus {
     Unchanged,
     Modified,
@@ -310,7 +310,7 @@ impl DemoScenario {
         }
     }
     /// List available scenarios
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn list() -> Vec<(&'static str, &'static str)> {
         vec![
             ("simple-qa", "Simple question and answer, no tools"),

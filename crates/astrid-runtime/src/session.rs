@@ -257,7 +257,7 @@ impl AgentSession {
     #[must_use]
     pub fn duration(&self) -> chrono::Duration {
         // Safety: current time is always >= created_at
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         {
             Utc::now() - self.created_at
         }
@@ -272,7 +272,7 @@ impl AgentSession {
 
     /// Check if session is near context limit.
     #[must_use]
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_precision_loss)]
     pub fn is_near_limit(&self, max_tokens: usize, threshold: f32) -> bool {
         self.token_count as f32 > max_tokens as f32 * threshold
     }

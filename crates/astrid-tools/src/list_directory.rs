@@ -97,7 +97,7 @@ impl BuiltinTool for ListDirectoryTool {
 }
 
 /// Format a byte count into a human-readable size string.
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss)]
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * KB;

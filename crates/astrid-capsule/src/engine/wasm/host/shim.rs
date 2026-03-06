@@ -5,7 +5,7 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 pub(crate) const TYPE_VOID: i32 = 0;
 pub(crate) const TYPE_I64: i32 = 2;
 
-#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn shim_get_function_arg_type(
     _plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -30,7 +30,7 @@ pub(crate) fn shim_get_function_arg_type(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn shim_get_function_return_type(
     _plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -48,7 +48,7 @@ pub(crate) fn shim_get_function_return_type(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn shim_invoke_host_func(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],

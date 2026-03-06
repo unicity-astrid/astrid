@@ -210,7 +210,7 @@ fn capsule_impl(
     // but with `#[doc]` attributes so that `#![warn(missing_docs)]` is satisfied
     // even when downstream crates compile with `-D warnings`.
     // `plugin_fn` strips all outer attributes and generates a bare `#[no_mangle]`
-    // wrapper, losing any `#[allow(missing_docs)]` we attach — so we bypass it.
+    // wrapper, losing any `#[expect(missing_docs)]` we attach — so we bypass it.
 
     let expanded = quote! {
         #input

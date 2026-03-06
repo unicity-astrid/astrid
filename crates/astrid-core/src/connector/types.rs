@@ -73,7 +73,7 @@ impl fmt::Display for ConnectorId {
 /// ([`full`](Self::full), [`notify_only`](Self::notify_only),
 /// [`receive_only`](Self::receive_only)) for common presets.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct ConnectorCapabilities {
     /// Can receive inbound messages from users.
     pub can_receive: bool,

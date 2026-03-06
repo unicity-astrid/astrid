@@ -7,15 +7,7 @@ pub fn truncate_to_boundary(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
     }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        // Safety: end > 0 is checked by the loop condition
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            end -= 1;
-        }
-    }
-    &s[..end]
+    &s[..s.floor_char_boundary(max_bytes)]
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use super::servers::sanitize_workspace_servers;
 /// `baseline` is the merged config *before* the workspace layer was applied.
 /// This ensures enforcement works even when no user config file exists —
 /// the defaults serve as the baseline.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub fn enforce_restrictions(
     merged: &mut toml::Value,
     baseline: &toml::Value,

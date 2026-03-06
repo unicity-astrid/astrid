@@ -30,7 +30,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// - An MCP tool call fails
     /// - An approval request fails
     /// - Session persistence fails
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub async fn run_turn_streaming<F: Frontend + 'static>(
         &self,
         session: &mut AgentSession,
@@ -99,7 +99,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
 
         // Collect agent context from plugins if not already collected this turn.
         // It is held in session.capsule_context and dynamically injected into the prompt.
-        #[allow(clippy::collapsible_if)]
+        #[expect(clippy::collapsible_if)]
         if session.capsule_context.is_none() {
             if let Some(ref registry_lock) = self.capsule_registry {
                 let mut combined_context = String::new();
@@ -269,7 +269,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// The inner agentic loop: stream LLM → collect tool calls → execute → repeat.
     ///
     /// Shared by `run_turn_streaming` and `run_subagent_turn`.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(super) async fn run_loop<F: Frontend>(
         &self,
         session: &mut AgentSession,

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// `plugin_code` should be the bundled CJS output from esbuild (or raw JS if `--skip-bundle`).
 /// `config` is the set of config key-value pairs to bake into the shim.
 #[must_use]
-#[allow(clippy::implicit_hasher)]
+#[expect(clippy::implicit_hasher)]
 pub fn generate(plugin_code: &str, config: &HashMap<String, serde_json::Value>) -> String {
     let config_keys = generate_config_keys(config);
     let header = generate_header(&config_keys);
@@ -30,7 +30,7 @@ pub fn generate(plugin_code: &str, config: &HashMap<String, serde_json::Value>) 
 /// Generate the shim header: host function wrappers, context mock, and IIFE open.
 ///
 /// No host functions are called at the top level — everything is deferred.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn generate_header(config_keys: &str) -> String {
     let node_polyfills = generate_node_polyfills();
     format!(
@@ -291,7 +291,7 @@ function require(moduleName) {
 /// `_ensureActivated()` is called at the top of each export function. It:
 /// 1. Loads config from host (first time only)
 /// 2. Calls plugin `activate()` (first time only)
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn generate_exports() -> String {
     r#"// ── Deferred activation (runs on first export call, NOT during Wizer init) ──
 var _activated = false;

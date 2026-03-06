@@ -71,7 +71,6 @@ fn restore_terminal(terminal: &mut Term, keyboard_enhanced: bool) -> io::Result<
 }
 
 /// Main TUI entry point — replaces the rustyline REPL for Pretty mode.
-#[allow(clippy::too_many_lines)]
 pub(crate) async fn run(
     client: &mut SocketClient,
     session_id: &SessionId,
@@ -108,7 +107,6 @@ pub(crate) async fn run(
 }
 
 /// Inner run loop — separated so terminal restore always happens.
-#[allow(clippy::too_many_lines)]
 async fn run_loop(
     terminal: &mut Term,
     app: &mut App,
@@ -188,7 +186,7 @@ async fn run_loop(
 }
 
 /// Map a `KernelEvent` to TUI state changes.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
         if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } = &message.payload {
@@ -339,7 +337,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 async fn handle_pending_actions(
     app: &mut App,
     client: &mut SocketClient,
@@ -463,7 +461,7 @@ async fn handle_pending_actions(
 }
 
 /// Handle slash commands, rendering output into the TUI nexus stream.
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 async fn handle_slash_command(
     cmd: &str,
     app: &mut App,

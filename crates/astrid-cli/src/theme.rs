@@ -37,7 +37,7 @@ impl Theme {
     }
 
     /// Format a prompt.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn prompt(text: &str) -> String {
         format!("{}", text.bold())
     }

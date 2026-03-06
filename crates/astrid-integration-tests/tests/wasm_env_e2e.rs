@@ -11,7 +11,7 @@ use astrid_storage::{MemoryKvStore, ScopedKvStore};
 use serde_json::json;
 
 #[tokio::test(flavor = "multi_thread")]
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 async fn test_wasm_capsule_e2e_env_config_injection() {
     let tools = vec![ToolDef {
         name: "test-config".into(),

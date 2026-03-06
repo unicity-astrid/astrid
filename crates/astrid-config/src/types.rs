@@ -226,7 +226,6 @@ impl Default for SecurityConfig {
 
 /// Fine-grained security policy controlling which tools, paths, and hosts are
 /// permitted, denied, or require explicit approval.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PolicySection {
@@ -557,7 +556,7 @@ impl Default for GitConfig {
 
 /// Hook execution policy. Controls which kinds of hooks are permitted and
 /// global limits on hook execution.
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HooksSection {

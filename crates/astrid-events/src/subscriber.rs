@@ -43,7 +43,7 @@ pub trait EventSubscriber: Send + Sync {
     }
 
     /// Optional name for debugging.
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
         "anonymous"
     }

@@ -194,7 +194,7 @@ impl AuditLog {
         // Verify chain linking
         for i in 1..sorted_entries.len() {
             // Safety: i starts at 1, so i-1 is always valid
-            #[allow(clippy::arithmetic_side_effects)]
+            #[expect(clippy::arithmetic_side_effects)]
             let prev = &sorted_entries[i - 1];
             let curr = &sorted_entries[i];
 

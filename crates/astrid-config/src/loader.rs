@@ -40,7 +40,6 @@ const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 ///
 /// Returns a [`ConfigError`] if any config file is malformed, or if the
 /// final merged configuration fails validation.
-#[allow(clippy::too_many_lines)]
 pub fn load(
     workspace_root: Option<&Path>,
     astrid_home_override: Option<&Path>,

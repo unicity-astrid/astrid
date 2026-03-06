@@ -4,7 +4,7 @@ use super::{
 };
 use std::time::Duration;
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(super) fn build() -> DemoScenario {
     DemoScenario {
         name: "multi-agent-ops".to_string(),

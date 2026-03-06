@@ -100,9 +100,8 @@ impl RetryConfig {
     /// Returns `Duration::ZERO` for attempt 0, then exponentially increasing
     /// delays for subsequent attempts, capped at `max_delay`.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::cast_precision_loss,
-        clippy::cast_possible_wrap,
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
     )]
@@ -128,7 +127,7 @@ impl RetryConfig {
     /// Jitter helps prevent thundering herd problems when many clients
     /// retry simultaneously.
     #[must_use]
-    #[allow(
+    #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
@@ -205,7 +204,7 @@ impl<T, E> RetryOutcome<T, E> {
     ///
     /// Returns `Ok(T)` if the operation succeeded, or `Err(E)` if exhausted.
     /// Returns `Err` with the provided fallback error if aborted.
-    #[allow(clippy::missing_errors_doc)]
+    #[expect(clippy::missing_errors_doc)]
     pub fn into_result(self, abort_error: E) -> Result<T, E> {
         match self {
             Self::Success(value) => Ok(value),
@@ -260,7 +259,7 @@ where
 
                 // attempt is bounded by max_attempts (u32) via the should_retry
                 // check above, so +1 cannot overflow.
-                #[allow(clippy::arithmetic_side_effects)]
+                #[expect(clippy::arithmetic_side_effects)]
                 {
                     attempt += 1;
                 }

@@ -73,7 +73,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     frame.render_widget(header, area);
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn render_queue(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 

@@ -129,7 +129,7 @@ impl WindowTracker {
     }
 
     /// Try to record a request. Returns true if allowed, false if rate limited.
-    #[allow(clippy::arithmetic_side_effects)] // chrono DateTime - Duration is safe for small windows
+    #[expect(clippy::arithmetic_side_effects)] // chrono DateTime - Duration is safe for small windows
     fn try_request(&mut self) -> bool {
         let now = Utc::now();
         let window_start = now - self.limit.window;
@@ -148,7 +148,7 @@ impl WindowTracker {
     }
 
     /// Get the number of requests in the current window.
-    #[allow(clippy::arithmetic_side_effects)] // chrono DateTime - Duration is safe for small windows
+    #[expect(clippy::arithmetic_side_effects)] // chrono DateTime - Duration is safe for small windows
     fn current_count(&self) -> usize {
         let now = Utc::now();
         let window_start = now - self.limit.window;
@@ -156,14 +156,14 @@ impl WindowTracker {
     }
 
     /// Get remaining requests in the current window.
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     fn remaining(&self) -> u32 {
         let count = self.current_count();
         self.limit.max_requests.saturating_sub(count as u32)
     }
 
     /// Get when the next request will be allowed (if rate limited).
-    #[allow(clippy::arithmetic_side_effects)] // chrono DateTime +/- Duration is safe for small windows
+    #[expect(clippy::arithmetic_side_effects)] // chrono DateTime +/- Duration is safe for small windows
     fn retry_after(&self) -> Option<Duration> {
         if self.remaining() > 0 {
             return None;
@@ -294,7 +294,7 @@ impl RateLimiter {
         }
         // count < global_pending_requests (u32) is guaranteed by the guard above,
         // so +1 cannot overflow.
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         {
             *count += 1;
         }

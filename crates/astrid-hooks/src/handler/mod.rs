@@ -61,7 +61,7 @@ pub enum HandlerError {
 pub type HandlerResult<T> = Result<T, HandlerError>;
 
 /// Trait for executing hook handlers.
-#[allow(async_fn_in_trait)]
+#[expect(async_fn_in_trait)]
 pub trait HandlerExecutor: Send + Sync {
     /// Execute the handler with the given context.
     async fn execute(

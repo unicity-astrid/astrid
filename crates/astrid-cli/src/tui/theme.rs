@@ -4,7 +4,7 @@ use ratatui::style::Color;
 
 /// Spinner animation style.
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum SpinnerStyle {
     #[default]
     Stellar,
@@ -25,7 +25,7 @@ impl SpinnerStyle {
     pub(crate) fn frame_at(self, elapsed_ms: u128) -> &'static str {
         let frames = self.frames();
         let interval = 120u128;
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         // constant divisor, modulo by non-empty frames array
         let idx = (elapsed_ms / interval % frames.len() as u128) as usize;
         frames[idx]

@@ -50,7 +50,7 @@ struct EnvDef {
 /// # Errors
 ///
 /// Returns `BridgeError::Output` if the WASM file cannot be read or the TOML cannot be written.
-#[allow(clippy::implicit_hasher)]
+#[expect(clippy::implicit_hasher)]
 pub fn generate_manifest(
     astrid_id: &str,
     oc_manifest: &OpenClawManifest,

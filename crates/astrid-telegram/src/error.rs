@@ -15,17 +15,17 @@ pub enum TelegramBotError {
 
     /// Session not found for the given chat.
     #[error("no session for chat {0}")]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     NoSession(i64),
 
     /// A turn is already in progress for this chat.
     #[error("turn already in progress for chat {0}")]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     TurnInProgress(i64),
 
     /// Telegram API error.
     #[error("telegram API error: {0}")]
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     Telegram(String),
 
     /// Configuration error.

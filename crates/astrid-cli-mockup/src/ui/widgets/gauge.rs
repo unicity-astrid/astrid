@@ -15,14 +15,14 @@ pub(crate) fn render_gauge_bar<'a>(
     theme: &Theme,
 ) -> Line<'a> {
     let clamped = value.clamp(0.0, 1.0);
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::cast_precision_loss
     )]
     let filled = (clamped * width as f32) as usize;
     let empty = width.saturating_sub(filled);
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let pct = (clamped * 100.0) as u8;
 
     let bar_color = gauge_color(clamped, theme);
@@ -42,14 +42,14 @@ pub(crate) fn render_budget_bar<'a>(
     width: usize,
     theme: &Theme,
 ) -> Line<'a> {
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     let ratio = if limit > 0.0 {
         (spent / limit).clamp(0.0, 1.0) as f32
     } else {
         0.0
     };
 
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::cast_precision_loss
@@ -57,7 +57,7 @@ pub(crate) fn render_budget_bar<'a>(
     let filled = (ratio * width as f32) as usize;
     let empty = width.saturating_sub(filled);
     let bar_color = gauge_color(ratio, theme);
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let pct = (ratio * 100.0) as u8;
 
     Line::from(vec![

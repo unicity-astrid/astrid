@@ -185,7 +185,7 @@ impl MockLlmProvider {
 }
 
 #[async_trait]
-#[allow(clippy::unnecessary_literal_bound)]
+#[expect(clippy::unnecessary_literal_bound)]
 impl LlmProvider for MockLlmProvider {
     fn name(&self) -> &str {
         "mock"

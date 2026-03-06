@@ -39,7 +39,7 @@ pub(super) fn convert_rmcp_schema(
                         .get("description")
                         .and_then(|d| d.as_str())
                         .map(String::from);
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[expect(clippy::cast_possible_truncation)]
                     let max_length = json
                         .get("maxLength")
                         .and_then(serde_json::Value::as_u64)

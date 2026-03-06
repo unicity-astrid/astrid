@@ -159,7 +159,7 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn handle_idle_input(app: &mut App, key: KeyEvent) {
     let palette_is_active = app.palette_active();
 
@@ -263,7 +263,7 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::Down, _) if palette_is_active => {
             let count = app.palette_filtered().len();
             if count > 0 {
-                #[allow(clippy::arithmetic_side_effects)] // modulo by count > 0 is safe
+                #[expect(clippy::arithmetic_side_effects)] // modulo by count > 0 is safe
                 {
                     app.palette_selected = (app.palette_selected.saturating_add(1)) % count;
                 }
@@ -408,7 +408,7 @@ fn handle_approval_input(app: &mut App, key: KeyEvent) {
         // Navigate between approvals
         KeyCode::Tab | KeyCode::Down => {
             if !app.pending_approvals.is_empty() {
-                #[allow(clippy::arithmetic_side_effects)] // modulo by non-empty len is safe
+                #[expect(clippy::arithmetic_side_effects)] // modulo by non-empty len is safe
                 {
                     app.selected_approval =
                         app.selected_approval.saturating_add(1) % app.pending_approvals.len();

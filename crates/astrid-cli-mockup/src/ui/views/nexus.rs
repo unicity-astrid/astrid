@@ -18,7 +18,7 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
 };
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn render_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let multi_agent = app.agents.len() > 1;
 
@@ -89,7 +89,7 @@ pub(crate) fn render_messages(frame: &mut Frame, area: Rect, app: &App, theme: &
 
     let end_line = start_line.saturating_add(visible_height).min(total_lines);
     // Safety: end_line >= start_line by construction (min of sum with total_lines)
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let take_count = end_line - start_line;
     let visible_lines: Vec<Line> = lines
         .into_iter()
@@ -240,7 +240,7 @@ fn matches_nexus_filter(
 }
 
 /// Render a single `NexusEntry`
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 fn render_nexus_entry<'a>(
     lines: &mut Vec<Line<'a>>,
     entry: &'a NexusEntry,

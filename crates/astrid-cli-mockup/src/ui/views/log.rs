@@ -11,7 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 pub(crate) fn render_log(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
@@ -104,7 +104,7 @@ pub(crate) fn render_log(frame: &mut Frame, area: Rect, app: &App, theme: &Theme
     };
     let end_line = start_line.saturating_add(visible_height).min(total_lines);
     // Safety: end_line >= start_line by construction (min of sum with total_lines)
-    #[allow(clippy::arithmetic_side_effects)]
+    #[expect(clippy::arithmetic_side_effects)]
     let take_count = end_line - start_line;
     let visible_lines: Vec<Line> = lines
         .into_iter()

@@ -21,7 +21,7 @@ pub(crate) fn render_missions(frame: &mut Frame, area: Rect, app: &App, theme: &
     ];
 
     // Calculate column widths (equal distribution)
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     let col_count = columns.len() as u16;
     let constraints: Vec<Constraint> = (0..col_count)
         .map(|_| Constraint::Ratio(1, u32::from(col_count)))

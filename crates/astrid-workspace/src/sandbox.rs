@@ -20,7 +20,7 @@ impl SandboxCommand {
     /// # Errors
     ///
     /// Returns an error if generating the macOS Seatbelt profile fails.
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(clippy::needless_pass_by_value)]
     pub fn wrap(inner_cmd: Command, worktree_path: &Path) -> io::Result<Command> {
         let worktree_str = worktree_path.to_string_lossy().to_string();
 

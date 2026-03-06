@@ -202,7 +202,7 @@ impl IpcRateLimiter {
     /// # Errors
     ///
     /// Returns a `QuotaError` if rate-limited or if the payload is too large.
-    #[allow(clippy::collapsible_if)]
+    #[expect(clippy::collapsible_if)]
     pub fn check_quota(&self, source_id: Uuid, size_bytes: usize) -> Result<(), QuotaError> {
         // Hard limit on payload size to prevent OOM
         if size_bytes > 5 * 1024 * 1024 {

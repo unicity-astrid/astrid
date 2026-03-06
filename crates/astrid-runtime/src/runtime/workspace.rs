@@ -15,7 +15,7 @@ impl<P: LlmProvider + 'static> AgentRuntime<P> {
     /// Check workspace boundaries for a tool call's file path arguments.
     ///
     /// Returns `Ok(())` if all paths are allowed, or a tool error result if blocked/denied.
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     pub(super) async fn check_workspace_boundaries<F: Frontend>(
         &self,
         session: &mut AgentSession,

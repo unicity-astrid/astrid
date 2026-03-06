@@ -34,7 +34,7 @@ pub(crate) fn parse_connector_profile(profile: &[u8]) -> Result<ConnectorProfile
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_uplink_send_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -102,7 +102,7 @@ pub(crate) fn astrid_uplink_send_impl(
     Ok(())
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_uplink_register_impl(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],

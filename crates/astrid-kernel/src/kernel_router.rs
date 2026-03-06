@@ -31,7 +31,7 @@ pub fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandl
     })
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelRequest) {
     let response_topic = topic.replace("kernel.request.", "kernel.response.");
 

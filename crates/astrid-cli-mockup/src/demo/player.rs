@@ -63,7 +63,7 @@ impl DemoPlayer {
     }
 
     /// Advance the demo, returning true if demo is complete
-    #[allow(
+    #[expect(
         clippy::too_many_lines,
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -97,7 +97,7 @@ impl DemoPlayer {
                     let chars_to_show = if *typing_speed_ms == 0 {
                         text.len()
                     } else {
-                        #[allow(clippy::arithmetic_side_effects)] // divisor checked non-zero above
+                        #[expect(clippy::arithmetic_side_effects)] // divisor checked non-zero above
                         let c = (elapsed.as_millis() / u128::from(*typing_speed_ms)) as usize;
                         c
                     };
@@ -154,7 +154,7 @@ impl DemoPlayer {
                     if elapsed >= *duration {
                         // Record completed activity for status bar
                         // Safety: division and modulo cannot overflow
-                        #[allow(clippy::arithmetic_side_effects)]
+                        #[expect(clippy::arithmetic_side_effects)]
                         let verb_index =
                             (duration.as_millis() / 3000) as usize % crate::ui::FUN_VERBS.len();
                         let (_, past) = crate::ui::FUN_VERBS[verb_index];
@@ -174,7 +174,7 @@ impl DemoPlayer {
             } => {
                 // Calculate total tokens for this response
                 let words: Vec<&str> = text.split_whitespace().collect();
-                #[allow(clippy::arithmetic_side_effects)] // f32 mul for estimation
+                #[expect(clippy::arithmetic_side_effects)] // f32 mul for estimation
                 let total_tokens = (words.len() as f32 * 1.3) as usize;
                 let total_duration_ms = (*word_delay_ms as usize).saturating_mul(words.len());
 
@@ -277,7 +277,7 @@ impl DemoPlayer {
 
                         // Push inline tool result message
                         // Safety: we just pushed to completed_tools, so len() > 0
-                        #[allow(clippy::arithmetic_side_effects)]
+                        #[expect(clippy::arithmetic_side_effects)]
                         let tool_idx = app.completed_tools.len() - 1;
                         let msg = Message {
                             role: MessageRole::System,
@@ -337,7 +337,7 @@ impl DemoPlayer {
 
                         // Push inline tool result message
                         // Safety: we just pushed to completed_tools, so len() > 0
-                        #[allow(clippy::arithmetic_side_effects)]
+                        #[expect(clippy::arithmetic_side_effects)]
                         let tool_idx = app.completed_tools.len() - 1;
                         let msg = Message {
                             role: MessageRole::System,
@@ -1096,7 +1096,7 @@ impl DemoPlayer {
         self.waiting = false;
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn is_complete(&self) -> bool {
         self.current_step >= self.scenario.steps.len()
     }

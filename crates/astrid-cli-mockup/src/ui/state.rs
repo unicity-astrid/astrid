@@ -80,7 +80,7 @@ impl ViewMode {
         let all = Self::all_ordered();
         let idx = all.iter().position(|v| *v == self).unwrap_or(0);
         // Safety: all.len() > 0 (hardcoded list), modulo by nonzero
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let next_idx = (idx + 1) % all.len();
         all[next_idx]
     }
@@ -91,7 +91,7 @@ impl ViewMode {
         let idx = all.iter().position(|v| *v == self).unwrap_or(0);
         // Safety: all.len() > 0 (hardcoded list), so idx + all.len() - 1 won't underflow,
         // and modulo by nonzero
-        #[allow(clippy::arithmetic_side_effects)]
+        #[expect(clippy::arithmetic_side_effects)]
         let prev_idx = (idx + all.len() - 1) % all.len();
         all[prev_idx]
     }
@@ -174,7 +174,7 @@ pub(crate) enum FileEntryStatus {
 
 /// Activity event for the Stream view
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct ActivityEvent {
     pub timestamp: Instant,
     pub icon: String,
@@ -210,7 +210,7 @@ pub(crate) enum AgentStatus {
 
 /// Snapshot of an agent's current state for the UI
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct AgentSnapshot {
     pub name: String,
     pub status: AgentStatus,
@@ -228,7 +228,7 @@ pub(crate) struct AgentSnapshot {
 
 /// Sub-agent status mirroring `SubAgentStatus`
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum SubAgentStatus {
     Running,
     Completed,
@@ -239,7 +239,7 @@ pub(crate) enum SubAgentStatus {
 
 /// A node in the sub-agent hierarchy tree
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct SubAgentNode {
     pub id: String,
     pub parent_agent: String,
@@ -254,7 +254,7 @@ pub(crate) struct SubAgentNode {
 
 /// Snapshot of a capability token for Shield view
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct CapabilitySnapshot {
     pub id: String,
     pub resource: String,
@@ -267,7 +267,7 @@ pub(crate) struct CapabilitySnapshot {
 
 /// Approval snapshot for Shield view (different from the approval overlay)
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct ApprovalSnapshot {
     pub id: usize,
     pub agent_name: String,
@@ -279,7 +279,7 @@ pub(crate) struct ApprovalSnapshot {
 
 /// Record of a denied action
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct DenialRecord {
     pub agent_name: String,
     pub tool_name: String,
@@ -424,7 +424,7 @@ impl AuditFilter {
 
 /// Filter for the Stream/event view
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum EventFilter {
     #[default]
     All,
@@ -435,7 +435,7 @@ pub(crate) enum EventFilter {
     Error,
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 impl EventFilter {
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -464,7 +464,7 @@ impl EventFilter {
 
 /// A single entry in the Nexus unified timeline
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum NexusEntry {
     Message(Message),
     Event(EventRecord),
@@ -495,7 +495,7 @@ pub(crate) enum NexusEntry {
 }
 
 impl NexusEntry {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn timestamp(&self) -> Instant {
         match self {
             Self::Message(m) => m.timestamp,
@@ -587,7 +587,7 @@ impl NexusCategory {
 
 /// Sort column for the Command table view
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum CommandSort {
     #[default]
     Name,
@@ -650,7 +650,7 @@ impl SortDirection {
 
 /// Sort for Shield approval queue
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum ShieldSort {
     #[default]
     Risk,
@@ -660,14 +660,14 @@ pub(crate) enum ShieldSort {
 
 /// Per-agent conversation state (for Nexus agent switching)
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct ConversationState {
     pub messages: Vec<Message>,
     pub scroll_offset: usize,
 }
 
 /// Main application state
-#[allow(clippy::struct_excessive_bools, dead_code)]
+#[expect(clippy::struct_excessive_bools, dead_code)]
 pub(crate) struct App {
     /// Current UI state
     pub state: UiState,
@@ -716,7 +716,7 @@ pub(crate) struct App {
     /// Activity events for Stream view
     pub events: Vec<ActivityEvent>,
     /// Git branch name (for status bar)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub git_branch: String,
     /// Last completed activity (past-tense verb, duration) for greyed-out display
     pub last_completed: Option<(String, Duration)>,
@@ -737,7 +737,7 @@ pub(crate) struct App {
     /// Focused agent for detail view (Enter on grid)
     pub focused_agent: Option<usize>,
     /// Per-agent conversation histories for Nexus switching
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub conversations: HashMap<String, ConversationState>,
 
     /// Sub-agent tree for Topology view
@@ -825,7 +825,7 @@ pub(crate) struct EventRecord {
 
 /// UI state machine states
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum UiState {
     /// Waiting for user input
     Idle,
@@ -851,7 +851,7 @@ pub(crate) enum UiState {
 pub(crate) struct Message {
     pub role: MessageRole,
     pub content: String,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub timestamp: Instant,
     /// Optional kind for specialized rendering (e.g., diff lines)
     pub kind: Option<MessageKind>,
@@ -861,7 +861,7 @@ pub(crate) struct Message {
 
 /// Special message kinds for styled rendering
 #[derive(Debug, Clone, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[expect(clippy::enum_variant_names)]
 pub(crate) enum MessageKind {
     /// Diff header line
     DiffHeader,
@@ -915,7 +915,7 @@ pub(crate) struct ToolStatus {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum ToolStatusKind {
     Pending,
     Running,
@@ -1173,7 +1173,7 @@ impl App {
     }
 
     /// Complete thinking and move to next state (interactive mode)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn complete_thinking(&mut self) {
         // Generate mock response
         let response = mock::generate_response(&self.messages);
@@ -1198,7 +1198,7 @@ impl App {
     }
 
     /// Stream next chunk of response (interactive mode)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn stream_next_chunk(&mut self) {
         if self.stream_buffer.is_empty() {
             // Done streaming

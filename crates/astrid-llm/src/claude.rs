@@ -194,7 +194,7 @@ impl ClaudeProvider {
 
 #[async_trait]
 impl LlmProvider for ClaudeProvider {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str {
         "Anthropic Claude"
     }
@@ -203,7 +203,7 @@ impl LlmProvider for ClaudeProvider {
         &self.config.model
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines)]
     async fn stream(
         &self,
         messages: &[Message],
@@ -267,7 +267,7 @@ impl LlmProvider for ClaudeProvider {
                 while let Some(event_end) = buffer.find("\n\n") {
                     let event_data = buffer[..event_end].to_string();
                     // Safety: event_end from find() is within bounds, +2 for "\n\n" length
-                    #[allow(clippy::arithmetic_side_effects)]
+                    #[expect(clippy::arithmetic_side_effects)]
                     let rest_start = event_end + 2;
                     buffer = buffer[rest_start..].to_string();
 
@@ -425,7 +425,7 @@ enum ContentBlock {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)] // Fields required for deserialization
+#[expect(dead_code)] // Fields required for deserialization
 enum StreamingEvent {
     MessageStart {
         message: Value,

@@ -227,11 +227,7 @@ pub fn truncate_output(mut output: String) -> String {
     if output.len() <= MAX_OUTPUT_CHARS {
         return output;
     }
-    let mut end = MAX_OUTPUT_CHARS;
-    while end > 0 && !output.is_char_boundary(end) {
-        end = end.saturating_sub(1);
-    }
-    output.truncate(end);
+    output.truncate(output.floor_char_boundary(MAX_OUTPUT_CHARS));
     output.push_str("\n\n... (output truncated — exceeded 30000 character limit)");
     output
 }

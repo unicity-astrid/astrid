@@ -212,7 +212,7 @@ impl SubAgentHandle {
     }
 
     /// Get duration (if completed).
-    #[allow(clippy::arithmetic_side_effects)] // completed_at is always >= started_at
+    #[expect(clippy::arithmetic_side_effects)] // completed_at is always >= started_at
     pub async fn duration(&self) -> Option<chrono::Duration> {
         self.completed_at()
             .await

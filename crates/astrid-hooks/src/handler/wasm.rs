@@ -73,7 +73,7 @@ impl WasmHandler {
     /// # Errors
     ///
     /// Returns an error if the module fails to load or the function call fails.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub async fn execute(
         &self,
         handler: &HookHandler,
