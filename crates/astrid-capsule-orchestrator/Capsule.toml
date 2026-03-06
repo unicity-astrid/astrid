@@ -34,3 +34,12 @@ action = "handle_tool_result"
 [[interceptor]]
 event = "registry.active_model_changed"
 action = "handle_model_changed"
+
+[capabilities]
+ipc_publish = [
+    "identity.request.build",
+    "agent.stream.delta",
+    "agent.response",
+    "tool.request.execute",
+    "llm.request.generate.*",
+]

@@ -71,6 +71,7 @@ async fn setup_test_capsule(
             fs_write: fs_write_caps,
             host_process: vec![],
             uplink: false,
+            ipc_publish: vec![],
         },
         env: std::collections::HashMap::default(),
         context_files: vec![],

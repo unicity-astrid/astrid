@@ -39,6 +39,7 @@ async fn test_mcp_host_engine_capability_validation() {
             fs_write: vec![],
             host_process: vec!["npx".into()], // Only "npx" is allowed
             uplink: false,
+            ipc_publish: vec![],
         },
         env: std::collections::HashMap::default(),
         context_files: vec![],

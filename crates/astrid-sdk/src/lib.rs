@@ -271,13 +271,17 @@ pub mod sys {
     pub fn socket_path() -> Result<String, SysError> {
         let raw = get_config_string(CONFIG_SOCKET_PATH)?;
         // get_config_string returns JSON-encoded values (quoted strings).
-        // Strip the surrounding quotes if present.
-        let trimmed = raw.trim();
-        if trimmed.starts_with('"') && trimmed.ends_with('"') {
-            Ok(trimmed[1..trimmed.len() - 1].to_string())
-        } else {
-            Ok(raw)
-        }
+        // Use proper JSON parsing to handle escape sequences correctly.
+        serde_json::from_str::<String>(raw.trim()).or_else(|_| {
+            // Fallback: if the value isn't valid JSON, use it raw.
+            if raw.is_empty() {
+                Err(SysError::ApiError(
+                    "ASTRID_SOCKET_PATH config key is empty".to_string(),
+                ))
+            } else {
+                Ok(raw)
+            }
+        })
     }
 
     /// Retrieves the caller context (User ID and Session ID) for the current execution.

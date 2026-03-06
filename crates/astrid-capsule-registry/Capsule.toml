@@ -11,6 +11,11 @@ file = "astrid_capsule_registry.wasm"
 
 [capabilities]
 uplink = true
+ipc_publish = [
+    "registry.response.*",
+    "registry.active_model_changed",
+    "kernel.request.*",
+]
 
 [[command]]
 name = "models"

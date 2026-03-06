@@ -156,6 +156,15 @@ pub struct CapabilitiesDef {
     /// Unix/TCP socket bind addresses the capsule requires.
     #[serde(default)]
     pub net_bind: Vec<String>,
+    /// IPC topic patterns this capsule is allowed to publish to.
+    ///
+    /// Supports exact matches and `*` wildcards per segment
+    /// (e.g. `registry.*`, `llm.stream.anthropic`).
+    /// An empty list means the capsule may publish to any topic
+    /// (backwards-compatible default). Once populated, the host
+    /// rejects publishes to non-matching topics.
+    #[serde(default)]
+    pub ipc_publish: Vec<String>,
 }
 
 /// An environment variable required by the capsule.

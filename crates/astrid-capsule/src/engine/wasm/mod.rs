@@ -179,6 +179,7 @@ impl ExecutionEngine for WasmEngine {
                 subscriptions: std::collections::HashMap::new(),
                 next_subscription_id,
                 config: wasm_config,
+                ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
                 cli_socket_listener: ctx.cli_socket_listener.clone(),
                 active_streams: std::collections::HashMap::new(),
                 next_stream_id: 1,

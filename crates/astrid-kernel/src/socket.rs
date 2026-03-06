@@ -9,7 +9,7 @@ pub fn kernel_socket_path() -> PathBuf {
     match AstridHome::resolve() {
         Ok(home) => home.socket_path(),
         Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.sock");
             PathBuf::from("/tmp/.astrid/sessions/system.sock")
         },
     }
@@ -29,7 +29,12 @@ pub fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
     }
 
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent).map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to create socket parent directory {}: {e}",
+                parent.display()
+            ))
+        })?;
     }
 
     UnixListener::bind(&path)

@@ -40,13 +40,24 @@ pub(crate) fn astrid_ipc_publish_impl(
     let topic_bytes = util::get_safe_bytes(plugin, &inputs[0], 256)?;
     let topic = String::from_utf8(topic_bytes).unwrap_or_default();
 
-    // Topics are published unprefixed. Provenance is tracked via
-    // `IpcMessage::source_id` (the capsule's UUID). The kernel's event
-    // dispatcher handles routing based on Capsule.toml interceptor
-    // definitions, not topic namespacing.
-
     if topic.split('.').count() > 8 {
         return Err(Error::msg("Topic exceeds maximum allowed segments (8)"));
+    }
+
+    // Enforce IPC topic publishing restrictions from Capsule.toml.
+    // If ipc_publish is non-empty, the capsule may only publish to
+    // topics matching at least one declared pattern.
+    if !state.ipc_publish_patterns.is_empty()
+        && !state
+            .ipc_publish_patterns
+            .iter()
+            .any(|pattern| crate::dispatcher::topic_matches(&topic, pattern))
+    {
+        return Err(Error::msg(format!(
+            "Capsule '{}' is not allowed to publish to topic '{topic}' — \
+             declared ipc_publish patterns: {:?}",
+            state.capsule_id, state.ipc_publish_patterns
+        )));
     }
 
     let payload_bytes = util::get_safe_bytes(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;

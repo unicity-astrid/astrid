@@ -89,6 +89,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             fs_write: vec![],
             host_process: vec![],
             uplink: false,
+            ipc_publish: vec![],
         },
         env,
         context_files: vec![],

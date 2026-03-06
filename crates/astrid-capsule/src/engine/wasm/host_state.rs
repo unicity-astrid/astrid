@@ -43,6 +43,9 @@ pub struct HostState {
     pub next_subscription_id: u64,
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
+    /// IPC topic patterns this capsule is allowed to publish to.
+    /// Empty means unrestricted (backwards-compatible default).
+    pub ipc_publish_patterns: Vec<String>,
     /// Optional security gate for gated operations (HTTP, file I/O).
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Hook manager for executing user scripts synchronously via airlock.
@@ -152,6 +155,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -196,6 +200,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -244,6 +249,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -289,6 +295,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),
@@ -352,6 +359,7 @@ mod tests {
             subscriptions: HashMap::new(),
             next_subscription_id: 1,
             config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             runtime_handle: rt.handle().clone(),

@@ -100,9 +100,8 @@ fn discover_providers() -> Vec<ProviderEntry> {
     for _ in 0..100 {
         if let Ok(bytes) = ipc::poll_bytes(&sub)
             && !bytes.is_empty()
+            && is_from_kernel(&bytes)
         {
-            // Verify the response came from the kernel (source_id = system session UUID)
-            // by checking the source_id field in the poll envelope messages.
             let _ = ipc::unsubscribe(&sub);
             return parse_metadata_response(&bytes);
         }
@@ -290,6 +289,25 @@ fn handle_set_active_model(payload: &serde_json::Value) {
     }
 }
 
+/// Clear `active_model_id` if it no longer resolves to a known provider.
+///
+/// After a reload the provider list may change entirely (e.g. a different
+/// capsule version with different model IDs). A stale reference would cause
+/// `handle_get_active_model` to return `None` without the frontend knowing
+/// the selected model was removed.
+fn clear_stale_active_model(state: &mut RegistryState) {
+    if let Some(ref id) = state.active_model_id
+        && !state.providers.iter().any(|p| &p.id == id)
+    {
+        let _ = sys::log(
+            "info",
+            format!("Active model '{id}' no longer available after reload, clearing"),
+        );
+        state.active_model_id = None;
+        save_state(state);
+    }
+}
+
 /// Auto-select the sole provider if exactly one is available.
 fn auto_select_if_single(state: &mut RegistryState) {
     if state.providers.len() == 1 && state.active_model_id.is_none() {
@@ -340,8 +358,16 @@ pub fn run() -> FnResult<()> {
     // Now that all capsules are loaded, discover providers.
     let providers = discover_providers();
     let mut state = load_state();
-    state.providers = providers;
-    save_state(&state);
+    if !providers.is_empty() {
+        state.providers = providers;
+        save_state(&state);
+    } else if state.providers.is_empty() {
+        let _ = sys::log(
+            "warn",
+            "Initial provider discovery returned empty and no cached providers exist",
+        );
+    }
+    clear_stale_active_model(&mut state);
     auto_select_if_single(&mut state);
 
     // Event loop — also polls capsules_loaded_sub for reload re-discovery.
@@ -367,6 +393,7 @@ pub fn run() -> FnResult<()> {
             if !providers.is_empty() {
                 state.providers = providers;
                 save_state(&state);
+                clear_stale_active_model(&mut state);
                 auto_select_if_single(&mut state);
             }
         }

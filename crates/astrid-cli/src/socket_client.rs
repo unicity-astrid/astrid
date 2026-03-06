@@ -14,7 +14,7 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
     match AstridHome::resolve() {
         Ok(home) => home.socket_path(),
         Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions for unix socket");
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.sock");
             std::path::PathBuf::from("/tmp/.astrid/sessions/system.sock")
         },
     }
