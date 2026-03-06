@@ -153,6 +153,8 @@ pub(crate) enum PendingAction {
         capsule_id: String,
         answers: std::collections::HashMap<String, String>,
     },
+    /// Re-fetch the dynamic slash command palette from the kernel.
+    RefreshCommands,
 }
 
 /// What the user chose for approval.

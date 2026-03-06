@@ -270,6 +270,14 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             );
         }
 
+        // When the kernel finishes loading all capsules, re-fetch commands
+        // so dynamic slash commands (like /models) appear even if the CLI
+        // connected before non-uplink capsules were loaded.
+        if message.topic == "kernel.capsules_loaded" {
+            app.pending_actions
+                .push(state::PendingAction::RefreshCommands);
+        }
+
         // Registry responses
         if message.topic == "registry.response.get_providers" {
             if let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
@@ -369,6 +377,17 @@ async fn handle_pending_actions(
                             message: format!("Send failed: {e}"),
                         };
                     }
+                }
+            },
+            PendingAction::RefreshCommands => {
+                let req = astrid_events::kernel_api::KernelRequest::GetCommands;
+                if let Ok(val) = serde_json::to_value(req) {
+                    let msg = astrid_events::ipc::IpcMessage::new(
+                        "kernel.request.get_commands",
+                        astrid_events::ipc::IpcPayload::RawJson(val),
+                        session_id.0,
+                    );
+                    let _ = client.send_message(msg).await;
                 }
             },
             PendingAction::SubmitOnboarding {
