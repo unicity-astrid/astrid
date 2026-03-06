@@ -192,7 +192,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 core::result::Result::Ok(x) => x,
                 core::result::Result::Err(rc) => {
                     let err = format!("{:?}", rc.0);
-                    if let Some(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
                         unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
                     }
                     return rc.1;
@@ -218,7 +218,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 core::result::Result::Ok(x) => x,
                 core::result::Result::Err(rc) => {
                     let err = format!("{:?}", rc.0);
-                    if let Some(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
                         unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
                     }
                     return rc.1;
@@ -244,7 +244,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 core::result::Result::Ok(x) => x,
                 core::result::Result::Err(rc) => {
                     let err = format!("{:?}", rc.0);
-                    if let Some(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
                         unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
                     }
                     return rc.1;
@@ -270,7 +270,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 core::result::Result::Ok(x) => x,
                 core::result::Result::Err(rc) => {
                     let err = format!("{:?}", rc.0);
-                    if let Some(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
                         unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
                     }
                     return rc.1;
@@ -295,7 +295,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
                 core::result::Result::Ok(x) => x,
                 core::result::Result::Err(rc) => {
                     let err = format!("{:?}", rc.0);
-                    if let Some(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                    if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
                         unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
                     }
                     return rc.1;
