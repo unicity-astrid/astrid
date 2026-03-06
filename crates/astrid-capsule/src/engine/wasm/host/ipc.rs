@@ -131,6 +131,9 @@ pub(crate) fn astrid_ipc_subscribe_impl(
     // Reject them upfront with a clear error.
     {
         let mut segments = topic_pattern.split('.');
+        // Use `position` (not `any`) to advance the iterator past the wildcard,
+        // then check if there are trailing segments after it.
+        #[allow(clippy::search_is_some)]
         if segments.position(|s| s == "*").is_some() && segments.next().is_some() {
             return Err(Error::msg(
                 "Wildcard `*` is only supported as the last segment (e.g. `foo.bar.*`). \
