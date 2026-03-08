@@ -56,7 +56,7 @@ members = [
     # Optional Integrations
     # "crates/astrid-unicity",  # After research
     ]
-    exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell", "crates/astrid-capsule-fs", "crates/astrid-capsule-identity", "crates/astrid-capsule-anthropic", "crates/astrid-capsule-orchestrator", "crates/astrid-capsule-router", "crates/astrid-capsule-registry", "crates/astrid-capsule-prompt-builder"]
+    exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell", "crates/astrid-capsule-fs", "crates/astrid-capsule-identity", "crates/astrid-capsule-anthropic", "crates/astrid-capsule-orchestrator", "crates/astrid-capsule-router", "crates/astrid-capsule-registry", "crates/astrid-capsule-prompt-builder", "crates/astrid-capsule-context-engine"]
 
 [workspace.package]
 version = "0.1.1"

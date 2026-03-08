@@ -1,0 +1,15 @@
+[package]
+name = "astrid-capsule-context-engine"
+version = "0.1.0"
+edition = "2024"
+description = "Context Engine capsule — pluggable compaction with interceptor hook support"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+astrid-sdk = { path = "../astrid-sdk", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+extism-pdk = "1.4.1"

@@ -133,6 +133,16 @@ fn mapping_for_event(event_type: &str) -> Option<HookMapping> {
             merge: MergeSemantics::None,
         }),
 
+        // Context compaction (broadcast-only observation hooks)
+        "context_compaction_started" => Some(HookMapping {
+            hook_name: "on_compaction_started",
+            merge: MergeSemantics::None,
+        }),
+        "context_compaction_completed" => Some(HookMapping {
+            hook_name: "on_compaction_completed",
+            merge: MergeSemantics::None,
+        }),
+
         // Kernel lifecycle
         "kernel_started" => Some(HookMapping {
             hook_name: "kernel_start",
@@ -341,6 +351,22 @@ impl HookBridge {
     #[astrid::interceptor("on_subagent_cancelled")]
     pub fn on_subagent_cancelled(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let _ = handle_lifecycle("sub_agent_cancelled", payload)?;
+        Ok(())
+    }
+
+    // ── Context compaction ──
+
+    /// Handle `context_compaction_started` lifecycle event.
+    #[astrid::interceptor("on_compaction_started")]
+    pub fn on_compaction_started(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("context_compaction_started", payload)?;
+        Ok(())
+    }
+
+    /// Handle `context_compaction_completed` lifecycle event.
+    #[astrid::interceptor("on_compaction_completed")]
+    pub fn on_compaction_completed(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("context_compaction_completed", payload)?;
         Ok(())
     }
 

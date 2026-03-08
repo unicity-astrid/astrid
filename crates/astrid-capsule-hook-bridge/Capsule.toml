@@ -62,6 +62,15 @@ action = "on_subagent_failed"
 event = "sub_agent_cancelled"
 action = "on_subagent_cancelled"
 
+# ── Context compaction ──
+[[interceptor]]
+event = "context_compaction_started"
+action = "on_compaction_started"
+
+[[interceptor]]
+event = "context_compaction_completed"
+action = "on_compaction_completed"
+
 # ── Kernel lifecycle ──
 [[interceptor]]
 event = "kernel_started"
