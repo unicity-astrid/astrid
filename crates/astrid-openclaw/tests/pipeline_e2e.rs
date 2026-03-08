@@ -146,10 +146,18 @@ fn e2e_tier2_full_pipeline() {
     assert!(capsule_toml.contains(r#"name = "slack-notifier""#));
     assert!(capsule_toml.contains(r#"version = "1.0.0""#));
 
-    // MCP server config
+    // MCP server config — must pass --entry and --plugin-id flags
     assert!(capsule_toml.contains("[[mcp_server]]"));
     assert!(capsule_toml.contains(r#"command = "node""#));
     assert!(capsule_toml.contains("astrid_bridge.mjs"));
+    assert!(
+        capsule_toml.contains("--entry"),
+        "args must include --entry flag for the bridge script, got:\n{capsule_toml}"
+    );
+    assert!(
+        capsule_toml.contains("--plugin-id"),
+        "args must include --plugin-id flag for the bridge script, got:\n{capsule_toml}"
+    );
 
     // Capabilities
     assert!(capsule_toml.contains(r#"host_process = ["node"]"#));

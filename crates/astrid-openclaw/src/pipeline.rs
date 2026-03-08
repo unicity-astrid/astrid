@@ -218,7 +218,7 @@ fn generate_tier2_manifest(
     let _ = writeln!(toml, "command = \"node\"");
     let _ = writeln!(
         toml,
-        "args = [\"astrid_bridge.mjs\", \"src/{entry_point_rel}\"]"
+        "args = [\"astrid_bridge.mjs\", \"--entry\", \"src/{entry_point_rel}\", \"--plugin-id\", \"{astrid_id}\"]"
     );
     let _ = writeln!(toml);
 
