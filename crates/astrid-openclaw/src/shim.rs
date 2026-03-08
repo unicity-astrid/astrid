@@ -385,8 +385,11 @@ fn generate_node_polyfills() -> &'static str {
 var _virtualFs = {
   readFileSync: function(p, opts) {
     var content = hostReadFile(String(p));
-    // Always returns string — Buffer not fully supported in WASM
-    return content;
+    // If encoding is specified (string or opts.encoding), return string.
+    // Otherwise return a Buffer-like object matching Node.js behaviour.
+    var encoding = typeof opts === "string" ? opts : (opts && opts.encoding);
+    if (encoding) return content;
+    return _Buffer.from(content);
   },
   writeFileSync: function(p, data, opts) {
     hostWriteFile(String(p), String(data));
