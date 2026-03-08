@@ -155,44 +155,29 @@ pub(crate) fn transpile_and_install(
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
 
-    // 1. Parse OpenClaw Manifest
-    let oc_manifest = astrid_openclaw::manifest::parse_manifest(source_path)
-        .map_err(|e| anyhow::anyhow!("failed to parse OpenClaw manifest: {e}"))?;
+    let cache_dir = astrid_openclaw::pipeline::default_cache_dir();
 
-    let astrid_id = astrid_openclaw::manifest::convert_id(&oc_manifest.id)
-        .map_err(|e| anyhow::anyhow!("failed to convert plugin ID: {e}"))?;
-
-    // 2. Resolve Entry Point
-    let entry_point = astrid_openclaw::manifest::resolve_entry_point(source_path)
-        .map_err(|e| anyhow::anyhow!("failed to resolve entry point: {e}"))?;
-    let entry_path = source_path.join(&entry_point);
-
-    // 3. Transpile JS/TS
-    let source_code = std::fs::read_to_string(&entry_path)
-        .with_context(|| format!("failed to read entry point {}", entry_path.display()))?;
-
-    let transpiled = astrid_openclaw::transpiler::transpile(&source_code, &entry_point)
-        .map_err(|e| anyhow::anyhow!("transpilation failed: {e}"))?;
-
-    // 4. Generate Shim
-    let shimmed = astrid_openclaw::shim::generate(&transpiled, &HashMap::new());
-
-    // 5. Compile to WASM
-    let wasm_output = output_dir.join("plugin.wasm");
-    astrid_openclaw::compiler::compile(&shimmed, &wasm_output)
-        .map_err(|e| anyhow::anyhow!("WASM compilation failed: {e}"))?;
-
-    // 6. Generate Capsule.toml
-    astrid_openclaw::output::generate_manifest(
-        &astrid_id,
-        &oc_manifest,
-        &wasm_output,
-        &HashMap::new(),
+    let opts = astrid_openclaw::pipeline::CompileOptions {
+        plugin_dir: source_path,
         output_dir,
-    )
-    .map_err(|e| anyhow::anyhow!("failed to generate Capsule.toml: {e}"))?;
+        config: &HashMap::new(),
+        cache_dir: cache_dir.as_deref(),
+        js_only: false,
+        no_cache: false,
+    };
 
-    // 7. Proceed with standard installation from the temp directory
+    let result = astrid_openclaw::pipeline::compile_plugin(&opts)
+        .map_err(|e| anyhow::anyhow!("OpenClaw compilation failed: {e}"))?;
+
+    eprintln!(
+        "Compiled {} v{} (tier: {}, cached: {})",
+        result.manifest.display_name(),
+        result.manifest.display_version(),
+        result.tier,
+        result.cached,
+    );
+
+    // Proceed with standard installation from the temp directory
     install_from_local_path(output_dir, workspace, home)
 }
 

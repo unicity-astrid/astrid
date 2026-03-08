@@ -26,6 +26,7 @@ toml.workspace = true
 wasm-encoder.workspace = true
 wasmparser.workspace = true
 wizer.workspace = true
+directories.workspace = true
 
 [build-dependencies]
 blake3 = { workspace = true }
