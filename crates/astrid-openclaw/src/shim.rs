@@ -200,26 +200,48 @@ var _pluginModule = (function() {{
     )
 }
 
-/// Generate Node.js module polyfills (`node:fs`, `node:path`, `node:os`).
+/// Generate Node.js module polyfills for the WASM sandbox.
 ///
-/// These are virtual implementations backed by host functions. The shim
-/// includes a `require()` polyfill that dispatches to these objects.
+/// Polyfilled modules: `fs`, `path`, `os`, `buffer`, `crypto`, `url`,
+/// `events`, `util`, `stream`, `http`, `https`, `querystring`.
+/// Also provides `process`, `console`, and `setTimeout`/`setInterval` globals.
+///
+/// This is a single large string literal with no control flow — the line
+/// count reflects JS template size, not Rust complexity.
+#[expect(clippy::too_many_lines)]
 fn generate_node_polyfills() -> &'static str {
-    r#"// ── Node.js module polyfills (node:fs, node:path, node:os) ──────────
+    r#"// ── Node.js module polyfills ─────────────────────────────────────────
+
+// ── node:fs ─────────────────────────────────────────────────────────
 var _virtualFs = {
   readFileSync: function(p, opts) {
     var content = hostReadFile(String(p));
-    if (opts === "utf8" || (opts && opts.encoding === "utf8")) return content;
+    // Always returns string — Buffer not fully supported in WASM
     return content;
   },
-  writeFileSync: function(p, data) {
+  writeFileSync: function(p, data, opts) {
     hostWriteFile(String(p), String(data));
+  },
+  appendFileSync: function(p, data) {
+    var existing = "";
+    try { existing = hostReadFile(String(p)); } catch(e) {}
+    hostWriteFile(String(p), existing + String(data));
   },
   existsSync: function(p) {
     return hostFsExists(String(p));
   },
   mkdirSync: function(p, opts) {
-    hostFsMkdir(String(p));
+    // recursive option: create parent dirs by walking up
+    if (opts && opts.recursive) {
+      var parts = String(p).split("/").filter(function(s) { return s !== ""; });
+      var cur = p[0] === "/" ? "" : ".";
+      for (var i = 0; i < parts.length; i++) {
+        cur += "/" + parts[i];
+        if (!hostFsExists(cur)) hostFsMkdir(cur);
+      }
+    } else {
+      hostFsMkdir(String(p));
+    }
   },
   readdirSync: function(p) {
     return hostFsReaddir(String(p));
@@ -230,16 +252,37 @@ var _virtualFs = {
       size: s.size,
       isDirectory: function() { return s.isDir; },
       isFile: function() { return !s.isDir; },
-      mtimeMs: s.mtime * 1000
+      isSymbolicLink: function() { return false; },
+      mtimeMs: s.mtime * 1000,
+      mtime: new Date(s.mtime * 1000)
     };
   },
+  lstatSync: function(p) { return _virtualFs.statSync(p); },
   unlinkSync: function(p) {
     hostFsUnlink(String(p));
-  }
+  },
+  copyFileSync: function(src, dest) {
+    var content = hostReadFile(String(src));
+    hostWriteFile(String(dest), content);
+  },
+  renameSync: function(oldPath, newPath) {
+    var content = hostReadFile(String(oldPath));
+    hostWriteFile(String(newPath), content);
+    hostFsUnlink(String(oldPath));
+  },
+  accessSync: function(p) {
+    if (!hostFsExists(String(p))) throw new Error("ENOENT: no such file: " + p);
+  },
+  constants: { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 },
+  // Stubs for stream-based APIs — not usable in sync WASM
+  createReadStream: function() { throw new Error("createReadStream not supported in WASM sandbox"); },
+  createWriteStream: function() { throw new Error("createWriteStream not supported in WASM sandbox"); }
 };
 
+// ── node:path ───────────────────────────────────────────────────────
 var _virtualPath = {
   sep: "/",
+  delimiter: ":",
   join: function() {
     var parts = [];
     for (var i = 0; i < arguments.length; i++) parts.push(arguments[i]);
@@ -279,23 +322,423 @@ var _virtualPath = {
   },
   isAbsolute: function(p) {
     return p.length > 0 && p[0] === "/";
+  },
+  relative: function(from, to) {
+    var f = _virtualPath.resolve(from).split("/");
+    var t = _virtualPath.resolve(to).split("/");
+    var common = 0;
+    while (common < f.length && common < t.length && f[common] === t[common]) common++;
+    var ups = [];
+    for (var i = common; i < f.length; i++) ups.push("..");
+    return ups.concat(t.slice(common)).join("/") || ".";
+  },
+  parse: function(p) {
+    return {
+      root: p[0] === "/" ? "/" : "",
+      dir: _virtualPath.dirname(p),
+      base: _virtualPath.basename(p),
+      ext: _virtualPath.extname(p),
+      name: _virtualPath.basename(p, _virtualPath.extname(p))
+    };
+  },
+  format: function(obj) {
+    var dir = obj.dir || obj.root || "";
+    var base = obj.base || (obj.name || "") + (obj.ext || "");
+    return dir ? dir + "/" + base : base;
   }
 };
+_virtualPath.posix = _virtualPath;
 
+// ── node:os ─────────────────────────────────────────────────────────
 var _virtualOs = {
   homedir: function() { return "/data"; },
   platform: function() { return "wasm"; },
   tmpdir: function() { return "/tmp"; },
-  EOL: "\n"
+  hostname: function() { return "astrid-sandbox"; },
+  type: function() { return "WASM"; },
+  arch: function() { return "wasm32"; },
+  release: function() { return "0.0.0"; },
+  cpus: function() { return [{ model: "virtual", speed: 0 }]; },
+  totalmem: function() { return 268435456; },
+  freemem: function() { return 134217728; },
+  EOL: "\n",
+  endianness: function() { return "LE"; },
+  networkInterfaces: function() { return {}; },
+  userInfo: function() { return { username: "astrid", homedir: "/data", shell: "/bin/sh", uid: 1000, gid: 1000 }; }
 };
 
+// ── node:buffer ─────────────────────────────────────────────────────
+var _Buffer = {
+  from: function(input, encoding) {
+    if (typeof input === "string") {
+      // Return a minimal buffer-like object
+      var bytes = [];
+      for (var i = 0; i < input.length; i++) bytes.push(input.charCodeAt(i) & 0xff);
+      var buf = bytes;
+      buf.toString = function(enc) { return input; };
+      buf.length = bytes.length;
+      buf.slice = function(s, e) { return _Buffer.from(input.slice(s, e)); };
+      return buf;
+    }
+    if (Array.isArray(input)) {
+      var b = input.slice();
+      b.toString = function(enc) {
+        var s = "";
+        for (var j = 0; j < b.length; j++) s += String.fromCharCode(b[j]);
+        return s;
+      };
+      b.length = input.length;
+      return b;
+    }
+    return [];
+  },
+  alloc: function(size, fill) {
+    var arr = new Array(size);
+    for (var i = 0; i < size; i++) arr[i] = fill || 0;
+    arr.toString = function() { return ""; };
+    arr.length = size;
+    return arr;
+  },
+  isBuffer: function(obj) {
+    return Array.isArray(obj) && typeof obj.toString === "function";
+  },
+  concat: function(list) {
+    var result = [];
+    for (var i = 0; i < list.length; i++) {
+      for (var j = 0; j < list[i].length; j++) result.push(list[i][j]);
+    }
+    result.toString = function(enc) {
+      var s = "";
+      for (var k = 0; k < result.length; k++) s += String.fromCharCode(result[k]);
+      return s;
+    };
+    return result;
+  },
+  byteLength: function(str) { return str.length; }
+};
+var _virtualBuffer = { Buffer: _Buffer };
+
+// ── node:crypto ─────────────────────────────────────────────────────
+var _virtualCrypto = {
+  randomUUID: function() {
+    // RFC 4122 v4 UUID via Math.random (not cryptographically secure, but functional)
+    var hex = "0123456789abcdef";
+    var uuid = "";
+    for (var i = 0; i < 36; i++) {
+      if (i === 8 || i === 13 || i === 18 || i === 23) uuid += "-";
+      else if (i === 14) uuid += "4";
+      else if (i === 19) uuid += hex[(Math.random() * 4 | 0) + 8];
+      else uuid += hex[Math.random() * 16 | 0];
+    }
+    return uuid;
+  },
+  randomBytes: function(size) {
+    var bytes = [];
+    for (var i = 0; i < size; i++) bytes.push(Math.floor(Math.random() * 256));
+    bytes.toString = function(enc) {
+      if (enc === "hex") {
+        var h = "";
+        for (var j = 0; j < bytes.length; j++) h += ("0" + bytes[j].toString(16)).slice(-2);
+        return h;
+      }
+      return String.fromCharCode.apply(null, bytes);
+    };
+    return bytes;
+  },
+  createHash: function(alg) {
+    // Minimal hash stub — returns a consistent hash for basic usage
+    var _data = "";
+    return {
+      update: function(d) { _data += String(d); return this; },
+      digest: function(enc) {
+        // Simple DJB2 hash — NOT cryptographic, but deterministic
+        var hash = 5381;
+        for (var i = 0; i < _data.length; i++) hash = ((hash << 5) + hash) + _data.charCodeAt(i);
+        var hex = (hash >>> 0).toString(16);
+        while (hex.length < 8) hex = "0" + hex;
+        if (enc === "hex") return hex;
+        return hex;
+      }
+    };
+  },
+  createHmac: function(alg, key) {
+    var _data = String(key);
+    return {
+      update: function(d) { _data += String(d); return this; },
+      digest: function(enc) {
+        return _virtualCrypto.createHash(alg).update(_data).digest(enc);
+      }
+    };
+  }
+};
+
+// ── node:url ────────────────────────────────────────────────────────
+var _virtualUrl = {
+  URL: typeof URL !== "undefined" ? URL : function(input, base) {
+    // Minimal URL polyfill
+    var full = base ? base.replace(/\/$/, "") + "/" + input.replace(/^\//, "") : input;
+    this.href = full;
+    var match = full.match(/^(https?):\/\/([^/:]+)(:\d+)?(\/[^?#]*)(\?[^#]*)?(#.*)?$/);
+    if (match) {
+      this.protocol = match[1] + ":";
+      this.hostname = match[2];
+      this.port = match[3] ? match[3].slice(1) : "";
+      this.pathname = match[4] || "/";
+      this.search = match[5] || "";
+      this.hash = match[6] || "";
+      this.host = this.hostname + (this.port ? ":" + this.port : "");
+      this.origin = this.protocol + "//" + this.host;
+    }
+    this.toString = function() { return this.href; };
+    this.searchParams = new _URLSearchParams(this.search.slice(1));
+  },
+  URLSearchParams: typeof URLSearchParams !== "undefined" ? URLSearchParams : _URLSearchParams,
+  parse: function(urlStr) {
+    try { return new _virtualUrl.URL(urlStr); } catch(e) { return null; }
+  },
+  format: function(urlObj) {
+    return urlObj.href || String(urlObj);
+  },
+  pathToFileURL: function(p) { return new _virtualUrl.URL("file://" + p); },
+  fileURLToPath: function(u) {
+    var s = typeof u === "string" ? u : u.href;
+    return s.replace(/^file:\/\//, "");
+  }
+};
+
+function _URLSearchParams(init) {
+  this._params = {};
+  if (typeof init === "string") {
+    var pairs = init.split("&");
+    for (var i = 0; i < pairs.length; i++) {
+      var kv = pairs[i].split("=");
+      if (kv[0]) this._params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || "");
+    }
+  }
+  this.get = function(k) { return this._params[k] || null; };
+  this.set = function(k, v) { this._params[k] = v; };
+  this.has = function(k) { return k in this._params; };
+  this.delete = function(k) { delete this._params[k]; };
+  this.toString = function() {
+    var parts = [];
+    for (var key in this._params) parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(this._params[key]));
+    return parts.join("&");
+  };
+  this.entries = function() { return Object.entries(this._params); };
+}
+
+// ── node:events ─────────────────────────────────────────────────────
+function _EventEmitter() {
+  this._listeners = {};
+}
+_EventEmitter.prototype.on = function(event, fn) {
+  if (!this._listeners[event]) this._listeners[event] = [];
+  this._listeners[event].push(fn);
+  return this;
+};
+_EventEmitter.prototype.addListener = _EventEmitter.prototype.on;
+_EventEmitter.prototype.once = function(event, fn) {
+  var self = this;
+  var wrapper = function() {
+    self.removeListener(event, wrapper);
+    fn.apply(this, arguments);
+  };
+  return this.on(event, wrapper);
+};
+_EventEmitter.prototype.off = function(event, fn) {
+  return this.removeListener(event, fn);
+};
+_EventEmitter.prototype.removeListener = function(event, fn) {
+  if (!this._listeners[event]) return this;
+  this._listeners[event] = this._listeners[event].filter(function(l) { return l !== fn; });
+  return this;
+};
+_EventEmitter.prototype.removeAllListeners = function(event) {
+  if (event) delete this._listeners[event];
+  else this._listeners = {};
+  return this;
+};
+_EventEmitter.prototype.emit = function(event) {
+  var listeners = this._listeners[event];
+  if (!listeners) return false;
+  var args = Array.prototype.slice.call(arguments, 1);
+  for (var i = 0; i < listeners.length; i++) listeners[i].apply(this, args);
+  return true;
+};
+_EventEmitter.prototype.listenerCount = function(event) {
+  return (this._listeners[event] || []).length;
+};
+_EventEmitter.prototype.listeners = function(event) {
+  return (this._listeners[event] || []).slice();
+};
+_EventEmitter.prototype.setMaxListeners = function() { return this; };
+_EventEmitter.prototype.getMaxListeners = function() { return 10; };
+var _virtualEvents = { EventEmitter: _EventEmitter, default: _EventEmitter };
+
+// ── node:util ───────────────────────────────────────────────────────
+var _virtualUtil = {
+  promisify: function(fn) {
+    return function() {
+      var args = Array.prototype.slice.call(arguments);
+      return { then: function(resolve, reject) {
+        args.push(function(err, result) { err ? reject(err) : resolve(result); });
+        fn.apply(null, args);
+      }};
+    };
+  },
+  inspect: function(obj, opts) { return JSON.stringify(obj); },
+  format: function() {
+    var args = Array.prototype.slice.call(arguments);
+    if (typeof args[0] !== "string") return args.map(function(a) { return String(a); }).join(" ");
+    var i = 1;
+    return args[0].replace(/%[sdjo%]/g, function(m) {
+      if (m === "%%") return "%";
+      if (i >= args.length) return m;
+      return String(args[i++]);
+    });
+  },
+  inherits: function(ctor, superCtor) {
+    ctor.prototype = Object.create(superCtor.prototype);
+    ctor.prototype.constructor = ctor;
+  },
+  deprecate: function(fn, msg) { return fn; },
+  types: {
+    isDate: function(v) { return v instanceof Date; },
+    isRegExp: function(v) { return v instanceof RegExp; },
+    isArray: function(v) { return Array.isArray(v); }
+  },
+  TextEncoder: typeof TextEncoder !== "undefined" ? TextEncoder : function() {
+    this.encode = function(s) { return _Buffer.from(s); };
+  },
+  TextDecoder: typeof TextDecoder !== "undefined" ? TextDecoder : function() {
+    this.decode = function(buf) { return buf.toString(); };
+  }
+};
+
+// ── node:stream (stub) ──────────────────────────────────────────────
+var _virtualStream = {
+  Readable: _EventEmitter,
+  Writable: _EventEmitter,
+  Transform: _EventEmitter,
+  Duplex: _EventEmitter,
+  PassThrough: _EventEmitter,
+  pipeline: function() { throw new Error("stream.pipeline not supported in WASM sandbox"); },
+  finished: function() { throw new Error("stream.finished not supported in WASM sandbox"); }
+};
+
+// ── node:http / node:https (via host HTTP function) ─────────────────
+var _virtualHttp = {
+  request: function(opts, cb) {
+    var url = typeof opts === "string" ? opts : (opts.protocol || "http:") + "//" + (opts.hostname || opts.host || "localhost") + (opts.port ? ":" + opts.port : "") + (opts.path || "/");
+    var method = (opts.method || "GET").toUpperCase();
+    var headers = opts.headers || {};
+    var reqJson = JSON.stringify({ url: url, method: method, headers: headers, body: null });
+    var respStr = hostHttpRequest(reqJson);
+    var resp = JSON.parse(respStr);
+    if (cb) cb({ statusCode: resp.status, headers: resp.headers || {},
+      on: function(ev, fn) { if (ev === "data") fn(resp.body || ""); if (ev === "end") fn(); },
+      setEncoding: function() {}
+    });
+    return { write: function(d) { /* body append */ }, end: function() {}, on: function() {} };
+  },
+  get: function(opts, cb) { return _virtualHttp.request(opts, cb); }
+};
+var _virtualHttps = _virtualHttp;
+
+// ── node:querystring ────────────────────────────────────────────────
+var _virtualQuerystring = {
+  parse: function(str) {
+    var obj = {};
+    var pairs = (str || "").split("&");
+    for (var i = 0; i < pairs.length; i++) {
+      var kv = pairs[i].split("=");
+      if (kv[0]) obj[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || "");
+    }
+    return obj;
+  },
+  stringify: function(obj) {
+    var parts = [];
+    for (var k in obj) parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(obj[k]));
+    return parts.join("&");
+  },
+  encode: function(obj) { return _virtualQuerystring.stringify(obj); },
+  decode: function(str) { return _virtualQuerystring.parse(str); }
+};
+
+// ── process global ──────────────────────────────────────────────────
+var process = typeof process !== "undefined" ? process : {
+  env: {},
+  cwd: function() { return "."; },
+  exit: function(code) { throw new Error("process.exit(" + code + ") called in WASM sandbox"); },
+  platform: "wasm",
+  arch: "wasm32",
+  version: "v0.0.0",
+  versions: {},
+  argv: [],
+  pid: 1,
+  stdout: { write: function(s) { hostLog("info", String(s)); } },
+  stderr: { write: function(s) { hostLog("error", String(s)); } },
+  nextTick: function(fn) { fn(); },
+  hrtime: { bigint: function() { return BigInt(Date.now()) * BigInt(1000000); } }
+};
+
+// ── console polyfill ────────────────────────────────────────────────
+var console = {
+  log: function() { hostLog("info", Array.prototype.slice.call(arguments).join(" ")); },
+  info: function() { hostLog("info", Array.prototype.slice.call(arguments).join(" ")); },
+  warn: function() { hostLog("warn", Array.prototype.slice.call(arguments).join(" ")); },
+  error: function() { hostLog("error", Array.prototype.slice.call(arguments).join(" ")); },
+  debug: function() { hostLog("debug", Array.prototype.slice.call(arguments).join(" ")); },
+  trace: function() { hostLog("debug", Array.prototype.slice.call(arguments).join(" ")); },
+  dir: function(obj) { hostLog("info", JSON.stringify(obj)); },
+  assert: function(cond) { if (!cond) hostLog("error", "Assertion failed: " + Array.prototype.slice.call(arguments, 1).join(" ")); },
+  time: function() {},
+  timeEnd: function() {},
+  timeLog: function() {}
+};
+
+// ── setTimeout / setInterval (synchronous stubs) ────────────────────
+// WASM has no event loop — callbacks execute immediately (timeout ignored).
+var _timerIdCounter = 1;
+function setTimeout(fn, ms) { var id = _timerIdCounter++; try { fn(); } catch(e) {} return id; }
+function setInterval(fn, ms) { return setTimeout(fn, ms); }
+function clearTimeout(id) {}
+function clearInterval(id) {}
+function setImmediate(fn) { return setTimeout(fn, 0); }
+function clearImmediate(id) {}
+function queueMicrotask(fn) { try { fn(); } catch(e) {} }
+
 // ── require() polyfill for Node.js modules ──────────────────────────
+var _moduleCache = {};
 function require(moduleName) {
-  if (moduleName === "node:fs" || moduleName === "fs") return _virtualFs;
-  if (moduleName === "node:path" || moduleName === "path") return _virtualPath;
-  if (moduleName === "node:os" || moduleName === "os") return _virtualOs;
-  throw new Error("Cannot require module: " + moduleName + " (not polyfilled in WASM sandbox)");
-}"#
+  var name = moduleName.replace(/^node:/, "");
+  if (_moduleCache[name]) return _moduleCache[name];
+  var mod = null;
+  switch(name) {
+    case "fs": mod = _virtualFs; break;
+    case "path": mod = _virtualPath; break;
+    case "os": mod = _virtualOs; break;
+    case "buffer": mod = _virtualBuffer; break;
+    case "crypto": mod = _virtualCrypto; break;
+    case "url": mod = _virtualUrl; break;
+    case "events": mod = _virtualEvents; break;
+    case "util": mod = _virtualUtil; break;
+    case "stream": mod = _virtualStream; break;
+    case "http": mod = _virtualHttp; break;
+    case "https": mod = _virtualHttps; break;
+    case "querystring": mod = _virtualQuerystring; break;
+    case "assert": mod = { ok: function(v,m) { if (!v) throw new Error(m || "Assertion failed"); }, strictEqual: function(a,b,m) { if (a !== b) throw new Error(m || a + " !== " + b); } }; break;
+    case "string_decoder": mod = { StringDecoder: function() { this.write = function(b) { return b.toString ? b.toString() : String(b); }; this.end = function() { return ""; }; } }; break;
+    default: throw new Error("Cannot require module: " + moduleName + " (not polyfilled in WASM sandbox)");
+  }
+  _moduleCache[name] = mod;
+  return mod;
+}
+require.resolve = function(name) { return name; };
+require.cache = _moduleCache;
+
+// ── Global Buffer ───────────────────────────────────────────────────
+var Buffer = _Buffer;"#
 }
 
 /// Generate the Extism export functions with deferred activation.
@@ -521,10 +964,33 @@ mod tests {
     fn shim_has_node_polyfills() {
         let config = HashMap::new();
         let shim = generate("// code", &config);
-        assert!(shim.contains("_virtualFs"));
-        assert!(shim.contains("_virtualPath"));
-        assert!(shim.contains("_virtualOs"));
-        assert!(shim.contains("function require("));
+        // Core modules
+        assert!(shim.contains("_virtualFs"), "missing fs polyfill");
+        assert!(shim.contains("_virtualPath"), "missing path polyfill");
+        assert!(shim.contains("_virtualOs"), "missing os polyfill");
+        // Extended modules
+        assert!(shim.contains("_Buffer"), "missing Buffer polyfill");
+        assert!(shim.contains("_virtualCrypto"), "missing crypto polyfill");
+        assert!(shim.contains("_virtualUrl"), "missing url polyfill");
+        assert!(shim.contains("_EventEmitter"), "missing events polyfill");
+        assert!(shim.contains("_virtualUtil"), "missing util polyfill");
+        assert!(shim.contains("_virtualStream"), "missing stream polyfill");
+        assert!(shim.contains("_virtualHttp"), "missing http polyfill");
+        assert!(
+            shim.contains("_virtualQuerystring"),
+            "missing querystring polyfill"
+        );
+        // Globals
+        assert!(shim.contains("function require("), "missing require");
+        assert!(shim.contains("require.resolve"), "missing require.resolve");
+        assert!(shim.contains("require.cache"), "missing require.cache");
+        assert!(shim.contains("function setTimeout"), "missing setTimeout");
+        assert!(shim.contains("var console ="), "missing console polyfill");
+        assert!(shim.contains("var process ="), "missing process polyfill");
+        assert!(
+            shim.contains("var Buffer = _Buffer"),
+            "missing global Buffer"
+        );
     }
 
     #[test]
