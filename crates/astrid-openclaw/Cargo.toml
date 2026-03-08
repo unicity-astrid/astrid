@@ -28,6 +28,11 @@ wasmparser.workspace = true
 wizer.workspace = true
 directories.workspace = true
 
+[dev-dependencies]
+astrid-core = { path = "../astrid-core" }
+astrid-events = { path = "../astrid-events" }
+uuid = { workspace = true }
+
 [build-dependencies]
 blake3 = { workspace = true }
 
