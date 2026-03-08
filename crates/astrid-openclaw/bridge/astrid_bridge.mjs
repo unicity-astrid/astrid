@@ -199,32 +199,46 @@ const pluginApi = {
     log.debug(`Registered event handler: ${event}`);
   },
 
-  // Nice to have: registerCommand, registerGatewayMethod, registerHttpHandler, registerHttpRoute
+  // registerCommand → maps to registerTool (a command IS a tool with simple args)
   registerCommand: (name, definition) => {
-    unsupportedRegistrations.push({ type: "command", name });
-    log.debug(`Registered command: ${name} (not wired to MCP bridge)`);
+    const handler = typeof definition === "function" ? definition : definition?.handler;
+    registeredTools.set(name, {
+      name,
+      definition: { name, description: `Command: ${name}` },
+      handler,
+    });
+    log.debug(`Registered command as tool: ${name}`);
   },
+
+  // registerGatewayMethod → maps to tool with kernel. prefix
   registerGatewayMethod: (name, handler) => {
-    unsupportedRegistrations.push({ type: "gatewayMethod", name });
-    log.debug(`Registered gateway method: ${name} (not wired to MCP bridge)`);
+    const toolName = `kernel.${name}`;
+    registeredTools.set(toolName, {
+      name: toolName,
+      definition: { name: toolName, description: `Kernel method: ${name}` },
+      handler,
+    });
+    log.debug(`Registered gateway method as tool: ${toolName}`);
   },
+
+  // HTTP handlers — captured as metadata, no HTTP server in capsule runtime
   registerHttpHandler: (path, handler) => {
     unsupportedRegistrations.push({ type: "httpHandler", name: path });
-    log.debug(`Registered HTTP handler: ${path} (not wired to MCP bridge)`);
+    log.debug(`Registered HTTP handler: ${path} (captured as metadata)`);
   },
   registerHttpRoute: (method, path, handler) => {
     unsupportedRegistrations.push({ type: "httpRoute", name: `${method} ${path}` });
-    log.debug(`Registered HTTP route: ${method} ${path} (not wired to MCP bridge)`);
+    log.debug(`Registered HTTP route: ${method} ${path} (captured as metadata)`);
   },
 
-  // Out of scope: registerProvider (OAuth flows), registerCli (host-side)
+  // OAuth providers and CLI — captured as metadata
   registerProvider: (name, definition) => {
     unsupportedRegistrations.push({ type: "provider", name });
-    log.debug(`Registered provider: ${name} (not wired to MCP bridge)`);
+    log.debug(`Registered provider: ${name} (captured as metadata)`);
   },
   registerCli: (name, definition) => {
     unsupportedRegistrations.push({ type: "cli", name });
-    log.debug(`Registered CLI command: ${name} (not available via MCP bridge)`);
+    log.debug(`Registered CLI command: ${name} (captured as metadata)`);
   },
 };
 
@@ -377,6 +391,13 @@ async function handleNotification(method, params) {
         channels,
       });
     }
+    // Report metadata-only registrations (HTTP, OAuth, CLI) to the host
+    if (unsupportedRegistrations.length > 0) {
+      sendNotification("notifications/astrid.metadataRegistrations", {
+        pluginId,
+        registrations: unsupportedRegistrations,
+      });
+    }
     return;
   }
   if (method === "notifications/astrid.setPluginConfig") {
@@ -387,14 +408,23 @@ async function handleNotification(method, params) {
     return;
   }
   if (method === "notifications/astrid.hookEvent") {
-    const event = params?.event;
-    const data = params?.data;
+    const event = params?.hook ?? params?.event;
+    const data = params?.payload ?? params?.data;
     const handlers = eventHandlers.get(event) || [];
     for (const handler of handlers) {
       try {
         await handler(data);
       } catch (e) {
         log.error(`Hook event handler for ${event} failed: ${e.message}`);
+      }
+    }
+    // Also dispatch to registered hooks by name
+    const hookHandler = registeredHooks.get(event);
+    if (hookHandler) {
+      try {
+        await hookHandler(data);
+      } catch (e) {
+        log.error(`Registered hook ${event} failed: ${e.message}`);
       }
     }
     return;
@@ -529,7 +559,7 @@ async function loadPlugin() {
       `Plugin loaded: ${registeredTools.size} tools, ` +
         `${registeredChannels.size} channels, ` +
         `${registeredServices.size} services` +
-        (unsupportedRegistrations.length > 0 ? `, ${unsupportedRegistrations.length} unsupported` : "")
+        (unsupportedRegistrations.length > 0 ? `, ${unsupportedRegistrations.length} metadata-only` : "")
     );
   } catch (e) {
     log.error(`Failed to load plugin: ${e.message}\n${e.stack}`);
