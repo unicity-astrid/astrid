@@ -72,6 +72,20 @@ impl OpenClawManifest {
     }
 }
 
+/// Detect whether a config schema property key likely holds a secret value.
+///
+/// Uses heuristic matching on common secret key naming patterns.
+#[must_use]
+pub fn is_secret_key(key: &str) -> bool {
+    let lower = key.to_lowercase();
+    lower.contains("api_key")
+        || lower.contains("apikey")
+        || lower == "token"
+        || lower.ends_with("_token")
+        || lower == "secret"
+        || lower == "password"
+}
+
 const MANIFEST_FILENAME: &str = "openclaw.plugin.json";
 
 /// Parse the `OpenClaw` manifest from a plugin directory.
@@ -145,10 +159,8 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
         }
     }
 
-    Err(BridgeError::Manifest(
-        "could not resolve entry point: no 'openclaw.extensions' in package.json \
-         and no src/index.ts, src/index.js, index.ts, or index.js found"
-            .into(),
+    Err(BridgeError::EntryPointNotFound(
+        plugin_dir.join("<unresolved>"),
     ))
 }
 
@@ -353,8 +365,11 @@ mod tests {
     fn resolve_entry_no_match_fails() {
         let dir = tempfile::tempdir().unwrap();
 
-        let result = resolve_entry_point(dir.path());
-        assert!(result.is_err());
+        let err = resolve_entry_point(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, BridgeError::EntryPointNotFound(_)),
+            "expected EntryPointNotFound, got: {err}"
+        );
     }
 
     #[test]
