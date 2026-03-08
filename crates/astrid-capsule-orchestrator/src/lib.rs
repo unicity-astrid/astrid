@@ -49,6 +49,8 @@ pub enum Phase {
     Idle,
     /// Waiting for the identity capsule to return the system prompt.
     AwaitingIdentity,
+    /// Waiting for the prompt builder capsule to assemble the final prompt.
+    AwaitingPromptBuild,
     /// Streaming tokens/tool calls from the LLM provider.
     Streaming,
     /// Waiting for all pending tool executions to complete.
@@ -191,8 +193,8 @@ impl Orchestrator {
 
     /// Handles `identity.response.ready` events from the identity capsule.
     ///
-    /// Receives the assembled system prompt and publishes an LLM generation
-    /// request to the provider capsule.
+    /// Receives the assembled system prompt and sends it to the prompt
+    /// builder capsule for plugin hook interception before LLM generation.
     #[astrid::interceptor("handle_identity_response")]
     pub fn handle_identity_response(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let mut state = SessionState::load(DEFAULT_SESSION_ID);
@@ -208,7 +210,61 @@ impl Orchestrator {
             .unwrap_or("")
             .to_string();
 
-        state.system_prompt = prompt;
+        state.system_prompt = prompt.clone();
+        state.phase = Phase::AwaitingPromptBuild;
+        state.save(DEFAULT_SESSION_ID)?;
+
+        let model =
+            sys::get_config_string("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
+
+        // Derive the active provider from the registry's LLM topic.
+        // e.g. "llm.request.generate.anthropic" → "anthropic",
+        //      "llm.request.generate.local-ollama" → "local-ollama"
+        let provider = Self::active_provider_id();
+
+        // Send to prompt builder for plugin hook interception.
+        ipc::publish_json(
+            "prompt_builder.assemble",
+            &serde_json::json!({
+                "messages": state.messages,
+                "system_prompt": prompt,
+                "request_id": state.request_id.to_string(),
+                "model": model,
+                "provider": provider,
+            }),
+        )
+    }
+
+    /// Handles `prompt_builder.response.assemble` events from the prompt builder.
+    ///
+    /// Receives the final assembled prompt (after plugin hooks) and publishes
+    /// an LLM generation request to the provider capsule.
+    #[astrid::interceptor("handle_prompt_response")]
+    pub fn handle_prompt_response(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let mut state = SessionState::load(DEFAULT_SESSION_ID);
+
+        if state.phase != Phase::AwaitingPromptBuild {
+            return Ok(());
+        }
+
+        // Apply the assembled system prompt from the prompt builder.
+        if let Some(prompt) = payload.get("system_prompt").and_then(|v| v.as_str()) {
+            state.system_prompt = prompt.to_string();
+        }
+
+        // Apply user context prefix to the last user message if present.
+        if let Some(prefix) = payload.get("user_context_prefix").and_then(|v| v.as_str())
+            && !prefix.is_empty()
+            && let Some(last_user_msg) = state
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|m| matches!(m.role, MessageRole::User))
+            && let MessageContent::Text(ref mut text) = last_user_msg.content
+        {
+            *text = format!("{prefix}\n{text}");
+        }
+
         state.phase = Phase::Streaming;
         state.save(DEFAULT_SESSION_ID)?;
 
@@ -470,17 +526,7 @@ impl Orchestrator {
             sys::get_config_string("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
 
         let tools = Self::load_tool_schemas();
-
-        // Read the active provider topic from KV (set by the registry capsule),
-        // falling back to static config, then to the default.
-        let llm_topic = kv::get_bytes("llm_provider_topic")
-            .ok()
-            .and_then(|b| String::from_utf8(b).ok())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                sys::get_config_string("llm_provider_topic")
-                    .unwrap_or_else(|_| "llm.request.generate.anthropic".into())
-            });
+        let llm_topic = Self::active_llm_topic();
 
         ipc::publish_json(
             &llm_topic,
@@ -492,6 +538,33 @@ impl Orchestrator {
                 system: state.system_prompt.clone(),
             },
         )
+    }
+
+    /// Resolve the active LLM provider topic from the registry.
+    ///
+    /// Reads `llm_provider_topic` from KV (set by the registry capsule on
+    /// model change), falling back to static config, then to the default
+    /// Anthropic topic.
+    fn active_llm_topic() -> String {
+        kv::get_bytes("llm_provider_topic")
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                sys::get_config_string("llm_provider_topic")
+                    .unwrap_or_else(|_| "llm.request.generate.anthropic".into())
+            })
+    }
+
+    /// Extract the provider identifier from the active LLM topic.
+    ///
+    /// e.g. `"llm.request.generate.anthropic"` → `"anthropic"`,
+    ///      `"llm.request.generate.local-ollama"` → `"local-ollama"`
+    fn active_provider_id() -> String {
+        Self::active_llm_topic()
+            .strip_prefix("llm.request.generate.")
+            .unwrap_or("unknown")
+            .to_string()
     }
 
     /// Load tool schemas from KV.

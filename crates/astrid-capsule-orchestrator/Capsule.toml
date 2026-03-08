@@ -20,6 +20,11 @@ action = "handle_user_prompt"
 event = "identity.response.ready"
 action = "handle_identity_response"
 
+# Assembled prompt returned by the prompt builder capsule
+[[interceptor]]
+event = "prompt_builder.response.assemble"
+action = "handle_prompt_response"
+
 # LLM streaming events from any provider capsule
 [[interceptor]]
 event = "llm.stream.*"
@@ -38,6 +43,7 @@ action = "handle_model_changed"
 [capabilities]
 ipc_publish = [
     "identity.request.build",
+    "prompt_builder.assemble",
     "agent.stream.delta",
     "agent.response",
     "tool.request.execute",

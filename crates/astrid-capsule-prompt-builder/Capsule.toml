@@ -1,0 +1,17 @@
+[package]
+name = "astrid-capsule-prompt-builder"
+version = "0.1.0"
+description = "Assembles LLM prompts with plugin interceptor hooks for context injection and override"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "prompt-builder"
+file = "astrid_capsule_prompt_builder.wasm"
+
+[capabilities]
+ipc_publish = [
+    "prompt_builder.response.*",
+    "before_prompt_build",
+    "after_prompt_build",
+]
