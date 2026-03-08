@@ -162,7 +162,7 @@ async fn dispatch_hook(
     let payload = build_hook_payload(event);
 
     let payload_bytes = match serde_json::to_vec(&payload) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => Arc::new(bytes),
         Err(e) => {
             warn!(hook = hook_name, error = %e, "Failed to serialize hook payload");
             return;
@@ -192,7 +192,7 @@ async fn dispatch_hook(
         let capsule_id_str = capsule.id().to_string();
         let capsule = Arc::clone(capsule);
         let action = action.clone();
-        let payload = payload_bytes.clone();
+        let payload = Arc::clone(&payload_bytes);
 
         let result = tokio::time::timeout(INTERCEPTOR_TIMEOUT, async {
             tokio::task::spawn_blocking(move || capsule.invoke_interceptor(&action, &payload)).await
@@ -201,10 +201,14 @@ async fn dispatch_hook(
 
         match result {
             Ok(Ok(Ok(bytes))) if bytes.is_empty() => {},
-            Ok(Ok(Ok(bytes))) => {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                    responses.push(val);
-                }
+            Ok(Ok(Ok(bytes))) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                Ok(val) => responses.push(val),
+                Err(e) => warn!(
+                    hook = hook_name,
+                    capsule_id = %capsule_id_str,
+                    error = %e,
+                    "Failed to deserialize interceptor response"
+                ),
             },
             Ok(Ok(Err(CapsuleError::NotSupported(_)))) => {},
             Ok(Ok(Err(e))) => {
@@ -305,19 +309,14 @@ fn merge_responses(
 
         MergeSemantics::ToolCallBefore => {
             // Any `skip: true` → skip. Last non-null `modified_params` wins.
-            let mut skip = false;
-            let mut modified_params: Option<&serde_json::Value> = None;
+            let skip = responses
+                .iter()
+                .any(|resp| resp.get("skip").and_then(serde_json::Value::as_bool) == Some(true));
 
-            for resp in responses {
-                if resp.get("skip").and_then(serde_json::Value::as_bool) == Some(true) {
-                    skip = true;
-                }
-                if let Some(params) = resp.get("modified_params")
-                    && !params.is_null()
-                {
-                    modified_params = Some(params);
-                }
-            }
+            let modified_params = responses
+                .iter()
+                .rev()
+                .find_map(|resp| resp.get("modified_params").filter(|v| !v.is_null()));
 
             serde_json::json!({
                 "skip": skip,
@@ -327,14 +326,10 @@ fn merge_responses(
 
         MergeSemantics::LastNonNull { field } => {
             // Last non-null value for the given field wins.
-            let mut result: Option<&serde_json::Value> = None;
-            for resp in responses {
-                if let Some(val) = resp.get(*field)
-                    && !val.is_null()
-                {
-                    result = Some(val);
-                }
-            }
+            let result = responses
+                .iter()
+                .rev()
+                .find_map(|resp| resp.get(*field).filter(|v| !v.is_null()));
 
             let mut obj = serde_json::Map::new();
             if let Some(val) = result {
