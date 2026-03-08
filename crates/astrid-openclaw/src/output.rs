@@ -25,6 +25,10 @@ struct PackageDef {
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    categories: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keywords: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -80,11 +84,21 @@ pub fn generate_manifest(
         }
     }
 
+    // Map OpenClaw `kind` → Astrid `categories`, `skills` → `keywords`
+    let categories = oc_manifest
+        .kind
+        .as_deref()
+        .map(|k| vec![k.to_string()])
+        .unwrap_or_default();
+    let keywords = oc_manifest.skills.clone();
+
     let manifest = OutputManifest {
         package: PackageDef {
             name: astrid_id.to_string(),
             version: oc_manifest.display_version().to_string(),
             description: oc_manifest.description.clone(),
+            categories,
+            keywords,
         },
         component: Some(ComponentDef {
             entrypoint: "plugin.wasm".into(),
@@ -115,6 +129,8 @@ mod tests {
                 name: "hello-tool".into(),
                 version: "1.0.0".into(),
                 description: Some("A test plugin".into()),
+                categories: vec!["tool".into()],
+                keywords: vec!["code-assist".into()],
             },
             component: Some(ComponentDef {
                 entrypoint: "plugin.wasm".into(),
@@ -134,6 +150,14 @@ mod tests {
         assert!(toml_str.contains("entrypoint = \"plugin.wasm\""));
         assert!(toml_str.contains("hash = \"abc123\""));
         assert!(toml_str.contains("type = \"secret\""));
+        assert!(
+            toml_str.contains("categories = [\"tool\"]"),
+            "kind should map to categories"
+        );
+        assert!(
+            toml_str.contains("keywords = [\"code-assist\"]"),
+            "skills should map to keywords"
+        );
     }
 
     #[test]
@@ -143,6 +167,8 @@ mod tests {
                 name: "minimal".into(),
                 version: "0.1.0".into(),
                 description: None,
+                categories: vec![],
+                keywords: vec![],
             },
             component: Some(ComponentDef {
                 entrypoint: "plugin.wasm".into(),
@@ -177,10 +203,10 @@ mod tests {
             name: Some("Test Plugin".into()),
             version: Some("1.0.0".into()),
             description: Some("A test".into()),
-            kind: None,
+            kind: Some("tool".into()),
             channels: vec![],
             providers: vec![],
-            skills: vec![],
+            skills: vec!["code-review".into()],
         };
 
         let config = HashMap::new();
@@ -195,5 +221,13 @@ mod tests {
         assert!(content.contains("entrypoint = \"plugin.wasm\""));
         assert!(content.contains("hash = "));
         assert!(content.contains("type = \"secret\""));
+        assert!(
+            content.contains("categories"),
+            "kind should be mapped to categories"
+        );
+        assert!(
+            content.contains("code-review"),
+            "skills should be mapped to keywords"
+        );
     }
 }
