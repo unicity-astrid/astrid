@@ -34,10 +34,10 @@ pub enum HookEvent {
     SubagentStart,
     /// A subagent has stopped.
     SubagentStop,
-    /// Gateway server is starting.
-    GatewayStart,
-    /// Gateway server is stopping.
-    GatewayStop,
+    /// Kernel daemon is starting.
+    KernelStart,
+    /// Kernel daemon is stopping.
+    KernelStop,
 }
 
 impl fmt::Display for HookEvent {
@@ -55,8 +55,8 @@ impl fmt::Display for HookEvent {
             Self::PreCompact => write!(f, "pre_compact"),
             Self::SubagentStart => write!(f, "subagent_start"),
             Self::SubagentStop => write!(f, "subagent_stop"),
-            Self::GatewayStart => write!(f, "gateway_start"),
-            Self::GatewayStop => write!(f, "gateway_stop"),
+            Self::KernelStart => write!(f, "kernel_start"),
+            Self::KernelStop => write!(f, "kernel_stop"),
         }
     }
 }

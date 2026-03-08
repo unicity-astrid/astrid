@@ -520,16 +520,16 @@ pub enum AstridEvent {
     },
 
     // ========== System Events ==========
-    /// Gateway daemon started.
-    GatewayStarted {
+    /// Kernel daemon started.
+    KernelStarted {
         /// Event metadata.
         metadata: EventMetadata,
-        /// Gateway version.
+        /// Kernel version.
         version: String,
     },
 
-    /// Gateway daemon shutting down.
-    GatewayShutdown {
+    /// Kernel daemon shutting down.
+    KernelShutdown {
         /// Event metadata.
         metadata: EventMetadata,
         /// Reason for shutdown.
@@ -652,8 +652,8 @@ impl AstridEvent {
             | Self::BudgetAllocated { metadata, .. }
             | Self::BudgetWarning { metadata, .. }
             | Self::BudgetExceeded { metadata, .. }
-            | Self::GatewayStarted { metadata, .. }
-            | Self::GatewayShutdown { metadata, .. }
+            | Self::KernelStarted { metadata, .. }
+            | Self::KernelShutdown { metadata, .. }
             | Self::ConfigReloaded { metadata, .. }
             | Self::ConfigChanged { metadata, .. }
             | Self::HealthCheckCompleted { metadata, .. }
@@ -720,8 +720,8 @@ impl AstridEvent {
             Self::BudgetWarning { .. } => "budget_warning",
             Self::BudgetExceeded { .. } => "budget_exceeded",
             // System
-            Self::GatewayStarted { .. } => "gateway_started",
-            Self::GatewayShutdown { .. } => "gateway_shutdown",
+            Self::KernelStarted { .. } => "kernel_started",
+            Self::KernelShutdown { .. } => "kernel_shutdown",
             Self::ConfigReloaded { .. } => "config_reloaded",
             Self::ConfigChanged { .. } => "config_changed",
             Self::HealthCheckCompleted { .. } => "health_check_completed",
