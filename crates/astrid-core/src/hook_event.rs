@@ -30,6 +30,16 @@ pub enum HookEvent {
     Notification,
     /// Before context compaction.
     PreCompact,
+    /// After context compaction.
+    PostCompact,
+    /// Before the LLM prompt is assembled.
+    PromptBuild,
+    /// Before a response message is sent to the user.
+    MessageSend,
+    /// Before a session is reset.
+    SessionReset,
+    /// Before model/provider selection is resolved.
+    ModelResolve,
     /// A subagent is starting.
     SubagentStart,
     /// A subagent has stopped.
@@ -53,6 +63,11 @@ impl fmt::Display for HookEvent {
             Self::PostApproval => write!(f, "post_approval"),
             Self::Notification => write!(f, "notification"),
             Self::PreCompact => write!(f, "pre_compact"),
+            Self::PostCompact => write!(f, "post_compact"),
+            Self::PromptBuild => write!(f, "prompt_build"),
+            Self::MessageSend => write!(f, "message_send"),
+            Self::SessionReset => write!(f, "session_reset"),
+            Self::ModelResolve => write!(f, "model_resolve"),
             Self::SubagentStart => write!(f, "subagent_start"),
             Self::SubagentStop => write!(f, "subagent_stop"),
             Self::KernelStart => write!(f, "kernel_start"),

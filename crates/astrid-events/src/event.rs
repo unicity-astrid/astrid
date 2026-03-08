@@ -153,6 +153,72 @@ pub enum AstridEvent {
         duration_ms: u64,
     },
 
+    // ========== Prompt / Cognitive Loop Events ==========
+    /// Prompt is being assembled before an LLM call.
+    ///
+    /// Capsules can inspect or modify the prompt context before it is sent
+    /// to the model.
+    PromptBuilding {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Request ID correlating to the upcoming LLM call.
+        request_id: Uuid,
+    },
+
+    /// A response message is about to be sent to the user/frontend.
+    ///
+    /// Allows capsules to intercept or transform outbound messages.
+    MessageSending {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Message ID.
+        message_id: Uuid,
+        /// Target frontend.
+        frontend: String,
+    },
+
+    /// Context compaction is starting (trimming conversation history).
+    ContextCompactionStarted {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Session ID being compacted.
+        session_id: Uuid,
+        /// Number of messages before compaction.
+        message_count: u32,
+    },
+
+    /// Context compaction completed.
+    ContextCompactionCompleted {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Session ID that was compacted.
+        session_id: Uuid,
+        /// Messages remaining after compaction.
+        messages_remaining: u32,
+    },
+
+    /// Session is being reset (conversation history cleared).
+    SessionResetting {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Session ID being reset.
+        session_id: Uuid,
+    },
+
+    /// Model selection is being resolved before an LLM call.
+    ///
+    /// Capsules can influence which model/provider is selected for a request.
+    ModelResolving {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Request ID.
+        request_id: Uuid,
+        /// Candidate provider (may be overridden by capsule).
+        provider: Option<String>,
+        /// Candidate model (may be overridden by capsule).
+        model: Option<String>,
+    },
+
     // ========== LLM Events ==========
     /// LLM request started.
     LlmRequestStarted {
@@ -619,6 +685,12 @@ impl AstridEvent {
             | Self::SessionCreated { metadata, .. }
             | Self::SessionEnded { metadata, .. }
             | Self::SessionResumed { metadata, .. }
+            | Self::PromptBuilding { metadata, .. }
+            | Self::MessageSending { metadata, .. }
+            | Self::ContextCompactionStarted { metadata, .. }
+            | Self::ContextCompactionCompleted { metadata, .. }
+            | Self::SessionResetting { metadata, .. }
+            | Self::ModelResolving { metadata, .. }
             | Self::MessageReceived { metadata, .. }
             | Self::MessageProcessed { metadata, .. }
             | Self::LlmRequestStarted { metadata, .. }
@@ -677,6 +749,13 @@ impl AstridEvent {
             Self::SessionCreated { .. } => "session_created",
             Self::SessionEnded { .. } => "session_ended",
             Self::SessionResumed { .. } => "session_resumed",
+            // Prompt / Cognitive Loop
+            Self::PromptBuilding { .. } => "prompt_building",
+            Self::MessageSending { .. } => "message_sending",
+            Self::ContextCompactionStarted { .. } => "context_compaction_started",
+            Self::ContextCompactionCompleted { .. } => "context_compaction_completed",
+            Self::SessionResetting { .. } => "session_resetting",
+            Self::ModelResolving { .. } => "model_resolving",
             // Message Flow
             Self::MessageReceived { .. } => "message_received",
             Self::MessageProcessed { .. } => "message_processed",
