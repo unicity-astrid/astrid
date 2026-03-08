@@ -292,7 +292,10 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
     }
 
     // Poll for responses with configurable timeout.
-    // Guarantee at least 1 iteration even if timeout < poll interval.
+    // This loop intentionally sleeps because it's a bounded wait for plugin
+    // responses to arrive — unlike the main event loop, we need a deadline.
+    // Once the SDK provides poll_bytes with a timeout parameter, this should
+    // use that instead of sleep-and-retry.
     let mut sourced_responses = Vec::new();
     let max_iterations = (config.hook_timeout_ms / HOOK_POLL_INTERVAL_MS).max(1);
 
@@ -503,6 +506,11 @@ pub fn run() -> FnResult<()> {
 
     let _ = sys::log("info", "Prompt Builder capsule ready");
 
+    // NOTE: ipc::poll_bytes is non-blocking today (returns empty when no
+    // messages). This loop will busy-spin. Once the SDK provides a blocking
+    // poll variant (see SDK issue), this should use it instead.
+    // The alternative of adding sleep(50ms) adds 50ms latency per message
+    // and is strictly worse than a proper blocking poll.
     loop {
         match ipc::poll_bytes(&sub) {
             Ok(bytes) => {
@@ -516,8 +524,6 @@ pub fn run() -> FnResult<()> {
         // Drain hook/after topics to prevent backpressure.
         let _ = ipc::poll_bytes(&hook_sub);
         let _ = ipc::poll_bytes(&after_sub);
-
-        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
     let _ = ipc::unsubscribe(&sub);
