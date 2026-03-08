@@ -21,6 +21,15 @@ fn fixture_source() -> String {
         .expect("test-full-api/index.js should exist")
 }
 
+fn fixture_identity() -> shim::PluginIdentity<'static> {
+    shim::PluginIdentity {
+        id: "test-full-api",
+        name: Some("Full API Surface Test"),
+        version: Some("1.0.0"),
+        description: Some("Exercises every registration method and hook in the plugin API"),
+    }
+}
+
 // ── Tier 1: WASM shim generation ──────────────────────────────────────
 
 #[test]
@@ -30,7 +39,7 @@ fn tier1_shim_captures_all_registration_methods() {
     config.insert("debug".into(), serde_json::json!(true));
     config.insert("api_key".into(), serde_json::json!("sk-test"));
 
-    let shim = shim::generate(&source, &config);
+    let shim = shim::generate(&source, &config, &fixture_identity());
 
     // ── registerTool (both forms) ─────────────────────────────────────
     assert!(
@@ -141,7 +150,7 @@ fn tier1_shim_captures_all_registration_methods() {
 fn tier1_shim_has_all_host_function_bindings() {
     let source = fixture_source();
     let config = HashMap::new();
-    let shim = shim::generate(&source, &config);
+    let shim = shim::generate(&source, &config, &fixture_identity());
 
     // Host function references
     for hf in &[
@@ -177,7 +186,7 @@ fn tier1_shim_has_all_host_function_bindings() {
 fn tier1_shim_has_extism_exports() {
     let source = fixture_source();
     let config = HashMap::new();
-    let shim = shim::generate(&source, &config);
+    let shim = shim::generate(&source, &config, &fixture_identity());
 
     assert!(
         shim.contains("describe-tools"),
@@ -197,7 +206,7 @@ fn tier1_shim_has_extism_exports() {
 fn tier1_shim_has_node_polyfills() {
     let source = fixture_source();
     let config = HashMap::new();
-    let shim = shim::generate(&source, &config);
+    let shim = shim::generate(&source, &config, &fixture_identity());
 
     // Core polyfills that must exist for compatibility
     for module_name in &[

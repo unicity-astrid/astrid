@@ -6,16 +6,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI tool to convert OpenClaw tool plugins into Astrid WASM plugins"
-
-[[bin]]
-name = "astrid-openclaw"
-path = "src/main.rs"
+description = "Library for converting OpenClaw tool plugins into Astrid WASM plugins"
 
 [dependencies]
 blake3.workspace = true
 chrono.workspace = true
-clap.workspace = true
 oxc.workspace = true
 oxc_allocator.workspace = true
 serde.workspace = true

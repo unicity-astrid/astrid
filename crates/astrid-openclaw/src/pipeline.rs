@@ -94,8 +94,14 @@ fn compile_tier1(
     // Transpile TS→JS
     let js_code = transpiler::transpile(&raw_source, &entry_point_rel)?;
 
-    // Generate shim
-    let shim_code = shim::generate(&js_code, opts.config);
+    // Generate shim with plugin identity from manifest
+    let identity = shim::PluginIdentity {
+        id: &oc_manifest.id,
+        name: oc_manifest.name.as_deref(),
+        version: oc_manifest.version.as_deref(),
+        description: oc_manifest.description.as_deref(),
+    };
+    let shim_code = shim::generate(&js_code, opts.config, &identity);
 
     // Write shim for debugging
     let shim_path = opts.output_dir.join("shim.js");

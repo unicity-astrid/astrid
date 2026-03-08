@@ -167,43 +167,58 @@ impl ExecutionEngine for McpHostEngine {
     fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
-        // Build the JSON-RPC notification payload matching what
-        // `astrid_bridge.mjs` expects for `notifications/astrid.hookEvent`.
         let params: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
             CapsuleError::ExecutionFailed(format!("failed to deserialize interceptor payload: {e}"))
         })?;
 
-        let notification_params = serde_json::json!({
+        // Use call_tool with the `astrid_hook_intercept` tool so we get
+        // a response back (request-response interceptor pattern).
+        let tool_args = serde_json::json!({
             "hook": action,
             "payload": params,
         });
 
         let client = self.mcp_client.clone();
 
-        // Use block_in_place (same pattern as WasmEngine) to send the async
-        // notification from this synchronous trait method.
-        tokio::task::block_in_place(|| {
+        let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                if let Err(e) = client
-                    .send_notification(
-                        &server_id,
-                        "notifications/astrid.hookEvent",
-                        Some(notification_params),
-                    )
+                client
+                    .call_tool(&server_id, "astrid_hook_intercept", tool_args)
                     .await
-                {
-                    // Notifications are fire-and-forget — log but don't fail
-                    // the dispatch loop for transient MCP transport errors.
-                    warn!(
-                        capsule = %self.manifest.package.name,
-                        hook = %action,
-                        error = %e,
-                        "Failed to deliver hook notification to MCP capsule"
-                    );
-                }
-            });
+            })
         });
 
-        Ok(Vec::new())
+        match result {
+            Ok(tool_result) => {
+                // Extract text content from the MCP ToolResult
+                let text = tool_result
+                    .content
+                    .iter()
+                    .filter_map(|c| {
+                        if let astrid_mcp::ToolContent::Text { text } = c {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
+
+                if text.is_empty() || text == "null" {
+                    Ok(Vec::new())
+                } else {
+                    Ok(text.into_bytes())
+                }
+            },
+            Err(e) => {
+                warn!(
+                    capsule = %self.manifest.package.name,
+                    hook = %action,
+                    error = %e,
+                    "Failed to invoke hook interceptor on MCP capsule"
+                );
+                Ok(Vec::new())
+            },
+        }
     }
 }

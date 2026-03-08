@@ -25,7 +25,7 @@ fn shim_wraps_test_plugin_with_all_host_functions() {
     config.insert("api_key".into(), serde_json::json!("sk-test-123"));
     config.insert("debug".into(), serde_json::json!(true));
 
-    let shim = shim::generate(&plugin_code, &config);
+    let shim = shim::generate(&plugin_code, &config, &shim::PluginIdentity::default());
 
     // Host function references are present (lazy-resolved via _getHostFn)
     assert!(
@@ -130,7 +130,7 @@ fn shim_wraps_test_plugin_with_all_host_functions() {
 fn shim_registers_all_six_tools() {
     let plugin_code = test_plugin_source();
     let config = HashMap::new();
-    let shim = shim::generate(&plugin_code, &config);
+    let shim = shim::generate(&plugin_code, &config, &shim::PluginIdentity::default());
 
     // All 6 tool registrations should be in the shimmed code
     assert!(
@@ -196,7 +196,7 @@ fn compile_test_plugin_to_wasm() {
     let mut config = HashMap::new();
     config.insert("api_key".into(), serde_json::json!("sk-test-123"));
 
-    let shimmed = shim::generate(&plugin_code, &config);
+    let shimmed = shim::generate(&plugin_code, &config, &shim::PluginIdentity::default());
 
     // Write shimmed JS to temp file for debugging
     let tmp_dir = std::env::temp_dir().join("oc-e2e-compile");

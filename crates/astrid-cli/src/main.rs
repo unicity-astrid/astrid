@@ -95,6 +95,14 @@ enum Commands {
 
     /// Initialize a workspace
     Init,
+
+    /// Internal: run Wizer on the embedded `QuickJS` kernel (used by compiler subprocess).
+    #[command(hide = true)]
+    WizerInternal {
+        /// Output path for the Wizer'd WASM.
+        #[arg(long)]
+        output: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -251,6 +259,10 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Session { command }) => {
             commands::sessions::handle_session_commands(command)?;
+        },
+        Some(Commands::WizerInternal { output }) => {
+            astrid_openclaw::compiler::run_wizer_internal(&output)
+                .map_err(|e| anyhow::anyhow!("wizer-internal failed: {e}"))?;
         },
     }
 

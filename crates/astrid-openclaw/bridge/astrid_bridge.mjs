@@ -315,6 +315,21 @@ function handleToolsList(id) {
     inputSchema: { type: "object", properties: {} },
   });
 
+  // Add interceptor hook tool — used by the kernel to invoke hooks that
+  // return data (request-response), as opposed to fire-and-forget notifications.
+  tools.push({
+    name: "astrid_hook_intercept",
+    description: "Invoke a plugin hook and return its result (interceptor pattern)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        hook: { type: "string", description: "Hook/event name to invoke" },
+        payload: { description: "Data to pass to the hook handler" },
+      },
+      required: ["hook"],
+    },
+  });
+
   const response = { tools };
   log.debug(`tools/list response: ${JSON.stringify(response)}`);
   sendResponse(id, response);
@@ -323,6 +338,42 @@ function handleToolsList(id) {
 async function handleToolsCall(id, params) {
   const toolName = params?.name;
   const toolArgs = params?.arguments || {};
+
+  // Special: interceptor hook tool — dispatches to registered hooks/event
+  // handlers and returns the merged result back to the kernel.
+  if (toolName === "astrid_hook_intercept") {
+    const hookName = toolArgs.hook;
+    const hookData = toolArgs.payload ?? null;
+    let lastResult = null;
+
+    // Dispatch to on() event handlers
+    const handlers = eventHandlers.get(hookName) || [];
+    for (const handler of handlers) {
+      try {
+        const r = await handler(hookData);
+        if (r !== undefined && r !== null) lastResult = r;
+      } catch (e) {
+        log.error(`Hook intercept event handler for ${hookName} failed: ${e.message}`);
+      }
+    }
+
+    // Dispatch to registerHook handler
+    const hookHandler = registeredHooks.get(hookName);
+    if (hookHandler) {
+      try {
+        const r = await hookHandler(hookData);
+        if (r !== undefined && r !== null) lastResult = r;
+      } catch (e) {
+        log.error(`Hook intercept registered hook ${hookName} failed: ${e.message}`);
+      }
+    }
+
+    const resultText = lastResult !== null ? JSON.stringify(lastResult) : "null";
+    sendResponse(id, {
+      content: [{ type: "text", text: resultText }],
+    });
+    return;
+  }
 
   // Special: agent context tool (allowed before services are ready —
   // before_agent_start handlers do not depend on services)
