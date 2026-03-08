@@ -115,13 +115,15 @@ fn is_not_found_error(err: &SysError) -> bool {
 }
 
 /// Returns true if `name` is a safe single path component (no traversal).
+///
+/// Rejects `.`, `..`, `.git`, `.env`, and all other hidden/dot-prefixed names.
+/// The `starts_with('.')` check subsumes both traversal markers and dot-files.
 fn is_safe_name(name: &str) -> bool {
     !name.is_empty()
-        && name != "."
+        && !name.starts_with('.')
         && !name.contains('/')
         && !name.contains('\\')
         && !name.contains('\0')
-        && !name.contains("..")
 }
 
 /// Strip any `global://` scheme prefix, returning the bare relative path.
@@ -337,6 +339,9 @@ mod tests {
         assert!(!is_safe_name("back\\slash"));
         assert!(!is_safe_name(".."));
         assert!(!is_safe_name("."));
+        assert!(!is_safe_name(".git"));
+        assert!(!is_safe_name(".env"));
+        assert!(!is_safe_name(".hidden-skill"));
         assert!(!is_safe_name("skill\0null"));
         assert!(!is_safe_name("skill\0"));
     }
