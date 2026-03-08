@@ -220,7 +220,11 @@ impl Orchestrator {
         // Derive the active provider from the registry's LLM topic.
         // e.g. "llm.request.generate.anthropic" → "anthropic",
         //      "llm.request.generate.local-ollama" → "local-ollama"
-        let provider = Self::active_provider_id();
+        let llm_topic = Self::active_llm_topic();
+        let provider = llm_topic
+            .strip_prefix("llm.request.generate.")
+            .unwrap_or("unknown")
+            .to_string();
 
         // Send to prompt builder for plugin hook interception.
         ipc::publish_json(
@@ -554,17 +558,6 @@ impl Orchestrator {
                 sys::get_config_string("llm_provider_topic")
                     .unwrap_or_else(|_| "llm.request.generate.anthropic".into())
             })
-    }
-
-    /// Extract the provider identifier from the active LLM topic.
-    ///
-    /// e.g. `"llm.request.generate.anthropic"` → `"anthropic"`,
-    ///      `"llm.request.generate.local-ollama"` → `"local-ollama"`
-    fn active_provider_id() -> String {
-        Self::active_llm_topic()
-            .strip_prefix("llm.request.generate.")
-            .unwrap_or("unknown")
-            .to_string()
     }
 
     /// Load tool schemas from KV.
