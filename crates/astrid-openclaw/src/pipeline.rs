@@ -64,10 +64,15 @@ pub fn compile_plugin(opts: &CompileOptions<'_>) -> BridgeResult<CompileResult> 
     let oc_manifest = manifest::parse_manifest(opts.plugin_dir)?;
     let astrid_id = manifest::convert_id(&oc_manifest.id)?;
 
-    // 2. Detect tier
+    // 2. Validate config against schema (if config is non-empty)
+    if !opts.config.is_empty() {
+        validate_config(opts.config, &oc_manifest.config_schema)?;
+    }
+
+    // 3. Detect tier
     let plugin_tier = tier::detect_tier(opts.plugin_dir, Some(&oc_manifest));
 
-    // 3. Ensure output directory exists
+    // 4. Ensure output directory exists
     std::fs::create_dir_all(opts.output_dir)?;
 
     match plugin_tier {
@@ -283,6 +288,51 @@ fn copy_plugin_source(src: &Path, dst: &Path) -> BridgeResult<()> {
         }
         // Skip symlinks
     }
+    Ok(())
+}
+
+/// Validate config values against the plugin's `configSchema`.
+///
+/// Performs lightweight structural checks without a full JSON Schema validator:
+/// - All required properties must be present
+/// - All provided keys must be declared in the schema's `properties`
+fn validate_config(
+    config: &HashMap<String, serde_json::Value>,
+    schema: &serde_json::Value,
+) -> BridgeResult<()> {
+    let Some(schema_obj) = schema.as_object() else {
+        return Ok(());
+    };
+
+    let properties = schema_obj.get("properties").and_then(|p| p.as_object());
+
+    // Check that all provided keys are declared in the schema
+    if let Some(props) = properties {
+        for key in config.keys() {
+            if !props.contains_key(key) {
+                return Err(BridgeError::ConfigValidation(format!(
+                    "unknown config key '{key}' — not declared in configSchema.properties"
+                )));
+            }
+        }
+    }
+
+    // Check that all required properties are present
+    if let Some(required) = schema_obj.get("required").and_then(|r| r.as_array()) {
+        let missing: Vec<&str> = required
+            .iter()
+            .filter_map(|v| v.as_str())
+            .filter(|key| !config.contains_key(*key))
+            .collect();
+
+        if !missing.is_empty() {
+            return Err(BridgeError::ConfigValidation(format!(
+                "missing required config keys: {}",
+                missing.join(", ")
+            )));
+        }
+    }
+
     Ok(())
 }
 
@@ -602,5 +652,72 @@ mod tests {
 
         assert!(dst.path().join("index.js").exists());
         assert!(!dst.path().join(".git").exists(), ".git should be skipped");
+    }
+
+    // ── Config validation tests ──
+
+    #[test]
+    fn validate_config_accepts_valid_keys() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "apiKey": {"type": "string"},
+                "baseUrl": {"type": "string"}
+            }
+        });
+        let mut config = HashMap::new();
+        config.insert("apiKey".into(), serde_json::json!("sk-123"));
+        assert!(validate_config(&config, &schema).is_ok());
+    }
+
+    #[test]
+    fn validate_config_rejects_unknown_key() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "apiKey": {"type": "string"}
+            }
+        });
+        let mut config = HashMap::new();
+        config.insert("bogusKey".into(), serde_json::json!("val"));
+        let err = validate_config(&config, &schema).unwrap_err();
+        assert!(
+            matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("bogusKey")),
+            "expected ConfigValidation with bogusKey, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_config_rejects_missing_required() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "apiKey": {"type": "string"},
+                "model": {"type": "string"}
+            },
+            "required": ["apiKey", "model"]
+        });
+        let mut config = HashMap::new();
+        config.insert("apiKey".into(), serde_json::json!("sk-123"));
+        let err = validate_config(&config, &schema).unwrap_err();
+        assert!(
+            matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("model")),
+            "expected ConfigValidation mentioning model, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_config_empty_schema_accepts_anything() {
+        let schema = serde_json::json!({});
+        let mut config = HashMap::new();
+        config.insert("anything".into(), serde_json::json!("val"));
+        assert!(validate_config(&config, &schema).is_ok());
+    }
+
+    #[test]
+    fn validate_config_non_object_schema_accepts_anything() {
+        let schema = serde_json::json!(true);
+        let config = HashMap::new();
+        assert!(validate_config(&config, &schema).is_ok());
     }
 }

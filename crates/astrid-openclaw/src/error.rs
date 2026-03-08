@@ -46,6 +46,10 @@ pub enum BridgeError {
     #[error("output error: {0}")]
     Output(String),
 
+    /// Plugin config values failed schema validation.
+    #[error("config validation failed: {0}")]
+    ConfigValidation(String),
+
     /// Generic I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
