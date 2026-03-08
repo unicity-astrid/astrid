@@ -1,6 +1,9 @@
 use crate::commands::build::archiver::pack_capsule_archive;
 use anyhow::{Context, Result, bail};
+use astrid_openclaw::pipeline::{self, CompileOptions};
+use astrid_openclaw::tier::PluginTier;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -45,14 +48,19 @@ pub(crate) fn run_build(
         "rust" => build_rust_capsule(&target_dir, output)?,
         "mcp" => handle_mcp_quick_convert(&target_dir, "mcp.json", output)?,
         "extension" => handle_mcp_quick_convert(&target_dir, "gemini-extension.json", output)?,
+        "openclaw" => build_openclaw_capsule(&target_dir, output)?,
         "js" | "ts" | "node" => {
-            bail!("JS/TS building via AstridClaw is not yet implemented in the CLI.");
+            bail!(
+                "Native JS/TS capsule SDK is not yet implemented. For OpenClaw plugins, use --type openclaw or ensure openclaw.plugin.json exists."
+            );
         },
         "static" => {
             bail!("Static No-Code building is not yet implemented in the CLI.");
         },
         unknown => {
-            bail!("Unknown project type: {unknown}. Supported types: rust, mcp, extension");
+            bail!(
+                "Unknown project type: {unknown}. Supported types: rust, openclaw, mcp, extension"
+            );
         },
     }
 
@@ -66,6 +74,12 @@ fn detect_project_type(dir: &Path) -> Result<String> {
 
     if dir.join("gemini-extension.json").exists() {
         return Ok("extension".to_string());
+    }
+
+    // OpenClaw plugins are identified by their manifest file, distinct from
+    // a future native Astrid JS/TS SDK which would use Capsule.toml directly.
+    if dir.join("openclaw.plugin.json").exists() {
+        return Ok("openclaw".to_string());
     }
 
     if dir.join("package.json").exists() {
@@ -82,7 +96,7 @@ fn detect_project_type(dir: &Path) -> Result<String> {
     }
 
     bail!(
-        "Could not automatically detect the project type. Please ensure a Cargo.toml, gemini-extension.json, package.json, or Capsule.toml exists in the directory, or use the --type flag."
+        "Could not automatically detect the project type. Please ensure a Cargo.toml, openclaw.plugin.json, gemini-extension.json, package.json, or Capsule.toml exists in the directory, or use the --type flag."
     );
 }
 
@@ -327,6 +341,82 @@ fn build_rust_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
     pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[])?;
 
     info!("🎉 Successfully built Rust capsule: {}", out_file.display());
+    Ok(())
+}
+
+/// Build an `OpenClaw` JS/TS plugin into a `.capsule` archive.
+///
+/// Delegates to `astrid_openclaw::pipeline::compile_plugin` for the heavy lifting,
+/// then packages the output directory into a `.capsule` tar.gz via the archiver.
+fn build_openclaw_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
+    info!("Building OpenClaw JS/TS capsule from {}", dir.display());
+
+    let build_dir = tempfile::tempdir().context("Failed to create temp build directory")?;
+    let config = HashMap::<String, serde_json::Value>::new();
+    let cache_dir = pipeline::default_cache_dir();
+
+    let opts = CompileOptions {
+        plugin_dir: dir,
+        output_dir: build_dir.path(),
+        config: &config,
+        cache_dir: cache_dir.as_deref(),
+        js_only: false,
+        no_cache: false,
+    };
+
+    let result = pipeline::compile_plugin(&opts)
+        .map_err(|e| anyhow::anyhow!("OpenClaw compilation failed: {e}"))?;
+
+    let tier_label = match result.tier {
+        PluginTier::Wasm => "Tier 1 (WASM)",
+        PluginTier::Node => "Tier 2 (Node.js MCP)",
+    };
+    info!(
+        "   Compiled {} as {} (cached: {})",
+        result.astrid_id, tier_label, result.cached
+    );
+
+    // Read the generated Capsule.toml
+    let capsule_toml_path = build_dir.path().join("Capsule.toml");
+    let toml_content = fs::read_to_string(&capsule_toml_path)
+        .context("Compilation succeeded but no Capsule.toml was generated")?;
+
+    // Determine the output location
+    let out_dir = match output {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_dir()?.join("dist"),
+    };
+    if !out_dir.exists() {
+        fs::create_dir_all(&out_dir)?;
+    }
+    let out_file = out_dir.join(format!("{}.capsule", result.astrid_id));
+
+    // Collect artifacts based on tier
+    match result.tier {
+        PluginTier::Wasm => {
+            let wasm_path = build_dir.path().join("plugin.wasm");
+            pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[])?;
+        },
+        PluginTier::Node => {
+            // Tier 2: include the copied source tree and bridge script
+            let mut additional: Vec<PathBuf> = Vec::new();
+            let src_dir = build_dir.path().join("src");
+            if src_dir.exists() {
+                additional.push(src_dir);
+            }
+            let bridge_path = build_dir.path().join("astrid_bridge.mjs");
+            if bridge_path.exists() {
+                additional.push(bridge_path);
+            }
+            let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
+            pack_capsule_archive(&out_file, &toml_content, None, build_dir.path(), &refs)?;
+        },
+    }
+
+    info!(
+        "Successfully built OpenClaw capsule: {}",
+        out_file.display()
+    );
     Ok(())
 }
 
