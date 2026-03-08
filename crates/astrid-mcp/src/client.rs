@@ -457,6 +457,42 @@ impl McpClient {
     pub async fn server_statuses(&self) -> Vec<McpServerStatus> {
         self.servers.server_statuses().await
     }
+
+    /// Send a custom JSON-RPC notification to a running MCP server.
+    ///
+    /// This is fire-and-forget — notifications have no response. Used by the
+    /// `McpHostEngine` to deliver hook events (e.g. `notifications/astrid.hookEvent`)
+    /// to Tier 2 capsule processes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server is not running or the notification cannot be sent.
+    pub async fn send_notification(
+        &self,
+        server: &str,
+        method: &str,
+        params: Option<Value>,
+    ) -> McpResult<()> {
+        let peer = self.servers.get_peer(server).await?;
+
+        let notification = rmcp::model::CustomNotification::new(method.to_string(), params);
+
+        peer.send_notification(notification.into())
+            .await
+            .map_err(|e| McpError::ToolCallFailed {
+                server: server.to_string(),
+                tool: method.to_string(),
+                reason: format!("failed to send notification: {e}"),
+            })?;
+
+        debug!(
+            server = server,
+            method = method,
+            "Sent custom notification to MCP server"
+        );
+
+        Ok(())
+    }
 }
 
 /// `McpClient` is cheaply cloneable — all fields are `Arc`-wrapped (or

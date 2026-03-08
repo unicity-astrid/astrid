@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::ExecutionEngine;
 use crate::context::CapsuleContext;
@@ -162,5 +162,53 @@ impl ExecutionEngine for McpHostEngine {
 
         // Let astrid-mcp drop the Child process and `Stdio` streams.
         Ok(())
+    }
+
+    fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        let server_id = format!("capsule:{}", self.manifest.package.name);
+
+        // Build the JSON-RPC notification payload matching what
+        // `astrid_bridge.mjs` expects for `notifications/astrid.hookEvent`.
+        let params: serde_json::Value = match serde_json::from_slice(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(CapsuleError::ExecutionFailed(format!(
+                    "failed to deserialize interceptor payload: {e}"
+                )));
+            },
+        };
+
+        let notification_params = serde_json::json!({
+            "hook": action,
+            "payload": params,
+        });
+
+        let client = self.mcp_client.clone();
+
+        // Use block_in_place (same pattern as WasmEngine) to send the async
+        // notification from this synchronous trait method.
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                if let Err(e) = client
+                    .send_notification(
+                        &server_id,
+                        "notifications/astrid.hookEvent",
+                        Some(notification_params),
+                    )
+                    .await
+                {
+                    // Notifications are fire-and-forget — log but don't fail
+                    // the dispatch loop for transient MCP transport errors.
+                    warn!(
+                        capsule = %self.manifest.package.name,
+                        hook = %action,
+                        error = %e,
+                        "Failed to deliver hook notification to MCP capsule"
+                    );
+                }
+            });
+        });
+
+        Ok(Vec::new())
     }
 }
