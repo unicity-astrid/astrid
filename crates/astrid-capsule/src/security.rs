@@ -199,21 +199,26 @@ impl ManifestSecurityGate {
         workspace_root: std::path::PathBuf,
         global_root: Option<std::path::PathBuf>,
     ) -> Self {
-        let resolved_fs_read = Self::resolve_schemes(
-            &manifest.capabilities.fs_read,
-            &workspace_root,
-            &global_root,
-        );
-        let resolved_fs_write = Self::resolve_schemes(
-            &manifest.capabilities.fs_write,
-            &workspace_root,
-            &global_root,
-        );
-        // Canonicalize workspace root for wildcard confinement. Uses the same
-        // fallback strategy as resolve_physical_absolute so paths match consistently.
+        // Canonicalize roots once up front. Both `resolve_schemes` (for prefix
+        // strings) and `workspace_root_path` (for wildcard confinement) use
+        // the same canonical values, avoiding redundant syscalls.
         let canonical_ws = workspace_root
             .canonicalize()
             .unwrap_or_else(|_| workspace_root.to_path_buf());
+        let canonical_global = global_root
+            .as_ref()
+            .map(|g| g.canonicalize().unwrap_or_else(|_| g.clone()));
+
+        let resolved_fs_read = Self::resolve_schemes(
+            &manifest.capabilities.fs_read,
+            &canonical_ws,
+            &canonical_global,
+        );
+        let resolved_fs_write = Self::resolve_schemes(
+            &manifest.capabilities.fs_write,
+            &canonical_ws,
+            &canonical_global,
+        );
         Self {
             manifest,
             resolved_fs_read,
@@ -228,20 +233,13 @@ impl ManifestSecurityGate {
     /// - `global://` -> `<global_root>/` (dropped if no global root is configured)
     /// - `*` -> kept as-is (wildcard — confined at check time)
     /// - anything else -> kept as-is (literal path prefix for backwards compat)
+    ///
+    /// Expects pre-canonicalized roots (canonicalization is done once in `new()`).
     fn resolve_schemes(
         entries: &[String],
-        workspace_root: &std::path::Path,
-        global_root: &Option<std::path::PathBuf>,
+        canonical_ws: &std::path::Path,
+        canonical_global: &Option<std::path::PathBuf>,
     ) -> Vec<String> {
-        // Canonicalize roots once so the stored prefixes match the canonical
-        // paths produced by `resolve_physical_absolute` at request time.
-        let canonical_ws = workspace_root
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.to_path_buf());
-        let canonical_global = global_root
-            .as_ref()
-            .map(|g| g.canonicalize().unwrap_or_else(|_| g.clone()));
-
         let mut resolved = Vec::with_capacity(entries.len());
         for entry in entries {
             if entry == "*" {
@@ -250,7 +248,7 @@ impl ManifestSecurityGate {
                 let path = canonical_ws.join(suffix);
                 resolved.push(path.to_string_lossy().to_string());
             } else if let Some(suffix) = entry.strip_prefix("global://") {
-                if let Some(ref g_root) = canonical_global {
+                if let Some(g_root) = canonical_global {
                     let path = g_root.join(suffix);
                     resolved.push(path.to_string_lossy().to_string());
                 }
@@ -265,12 +263,26 @@ impl ManifestSecurityGate {
 
     /// Check a filesystem path against a list of resolved allowed patterns.
     ///
+    /// Rejects paths containing `..` (ParentDir) components to prevent traversal
+    /// attacks like `/workspace/../../etc/passwd` which would pass a naive
+    /// `starts_with` check. Uses `Path::starts_with` for component-boundary
+    /// matching, so `/workspace-evil` does NOT match `/workspace`.
+    ///
     /// When a wildcard `"*"` is present, it only matches paths under the
     /// canonical workspace root — preventing escape to global paths
-    /// (e.g. `~/.astrid/keys/`). Uses `Path::starts_with` which checks
-    /// component boundaries, so `/workspace-evil` does NOT match `/workspace`.
+    /// (e.g. `~/.astrid/keys/`).
     fn check_fs_permission(&self, path: &str, resolved: &[String]) -> bool {
         let path_obj = std::path::Path::new(path);
+
+        // Reject paths with '..' components — these can bypass starts_with checks
+        // (e.g. /workspace/../../etc/passwd starts_with /workspace but resolves outside).
+        if path_obj
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return false;
+        }
+
         resolved.iter().any(|p| {
             if p == "*" {
                 path_obj.starts_with(&self.workspace_root_path)
@@ -623,6 +635,14 @@ mod tests {
                 .await
                 .is_err()
         );
+
+        // Path traversal via .. must be rejected even with explicit prefix match
+        assert!(
+            gate.check_file_read("test", "/workspace/src/../../etc/passwd")
+                .await
+                .is_err(),
+            "path traversal via .. must be rejected"
+        );
     }
 
     #[tokio::test]
@@ -746,6 +766,18 @@ mod tests {
             gate.check_file_write("test", evil_path.to_str().unwrap())
                 .await
                 .is_err()
+        );
+
+        // Path traversal attack: /workspace/../../etc/passwd must be rejected
+        // even though it starts_with /workspace at component level.
+        let traversal = format!("{}/../../etc/passwd", canonical_ws.display());
+        assert!(
+            gate.check_file_read("test", &traversal).await.is_err(),
+            "path traversal via .. must be rejected"
+        );
+        assert!(
+            gate.check_file_write("test", &traversal).await.is_err(),
+            "path traversal via .. must be rejected for writes"
         );
     }
 
