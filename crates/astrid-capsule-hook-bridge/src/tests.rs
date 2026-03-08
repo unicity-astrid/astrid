@@ -1009,3 +1009,125 @@ async fn hook_bridge_concurrent_events_dispatch_independently() {
 
     handle.abort();
 }
+
+// ── Context compaction dispatch tests ────────────────────────────────
+
+#[tokio::test]
+async fn hook_bridge_dispatches_on_compaction_started() {
+    let invoked = Arc::new(AtomicBool::new(false));
+    let plugin = MockPluginCapsule::new(
+        "compaction-observer",
+        "on_compaction_started",
+        Arc::clone(&invoked),
+        serde_json::json!({}),
+    );
+
+    let mut registry = CapsuleRegistry::new();
+    registry.register(Box::new(plugin)).unwrap();
+    let registry = Arc::new(RwLock::new(registry));
+
+    let bus = Arc::new(EventBus::with_capacity(64));
+
+    let handle = tokio::spawn(crate::dispatch_loop(
+        Arc::clone(&bus),
+        Arc::clone(&registry),
+    ));
+    tokio::task::yield_now().await;
+
+    bus.publish(AstridEvent::ContextCompactionStarted {
+        metadata: EventMetadata::new("test"),
+        session_id: uuid::Uuid::new_v4(),
+        message_count: 42,
+    });
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        invoked.load(Ordering::SeqCst),
+        "on_compaction_started hook should have been dispatched"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn hook_bridge_dispatches_on_compaction_completed() {
+    let invoked = Arc::new(AtomicBool::new(false));
+    let plugin = MockPluginCapsule::new(
+        "compaction-observer",
+        "on_compaction_completed",
+        Arc::clone(&invoked),
+        serde_json::json!({}),
+    );
+
+    let mut registry = CapsuleRegistry::new();
+    registry.register(Box::new(plugin)).unwrap();
+    let registry = Arc::new(RwLock::new(registry));
+
+    let bus = Arc::new(EventBus::with_capacity(64));
+
+    let handle = tokio::spawn(crate::dispatch_loop(
+        Arc::clone(&bus),
+        Arc::clone(&registry),
+    ));
+    tokio::task::yield_now().await;
+
+    bus.publish(AstridEvent::ContextCompactionCompleted {
+        metadata: EventMetadata::new("test"),
+        session_id: uuid::Uuid::new_v4(),
+        messages_remaining: 20,
+    });
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        invoked.load(Ordering::SeqCst),
+        "on_compaction_completed hook should have been dispatched"
+    );
+
+    handle.abort();
+}
+
+#[tokio::test]
+async fn hook_bridge_compaction_hooks_are_fire_and_forget() {
+    // on_compaction_started uses MergeSemantics::None, so no decision
+    // event should be published even when a subscriber responds.
+    let invoked = Arc::new(AtomicBool::new(false));
+    let plugin = MockPluginCapsule::new(
+        "compaction-observer-fandf",
+        "on_compaction_started",
+        Arc::clone(&invoked),
+        serde_json::json!({"some": "data"}),
+    );
+
+    let mut registry = CapsuleRegistry::new();
+    registry.register(Box::new(plugin)).unwrap();
+    let registry = Arc::new(RwLock::new(registry));
+
+    let bus = Arc::new(EventBus::with_capacity(64));
+
+    let mut decision_receiver = bus.subscribe_topic("hook_bridge.on_compaction_started.decision");
+
+    let handle = tokio::spawn(crate::dispatch_loop(
+        Arc::clone(&bus),
+        Arc::clone(&registry),
+    ));
+    tokio::task::yield_now().await;
+
+    bus.publish(AstridEvent::ContextCompactionStarted {
+        metadata: EventMetadata::new("test"),
+        session_id: uuid::Uuid::new_v4(),
+        message_count: 42,
+    });
+
+    let result = tokio::time::timeout(Duration::from_millis(300), decision_receiver.recv()).await;
+    assert!(
+        result.is_err(),
+        "fire-and-forget hooks should NOT publish decision events"
+    );
+
+    // But the interceptor should still have been invoked.
+    assert!(invoked.load(Ordering::SeqCst));
+
+    handle.abort();
+}

@@ -1,0 +1,17 @@
+[package]
+name = "astrid-capsule-context-engine"
+version = "0.1.0"
+description = "Pluggable context window compaction with interceptor hook support"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "context-engine"
+file = "astrid_capsule_context_engine.wasm"
+
+[capabilities]
+ipc_publish = [
+    "context_engine.response.*",
+    "before_compaction",
+    "after_compaction",
+]

@@ -94,6 +94,20 @@ impl HookMapping {
                 merge: MergeSemantics::None,
             }),
 
+            // ── Context compaction ──
+            // Broadcast-only observation hooks. Distinct from the Context
+            // Engine capsule's request-response `before_compaction` /
+            // `after_compaction` interceptors — these use different names
+            // to avoid duplicate invocations on plugins.
+            AstridEvent::ContextCompactionStarted { .. } => Some(Self {
+                hook_name: "on_compaction_started",
+                merge: MergeSemantics::None,
+            }),
+            AstridEvent::ContextCompactionCompleted { .. } => Some(Self {
+                hook_name: "on_compaction_completed",
+                merge: MergeSemantics::None,
+            }),
+
             // ── Kernel lifecycle ──
             AstridEvent::KernelStarted { .. } => Some(Self {
                 hook_name: "kernel_start",
@@ -295,6 +309,30 @@ mod tests {
         };
         let mapping = HookMapping::from_event(&event).unwrap();
         assert_eq!(mapping.hook_name, "kernel_stop");
+        assert_eq!(mapping.merge, MergeSemantics::None);
+    }
+
+    #[test]
+    fn context_compaction_started_maps_to_on_compaction_started() {
+        let event = AstridEvent::ContextCompactionStarted {
+            metadata: EventMetadata::new("test"),
+            session_id: Uuid::new_v4(),
+            message_count: 42,
+        };
+        let mapping = HookMapping::from_event(&event).unwrap();
+        assert_eq!(mapping.hook_name, "on_compaction_started");
+        assert_eq!(mapping.merge, MergeSemantics::None);
+    }
+
+    #[test]
+    fn context_compaction_completed_maps_to_on_compaction_completed() {
+        let event = AstridEvent::ContextCompactionCompleted {
+            metadata: EventMetadata::new("test"),
+            session_id: Uuid::new_v4(),
+            messages_remaining: 20,
+        };
+        let mapping = HookMapping::from_event(&event).unwrap();
+        assert_eq!(mapping.hook_name, "on_compaction_completed");
         assert_eq!(mapping.merge, MergeSemantics::None);
     }
 
