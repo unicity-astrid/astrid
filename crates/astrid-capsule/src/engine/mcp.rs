@@ -169,14 +169,9 @@ impl ExecutionEngine for McpHostEngine {
 
         // Build the JSON-RPC notification payload matching what
         // `astrid_bridge.mjs` expects for `notifications/astrid.hookEvent`.
-        let params: serde_json::Value = match serde_json::from_slice(payload) {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(CapsuleError::ExecutionFailed(format!(
-                    "failed to deserialize interceptor payload: {e}"
-                )));
-            },
-        };
+        let params: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
+            CapsuleError::ExecutionFailed(format!("failed to deserialize interceptor payload: {e}"))
+        })?;
 
         let notification_params = serde_json::json!({
             "hook": action,
