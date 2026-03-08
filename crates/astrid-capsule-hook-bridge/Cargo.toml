@@ -1,0 +1,24 @@
+[package]
+name = "astrid-capsule-hook-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Hook Bridge capsule — translates kernel events into plugin interceptor calls"
+publish = false
+
+[dependencies]
+astrid-capsule = { path = "../astrid-capsule" }
+astrid-events = { path = "../astrid-events", features = ["runtime"] }
+
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+astrid-storage = { path = "../astrid-storage" }
+tokio = { workspace = true, features = ["test-util"] }
