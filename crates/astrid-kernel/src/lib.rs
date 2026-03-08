@@ -127,6 +127,13 @@ impl Kernel {
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         drop(spawn_idle_monitor(Arc::clone(&kernel)));
 
+        // Spawn the event dispatcher — routes EventBus events to capsule interceptors
+        let dispatcher = astrid_capsule::dispatcher::EventDispatcher::new(
+            Arc::clone(&kernel.capsules),
+            Arc::clone(&kernel.event_bus),
+        );
+        tokio::spawn(dispatcher.run());
+
         Ok(kernel)
     }
 
