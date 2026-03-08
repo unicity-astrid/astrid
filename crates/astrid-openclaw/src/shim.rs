@@ -1084,6 +1084,18 @@ module.exports.astrid_cron_trigger = function() {
     _ensureActivated();
     _Host.outputString(JSON.stringify({ content: "Cron not natively supported by OpenClaw", is_error: true }));
 };
+
+module.exports.astrid_deactivate = function() {
+  if (!_activated) return;
+  if (typeof _pluginModule.deactivate === "function") {
+    try {
+      _pluginModule.deactivate();
+    } catch(_de) {
+      hostLog("error", "plugin deactivation failed: " + String(_de));
+    }
+  }
+  _activated = false;
+};
 "#
     .to_string()
 }

@@ -80,6 +80,7 @@ const registeredHooks = new Map();
 const unsupportedRegistrations = [];
 const eventHandlers = new Map();
 let pluginConfig = {};
+let pluginModule = null;
 let servicesReady = false;
 let shuttingDown = false;
 
@@ -526,6 +527,17 @@ async function shutdown(reason) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info(`${reason} — shutting down`);
+
+  // Call plugin deactivate() before stopping services
+  const deactivate = pluginModule?.default?.deactivate || pluginModule?.deactivate;
+  if (typeof deactivate === "function") {
+    try {
+      await deactivate();
+    } catch (e) {
+      log.error(`Plugin deactivate() failed: ${e.message}`);
+    }
+  }
+
   await stopServices();
   process.exit(0);
 }
@@ -576,6 +588,7 @@ async function loadPlugin() {
 
   try {
     const mod = await import(fileUrl);
+    pluginModule = mod;
     const defaultExport = mod.default;
 
     if (defaultExport && typeof defaultExport === "object" && typeof defaultExport.register === "function") {
