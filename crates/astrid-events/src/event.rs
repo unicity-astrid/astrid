@@ -143,6 +143,19 @@ pub enum AstridEvent {
         frontend: String,
     },
 
+    /// Response message has been delivered to the user/frontend.
+    ///
+    /// Fired after the message is confirmed sent. Useful for auditing,
+    /// logging, or triggering post-delivery side effects.
+    MessageSent {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Message ID.
+        message_id: Uuid,
+        /// Target frontend.
+        frontend: String,
+    },
+
     /// Message fully processed (response sent).
     MessageProcessed {
         /// Event metadata.
@@ -217,6 +230,34 @@ pub enum AstridEvent {
         provider: Option<String>,
         /// Candidate model (may be overridden by capsule).
         model: Option<String>,
+    },
+
+    /// The agent's cognitive loop has finished its run.
+    ///
+    /// Fired after the final response is produced, before session teardown.
+    /// Capsules can inspect the complete run for logging or analytics.
+    AgentLoopCompleted {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Agent ID.
+        agent_id: Uuid,
+        /// Total turns in the loop.
+        turns: u32,
+        /// Duration of the full loop in milliseconds.
+        duration_ms: u64,
+    },
+
+    /// A tool result is about to be persisted to conversation history.
+    ///
+    /// Capsules can intercept, redact, or transform the result before
+    /// it is stored.
+    ToolResultPersisting {
+        /// Event metadata.
+        metadata: EventMetadata,
+        /// Tool call ID.
+        call_id: Uuid,
+        /// Tool name.
+        tool_name: String,
     },
 
     // ========== LLM Events ==========
@@ -691,7 +732,10 @@ impl AstridEvent {
             | Self::ContextCompactionCompleted { metadata, .. }
             | Self::SessionResetting { metadata, .. }
             | Self::ModelResolving { metadata, .. }
+            | Self::AgentLoopCompleted { metadata, .. }
+            | Self::ToolResultPersisting { metadata, .. }
             | Self::MessageReceived { metadata, .. }
+            | Self::MessageSent { metadata, .. }
             | Self::MessageProcessed { metadata, .. }
             | Self::LlmRequestStarted { metadata, .. }
             | Self::LlmRequestCompleted { metadata, .. }
@@ -756,8 +800,11 @@ impl AstridEvent {
             Self::ContextCompactionCompleted { .. } => "context_compaction_completed",
             Self::SessionResetting { .. } => "session_resetting",
             Self::ModelResolving { .. } => "model_resolving",
+            Self::AgentLoopCompleted { .. } => "agent_loop_completed",
+            Self::ToolResultPersisting { .. } => "tool_result_persisting",
             // Message Flow
             Self::MessageReceived { .. } => "message_received",
+            Self::MessageSent { .. } => "message_sent",
             Self::MessageProcessed { .. } => "message_processed",
             // LLM
             Self::LlmRequestStarted { .. } => "llm_request_started",

@@ -40,6 +40,14 @@ pub enum HookEvent {
     SessionReset,
     /// Before model/provider selection is resolved.
     ModelResolve,
+    /// A user message has been received.
+    MessageReceived,
+    /// A response message has been delivered.
+    MessageSent,
+    /// The agent's cognitive loop has completed its run.
+    AgentLoopEnd,
+    /// A tool result is about to be persisted to history.
+    ToolResultPersist,
     /// A subagent is starting.
     SubagentStart,
     /// A subagent has stopped.
@@ -68,6 +76,10 @@ impl fmt::Display for HookEvent {
             Self::MessageSend => write!(f, "message_send"),
             Self::SessionReset => write!(f, "session_reset"),
             Self::ModelResolve => write!(f, "model_resolve"),
+            Self::MessageReceived => write!(f, "message_received"),
+            Self::MessageSent => write!(f, "message_sent"),
+            Self::AgentLoopEnd => write!(f, "agent_loop_end"),
+            Self::ToolResultPersist => write!(f, "tool_result_persist"),
             Self::SubagentStart => write!(f, "subagent_start"),
             Self::SubagentStop => write!(f, "subagent_stop"),
             Self::KernelStart => write!(f, "kernel_start"),
