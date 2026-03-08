@@ -172,9 +172,21 @@ var _openclawContext = {{
     debug: function(msg) {{ hostLog("debug", msg); }}
   }},
   workspace: ".",
-  registerTool: function(name, definition, handler) {{
-    _registeredTools[name] = {{
-      name: name,
+  registerTool: function(nameOrDef, definitionOrHandler, maybeHandler) {{
+    var toolName, definition, handler;
+    if (typeof nameOrDef === "string") {{
+      // 3-arg form: registerTool("name", {{schema}}, handler)
+      toolName = nameOrDef;
+      definition = definitionOrHandler;
+      handler = maybeHandler;
+    }} else {{
+      // 2-arg form: registerTool({{name, description, inputSchema, ...}}, handler)
+      toolName = nameOrDef.name;
+      definition = nameOrDef;
+      handler = definitionOrHandler;
+    }}
+    _registeredTools[toolName] = {{
+      name: toolName,
       definition: definition,
       handler: handler
     }};
