@@ -77,6 +77,11 @@ impl AllowanceValidator {
 }
 
 /// Extracts the exact resource permission and pattern required to execute a specific action.
+///
+/// Capsule capabilities are mapped to [`AllowancePattern::CapsuleCapability`] with
+/// well-known string constants: `"http_request"`, `"file_read"`, `"file_write"`,
+/// `"file_delete"`, `"net_bind"`. These must match the strings used in
+/// [`AllowanceStore::find_matching`] for allowance lookup to work correctly.
 #[must_use]
 pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<AllowancePattern> {
     match action {
@@ -128,6 +133,12 @@ pub fn action_to_allowance_pattern(action: &SensitiveAction) -> Option<Allowance
             Some(AllowancePattern::CapsuleCapability {
                 capsule_id: capsule_id.clone(),
                 capability: cap.to_string(),
+            })
+        },
+        SensitiveAction::CapsuleNetBind { capsule_id } => {
+            Some(AllowancePattern::CapsuleCapability {
+                capsule_id: capsule_id.clone(),
+                capability: "net_bind".to_string(),
             })
         },
         SensitiveAction::TransmitData { .. }

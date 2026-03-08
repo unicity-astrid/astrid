@@ -245,7 +245,13 @@ impl ExecutionEngine for WasmEngine {
                 next_subscription_id,
                 config: wasm_config,
                 ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
-                cli_socket_listener: ctx.cli_socket_listener.clone(),
+                // Only provide the CLI socket listener if the capsule declares net_bind.
+                // This prevents unauthorized capsules from even seeing the listener.
+                cli_socket_listener: if manifest.capabilities.net_bind.is_empty() {
+                    None
+                } else {
+                    ctx.cli_socket_listener.clone()
+                },
                 active_streams: std::collections::HashMap::new(),
                 next_stream_id: 1,
                 security: Some(security_gate),

@@ -120,6 +120,12 @@ pub enum SensitiveAction {
         /// Access mode (Read, Write, Delete).
         mode: Permission,
     },
+
+    /// Capsule requesting to accept connections on a bound socket.
+    CapsuleNetBind {
+        /// Capsule identifier.
+        capsule_id: String,
+    },
 }
 
 impl SensitiveAction {
@@ -140,6 +146,7 @@ impl SensitiveAction {
             Self::CapsuleExecution { .. } => "capsule_execution",
             Self::CapsuleHttpRequest { .. } => "capsule_http_request",
             Self::CapsuleFileAccess { .. } => "capsule_file_access",
+            Self::CapsuleNetBind { .. } => "capsule_net_bind",
         }
     }
 
@@ -160,7 +167,8 @@ impl SensitiveAction {
             | Self::CapabilityGrant { .. }
             | Self::CapsuleExecution { .. }
             | Self::CapsuleHttpRequest { .. }
-            | Self::CapsuleFileAccess { .. } => RiskLevel::High,
+            | Self::CapsuleFileAccess { .. }
+            | Self::CapsuleNetBind { .. } => RiskLevel::High,
             Self::FileRead { .. } | Self::NetworkRequest { .. } | Self::McpToolCall { .. } => {
                 RiskLevel::Medium
             },
@@ -219,6 +227,9 @@ impl SensitiveAction {
                 path,
                 mode,
             } => format!("Capsule '{capsule_id}' wants to {mode} {path}"),
+            Self::CapsuleNetBind { capsule_id } => {
+                format!("Capsule '{capsule_id}' wants to accept socket connections (net_bind)")
+            },
         }
     }
 }
@@ -302,6 +313,25 @@ mod tests {
             tool: "create_issue".to_string(),
         };
         assert_eq!(action.to_string(), action.summary());
+    }
+
+    #[test]
+    fn test_capsule_net_bind_action() {
+        let action = SensitiveAction::CapsuleNetBind {
+            capsule_id: "cli-proxy".to_string(),
+        };
+        assert_eq!(action.action_type(), "capsule_net_bind");
+        assert_eq!(action.default_risk_level(), RiskLevel::High);
+        assert_eq!(
+            action.summary(),
+            "Capsule 'cli-proxy' wants to accept socket connections (net_bind)"
+        );
+        assert_eq!(action.to_string(), action.summary());
+
+        // Serialization roundtrip
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: SensitiveAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.action_type(), "capsule_net_bind");
     }
 
     #[test]

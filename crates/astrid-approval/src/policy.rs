@@ -138,7 +138,8 @@ impl SecurityPolicy {
             ),
             SensitiveAction::CapsuleExecution { capsule_id, .. }
             | SensitiveAction::CapsuleHttpRequest { capsule_id, .. }
-            | SensitiveAction::CapsuleFileAccess { capsule_id, .. } => {
+            | SensitiveAction::CapsuleFileAccess { capsule_id, .. }
+            | SensitiveAction::CapsuleNetBind { capsule_id, .. } => {
                 self.check_capsule_action(capsule_id, action)
             },
         }
@@ -270,6 +271,11 @@ impl SecurityPolicy {
     /// 2. `CapsuleHttpRequest` URL host in `denied_hosts`? -> Blocked
     /// 3. `CapsuleFileAccess` path matches `denied_paths`? -> Blocked
     /// 4. Otherwise -> `RequiresApproval` (plugins always need approval)
+    ///
+    /// `CapsuleNetBind` intentionally has no path-based check here because the
+    /// socket is pre-bound by the kernel — the capsule does not control the bind
+    /// address. The `ManifestSecurityGate::check_net_bind` enforces the manifest
+    /// capability, and this policy layer gates approval for the capsule itself.
     fn check_capsule_action(&self, capsule_id: &str, action: &SensitiveAction) -> PolicyResult {
         // 1. Check blocked plugins
         if self.blocked_capsules.contains(capsule_id) {

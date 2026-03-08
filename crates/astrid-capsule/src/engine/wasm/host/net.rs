@@ -2,14 +2,33 @@ use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
-// Note: `bind_unix` is ignored because the Kernel natively binds the socket and passes
-// it into the HostState. The WASM module just calls accept() directly.
+/// Gate `net_bind` capability once at bind time (session-scoped).
+///
+/// The kernel pre-binds the socket and provides it via `HostState`. This
+/// function enforces the security gate before the capsule can use the
+/// listener — subsequent `accept()` calls do not re-check.
 pub(crate) fn astrid_net_bind_unix_impl(
     _: &mut CurrentPlugin,
     _: &[Val],
     outputs: &mut [Val],
-    _: UserData<HostState>,
+    user_data: UserData<HostState>,
 ) -> Result<(), Error> {
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    // Security gate: only capsules with net_bind capability may bind sockets.
+    if let Some(ref gate) = state.security {
+        let capsule_id = state.capsule_id.as_str().to_owned();
+        let gate = gate.clone();
+        let handle = state.runtime_handle.clone();
+        tokio::task::block_in_place(|| {
+            handle.block_on(async move { gate.check_net_bind(&capsule_id).await })
+        })
+        .map_err(|e| Error::msg(format!("security denied net_bind: {e}")))?;
+    }
+
     // Return a dummy handle, since the socket is pre-bound.
     outputs[0] = Val::I64(1);
     Ok(())
@@ -23,7 +42,8 @@ pub(crate) fn astrid_net_accept_impl(
 ) -> Result<(), Error> {
     let ud = user_data.get()?;
 
-    // We need to fetch the listener and the runtime handle out of the lock
+    // We need to fetch the listener and the runtime handle out of the lock.
+    // Security gate was already enforced at bind time (astrid_net_bind_unix_impl).
     let (listener_arc, rt_handle) = {
         let state = ud
             .lock()
