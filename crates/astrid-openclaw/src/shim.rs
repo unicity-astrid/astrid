@@ -337,10 +337,16 @@ var _openclawContext = {{
     hostLog("debug", "registered provider: " + name);
   }},
 
-  // ── 12. registerCli (captured as metadata) ────────────────────────
+  // ── 12. registerCli → maps to tool (a CLI subcommand IS a callable tool)
   registerCli: function(name, opts) {{
-    _registeredMetadata.cliCommands[name] = opts;
-    hostLog("debug", "registered cli command: " + name);
+    var handler = typeof opts === "function" ? opts : (opts && opts.handler);
+    var desc = (opts && opts.description) || "CLI command: " + name;
+    _registeredTools[name] = {{
+      name: name,
+      definition: {{ name: name, description: desc, inputSchema: (opts && opts.inputSchema) || {{}} }},
+      handler: handler
+    }};
+    hostLog("debug", "registered cli command as tool: " + name);
   }},
 
   // ── 13. on (event handler) ────────────────────────────────────────

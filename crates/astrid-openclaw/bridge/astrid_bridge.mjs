@@ -237,9 +237,16 @@ const pluginApi = {
     unsupportedRegistrations.push({ type: "provider", name });
     log.debug(`Registered provider: ${name} (captured as metadata)`);
   },
+  // registerCli → maps to tool (a CLI subcommand IS a callable tool)
   registerCli: (name, definition) => {
-    unsupportedRegistrations.push({ type: "cli", name });
-    log.debug(`Registered CLI command: ${name} (captured as metadata)`);
+    const handler = typeof definition === "function" ? definition : definition?.handler;
+    const desc = (definition && definition.description) || `CLI command: ${name}`;
+    registeredTools.set(name, {
+      name,
+      definition: { name, description: desc },
+      handler,
+    });
+    log.debug(`Registered CLI command as tool: ${name}`);
   },
 };
 
