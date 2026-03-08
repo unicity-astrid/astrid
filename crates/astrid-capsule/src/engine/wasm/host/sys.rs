@@ -101,6 +101,15 @@ pub(crate) fn astrid_get_caller_impl(
     Ok(())
 }
 
+/// Trigger request sent by WASM capsules via `hooks::trigger`.
+#[derive(serde::Deserialize)]
+struct TriggerRequest {
+    /// The hook/interceptor topic to fan out (e.g. `before_tool_call`).
+    hook: String,
+    /// Opaque JSON payload forwarded to each matching interceptor.
+    payload: serde_json::Value,
+}
+
 #[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_trigger_hook_impl(
     plugin: &mut CurrentPlugin,
@@ -115,24 +124,83 @@ pub(crate) fn astrid_trigger_hook_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    // The HookManager is passed into HostState so we can execute hooks synchronously.
-    let result_bytes = if let Some(_hook_manager) = &state.hook_manager {
-        // We use block_in_place because Extism host functions are synchronous,
-        // but our HookManager executes shell scripts/HTTP asynchronously.
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                // Here we would actually deserialize the event_bytes and trigger the hook.
-                // For now, we return a pass-through success result.
-                Ok::<Vec<u8>, String>(event_bytes.to_vec())
+    let caller_id = state.capsule_id.clone();
+    let registry = state.capsule_registry.clone();
+    let rt_handle = state.runtime_handle.clone();
+    drop(state);
+
+    let result_bytes = if let Some(registry) = registry {
+        // Deserialize the trigger request from the WASM guest.
+        let request: TriggerRequest = serde_json::from_slice(&event_bytes)
+            .map_err(|e| Error::msg(format!("invalid trigger request: {e}")))?;
+
+        let payload_bytes = serde_json::to_vec(&request.payload).unwrap_or_default();
+
+        // Fan out: find all capsules with interceptors matching the hook topic,
+        // invoke each (skipping the caller to prevent infinite recursion),
+        // and collect their responses.
+        let responses = tokio::task::block_in_place(|| {
+            rt_handle.block_on(async {
+                let registry = registry.read().await;
+                let mut matches: Vec<(std::sync::Arc<dyn crate::capsule::Capsule>, String)> =
+                    Vec::new();
+
+                for capsule_id in registry.list() {
+                    // Skip the calling capsule to prevent recursion.
+                    if *capsule_id == caller_id {
+                        continue;
+                    }
+                    if let Some(capsule) = registry.get(capsule_id) {
+                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                            continue;
+                        }
+                        for interceptor in &capsule.manifest().interceptors {
+                            if crate::dispatcher::topic_matches(&request.hook, &interceptor.event) {
+                                matches.push((
+                                    std::sync::Arc::clone(&capsule),
+                                    interceptor.action.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                drop(registry);
+
+                let mut responses: Vec<serde_json::Value> = Vec::new();
+                for (capsule, action) in &matches {
+                    match capsule.invoke_interceptor(action, &payload_bytes) {
+                        Ok(bytes) if bytes.is_empty() => {},
+                        Ok(bytes) => {
+                            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                responses.push(val);
+                            } else {
+                                tracing::warn!(
+                                    capsule_id = %capsule.id(),
+                                    action = %action,
+                                    "interceptor returned non-JSON response, skipping"
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                capsule_id = %capsule.id(),
+                                action = %action,
+                                hook = %request.hook,
+                                error = %e,
+                                "interceptor invocation failed during hook trigger"
+                            );
+                        },
+                    }
+                }
+                responses
             })
         });
-        result.unwrap_or_else(|e| format!(r#"{{"error": "{}"}}"#, e).into_bytes())
-    } else {
-        // No hook manager configured, just pass through
-        event_bytes.to_vec()
-    };
 
-    drop(state);
+        serde_json::to_vec(&responses).unwrap_or_else(|_| b"[]".to_vec())
+    } else {
+        // No registry available — return empty array (no subscribers).
+        b"[]".to_vec()
+    };
 
     let mem = plugin.memory_new(&result_bytes)?;
     outputs[0] = plugin.memory_to_val(mem);

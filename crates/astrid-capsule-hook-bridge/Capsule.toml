@@ -1,0 +1,78 @@
+[package]
+name = "astrid-capsule-hook-bridge"
+version = "0.1.0"
+description = "Hook bridge capsule — maps lifecycle events to semantic hooks with merge strategies"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "hook-bridge"
+file = "astrid_capsule_hook_bridge.wasm"
+type = "executable"
+
+# ── Session lifecycle ──
+[[interceptor]]
+event = "session_created"
+action = "on_session_created"
+
+[[interceptor]]
+event = "session_ended"
+action = "on_session_ended"
+
+# ── Tool hooks ──
+[[interceptor]]
+event = "tool_call_started"
+action = "on_tool_call_started"
+
+[[interceptor]]
+event = "tool_call_completed"
+action = "on_tool_call_completed"
+
+[[interceptor]]
+event = "tool_result_persisting"
+action = "on_tool_result_persisting"
+
+# ── Message hooks ──
+[[interceptor]]
+event = "message_received"
+action = "on_message_received"
+
+[[interceptor]]
+event = "message_sending"
+action = "on_message_sending"
+
+[[interceptor]]
+event = "message_sent"
+action = "on_message_sent"
+
+# ── Sub-agent hooks ──
+[[interceptor]]
+event = "sub_agent_spawned"
+action = "on_subagent_spawned"
+
+[[interceptor]]
+event = "sub_agent_completed"
+action = "on_subagent_completed"
+
+[[interceptor]]
+event = "sub_agent_failed"
+action = "on_subagent_failed"
+
+[[interceptor]]
+event = "sub_agent_cancelled"
+action = "on_subagent_cancelled"
+
+# ── Kernel lifecycle ──
+[[interceptor]]
+event = "kernel_started"
+action = "on_kernel_started"
+
+[[interceptor]]
+event = "kernel_shutdown"
+action = "on_kernel_shutdown"
+
+[capabilities]
+# Hook bridge needs to publish hook results on the event bus
+ipc_publish = [
+    "hook.result.*",
+]

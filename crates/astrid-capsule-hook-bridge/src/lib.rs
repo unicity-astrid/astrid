@@ -1,388 +1,362 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
-#![warn(clippy::pedantic)]
 #![warn(unreachable_pub)]
+#![warn(missing_docs)]
 
-//! Hook Bridge capsule — translates kernel `AstridEvent` broadcasts into
-//! plugin hook interceptor calls.
+//! Hook Bridge capsule — maps lifecycle events to semantic hooks.
 //!
-//! The kernel fires raw events. Plugin capsules expect named hooks with
-//! request-response semantics. The Hook Bridge sits between them, owning
-//! the event-to-hook mapping and response merge semantics.
+//! The kernel dispatches lifecycle events (e.g. `tool_call_started`,
+//! `session_created`) to this capsule via interceptors. The Hook Bridge
+//! maps each event to a semantic hook name, calls `hooks::trigger` to
+//! fan out to all subscriber capsules, and applies merge strategies to
+//! the collected responses.
 //!
 //! # Architecture
 //!
 //! ```text
-//! Kernel emits AstridEvent::ToolCallStarted
-//!     → Hook Bridge receives broadcast
-//!     → Hook Bridge fires "before_tool_call" interceptor on all subscriber capsules
-//!     → Plugin capsules respond (e.g., { skip: true })
-//!     → Hook Bridge merges responses and publishes result event
+//! Kernel EventBus → EventDispatcher → Hook Bridge (this capsule)
+//!                                        ↓ hooks::trigger("before_tool_call", payload)
+//!                                     Kernel astrid_trigger_hook host fn
+//!                                        ↓ iterates CapsuleRegistry
+//!                                     Subscriber capsule A, B, C...
+//!                                        ↑ collect responses
+//!                                     Hook Bridge applies merge strategy
 //! ```
+//!
+//! This is a **policy** capsule: it defines which events map to which
+//! hooks and how responses are merged. The **mechanism** (fan-out and
+//! response collection) lives in the kernel's `astrid_trigger_hook`
+//! host function.
 
-mod mapping;
+use astrid_sdk::prelude::*;
+use serde::Serialize;
 
-use std::sync::Arc;
-use std::time::Duration;
+// ── Merge Semantics ────────────────────────────────────────────────
 
-use async_trait::async_trait;
-use tokio::sync::RwLock;
-use tracing::{debug, warn};
+/// How interceptor responses are merged for a hook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MergeSemantics {
+    /// Fire-and-forget: responses are discarded.
+    None,
+    /// `before_tool_call` specific: any `skip: true` → skip,
+    /// last non-null `modified_params` wins.
+    ToolCallBefore,
+    /// Last non-null value for the named field wins.
+    LastNonNull { field: &'static str },
+}
 
-use astrid_capsule::capsule::{Capsule, CapsuleId, CapsuleState};
-use astrid_capsule::context::CapsuleContext;
-use astrid_capsule::error::{CapsuleError, CapsuleResult};
-use astrid_capsule::manifest::{CapabilitiesDef, CapsuleManifest, PackageDef};
-use astrid_capsule::registry::CapsuleRegistry;
-use astrid_capsule::tool::CapsuleTool;
-use astrid_events::{AstridEvent, EventBus, EventMetadata, IpcMessage, IpcPayload};
+/// A mapping from a lifecycle event to a hook name and merge strategy.
+struct HookMapping {
+    hook_name: &'static str,
+    merge: MergeSemantics,
+}
 
-use mapping::{HookMapping, MergeSemantics};
+// ── Hook Trigger Protocol ──────────────────────────────────────────
 
-/// The Hook Bridge capsule ID.
-const CAPSULE_ID: &str = "hook-bridge";
+/// Request payload sent to `hooks::trigger` (consumed by the kernel's
+/// `astrid_trigger_hook` host function).
+#[derive(Serialize)]
+struct TriggerRequest<'a> {
+    hook: &'a str,
+    payload: &'a serde_json::Value,
+}
 
-/// Maximum time to wait for a single interceptor invocation before giving up.
-/// Prevents a hung WASM guest from blocking the dispatch task indefinitely.
-const INTERCEPTOR_TIMEOUT: Duration = Duration::from_secs(30);
+/// Merged result from hook fan-out.
+#[derive(Serialize)]
+struct HookResult {
+    /// Whether the operation should be skipped (ToolCallBefore semantics).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip: Option<bool>,
+    /// Merged data from interceptor responses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
+}
 
-/// Hook Bridge capsule.
+// ── Event-to-Hook Mapping Table ────────────────────────────────────
+
+/// Resolve the hook mapping for a given event type string.
 ///
-/// A native Rust capsule that subscribes to kernel `AstridEvent` broadcasts
-/// and translates them into interceptor calls on plugin capsules that
-/// registered for the corresponding hook names.
-pub struct HookBridgeCapsule {
-    id: CapsuleId,
-    manifest: CapsuleManifest,
-    state: CapsuleState,
-    registry: Arc<RwLock<CapsuleRegistry>>,
-    /// Handle to the background dispatch task; aborted on unload.
-    task_handle: Option<tokio::task::JoinHandle<()>>,
-}
+/// Returns `None` for events that have no corresponding hook.
+fn mapping_for_event(event_type: &str) -> Option<HookMapping> {
+    match event_type {
+        // Session lifecycle
+        "session_created" => Some(HookMapping {
+            hook_name: "session_start",
+            merge: MergeSemantics::None,
+        }),
+        "session_ended" => Some(HookMapping {
+            hook_name: "session_end",
+            merge: MergeSemantics::None,
+        }),
 
-impl HookBridgeCapsule {
-    /// Create a new Hook Bridge capsule.
-    ///
-    /// # Arguments
-    ///
-    /// * `registry` — shared capsule registry for looking up subscriber capsules
-    #[must_use]
-    pub fn new(registry: Arc<RwLock<CapsuleRegistry>>) -> Self {
-        Self {
-            id: CapsuleId::from_static(CAPSULE_ID),
-            manifest: build_manifest(),
-            state: CapsuleState::Unloaded,
-            registry,
-            task_handle: None,
-        }
+        // Tool hooks
+        "tool_call_started" => Some(HookMapping {
+            hook_name: "before_tool_call",
+            merge: MergeSemantics::ToolCallBefore,
+        }),
+        "tool_call_completed" => Some(HookMapping {
+            hook_name: "after_tool_call",
+            merge: MergeSemantics::LastNonNull {
+                field: "modified_result",
+            },
+        }),
+        "tool_result_persisting" => Some(HookMapping {
+            hook_name: "tool_result_persist",
+            merge: MergeSemantics::LastNonNull {
+                field: "transformed_result",
+            },
+        }),
+
+        // Message hooks
+        "message_received" => Some(HookMapping {
+            hook_name: "message_received",
+            merge: MergeSemantics::None,
+        }),
+        "message_sending" => Some(HookMapping {
+            hook_name: "message_sending",
+            merge: MergeSemantics::LastNonNull {
+                field: "modified_content",
+            },
+        }),
+        "message_sent" => Some(HookMapping {
+            hook_name: "message_sent",
+            merge: MergeSemantics::None,
+        }),
+
+        // Sub-agent hooks
+        "sub_agent_spawned" => Some(HookMapping {
+            hook_name: "subagent_start",
+            merge: MergeSemantics::None,
+        }),
+        "sub_agent_completed" | "sub_agent_failed" | "sub_agent_cancelled" => Some(HookMapping {
+            hook_name: "subagent_stop",
+            merge: MergeSemantics::None,
+        }),
+
+        // Kernel lifecycle
+        "kernel_started" => Some(HookMapping {
+            hook_name: "kernel_start",
+            merge: MergeSemantics::None,
+        }),
+        "kernel_shutdown" => Some(HookMapping {
+            hook_name: "kernel_stop",
+            merge: MergeSemantics::None,
+        }),
+
+        _ => Option::None,
     }
 }
 
-#[async_trait]
-impl Capsule for HookBridgeCapsule {
-    fn id(&self) -> &CapsuleId {
-        &self.id
-    }
+// ── Merge Logic ────────────────────────────────────────────────────
 
-    fn manifest(&self) -> &CapsuleManifest {
-        &self.manifest
-    }
-
-    fn state(&self) -> CapsuleState {
-        self.state.clone()
-    }
-
-    async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
-        self.state = CapsuleState::Loading;
-
-        let event_bus = Arc::clone(&ctx.event_bus);
-        let registry = Arc::clone(&self.registry);
-
-        let handle = tokio::spawn(dispatch_loop(event_bus, registry));
-        self.task_handle = Some(handle);
-
-        self.state = CapsuleState::Ready;
-        debug!("Hook Bridge capsule loaded");
-        Ok(())
-    }
-
-    async fn unload(&mut self) -> CapsuleResult<()> {
-        self.state = CapsuleState::Unloading;
-        if let Some(handle) = self.task_handle.take() {
-            handle.abort();
-        }
-        self.state = CapsuleState::Unloaded;
-        debug!("Hook Bridge capsule unloaded");
-        Ok(())
-    }
-
-    fn tools(&self) -> &[Arc<dyn CapsuleTool>] {
-        &[]
-    }
-}
-
-/// Main dispatch loop: subscribes to all events on the bus and routes them
-/// to interceptors via the hook mapping.
-async fn dispatch_loop(event_bus: Arc<EventBus>, registry: Arc<RwLock<CapsuleRegistry>>) {
-    let mut receiver = event_bus.subscribe();
-    debug!("Hook Bridge dispatch loop started");
-
-    while let Some(event) = receiver.recv().await {
-        // Skip IPC events — those are handled by the existing EventDispatcher.
-        if matches!(&*event, AstridEvent::Ipc { .. }) {
-            continue;
-        }
-
-        let Some(mapping) = HookMapping::from_event(&event) else {
-            continue;
-        };
-
-        let registry = Arc::clone(&registry);
-        let event_bus = Arc::clone(&event_bus);
-
-        // Spawn each hook dispatch as an independent task so the event loop
-        // is never blocked by slow interceptors.
-        tokio::spawn(async move {
-            dispatch_hook(&event, &mapping, &registry, &event_bus).await;
-        });
-    }
-
-    debug!("Hook Bridge dispatch loop stopped (event bus closed)");
-}
-
-/// Dispatch a single hook: find subscriber capsules, invoke interceptors,
-/// merge responses, and publish results.
-async fn dispatch_hook(
-    event: &AstridEvent,
-    mapping: &HookMapping,
-    registry: &Arc<RwLock<CapsuleRegistry>>,
-    event_bus: &Arc<EventBus>,
-) {
-    let hook_name = mapping.hook_name;
-    let payload = build_hook_payload(event);
-
-    let payload_bytes = match serde_json::to_vec(&payload) {
-        Ok(bytes) => Arc::new(bytes),
-        Err(e) => {
-            warn!(hook = hook_name, error = %e, "Failed to serialize hook payload");
-            return;
+/// Apply merge semantics to a list of interceptor responses.
+fn apply_merge(merge: &MergeSemantics, responses: &[serde_json::Value]) -> HookResult {
+    match merge {
+        MergeSemantics::None => HookResult {
+            skip: Option::None,
+            data: Option::None,
         },
-    };
-
-    let subscribers = collect_subscribers(registry, hook_name).await;
-
-    if subscribers.is_empty() {
-        return;
-    }
-
-    debug!(
-        hook = hook_name,
-        subscriber_count = subscribers.len(),
-        "Dispatching hook to subscribers"
-    );
-
-    // Invoke all interceptors and collect responses.
-    // Each interceptor is called via `block_in_place` because
-    // `invoke_interceptor` is synchronous (may block on WASM execution).
-    // A timeout prevents hung guests from blocking the dispatch task.
-    // Errors from one capsule never short-circuit the remaining capsules.
-    let mut responses: Vec<serde_json::Value> = Vec::new();
-
-    for (capsule, action) in &subscribers {
-        let capsule_id_str = capsule.id().to_string();
-        let capsule = Arc::clone(capsule);
-        let action = action.clone();
-        let payload = Arc::clone(&payload_bytes);
-
-        let result = tokio::time::timeout(INTERCEPTOR_TIMEOUT, async {
-            tokio::task::spawn_blocking(move || capsule.invoke_interceptor(&action, &payload)).await
-        })
-        .await;
-
-        match result {
-            Ok(Ok(Ok(bytes))) if bytes.is_empty() => {},
-            Ok(Ok(Ok(bytes))) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
-                Ok(val) => responses.push(val),
-                Err(e) => warn!(
-                    hook = hook_name,
-                    capsule_id = %capsule_id_str,
-                    error = %e,
-                    "Failed to deserialize interceptor response"
-                ),
-            },
-            Ok(Ok(Err(CapsuleError::NotSupported(_)))) => {},
-            Ok(Ok(Err(e))) => {
-                warn!(
-                    hook = hook_name,
-                    capsule_id = %capsule_id_str,
-                    error = %e,
-                    "Interceptor invocation failed"
-                );
-            },
-            Ok(Err(e)) => {
-                warn!(
-                    hook = hook_name,
-                    capsule_id = %capsule_id_str,
-                    error = %e,
-                    "Interceptor task panicked"
-                );
-            },
-            Err(_) => {
-                warn!(
-                    hook = hook_name,
-                    capsule_id = %capsule_id_str,
-                    timeout_secs = INTERCEPTOR_TIMEOUT.as_secs(),
-                    "Interceptor timed out"
-                );
-            },
-        }
-    }
-
-    // Fire-and-forget hooks: no merge, no result event.
-    if matches!(mapping.merge, MergeSemantics::None) {
-        return;
-    }
-
-    // Merge responses and publish the decision event.
-    let merged = merge_responses(&responses, &mapping.merge);
-
-    let result_topic = format!("hook_bridge.{hook_name}.decision");
-    let msg = IpcMessage::new(
-        &result_topic,
-        IpcPayload::RawJson(merged),
-        uuid::Uuid::nil(),
-    );
-
-    event_bus.publish(AstridEvent::Ipc {
-        metadata: EventMetadata::new("hook-bridge"),
-        message: msg,
-    });
-
-    debug!(hook = hook_name, topic = %result_topic, "Published hook decision");
-}
-
-/// Collect capsules that registered interceptors for the given hook name.
-///
-/// Results are sorted by `CapsuleId` for deterministic iteration order so that
-/// "last non-null wins" merge semantics produce predictable results. The hook
-/// bridge itself is excluded to prevent infinite dispatch loops.
-async fn collect_subscribers(
-    registry: &Arc<RwLock<CapsuleRegistry>>,
-    hook_name: &str,
-) -> Vec<(Arc<dyn Capsule>, String)> {
-    let reg = registry.read().await;
-    let mut subs = Vec::new();
-    for capsule_id in reg.list() {
-        if let Some(capsule) = reg.get(capsule_id) {
-            if !matches!(capsule.state(), CapsuleState::Ready) {
-                continue;
-            }
-            // Skip ourselves to avoid infinite loops.
-            if capsule.id().as_str() == CAPSULE_ID {
-                continue;
-            }
-            for interceptor in &capsule.manifest().interceptors {
-                if interceptor.event == hook_name {
-                    subs.push((Arc::clone(&capsule), interceptor.action.clone()));
-                }
-            }
-        }
-    }
-    // Sort by capsule ID for deterministic merge order.
-    subs.sort_by(|(a, _), (b, _)| a.id().as_str().cmp(b.id().as_str()));
-    subs
-}
-
-/// Build the JSON payload from an `AstridEvent` to send to interceptors.
-fn build_hook_payload(event: &AstridEvent) -> serde_json::Value {
-    // Serialize the full event — interceptors get all fields.
-    serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({}))
-}
-
-/// Merge interceptor responses according to the hook's merge semantics.
-fn merge_responses(
-    responses: &[serde_json::Value],
-    semantics: &MergeSemantics,
-) -> serde_json::Value {
-    match semantics {
-        MergeSemantics::None => serde_json::json!({}),
 
         MergeSemantics::ToolCallBefore => {
-            // Any `skip: true` → skip. Last non-null `modified_params` wins.
-            let skip = responses
-                .iter()
-                .any(|resp| resp.get("skip").and_then(serde_json::Value::as_bool) == Some(true));
+            let mut skip = false;
+            let mut last_params: Option<serde_json::Value> = Option::None;
 
-            let modified_params = responses
-                .iter()
-                .rev()
-                .find_map(|resp| resp.get("modified_params").filter(|v| !v.is_null()));
+            for resp in responses {
+                // Any response with skip: true wins
+                if resp.get("skip").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    skip = true;
+                }
+                // Last non-null modified_params wins
+                if let Some(params) = resp.get("modified_params")
+                    && !params.is_null()
+                {
+                    last_params = Some(params.clone());
+                }
+            }
 
-            serde_json::json!({
-                "skip": skip,
-                "modified_params": modified_params,
-            })
+            HookResult {
+                skip: if skip { Some(true) } else { Option::None },
+                data: last_params,
+            }
         },
 
         MergeSemantics::LastNonNull { field } => {
-            // Last non-null value for the given field wins.
-            let result = responses
-                .iter()
-                .rev()
-                .find_map(|resp| resp.get(*field).filter(|v| !v.is_null()));
+            let mut last_value: Option<serde_json::Value> = Option::None;
 
-            let mut obj = serde_json::Map::new();
-            if let Some(val) = result {
-                obj.insert((*field).to_string(), val.clone());
+            for resp in responses {
+                if let Some(val) = resp.get(*field)
+                    && !val.is_null()
+                {
+                    last_value = Some(val.clone());
+                }
             }
-            serde_json::Value::Object(obj)
+
+            HookResult {
+                skip: Option::None,
+                data: last_value,
+            }
         },
     }
 }
 
-/// Build the capsule manifest for the Hook Bridge.
+// ── Core Dispatch ──────────────────────────────────────────────────
+
+/// Dispatch a lifecycle event through the hook system.
 ///
-/// The manifest declares no interceptors, tools, or capabilities — the bridge
-/// directly subscribes to the `EventBus` rather than using the topic-matching
-/// interceptor pattern.
-fn build_manifest() -> CapsuleManifest {
-    CapsuleManifest {
-        package: PackageDef {
-            name: CAPSULE_ID.to_string(),
-            version: "0.1.0".to_string(),
-            description: Some(
-                "Translates kernel events into plugin hook interceptor calls".to_string(),
-            ),
-            authors: Vec::new(),
-            repository: None,
-            homepage: None,
-            documentation: None,
-            license: None,
-            license_file: None,
-            readme: None,
-            keywords: Vec::new(),
-            categories: Vec::new(),
-            astrid_version: None,
-            publish: Some(false),
-            include: None,
-            exclude: None,
-            metadata: None,
-        },
-        components: Vec::new(),
-        dependencies: std::collections::HashMap::new(),
-        capabilities: CapabilitiesDef::default(),
-        env: std::collections::HashMap::new(),
-        context_files: Vec::new(),
-        commands: Vec::new(),
-        mcp_servers: Vec::new(),
-        skills: Vec::new(),
-        uplinks: Vec::new(),
-        llm_providers: Vec::new(),
-        interceptors: Vec::new(),
-        cron_jobs: Vec::new(),
-        tools: Vec::new(),
+/// 1. Look up the event-to-hook mapping
+/// 2. Call `hooks::trigger` to fan out to subscriber capsules
+/// 3. Apply merge strategy to collected responses
+/// 4. Return the merged result
+fn dispatch_hook(event_type: &str, payload: &serde_json::Value) -> Result<Vec<u8>, SysError> {
+    let Some(mapping) = mapping_for_event(event_type) else {
+        // No hook mapping for this event — nothing to do.
+        return Ok(Vec::new());
+    };
+
+    let request = TriggerRequest {
+        hook: mapping.hook_name,
+        payload,
+    };
+    let request_bytes = serde_json::to_vec(&request)
+        .map_err(|e| SysError::ApiError(format!("failed to serialize trigger request: {e}")))?;
+
+    let response_bytes = hooks::trigger(&request_bytes)?;
+
+    // Parse the response array from the kernel.
+    let responses: Vec<serde_json::Value> =
+        serde_json::from_slice(&response_bytes).unwrap_or_default();
+
+    if responses.is_empty() && matches!(mapping.merge, MergeSemantics::None) {
+        return Ok(Vec::new());
     }
+
+    let result = apply_merge(&mapping.merge, &responses);
+    serde_json::to_vec(&result)
+        .map_err(|e| SysError::ApiError(format!("failed to serialize hook result: {e}")))
 }
 
-#[cfg(test)]
-mod tests;
+// ── Capsule Implementation ─────────────────────────────────────────
+
+/// Hook Bridge capsule.
+///
+/// Maps lifecycle events to semantic hooks, fans out to subscribers via
+/// `hooks::trigger`, and applies merge strategies to the responses.
+#[derive(Default)]
+pub struct HookBridge;
+
+/// Extract event type and dispatch the hook. Used by all interceptor handlers.
+fn handle_lifecycle(event_type: &str, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
+    dispatch_hook(event_type, &payload)
+}
+
+#[capsule]
+impl HookBridge {
+    // ── Session lifecycle ──
+
+    /// Handle `session_created` lifecycle event.
+    #[astrid::interceptor("on_session_created")]
+    pub fn on_session_created(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("session_created", payload)?;
+        Ok(())
+    }
+
+    /// Handle `session_ended` lifecycle event.
+    #[astrid::interceptor("on_session_ended")]
+    pub fn on_session_ended(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("session_ended", payload)?;
+        Ok(())
+    }
+
+    // ── Tool hooks ──
+
+    /// Handle `tool_call_started` — maps to `before_tool_call` hook.
+    ///
+    /// Returns merged result with potential skip/modified_params.
+    #[astrid::interceptor("on_tool_call_started")]
+    pub fn on_tool_call_started(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
+        handle_lifecycle("tool_call_started", payload)
+    }
+
+    /// Handle `tool_call_completed` — maps to `after_tool_call` hook.
+    #[astrid::interceptor("on_tool_call_completed")]
+    pub fn on_tool_call_completed(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
+        handle_lifecycle("tool_call_completed", payload)
+    }
+
+    /// Handle `tool_result_persisting` — maps to `tool_result_persist` hook.
+    #[astrid::interceptor("on_tool_result_persisting")]
+    pub fn on_tool_result_persisting(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<Vec<u8>, SysError> {
+        handle_lifecycle("tool_result_persisting", payload)
+    }
+
+    // ── Message hooks ──
+
+    /// Handle `message_received` lifecycle event.
+    #[astrid::interceptor("on_message_received")]
+    pub fn on_message_received(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("message_received", payload)?;
+        Ok(())
+    }
+
+    /// Handle `message_sending` — maps to `message_sending` hook.
+    #[astrid::interceptor("on_message_sending")]
+    pub fn on_message_sending(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
+        handle_lifecycle("message_sending", payload)
+    }
+
+    /// Handle `message_sent` lifecycle event.
+    #[astrid::interceptor("on_message_sent")]
+    pub fn on_message_sent(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("message_sent", payload)?;
+        Ok(())
+    }
+
+    // ── Sub-agent hooks ──
+
+    /// Handle `sub_agent_spawned` lifecycle event.
+    #[astrid::interceptor("on_subagent_spawned")]
+    pub fn on_subagent_spawned(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("sub_agent_spawned", payload)?;
+        Ok(())
+    }
+
+    /// Handle `sub_agent_completed` lifecycle event.
+    #[astrid::interceptor("on_subagent_completed")]
+    pub fn on_subagent_completed(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("sub_agent_completed", payload)?;
+        Ok(())
+    }
+
+    /// Handle `sub_agent_failed` lifecycle event.
+    #[astrid::interceptor("on_subagent_failed")]
+    pub fn on_subagent_failed(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("sub_agent_failed", payload)?;
+        Ok(())
+    }
+
+    /// Handle `sub_agent_cancelled` lifecycle event.
+    #[astrid::interceptor("on_subagent_cancelled")]
+    pub fn on_subagent_cancelled(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("sub_agent_cancelled", payload)?;
+        Ok(())
+    }
+
+    // ── Kernel lifecycle ──
+
+    /// Handle `kernel_started` lifecycle event.
+    #[astrid::interceptor("on_kernel_started")]
+    pub fn on_kernel_started(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("kernel_started", payload)?;
+        Ok(())
+    }
+
+    /// Handle `kernel_shutdown` lifecycle event.
+    #[astrid::interceptor("on_kernel_shutdown")]
+    pub fn on_kernel_shutdown(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let _ = handle_lifecycle("kernel_shutdown", payload)?;
+        Ok(())
+    }
+}

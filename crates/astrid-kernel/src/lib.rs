@@ -175,7 +175,8 @@ impl Kernel {
             kv,
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
-        );
+        )
+        .with_registry(Arc::clone(&self.capsules));
 
         capsule.load(&ctx).await?;
 

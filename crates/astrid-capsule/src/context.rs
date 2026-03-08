@@ -11,6 +11,7 @@ use astrid_storage::ScopedKvStore;
 use uuid::Uuid;
 
 use crate::capsule::CapsuleId;
+use crate::registry::CapsuleRegistry;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
 #[derive(Clone)]
@@ -25,6 +26,11 @@ pub struct CapsuleContext {
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
+    /// Shared capsule registry for `hooks::trigger` fan-out.
+    ///
+    /// When set, WASM capsules can dispatch hooks to other capsules via
+    /// the `astrid_trigger_hook` host function (the kernel mechanism).
+    pub capsule_registry: Option<Arc<tokio::sync::RwLock<CapsuleRegistry>>>,
 }
 
 impl CapsuleContext {
@@ -42,7 +48,15 @@ impl CapsuleContext {
             kv,
             event_bus,
             cli_socket_listener,
+            capsule_registry: None,
         }
+    }
+
+    /// Set the capsule registry for hook dispatch.
+    #[must_use]
+    pub fn with_registry(mut self, registry: Arc<tokio::sync::RwLock<CapsuleRegistry>>) -> Self {
+        self.capsule_registry = Some(registry);
+        self
     }
 }
 

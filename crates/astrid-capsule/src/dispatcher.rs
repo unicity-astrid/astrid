@@ -1,17 +1,24 @@
-//! Event dispatcher for routing IPC events to capsule interceptors.
+//! Event dispatcher for routing events to capsule interceptors.
 //!
 //! The dispatcher is a host-side async task that subscribes to the global
-//! `EventBus`, matches incoming **IPC** events against capsule interceptor
-//! patterns (from `Capsule.toml`), and invokes the corresponding WASM
+//! `EventBus`, matches incoming events against capsule interceptor patterns
+//! (from `Capsule.toml`), and invokes the corresponding WASM
 //! `astrid_hook_trigger` export on each matching capsule.
 //!
 //! # Event Routing
 //!
-//! The dispatcher handles only **IPC events**, matched by their `topic` field
-//! (e.g. `user.prompt`). All other event variants (lifecycle events like
-//! `SessionCreated`, `ToolCallStarted`, etc.) are routed by the **Hook Bridge
-//! capsule** (`astrid-capsule-hook-bridge`), which adds response collection
-//! and merge semantics on top of interceptor invocation.
+//! The dispatcher handles two categories of events:
+//!
+//! - **IPC events**: matched by their `topic` field (e.g. `user.prompt`)
+//! - **Lifecycle events**: matched by `event_type()` (e.g. `tool_call_started`,
+//!   `session_created`). This enables WASM capsules (like the Hook Bridge) to
+//!   subscribe to lifecycle events and apply policy (merge strategies, hook
+//!   fan-out) on top of the kernel's dispatch mechanism.
+//!
+//! All dispatch is fire-and-forget from the dispatcher's perspective. Capsules
+//! that need request-response semantics (e.g. collecting responses from multiple
+//! subscribers) use `hooks::trigger` — the kernel syscall for fan-out with
+//! response collection.
 //!
 //! # Topic Matching
 //!
@@ -28,11 +35,11 @@ use tracing::{debug, warn};
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
 
-/// Routes IPC events from the `EventBus` to capsule interceptors.
+/// Routes events from the `EventBus` to capsule interceptors.
 ///
-/// Lifecycle events (e.g. `SessionCreated`, `ToolCallStarted`) are **not**
-/// handled here — they are routed by the Hook Bridge capsule which adds
-/// response collection and merge semantics.
+/// Both IPC events (by topic) and lifecycle events (by `event_type()`) are
+/// dispatched fire-and-forget. Capsules needing response collection use
+/// `hooks::trigger` (the kernel fan-out syscall).
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
@@ -50,21 +57,105 @@ impl EventDispatcher {
 
     /// Run the dispatch loop. Blocks until the event bus is closed.
     ///
-    /// Subscribes to all events on the bus and routes **IPC events** by topic.
-    /// Lifecycle events are silently skipped — they are handled by the Hook
-    /// Bridge capsule. This method should be spawned as a background tokio task.
+    /// Subscribes to all events on the bus and routes both IPC events (by topic)
+    /// and lifecycle events (by `event_type()`). Should be spawned as a
+    /// background tokio task.
     pub async fn run(self) {
         let mut receiver = self.event_bus.subscribe();
         debug!("Event dispatcher started");
 
         while let Some(event) = receiver.recv().await {
-            if let AstridEvent::Ipc { message, .. } = &*event {
-                self.dispatch_ipc(message);
+            match &*event {
+                AstridEvent::Ipc { message, .. } => {
+                    self.dispatch_ipc(message);
+                },
+                other => {
+                    // Route lifecycle events to capsules with matching interceptors.
+                    // Uses event_type() (e.g. "tool_call_started") as the topic.
+                    self.dispatch_lifecycle(other);
+                },
             }
-            // Lifecycle events are handled by the Hook Bridge capsule.
         }
 
         debug!("Event dispatcher stopped (event bus closed)");
+    }
+
+    /// Route a lifecycle event to capsules with matching interceptors.
+    ///
+    /// Uses `event_type()` (e.g. `tool_call_started`) as the topic for matching
+    /// against capsule interceptor patterns. Dispatch is fire-and-forget — return
+    /// values are discarded. Capsules that need request-response semantics should
+    /// use `hooks::trigger` (the kernel fan-out syscall) instead.
+    fn dispatch_lifecycle(&self, event: &AstridEvent) {
+        let topic = Arc::new(event.event_type().to_string());
+        let registry = Arc::clone(&self.registry);
+
+        // Serialize the entire event as the payload.
+        let payload_bytes = match serde_json::to_vec(event) {
+            Ok(bytes) => Arc::new(bytes),
+            Err(e) => {
+                warn!(
+                    event_type = %topic,
+                    error = %e,
+                    "Failed to serialize lifecycle event for dispatch"
+                );
+                return;
+            },
+        };
+
+        tokio::task::spawn(async move {
+            let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
+                let registry = registry.read().await;
+                let mut matches = Vec::new();
+                for capsule_id in registry.list() {
+                    if let Some(capsule) = registry.get(capsule_id) {
+                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                            continue;
+                        }
+                        for interceptor in &capsule.manifest().interceptors {
+                            if topic_matches(&topic, &interceptor.event) {
+                                matches.push((Arc::clone(&capsule), interceptor.action.clone()));
+                            }
+                        }
+                    }
+                }
+                matches
+            };
+
+            for (capsule, action) in matches {
+                let capsule_id = capsule.id().clone();
+                let payload = Arc::clone(&payload_bytes);
+                let topic = Arc::clone(&topic);
+
+                tokio::task::spawn(async move {
+                    debug!(
+                        capsule_id = %capsule_id,
+                        action = %action,
+                        event_type = %topic,
+                        "Dispatching lifecycle interceptor"
+                    );
+
+                    match capsule.invoke_interceptor(&action, &payload) {
+                        Ok(_) => {
+                            debug!(
+                                capsule_id = %capsule_id,
+                                action = %action,
+                                "Lifecycle interceptor completed"
+                            );
+                        },
+                        Err(e) => {
+                            warn!(
+                                capsule_id = %capsule_id,
+                                action = %action,
+                                event_type = %topic,
+                                error = %e,
+                                "Lifecycle interceptor invocation failed"
+                            );
+                        },
+                    }
+                });
+            }
+        });
     }
 
     /// Match an IPC event against all registered interceptors and invoke matches.
@@ -505,9 +596,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_ignores_lifecycle_events() {
-        // Lifecycle events are handled by the Hook Bridge capsule, not the
-        // EventDispatcher. Verify the dispatcher silently skips them.
+    async fn dispatch_routes_lifecycle_events() {
+        // Lifecycle events are dispatched by event_type() as the topic.
         let (capsule, invoked) = MockCapsule::new("lifecycle-capsule", "tool_call_started");
 
         let mut registry = CapsuleRegistry::new();
@@ -520,7 +610,7 @@ mod tests {
 
         tokio::task::yield_now().await;
 
-        // Publish a lifecycle event (not IPC)
+        // Publish a lifecycle event
         bus.publish(AstridEvent::ToolCallStarted {
             metadata: astrid_events::EventMetadata::new("test"),
             call_id: uuid::Uuid::nil(),
@@ -531,8 +621,8 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         assert!(
-            !invoked.load(Ordering::SeqCst),
-            "EventDispatcher should NOT dispatch lifecycle events (Hook Bridge handles those)"
+            invoked.load(Ordering::SeqCst),
+            "EventDispatcher should dispatch lifecycle events by event_type()"
         );
 
         handle.abort();

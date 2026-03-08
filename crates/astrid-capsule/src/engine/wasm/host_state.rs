@@ -58,6 +58,13 @@ pub struct HostState {
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Hook manager for executing user scripts synchronously via airlock.
     pub hook_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    /// Shared capsule registry for `hooks::trigger` fan-out dispatch.
+    ///
+    /// When set, the `astrid_trigger_hook` host function can iterate the
+    /// registry to find capsules with matching interceptors, invoke them,
+    /// and collect responses. This is the kernel mechanism that WASM
+    /// capsules use to dispatch hooks to other capsules.
+    pub capsule_registry: Option<Arc<tokio::sync::RwLock<crate::registry::CapsuleRegistry>>>,
     /// Tokio runtime handle for bridging async operations in sync host functions.
     pub runtime_handle: tokio::runtime::Handle,
     /// Whether the plugin manifest declares `CapsuleCapability::Connector`.
@@ -170,6 +177,7 @@ mod tests {
             ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
+            capsule_registry: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
@@ -218,6 +226,7 @@ mod tests {
             ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
+            capsule_registry: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
@@ -270,6 +279,7 @@ mod tests {
             ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
+            capsule_registry: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: false,
             inbound_tx: None,
@@ -319,6 +329,7 @@ mod tests {
             ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
+            capsule_registry: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,
@@ -386,6 +397,7 @@ mod tests {
             ipc_publish_patterns: Vec::new(),
             security: None,
             hook_manager: None,
+            capsule_registry: None,
             runtime_handle: rt.handle().clone(),
             has_connector_capability: true,
             inbound_tx: None,

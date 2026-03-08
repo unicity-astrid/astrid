@@ -256,6 +256,7 @@ impl ExecutionEngine for WasmEngine {
                 next_stream_id: 1,
                 security: Some(security_gate),
                 hook_manager: None, // Will be injected by Gateway
+                capsule_registry: ctx.capsule_registry.clone(),
                 runtime_handle: tokio::runtime::Handle::current(),
                 has_connector_capability: !manifest.uplinks.is_empty(),
                 inbound_tx: tx,

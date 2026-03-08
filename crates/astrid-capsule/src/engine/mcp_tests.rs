@@ -95,6 +95,7 @@ mod tests {
             event_bus: bus,
             kv,
             cli_socket_listener: None,
+            capsule_registry: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -151,6 +152,7 @@ mod tests {
             event_bus: bus,
             kv,
             cli_socket_listener: None,
+            capsule_registry: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -204,6 +206,7 @@ mod tests {
             event_bus: bus,
             kv,
             cli_socket_listener: None,
+            capsule_registry: None,
         };
 
         let result = engine.load(&ctx).await;
