@@ -81,6 +81,8 @@ pub fn is_secret_key(key: &str) -> bool {
     lower.contains("api_key")
         || lower.contains("apikey")
         || lower == "token"
+        // Intentionally broad: catches camelCase variants like "accessToken",
+        // "refreshToken", "bearerToken". Better to over-flag than miss a secret.
         || lower.ends_with("token")
         || lower.contains("secret")
         || lower.contains("password")
@@ -503,6 +505,13 @@ mod tests {
         assert!(!is_secret_key("model"), "model should not be secret");
         assert!(!is_secret_key("region"), "region should not be secret");
         assert!(!is_secret_key("enabled"), "enabled should not be secret");
+
+        // Note: "fooToken" WILL be flagged as secret — the heuristic is intentionally
+        // broad (ends_with("token")) to avoid missing camelCase variants.
+        assert!(
+            is_secret_key("fooToken"),
+            "fooToken should be flagged (broad token heuristic)"
+        );
     }
 
     #[test]

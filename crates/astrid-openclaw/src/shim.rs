@@ -289,11 +289,10 @@ var _openclawContext = {{
     _registeredHooks[hookName].push(handler);
   }},
 
-  // ── 7. registerCommand → mapped to tool with "cmd:" prefix ───────
+  // ── 7. registerCommand → mapped to tool (bare name, matches Tier 2 bridge)
   registerCommand: function(name, handler) {{
-    var toolName = "cmd:" + name;
-    _registeredTools[toolName] = {{
-      name: toolName,
+    _registeredTools[name] = {{
+      name: name,
       definition: {{ description: "Command: " + name, inputSchema: {{ type: "object", properties: {{}} }} }},
       handler: function(id, params) {{
         var result = typeof handler === "function" ? handler(params) : handler.handler(params);
@@ -301,7 +300,7 @@ var _openclawContext = {{
       }}
     }};
     _registeredMetadata.commands[name] = true;
-    hostLog("debug", "registered command as tool: " + toolName);
+    hostLog("debug", "registered command as tool: " + name);
   }},
 
   // ── 8. registerGatewayMethod → mapped to tool with "kernel." prefix

@@ -51,16 +51,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Cache QuickJS kernel
-        uses: actions/cache@v4
-        with:
-          path: |
-            crates/astrid-openclaw/kernel/engine.wasm
-            crates/astrid-openclaw/kernel/engine.wasm.blake3
-          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-
-
       - name: Run cargo check
         run: cargo check --workspace --all-features
 
@@ -107,16 +97,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: Cache QuickJS kernel
-        uses: actions/cache@v4
-        with:
-          path: |
-            crates/astrid-openclaw/kernel/engine.wasm
-            crates/astrid-openclaw/kernel/engine.wasm.blake3
-          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-
 
       - name: Run clippy
         run: cargo clippy --workspace --all-features -- -D warnings
