@@ -363,6 +363,14 @@ async function handleToolsCall(id, params) {
       return;
     }
 
+    if (!servicesReady) {
+      sendResponse(id, {
+        content: [{ type: "text", text: "Bridge not ready — plugin still initializing" }],
+        isError: true,
+      });
+      return;
+    }
+
     const hookData = toolArgs.payload ?? null;
     let lastResult = null;
 

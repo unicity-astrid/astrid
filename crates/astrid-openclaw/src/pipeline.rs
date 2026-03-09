@@ -184,6 +184,13 @@ fn compile_tier2(
         return Err(BridgeError::EntryPointNotFound(entry_point));
     }
 
+    // Guard: output_dir must not be inside plugin_dir (would cause infinite copy)
+    if opts.output_dir.starts_with(opts.plugin_dir) {
+        return Err(BridgeError::Manifest(
+            "output_dir must not be inside plugin_dir".into(),
+        ));
+    }
+
     // Copy plugin source into output dir root (preserving directory structure)
     copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
 

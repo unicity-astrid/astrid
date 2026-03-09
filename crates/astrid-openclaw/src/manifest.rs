@@ -81,7 +81,6 @@ pub fn is_secret_key(key: &str) -> bool {
     lower.contains("api_key")
         || lower.contains("apikey")
         || lower == "token"
-        || lower.ends_with("_token")
         || lower.ends_with("token")
         || lower.contains("secret")
         || lower.contains("password")
@@ -463,6 +462,24 @@ mod tests {
         assert!(
             err.contains("absolute path"),
             "error should mention absolute path: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_entry_rejects_dot_slash_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
+        )
+        .unwrap();
+
+        let result = resolve_entry_point(dir.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("./"),
+            "error should mention './' prefix: {err}"
         );
     }
 

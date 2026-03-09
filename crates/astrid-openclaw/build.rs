@@ -11,11 +11,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const JS_PDK_REPO: &str = "https://github.com/nicholasgasior/extism-js.git";
-// NOTE: This is a maintained fork of extism/js-pdk with additional patches.
-// The official repo is https://github.com/extism/js-pdk.git — switch if
-// upstream merges the required changes.
+const JS_PDK_REPO: &str = "https://github.com/extism/js-pdk.git";
 const JS_PDK_TAG: &str = "v1.6.0";
+
+/// Expected blake3 hash of the built kernel WASM.
+///
+/// Set to `None` to skip hash verification (first build). After a successful
+/// build, pin the hash printed by the auto-builder here to detect supply-chain
+/// tampering on subsequent builds.
+const EXPECTED_KERNEL_HASH: Option<&str> = None;
 
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -40,7 +44,7 @@ fn main() {
     if auto_build {
         println!("cargo:warning=QuickJS kernel not found — auto-build requested...");
         println!(
-            "cargo:warning=  CAUTION: Auto-building from fork repo {JS_PDK_REPO} \
+            "cargo:warning=  CAUTION: Auto-building from {JS_PDK_REPO} \
              — review this code before trusting the output"
         );
 
@@ -329,6 +333,19 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
 
     // Compute and display blake3 hash for verification/pinning
     let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
+
+    // Verify against pinned hash if one is configured
+    if let Some(expected) = EXPECTED_KERNEL_HASH {
+        if hash != expected {
+            println!(
+                "cargo:warning=  [auto-build] FAILED: blake3 hash mismatch!\n  \
+                 expected: {expected}\n  actual:   {hash}"
+            );
+            return false;
+        }
+        println!("cargo:warning=  [auto-build] blake3 hash verified against pinned value");
+    }
+
     println!(
         "cargo:warning=  [auto-build] SUCCESS: QuickJS kernel built ({} bytes)",
         wasm_bytes.len()

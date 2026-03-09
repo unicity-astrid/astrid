@@ -1114,8 +1114,9 @@ fn generate_config_keys(config: &HashMap<String, serde_json::Value>) -> String {
     if config.is_empty() {
         return String::new();
     }
-    config
-        .keys()
+    let mut keys: Vec<&String> = config.keys().collect();
+    keys.sort();
+    keys.iter()
         .map(|k| format!("\"{}\"", escape_js_string(k)))
         .collect::<Vec<_>>()
         .join(", ")
