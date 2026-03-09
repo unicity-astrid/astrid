@@ -31,8 +31,8 @@ pub(crate) fn drain_receiver(
 
     while let Some(event) = receiver.try_recv() {
         if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload)
-                .map(|s| s.len())
+            let msg_len = serde_json::to_vec(&message.payload)
+                .map(|v| v.len())
                 .unwrap_or(max_payload_bytes);
             if payload_bytes + msg_len > max_payload_bytes {
                 dropped += 1;
