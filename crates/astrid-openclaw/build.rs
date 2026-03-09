@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const JS_PDK_REPO: &str = "https://github.com/nicholasgasior/extism-js.git";
+// NOTE: This is a maintained fork of extism/js-pdk with additional patches.
+// The official repo is https://github.com/extism/js-pdk.git — switch if
+// upstream merges the required changes.
 const JS_PDK_TAG: &str = "v1.6.0";
 
 fn main() {
@@ -29,16 +32,11 @@ fn main() {
         return;
     }
 
-    // Kernel doesn't exist — try to auto-build
+    // Kernel doesn't exist — try to auto-build (writes directly to OUT_DIR)
     println!("cargo:warning=QuickJS kernel not found — attempting auto-build...");
 
-    let kernel_dir = Path::new(&manifest_dir).join("kernel");
-    if auto_build_kernel(&kernel_dir, &out_dir) {
-        // Auto-build succeeded — kernel is now at kernel/engine.wasm
-        if kernel_src.exists() {
-            install_existing_kernel(&kernel_src, &kernel_dst, &manifest_dir);
-            return;
-        }
+    if auto_build_kernel(&kernel_dst, &out_dir) {
+        return;
     }
 
     // Auto-build failed — write placeholder
@@ -91,7 +89,8 @@ fn write_placeholder(kernel_dst: &Path) {
 
 /// Check if a command exists on PATH.
 fn has_command(name: &str) -> bool {
-    Command::new("which")
+    let lookup = if cfg!(windows) { "where" } else { "which" };
+    Command::new(lookup)
         .arg(name)
         .output()
         .is_ok_and(|o| o.status.success())
@@ -148,8 +147,9 @@ fn check_prerequisites() -> bool {
 
 /// Attempt to auto-build the `QuickJS` kernel from source.
 ///
-/// Returns `true` if the kernel was successfully built and installed.
-fn auto_build_kernel(kernel_dir: &Path, out_dir: &str) -> bool {
+/// Writes the built kernel directly to `kernel_dst` (in `OUT_DIR`).
+/// Does NOT modify the source tree.
+fn auto_build_kernel(kernel_dst: &Path, out_dir: &str) -> bool {
     if !check_prerequisites() {
         return false;
     }
@@ -222,9 +222,10 @@ fn auto_build_kernel(kernel_dir: &Path, out_dir: &str) -> bool {
         return false;
     }
 
-    // Optional: optimize with wasm-opt
+    // Optional: optimize with wasm-opt (write to temp file to avoid corruption)
     if has_command("wasm-opt") {
-        let _ = run_step(
+        let optimized = built_wasm.with_extension("opt.wasm");
+        if run_step(
             "optimizing with wasm-opt",
             Command::new("wasm-opt").args([
                 "--enable-reference-types",
@@ -233,14 +234,20 @@ fn auto_build_kernel(kernel_dir: &Path, out_dir: &str) -> bool {
                 "-O3",
                 &built_wasm.to_string_lossy(),
                 "-o",
-                &built_wasm.to_string_lossy(),
+                &optimized.to_string_lossy(),
             ]),
-        );
+        ) && optimized.exists()
+        {
+            let _ = std::fs::rename(&optimized, &built_wasm);
+        } else {
+            // Clean up failed optimization output
+            let _ = std::fs::remove_file(&optimized);
+        }
         // Don't fail if wasm-opt fails — the unoptimized binary works fine
     }
 
-    // Install the built kernel
-    let success = install_built_kernel(&built_wasm, kernel_dir);
+    // Install the built kernel directly to OUT_DIR
+    let success = install_built_kernel(&built_wasm, kernel_dst);
 
     // Clean up build dir regardless of outcome
     let _ = std::fs::remove_dir_all(&build_dir);
@@ -248,8 +255,10 @@ fn auto_build_kernel(kernel_dir: &Path, out_dir: &str) -> bool {
     success
 }
 
-/// Validate and install a freshly built kernel WASM into the kernel directory.
-fn install_built_kernel(built_wasm: &Path, kernel_dir: &Path) -> bool {
+/// Validate and install a freshly built kernel WASM to `kernel_dst` (in `OUT_DIR`).
+///
+/// Does NOT write to the source tree — only `OUT_DIR` is modified.
+fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path) -> bool {
     let Ok(wasm_bytes) = std::fs::read(built_wasm) else {
         println!("cargo:warning=  [auto-build] Failed to read built WASM");
         return false;
@@ -261,25 +270,10 @@ fn install_built_kernel(built_wasm: &Path, kernel_dir: &Path) -> bool {
         return false;
     }
 
-    std::fs::create_dir_all(kernel_dir).ok();
-    let kernel_path = kernel_dir.join("engine.wasm");
-
-    // Write kernel atomically (temp file + rename)
-    let tmp_path = kernel_dir.join("engine.wasm.tmp");
-    if std::fs::write(&tmp_path, &wasm_bytes).is_err() {
-        println!("cargo:warning=  [auto-build] Failed to write kernel");
+    if std::fs::write(kernel_dst, &wasm_bytes).is_err() {
+        println!("cargo:warning=  [auto-build] Failed to write kernel to OUT_DIR");
         return false;
     }
-    if std::fs::rename(&tmp_path, &kernel_path).is_err() {
-        // rename can fail across filesystems — fall back to copy
-        let _ = std::fs::copy(&tmp_path, &kernel_path);
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-
-    // Update blake3 hash
-    let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
-    let hash_content = format!("{hash}  engine.wasm\n");
-    let _ = std::fs::write(kernel_dir.join("engine.wasm.blake3"), hash_content);
 
     println!(
         "cargo:warning=  [auto-build] SUCCESS: QuickJS kernel built ({} bytes)",

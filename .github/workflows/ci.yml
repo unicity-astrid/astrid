@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: crates/astrid-openclaw/kernel/engine.wasm
-          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run cargo check
         run: cargo check --workspace --all-features
@@ -108,7 +108,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: crates/astrid-openclaw/kernel/engine.wasm
-          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run clippy
         run: cargo clippy --workspace --all-features -- -D warnings
@@ -148,7 +148,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: crates/astrid-openclaw/kernel/engine.wasm
-          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run tests
         run: cargo test --workspace

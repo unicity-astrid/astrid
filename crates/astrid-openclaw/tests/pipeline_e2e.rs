@@ -177,7 +177,7 @@ fn e2e_tier2_full_pipeline() {
     assert!(bridge.contains("handleInitialize"));
 
     // Source copied
-    assert!(output_dir.path().join("src/src/index.js").exists());
+    assert!(output_dir.path().join("src/index.js").exists());
 }
 
 #[test]

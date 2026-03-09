@@ -64,10 +64,8 @@ pub fn compile_plugin(opts: &CompileOptions<'_>) -> BridgeResult<CompileResult> 
     let oc_manifest = manifest::parse_manifest(opts.plugin_dir)?;
     let astrid_id = manifest::convert_id(&oc_manifest.id)?;
 
-    // 2. Validate config against schema (if config is non-empty)
-    if !opts.config.is_empty() {
-        validate_config(opts.config, &oc_manifest.config_schema)?;
-    }
+    // 2. Validate config against schema
+    validate_config(opts.config, &oc_manifest.config_schema)?;
 
     // 3. Detect tier
     let plugin_tier = tier::detect_tier(opts.plugin_dir, Some(&oc_manifest));
@@ -186,10 +184,8 @@ fn compile_tier2(
         return Err(BridgeError::EntryPointNotFound(entry_point));
     }
 
-    // Create source directory in output and copy plugin source
-    let src_dir = opts.output_dir.join("src");
-    std::fs::create_dir_all(&src_dir)?;
-    copy_plugin_source(opts.plugin_dir, &src_dir)?;
+    // Copy plugin source into output dir root (preserving directory structure)
+    copy_plugin_source(opts.plugin_dir, opts.output_dir)?;
 
     // Write the MCP bridge script
     node_bridge::write_bridge_script(opts.output_dir)?;
@@ -229,7 +225,7 @@ fn generate_tier2_manifest(
     let _ = writeln!(toml, "command = \"node\"");
     let _ = writeln!(
         toml,
-        "args = [\"astrid_bridge.mjs\", \"--entry\", \"src/{entry_point_rel}\", \"--plugin-id\", \"{astrid_id}\"]"
+        "args = [\"astrid_bridge.mjs\", \"--entry\", \"{entry_point_rel}\", \"--plugin-id\", \"{astrid_id}\"]"
     );
     let _ = writeln!(toml);
 
@@ -280,13 +276,19 @@ fn copy_plugin_source(src: &Path, dst: &Path) -> BridgeResult<()> {
 
         let dst_path = dst.join(&name);
 
+        if file_type.is_symlink() {
+            return Err(BridgeError::Manifest(format!(
+                "plugin source contains a symlink at {} — symlinks are not permitted in capsule archives",
+                entry.path().display()
+            )));
+        }
+
         if file_type.is_dir() {
             std::fs::create_dir_all(&dst_path)?;
             copy_plugin_source(&entry.path(), &dst_path)?;
         } else if file_type.is_file() {
             std::fs::copy(entry.path(), &dst_path)?;
         }
-        // Skip symlinks
     }
     Ok(())
 }
@@ -492,7 +494,7 @@ mod tests {
             "Bridge script should be written"
         );
         assert!(
-            output.path().join("src/src/index.js").exists(),
+            output.path().join("src/index.js").exists(),
             "Plugin source should be copied under src/"
         );
     }
@@ -712,6 +714,23 @@ mod tests {
         let mut config = HashMap::new();
         config.insert("anything".into(), serde_json::json!("val"));
         assert!(validate_config(&config, &schema).is_ok());
+    }
+
+    #[test]
+    fn validate_config_empty_config_with_required_fields() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "apiKey": {"type": "string"}
+            },
+            "required": ["apiKey"]
+        });
+        let config = HashMap::new();
+        let err = validate_config(&config, &schema).unwrap_err();
+        assert!(
+            matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("apiKey")),
+            "expected ConfigValidation with apiKey, got: {err}"
+        );
     }
 
     #[test]
