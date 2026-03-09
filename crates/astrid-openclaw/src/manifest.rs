@@ -142,17 +142,7 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
             .and_then(|e| e.as_array())
         && let Some(first) = extensions.first().and_then(|v| v.as_str())
     {
-        // Reject path traversal and absolute paths — entry point must stay within plugin_dir
-        if first.contains("..") {
-            return Err(BridgeError::Manifest(format!(
-                "entry point '{first}' contains '..' — path traversal not allowed"
-            )));
-        }
-        if Path::new(first).is_absolute() {
-            return Err(BridgeError::Manifest(format!(
-                "entry point '{first}' is an absolute path — must be relative to plugin directory"
-            )));
-        }
+        validate_entry_point_path(first)?;
         return Ok(first.to_string());
     }
 
@@ -167,6 +157,60 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
     Err(BridgeError::EntryPointNotFound(
         plugin_dir.join("<unresolved>"),
     ))
+}
+
+/// Validate an entry point path for safe use in capsule manifests.
+///
+/// Rejects path traversal, absolute paths, and characters that could
+/// cause injection in TOML strings or CLI arguments.
+fn validate_entry_point_path(path: &str) -> BridgeResult<()> {
+    if path.contains("..") {
+        return Err(BridgeError::Manifest(format!(
+            "entry point '{path}' contains '..' — path traversal not allowed"
+        )));
+    }
+    if Path::new(path).is_absolute() {
+        return Err(BridgeError::Manifest(format!(
+            "entry point '{path}' is an absolute path — must be relative to plugin directory"
+        )));
+    }
+    // Only allow safe filesystem characters — prevents TOML/CLI injection
+    if !path
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.' || b == b'/')
+    {
+        return Err(BridgeError::Manifest(format!(
+            "entry point '{path}' contains invalid characters — \
+             only alphanumeric, '_', '-', '.', '/' are allowed"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate a config schema property key for safe use in TOML section headers.
+///
+/// Rejects keys that contain characters which could break TOML syntax.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::ConfigValidation`] if the key is empty or contains
+/// characters outside `[a-zA-Z0-9_-]`.
+pub fn validate_schema_key(key: &str) -> BridgeResult<()> {
+    if key.is_empty() {
+        return Err(BridgeError::ConfigValidation(
+            "config schema property key must not be empty".into(),
+        ));
+    }
+    if !key
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return Err(BridgeError::ConfigValidation(format!(
+            "config schema property key '{key}' contains invalid characters — \
+             only alphanumeric, '_', '-' are allowed"
+        )));
+    }
+    Ok(())
 }
 
 /// Convert an `OpenClaw` plugin ID to an Astrid-compatible plugin ID.

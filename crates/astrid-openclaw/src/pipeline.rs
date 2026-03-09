@@ -6,7 +6,6 @@
 //! call [`compile_plugin`] and get back a [`CompileResult`].
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use crate::cache::CompilationCache;
@@ -201,6 +200,43 @@ fn compile_tier2(
     })
 }
 
+/// Serializable Tier 2 `Capsule.toml` manifest.
+#[derive(Debug, serde::Serialize)]
+struct Tier2Manifest {
+    package: Tier2Package,
+    mcp_server: Vec<Tier2McpServer>,
+    capabilities: Tier2Capabilities,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    env: HashMap<String, Tier2EnvDef>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Tier2Package {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Tier2McpServer {
+    id: String,
+    command: String,
+    args: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Tier2Capabilities {
+    host_process: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Tier2EnvDef {
+    #[serde(rename = "type")]
+    env_type: String,
+    request: String,
+}
+
 /// Generate a `Capsule.toml` for Tier 2 plugins using `[[mcp_server]]`.
 fn generate_tier2_manifest(
     astrid_id: &str,
@@ -208,51 +244,56 @@ fn generate_tier2_manifest(
     entry_point_rel: &str,
     output_dir: &Path,
 ) -> BridgeResult<()> {
-    let mut toml = String::new();
-
-    // [package]
-    let _ = writeln!(toml, "[package]");
-    let _ = writeln!(toml, "name = {astrid_id:?}");
-    let _ = writeln!(toml, "version = {:?}", oc_manifest.display_version());
-    if let Some(desc) = &oc_manifest.description {
-        let _ = writeln!(toml, "description = {desc:?}");
-    }
-    let _ = writeln!(toml);
-
-    // [[mcp_server]]
-    let _ = writeln!(toml, "[[mcp_server]]");
-    let _ = writeln!(toml, "id = {astrid_id:?}");
-    let _ = writeln!(toml, "command = \"node\"");
-    let _ = writeln!(
-        toml,
-        "args = [\"astrid_bridge.mjs\", \"--entry\", \"{entry_point_rel}\", \"--plugin-id\", \"{astrid_id}\"]"
-    );
-    let _ = writeln!(toml);
-
-    // [capabilities]
-    let _ = writeln!(toml, "[capabilities]");
-    let _ = writeln!(toml, "host_process = [\"node\"]");
-
-    // Map configSchema to [env]
+    // Validate schema property keys before using them as TOML keys
+    let mut env = HashMap::new();
     if let Some(obj) = oc_manifest.config_schema.as_object()
         && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
-        && !props.is_empty()
     {
-        let _ = writeln!(toml);
         for (key, _val) in props {
+            manifest::validate_schema_key(key)?;
             let env_type = if manifest::is_secret_key(key) {
                 "secret"
             } else {
                 "string"
             };
-            let _ = writeln!(toml, "[env.{key}]");
-            let _ = writeln!(toml, "type = \"{env_type}\"");
-            let _ = writeln!(toml, "request = \"Please enter value for {key}\"");
+            env.insert(
+                key.clone(),
+                Tier2EnvDef {
+                    env_type: env_type.to_string(),
+                    request: format!("Please enter value for {key}"),
+                },
+            );
         }
     }
 
+    let manifest = Tier2Manifest {
+        package: Tier2Package {
+            name: astrid_id.to_string(),
+            version: oc_manifest.display_version().to_string(),
+            description: oc_manifest.description.clone(),
+        },
+        mcp_server: vec![Tier2McpServer {
+            id: astrid_id.to_string(),
+            command: "node".to_string(),
+            args: vec![
+                "astrid_bridge.mjs".to_string(),
+                "--entry".to_string(),
+                entry_point_rel.to_string(),
+                "--plugin-id".to_string(),
+                astrid_id.to_string(),
+            ],
+        }],
+        capabilities: Tier2Capabilities {
+            host_process: vec!["node".to_string()],
+        },
+        env,
+    };
+
+    let toml_content = toml::to_string_pretty(&manifest)
+        .map_err(|e| BridgeError::Output(format!("failed to serialize Capsule.toml: {e}")))?;
+
     let toml_path = output_dir.join("Capsule.toml");
-    std::fs::write(&toml_path, toml)
+    std::fs::write(&toml_path, toml_content)
         .map_err(|e| BridgeError::Output(format!("failed to write Capsule.toml: {e}")))?;
 
     Ok(())
