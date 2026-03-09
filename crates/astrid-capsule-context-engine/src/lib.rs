@@ -170,9 +170,6 @@ impl Config {
 /// Default maximum time to wait for plugin hook responses.
 const DEFAULT_HOOK_POLL_TIMEOUT_MS: u64 = 2000;
 
-/// Poll interval between checking for hook responses.
-const HOOK_POLL_INTERVAL_MS: u64 = 10;
-
 /// Maximum number of hook responses to collect.
 const MAX_HOOK_RESPONSES: usize = 50;
 
@@ -209,7 +206,8 @@ pub fn run() -> FnResult<()> {
     let _ = sys::log("info", "Context Engine capsule ready");
 
     loop {
-        match ipc::poll_bytes(&sub) {
+        // Block until a message arrives (up to 60s), eliminating busy-spin polling.
+        match ipc::recv_bytes(&sub, 60_000) {
             Ok(bytes) => {
                 if !bytes.is_empty() {
                     handle_poll_envelope(&bytes, &config);
@@ -474,21 +472,28 @@ fn fire_before_compaction(
         };
     }
 
-    // Poll for responses with configurable timeout.
+    // Block-wait for hook responses within the configured timeout.
     let mut responses: Vec<BeforeCompactionHookResponse> = Vec::new();
-    let max_iterations = (config.hook_timeout_ms / HOOK_POLL_INTERVAL_MS).max(1);
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(config.hook_timeout_ms);
 
-    for _ in 0..max_iterations {
-        if let Ok(bytes) = ipc::poll_bytes(&sub)
-            && !bytes.is_empty()
-            && let Some(new_responses) = parse_hook_responses(&bytes)
-        {
-            responses.extend(new_responses);
-            if responses.len() >= MAX_HOOK_RESPONSES {
-                break;
-            }
+    while std::time::Instant::now() < deadline && responses.len() < MAX_HOOK_RESPONSES {
+        let remaining_ms = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis();
+        if remaining_ms == 0 {
+            break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(HOOK_POLL_INTERVAL_MS));
+        let timeout = u64::try_from(remaining_ms).unwrap_or(u64::MAX);
+
+        match ipc::recv_bytes(&sub, timeout) {
+            Ok(bytes) if !bytes.is_empty() => {
+                if let Some(new_responses) = parse_hook_responses(&bytes) {
+                    responses.extend(new_responses);
+                }
+            },
+            _ => break,
+        }
     }
 
     let _ = ipc::unsubscribe(&sub);

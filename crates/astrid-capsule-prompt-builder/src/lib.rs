@@ -132,9 +132,6 @@ struct AfterPromptBuildPayload {
 /// Overridable via the `hook_timeout_ms` capsule config key.
 const DEFAULT_HOOK_POLL_TIMEOUT_MS: u64 = 2000;
 
-/// Poll interval (in milliseconds) between checking for hook responses.
-const HOOK_POLL_INTERVAL_MS: u64 = 10;
-
 /// Maximum number of hook responses to collect before proceeding.
 const MAX_HOOK_RESPONSES: usize = 50;
 
@@ -281,25 +278,28 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
         return Vec::new();
     }
 
-    // Poll for responses with configurable timeout.
-    // This loop intentionally sleeps because it's a bounded wait for plugin
-    // responses to arrive — unlike the main event loop, we need a deadline.
-    // Once the SDK provides poll_bytes with a timeout parameter, this should
-    // use that instead of sleep-and-retry.
+    // Block-wait for hook responses within the configured timeout.
     let mut sourced_responses = Vec::new();
-    let max_iterations = (config.hook_timeout_ms / HOOK_POLL_INTERVAL_MS).max(1);
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(config.hook_timeout_ms);
 
-    for _ in 0..max_iterations {
-        if let Ok(bytes) = ipc::poll_bytes(&sub)
-            && !bytes.is_empty()
-            && let Some(new_responses) = parse_hook_responses(&bytes)
-        {
-            sourced_responses.extend(new_responses);
-            if sourced_responses.len() >= MAX_HOOK_RESPONSES {
-                break;
-            }
+    while std::time::Instant::now() < deadline && sourced_responses.len() < MAX_HOOK_RESPONSES {
+        let remaining_ms = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis();
+        if remaining_ms == 0 {
+            break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(HOOK_POLL_INTERVAL_MS));
+        let timeout = u64::try_from(remaining_ms).unwrap_or(u64::MAX);
+
+        match ipc::recv_bytes(&sub, timeout) {
+            Ok(bytes) if !bytes.is_empty() => {
+                if let Some(new_responses) = parse_hook_responses(&bytes) {
+                    sourced_responses.extend(new_responses);
+                }
+            },
+            _ => break,
+        }
     }
 
     let _ = ipc::unsubscribe(&sub);
@@ -505,13 +505,9 @@ pub fn run() -> FnResult<()> {
 
     let _ = sys::log("info", "Prompt Builder capsule ready");
 
-    // NOTE: ipc::poll_bytes is non-blocking today (returns empty when no
-    // messages). This loop will busy-spin. Once the SDK provides a blocking
-    // poll variant (see SDK issue), this should use it instead.
-    // The alternative of adding sleep(50ms) adds 50ms latency per message
-    // and is strictly worse than a proper blocking poll.
     loop {
-        match ipc::poll_bytes(&sub) {
+        // Block until a message arrives (up to 60s), eliminating busy-spin polling.
+        match ipc::recv_bytes(&sub, 60_000) {
             Ok(bytes) => {
                 if !bytes.is_empty() {
                     handle_poll_envelope(&bytes, &config);

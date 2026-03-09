@@ -50,6 +50,8 @@ extern "ExtismHost" {
     pub fn astrid_ipc_unsubscribe(handle: Vec<u8>);
     /// Poll for the next message on an IPC subscription handle.
     pub fn astrid_ipc_poll(handle: Vec<u8>) -> Vec<u8>;
+    /// Block until a message arrives on an IPC subscription handle, or timeout.
+    pub fn astrid_ipc_recv(handle: Vec<u8>, timeout_ms: Vec<u8>) -> Vec<u8>;
 
     /// Register a direct uplink (frontend).
     pub fn astrid_uplink_register(name: Vec<u8>, platform: Vec<u8>, profile: Vec<u8>) -> Vec<u8>;
