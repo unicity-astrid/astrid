@@ -103,59 +103,7 @@ impl EventDispatcher {
             },
         };
 
-        tokio::task::spawn(async move {
-            let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
-                let registry = registry.read().await;
-                let mut matches = Vec::new();
-                for capsule_id in registry.list() {
-                    if let Some(capsule) = registry.get(capsule_id) {
-                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-                            continue;
-                        }
-                        for interceptor in &capsule.manifest().interceptors {
-                            if topic_matches(&topic, &interceptor.event) {
-                                matches.push((Arc::clone(&capsule), interceptor.action.clone()));
-                            }
-                        }
-                    }
-                }
-                matches
-            };
-
-            for (capsule, action) in matches {
-                let capsule_id = capsule.id().clone();
-                let payload = Arc::clone(&payload_bytes);
-                let topic = Arc::clone(&topic);
-
-                tokio::task::spawn(async move {
-                    debug!(
-                        capsule_id = %capsule_id,
-                        action = %action,
-                        event_type = %topic,
-                        "Dispatching lifecycle interceptor"
-                    );
-
-                    match capsule.invoke_interceptor(&action, &payload) {
-                        Ok(_) => {
-                            debug!(
-                                capsule_id = %capsule_id,
-                                action = %action,
-                                "Lifecycle interceptor completed"
-                            );
-                        },
-                        Err(e) => {
-                            warn!(
-                                capsule_id = %capsule_id,
-                                action = %action,
-                                event_type = %topic,
-                                error = %e,
-                                "Lifecycle interceptor invocation failed"
-                            );
-                        },
-                    }
-                });
-            }
-        });
+        spawn_interceptor_fanout(registry, topic, payload_bytes);
     }
 
     /// Match an IPC event against all registered interceptors and invoke matches.
@@ -176,67 +124,84 @@ impl EventDispatcher {
             },
         };
 
-        // Spawn a lightweight coordinator task that collects matches under a
-        // brief read lock, then fans out each interceptor as its own task.
-        tokio::task::spawn(async move {
-            let matches: Vec<(Arc<dyn crate::capsule::Capsule>, String)> = {
-                let registry = registry.read().await;
-                let mut matches = Vec::new();
-                for capsule_id in registry.list() {
-                    if let Some(capsule) = registry.get(capsule_id) {
-                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-                            continue;
-                        }
-                        for interceptor in &capsule.manifest().interceptors {
-                            if topic_matches(&topic, &interceptor.event) {
-                                matches.push((Arc::clone(&capsule), interceptor.action.clone()));
-                            }
-                        }
-                    }
-                }
-                matches
-                // Read lock dropped here.
-            };
-
-            for (capsule, action) in matches {
-                let capsule_id = capsule.id().clone();
-                let payload = Arc::clone(&payload_bytes);
-                let topic = Arc::clone(&topic);
-
-                // Each interceptor runs independently to completion. Spawned on
-                // a Tokio worker thread so block_in_place (used by
-                // invoke_interceptor and WASM host functions) works correctly.
-                // Requires a multi-thread Tokio runtime.
-                tokio::task::spawn(async move {
-                    debug!(
-                        capsule_id = %capsule_id,
-                        action = %action,
-                        topic = %topic,
-                        "Dispatching interceptor"
-                    );
-
-                    match capsule.invoke_interceptor(&action, &payload) {
-                        Ok(_) => {
-                            debug!(
-                                capsule_id = %capsule_id,
-                                action = %action,
-                                "Interceptor completed"
-                            );
-                        },
-                        Err(e) => {
-                            warn!(
-                                capsule_id = %capsule_id,
-                                action = %action,
-                                topic = %topic,
-                                error = %e,
-                                "Interceptor invocation failed"
-                            );
-                        },
-                    }
-                });
-            }
-        });
+        spawn_interceptor_fanout(registry, topic, payload_bytes);
     }
+}
+
+/// Collect matching interceptors from the registry and spawn each as an
+/// independent task. Shared by both IPC and lifecycle dispatch paths.
+///
+/// Takes a brief read lock on the registry to collect matches, then fans out
+/// each interceptor on its own spawned task so `block_in_place` (used by
+/// `invoke_interceptor` and WASM host functions) works correctly. Requires a
+/// multi-thread Tokio runtime.
+fn spawn_interceptor_fanout(
+    registry: Arc<RwLock<CapsuleRegistry>>,
+    topic: Arc<String>,
+    payload_bytes: Arc<Vec<u8>>,
+) {
+    tokio::task::spawn(async move {
+        let matches = find_matching_interceptors(&registry, &topic).await;
+
+        for (capsule, action) in matches {
+            let capsule_id = capsule.id().clone();
+            let payload = Arc::clone(&payload_bytes);
+            let topic = Arc::clone(&topic);
+
+            tokio::task::spawn(async move {
+                debug!(
+                    capsule_id = %capsule_id,
+                    action = %action,
+                    topic = %topic,
+                    "Dispatching interceptor"
+                );
+
+                match capsule.invoke_interceptor(&action, &payload) {
+                    Ok(_) => {
+                        debug!(
+                            capsule_id = %capsule_id,
+                            action = %action,
+                            "Interceptor completed"
+                        );
+                    },
+                    Err(e) => {
+                        warn!(
+                            capsule_id = %capsule_id,
+                            action = %action,
+                            topic = %topic,
+                            error = %e,
+                            "Interceptor invocation failed"
+                        );
+                    },
+                }
+            });
+        }
+    });
+}
+
+/// Find all capsules with interceptors matching the given topic.
+///
+/// Takes a brief read lock on the registry. Only `Ready` capsules are
+/// considered. Returns `(capsule, action)` pairs for each match.
+async fn find_matching_interceptors(
+    registry: &RwLock<CapsuleRegistry>,
+    topic: &str,
+) -> Vec<(Arc<dyn crate::capsule::Capsule>, String)> {
+    let registry = registry.read().await;
+    let mut matches = Vec::new();
+    for capsule_id in registry.list() {
+        if let Some(capsule) = registry.get(capsule_id) {
+            if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                continue;
+            }
+            for interceptor in &capsule.manifest().interceptors {
+                if topic_matches(topic, &interceptor.event) {
+                    matches.push((Arc::clone(&capsule), interceptor.action.clone()));
+                }
+            }
+        }
+    }
+    matches
 }
 
 /// Returns `true` if `s` has no empty segments — i.e. no leading/trailing dots

@@ -318,7 +318,16 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
 
 /// Parse the poll envelope and extract hook responses with source capsule IDs.
 fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<SourcedHookResponse>> {
-    let envelope: serde_json::Value = serde_json::from_slice(poll_bytes).ok()?;
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = sys::log(
+                "warn",
+                format!("failed to deserialize hook response envelope: {e}"),
+            );
+            return None;
+        },
+    };
 
     let messages = envelope.get("messages")?.as_array()?;
     let mut responses = Vec::new();

@@ -244,7 +244,13 @@ fn should_dispatch_topic(topic: &str) -> bool {
 fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(e) => {
+            let _ = sys::log(
+                "warn",
+                format!("failed to deserialize IPC poll envelope: {e}"),
+            );
+            return;
+        },
     };
 
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
@@ -499,7 +505,16 @@ fn fire_before_compaction(
 
 /// Parse the IPC poll envelope and extract hook responses.
 fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<BeforeCompactionHookResponse>> {
-    let envelope: serde_json::Value = serde_json::from_slice(poll_bytes).ok()?;
+    let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = sys::log(
+                "warn",
+                format!("failed to deserialize compaction response envelope: {e}"),
+            );
+            return None;
+        },
+    };
     let messages = envelope.get("messages")?.as_array()?;
     let mut responses = Vec::new();
 

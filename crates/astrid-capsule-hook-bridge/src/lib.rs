@@ -233,8 +233,16 @@ fn dispatch_hook(event_type: &str, payload: &serde_json::Value) -> Result<Vec<u8
     let response_bytes = hooks::trigger(&request_bytes)?;
 
     // Parse the response array from the kernel.
-    let responses: Vec<serde_json::Value> =
-        serde_json::from_slice(&response_bytes).unwrap_or_default();
+    let responses: Vec<serde_json::Value> = match serde_json::from_slice(&response_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            extism_pdk::log!(
+                extism_pdk::LogLevel::Warn,
+                "failed to deserialize hook responses: {e}"
+            );
+            Vec::new()
+        },
+    };
 
     if responses.is_empty() && matches!(mapping.merge, MergeSemantics::None) {
         return Ok(Vec::new());

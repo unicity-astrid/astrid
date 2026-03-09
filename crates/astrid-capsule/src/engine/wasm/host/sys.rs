@@ -228,7 +228,13 @@ pub(crate) fn astrid_trigger_hook_impl(
             })
         });
 
-        serde_json::to_vec(&responses).unwrap_or_else(|_| b"[]".to_vec())
+        match serde_json::to_vec(&responses) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to serialize hook responses");
+                b"[]".to_vec()
+            },
+        }
     } else {
         // No registry available — return empty array (no subscribers).
         b"[]".to_vec()
