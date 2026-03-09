@@ -237,9 +237,119 @@ pub(crate) fn astrid_ipc_poll_impl(
         }
     }
 
+    let lagged = receiver.drain_lagged();
+
     let result_obj = serde_json::json!({
         "messages": messages,
-        "dropped": dropped
+        "dropped": dropped,
+        "lagged": lagged
+    });
+
+    let json = serde_json::to_string(&result_obj)
+        .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))?;
+
+    let mem = plugin.memory_new(&json)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
+/// Maximum timeout for blocking IPC receive (60 seconds).
+const MAX_RECV_TIMEOUT_MS: u64 = 60_000;
+
+#[expect(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_ipc_recv_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let handle_id_bytes = util::get_safe_bytes(plugin, &inputs[0], 32)?;
+    let handle_id_str = String::from_utf8(handle_id_bytes)
+        .map_err(|e| Error::msg(format!("Subscription handle is not valid UTF-8: {e}")))?;
+    let handle_id: u64 = handle_id_str
+        .parse()
+        .map_err(|e| Error::msg(format!("Invalid subscription handle format: {e}")))?;
+
+    let timeout_bytes = util::get_safe_bytes(plugin, &inputs[1], 32)?;
+    let timeout_str = String::from_utf8(timeout_bytes)
+        .map_err(|e| Error::msg(format!("Timeout is not valid UTF-8: {e}")))?;
+    let timeout_ms: u64 = timeout_str
+        .parse()
+        .map_err(|e| Error::msg(format!("Invalid timeout format: {e}")))?;
+    let timeout_ms = timeout_ms.min(MAX_RECV_TIMEOUT_MS);
+
+    let ud = user_data.get()?;
+
+    // Temporarily remove the receiver from the map so we can drop the lock
+    // before blocking. WASM is single-threaded so no concurrent access is possible.
+    let (mut receiver, runtime_handle) = {
+        let mut state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let receiver = state
+            .subscriptions
+            .remove(&handle_id)
+            .ok_or_else(|| Error::msg("Subscription handle not found"))?;
+        let runtime_handle = state.runtime_handle.clone();
+        (receiver, runtime_handle)
+    };
+
+    // Block the WASM thread until a message arrives or timeout expires.
+    // The WASM engine runs inside block_in_place, so blocking here is safe.
+    let event = runtime_handle.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            receiver.recv(),
+        )
+        .await
+    });
+
+    // After the blocking wake, drain any additional messages that arrived
+    // during the wait. This avoids N round-trips for N messages arriving
+    // in a burst — the guest gets all of them in one call.
+    let mut messages = Vec::new();
+    let mut payload_bytes: usize = 0;
+    let mut dropped: u64 = 0;
+
+    if let Ok(Some(event)) = event
+        && let AstridEvent::Ipc { message, .. } = &*event
+    {
+        let msg_len = serde_json::to_string(&message.payload)
+            .map(|s| s.len())
+            .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
+        messages.push(message.clone());
+        payload_bytes += msg_len;
+    }
+
+    // Drain remaining available messages (non-blocking).
+    while let Some(event) = receiver.try_recv() {
+        if let AstridEvent::Ipc { message, .. } = &*event {
+            let msg_len = serde_json::to_string(&message.payload)
+                .map(|s| s.len())
+                .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
+            if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
+                dropped += 1;
+                break;
+            }
+            messages.push(message.clone());
+            payload_bytes += msg_len;
+        }
+    }
+
+    let lagged = receiver.drain_lagged();
+
+    // Re-insert the receiver after draining
+    {
+        let mut state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        state.subscriptions.insert(handle_id, receiver);
+    }
+
+    let result_obj = serde_json::json!({
+        "messages": messages,
+        "dropped": dropped,
+        "lagged": lagged
     });
 
     let json = serde_json::to_string(&result_obj)

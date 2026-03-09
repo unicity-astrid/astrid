@@ -185,6 +185,12 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::IpcRecv => crate::engine::wasm::host::ipc::astrid_ipc_recv_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
         WasmHostFunction::KvGet => crate::engine::wasm::host::kv::astrid_kv_get_impl(
             plugin,
             &fn_inputs,

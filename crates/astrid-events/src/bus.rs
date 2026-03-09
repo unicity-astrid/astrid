@@ -143,6 +143,9 @@ pub struct EventReceiver {
     /// Optional topic pattern. If specified, only `AstridEvent::Ipc` messages matching
     /// this pattern will be yielded (non-IPC events will be strictly filtered out).
     topic_pattern: Option<String>,
+    /// Cumulative count of messages lost due to broadcast channel lag.
+    /// Incremented each time the receiver falls behind the sender.
+    lagged_count: u64,
 }
 
 impl EventReceiver {
@@ -154,6 +157,7 @@ impl EventReceiver {
         Self {
             receiver,
             topic_pattern,
+            lagged_count: 0,
         }
     }
 
@@ -174,6 +178,12 @@ impl EventReceiver {
             // If a topic pattern is set, we ONLY care about matching IPC events.
             false
         }
+    }
+
+    /// Returns and resets the cumulative count of messages lost due to
+    /// broadcast channel lag since the last call.
+    pub fn drain_lagged(&mut self) -> u64 {
+        std::mem::take(&mut self.lagged_count)
     }
 
     /// Receive the next event.
@@ -198,6 +208,7 @@ impl EventReceiver {
                 },
                 Err(broadcast::error::RecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
+                    self.lagged_count = self.lagged_count.saturating_add(count);
                     // Continue receiving
                 },
                 Err(broadcast::error::RecvError::Closed) => return None,
@@ -219,6 +230,7 @@ impl EventReceiver {
                 },
                 Err(broadcast::error::TryRecvError::Lagged(count)) => {
                     warn!(skipped = count, "Event receiver lagged, events dropped");
+                    self.lagged_count = self.lagged_count.saturating_add(count);
                     // Continue receiving
                 },
                 Err(

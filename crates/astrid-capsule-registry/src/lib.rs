@@ -98,18 +98,13 @@ fn discover_providers() -> Vec<ProviderEntry> {
         return Vec::new();
     }
 
-    // Poll with a yield between iterations to avoid busy-spinning.
-    // The kernel router responds nearly instantly but we must not
-    // consume CPU while waiting.
-    for _ in 0..100 {
-        if let Ok(bytes) = ipc::poll_bytes(&sub)
-            && !bytes.is_empty()
-            && is_from_kernel(&bytes)
-        {
-            let _ = ipc::unsubscribe(&sub);
-            return parse_metadata_response(&bytes);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+    // Block until the kernel responds or timeout (1s).
+    if let Ok(bytes) = ipc::recv_bytes(&sub, 1000)
+        && !bytes.is_empty()
+        && is_from_kernel(&bytes)
+    {
+        let _ = ipc::unsubscribe(&sub);
+        return parse_metadata_response(&bytes);
     }
     let _ = ipc::unsubscribe(&sub);
     Vec::new()
@@ -348,16 +343,11 @@ pub fn run() -> FnResult<()> {
 
     // Wait for the kernel to signal that all capsules have been loaded.
     let mut capsules_ready = false;
-    for _ in 0..500 {
-        // 500 × 10ms = 5s max wait
-        if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
-            && !bytes.is_empty()
-            && is_from_kernel(&bytes)
-        {
-            capsules_ready = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+    if let Ok(bytes) = ipc::recv_bytes(&capsules_loaded_sub, 5000)
+        && !bytes.is_empty()
+        && is_from_kernel(&bytes)
+    {
+        capsules_ready = true;
     }
 
     if !capsules_ready {
@@ -382,9 +372,10 @@ pub fn run() -> FnResult<()> {
     clear_stale_active_model(&mut state);
     auto_select_if_single(&mut state);
 
-    // Event loop — also polls capsules_loaded_sub for reload re-discovery.
+    // Event loop — blocks on the primary subscription, then drains auxiliary subscriptions.
     loop {
-        match ipc::poll_bytes(&sub) {
+        // Block until a registry message arrives (up to 5s), then drain others.
+        match ipc::recv_bytes(&sub, 5000) {
             Ok(bytes) => {
                 if !bytes.is_empty() {
                     handle_poll_envelope(&bytes);
@@ -393,14 +384,14 @@ pub fn run() -> FnResult<()> {
             Err(_) => break,
         }
 
-        // Poll CLI command execution messages.
+        // Drain CLI command execution messages (non-blocking).
         if let Ok(bytes) = ipc::poll_bytes(&cmd_sub)
             && !bytes.is_empty()
         {
             handle_command_envelope(&bytes);
         }
 
-        // Poll model selection callbacks from the TUI picker.
+        // Drain model selection callbacks from the TUI picker.
         if let Ok(bytes) = ipc::poll_bytes(&selection_sub)
             && !bytes.is_empty()
         {
@@ -423,9 +414,6 @@ pub fn run() -> FnResult<()> {
                 auto_select_if_single(&mut state);
             }
         }
-
-        // Brief sleep to avoid busy-spinning
-        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
     let _ = ipc::unsubscribe(&sub);

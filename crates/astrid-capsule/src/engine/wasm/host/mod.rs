@@ -37,6 +37,7 @@ pub enum WasmHostFunction {
     IpcSubscribe,
     IpcUnsubscribe,
     IpcPoll,
+    IpcRecv,
     UplinkRegister,
     UplinkSend,
     KvGet,
@@ -56,7 +57,7 @@ pub enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 27] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -68,6 +69,7 @@ impl WasmHostFunction {
         Self::IpcSubscribe,
         Self::IpcUnsubscribe,
         Self::IpcPoll,
+        Self::IpcRecv,
         Self::UplinkRegister,
         Self::UplinkSend,
         Self::KvGet,
@@ -104,6 +106,7 @@ impl WasmHostFunction {
             Self::IpcSubscribe => "astrid_ipc_subscribe",
             Self::IpcUnsubscribe => "astrid_ipc_unsubscribe",
             Self::IpcPoll => "astrid_ipc_poll",
+            Self::IpcRecv => "astrid_ipc_recv",
             Self::UplinkRegister => "astrid_uplink_register",
             Self::UplinkSend => "astrid_uplink_send",
             Self::KvGet => "astrid_kv_get",
@@ -144,7 +147,12 @@ impl WasmHostFunction {
             | Self::NetAccept
             | Self::NetRead
             | Self::TriggerHook => 1,
-            Self::WriteFile | Self::IpcPublish | Self::KvSet | Self::Log | Self::NetWrite => 2,
+            Self::WriteFile
+            | Self::IpcPublish
+            | Self::IpcRecv
+            | Self::KvSet
+            | Self::Log
+            | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
             Self::GetCaller => 0,
         }
@@ -170,6 +178,7 @@ impl WasmHostFunction {
             | Self::ReadFile
             | Self::IpcSubscribe
             | Self::IpcPoll
+            | Self::IpcRecv
             | Self::UplinkRegister
             | Self::UplinkSend
             | Self::KvGet
@@ -236,6 +245,9 @@ pub fn register_host_functions(
             ),
             WasmHostFunction::IpcPoll => {
                 builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_poll_impl)
+            },
+            WasmHostFunction::IpcRecv => {
+                builder.with_function(func.name(), args, rets, ud, ipc::astrid_ipc_recv_impl)
             },
             WasmHostFunction::UplinkRegister => builder.with_function(
                 func.name(),

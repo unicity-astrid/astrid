@@ -123,6 +123,18 @@ pub mod ipc {
         let message_bytes = unsafe { astrid_ipc_poll(handle.as_ref().to_vec())? };
         Ok(message_bytes)
     }
+
+    /// Block until a message arrives on a subscription handle, or timeout.
+    ///
+    /// Returns the message envelope (same format as `poll_bytes`), or an
+    /// empty-messages envelope if the timeout expires with no messages.
+    /// Max timeout is capped at 60 000 ms by the host.
+    pub fn recv_bytes(handle: impl AsRef<[u8]>, timeout_ms: u64) -> Result<Vec<u8>, SysError> {
+        let timeout_str = timeout_ms.to_string();
+        let message_bytes =
+            unsafe { astrid_ipc_recv(handle.as_ref().to_vec(), timeout_str.into_bytes())? };
+        Ok(message_bytes)
+    }
 }
 
 /// The Uplink Airlock — Direct Frontend Messaging
