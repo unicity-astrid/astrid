@@ -15,6 +15,7 @@ astrid-events = { workspace = true, features = ["runtime"] }
 astrid-storage = { workspace = true }
 astrid-approval = { workspace = true, optional = true }
 astrid-mcp = { workspace = true }
+astrid-openclaw = { workspace = true, optional = true }
 extism = { workspace = true }
 uuid = { workspace = true }
 tempfile = { workspace = true }
@@ -33,3 +34,4 @@ astrid-workspace.workspace = true
 [features]
 default = ["approval"]
 approval = ["astrid-approval"]
+openclaw = ["dep:astrid-openclaw"]

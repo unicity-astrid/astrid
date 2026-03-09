@@ -2,6 +2,10 @@
 //!
 //! Scans well-known directories for `Capsule.toml` files, providing
 //! the entry point for the Manifest-First architecture.
+//!
+//! When the `openclaw` feature is enabled, directories containing
+//! `openclaw.plugin.json` (but no `Capsule.toml`) are automatically
+//! compiled via the OpenClaw pipeline before loading.
 
 use std::path::{Path, PathBuf};
 
@@ -12,6 +16,10 @@ use crate::manifest::CapsuleManifest;
 
 /// Standard capsule manifest file name.
 pub const MANIFEST_FILE_NAME: &str = "Capsule.toml";
+
+/// OpenClaw plugin manifest file name.
+#[cfg(feature = "openclaw")]
+const OPENCLAW_MANIFEST_FILE_NAME: &str = "openclaw.plugin.json";
 
 /// Discover capsule manifests from standard locations.
 ///
@@ -95,6 +103,12 @@ pub fn load_manifests_from_dir(dir: &Path) -> CapsuleResult<Vec<(CapsuleManifest
                         );
                     },
                 }
+            } else {
+                // No Capsule.toml — check for OpenClaw plugin source
+                #[cfg(feature = "openclaw")]
+                if let Some(result) = try_compile_openclaw(&path) {
+                    manifests.push(result);
+                }
             }
         } else if path.is_file()
             && path
@@ -167,6 +181,95 @@ pub fn workspace_plugins_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".astrid").join("plugins")
 }
 
+/// Detect an OpenClaw plugin directory and compile it to a capsule.
+///
+/// Returns `Some((manifest, output_dir))` if the directory contains
+/// `openclaw.plugin.json` and compilation succeeds. Returns `None` if
+/// the directory is not an OpenClaw plugin. Compilation failures are
+/// logged as warnings and return `None` (consistent with how manifest
+/// parse failures are handled in discovery).
+#[cfg(feature = "openclaw")]
+fn try_compile_openclaw(plugin_dir: &Path) -> Option<(CapsuleManifest, PathBuf)> {
+    use std::collections::HashMap;
+
+    let openclaw_manifest_path = plugin_dir.join(OPENCLAW_MANIFEST_FILE_NAME);
+    if !openclaw_manifest_path.exists() {
+        return None;
+    }
+
+    info!(
+        path = %plugin_dir.display(),
+        "Detected OpenClaw plugin, compiling"
+    );
+
+    // Derive a deterministic output directory from the plugin directory name.
+    let output_dir = openclaw_output_dir(plugin_dir)?;
+
+    if let Err(e) = std::fs::create_dir_all(&output_dir) {
+        warn!(
+            path = %output_dir.display(),
+            error = %e,
+            "Failed to create OpenClaw output directory"
+        );
+        return None;
+    }
+
+    let cache_dir = astrid_openclaw::pipeline::default_cache_dir();
+    let opts = astrid_openclaw::pipeline::CompileOptions {
+        plugin_dir,
+        output_dir: &output_dir,
+        config: &HashMap::new(),
+        cache_dir: cache_dir.as_deref(),
+        js_only: false,
+        no_cache: false,
+    };
+
+    match astrid_openclaw::pipeline::compile_plugin(&opts) {
+        Ok(result) => {
+            info!(
+                plugin_id = %result.astrid_id,
+                tier = ?result.tier,
+                cached = result.cached,
+                "OpenClaw plugin compiled successfully"
+            );
+
+            // Load the generated Capsule.toml from the output directory
+            let manifest_path = output_dir.join(MANIFEST_FILE_NAME);
+            match load_manifest(&manifest_path) {
+                Ok(manifest) => Some((manifest, output_dir)),
+                Err(e) => {
+                    warn!(
+                        path = %manifest_path.display(),
+                        error = %e,
+                        "Failed to load generated Capsule.toml from OpenClaw output"
+                    );
+                    None
+                },
+            }
+        },
+        Err(e) => {
+            warn!(
+                path = %plugin_dir.display(),
+                error = %e,
+                "Failed to compile OpenClaw plugin"
+            );
+            None
+        },
+    }
+}
+
+/// Compute a deterministic output directory for a compiled OpenClaw plugin.
+///
+/// Uses `~/.astrid/cache/openclaw/compiled/{dir_name}/` so that repeated
+/// boots reuse the same output location and benefit from the compilation
+/// cache.
+#[cfg(feature = "openclaw")]
+fn openclaw_output_dir(plugin_dir: &Path) -> Option<PathBuf> {
+    let dir_name = plugin_dir.file_name()?.to_str()?;
+    let base = astrid_openclaw::pipeline::default_cache_dir()?;
+    Some(base.join("compiled").join(dir_name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +331,99 @@ version = "0.1.0"
             "{VALID_HEADER}\n[[interceptor]]\nevent = \"user.prompt\"\naction = \"handle\""
         );
         assert!(load_from_toml(&toml).is_ok());
+    }
+
+    // ---------------------------------------------------------------
+    // OpenClaw integration tests
+    // ---------------------------------------------------------------
+
+    #[cfg(feature = "openclaw")]
+    mod openclaw {
+        use super::*;
+
+        #[test]
+        fn output_dir_is_deterministic() {
+            let dir = Path::new("/tmp/plugins/my-plugin");
+            let result = openclaw_output_dir(dir);
+            assert!(result.is_some());
+            let path = result.unwrap();
+            assert!(
+                path.ends_with("compiled/my-plugin"),
+                "expected path to end with compiled/my-plugin, got: {}",
+                path.display()
+            );
+
+            // Calling again produces the same path
+            let second = openclaw_output_dir(dir).unwrap();
+            assert_eq!(path, second, "output dir must be deterministic");
+        }
+
+        #[test]
+        fn try_compile_returns_none_for_non_openclaw_dir() {
+            let dir = tempfile::tempdir().unwrap();
+            // Empty directory — no openclaw.plugin.json
+            let result = try_compile_openclaw(dir.path());
+            assert!(result.is_none(), "non-OpenClaw dir should return None");
+        }
+
+        #[test]
+        fn try_compile_returns_none_for_corrupt_manifest() {
+            let dir = tempfile::tempdir().unwrap();
+            // Write invalid JSON to openclaw.plugin.json
+            std::fs::write(
+                dir.path().join(OPENCLAW_MANIFEST_FILE_NAME),
+                "not valid json {{{",
+            )
+            .unwrap();
+            let result = try_compile_openclaw(dir.path());
+            assert!(
+                result.is_none(),
+                "corrupt manifest should return None (logged as warning)"
+            );
+        }
+
+        #[test]
+        fn try_compile_returns_none_for_missing_entry_point() {
+            let dir = tempfile::tempdir().unwrap();
+            // Valid JSON manifest but no source files
+            std::fs::write(
+                dir.path().join(OPENCLAW_MANIFEST_FILE_NAME),
+                r#"{"id": "test-plugin", "configSchema": {}}"#,
+            )
+            .unwrap();
+            let result = try_compile_openclaw(dir.path());
+            assert!(
+                result.is_none(),
+                "missing entry point should return None (logged as warning)"
+            );
+        }
+
+        #[test]
+        fn load_manifests_prefers_capsule_toml_over_openclaw() {
+            let root = tempfile::tempdir().unwrap();
+            let plugin_dir = root.path().join("my-plugin");
+            std::fs::create_dir(&plugin_dir).unwrap();
+
+            // Write both Capsule.toml and openclaw.plugin.json
+            std::fs::write(
+                plugin_dir.join("Capsule.toml"),
+                "[package]\nname = \"precompiled\"\nversion = \"1.0.0\"\n",
+            )
+            .unwrap();
+            std::fs::write(
+                plugin_dir.join(OPENCLAW_MANIFEST_FILE_NAME),
+                r#"{"id": "precompiled", "configSchema": {}}"#,
+            )
+            .unwrap();
+
+            let manifests = load_manifests_from_dir(root.path()).unwrap();
+            assert_eq!(manifests.len(), 1, "should load exactly one manifest");
+            assert_eq!(
+                manifests[0].0.package.name, "precompiled",
+                "should load the existing Capsule.toml, not re-compile"
+            );
+            // The capsule_dir should be the original plugin dir, not a compiled output
+            assert_eq!(manifests[0].1, plugin_dir);
+        }
     }
 }
