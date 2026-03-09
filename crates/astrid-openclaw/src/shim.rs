@@ -1123,13 +1123,25 @@ fn generate_config_keys(config: &HashMap<String, serde_json::Value>) -> String {
 
 /// Escape a string for use in a JS string literal.
 fn escape_js_string(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-        .replace('\u{2028}', "\\u2028")
-        .replace('\u{2029}', "\\u2029")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c if (c as u32) < 0x20 => {
+                // Escape remaining ASCII control characters
+                use std::fmt::Write;
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            },
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

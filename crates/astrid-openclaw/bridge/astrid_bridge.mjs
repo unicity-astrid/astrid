@@ -462,6 +462,9 @@ async function handleNotification(method, params) {
   if (method === "notifications/astrid.setPluginConfig") {
     if (params?.config && typeof params.config === "object" && !Array.isArray(params.config)) {
       pluginConfig = params.config;
+      // Patch existing references so ctx.config.apiKey works
+      Object.assign(pluginApi.config, params.config);
+      Object.assign(pluginApi.pluginConfig, params.config);
       log.info(`Plugin config updated (${Object.keys(pluginConfig).length} keys)`);
     }
     return;

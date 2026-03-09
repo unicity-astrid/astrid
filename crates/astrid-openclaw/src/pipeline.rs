@@ -185,7 +185,7 @@ fn compile_tier2(
     }
 
     // Copy plugin source into output dir root (preserving directory structure)
-    copy_plugin_source(opts.plugin_dir, opts.output_dir)?;
+    copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
 
     // Write the MCP bridge script
     node_bridge::write_bridge_script(opts.output_dir)?;
@@ -300,8 +300,16 @@ fn generate_tier2_manifest(
     Ok(())
 }
 
+/// Maximum nesting depth for plugin source tree traversal.
+const MAX_COPY_DEPTH: usize = 64;
+
 /// Copy plugin source files, skipping `node_modules`, `.git`, etc.
-fn copy_plugin_source(src: &Path, dst: &Path) -> BridgeResult<()> {
+fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> {
+    if depth > MAX_COPY_DEPTH {
+        return Err(BridgeError::Manifest(
+            "plugin source tree exceeds maximum nesting depth (64)".into(),
+        ));
+    }
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
@@ -327,7 +335,7 @@ fn copy_plugin_source(src: &Path, dst: &Path) -> BridgeResult<()> {
 
         if file_type.is_dir() {
             std::fs::create_dir_all(&dst_path)?;
-            copy_plugin_source(&entry.path(), &dst_path)?;
+            copy_plugin_source(&entry.path(), &dst_path, depth.saturating_add(1))?;
         } else if file_type.is_file() {
             std::fs::copy(entry.path(), &dst_path)?;
         }
@@ -685,7 +693,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path()).unwrap();
+        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(
@@ -702,7 +710,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path()).unwrap();
+        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(!dst.path().join(".git").exists(), ".git should be skipped");

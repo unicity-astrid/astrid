@@ -82,6 +82,7 @@ pub fn is_secret_key(key: &str) -> bool {
         || lower.contains("apikey")
         || lower == "token"
         || lower.ends_with("_token")
+        || lower.ends_with("token")
         || lower.contains("secret")
         || lower.contains("password")
         || lower.contains("credentials")
@@ -89,6 +90,9 @@ pub fn is_secret_key(key: &str) -> bool {
         || lower.contains("privatekey")
         || lower.contains("access_key")
         || lower.contains("accesskey")
+        || lower == "authorization"
+        || lower == "jwt"
+        || lower == "passphrase"
 }
 
 const MANIFEST_FILENAME: &str = "openclaw.plugin.json";

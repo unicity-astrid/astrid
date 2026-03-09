@@ -108,6 +108,12 @@ fn has_command(name: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
+/// Convert a path to a UTF-8 string, panicking with a clear message on non-UTF-8 paths.
+fn path_str(p: &Path) -> &str {
+    p.to_str()
+        .expect("build path must be valid UTF-8 — non-UTF-8 paths are not supported")
+}
+
 /// Run a command, returning true on success. Prints stderr on failure.
 fn run_step(description: &str, cmd: &mut Command) -> bool {
     println!("cargo:warning=  [auto-build] {description}...");
@@ -182,7 +188,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
             "--branch",
             JS_PDK_TAG,
             JS_PDK_REPO,
-            &build_dir.to_string_lossy(),
+            path_str(&build_dir),
         ]),
     ) {
         return false;
@@ -226,10 +232,11 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
                 "--release",
                 "--target=wasm32-wasip1",
                 "--target-dir",
-                &build_dir.join("cargo-target").to_string_lossy(),
+                path_str(&build_dir.join("cargo-target")),
             ])
             .env_remove("CARGO_TARGET_DIR")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("RUSTFLAGS")
             .current_dir(&build_dir),
     ) {
         return false;
@@ -255,9 +262,9 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
                 "--enable-bulk-memory",
                 "--strip",
                 "-O3",
-                &built_wasm.to_string_lossy(),
+                path_str(&built_wasm),
                 "-o",
-                &optimized.to_string_lossy(),
+                path_str(&optimized),
             ]),
         ) && optimized.exists()
         {

@@ -157,6 +157,9 @@ pub(crate) fn transpile_and_install(
 
     let cache_dir = astrid_openclaw::pipeline::default_cache_dir();
 
+    // Config is empty at install time — required-field validation happens at
+    // capsule activation when config values are actually available.
+    // See `pipeline::validate_config(check_required: true)`.
     let opts = astrid_openclaw::pipeline::CompileOptions {
         plugin_dir: source_path,
         output_dir,
