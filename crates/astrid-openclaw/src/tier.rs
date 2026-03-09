@@ -284,7 +284,7 @@ mod tests {
         // Need package.json with openclaw.extensions for entry point resolution
         std::fs::write(
             dir.path().join("package.json"),
-            r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
+            r#"{"openclaw":{"extensions":["src/index.ts"]}}"#,
         )
         .unwrap();
         std::fs::create_dir_all(dir.path().join("src")).unwrap();

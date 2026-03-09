@@ -203,9 +203,11 @@ const pluginApi = {
   // registerCommand → maps to registerTool (a command IS a tool with simple args)
   registerCommand: (name, definition) => {
     const handler = typeof definition === "function" ? definition : definition?.handler;
+    const desc = (typeof definition === "object" && definition?.description) || `Command: ${name}`;
+    const schema = (typeof definition === "object" && definition?.inputSchema) || {};
     registeredTools.set(name, {
       name,
-      definition: { name, description: `Command: ${name}` },
+      definition: { name, description: desc, inputSchema: schema },
       handler,
     });
     log.debug(`Registered command as tool: ${name}`);

@@ -310,7 +310,12 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
         return false;
     }
 
-    // Write to source tree so subsequent builds and CI cache find it
+    // Write to source tree so subsequent builds and CI cache find it.
+    //
+    // Three outcomes for the tmp file:
+    // 1. write succeeds + rename succeeds → tmp_path is gone (renamed to kernel_path)
+    // 2. write succeeds + rename fails   → copy as fallback, then remove tmp_path
+    // 3. write fails                     → tmp_path doesn't exist, nothing to clean up
     std::fs::create_dir_all(kernel_dir).ok();
     let kernel_path = kernel_dir.join("engine.wasm");
     let tmp_path = kernel_dir.join("engine.wasm.tmp");

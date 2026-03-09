@@ -173,6 +173,11 @@ fn validate_entry_point_path(path: &str) -> BridgeResult<()> {
             "entry point '{path}' contains '..' — path traversal not allowed"
         )));
     }
+    if path.starts_with("./") || path == "." {
+        return Err(BridgeError::Manifest(format!(
+            "entry point '{path}' must not start with './' — use a bare relative path"
+        )));
+    }
     if Path::new(path).is_absolute() {
         return Err(BridgeError::Manifest(format!(
             "entry point '{path}' is an absolute path — must be relative to plugin directory"
@@ -396,12 +401,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("package.json"),
-            r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
+            r#"{"openclaw":{"extensions":["src/index.ts"]}}"#,
         )
         .unwrap();
 
         let entry = resolve_entry_point(dir.path()).unwrap();
-        assert_eq!(entry, "./src/index.ts");
+        assert_eq!(entry, "src/index.ts");
     }
 
     #[test]

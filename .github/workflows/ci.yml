@@ -21,8 +21,6 @@ env:
   RUST_BACKTRACE: 1
   # Must match JS_PDK_TAG in crates/astrid-openclaw/build.rs
   QUICKJS_KERNEL_VERSION: v1.6.0
-  # Enable auto-build of QuickJS kernel when not cached
-  ASTRID_AUTO_BUILD_KERNEL: "1"
 
 jobs:
   check:
@@ -60,6 +58,8 @@ jobs:
             crates/astrid-openclaw/kernel/engine.wasm
             crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-
 
       - name: Run cargo check
         run: cargo check --workspace --all-features
@@ -115,6 +115,8 @@ jobs:
             crates/astrid-openclaw/kernel/engine.wasm
             crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-
 
       - name: Run clippy
         run: cargo clippy --workspace --all-features -- -D warnings
@@ -157,6 +159,10 @@ jobs:
             crates/astrid-openclaw/kernel/engine.wasm
             crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-
 
       - name: Run tests
+        env:
+          ASTRID_AUTO_BUILD_KERNEL: "1"
         run: cargo test --workspace

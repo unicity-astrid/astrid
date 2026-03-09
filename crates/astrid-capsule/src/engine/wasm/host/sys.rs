@@ -139,57 +139,89 @@ pub(crate) fn astrid_trigger_hook_impl(
         // Fan out: find all capsules with interceptors matching the hook topic,
         // invoke each (skipping the caller to prevent infinite recursion),
         // and collect their responses.
-        let responses = tokio::task::block_in_place(|| {
-            rt_handle.block_on(async {
-                let registry = registry.read().await;
-                let mut matches: Vec<(std::sync::Arc<dyn crate::capsule::Capsule>, String)> =
-                    Vec::new();
+        //
+        // Step 1: Collect matching capsules under the registry read lock.
+        // This happens inside block_in_place → block_on so we can acquire
+        // the async RwLock, but we do NOT call invoke_interceptor here
+        // (which itself does block_in_place and would panic if nested).
+        let matches: Vec<(std::sync::Arc<dyn crate::capsule::Capsule>, String)> =
+            tokio::task::block_in_place(|| {
+                rt_handle.block_on(async {
+                    let registry = registry.read().await;
+                    let mut matches = Vec::new();
 
-                for capsule_id in registry.list() {
-                    // Skip the calling capsule to prevent recursion.
-                    if *capsule_id == caller_id {
-                        continue;
-                    }
-                    if let Some(capsule) = registry.get(capsule_id) {
-                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                    for capsule_id in registry.list() {
+                        // Skip the calling capsule to prevent recursion.
+                        if *capsule_id == caller_id {
                             continue;
                         }
-                        for interceptor in &capsule.manifest().interceptors {
-                            if crate::dispatcher::topic_matches(&request.hook, &interceptor.event) {
-                                matches.push((
-                                    std::sync::Arc::clone(&capsule),
-                                    interceptor.action.clone(),
-                                ));
+                        if let Some(capsule) = registry.get(capsule_id) {
+                            if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
+                                continue;
+                            }
+                            for interceptor in &capsule.manifest().interceptors {
+                                if crate::dispatcher::topic_matches(
+                                    &request.hook,
+                                    &interceptor.event,
+                                ) {
+                                    matches.push((
+                                        std::sync::Arc::clone(&capsule),
+                                        interceptor.action.clone(),
+                                    ));
+                                }
                             }
                         }
                     }
-                }
-                drop(registry);
+                    matches
+                    // Read lock dropped here.
+                })
+            });
 
-                let mut responses: Vec<serde_json::Value> = Vec::new();
-                for (capsule, action) in &matches {
-                    match capsule.invoke_interceptor(action, &payload_bytes) {
-                        Ok(bytes) if bytes.is_empty() => {},
-                        Ok(bytes) => {
-                            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                responses.push(val);
-                            } else {
+        // Step 2: Dispatch each interceptor via spawned tasks and collect
+        // results. Each invoke_interceptor call may use block_in_place
+        // internally, which is safe because it runs in its own spawned task
+        // (not nested inside our block_on).
+        let responses: Vec<serde_json::Value> = tokio::task::block_in_place(|| {
+            rt_handle.block_on(async {
+                let mut join_set = tokio::task::JoinSet::new();
+
+                for (capsule, action) in matches {
+                    let payload = payload_bytes.clone();
+                    let hook = request.hook.clone();
+                    join_set.spawn(async move {
+                        match capsule.invoke_interceptor(&action, &payload) {
+                            Ok(bytes) if bytes.is_empty() => None,
+                            Ok(bytes) => {
+                                match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                    Ok(val) => Some(val),
+                                    Err(_) => {
+                                        tracing::warn!(
+                                            capsule_id = %capsule.id(),
+                                            action = %action,
+                                            "interceptor returned non-JSON response, skipping"
+                                        );
+                                        None
+                                    },
+                                }
+                            },
+                            Err(e) => {
                                 tracing::warn!(
                                     capsule_id = %capsule.id(),
                                     action = %action,
-                                    "interceptor returned non-JSON response, skipping"
+                                    hook = %hook,
+                                    error = %e,
+                                    "interceptor invocation failed during hook trigger"
                                 );
-                            }
-                        },
-                        Err(e) => {
-                            tracing::warn!(
-                                capsule_id = %capsule.id(),
-                                action = %action,
-                                hook = %request.hook,
-                                error = %e,
-                                "interceptor invocation failed during hook trigger"
-                            );
-                        },
+                                None
+                            },
+                        }
+                    });
+                }
+
+                let mut responses = Vec::new();
+                while let Some(result) = join_set.join_next().await {
+                    if let Ok(Some(val)) = result {
+                        responses.push(val);
                     }
                 }
                 responses

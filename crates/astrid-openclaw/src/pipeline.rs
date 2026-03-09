@@ -319,7 +319,17 @@ fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> 
         // Skip build artifacts and large directories
         if matches!(
             name_str.as_ref(),
-            "node_modules" | ".git" | "dist" | "target"
+            "node_modules"
+                | ".git"
+                | "dist"
+                | "target"
+                | ".next"
+                | ".nuxt"
+                | ".turbo"
+                | "build"
+                | ".cache"
+                | ".parcel-cache"
+                | ".yarn"
         ) {
             continue;
         }

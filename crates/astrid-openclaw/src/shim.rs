@@ -235,7 +235,7 @@ var _openclawContext = {{
   // Path resolution helper
   resolvePath: function() {{
     var parts = Array.prototype.slice.call(arguments);
-    return parts.join("/").replace(/\/+/g, "/");
+    return _virtualPath.resolve.apply(_virtualPath, parts);
   }},
 
   // ── 1 & 2. registerTool (string name + object definition forms) ──
