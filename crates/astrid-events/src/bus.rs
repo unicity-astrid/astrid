@@ -593,4 +593,129 @@ mod tests {
         // Specific receiver should strictly ignore non-IPC events
         assert!(specific_receiver.try_recv().is_none());
     }
+
+    #[tokio::test]
+    async fn test_drain_lagged_initially_zero() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        assert_eq!(receiver.drain_lagged(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_drain_lagged_resets_after_read() {
+        // Use a tiny channel so we can force lag easily.
+        let bus = EventBus::with_capacity(2);
+        let mut receiver = bus.subscribe();
+
+        // Publish 5 events into a capacity-2 channel — the receiver will lag.
+        for i in 0..5 {
+            let event = AstridEvent::RuntimeStarted {
+                metadata: EventMetadata::new("test"),
+                version: format!("{i}"),
+            };
+            bus.publish(event);
+        }
+
+        // try_recv will encounter the Lagged error and accumulate it.
+        let _ = receiver.try_recv();
+
+        let lagged = receiver.drain_lagged();
+        assert!(lagged > 0, "expected lag count > 0, got {lagged}");
+
+        // Second drain should be zero — it was reset.
+        assert_eq!(receiver.drain_lagged(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_drain_lagged_accumulates_across_calls() {
+        let bus = EventBus::with_capacity(2);
+        let mut receiver = bus.subscribe();
+
+        // First burst: overflow the channel.
+        for _ in 0..4 {
+            bus.publish(AstridEvent::RuntimeStarted {
+                metadata: EventMetadata::new("test"),
+                version: "v1".into(),
+            });
+        }
+        // Drain available messages to trigger the Lagged error.
+        while receiver.try_recv().is_some() {}
+
+        let lag1 = receiver.drain_lagged();
+
+        // Second burst: overflow again.
+        for _ in 0..4 {
+            bus.publish(AstridEvent::RuntimeStarted {
+                metadata: EventMetadata::new("test"),
+                version: "v2".into(),
+            });
+        }
+        while receiver.try_recv().is_some() {}
+
+        let lag2 = receiver.drain_lagged();
+
+        // Both bursts should have caused lag independently.
+        assert!(lag1 > 0, "first burst should lag");
+        assert!(lag2 > 0, "second burst should lag");
+    }
+
+    #[tokio::test]
+    async fn test_recv_blocking_with_timeout() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+
+        // With no messages, recv should return None after timeout.
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(50), receiver.recv()).await;
+
+        // Timeout should fire — no messages published.
+        assert!(result.is_err(), "expected timeout, got a message");
+    }
+
+    #[tokio::test]
+    async fn test_recv_blocking_wakes_on_message() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+
+        // Spawn a task that publishes after a short delay.
+        let bus_clone = bus.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            bus_clone.publish(AstridEvent::RuntimeStarted {
+                metadata: EventMetadata::new("test"),
+                version: "wake".into(),
+            });
+        });
+
+        // recv should wake when the message arrives, well before 5s.
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv()).await;
+
+        assert!(result.is_ok(), "recv should have woken up");
+        let event = result.unwrap().unwrap();
+        assert_eq!(event.event_type(), "runtime_started");
+    }
+
+    #[tokio::test]
+    async fn test_try_recv_drains_burst() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+
+        // Publish 10 messages in a burst.
+        for i in 0..10 {
+            bus.publish(AstridEvent::RuntimeStarted {
+                metadata: EventMetadata::new("test"),
+                version: format!("{i}"),
+            });
+        }
+
+        // Drain all with try_recv.
+        let mut count = 0;
+        while receiver.try_recv().is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 10);
+
+        // No more messages.
+        assert!(receiver.try_recv().is_none());
+    }
 }
