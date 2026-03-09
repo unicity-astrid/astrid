@@ -111,6 +111,16 @@ fn compile_tier1(
     std::fs::write(&shim_path, &shim_code)?;
 
     if opts.js_only {
+        // Generate Capsule.toml even in js_only mode — every capsule needs a manifest.
+        // Use shim as the entrypoint since there's no compiled WASM.
+        output::generate_manifest(
+            astrid_id,
+            oc_manifest,
+            &shim_path,
+            opts.config,
+            opts.output_dir,
+        )?;
+
         return Ok(CompileResult {
             astrid_id: astrid_id.to_string(),
             tier: PluginTier::Wasm,

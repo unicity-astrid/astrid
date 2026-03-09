@@ -227,6 +227,258 @@ fn e2e_tier1_with_cache_hit() {
     );
 }
 
+/// Create a plugin following official OpenClaw conventions exactly:
+/// - Object export with `register()` method (not `activate()`)
+/// - `package.json` with `openclaw.extensions: ["./src/index.js"]` (dotslash prefix)
+/// - `registerTool` with `parameters` (not `inputSchema`)
+/// - `registerCommand` with full options object
+/// - `registerHook` with 3rd metadata arg
+/// - `on()` with priority option
+/// - `configSchema` with `required` and `uiHints`
+fn create_official_openclaw_plugin(dir: &Path) {
+    let manifest = r#"{
+        "id": "greeting-tool",
+        "name": "Greeting Tool",
+        "version": "0.1.0",
+        "description": "A greeting plugin following official OpenClaw conventions",
+        "kind": "tool",
+        "configSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "defaultGreeting": {
+                    "type": "string",
+                    "description": "The default greeting to use",
+                    "default": "Hello"
+                },
+                "apiKey": {
+                    "type": "string",
+                    "description": "API key for premium greetings"
+                }
+            },
+            "required": ["defaultGreeting"]
+        },
+        "uiHints": {
+            "apiKey": {
+                "label": "API Key",
+                "sensitive": true,
+                "placeholder": "sk-..."
+            }
+        }
+    }"#;
+    std::fs::write(dir.join("openclaw.plugin.json"), manifest).unwrap();
+
+    // package.json with ./src/index.js entry (real plugins use ./ prefix)
+    let pkg = r#"{
+        "name": "openclaw-plugin-greeting",
+        "version": "0.1.0",
+        "type": "module",
+        "main": "src/index.js",
+        "openclaw": {
+            "extensions": ["./src/index.js"]
+        },
+        "peerDependencies": {
+            "openclaw": ">=2025.1.0"
+        }
+    }"#;
+    std::fs::write(dir.join("package.json"), pkg).unwrap();
+
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+
+    // Plugin source using official conventions
+    let source = r#"
+export default {
+    id: "greeting-tool",
+    name: "Greeting Tool",
+    description: "A simple greeting plugin",
+    kind: "tool",
+
+    register(api) {
+        const config = api.config || {};
+        const defaultGreeting = config.defaultGreeting || "Hello";
+
+        api.registerTool({
+            name: "send_greeting",
+            description: "Send a personalized greeting",
+            parameters: {
+                type: "object",
+                properties: {
+                    name: { type: "string", description: "Name to greet" },
+                    style: { type: "string", enum: ["formal", "casual"] }
+                },
+                required: ["name"]
+            },
+            execute: async (_id, params) => {
+                return { content: [{ type: "text", text: defaultGreeting + ", " + params.name }] };
+            }
+        });
+
+        api.registerCommand({
+            name: "greet",
+            description: "Quick greeting command",
+            acceptsArgs: true,
+            handler: async (ctx) => {
+                return { text: defaultGreeting + ", " + (ctx.args.join(" ") || "world") };
+            }
+        });
+
+        api.registerHook("message:received", async (event) => {
+            return null;
+        }, {
+            name: "greeting-tool.detector",
+            description: "Detect friendly messages"
+        });
+
+        api.on("before_prompt_build", (event, ctx) => {
+            return { appendSystemContext: "Be friendly." };
+        }, { priority: 50 });
+
+        api.logger.info("Greeting Tool registered");
+    }
+};
+"#;
+    std::fs::write(dir.join("src/index.js"), source).unwrap();
+}
+
+/// Test: A real OpenClaw plugin following official conventions compiles through Tier 1.
+#[test]
+fn e2e_official_openclaw_plugin_tier1() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    create_official_openclaw_plugin(plugin_dir.path());
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    let result = compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: true, // Skip WASM compilation (kernel may not be built)
+        no_cache: true,
+    })
+    .expect("official OpenClaw plugin should compile successfully");
+
+    // Verify metadata
+    assert_eq!(result.astrid_id, "greeting-tool");
+    assert_eq!(result.tier, PluginTier::Wasm, "no npm deps → Tier 1");
+    assert_eq!(result.manifest.display_name(), "Greeting Tool");
+    assert_eq!(result.manifest.display_version(), "0.1.0");
+
+    // Verify shim was generated
+    let shim = std::fs::read_to_string(output_dir.path().join("shim.js")).unwrap();
+
+    // Must contain all registration APIs
+    assert!(
+        shim.contains("registerTool"),
+        "shim must support registerTool"
+    );
+    assert!(
+        shim.contains("registerCommand"),
+        "shim must support registerCommand"
+    );
+    assert!(
+        shim.contains("registerHook"),
+        "shim must support registerHook"
+    );
+
+    // Must support register() pattern (not just activate)
+    assert!(
+        shim.contains("register") && shim.contains("activate"),
+        "shim must support both register() and activate() patterns"
+    );
+
+    // Must contain all WASM exports
+    assert!(
+        shim.contains("astrid_tool_call"),
+        "shim must export astrid_tool_call"
+    );
+    assert!(
+        shim.contains("astrid_hook_trigger"),
+        "shim must export astrid_hook_trigger"
+    );
+    assert!(
+        shim.contains("describe-tools"),
+        "shim must export describe-tools"
+    );
+
+    // Plugin source should be embedded in the shim
+    assert!(
+        shim.contains("send_greeting") || shim.contains("greeting"),
+        "shim should contain the plugin source"
+    );
+
+    // Capsule.toml must always be generated — every capsule needs a manifest
+    let capsule_toml = output_dir.path().join("Capsule.toml");
+    assert!(capsule_toml.exists(), "Capsule.toml must be generated");
+    let toml_content = std::fs::read_to_string(&capsule_toml).unwrap();
+    assert!(toml_content.contains(r#"name = "greeting-tool""#));
+
+    // apiKey should be detected as a secret in env section
+    assert!(
+        toml_content.contains("type = \"secret\""),
+        "apiKey should be detected as secret, got:\n{toml_content}"
+    );
+}
+
+/// Test: An official OpenClaw plugin with npm deps compiles through Tier 2.
+#[test]
+fn e2e_official_openclaw_plugin_tier2() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    create_official_openclaw_plugin(plugin_dir.path());
+
+    // Add npm dependencies to force Tier 2
+    let pkg = r#"{
+        "name": "openclaw-plugin-greeting",
+        "version": "0.1.0",
+        "type": "module",
+        "main": "src/index.js",
+        "dependencies": {
+            "got": "^14.0.0"
+        },
+        "openclaw": {
+            "extensions": ["./src/index.js"]
+        }
+    }"#;
+    std::fs::write(plugin_dir.path().join("package.json"), pkg).unwrap();
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    let result = compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: false,
+        no_cache: true,
+    })
+    .expect("official OpenClaw plugin with deps should compile as Tier 2");
+
+    // Verify Tier 2 detection
+    assert_eq!(result.tier, PluginTier::Node, "npm deps → Tier 2");
+    assert_eq!(result.astrid_id, "greeting-tool");
+
+    // Verify Capsule.toml has MCP server config
+    let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
+    assert!(capsule_toml.contains("[[mcp_server]]"));
+    assert!(capsule_toml.contains(r#"command = "node""#));
+    assert!(capsule_toml.contains("--entry"));
+    assert!(
+        capsule_toml.contains("src/index.js"),
+        "entry point should be src/index.js (stripped ./), got:\n{capsule_toml}"
+    );
+
+    // Bridge script must be present
+    assert!(output_dir.path().join("astrid_bridge.mjs").exists());
+
+    // Source must be copied
+    assert!(output_dir.path().join("src/index.js").exists());
+
+    // package.json must be copied (needed for module resolution)
+    assert!(output_dir.path().join("package.json").exists());
+}
+
 #[test]
 fn e2e_error_invalid_plugin_dir() {
     let output_dir = tempfile::tempdir().unwrap();
