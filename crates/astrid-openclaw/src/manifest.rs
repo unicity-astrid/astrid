@@ -462,6 +462,28 @@ mod tests {
     }
 
     #[test]
+    fn is_secret_key_camel_case_patterns() {
+        // camelCase patterns that should be detected as secrets
+        assert!(is_secret_key("apiKey"), "apiKey should be secret");
+        assert!(is_secret_key("accessToken"), "accessToken should be secret");
+        assert!(is_secret_key("privateKey"), "privateKey should be secret");
+        assert!(is_secret_key("accessKey"), "accessKey should be secret");
+        assert!(
+            is_secret_key("clientSecret"),
+            "clientSecret should be secret"
+        );
+    }
+
+    #[test]
+    fn is_secret_key_non_secret_keys() {
+        assert!(!is_secret_key("baseUrl"), "baseUrl should not be secret");
+        assert!(!is_secret_key("timeout"), "timeout should not be secret");
+        assert!(!is_secret_key("model"), "model should not be secret");
+        assert!(!is_secret_key("region"), "region should not be secret");
+        assert!(!is_secret_key("enabled"), "enabled should not be secret");
+    }
+
+    #[test]
     fn no_host_integration_for_simple_plugin() {
         let m = OpenClawManifest {
             id: "simple-tool".into(),

@@ -345,12 +345,12 @@ fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> 
 
 /// Validate config values against the plugin's `configSchema`.
 ///
-/// Performs lightweight structural checks without a full JSON Schema validator:
-/// - All provided keys must be declared in the schema's `properties`
-/// - If `check_required` is `true`, all required properties must be present
-///
-/// At build time, `check_required` should be `false` — required config values
-/// are a runtime/install concern. At install/activation time, pass `true`.
+/// Used at both build time and activation time:
+/// - **Build time** (`check_required: false`): validates that all provided keys
+///   are declared in the schema, but does not enforce required fields (config
+///   values are a runtime/install concern, not a compilation constraint).
+/// - **Activation time** (`check_required: true`): additionally verifies that
+///   all `required` properties are present in the config.
 ///
 /// # Errors
 ///

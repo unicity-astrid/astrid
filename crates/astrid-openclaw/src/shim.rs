@@ -1366,4 +1366,33 @@ mod tests {
         assert_eq!(escape_js_string("a\\b"), "a\\\\b");
         assert_eq!(escape_js_string("a\nb"), "a\\nb");
     }
+
+    #[test]
+    fn escape_js_string_null_byte() {
+        assert_eq!(escape_js_string("\0"), "\\u0000");
+    }
+
+    #[test]
+    fn escape_js_string_control_chars() {
+        // ASCII control chars other than \n, \r, \t
+        assert_eq!(escape_js_string("\x01"), "\\u0001");
+        assert_eq!(escape_js_string("\x1F"), "\\u001f");
+    }
+
+    #[test]
+    fn escape_js_string_line_separators() {
+        assert_eq!(escape_js_string("\u{2028}"), "\\u2028");
+        assert_eq!(escape_js_string("\u{2029}"), "\\u2029");
+    }
+
+    #[test]
+    fn escape_js_string_backslash_and_quote() {
+        assert_eq!(escape_js_string(r#"a"b\c"#), r#"a\"b\\c"#);
+    }
+
+    #[test]
+    fn escape_js_string_normal_passthrough() {
+        let normal = "Hello, world! 123 {} []";
+        assert_eq!(escape_js_string(normal), normal);
+    }
 }

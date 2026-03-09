@@ -236,6 +236,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
             ])
             .env_remove("CARGO_TARGET_DIR")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("CARGO_MAKEFLAGS")
             .env_remove("RUSTFLAGS")
             .current_dir(&build_dir),
     ) {
@@ -332,9 +333,17 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
         "cargo:warning=  To pin this hash: echo '{hash}  engine.wasm' > kernel/engine.wasm.blake3"
     );
 
-    // Write blake3 hash file to source tree
-    let hash_content = format!("{hash}  engine.wasm\n");
-    let _ = std::fs::write(kernel_dir.join("engine.wasm.blake3"), hash_content);
+    // Write blake3 hash file to source tree (only if one doesn't already exist)
+    let hash_path = kernel_dir.join("engine.wasm.blake3");
+    if hash_path.exists() {
+        println!(
+            "cargo:warning=  [auto-build] blake3 hash file already exists — \
+             not overwriting (delete it manually to update)"
+        );
+    } else {
+        let hash_content = format!("{hash}  engine.wasm\n");
+        let _ = std::fs::write(&hash_path, hash_content);
+    }
 
     true
 }

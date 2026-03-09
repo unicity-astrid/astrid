@@ -351,6 +351,16 @@ async function handleToolsCall(id, params) {
   // handlers and returns the merged result back to the kernel.
   if (toolName === "astrid_hook_intercept") {
     const hookName = toolArgs.hook;
+
+    // Validate hookName — must be safe identifier chars only
+    if (typeof hookName !== "string" || !/^[a-zA-Z0-9_.\-]+$/.test(hookName)) {
+      sendResponse(id, {
+        content: [{ type: "text", text: "Invalid hook name — must match [a-zA-Z0-9_.-]" }],
+        isError: true,
+      });
+      return;
+    }
+
     const hookData = toolArgs.payload ?? null;
     let lastResult = null;
 
