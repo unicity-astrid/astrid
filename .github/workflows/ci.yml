@@ -19,6 +19,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Must match JS_PDK_TAG in crates/astrid-openclaw/build.rs
+  QUICKJS_KERNEL_VERSION: v1.6.0
 
 jobs:
   check:
@@ -31,6 +33,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.94"
+          targets: wasm32-wasip1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -42,6 +50,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Cache QuickJS kernel
+        uses: actions/cache@v4
+        with:
+          path: crates/astrid-openclaw/kernel/engine.wasm
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
 
       - name: Run cargo check
         run: cargo check --workspace --all-features
@@ -72,6 +86,12 @@ jobs:
         with:
           toolchain: "1.94"
           components: clippy
+          targets: wasm32-wasip1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -83,6 +103,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Cache QuickJS kernel
+        uses: actions/cache@v4
+        with:
+          path: crates/astrid-openclaw/kernel/engine.wasm
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
 
       - name: Run clippy
         run: cargo clippy --workspace --all-features -- -D warnings
@@ -100,7 +126,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.94"
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown,wasm32-wasip1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -112,6 +143,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Cache QuickJS kernel
+        uses: actions/cache@v4
+        with:
+          path: crates/astrid-openclaw/kernel/engine.wasm
+          key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}
 
       - name: Run tests
         run: cargo test --workspace
