@@ -684,3 +684,273 @@ fn handle_mcp_quick_convert(dir: &Path, json_filename: &str, output: Option<&str
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use astrid_capsule::discovery::load_manifest;
+
+    /// Create a minimal Tier 2 OpenClaw plugin (Node.js — no QuickJS kernel needed).
+    fn create_tier2_plugin(dir: &Path) {
+        let manifest = r#"{
+            "id": "lifecycle-test",
+            "name": "Lifecycle Test Plugin",
+            "version": "1.0.0",
+            "description": "Tests the full compile-archive-unpack-load cycle",
+            "kind": "tool",
+            "skills": ["testing"],
+            "configSchema": {
+                "type": "object",
+                "properties": {
+                    "apiKey": {"type": "string"},
+                    "endpoint": {"type": "string"}
+                }
+            }
+        }"#;
+        std::fs::write(dir.join("openclaw.plugin.json"), manifest).unwrap();
+
+        let pkg = r#"{"name": "lifecycle-test", "dependencies": {"got": "^1.0"}}"#;
+        std::fs::write(dir.join("package.json"), pkg).unwrap();
+
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("src/index.js"),
+            "const got = require('got');\nmodule.exports.activate = function(ctx) {\n  ctx.registerTool('test', { description: 'test' }, () => 'ok');\n};",
+        ).unwrap();
+    }
+
+    /// Unpack a .capsule archive into a directory (mirrors install.rs logic).
+    fn unpack_capsule(archive_path: &Path, dest: &Path) {
+        let tar_gz = std::fs::File::open(archive_path).unwrap();
+        let decoder = flate2::read::GzDecoder::new(tar_gz);
+        let mut archive = tar::Archive::new(decoder);
+
+        for entry in archive.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().to_path_buf();
+
+            // Same safety checks as install.rs
+            assert!(
+                !path.is_absolute(),
+                "archive contains absolute path: {}",
+                path.display()
+            );
+            assert!(
+                !path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir)),
+                "archive contains path traversal: {}",
+                path.display()
+            );
+            assert!(
+                !entry.header().entry_type().is_symlink()
+                    && !entry.header().entry_type().is_hard_link(),
+                "archive contains symlink: {}",
+                path.display()
+            );
+
+            let out_path = dest.join(&path);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            entry.unpack(&out_path).unwrap();
+        }
+    }
+
+    #[test]
+    fn full_lifecycle_tier2_compile_archive_unpack_load() {
+        // 1. Create plugin source
+        let plugin_dir = tempfile::tempdir().unwrap();
+        create_tier2_plugin(plugin_dir.path());
+
+        // 2. Compile via pipeline
+        let build_dir = tempfile::tempdir().unwrap();
+        let config = std::collections::HashMap::new();
+        let result = pipeline::compile_plugin(&CompileOptions {
+            plugin_dir: plugin_dir.path(),
+            output_dir: build_dir.path(),
+            config: &config,
+            cache_dir: None,
+            js_only: false,
+            no_cache: true,
+        })
+        .expect("compilation should succeed");
+
+        assert_eq!(result.astrid_id, "lifecycle-test");
+        assert_eq!(result.tier, PluginTier::Node);
+
+        // 3. Read generated Capsule.toml and archive into .capsule
+        let toml_content = fs::read_to_string(build_dir.path().join("Capsule.toml"))
+            .expect("Capsule.toml should exist after compilation");
+
+        let archive_dir = tempfile::tempdir().unwrap();
+        let capsule_path = archive_dir.path().join("lifecycle-test.capsule");
+
+        // Collect Tier 2 artifacts
+        let mut additional: Vec<PathBuf> = Vec::new();
+        let src_dir = build_dir.path().join("src");
+        if src_dir.exists() {
+            additional.push(src_dir);
+        }
+        let bridge_path = build_dir.path().join("astrid_bridge.mjs");
+        if bridge_path.exists() {
+            additional.push(bridge_path);
+        }
+        let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
+
+        pack_capsule_archive(&capsule_path, &toml_content, None, build_dir.path(), &refs)
+            .expect("archiving should succeed");
+
+        assert!(capsule_path.exists(), ".capsule file should exist");
+        assert!(
+            fs::metadata(&capsule_path).unwrap().len() > 0,
+            ".capsule should not be empty"
+        );
+
+        // 4. Unpack the archive
+        let unpack_dir = tempfile::tempdir().unwrap();
+        unpack_capsule(&capsule_path, unpack_dir.path());
+
+        // 5. Verify unpacked structure
+        assert!(
+            unpack_dir.path().join("Capsule.toml").exists(),
+            "unpacked archive must contain Capsule.toml"
+        );
+        assert!(
+            unpack_dir.path().join("astrid_bridge.mjs").exists(),
+            "unpacked archive must contain bridge script"
+        );
+        assert!(
+            unpack_dir.path().join("src").exists(),
+            "unpacked archive must contain source directory"
+        );
+
+        // 6. Load the manifest through Astrid's real parser — proves it's valid
+        let manifest = load_manifest(&unpack_dir.path().join("Capsule.toml"))
+            .expect("unpacked Capsule.toml must be loadable by Astrid's manifest parser");
+
+        assert_eq!(manifest.package.name, "lifecycle-test");
+        assert_eq!(manifest.package.version, "1.0.0");
+        assert!(
+            !manifest.mcp_servers.is_empty(),
+            "Tier 2 manifest should declare MCP server"
+        );
+
+        // 7. Verify the Capsule.toml content has expected fields
+        let toml_str = fs::read_to_string(unpack_dir.path().join("Capsule.toml")).unwrap();
+        assert!(
+            toml_str.contains("lifecycle-test"),
+            "manifest should reference plugin id"
+        );
+        assert!(
+            toml_str.contains("node"),
+            "Tier 2 manifest should reference node"
+        );
+    }
+
+    #[test]
+    fn full_lifecycle_tier1_js_only_compile_archive_unpack_load() {
+        // Tier 1 without QuickJS kernel — uses js_only to skip WASM compilation
+        // but still proves the manifest generation + archive + unpack + load works.
+        let plugin_dir = tempfile::tempdir().unwrap();
+        let manifest = r#"{
+            "id": "tier1-lifecycle",
+            "name": "Tier 1 Lifecycle",
+            "version": "2.0.0",
+            "description": "Tier 1 lifecycle test",
+            "configSchema": {
+                "type": "object",
+                "properties": {
+                    "token": {"type": "string"}
+                }
+            }
+        }"#;
+        std::fs::write(plugin_dir.path().join("openclaw.plugin.json"), manifest).unwrap();
+        std::fs::create_dir_all(plugin_dir.path().join("src")).unwrap();
+        std::fs::write(
+            plugin_dir.path().join("src/index.js"),
+            "module.exports.activate = function(ctx) {};",
+        )
+        .unwrap();
+
+        // Compile (js_only — no QuickJS kernel needed)
+        let build_dir = tempfile::tempdir().unwrap();
+        let config = std::collections::HashMap::new();
+        let result = pipeline::compile_plugin(&CompileOptions {
+            plugin_dir: plugin_dir.path(),
+            output_dir: build_dir.path(),
+            config: &config,
+            cache_dir: None,
+            js_only: true,
+            no_cache: true,
+        })
+        .expect("js_only compilation should succeed");
+
+        assert_eq!(result.tier, PluginTier::Wasm);
+
+        // Verify shim was generated
+        let shim_path = build_dir.path().join("shim.js");
+        assert!(
+            shim_path.exists(),
+            "shim.js should exist after js_only compile"
+        );
+
+        let shim = fs::read_to_string(&shim_path).unwrap();
+        assert!(
+            shim.contains("_ensureActivated"),
+            "shim should contain activation logic"
+        );
+        assert!(
+            shim.contains("astrid_deactivate"),
+            "shim should contain deactivate export"
+        );
+        assert!(
+            shim.contains("_Buffer.from"),
+            "readFileSync should use Buffer.from"
+        );
+    }
+
+    #[test]
+    fn full_lifecycle_config_validation_rejects_bad_config() {
+        let plugin_dir = tempfile::tempdir().unwrap();
+        let manifest = r#"{
+            "id": "config-test",
+            "configSchema": {
+                "type": "object",
+                "properties": {
+                    "apiKey": {"type": "string"}
+                },
+                "required": ["apiKey"]
+            }
+        }"#;
+        std::fs::write(plugin_dir.path().join("openclaw.plugin.json"), manifest).unwrap();
+        std::fs::create_dir_all(plugin_dir.path().join("src")).unwrap();
+        std::fs::write(
+            plugin_dir.path().join("src/index.js"),
+            "module.exports = {};",
+        )
+        .unwrap();
+
+        let build_dir = tempfile::tempdir().unwrap();
+
+        // Missing required key
+        let mut config = std::collections::HashMap::new();
+        config.insert("bogusKey".into(), serde_json::json!("val"));
+
+        let err = pipeline::compile_plugin(&CompileOptions {
+            plugin_dir: plugin_dir.path(),
+            output_dir: build_dir.path(),
+            config: &config,
+            cache_dir: None,
+            js_only: true,
+            no_cache: true,
+        });
+
+        assert!(err.is_err(), "should reject unknown config key");
+        let msg = err.unwrap_err().to_string();
+        assert!(
+            msg.contains("bogusKey"),
+            "error should mention the bad key, got: {msg}"
+        );
+    }
+}
