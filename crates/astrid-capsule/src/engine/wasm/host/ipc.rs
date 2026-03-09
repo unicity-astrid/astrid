@@ -2,8 +2,66 @@ use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use astrid_events::AstridEvent;
 use astrid_events::EventMetadata;
+use astrid_events::EventReceiver;
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use extism::{CurrentPlugin, Error, UserData, Val};
+
+// ── Extracted testable core ─────────────────────────────────────────
+
+/// Result of draining IPC messages from an `EventReceiver`.
+#[cfg_attr(test, derive(Debug))]
+pub(crate) struct DrainResult {
+    pub messages: Vec<IpcMessage>,
+    pub dropped: u64,
+    pub lagged: u64,
+}
+
+/// Drain all available IPC messages from a receiver (non-blocking).
+///
+/// Collects messages until the buffer exceeds `max_payload_bytes` or no
+/// more messages are available. Returns the collected messages, a count
+/// of messages dropped due to buffer overflow, and the cumulative lag.
+pub(crate) fn drain_receiver(
+    receiver: &mut EventReceiver,
+    max_payload_bytes: usize,
+) -> DrainResult {
+    let mut messages = Vec::new();
+    let mut payload_bytes: usize = 0;
+    let mut dropped: u64 = 0;
+
+    while let Some(event) = receiver.try_recv() {
+        if let AstridEvent::Ipc { message, .. } = &*event {
+            let msg_len = serde_json::to_string(&message.payload)
+                .map(|s| s.len())
+                .unwrap_or(max_payload_bytes);
+            if payload_bytes + msg_len > max_payload_bytes {
+                dropped += 1;
+                break;
+            }
+            messages.push(message.clone());
+            payload_bytes += msg_len;
+        }
+    }
+
+    let lagged = receiver.drain_lagged();
+
+    DrainResult {
+        messages,
+        dropped,
+        lagged,
+    }
+}
+
+/// Serialize a drain result into the standard IPC poll/recv JSON envelope.
+pub(crate) fn serialize_envelope(result: &DrainResult) -> Result<String, Error> {
+    let obj = serde_json::json!({
+        "messages": result.messages,
+        "dropped": result.dropped,
+        "lagged": result.lagged
+    });
+    serde_json::to_string(&obj)
+        .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))
+}
 
 #[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_ipc_publish_impl(
@@ -214,39 +272,8 @@ pub(crate) fn astrid_ipc_poll_impl(
         .get_mut(&handle_id)
         .ok_or_else(|| Error::msg("Subscription handle not found"))?;
 
-    let mut messages = Vec::new();
-    let mut payload_bytes = 0;
-
-    let mut dropped = 0;
-
-    // Non-blocking poll - drain until buffer full or no more messages
-    while let Some(event) = receiver.try_recv() {
-        if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload)
-                .map(|s| s.len())
-                .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
-            if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                // Buffer full, drop the current message and leave the rest in the channel.
-                // NOTE: The message that triggered this overflow is permanently consumed from
-                // the broadcast receiver and lost. The `dropped` counter signals this loss to the guest.
-                dropped += 1;
-                break;
-            }
-            messages.push(message.clone());
-            payload_bytes += msg_len;
-        }
-    }
-
-    let lagged = receiver.drain_lagged();
-
-    let result_obj = serde_json::json!({
-        "messages": messages,
-        "dropped": dropped,
-        "lagged": lagged
-    });
-
-    let json = serde_json::to_string(&result_obj)
-        .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))?;
+    let drain = drain_receiver(receiver, util::MAX_GUEST_PAYLOAD_LEN as usize);
+    let json = serialize_envelope(&drain)?;
 
     let mem = plugin.memory_new(&json)?;
     outputs[0] = plugin.memory_to_val(mem);
@@ -304,39 +331,15 @@ pub(crate) fn astrid_ipc_recv_impl(
         .await
     });
 
-    // After the blocking wake, drain any additional messages that arrived
-    // during the wait. This avoids N round-trips for N messages arriving
-    // in a burst — the guest gets all of them in one call.
-    let mut messages = Vec::new();
-    let mut payload_bytes: usize = 0;
-    let mut dropped: u64 = 0;
+    // Collect the blocking-wake message (if any) plus drain remaining.
+    let mut drain = drain_receiver(&mut receiver, util::MAX_GUEST_PAYLOAD_LEN as usize);
 
+    // Prepend the message that woke us (it was consumed by recv, not try_recv).
     if let Ok(Some(event)) = event
         && let AstridEvent::Ipc { message, .. } = &*event
     {
-        let msg_len = serde_json::to_string(&message.payload)
-            .map(|s| s.len())
-            .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
-        messages.push(message.clone());
-        payload_bytes += msg_len;
+        drain.messages.insert(0, message.clone());
     }
-
-    // Drain remaining available messages (non-blocking).
-    while let Some(event) = receiver.try_recv() {
-        if let AstridEvent::Ipc { message, .. } = &*event {
-            let msg_len = serde_json::to_string(&message.payload)
-                .map(|s| s.len())
-                .unwrap_or(util::MAX_GUEST_PAYLOAD_LEN as usize);
-            if payload_bytes + msg_len > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                dropped += 1;
-                break;
-            }
-            messages.push(message.clone());
-            payload_bytes += msg_len;
-        }
-    }
-
-    let lagged = receiver.drain_lagged();
 
     // Re-insert the receiver after draining
     {
@@ -346,18 +349,232 @@ pub(crate) fn astrid_ipc_recv_impl(
         state.subscriptions.insert(handle_id, receiver);
     }
 
-    let result_obj = serde_json::json!({
-        "messages": messages,
-        "dropped": dropped,
-        "lagged": lagged
-    });
-
-    let json = serde_json::to_string(&result_obj)
-        .map_err(|e| Error::msg(format!("failed to serialize IPC messages: {e}")))?;
+    let json = serialize_envelope(&drain)?;
 
     let mem = plugin.memory_new(&json)?;
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use astrid_events::EventBus;
+    use astrid_events::ipc::IpcPayload;
+
+    /// Publish N IPC messages to a bus and return a receiver subscribed to them.
+    fn publish_ipc_messages(bus: &EventBus, topic: &str, count: usize) {
+        for i in 0..count {
+            let msg = IpcMessage::new(
+                topic,
+                IpcPayload::Custom {
+                    data: serde_json::json!({"i": i}),
+                },
+                uuid::Uuid::new_v4(),
+            );
+            bus.publish(AstridEvent::Ipc {
+                metadata: EventMetadata::new("test"),
+                message: msg,
+            });
+        }
+    }
+
+    #[test]
+    fn drain_receiver_collects_all_available_messages() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("test.topic");
+
+        publish_ipc_messages(&bus, "test.topic", 5);
+
+        let result = drain_receiver(&mut receiver, 10 * 1024 * 1024);
+        assert_eq!(result.messages.len(), 5);
+        assert_eq!(result.dropped, 0);
+        assert_eq!(result.lagged, 0);
+    }
+
+    #[test]
+    fn drain_receiver_returns_empty_when_no_messages() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("test.topic");
+
+        let result = drain_receiver(&mut receiver, 10 * 1024 * 1024);
+        assert!(result.messages.is_empty());
+        assert_eq!(result.dropped, 0);
+        assert_eq!(result.lagged, 0);
+    }
+
+    #[test]
+    fn drain_receiver_drops_on_buffer_overflow() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("test.topic");
+
+        // Publish messages — each has a small JSON payload.
+        publish_ipc_messages(&bus, "test.topic", 10);
+
+        // Use a tiny buffer limit so the drain hits the overflow.
+        // Each message payload `{"i":0}` serializes to ~20+ bytes as IpcPayload.
+        let result = drain_receiver(&mut receiver, 50);
+        assert!(
+            result.messages.len() < 10,
+            "should not have drained all 10 with 50-byte limit, got {}",
+            result.messages.len()
+        );
+        assert_eq!(
+            result.dropped, 1,
+            "one message should be dropped on overflow"
+        );
+    }
+
+    #[test]
+    fn drain_receiver_surfaces_lag_from_broadcast_overflow() {
+        // Tiny channel capacity to force lag.
+        let bus = EventBus::with_capacity(2);
+        let mut receiver = bus.subscribe_topic("test.topic");
+
+        // Publish 5 messages into a capacity-2 channel — the receiver will lag.
+        publish_ipc_messages(&bus, "test.topic", 5);
+
+        let result = drain_receiver(&mut receiver, 10 * 1024 * 1024);
+        assert!(
+            result.lagged > 0,
+            "expected lag from broadcast overflow, got 0"
+        );
+        // Should still receive the messages that weren't lost.
+        assert!(
+            !result.messages.is_empty(),
+            "should still get some messages after lag"
+        );
+    }
+
+    #[test]
+    fn serialize_envelope_produces_valid_json_with_all_fields() {
+        let msg = IpcMessage::new(
+            "test.topic",
+            IpcPayload::Custom {
+                data: serde_json::json!({"hello": "world"}),
+            },
+            uuid::Uuid::new_v4(),
+        );
+
+        let result = DrainResult {
+            messages: vec![msg],
+            dropped: 2,
+            lagged: 5,
+        };
+
+        let json = serialize_envelope(&result).expect("serialization should succeed");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("should be valid JSON");
+
+        assert_eq!(
+            parsed["messages"]
+                .as_array()
+                .expect("messages is array")
+                .len(),
+            1
+        );
+        assert_eq!(parsed["dropped"], 2);
+        assert_eq!(parsed["lagged"], 5);
+    }
+
+    #[test]
+    fn serialize_envelope_empty_messages() {
+        let result = DrainResult {
+            messages: vec![],
+            dropped: 0,
+            lagged: 0,
+        };
+
+        let json = serialize_envelope(&result).expect("serialization should succeed");
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert!(parsed["messages"].as_array().unwrap().is_empty());
+        assert_eq!(parsed["dropped"], 0);
+        assert_eq!(parsed["lagged"], 0);
+    }
+
+    #[tokio::test]
+    async fn subscription_lifecycle_remove_and_reinsert() {
+        // Tests the Mutex-drop-before-blocking pattern used by recv_impl:
+        // remove receiver from subscriptions, use it, re-insert it.
+        let bus = EventBus::new();
+        let receiver = bus.subscribe_topic("test.*");
+
+        let mut subscriptions = std::collections::HashMap::new();
+        let handle_id: u64 = 42;
+        subscriptions.insert(handle_id, receiver);
+
+        // Remove (simulates the lock-drop pattern in recv_impl).
+        let mut removed = subscriptions
+            .remove(&handle_id)
+            .expect("should find handle");
+        assert!(
+            !subscriptions.contains_key(&handle_id),
+            "handle should be gone after remove"
+        );
+
+        // Publish while receiver is outside the map.
+        publish_ipc_messages(&bus, "test.foo", 3);
+
+        // Drain from the removed receiver — should still work.
+        let result = drain_receiver(&mut removed, 10 * 1024 * 1024);
+        assert_eq!(result.messages.len(), 3, "receiver should work outside map");
+
+        // Re-insert.
+        subscriptions.insert(handle_id, removed);
+        assert!(
+            subscriptions.contains_key(&handle_id),
+            "handle should be back after re-insert"
+        );
+
+        // Publish more and verify the re-inserted receiver still works.
+        publish_ipc_messages(&bus, "test.bar", 2);
+        let receiver = subscriptions.get_mut(&handle_id).unwrap();
+        let result = drain_receiver(receiver, 10 * 1024 * 1024);
+        assert_eq!(
+            result.messages.len(),
+            2,
+            "receiver should work after re-insert"
+        );
+    }
+
+    #[tokio::test]
+    async fn recv_blocking_wake_plus_drain_burst() {
+        // Simulates what recv_impl does: block on recv(), then drain remaining.
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("burst.*");
+
+        let bus_clone = bus.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            // Publish 5 messages in a burst.
+            publish_ipc_messages(&bus_clone, "burst.test", 5);
+        });
+
+        // Block until first message arrives.
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+            .await
+            .expect("should not timeout")
+            .expect("should get a message");
+
+        // Small delay to let remaining messages arrive in the channel.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Drain remaining (simulates recv_impl's post-wake drain).
+        let drain = drain_receiver(&mut receiver, 10 * 1024 * 1024);
+
+        // The first message was consumed by recv(), drain gets the rest.
+        let mut total = drain.messages.len() + 1; // +1 for the recv() message
+        if let AstridEvent::Ipc { .. } = &*first {
+            // first was a matching IPC message, count is correct.
+        } else {
+            total -= 1;
+        }
+
+        assert_eq!(
+            total, 5,
+            "should get all 5 messages (1 from recv + rest from drain)"
+        );
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]
