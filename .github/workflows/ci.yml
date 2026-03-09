@@ -56,7 +56,9 @@ jobs:
       - name: Cache QuickJS kernel
         uses: actions/cache@v4
         with:
-          path: crates/astrid-openclaw/kernel/engine.wasm
+          path: |
+            crates/astrid-openclaw/kernel/engine.wasm
+            crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run cargo check
@@ -109,7 +111,9 @@ jobs:
       - name: Cache QuickJS kernel
         uses: actions/cache@v4
         with:
-          path: crates/astrid-openclaw/kernel/engine.wasm
+          path: |
+            crates/astrid-openclaw/kernel/engine.wasm
+            crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run clippy
@@ -149,7 +153,9 @@ jobs:
       - name: Cache QuickJS kernel
         uses: actions/cache@v4
         with:
-          path: crates/astrid-openclaw/kernel/engine.wasm
+          path: |
+            crates/astrid-openclaw/kernel/engine.wasm
+            crates/astrid-openclaw/kernel/engine.wasm.blake3
           key: quickjs-kernel-${{ env.QUICKJS_KERNEL_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run tests

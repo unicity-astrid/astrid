@@ -216,17 +216,27 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
     }
 
     // Build QuickJS core to wasm32-wasip1
+    // Use a separate target dir and strip inherited Cargo env vars to avoid
+    // deadlocks on the parent's target directory lock and flag contamination.
     if !run_step(
         "building QuickJS core (wasm32-wasip1)",
         Command::new("cargo")
-            .args(["build", "--release", "--target=wasm32-wasip1"])
+            .args([
+                "build",
+                "--release",
+                "--target=wasm32-wasip1",
+                "--target-dir",
+                &build_dir.join("cargo-target").to_string_lossy(),
+            ])
+            .env_remove("CARGO_TARGET_DIR")
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .current_dir(&build_dir),
     ) {
         return false;
     }
 
     // Locate built WASM
-    let built_wasm = build_dir.join("target/wasm32-wasip1/release/js_pdk_core.wasm");
+    let built_wasm = build_dir.join("cargo-target/wasm32-wasip1/release/js_pdk_core.wasm");
     if !built_wasm.exists() {
         println!(
             "cargo:warning=  [auto-build] Build output not found at {}",

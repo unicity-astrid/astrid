@@ -73,6 +73,7 @@ pub fn generate_manifest(
         && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
     {
         for (key, _val) in props {
+            crate::manifest::validate_schema_key(key)?;
             let is_secret = crate::manifest::is_secret_key(key);
             env.insert(
                 key.clone(),

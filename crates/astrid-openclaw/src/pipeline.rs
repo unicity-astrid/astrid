@@ -63,8 +63,9 @@ pub fn compile_plugin(opts: &CompileOptions<'_>) -> BridgeResult<CompileResult> 
     let oc_manifest = manifest::parse_manifest(opts.plugin_dir)?;
     let astrid_id = manifest::convert_id(&oc_manifest.id)?;
 
-    // 2. Validate config against schema
-    validate_config(opts.config, &oc_manifest.config_schema)?;
+    // 2. Validate config against schema (skip required-field check at build time —
+    //    config values are a runtime/install concern, not a compilation constraint)
+    validate_config(opts.config, &oc_manifest.config_schema, false)?;
 
     // 3. Detect tier
     let plugin_tier = tier::detect_tier(opts.plugin_dir, Some(&oc_manifest));
@@ -337,11 +338,20 @@ fn copy_plugin_source(src: &Path, dst: &Path) -> BridgeResult<()> {
 /// Validate config values against the plugin's `configSchema`.
 ///
 /// Performs lightweight structural checks without a full JSON Schema validator:
-/// - All required properties must be present
 /// - All provided keys must be declared in the schema's `properties`
-fn validate_config(
-    config: &HashMap<String, serde_json::Value>,
+/// - If `check_required` is `true`, all required properties must be present
+///
+/// At build time, `check_required` should be `false` — required config values
+/// are a runtime/install concern. At install/activation time, pass `true`.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::ConfigValidation`] if unknown keys are present or
+/// required keys are missing (when `check_required` is `true`).
+pub fn validate_config<S: std::hash::BuildHasher>(
+    config: &HashMap<String, serde_json::Value, S>,
     schema: &serde_json::Value,
+    check_required: bool,
 ) -> BridgeResult<()> {
     let Some(schema_obj) = schema.as_object() else {
         return Ok(());
@@ -360,8 +370,9 @@ fn validate_config(
         }
     }
 
-    // Check that all required properties are present
-    if let Some(required) = schema_obj.get("required").and_then(|r| r.as_array()) {
+    // Check that all required properties are present (only at install/activation time)
+    if check_required && let Some(required) = schema_obj.get("required").and_then(|r| r.as_array())
+    {
         let missing: Vec<&str> = required
             .iter()
             .filter_map(|v| v.as_str())
@@ -710,7 +721,7 @@ mod tests {
         });
         let mut config = HashMap::new();
         config.insert("apiKey".into(), serde_json::json!("sk-123"));
-        assert!(validate_config(&config, &schema).is_ok());
+        assert!(validate_config(&config, &schema, true).is_ok());
     }
 
     #[test]
@@ -723,7 +734,7 @@ mod tests {
         });
         let mut config = HashMap::new();
         config.insert("bogusKey".into(), serde_json::json!("val"));
-        let err = validate_config(&config, &schema).unwrap_err();
+        let err = validate_config(&config, &schema, true).unwrap_err();
         assert!(
             matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("bogusKey")),
             "expected ConfigValidation with bogusKey, got: {err}"
@@ -742,7 +753,7 @@ mod tests {
         });
         let mut config = HashMap::new();
         config.insert("apiKey".into(), serde_json::json!("sk-123"));
-        let err = validate_config(&config, &schema).unwrap_err();
+        let err = validate_config(&config, &schema, true).unwrap_err();
         assert!(
             matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("model")),
             "expected ConfigValidation mentioning model, got: {err}"
@@ -754,7 +765,7 @@ mod tests {
         let schema = serde_json::json!({});
         let mut config = HashMap::new();
         config.insert("anything".into(), serde_json::json!("val"));
-        assert!(validate_config(&config, &schema).is_ok());
+        assert!(validate_config(&config, &schema, true).is_ok());
     }
 
     #[test]
@@ -767,17 +778,20 @@ mod tests {
             "required": ["apiKey"]
         });
         let config = HashMap::new();
-        let err = validate_config(&config, &schema).unwrap_err();
+        // With check_required=true, this should fail
+        let err = validate_config(&config, &schema, true).unwrap_err();
         assert!(
             matches!(err, BridgeError::ConfigValidation(ref msg) if msg.contains("apiKey")),
             "expected ConfigValidation with apiKey, got: {err}"
         );
+        // With check_required=false (build-time), this should pass
+        assert!(validate_config(&config, &schema, false).is_ok());
     }
 
     #[test]
     fn validate_config_non_object_schema_accepts_anything() {
         let schema = serde_json::json!(true);
         let config = HashMap::new();
-        assert!(validate_config(&config, &schema).is_ok());
+        assert!(validate_config(&config, &schema, true).is_ok());
     }
 }
