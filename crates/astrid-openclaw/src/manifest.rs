@@ -147,8 +147,8 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
             .and_then(|e| e.as_array())
         && let Some(first) = extensions.first().and_then(|v| v.as_str())
     {
-        validate_entry_point_path(first)?;
-        return Ok(first.to_string());
+        let normalized = validate_entry_point_path(first)?;
+        return Ok(normalized);
     }
 
     // Fallback: check common entry point locations
@@ -164,20 +164,26 @@ pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
     ))
 }
 
-/// Validate an entry point path for safe use in capsule manifests.
+/// Validate and normalize an entry point path for safe use in capsule manifests.
 ///
-/// Rejects path traversal, absolute paths, and characters that could
+/// Strips a leading `./` prefix (common in real `OpenClaw` plugins), then
+/// rejects path traversal, absolute paths, and characters that could
 /// cause injection in TOML strings or CLI arguments.
-fn validate_entry_point_path(path: &str) -> BridgeResult<()> {
+///
+/// Returns the normalized (stripped) path on success.
+fn validate_entry_point_path(path: &str) -> BridgeResult<String> {
+    // Normalize: strip leading "./" — real OpenClaw plugins commonly use it
+    let path = path.strip_prefix("./").unwrap_or(path);
+
     if path.contains("..") {
         return Err(BridgeError::Manifest(format!(
             "entry point '{path}' contains '..' — path traversal not allowed"
         )));
     }
-    if path.starts_with("./") || path == "." {
-        return Err(BridgeError::Manifest(format!(
-            "entry point '{path}' must not start with './' — use a bare relative path"
-        )));
+    if path == "." {
+        return Err(BridgeError::Manifest(
+            "entry point '.' is not a valid file path".into(),
+        ));
     }
     if Path::new(path).is_absolute() {
         return Err(BridgeError::Manifest(format!(
@@ -194,7 +200,7 @@ fn validate_entry_point_path(path: &str) -> BridgeResult<()> {
              only alphanumeric, '_', '-', '.', '/' are allowed"
         )));
     }
-    Ok(())
+    Ok(path.to_string())
 }
 
 /// Validate a config schema property key for safe use in TOML section headers.
@@ -402,7 +408,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("package.json"),
-            r#"{"openclaw":{"extensions":["src/index.ts"]}}"#,
+            r#"{"openclaw":{"extensions":["./src/index.ts"]}}"#,
         )
         .unwrap();
 
@@ -468,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_entry_rejects_dot_slash_prefix() {
+    fn resolve_entry_strips_dot_slash_prefix() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("package.json"),
@@ -476,13 +482,8 @@ mod tests {
         )
         .unwrap();
 
-        let result = resolve_entry_point(dir.path());
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("./"),
-            "error should mention './' prefix: {err}"
-        );
+        let entry = resolve_entry_point(dir.path()).unwrap();
+        assert_eq!(entry, "src/index.ts");
     }
 
     #[test]

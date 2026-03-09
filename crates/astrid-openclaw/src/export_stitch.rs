@@ -469,8 +469,15 @@ mod tests {
     #[test]
     fn stitch_adds_named_exports() {
         let wasm = build_test_module();
-        let result =
-            stitch_exports(&wasm, &["describe-tools", "execute-tool", "run-hook"]).unwrap();
+        let exports = &[
+            "astrid_command_run",
+            "astrid_cron_trigger",
+            "astrid_deactivate",
+            "astrid_hook_trigger",
+            "astrid_tool_call",
+            "describe-tools",
+        ];
+        let result = stitch_exports(&wasm, exports).unwrap();
 
         assert_eq!(&result[..4], b"\0asm");
 
@@ -483,7 +490,15 @@ mod tests {
             }
         }
 
-        for name in ["__invoke_i32", "describe-tools", "execute-tool", "run-hook"] {
+        for name in [
+            "__invoke_i32",
+            "astrid_command_run",
+            "astrid_cron_trigger",
+            "astrid_deactivate",
+            "astrid_hook_trigger",
+            "astrid_tool_call",
+            "describe-tools",
+        ] {
             assert!(
                 found_exports.contains(&name.to_string()),
                 "should have export {name}"
@@ -494,8 +509,18 @@ mod tests {
     #[test]
     fn stitch_output_is_valid_wasm() {
         let wasm = build_test_module();
-        let result =
-            stitch_exports(&wasm, &["describe-tools", "execute-tool", "run-hook"]).unwrap();
+        let result = stitch_exports(
+            &wasm,
+            &[
+                "astrid_command_run",
+                "astrid_cron_trigger",
+                "astrid_deactivate",
+                "astrid_hook_trigger",
+                "astrid_tool_call",
+                "describe-tools",
+            ],
+        )
+        .unwrap();
 
         let mut section_count = 0;
         for payload in wasmparser::Parser::new(0).parse_all(&result) {

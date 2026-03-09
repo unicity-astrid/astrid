@@ -190,13 +190,16 @@ const pluginApi = {
     registeredChannels.set(chanName, { name: chanName, definition, handler });
     log.debug(`Registered channel: ${chanName}`);
   },
-  registerHook: (name, handler) => {
-    registeredHooks.set(name, handler);
+  registerHook: (name, handler, options) => {
+    if (!registeredHooks.has(name)) registeredHooks.set(name, []);
+    registeredHooks.get(name).push({ handler, options: options || {} });
     log.debug(`Registered hook: ${name}`);
   },
-  on: (event, handler) => {
+  on: (event, handler, options) => {
     if (!eventHandlers.has(event)) eventHandlers.set(event, []);
-    eventHandlers.get(event).push(handler);
+    const priority = (options && typeof options.priority === "number") ? options.priority : 100;
+    eventHandlers.get(event).push({ handler, priority });
+    eventHandlers.get(event).sort((a, b) => a.priority - b.priority);
     log.debug(`Registered event handler: ${event}`);
   },
 
@@ -239,16 +242,17 @@ const pluginApi = {
     unsupportedRegistrations.push({ type: "provider", name });
     log.debug(`Registered provider: ${name} (captured as metadata)`);
   },
-  // registerCli → maps to tool (a CLI subcommand IS a callable tool)
-  registerCli: (name, definition) => {
-    const handler = typeof definition === "function" ? definition : definition?.handler;
-    const desc = (definition && definition.description) || `CLI command: ${name}`;
-    registeredTools.set(name, {
-      name,
-      definition: { name, description: desc },
-      handler,
-    });
-    log.debug(`Registered CLI command as tool: ${name}`);
+  // registerCli → maps to tools (a CLI subcommand IS a callable tool)
+  registerCli: (cliObj, options) => {
+    const commands = (options && options.commands) || [];
+    for (const cmdName of commands) {
+      registeredTools.set(cmdName, {
+        name: cmdName,
+        definition: { name: cmdName, description: `CLI command: ${cmdName}`, inputSchema: { type: "object", properties: {} } },
+        handler: cliObj && typeof cliObj.execute === "function" ? cliObj.execute.bind(cliObj) : () => {},
+      });
+      log.debug(`Registered CLI command as tool: ${cmdName}`);
+    }
   },
 };
 
@@ -374,22 +378,22 @@ async function handleToolsCall(id, params) {
     const hookData = toolArgs.payload ?? null;
     let lastResult = null;
 
-    // Dispatch to on() event handlers
+    // Dispatch to on() event handlers (already sorted by priority)
     const handlers = eventHandlers.get(hookName) || [];
-    for (const handler of handlers) {
+    for (const entry of handlers) {
       try {
-        const r = await handler(hookData);
+        const r = await entry.handler(hookData);
         if (r !== undefined && r !== null) lastResult = r;
       } catch (e) {
         log.error(`Hook intercept event handler for ${hookName} failed: ${e.message}`);
       }
     }
 
-    // Dispatch to registerHook handler
-    const hookHandler = registeredHooks.get(hookName);
-    if (hookHandler) {
+    // Dispatch to registerHook handlers
+    const hookEntries = registeredHooks.get(hookName) || [];
+    for (const entry of hookEntries) {
       try {
-        const r = await hookHandler(hookData);
+        const r = await entry.handler(hookData);
         if (r !== undefined && r !== null) lastResult = r;
       } catch (e) {
         log.error(`Hook intercept registered hook ${hookName} failed: ${e.message}`);
@@ -408,9 +412,9 @@ async function handleToolsCall(id, params) {
   if (toolName === "__astrid_get_agent_context") {
     const handlers = eventHandlers.get("before_agent_start") || [];
     let context = {};
-    for (const handler of handlers) {
+    for (const entry of handlers) {
       try {
-        const result = await handler(toolArgs);
+        const result = await entry.handler(toolArgs);
         if (result && typeof result === "object") {
           context = { ...context, ...result };
         }
@@ -442,7 +446,7 @@ async function handleToolsCall(id, params) {
   }
 
   try {
-    const result = await tool.handler(toolName, toolArgs);
+    const result = await tool.handler(id, toolArgs);
     const text = typeof result === "string" ? result : JSON.stringify(result);
     sendResponse(id, {
       content: [{ type: "text", text }],
@@ -493,18 +497,18 @@ async function handleNotification(method, params) {
     const event = params?.hook ?? params?.event;
     const data = params?.payload ?? params?.data;
     const handlers = eventHandlers.get(event) || [];
-    for (const handler of handlers) {
+    for (const entry of handlers) {
       try {
-        await handler(data);
+        await entry.handler(data);
       } catch (e) {
         log.error(`Hook event handler for ${event} failed: ${e.message}`);
       }
     }
     // Also dispatch to registered hooks by name
-    const hookHandler = registeredHooks.get(event);
-    if (hookHandler) {
+    const hookEntries = registeredHooks.get(event) || [];
+    for (const entry of hookEntries) {
       try {
-        await hookHandler(data);
+        await entry.handler(data);
       } catch (e) {
         log.error(`Registered hook ${event} failed: ${e.message}`);
       }

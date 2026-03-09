@@ -284,18 +284,22 @@ var _openclawContext = {{
   }},
 
   // ── 6. registerHook ───────────────────────────────────────────────
-  registerHook: function(hookName, handler) {{
+  registerHook: function(hookName, handler, options) {{
     if (!_registeredHooks[hookName]) _registeredHooks[hookName] = [];
-    _registeredHooks[hookName].push(handler);
+    _registeredHooks[hookName].push({{ handler: handler, options: options || {{}} }});
   }},
 
   // ── 7. registerCommand → mapped to tool (bare name, matches Tier 2 bridge)
-  registerCommand: function(name, handler) {{
+  registerCommand: function(name, defOrHandler) {{
+    var handler = typeof defOrHandler === "function" ? defOrHandler : (defOrHandler && defOrHandler.handler);
+    var desc = (typeof defOrHandler === "object" && defOrHandler && defOrHandler.description) || "Command: " + name;
+    var schema = (typeof defOrHandler === "object" && defOrHandler && defOrHandler.inputSchema) || {{ type: "object", properties: {{}} }};
     _registeredTools[name] = {{
       name: name,
-      definition: {{ description: "Command: " + name, inputSchema: {{ type: "object", properties: {{}} }} }},
+      description: desc,
+      definition: {{ description: desc, inputSchema: schema }},
       handler: function(id, params) {{
-        var result = typeof handler === "function" ? handler(params) : handler.handler(params);
+        var result = typeof handler === "function" ? handler(params) : null;
         return typeof result === "string" ? result : JSON.stringify(result);
       }}
     }};
@@ -337,27 +341,35 @@ var _openclawContext = {{
   }},
 
   // ── 12. registerCli → maps to tool (a CLI subcommand IS a callable tool)
-  registerCli: function(name, opts) {{
-    var handler = typeof opts === "function" ? opts : (opts && opts.handler);
-    var desc = (opts && opts.description) || "CLI command: " + name;
-    _registeredTools[name] = {{
-      name: name,
-      definition: {{ name: name, description: desc, inputSchema: (opts && opts.inputSchema) || {{}} }},
-      handler: handler
-    }};
-    hostLog("debug", "registered cli command as tool: " + name);
+  registerCli: function(cliObj, options) {{
+    var commands = (options && options.commands) || [];
+    for (var _ci2 = 0; _ci2 < commands.length; _ci2++) {{
+      var cmdName = commands[_ci2];
+      _registeredTools[cmdName] = {{
+        name: cmdName,
+        definition: {{ name: cmdName, description: "CLI command: " + cmdName, inputSchema: {{ type: "object", properties: {{}} }} }},
+        handler: cliObj && typeof cliObj.execute === "function" ? cliObj.execute : function() {{}}
+      }};
+      _registeredMetadata.cliCommands[cmdName] = {{ cli: cliObj, options: options }};
+      hostLog("debug", "registered cli command as tool: " + cmdName);
+    }}
   }},
 
   // ── 13. on (event handler) ────────────────────────────────────────
-  on: function(eventName, handler) {{
+  on: function(eventName, handler, options) {{
     if (!_eventHandlers[eventName]) _eventHandlers[eventName] = [];
-    _eventHandlers[eventName].push(handler);
+    var priority = (options && typeof options.priority === "number") ? options.priority : 100;
+    _eventHandlers[eventName].push({{ handler: handler, priority: priority }});
+    _eventHandlers[eventName].sort(function(a, b) {{ return a.priority - b.priority; }});
   }},
 
   // ── Runtime helpers (minimal stubs for WASM sandbox) ──────────────
   runtime: {{
     config: {{
-      loadConfig: function() {{ return _pluginConfig; }}
+      loadConfig: function() {{ return _pluginConfig; }},
+      writeConfigFile: function(data) {{
+        hostLog("warn", "writeConfigFile is not supported in WASM tier — config changes will not persist");
+      }}
     }},
     channel: {{
       reply: function(channelName, message) {{
@@ -942,8 +954,31 @@ function _ensureActivated() {
     }
   }
 
-  // Activate plugin
-  if (typeof _pluginModule.activate === "function") {
+  // Activate plugin — try in order:
+  // 1. _pluginModule.default.register(api) — object with register method
+  // 2. _pluginModule.default(api) — function default export
+  // 3. _pluginModule.register(api) — named register export
+  // 4. _pluginModule.activate(api) — legacy activate
+  var _defaultExport = _pluginModule.default || _pluginModule;
+  if (_defaultExport && typeof _defaultExport === "object" && typeof _defaultExport.register === "function") {
+    try {
+      _defaultExport.register(_openclawContext);
+    } catch(_ae) {
+      hostLog("error", "plugin register() failed: " + String(_ae));
+    }
+  } else if (typeof _defaultExport === "function") {
+    try {
+      _defaultExport(_openclawContext);
+    } catch(_ae) {
+      hostLog("error", "plugin default function failed: " + String(_ae));
+    }
+  } else if (typeof _pluginModule.register === "function") {
+    try {
+      _pluginModule.register(_openclawContext);
+    } catch(_ae) {
+      hostLog("error", "plugin register() failed: " + String(_ae));
+    }
+  } else if (typeof _pluginModule.activate === "function") {
     try {
       _pluginModule.activate(_openclawContext);
     } catch(_ae) {
@@ -1051,19 +1086,19 @@ module.exports.astrid_hook_trigger = function() {
   if (hookHandlers) {
     for (var _hi = 0; _hi < hookHandlers.length; _hi++) {
       try {
-        var _hr = hookHandlers[_hi](eventData);
+        var _hr = hookHandlers[_hi].handler(eventData);
         if (_hr !== undefined && _hr !== null) { lastResult = _hr; }
       }
       catch(_he) { hostLog("error", "hook handler failed for " + eventName + ": " + String(_he)); }
     }
   }
 
-  // Dispatch to on() event handlers
+  // Dispatch to on() event handlers (already sorted by priority)
   var evHandlers = _eventHandlers[eventName];
   if (evHandlers) {
     for (var _ei = 0; _ei < evHandlers.length; _ei++) {
       try {
-        var _er = evHandlers[_ei](eventData);
+        var _er = evHandlers[_ei].handler(eventData);
         if (_er !== undefined && _er !== null) { lastResult = _er; }
       }
       catch(_ee2) { hostLog("error", "event handler failed for " + eventName + ": " + String(_ee2)); }

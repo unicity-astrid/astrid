@@ -32,9 +32,17 @@ const QUICKJS_KERNEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/engine.w
 
 /// Named exports to add to the compiled WASM plugin.
 ///
-/// These must be in alphabetical order to match the sorted index that
-/// `QuickJS` uses when looking up `module.exports` keys.
-const PLUGIN_EXPORTS: &[&str] = &["describe-tools", "execute-tool", "run-hook"];
+/// These must match the exact `module.exports` keys in the JS shim, listed
+/// in alphabetical order to match the sorted index that `QuickJS` uses
+/// when looking up `module.exports` keys.
+const PLUGIN_EXPORTS: &[&str] = &[
+    "astrid_command_run",
+    "astrid_cron_trigger",
+    "astrid_deactivate",
+    "astrid_hook_trigger",
+    "astrid_tool_call",
+    "describe-tools",
+];
 
 /// Compute the blake3 hash of the embedded `QuickJS` kernel.
 ///

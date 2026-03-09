@@ -194,6 +194,31 @@ fn compile_tier2(
     // Copy plugin source into output dir root (preserving directory structure)
     copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
 
+    // Install npm dependencies if package.json has dependencies and npm is available.
+    // Failure is a warning, not fatal — the user may have pre-installed deps or
+    // they may be unnecessary for the plugin to compile (runtime concern).
+    let pkg_json = opts.output_dir.join("package.json");
+    if pkg_json.exists()
+        && let Ok(pkg_content) = std::fs::read_to_string(&pkg_json)
+        && let Ok(pkg_val) = serde_json::from_str::<serde_json::Value>(&pkg_content)
+        && pkg_val
+            .get("dependencies")
+            .and_then(|d| d.as_object())
+            .is_some_and(|d| !d.is_empty())
+    {
+        match std::process::Command::new("npm")
+            .args(["install", "--production"])
+            .current_dir(opts.output_dir)
+            .status()
+        {
+            Ok(status) if status.success() => {},
+            Ok(_) => {
+                eprintln!("warning: npm install failed — dependencies may be missing at runtime");
+            },
+            Err(_) => eprintln!("warning: npm not found — skipping dependency install"),
+        }
+    }
+
     // Write the MCP bridge script
     node_bridge::write_bridge_script(opts.output_dir)?;
 
