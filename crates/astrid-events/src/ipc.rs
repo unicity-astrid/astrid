@@ -194,6 +194,8 @@ pub enum OnboardingFieldType {
     Secret,
     /// Selection from a fixed set of choices.
     Enum(Vec<String>),
+    /// Multi-value array input (user adds items one at a time).
+    Array,
 }
 
 /// Errors that can occur when checking IPC quota.
@@ -318,6 +320,55 @@ mod tests {
             limiter.check_quota(source_id, 4 * 1024 * 1024),
             Err(QuotaError::RateLimited)
         );
+    }
+
+    #[test]
+    fn onboarding_field_roundtrip_array() {
+        let field = OnboardingField {
+            key: "relays".into(),
+            prompt: "Enter relay URLs".into(),
+            description: Some("Nostr relay endpoints".into()),
+            field_type: OnboardingFieldType::Array,
+            default: None,
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, field);
+    }
+
+    #[test]
+    fn onboarding_required_with_array_field_roundtrip() {
+        let payload = IpcPayload::OnboardingRequired {
+            capsule_id: "test-capsule".into(),
+            fields: vec![
+                OnboardingField {
+                    key: "apiKey".into(),
+                    prompt: "Enter API key".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Secret,
+                    default: None,
+                },
+                OnboardingField {
+                    key: "relays".into(),
+                    prompt: "Enter relay URLs".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Array,
+                    default: None,
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&payload).unwrap();
+        let deserialized: IpcPayload = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload, deserialized);
+
+        if let IpcPayload::OnboardingRequired { fields, .. } = &deserialized {
+            assert_eq!(fields[0].field_type, OnboardingFieldType::Secret);
+            assert_eq!(fields[1].field_type, OnboardingFieldType::Array);
+        } else {
+            panic!("expected OnboardingRequired");
+        }
     }
 
     #[test]

@@ -331,6 +331,31 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
     lines
 }
 
+/// Calculate the number of display rows needed for the onboarding menu.
+/// 1 title row + N field rows + enum choices + array items + description for the current field.
+fn onboarding_row_count(
+    fields: &[astrid_events::ipc::OnboardingField],
+    current_idx: usize,
+    current_array_items: &[String],
+) -> usize {
+    let mut n = fields.len().saturating_add(1);
+    if let Some(field) = fields.get(current_idx) {
+        if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
+            n = n.saturating_add(PALETTE_MAX_VISIBLE.min(choices.len()));
+        }
+        if matches!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Array
+        ) {
+            n = n.saturating_add(current_array_items.len());
+        }
+        if field.description.is_some() {
+            n = n.saturating_add(1);
+        }
+    }
+    n
+}
+
 fn input_height(app: &App, frame_area: Rect) -> u16 {
     let prompt_len = 2u16;
     let avail = frame_area.width.saturating_sub(prompt_len + 1) as usize;
@@ -354,10 +379,11 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
     if let UiState::Onboarding {
         fields,
         current_idx,
+        current_array_items,
         ..
     } = &app.state
     {
-        let n = onboarding_row_count(fields, *current_idx);
+        let n = onboarding_row_count(fields, *current_idx, current_array_items);
         let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
         #[expect(clippy::cast_possible_truncation)]
         let menu_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
@@ -817,10 +843,11 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     } else if let UiState::Onboarding {
         fields,
         current_idx,
+        current_array_items,
         ..
     } = &app.state
     {
-        let n = onboarding_row_count(fields, *current_idx);
+        let n = onboarding_row_count(fields, *current_idx, current_array_items);
         #[expect(clippy::cast_possible_truncation)]
         {
             menu_rows = 1u16.saturating_add(n.min(15) as u16);
@@ -978,6 +1005,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             answers: _,
             enum_selected,
             enum_scroll_offset,
+            current_array_items,
         } = &app.state
         {
             render_onboarding_menu(
@@ -988,6 +1016,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 *current_idx,
                 *enum_selected,
                 *enum_scroll_offset,
+                current_array_items,
                 theme,
             );
         } else {
@@ -1051,26 +1080,7 @@ fn render_selection_picker(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-/// Calculate the number of display rows needed for the onboarding menu.
-/// 1 title row + N field rows + enum choices + description for the current field.
-/// At most one field is `current_idx`, so description contributes at most 1 extra row.
-fn onboarding_row_count(
-    fields: &[astrid_events::ipc::OnboardingField],
-    current_idx: usize,
-) -> usize {
-    let mut n = fields.len().saturating_add(1);
-    if let Some(field) = fields.get(current_idx) {
-        if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
-            n = n.saturating_add(PALETTE_MAX_VISIBLE.min(choices.len()));
-        }
-        if field.description.is_some() {
-            n = n.saturating_add(1);
-        }
-    }
-    n
-}
-
-#[expect(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, clippy::too_many_lines)]
 fn render_onboarding_menu(
     frame: &mut Frame,
     area: Rect,
@@ -1079,6 +1089,7 @@ fn render_onboarding_menu(
     current_idx: usize,
     enum_selected: usize,
     enum_scroll_offset: usize,
+    current_array_items: &[String],
     theme: &Theme,
 ) {
     let mut lines = Vec::new();
@@ -1086,7 +1097,7 @@ fn render_onboarding_menu(
     // Title line
     lines.push(Line::from(vec![
         Span::styled(
-            "  ⚙  Capsule Configuration: ",
+            "  \u{2699}  Capsule Configuration: ",
             Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
         ),
         Span::styled(capsule_id, Style::default().fg(theme.user)),
@@ -1105,9 +1116,9 @@ fn render_onboarding_menu(
         };
 
         let prefix = if is_current {
-            "  ▶ "
+            "  \u{25b6} "
         } else if is_done {
-            "  ✓ "
+            "  \u{2713} "
         } else {
             "    "
         };
@@ -1117,12 +1128,15 @@ fn render_onboarding_menu(
         if is_current {
             let hint = match &field.field_type {
                 astrid_events::ipc::OnboardingFieldType::Enum(_) => {
-                    "↑↓ to select, Enter to confirm"
+                    "\u{2191}\u{2193} to select, Enter to confirm".to_string()
                 },
-                _ => field.prompt.as_str(),
+                astrid_events::ipc::OnboardingFieldType::Array => {
+                    format!("{} (empty to finish)", field.prompt)
+                },
+                _ => field.prompt.clone(),
             };
             spans.push(Span::styled(
-                format!("  ← {hint}"),
+                format!("  \u{2190} {hint}"),
                 Style::default()
                     .fg(theme.border)
                     .add_modifier(Modifier::ITALIC),
@@ -1164,7 +1178,11 @@ fn render_onboarding_menu(
                 .take(end.saturating_sub(enum_scroll_offset))
             {
                 let is_sel = ci == enum_selected;
-                let arrow = if is_sel { "      ▸ " } else { "        " };
+                let arrow = if is_sel {
+                    "      \u{25b8} "
+                } else {
+                    "        "
+                };
                 let choice_style = if is_sel {
                     Style::default().fg(theme.user).add_modifier(Modifier::BOLD)
                 } else {
@@ -1173,6 +1191,25 @@ fn render_onboarding_menu(
                 lines.push(Line::from(vec![
                     Span::styled(arrow, choice_style),
                     Span::styled(choice, choice_style),
+                ]));
+            }
+        }
+
+        // Show accumulated array items below the current array field
+        if is_current
+            && matches!(
+                field.field_type,
+                astrid_events::ipc::OnboardingFieldType::Array
+            )
+            && !current_array_items.is_empty()
+        {
+            for (j, item) in current_array_items.iter().enumerate() {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("      {}. ", j.saturating_add(1)),
+                        Style::default().fg(theme.muted),
+                    ),
+                    Span::styled(item, Style::default().fg(theme.user)),
                 ]));
             }
         }
