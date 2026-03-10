@@ -810,6 +810,27 @@ mod tests {
             ".capsule should not be empty"
         );
 
+        // 3b. Verify exactly one Capsule.toml in the archive (no duplication)
+        {
+            let tar_gz = fs::File::open(&capsule_path).unwrap();
+            let decoder = flate2::read::GzDecoder::new(tar_gz);
+            let mut archive = tar::Archive::new(decoder);
+            let toml_count = archive
+                .entries()
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    e.path()
+                        .ok()
+                        .is_some_and(|p| p.as_ref() == Path::new("Capsule.toml"))
+                })
+                .count();
+            assert_eq!(
+                toml_count, 1,
+                "archive must contain exactly one Capsule.toml, found {toml_count}"
+            );
+        }
+
         // 4. Unpack the archive
         let unpack_dir = tempfile::tempdir().unwrap();
         unpack_capsule(&capsule_path, unpack_dir.path());
@@ -969,27 +990,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn archive_dereferences_symlinks_into_regular_files() {
-        // Simulates node_modules/.bin/ symlinks that npm install creates.
-        // The archiver must dereference them so the install path (which rejects
-        // symlinks) can unpack successfully.
+    /// Helper: create a node_modules dir with a symlink in .bin/, archive it,
+    /// and verify no symlink entries exist and content is preserved.
+    fn assert_symlinks_dereferenced(symlink_fn: impl FnOnce(&Path, &Path)) {
         let build_dir = tempfile::tempdir().unwrap();
         let base = build_dir.path();
 
-        // Create a real file and a symlink to it
         let bin_dir = base.join("node_modules/.bin");
         fs::create_dir_all(&bin_dir).unwrap();
         let real_script = base.join("node_modules/somepkg/cli.js");
         fs::create_dir_all(real_script.parent().unwrap()).unwrap();
         fs::write(&real_script, "#!/usr/bin/env node\nconsole.log('hello');").unwrap();
 
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&real_script, bin_dir.join("somepkg")).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(&real_script, bin_dir.join("somepkg")).unwrap();
+        symlink_fn(&real_script, &bin_dir.join("somepkg"));
 
-        // Archive the node_modules dir
         let archive_path = base.join("test.capsule");
         pack_capsule_archive(
             &archive_path,
@@ -1029,5 +1043,29 @@ mod tests {
             content.contains("hello"),
             "dereferenced file should have the original content"
         );
+    }
+
+    #[test]
+    fn archive_dereferences_absolute_symlinks() {
+        // Absolute symlink target (less common in npm, but possible)
+        assert_symlinks_dereferenced(|target, link| {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(target, link).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_file(target, link).unwrap();
+        });
+    }
+
+    #[test]
+    fn archive_dereferences_relative_symlinks() {
+        // Relative symlink — this is what npm install actually creates:
+        // node_modules/.bin/somepkg -> ../somepkg/cli.js
+        assert_symlinks_dereferenced(|_target, link| {
+            let relative = Path::new("../somepkg/cli.js");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(relative, link).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_file(relative, link).unwrap();
+        });
     }
 }

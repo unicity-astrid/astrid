@@ -339,7 +339,7 @@ pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
 
         if file_type.is_dir() {
             let name = entry.file_name();
-            if name == "node_modules" || name == ".git" || name == "dist" || name == "target" {
+            if name == ".git" || name == "dist" || name == "target" {
                 continue;
             }
             copy_plugin_dir(&src_path, &dst_path)?;
@@ -361,5 +361,102 @@ fn resolve_target_dir(
         Ok(root.join(".astrid").join("plugins").join(id))
     } else {
         Ok(home.capsules_dir().join(id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_preserves_node_modules() {
+        // End-to-end: create a capsule directory with node_modules, install it
+        // via install_from_local_path, and verify node_modules is preserved in
+        // the installed directory.
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+
+        // Minimal Capsule.toml
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"install-test\"\nversion = \"1.0.0\"\n\n\
+             [[mcp_server]]\nid = \"install-test\"\ncommand = \"node\"\nargs = [\"bridge.mjs\"]\n",
+        )
+        .unwrap();
+
+        // Bridge script
+        std::fs::write(base.join("bridge.mjs"), "// bridge").unwrap();
+
+        // Source
+        std::fs::create_dir_all(base.join("src")).unwrap();
+        std::fs::write(base.join("src/index.js"), "module.exports = {};").unwrap();
+
+        // package.json + node_modules (simulating npm install output)
+        std::fs::write(
+            base.join("package.json"),
+            r#"{"name": "install-test", "dependencies": {"got": "^1.0"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(base.join("node_modules/got")).unwrap();
+        std::fs::write(
+            base.join("node_modules/got/index.js"),
+            "module.exports = {};",
+        )
+        .unwrap();
+
+        // Install into a fake AstridHome
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        install_from_local_path(base, false, &home).expect("install should succeed");
+
+        // Verify installed directory preserves node_modules
+        let installed = home.capsules_dir().join("install-test");
+        assert!(
+            installed.join("Capsule.toml").exists(),
+            "installed capsule must have Capsule.toml"
+        );
+        assert!(
+            installed.join("node_modules/got/index.js").exists(),
+            "installed capsule must preserve node_modules"
+        );
+        assert!(
+            installed.join("package.json").exists(),
+            "installed capsule must preserve package.json"
+        );
+        assert!(
+            installed.join("src/index.js").exists(),
+            "installed capsule must preserve source"
+        );
+    }
+
+    #[test]
+    fn copy_plugin_dir_skips_git_and_build_artifacts() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let base = src_dir.path();
+
+        std::fs::write(base.join("index.js"), "// code").unwrap();
+        std::fs::create_dir_all(base.join(".git/objects")).unwrap();
+        std::fs::write(base.join(".git/objects/abc"), "blob").unwrap();
+        std::fs::create_dir_all(base.join("dist")).unwrap();
+        std::fs::write(base.join("dist/out.js"), "// built").unwrap();
+        std::fs::create_dir_all(base.join("target")).unwrap();
+        std::fs::write(base.join("target/debug"), "// rust").unwrap();
+
+        let dst_dir = tempfile::tempdir().unwrap();
+        copy_plugin_dir(base, dst_dir.path()).unwrap();
+
+        assert!(dst_dir.path().join("index.js").exists());
+        assert!(
+            !dst_dir.path().join(".git").exists(),
+            ".git must be skipped"
+        );
+        assert!(
+            !dst_dir.path().join("dist").exists(),
+            "dist must be skipped"
+        );
+        assert!(
+            !dst_dir.path().join("target").exists(),
+            "target must be skipped"
+        );
     }
 }
