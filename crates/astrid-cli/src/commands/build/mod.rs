@@ -818,7 +818,7 @@ mod tests {
             let toml_count = archive
                 .entries()
                 .unwrap()
-                .filter_map(Result::ok)
+                .map(|e| e.expect("archive entry must be readable"))
                 .filter(|e| {
                     e.path()
                         .ok()
@@ -992,6 +992,8 @@ mod tests {
 
     /// Helper: create a node_modules dir with a symlink in .bin/, archive it,
     /// and verify no symlink entries exist and content is preserved.
+    /// Guards the `follow_symlinks(true)` invariant in the archiver — if someone
+    /// changes it to `false`, these tests fail because symlink entries appear.
     fn assert_symlinks_dereferenced(symlink_fn: impl FnOnce(&Path, &Path)) {
         let build_dir = tempfile::tempdir().unwrap();
         let base = build_dir.path();
@@ -1046,8 +1048,8 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "symlinks require elevated privileges on Windows")]
     fn archive_dereferences_absolute_symlinks() {
-        // Absolute symlink target (less common in npm, but possible)
         assert_symlinks_dereferenced(|target, link| {
             #[cfg(unix)]
             std::os::unix::fs::symlink(target, link).unwrap();
@@ -1057,6 +1059,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(windows, ignore = "symlinks require elevated privileges on Windows")]
     fn archive_dereferences_relative_symlinks() {
         // Relative symlink — this is what npm install actually creates:
         // node_modules/.bin/somepkg -> ../somepkg/cli.js

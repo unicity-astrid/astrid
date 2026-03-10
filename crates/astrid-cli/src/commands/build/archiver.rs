@@ -21,9 +21,9 @@ pub(crate) fn pack_capsule_archive(
     let enc = GzEncoder::new(tar_gz, Compression::default());
     let mut tar = tar::Builder::new(enc);
 
-    // Dereference symlinks so the archive contains regular files only.
-    // This is required because npm install creates symlinks in node_modules/.bin/
-    // and the install path (unpack_and_install) rejects symlinks as a security measure.
+    // Explicitly enforce symlink dereferencing (this is already the default in the tar
+    // crate, but we state it explicitly because the install path rejects symlinks as a
+    // security measure and we want this invariant to survive upstream default changes).
     tar.follow_symlinks(true);
 
     // 1. Write the synthesized Capsule.toml directly from memory

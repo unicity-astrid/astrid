@@ -441,11 +441,17 @@ mod tests {
         std::fs::write(base.join("dist/out.js"), "// built").unwrap();
         std::fs::create_dir_all(base.join("target")).unwrap();
         std::fs::write(base.join("target/debug"), "// rust").unwrap();
+        std::fs::create_dir_all(base.join("node_modules/pkg")).unwrap();
+        std::fs::write(base.join("node_modules/pkg/index.js"), "// dep").unwrap();
 
         let dst_dir = tempfile::tempdir().unwrap();
         copy_plugin_dir(base, dst_dir.path()).unwrap();
 
         assert!(dst_dir.path().join("index.js").exists());
+        assert!(
+            dst_dir.path().join("node_modules/pkg/index.js").exists(),
+            "node_modules must be preserved"
+        );
         assert!(
             !dst_dir.path().join(".git").exists(),
             ".git must be skipped"
