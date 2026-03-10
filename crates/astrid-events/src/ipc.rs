@@ -78,6 +78,14 @@ pub enum IpcPayload {
         reason: String,
     },
     /// A capsule needs environment variables to be provided by the user.
+    ///
+    /// # Wire format change
+    ///
+    /// This variant previously carried `missing_keys: Vec<String>` and
+    /// `prompts: HashMap<String, String>`. It now carries typed
+    /// `fields: Vec<OnboardingField>`. This is a breaking change to the
+    /// serialized IPC format. Safe for monorepo single-binary deployments
+    /// where producer and consumer are always at the same version.
     OnboardingRequired {
         /// The ID of the capsule requiring onboarding.
         capsule_id: String,

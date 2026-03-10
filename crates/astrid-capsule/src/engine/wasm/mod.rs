@@ -147,8 +147,13 @@ impl ExecutionEngine for WasmEngine {
                 } else {
                     onboarding_fields.push(Self::build_onboarding_field(key, def));
                 }
+            } else if def.enum_values.len() > 1 {
+                // Multi-choice enum fields always go through onboarding so the
+                // user can consciously choose, even when a default exists.
+                // The picker pre-positions to the default index.
+                onboarding_fields.push(Self::build_onboarding_field(key, def));
             } else if let Some(default_val) = &def.default {
-                // Manifest declares a default — inject silently without prompting.
+                // Non-enum field with a default — inject silently.
                 wasm_config.insert(key.clone(), default_val.clone());
             } else {
                 onboarding_fields.push(Self::build_onboarding_field(key, def));
