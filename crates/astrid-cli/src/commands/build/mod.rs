@@ -820,9 +820,8 @@ mod tests {
                 .unwrap()
                 .map(|e| e.expect("archive entry must be readable"))
                 .filter(|e| {
-                    e.path()
-                        .ok()
-                        .is_some_and(|p| p.as_ref() == Path::new("Capsule.toml"))
+                    e.path().expect("archive entry path must be valid").as_ref()
+                        == Path::new("Capsule.toml")
                 })
                 .count();
             assert_eq!(
@@ -1063,6 +1062,7 @@ mod tests {
     fn archive_dereferences_relative_symlinks() {
         // Relative symlink — this is what npm install actually creates:
         // node_modules/.bin/somepkg -> ../somepkg/cli.js
+        // The path is relative to .bin/, so it resolves to node_modules/somepkg/cli.js
         assert_symlinks_dereferenced(|_target, link| {
             let relative = Path::new("../somepkg/cli.js");
             #[cfg(unix)]
