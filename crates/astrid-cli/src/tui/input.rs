@@ -113,8 +113,8 @@ fn advance_onboarding(app: &mut App) {
         return;
     }
 
-    // Extract pre-fill info and reset enum state in a scoped mutable borrow.
-    let is_enum = if let UiState::Onboarding {
+    // Reset enum state and extract pre-fill info in a single scoped borrow.
+    let (is_enum, default) = if let UiState::Onboarding {
         fields,
         current_idx,
         enum_selected,
@@ -133,44 +133,43 @@ fn advance_onboarding(app: &mut App) {
         });
 
         // Pre-position enum_selected to the default value's index if present.
-        *enum_selected = field
-            .and_then(|f| {
-                let default_val = f.default.as_deref()?;
-                match &f.field_type {
-                    astrid_events::ipc::OnboardingFieldType::Enum(choices) => {
-                        choices.iter().position(|c| c == default_val)
-                    },
-                    _ => None,
-                }
-            })
-            .unwrap_or(0);
+        *enum_selected = field.map_or(0, default_enum_position);
 
-        is_enum_field
+        let default_val = field.and_then(|f| f.default.clone()).unwrap_or_default();
+        (is_enum_field, default_val)
     } else {
         return;
     };
 
-    // For enum fields, clear the text input — the picker handles selection.
-    // For text/secret fields, pre-fill with the default value.
+    // Enum fields use the picker; text/secret fields get the default pre-filled.
+    prefill_field_input(app, is_enum, &default);
+}
+
+/// Compute the initial `enum_selected` index for a field, matching its default
+/// to a position in the enum choices. Returns 0 if no match or not an enum.
+pub(crate) fn default_enum_position(field: &astrid_events::ipc::OnboardingField) -> usize {
+    field
+        .default
+        .as_deref()
+        .and_then(|default_val| match &field.field_type {
+            astrid_events::ipc::OnboardingFieldType::Enum(choices) => {
+                choices.iter().position(|c| c == default_val)
+            },
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
+/// Set `app.input` and `app.cursor_pos` for a new onboarding field.
+/// Enum fields clear the input (the picker handles selection);
+/// text/secret fields pre-fill with the default value.
+pub(crate) fn prefill_field_input(app: &mut App, is_enum: bool, default: &str) {
     if is_enum {
         app.input.clear();
         app.cursor_pos = 0;
     } else {
-        let default = if let UiState::Onboarding {
-            fields,
-            current_idx,
-            ..
-        } = &app.state
-        {
-            fields
-                .get(*current_idx)
-                .and_then(|f| f.default.clone())
-                .unwrap_or_default()
-        } else {
-            String::new()
-        };
+        app.input = default.to_string();
         app.cursor_pos = default.len();
-        app.input = default;
     }
 }
 

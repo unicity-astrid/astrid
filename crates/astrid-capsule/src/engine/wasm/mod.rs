@@ -161,8 +161,12 @@ impl ExecutionEngine for WasmEngine {
         }
 
         if !onboarding_fields.is_empty() {
-            let missing_names: Vec<String> =
-                onboarding_fields.iter().map(|f| f.key.clone()).collect();
+            // Build the error message before moving onboarding_fields into the IPC payload.
+            let missing_display: String = onboarding_fields
+                .iter()
+                .map(|f| f.key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             let msg = astrid_events::ipc::IpcMessage::new(
                 "system.onboarding.required",
                 astrid_events::ipc::IpcPayload::OnboardingRequired {
@@ -177,8 +181,7 @@ impl ExecutionEngine for WasmEngine {
             });
 
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                "Missing required environment variables: {}",
-                missing_names.join(", ")
+                "Missing required environment variables: {missing_display}",
             )));
         }
 
