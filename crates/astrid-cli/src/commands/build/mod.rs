@@ -1076,4 +1076,57 @@ mod tests {
             std::os::windows::fs::symlink_file(relative, link).unwrap();
         });
     }
+
+    #[test]
+    #[cfg_attr(windows, ignore = "symlinks require elevated privileges on Windows")]
+    fn archive_detects_symlink_cycle_without_hanging() {
+        // A malicious npm package could create a symlink pointing to an ancestor,
+        // causing infinite recursion in the archiver. Verify we detect and skip it.
+        let build_dir = tempfile::tempdir().unwrap();
+        let base = build_dir.path();
+
+        // Create: node_modules/evil/loop -> ../../ (points back to base)
+        let evil_dir = base.join("node_modules/evil");
+        fs::create_dir_all(&evil_dir).unwrap();
+        fs::write(evil_dir.join("legit.js"), "// not malicious").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(Path::new("../../"), evil_dir.join("loop")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(Path::new("../../"), evil_dir.join("loop")).unwrap();
+
+        // Archive must complete (not hang) and succeed
+        let archive_path = base.join("cycle-test.capsule");
+        pack_capsule_archive(
+            &archive_path,
+            "[package]\nname = \"cycle-test\"\nversion = \"0.1.0\"\n",
+            None,
+            base,
+            &[&base.join("node_modules")],
+        )
+        .expect("archiving must not hang on symlink cycles");
+
+        // Verify the archive contains the legit file but doesn't have infinite entries
+        let tar_gz = fs::File::open(&archive_path).unwrap();
+        let decoder = flate2::read::GzDecoder::new(tar_gz);
+        let mut archive = tar::Archive::new(decoder);
+
+        let entries: Vec<_> = archive
+            .entries()
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.path().unwrap().to_path_buf())
+            .collect();
+
+        assert!(
+            entries.iter().any(|p| p.ends_with("legit.js")),
+            "archive must contain the legit file"
+        );
+        // A cycle would produce thousands of entries; a healthy archive has < 20
+        assert!(
+            entries.len() < 50,
+            "archive has {} entries — cycle detection may have failed",
+            entries.len()
+        );
+    }
 }
