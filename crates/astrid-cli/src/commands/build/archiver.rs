@@ -21,6 +21,11 @@ pub(crate) fn pack_capsule_archive(
     let enc = GzEncoder::new(tar_gz, Compression::default());
     let mut tar = tar::Builder::new(enc);
 
+    // Dereference symlinks so the archive contains regular files only.
+    // This is required because npm install creates symlinks in node_modules/.bin/
+    // and the install path (unpack_and_install) rejects symlinks as a security measure.
+    tar.follow_symlinks(true);
+
     // 1. Write the synthesized Capsule.toml directly from memory
     let mut header = tar::Header::new_gnu();
     header.set_size(manifest_content.len() as u64);

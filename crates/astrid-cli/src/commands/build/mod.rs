@@ -968,4 +968,66 @@ mod tests {
             "error should mention the bad key, got: {msg}"
         );
     }
+
+    #[test]
+    fn archive_dereferences_symlinks_into_regular_files() {
+        // Simulates node_modules/.bin/ symlinks that npm install creates.
+        // The archiver must dereference them so the install path (which rejects
+        // symlinks) can unpack successfully.
+        let build_dir = tempfile::tempdir().unwrap();
+        let base = build_dir.path();
+
+        // Create a real file and a symlink to it
+        let bin_dir = base.join("node_modules/.bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let real_script = base.join("node_modules/somepkg/cli.js");
+        fs::create_dir_all(real_script.parent().unwrap()).unwrap();
+        fs::write(&real_script, "#!/usr/bin/env node\nconsole.log('hello');").unwrap();
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_script, bin_dir.join("somepkg")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&real_script, bin_dir.join("somepkg")).unwrap();
+
+        // Archive the node_modules dir
+        let archive_path = base.join("test.capsule");
+        pack_capsule_archive(
+            &archive_path,
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+            None,
+            base,
+            &[&base.join("node_modules")],
+        )
+        .expect("archiving should succeed");
+
+        // Verify no symlink entries in the archive
+        let tar_gz = fs::File::open(&archive_path).unwrap();
+        let decoder = flate2::read::GzDecoder::new(tar_gz);
+        let mut archive = tar::Archive::new(decoder);
+
+        for entry in archive.entries().unwrap() {
+            let entry = entry.unwrap();
+            assert!(
+                !entry.header().entry_type().is_symlink()
+                    && !entry.header().entry_type().is_hard_link(),
+                "archive must not contain symlinks after follow_symlinks(true), found: {}",
+                entry.path().unwrap().display()
+            );
+        }
+
+        // Verify the dereferenced file has the correct content
+        let unpack_dir = tempfile::tempdir().unwrap();
+        unpack_capsule(&archive_path, unpack_dir.path());
+
+        let dereferenced = unpack_dir.path().join("node_modules/.bin/somepkg");
+        assert!(
+            dereferenced.exists(),
+            ".bin/somepkg should exist as a regular file"
+        );
+        let content = fs::read_to_string(&dereferenced).unwrap();
+        assert!(
+            content.contains("hello"),
+            "dereferenced file should have the original content"
+        );
+    }
 }
