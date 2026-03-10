@@ -319,16 +319,16 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
                 // Clamp enum_selected and pick from choices. If enum is empty,
                 // the field was already degraded to Text by build_onboarding_field,
                 // so this branch shouldn't be reached — but guard defensively.
-                let selected_value = fields.get(*current_idx).and_then(|f| match &f.field_type {
+                // Returns (key, value) from the same .get() call to avoid re-indexing.
+                let selection = fields.get(*current_idx).and_then(|f| match &f.field_type {
                     astrid_events::ipc::OnboardingFieldType::Enum(v) if !v.is_empty() => {
                         let clamped = (*enum_selected).min(v.len().saturating_sub(1));
-                        Some(v[clamped].clone())
+                        Some((f.key.clone(), v[clamped].clone()))
                     },
                     _ => None,
                 });
 
-                let was_skipped = if let Some(value) = selected_value {
-                    let key = fields[*current_idx].key.clone();
+                let was_skipped = if let Some((key, value)) = selection {
                     answers.insert(key, value);
                     false
                 } else {

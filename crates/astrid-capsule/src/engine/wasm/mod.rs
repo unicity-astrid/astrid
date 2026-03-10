@@ -63,11 +63,16 @@ impl WasmEngine {
             OnboardingFieldType::Text
         };
 
-        let default = def.default.as_ref().and_then(|d| match d {
+        let mut default = def.default.as_ref().and_then(|d| match d {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Null => None,
             other => Some(other.to_string()),
         });
+
+        // Single-choice enums degrade to text — auto-fill the sole valid value.
+        if def.enum_values.len() == 1 && default.is_none() {
+            default = Some(def.enum_values[0].clone());
+        }
 
         let prompt = def
             .request
@@ -563,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn build_onboarding_field_single_enum_degrades_to_text() {
+    fn build_onboarding_field_single_enum_degrades_to_text_with_autofill() {
         let def = crate::manifest::EnvDef {
             env_type: "string".into(),
             request: None,
@@ -576,6 +581,11 @@ mod tests {
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Text,
             "Single-choice enum should degrade to text"
+        );
+        assert_eq!(
+            field.default.as_deref(),
+            Some("only"),
+            "Single-choice enum should auto-fill the sole valid value"
         );
     }
 

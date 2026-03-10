@@ -1048,7 +1048,8 @@ fn render_selection_picker(
 }
 
 /// Calculate the number of display rows needed for the onboarding menu.
-/// 1 title row + N field rows + enum choices + description lines for the current field.
+/// 1 title row + N field rows + enum choices + description for the current field.
+/// At most one field is `current_idx`, so description contributes at most 1 extra row.
 fn onboarding_row_count(
     fields: &[astrid_events::ipc::OnboardingField],
     current_idx: usize,
