@@ -398,15 +398,19 @@ fn build_openclaw_capsule(dir: &Path, output: Option<&str>) -> Result<()> {
             pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[])?;
         },
         PluginTier::Node => {
-            // Tier 2: include the copied source tree and bridge script
+            // Tier 2: include the entire build output (source tree, node_modules,
+            // package.json, bridge script, etc.) — everything except Capsule.toml
+            // which is written separately by the archiver.
             let mut additional: Vec<PathBuf> = Vec::new();
-            let src_dir = build_dir.path().join("src");
-            if src_dir.exists() {
-                additional.push(src_dir);
-            }
-            let bridge_path = build_dir.path().join("astrid_bridge.mjs");
-            if bridge_path.exists() {
-                additional.push(bridge_path);
+            for entry in
+                fs::read_dir(build_dir.path()).context("Failed to read Tier 2 build directory")?
+            {
+                let entry = entry?;
+                let name = entry.file_name();
+                if name == "Capsule.toml" {
+                    continue; // written separately by pack_capsule_archive
+                }
+                additional.push(entry.path());
             }
             let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
             pack_capsule_archive(&out_file, &toml_content, None, build_dir.path(), &refs)?;
@@ -786,15 +790,14 @@ mod tests {
         let archive_dir = tempfile::tempdir().unwrap();
         let capsule_path = archive_dir.path().join("lifecycle-test.capsule");
 
-        // Collect Tier 2 artifacts
+        // Collect Tier 2 artifacts — everything except Capsule.toml
         let mut additional: Vec<PathBuf> = Vec::new();
-        let src_dir = build_dir.path().join("src");
-        if src_dir.exists() {
-            additional.push(src_dir);
-        }
-        let bridge_path = build_dir.path().join("astrid_bridge.mjs");
-        if bridge_path.exists() {
-            additional.push(bridge_path);
+        for entry in fs::read_dir(build_dir.path()).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name() == "Capsule.toml" {
+                continue;
+            }
+            additional.push(entry.path());
         }
         let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
 
@@ -824,6 +827,18 @@ mod tests {
             unpack_dir.path().join("src").exists(),
             "unpacked archive must contain source directory"
         );
+        assert!(
+            unpack_dir.path().join("package.json").exists(),
+            "unpacked archive must contain package.json for Node.js module resolution"
+        );
+        // node_modules presence depends on npm being available — verify it round-trips
+        // if the build dir had it (npm install succeeded during compile_tier2)
+        if build_dir.path().join("node_modules").exists() {
+            assert!(
+                unpack_dir.path().join("node_modules").exists(),
+                "unpacked archive must contain node_modules when npm install succeeded"
+            );
+        }
 
         // 6. Load the manifest through Astrid's real parser — proves it's valid
         let manifest = load_manifest(&unpack_dir.path().join("Capsule.toml"))
