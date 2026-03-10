@@ -49,10 +49,17 @@ impl WasmEngine {
         use astrid_events::ipc::OnboardingFieldType;
 
         let field_type = if def.env_type == "secret" {
+            if !def.enum_values.is_empty() {
+                tracing::warn!(
+                    key = %key,
+                    "Secret field has enum_values — ignoring enum and using masked input"
+                );
+            }
             OnboardingFieldType::Secret
-        } else if !def.enum_values.is_empty() {
+        } else if def.enum_values.len() > 1 {
             OnboardingFieldType::Enum(def.enum_values.clone())
         } else {
+            // Empty or single-choice enums degrade to text input.
             OnboardingFieldType::Text
         };
 
@@ -553,5 +560,39 @@ mod tests {
         };
         let field = WasmEngine::build_onboarding_field("someKey", &def);
         assert_eq!(field.prompt, "Please enter value for someKey");
+    }
+
+    #[test]
+    fn build_onboarding_field_single_enum_degrades_to_text() {
+        let def = crate::manifest::EnvDef {
+            env_type: "string".into(),
+            request: None,
+            description: None,
+            default: None,
+            enum_values: vec!["only".into()],
+        };
+        let field = WasmEngine::build_onboarding_field("single", &def);
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Text,
+            "Single-choice enum should degrade to text"
+        );
+    }
+
+    #[test]
+    fn build_onboarding_field_empty_enum_degrades_to_text() {
+        let def = crate::manifest::EnvDef {
+            env_type: "string".into(),
+            request: None,
+            description: None,
+            default: None,
+            enum_values: vec![],
+        };
+        let field = WasmEngine::build_onboarding_field("empty", &def);
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Text,
+            "Empty enum should degrade to text"
+        );
     }
 }

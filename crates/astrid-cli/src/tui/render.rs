@@ -357,16 +357,7 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
         ..
     } = &app.state
     {
-        // 1 title row + N fields + extra rows for enum choices on the current field
-        let mut n = fields.len().saturating_add(1);
-        if let Some(field) = fields.get(*current_idx) {
-            if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
-                n = n.saturating_add(choices.len());
-            }
-            if field.description.is_some() {
-                n = n.saturating_add(1);
-            }
-        }
+        let n = onboarding_row_count(fields, *current_idx);
         let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
         #[expect(clippy::cast_possible_truncation)]
         let menu_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
@@ -829,15 +820,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ..
     } = &app.state
     {
-        let mut n = fields.len().saturating_add(1);
-        if let Some(field) = fields.get(*current_idx) {
-            if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
-                n = n.saturating_add(choices.len());
-            }
-            if field.description.is_some() {
-                n = n.saturating_add(1);
-            }
-        }
+        let n = onboarding_row_count(fields, *current_idx);
         #[expect(clippy::cast_possible_truncation)]
         {
             menu_rows = 1u16.saturating_add(n.min(15) as u16);
@@ -1064,6 +1047,24 @@ fn render_selection_picker(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
+/// Calculate the number of display rows needed for the onboarding menu.
+/// 1 title row + N field rows + enum choices + description lines for the current field.
+fn onboarding_row_count(
+    fields: &[astrid_events::ipc::OnboardingField],
+    current_idx: usize,
+) -> usize {
+    let mut n = fields.len().saturating_add(1);
+    if let Some(field) = fields.get(current_idx) {
+        if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
+            n = n.saturating_add(choices.len());
+        }
+        if field.description.is_some() {
+            n = n.saturating_add(1);
+        }
+    }
+    n
+}
+
 #[expect(clippy::too_many_arguments)]
 fn render_onboarding_menu(
     frame: &mut Frame,
@@ -1146,7 +1147,7 @@ fn render_onboarding_menu(
         if is_current
             && let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type
         {
-            let visible_count = 8usize.min(choices.len());
+            let visible_count = PALETTE_MAX_VISIBLE.min(choices.len());
             let end = choices
                 .len()
                 .min(enum_scroll_offset.saturating_add(visible_count));

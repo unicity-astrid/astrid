@@ -87,6 +87,8 @@ pub fn generate_manifest(
                 .and_then(serde_json::Value::as_str)
                 .map(String::from);
 
+            // Non-string defaults (bool, int) are stringified — the onboarding TUI
+            // shows them as pre-filled text which the user can accept or change.
             let default = val.get("default").map(|d| match d {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),

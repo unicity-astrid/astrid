@@ -103,7 +103,18 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
 
 /// Advance to the next onboarding field or finish, pre-filling defaults.
 fn advance_onboarding(app: &mut App) {
-    if let UiState::Onboarding {
+    // Check completion with a read-only borrow to avoid conflicts with finish_onboarding.
+    let done = matches!(
+        &app.state,
+        UiState::Onboarding { fields, current_idx, .. } if *current_idx >= fields.len()
+    );
+    if done {
+        finish_onboarding(app);
+        return;
+    }
+
+    // Extract the default and reset enum state in a scoped mutable borrow.
+    let default = if let UiState::Onboarding {
         fields,
         current_idx,
         enum_selected,
@@ -111,21 +122,19 @@ fn advance_onboarding(app: &mut App) {
         ..
     } = &mut app.state
     {
-        if *current_idx >= fields.len() {
-            // All fields answered — submit.
-            finish_onboarding(app);
-            return;
-        }
-        // Pre-fill input for next field.
         *enum_selected = 0;
         *enum_scroll_offset = 0;
-        let default = fields
+        fields
             .get(*current_idx)
             .and_then(|f| f.default.clone())
-            .unwrap_or_default();
-        app.input = default;
-        app.cursor_pos = app.input.len();
-    }
+            .unwrap_or_default()
+    } else {
+        return;
+    };
+
+    // Set input outside the state borrow.
+    app.input.clone_from(&default);
+    app.cursor_pos = default.len();
 }
 
 /// Submit onboarding answers and return to Idle.
@@ -175,12 +184,8 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
                 };
                 answers.insert(field.key.clone(), answer);
                 *current_idx = current_idx.saturating_add(1);
-
-                if *current_idx >= fields.len() {
-                    finish_onboarding(app);
-                    return;
-                }
             }
+            // advance_onboarding checks completion and calls finish_onboarding if done.
             advance_onboarding(app);
         },
         KeyCode::Char(c) => {
@@ -274,9 +279,13 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
                 ..
             } = &mut app.state
             {
+                // Clamp enum_selected and pick from choices. If enum is empty,
+                // the field was already degraded to Text by build_onboarding_field,
+                // so this branch shouldn't be reached — but guard defensively.
                 let selected_value = fields.get(*current_idx).and_then(|f| match &f.field_type {
-                    astrid_events::ipc::OnboardingFieldType::Enum(v) => {
-                        v.get(*enum_selected).cloned()
+                    astrid_events::ipc::OnboardingFieldType::Enum(v) if !v.is_empty() => {
+                        let clamped = (*enum_selected).min(v.len().saturating_sub(1));
+                        Some(v[clamped].clone())
                     },
                     _ => None,
                 });
@@ -285,12 +294,9 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
                     let key = fields[*current_idx].key.clone();
                     answers.insert(key, value);
                     *current_idx = current_idx.saturating_add(1);
-
-                    if *current_idx >= fields.len() {
-                        finish_onboarding(app);
-                        return;
-                    }
                 }
+                // If no value (shouldn't happen), fall through to advance which
+                // will re-show the same field rather than silently hanging.
             }
             advance_onboarding(app);
         },
