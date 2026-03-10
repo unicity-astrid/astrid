@@ -241,7 +241,10 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 enum_scroll_offset: 0,
                 current_array_items: Vec::new(),
             };
-            input::prefill_field_input(app, is_first_enum, &default_val);
+            let is_first_array = first.is_some_and(|f| {
+                matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
+            });
+            input::prefill_field_input(app, is_first_enum || is_first_array, &default_val);
         } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
             request_id,
             title,
