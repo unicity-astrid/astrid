@@ -3,7 +3,9 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::fs::File;
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
+
+const LARGE_ARCHIVE_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
 
 /// Packages a set of files and directories into a single `.capsule` (tar.gz) archive.
 pub(crate) fn pack_capsule_archive(
@@ -79,6 +81,17 @@ pub(crate) fn pack_capsule_archive(
     }
 
     tar.finish().context("Failed to finalize capsule archive")?;
+
+    // Warn if archive is large (node_modules can bloat Tier 2 capsules)
+    if let Ok(meta) = std::fs::metadata(output_path) {
+        let size_bytes = meta.len();
+        if size_bytes > LARGE_ARCHIVE_BYTES {
+            // Precision loss is irrelevant for a human-readable MB display value
+            #[expect(clippy::cast_precision_loss)]
+            let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
+            warn!("⚠️  Capsule archive is {size_mb:.1} MB — consider trimming dependencies");
+        }
+    }
 
     info!("✅ Capsule packaged successfully!");
     Ok(())

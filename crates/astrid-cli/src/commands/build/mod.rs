@@ -853,10 +853,15 @@ mod tests {
         );
         // node_modules presence depends on npm being available — verify it round-trips
         // if the build dir had it (npm install succeeded during compile_tier2)
-        if build_dir.path().join("node_modules").exists() {
+        let npm_available = build_dir.path().join("node_modules").exists();
+        if npm_available {
             assert!(
                 unpack_dir.path().join("node_modules").exists(),
                 "unpacked archive must contain node_modules when npm install succeeded"
+            );
+        } else {
+            eprintln!(
+                "NOTE: npm unavailable in test environment — node_modules assertions skipped"
             );
         }
 
