@@ -49,10 +49,13 @@ pub(crate) enum UiState {
     /// Capsule Onboarding (configuring environment variables).
     Onboarding {
         capsule_id: String,
-        missing_keys: Vec<String>,
-        prompts: std::collections::HashMap<String, String>,
+        fields: Vec<astrid_events::ipc::OnboardingField>,
         current_idx: usize,
         answers: std::collections::HashMap<String, String>,
+        /// Selected index within an enum picker (only used for Enum fields).
+        enum_selected: usize,
+        /// Scroll offset within an enum picker.
+        enum_scroll_offset: usize,
     },
 }
 

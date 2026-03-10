@@ -44,6 +44,12 @@ struct EnvDef {
     env_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     request: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    enum_values: Vec<String>,
 }
 
 /// Generate `Capsule.toml` in the output directory.
@@ -72,14 +78,42 @@ pub fn generate_manifest(
     if let Some(obj) = oc_manifest.config_schema.as_object()
         && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
     {
-        for (key, _val) in props {
+        for (key, val) in props {
             crate::manifest::validate_schema_key(key)?;
             let is_secret = crate::manifest::is_secret_key(key);
+
+            let description = val
+                .get("description")
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
+            let default = val.get("default").map(|d| match d {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            });
+
+            let enum_values = val
+                .get("enum")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            let request = description
+                .as_deref()
+                .map_or_else(|| format!("Please enter value for {key}"), String::from);
+
             env.insert(
                 key.clone(),
                 EnvDef {
                     env_type: if is_secret { "secret" } else { "string" }.into(),
-                    request: Some(format!("Please enter value for {key}")),
+                    request: Some(request),
+                    description: description.clone(),
+                    default,
+                    enum_values,
                 },
             );
         }
@@ -142,6 +176,9 @@ mod tests {
                 EnvDef {
                     env_type: "secret".into(),
                     request: Some("Enter key".into()),
+                    description: None,
+                    default: None,
+                    enum_values: vec![],
                 },
             )]),
         };
@@ -229,6 +266,111 @@ mod tests {
         assert!(
             content.contains("code-review"),
             "skills should be mapped to keywords"
+        );
+    }
+
+    #[test]
+    fn generate_manifest_preserves_enum_default_description() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let wasm_path = dir.path().join("plugin.wasm");
+        let mut f = std::fs::File::create(&wasm_path).unwrap();
+        f.write_all(b"fake wasm bytes").unwrap();
+
+        let oc = OpenClawManifest {
+            id: "unicity-plugin".into(),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "network": {
+                        "type": "string",
+                        "enum": ["testnet", "mainnet", "dev"],
+                        "default": "testnet",
+                        "description": "Target network"
+                    },
+                    "owner": {
+                        "type": "string",
+                        "description": "Wallet address"
+                    }
+                }
+            }),
+            name: Some("Unicity Plugin".into()),
+            version: Some("1.0.0".into()),
+            description: Some("Test".into()),
+            kind: None,
+            channels: vec![],
+            providers: vec![],
+            skills: vec![],
+        };
+
+        let config = HashMap::new();
+        generate_manifest("unicity-plugin", &oc, &wasm_path, &config, dir.path()).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("Capsule.toml")).unwrap();
+
+        // network should have enum_values, default, and description
+        assert!(
+            content.contains("enum_values"),
+            "enum_values should be emitted: {content}"
+        );
+        assert!(
+            content.contains("testnet"),
+            "enum choice should be present: {content}"
+        );
+        assert!(
+            content.contains("default = \"testnet\""),
+            "default should be preserved: {content}"
+        );
+        assert!(
+            content.contains("description = \"Target network\""),
+            "description should be preserved: {content}"
+        );
+
+        // owner should have description but no enum_values
+        assert!(
+            content.contains("description = \"Wallet address\""),
+            "owner description should be preserved: {content}"
+        );
+    }
+
+    #[test]
+    fn generate_manifest_handles_missing_schema_fields() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let wasm_path = dir.path().join("plugin.wasm");
+        let mut f = std::fs::File::create(&wasm_path).unwrap();
+        f.write_all(b"fake wasm bytes").unwrap();
+
+        let oc = OpenClawManifest {
+            id: "simple-plugin".into(),
+            config_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "plainField": { "type": "string" }
+                }
+            }),
+            name: None,
+            version: None,
+            description: None,
+            kind: None,
+            channels: vec![],
+            providers: vec![],
+            skills: vec![],
+        };
+
+        let config = HashMap::new();
+        generate_manifest("simple-plugin", &oc, &wasm_path, &config, dir.path()).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("Capsule.toml")).unwrap();
+
+        // No enum_values, no default, no description for plainField
+        assert!(
+            !content.contains("enum_values"),
+            "should skip empty enum_values: {content}"
+        );
+        assert!(
+            !content.contains("description"),
+            "should skip empty description: {content}"
         );
     }
 }

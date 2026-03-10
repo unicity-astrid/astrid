@@ -351,9 +351,22 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
         return base.saturating_add(menu_rows);
     }
 
-    if let UiState::Onboarding { missing_keys, .. } = &app.state {
-        // 1 title row + N keys
-        let n = missing_keys.len().saturating_add(1);
+    if let UiState::Onboarding {
+        fields,
+        current_idx,
+        ..
+    } = &app.state
+    {
+        // 1 title row + N fields + extra rows for enum choices on the current field
+        let mut n = fields.len().saturating_add(1);
+        if let Some(field) = fields.get(*current_idx) {
+            if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
+                n = n.saturating_add(choices.len());
+            }
+            if field.description.is_some() {
+                n = n.saturating_add(1);
+            }
+        }
         let dynamic_max_visible = (frame_area.height / 3).clamp(5, 15) as usize;
         #[expect(clippy::cast_possible_truncation)]
         let menu_rows = 1u16.saturating_add(n.min(dynamic_max_visible) as u16);
@@ -810,8 +823,21 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         {
             menu_rows = 1u16.saturating_add(n.min(10) as u16);
         }
-    } else if let UiState::Onboarding { missing_keys, .. } = &app.state {
-        let n = missing_keys.len().saturating_add(1);
+    } else if let UiState::Onboarding {
+        fields,
+        current_idx,
+        ..
+    } = &app.state
+    {
+        let mut n = fields.len().saturating_add(1);
+        if let Some(field) = fields.get(*current_idx) {
+            if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
+                n = n.saturating_add(choices.len());
+            }
+            if field.description.is_some() {
+                n = n.saturating_add(1);
+            }
+        }
         #[expect(clippy::cast_possible_truncation)]
         {
             menu_rows = 1u16.saturating_add(n.min(15) as u16);
@@ -887,21 +913,16 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
         let mut is_secret = false;
         if let UiState::Onboarding {
-            missing_keys,
+            fields,
             current_idx,
             ..
         } = &app.state
-            && *current_idx < missing_keys.len()
+            && let Some(field) = fields.get(*current_idx)
         {
-            let key = &missing_keys[*current_idx];
-            let key_lower = key.to_lowercase();
-            if key_lower.contains("secret")
-                || key_lower.contains("key")
-                || key_lower.contains("token")
-                || key_lower.contains("password")
-            {
-                is_secret = true;
-            }
+            is_secret = matches!(
+                field.field_type,
+                astrid_events::ipc::OnboardingFieldType::Secret
+            );
         }
 
         let display_str = if is_secret {
@@ -965,19 +986,21 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             );
         } else if let UiState::Onboarding {
             capsule_id,
-            missing_keys,
-            prompts,
+            fields,
             current_idx,
             answers: _,
+            enum_selected,
+            enum_scroll_offset,
         } = &app.state
         {
             render_onboarding_menu(
                 frame,
                 items_area,
                 capsule_id,
-                missing_keys,
-                prompts,
+                fields,
                 *current_idx,
+                *enum_selected,
+                *enum_scroll_offset,
                 theme,
             );
         } else {
@@ -1041,13 +1064,15 @@ fn render_selection_picker(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
+#[expect(clippy::too_many_arguments)]
 fn render_onboarding_menu(
     frame: &mut Frame,
     area: Rect,
     capsule_id: &str,
-    missing_keys: &[String],
-    prompts: &std::collections::HashMap<String, String>,
+    fields: &[astrid_events::ipc::OnboardingField],
     current_idx: usize,
+    enum_selected: usize,
+    enum_scroll_offset: usize,
     theme: &Theme,
 ) {
     let mut lines = Vec::new();
@@ -1061,12 +1086,11 @@ fn render_onboarding_menu(
         Span::styled(capsule_id, Style::default().fg(theme.user)),
     ]));
 
-    // List out the keys
-    for (i, key) in missing_keys.iter().enumerate() {
-        let is_selected = i == current_idx;
+    for (i, field) in fields.iter().enumerate() {
+        let is_current = i == current_idx;
         let is_done = i < current_idx;
 
-        let style = if is_selected {
+        let style = if is_current {
             Style::default().fg(theme.tool).add_modifier(Modifier::BOLD)
         } else if is_done {
             Style::default().fg(theme.success)
@@ -1074,7 +1098,7 @@ fn render_onboarding_menu(
             Style::default().fg(theme.muted)
         };
 
-        let prefix = if is_selected {
+        let prefix = if is_current {
             "  ▶ "
         } else if is_done {
             "  ✓ "
@@ -1082,14 +1106,17 @@ fn render_onboarding_menu(
             "    "
         };
 
-        let mut spans = vec![Span::styled(prefix, style), Span::styled(key, style)];
+        let mut spans = vec![Span::styled(prefix, style), Span::styled(&field.key, style)];
 
-        if is_selected {
-            let prompt = prompts
-                .get(key)
-                .map_or("Please enter a value", String::as_str);
+        if is_current {
+            let hint = match &field.field_type {
+                astrid_events::ipc::OnboardingFieldType::Enum(_) => {
+                    "↑↓ to select, Enter to confirm"
+                },
+                _ => field.prompt.as_str(),
+            };
             spans.push(Span::styled(
-                format!("  ← {prompt}"),
+                format!("  ← {hint}"),
                 Style::default()
                     .fg(theme.border)
                     .add_modifier(Modifier::ITALIC),
@@ -1104,6 +1131,45 @@ fn render_onboarding_menu(
         }
 
         lines.push(Line::from(spans));
+
+        // Show description for the current field
+        if is_current && let Some(desc) = &field.description {
+            lines.push(Line::from(Span::styled(
+                format!("      {desc}"),
+                Style::default()
+                    .fg(theme.border)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        // Render inline enum picker for the current field
+        if is_current
+            && let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type
+        {
+            let visible_count = 8usize.min(choices.len());
+            let end = choices
+                .len()
+                .min(enum_scroll_offset.saturating_add(visible_count));
+
+            for (ci, choice) in choices
+                .iter()
+                .enumerate()
+                .skip(enum_scroll_offset)
+                .take(end.saturating_sub(enum_scroll_offset))
+            {
+                let is_sel = ci == enum_selected;
+                let arrow = if is_sel { "      ▸ " } else { "        " };
+                let choice_style = if is_sel {
+                    Style::default().fg(theme.user).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.assistant)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(arrow, choice_style),
+                    Span::styled(choice, choice_style),
+                ]));
+            }
+        }
     }
 
     let p = Paragraph::new(lines);

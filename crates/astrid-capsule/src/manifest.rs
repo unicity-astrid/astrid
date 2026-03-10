@@ -182,6 +182,9 @@ pub struct EnvDef {
     pub description: Option<String>,
     /// An optional default value.
     pub default: Option<serde_json::Value>,
+    /// Valid choices for enum fields.
+    #[serde(default)]
+    pub enum_values: Vec<String>,
 }
 
 /// A context file provided by the capsule.

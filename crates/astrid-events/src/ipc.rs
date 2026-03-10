@@ -81,10 +81,8 @@ pub enum IpcPayload {
     OnboardingRequired {
         /// The ID of the capsule requiring onboarding.
         capsule_id: String,
-        /// A list of environment variable keys that are missing.
-        missing_keys: Vec<String>,
-        /// The prompt/request strings defined in the manifest for these keys.
-        prompts: std::collections::HashMap<String, String>,
+        /// Rich field descriptors for each missing env var.
+        fields: Vec<OnboardingField>,
     },
     /// Request an LLM provider capsule to generate a response.
     LlmRequest {
@@ -160,6 +158,34 @@ pub struct SelectionOption {
     /// Optional description shown alongside the label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+/// A field descriptor for capsule onboarding.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OnboardingField {
+    /// The environment variable key.
+    pub key: String,
+    /// The prompt shown to the user.
+    pub prompt: String,
+    /// Optional description for additional context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The input type for this field.
+    pub field_type: OnboardingFieldType,
+    /// Optional default value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+}
+
+/// The type of input expected for an onboarding field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum OnboardingFieldType {
+    /// Free-form text input.
+    Text,
+    /// Masked secret input.
+    Secret,
+    /// Selection from a fixed set of choices.
+    Enum(Vec<String>),
 }
 
 /// Errors that can occur when checking IPC quota.
@@ -300,5 +326,92 @@ mod tests {
 
         let signed = msg.with_signature(vec![1, 2, 3]);
         assert_eq!(signed.signature, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn onboarding_field_roundtrip_text() {
+        let field = OnboardingField {
+            key: "owner".into(),
+            prompt: "Who owns this?".into(),
+            description: Some("The wallet address".into()),
+            field_type: OnboardingFieldType::Text,
+            default: None,
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, field);
+    }
+
+    #[test]
+    fn onboarding_field_roundtrip_enum() {
+        let field = OnboardingField {
+            key: "network".into(),
+            prompt: "Select network".into(),
+            description: None,
+            field_type: OnboardingFieldType::Enum(vec![
+                "testnet".into(),
+                "mainnet".into(),
+                "dev".into(),
+            ]),
+            default: Some("testnet".into()),
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, field);
+        assert_eq!(parsed.default.as_deref(), Some("testnet"));
+    }
+
+    #[test]
+    fn onboarding_field_roundtrip_secret() {
+        let field = OnboardingField {
+            key: "apiKey".into(),
+            prompt: "Enter API key".into(),
+            description: None,
+            field_type: OnboardingFieldType::Secret,
+            default: None,
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, field);
+    }
+
+    #[test]
+    fn onboarding_required_payload_roundtrip() {
+        let payload = IpcPayload::OnboardingRequired {
+            capsule_id: "test-capsule".into(),
+            fields: vec![
+                OnboardingField {
+                    key: "network".into(),
+                    prompt: "Select network".into(),
+                    description: Some("Choose the target network".into()),
+                    field_type: OnboardingFieldType::Enum(vec!["testnet".into(), "mainnet".into()]),
+                    default: Some("testnet".into()),
+                },
+                OnboardingField {
+                    key: "apiKey".into(),
+                    prompt: "Enter API key".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Secret,
+                    default: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn onboarding_enum_with_zero_choices_roundtrips() {
+        let field = OnboardingField {
+            key: "empty".into(),
+            prompt: "Enter value".into(),
+            description: None,
+            field_type: OnboardingFieldType::Enum(vec![]),
+            default: None,
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.field_type, OnboardingFieldType::Enum(vec![]));
     }
 }

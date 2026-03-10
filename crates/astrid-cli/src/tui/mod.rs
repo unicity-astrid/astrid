@@ -207,25 +207,29 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 app.state = UiState::Idle;
                 app.scroll_offset = 0;
             }
-        } else if let astrid_events::ipc::IpcPayload::OnboardingRequired {
-            capsule_id,
-            missing_keys,
-            prompts,
-        } = &message.payload
+        } else if let astrid_events::ipc::IpcPayload::OnboardingRequired { capsule_id, fields } =
+            &message.payload
         {
             let msg = format!("Action required: Capsule '{capsule_id}' requires configuration.");
             app.push_notice(&msg);
             app.status_message = Some((msg, Instant::now()));
 
+            // Pre-fill input with default of first field if available.
+            let default_input = fields
+                .first()
+                .and_then(|f| f.default.clone())
+                .unwrap_or_default();
+
             app.state = UiState::Onboarding {
                 capsule_id: capsule_id.clone(),
-                missing_keys: missing_keys.clone(),
-                prompts: prompts.clone(),
+                fields: fields.clone(),
                 current_idx: 0,
                 answers: std::collections::HashMap::new(),
+                enum_selected: 0,
+                enum_scroll_offset: 0,
             };
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.input = default_input;
+            app.cursor_pos = app.input.len();
         } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
             request_id,
             title,

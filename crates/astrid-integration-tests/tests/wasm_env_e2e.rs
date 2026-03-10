@@ -40,6 +40,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             default: Some(json!("default_value")),
             request: None,
             description: None,
+            enum_values: vec![],
         },
     );
     env.insert(
@@ -49,6 +50,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             default: None,
             request: None,
             description: None,
+            enum_values: vec![],
         },
     );
 

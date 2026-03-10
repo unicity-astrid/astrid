@@ -40,6 +40,41 @@ impl WasmEngine {
             run_handle: None,
         }
     }
+
+    /// Build an `OnboardingField` from a manifest `EnvDef`.
+    fn build_onboarding_field(
+        key: &str,
+        def: &crate::manifest::EnvDef,
+    ) -> astrid_events::ipc::OnboardingField {
+        use astrid_events::ipc::OnboardingFieldType;
+
+        let field_type = if def.env_type == "secret" {
+            OnboardingFieldType::Secret
+        } else if !def.enum_values.is_empty() {
+            OnboardingFieldType::Enum(def.enum_values.clone())
+        } else {
+            OnboardingFieldType::Text
+        };
+
+        let default = def.default.as_ref().and_then(|d| match d {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Null => None,
+            other => Some(other.to_string()),
+        });
+
+        let prompt = def
+            .request
+            .clone()
+            .unwrap_or_else(|| format!("Please enter value for {key}"));
+
+        astrid_events::ipc::OnboardingField {
+            key: key.to_string(),
+            prompt,
+            description: def.description.clone(),
+            field_type,
+            default,
+        }
+    }
 }
 
 #[async_trait]
@@ -79,8 +114,7 @@ impl ExecutionEngine for WasmEngine {
             );
         }
 
-        let mut missing_keys = Vec::new();
-        let mut prompts = std::collections::HashMap::new();
+        let mut onboarding_fields = Vec::new();
 
         // Collect reserved kernel-injected keys so the env loop cannot override them.
         let reserved_keys: Vec<String> = wasm_config.keys().cloned().collect();
@@ -99,29 +133,21 @@ impl ExecutionEngine for WasmEngine {
                 if let Ok(val) = String::from_utf8(val_bytes) {
                     wasm_config.insert(key.clone(), serde_json::Value::String(val));
                 } else {
-                    missing_keys.push(key.clone());
-                    if let Some(req) = &def.request {
-                        prompts.insert(key.clone(), req.clone());
-                    }
+                    onboarding_fields.push(Self::build_onboarding_field(key, def));
                 }
-            } else if let Some(default_val) = &def.default {
-                wasm_config.insert(key.clone(), default_val.clone());
             } else {
-                // Key is missing and has no default
-                missing_keys.push(key.clone());
-                if let Some(req) = &def.request {
-                    prompts.insert(key.clone(), req.clone());
-                }
+                onboarding_fields.push(Self::build_onboarding_field(key, def));
             }
         }
 
-        if !missing_keys.is_empty() {
+        if !onboarding_fields.is_empty() {
+            let missing_names: Vec<String> =
+                onboarding_fields.iter().map(|f| f.key.clone()).collect();
             let msg = astrid_events::ipc::IpcMessage::new(
                 "system.onboarding.required",
                 astrid_events::ipc::IpcPayload::OnboardingRequired {
                     capsule_id: self.manifest.package.name.clone(),
-                    missing_keys: missing_keys.clone(),
-                    prompts,
+                    fields: onboarding_fields,
                 },
                 uuid::Uuid::nil(), // Broadcast or global event for onboarding
             );
@@ -132,7 +158,7 @@ impl ExecutionEngine for WasmEngine {
 
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                 "Missing required environment variables: {}",
-                missing_keys.join(", ")
+                missing_names.join(", ")
             )));
         }
 
@@ -461,5 +487,71 @@ mod tests {
             msg.contains("poisoned"),
             "error message should mention poisoning: {msg}"
         );
+    }
+
+    #[test]
+    fn build_onboarding_field_text() {
+        let def = crate::manifest::EnvDef {
+            env_type: "string".into(),
+            request: Some("Enter owner address".into()),
+            description: Some("The wallet address".into()),
+            default: None,
+            enum_values: vec![],
+        };
+        let field = WasmEngine::build_onboarding_field("owner", &def);
+        assert_eq!(field.key, "owner");
+        assert_eq!(field.prompt, "Enter owner address");
+        assert_eq!(field.description.as_deref(), Some("The wallet address"));
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Text
+        );
+        assert!(field.default.is_none());
+    }
+
+    #[test]
+    fn build_onboarding_field_secret() {
+        let def = crate::manifest::EnvDef {
+            env_type: "secret".into(),
+            request: None,
+            description: None,
+            default: None,
+            enum_values: vec!["a".into()], // enum_values ignored for secrets
+        };
+        let field = WasmEngine::build_onboarding_field("apiKey", &def);
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Secret
+        );
+    }
+
+    #[test]
+    fn build_onboarding_field_enum_with_default() {
+        let def = crate::manifest::EnvDef {
+            env_type: "string".into(),
+            request: Some("Select network".into()),
+            description: None,
+            default: Some(serde_json::json!("testnet")),
+            enum_values: vec!["testnet".into(), "mainnet".into()],
+        };
+        let field = WasmEngine::build_onboarding_field("network", &def);
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Enum(vec!["testnet".into(), "mainnet".into()])
+        );
+        assert_eq!(field.default.as_deref(), Some("testnet"));
+    }
+
+    #[test]
+    fn build_onboarding_field_fallback_prompt() {
+        let def = crate::manifest::EnvDef {
+            env_type: "string".into(),
+            request: None,
+            description: None,
+            default: None,
+            enum_values: vec![],
+        };
+        let field = WasmEngine::build_onboarding_field("someKey", &def);
+        assert_eq!(field.prompt, "Please enter value for someKey");
     }
 }
