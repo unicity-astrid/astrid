@@ -210,6 +210,13 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
         } else if let astrid_events::ipc::IpcPayload::OnboardingRequired { capsule_id, fields } =
             &message.payload
         {
+            if fields.is_empty() {
+                app.push_notice(&format!(
+                    "Capsule '{capsule_id}' reported missing configuration but provided no fields."
+                ));
+                return;
+            }
+
             let msg = format!("Action required: Capsule '{capsule_id}' requires configuration.");
             app.push_notice(&msg);
             app.status_message = Some((msg, Instant::now()));

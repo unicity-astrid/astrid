@@ -147,6 +147,9 @@ impl ExecutionEngine for WasmEngine {
                 } else {
                     onboarding_fields.push(Self::build_onboarding_field(key, def));
                 }
+            } else if let Some(default_val) = &def.default {
+                // Manifest declares a default — inject silently without prompting.
+                wasm_config.insert(key.clone(), default_val.clone());
             } else {
                 onboarding_fields.push(Self::build_onboarding_field(key, def));
             }

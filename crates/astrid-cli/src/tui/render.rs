@@ -895,6 +895,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         };
 
         let mut is_secret = false;
+        let mut is_enum = false;
         if let UiState::Onboarding {
             fields,
             current_idx,
@@ -906,6 +907,10 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 field.field_type,
                 astrid_events::ipc::OnboardingFieldType::Secret
             );
+            is_enum = matches!(
+                field.field_type,
+                astrid_events::ipc::OnboardingFieldType::Enum(_)
+            );
         }
 
         let display_str = if is_secret {
@@ -914,19 +919,18 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             display_input.to_string()
         };
 
+        // Hide cursor for enum fields — the picker handles selection.
+        let cursor_str = if is_enum { "" } else { "█" };
+        let cursor_color = if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
+            theme.cursor
+        } else {
+            theme.border
+        };
+
         let para = Paragraph::new(Line::from(vec![
             Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
             Span::styled(display_str, input_style),
-            Span::styled(
-                "█",
-                Style::default().fg(
-                    if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
-                        theme.cursor
-                    } else {
-                        theme.border
-                    },
-                ),
-            ),
+            Span::styled(cursor_str, Style::default().fg(cursor_color)),
         ]))
         .wrap(Wrap { trim: false });
         frame.render_widget(para, input_area);
