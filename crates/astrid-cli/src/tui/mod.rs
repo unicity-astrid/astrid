@@ -214,22 +214,47 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             app.push_notice(&msg);
             app.status_message = Some((msg, Instant::now()));
 
-            // Pre-fill input with default of first field if available.
-            let default_input = fields
-                .first()
-                .and_then(|f| f.default.clone())
-                .unwrap_or_default();
+            // Pre-fill based on first field type.
+            let first = fields.first();
+            let is_first_enum = first.is_some_and(|f| {
+                matches!(
+                    f.field_type,
+                    astrid_events::ipc::OnboardingFieldType::Enum(_)
+                )
+            });
+
+            // For enum fields, pre-position enum_selected to the default choice.
+            let enum_selected = first
+                .and_then(|f| {
+                    let default_val = f.default.as_deref()?;
+                    match &f.field_type {
+                        astrid_events::ipc::OnboardingFieldType::Enum(choices) => {
+                            choices.iter().position(|c| c == default_val)
+                        },
+                        _ => None,
+                    }
+                })
+                .unwrap_or(0);
 
             app.state = UiState::Onboarding {
                 capsule_id: capsule_id.clone(),
                 fields: fields.clone(),
                 current_idx: 0,
                 answers: std::collections::HashMap::new(),
-                enum_selected: 0,
+                enum_selected,
                 enum_scroll_offset: 0,
             };
-            app.input = default_input;
-            app.cursor_pos = app.input.len();
+
+            // Enum fields use the picker — keep text input clear.
+            // Text/secret fields get the default pre-filled.
+            if is_first_enum {
+                app.input.clear();
+                app.cursor_pos = 0;
+            } else {
+                let default_input = first.and_then(|f| f.default.clone()).unwrap_or_default();
+                app.cursor_pos = default_input.len();
+                app.input = default_input;
+            }
         } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
             request_id,
             title,

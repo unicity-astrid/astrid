@@ -1056,7 +1056,7 @@ fn onboarding_row_count(
     let mut n = fields.len().saturating_add(1);
     if let Some(field) = fields.get(current_idx) {
         if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
-            n = n.saturating_add(choices.len());
+            n = n.saturating_add(PALETTE_MAX_VISIBLE.min(choices.len()));
         }
         if field.description.is_some() {
             n = n.saturating_add(1);

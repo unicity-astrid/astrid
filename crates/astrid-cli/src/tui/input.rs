@@ -113,8 +113,8 @@ fn advance_onboarding(app: &mut App) {
         return;
     }
 
-    // Extract the default and reset enum state in a scoped mutable borrow.
-    let default = if let UiState::Onboarding {
+    // Extract pre-fill info and reset enum state in a scoped mutable borrow.
+    let is_enum = if let UiState::Onboarding {
         fields,
         current_idx,
         enum_selected,
@@ -122,19 +122,56 @@ fn advance_onboarding(app: &mut App) {
         ..
     } = &mut app.state
     {
-        *enum_selected = 0;
         *enum_scroll_offset = 0;
-        fields
-            .get(*current_idx)
-            .and_then(|f| f.default.clone())
-            .unwrap_or_default()
+
+        let field = fields.get(*current_idx);
+        let is_enum_field = field.is_some_and(|f| {
+            matches!(
+                f.field_type,
+                astrid_events::ipc::OnboardingFieldType::Enum(_)
+            )
+        });
+
+        // Pre-position enum_selected to the default value's index if present.
+        *enum_selected = field
+            .and_then(|f| {
+                let default_val = f.default.as_deref()?;
+                match &f.field_type {
+                    astrid_events::ipc::OnboardingFieldType::Enum(choices) => {
+                        choices.iter().position(|c| c == default_val)
+                    },
+                    _ => None,
+                }
+            })
+            .unwrap_or(0);
+
+        is_enum_field
     } else {
         return;
     };
 
-    // Set input outside the state borrow.
-    app.input.clone_from(&default);
-    app.cursor_pos = default.len();
+    // For enum fields, clear the text input — the picker handles selection.
+    // For text/secret fields, pre-fill with the default value.
+    if is_enum {
+        app.input.clear();
+        app.cursor_pos = 0;
+    } else {
+        let default = if let UiState::Onboarding {
+            fields,
+            current_idx,
+            ..
+        } = &app.state
+        {
+            fields
+                .get(*current_idx)
+                .and_then(|f| f.default.clone())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        app.cursor_pos = default.len();
+        app.input = default;
+    }
 }
 
 /// Submit onboarding answers and return to Idle.
@@ -271,7 +308,7 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
             }
         },
         KeyCode::Enter => {
-            if let UiState::Onboarding {
+            let skipped = if let UiState::Onboarding {
                 fields,
                 current_idx,
                 enum_selected,
@@ -290,13 +327,20 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
                     _ => None,
                 });
 
-                if let Some(value) = selected_value {
+                let was_skipped = if let Some(value) = selected_value {
                     let key = fields[*current_idx].key.clone();
                     answers.insert(key, value);
-                    *current_idx = current_idx.saturating_add(1);
-                }
-                // If no value (shouldn't happen), fall through to advance which
-                // will re-show the same field rather than silently hanging.
+                    false
+                } else {
+                    true
+                };
+                *current_idx = current_idx.saturating_add(1);
+                was_skipped
+            } else {
+                false
+            };
+            if skipped {
+                app.push_notice("Skipped field with no available choices.");
             }
             advance_onboarding(app);
         },

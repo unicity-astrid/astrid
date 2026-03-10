@@ -104,9 +104,8 @@ pub fn generate_manifest(
                 })
                 .unwrap_or_default();
 
-            let request = description
-                .as_deref()
-                .map_or_else(|| format!("Please enter value for {key}"), String::from);
+            // request is the call-to-action prompt; description provides context separately.
+            let request = format!("Please enter value for {key}");
 
             env.insert(
                 key.clone(),
