@@ -137,10 +137,19 @@ pub(crate) async fn resolve_env(
         }
 
         if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
-            if let Ok(val) = String::from_utf8(val_bytes) {
-                resolved.insert(key.clone(), val);
-            } else {
-                onboarding_fields.push(build_onboarding_field(key, def));
+            match String::from_utf8(val_bytes) {
+                Ok(val) => {
+                    resolved.insert(key.clone(), val);
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        capsule = %manifest.package.name,
+                        key = %key,
+                        error = %e,
+                        "Value from KV store is not valid UTF-8; requiring onboarding"
+                    );
+                    onboarding_fields.push(build_onboarding_field(key, def));
+                },
             }
         } else if def.enum_values.len() > 1 {
             // Multi-choice enum fields always go through onboarding.

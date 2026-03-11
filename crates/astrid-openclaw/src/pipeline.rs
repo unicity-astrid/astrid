@@ -364,9 +364,10 @@ fn generate_tier2_manifest(
                 .and_then(serde_json::Value::as_str)
                 .map(String::from);
 
-            let default = val.get("default").map(|d| match d {
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
+            let default = val.get("default").and_then(|d| match d {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Null => None,
+                other => Some(other.to_string()),
             });
 
             let enum_values = val
