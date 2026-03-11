@@ -5,12 +5,12 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+use astrid_core::frontend::{ChannelInfo, ChannelType, Frontend, FrontendResult};
 use astrid_core::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, AstridUserId, ContextIdentifier,
-    ElicitationRequest, ElicitationResponse, Frontend, FrontendContext, FrontendSessionInfo,
-    FrontendType, FrontendUser, MessageId, TaggedMessage, UrlElicitationRequest,
-    UrlElicitationResponse, UserInput, VerificationRequest, VerificationResponse,
-    frontend::{ChannelInfo, ChannelType, FrontendResult},
+    ElicitationRequest, ElicitationResponse, FrontendContext, FrontendSessionInfo, FrontendType,
+    FrontendUser, MessageId, TaggedMessage, UrlElicitationRequest, UrlElicitationResponse,
+    UserInput, VerificationRequest, VerificationResponse,
 };
 
 /// Mock implementation of the `Frontend` trait for testing.

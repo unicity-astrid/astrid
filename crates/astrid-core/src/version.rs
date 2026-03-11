@@ -2,6 +2,7 @@
 //!
 //! This module provides versioning primitives to ensure safe migrations
 //! when stored data formats change between releases.
+#![allow(dead_code)] // Tracked by #299 - version system not yet wired
 
 use std::fmt;
 use std::num::ParseIntError;
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// Semantic version following semver conventions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Version {
+pub(crate) struct Version {
     /// Major version - breaking changes
     pub major: u32,
     /// Minor version - new features, backwards compatible
@@ -23,7 +24,7 @@ pub struct Version {
 impl Version {
     /// Creates a new version.
     #[must_use]
-    pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
+    pub(crate) const fn new(major: u32, minor: u32, patch: u32) -> Self {
         Self {
             major,
             minor,
@@ -33,7 +34,7 @@ impl Version {
 
     /// Returns the current crate version.
     #[must_use]
-    pub fn current() -> Self {
+    pub(crate) fn current() -> Self {
         Self::new(
             env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap_or(0),
             env!("CARGO_PKG_VERSION_MINOR").parse().unwrap_or(1),
@@ -47,13 +48,13 @@ impl Version {
     /// - Major version must match
     /// - Minor version of `other` must be >= self.minor
     #[must_use]
-    pub fn is_compatible_with(&self, other: &Self) -> bool {
+    pub(crate) fn is_compatible_with(&self, other: &Self) -> bool {
         self.major == other.major && other.minor >= self.minor
     }
 
     /// Checks if this version is newer than another.
     #[must_use]
-    pub fn is_newer_than(&self, other: &Self) -> bool {
+    pub(crate) fn is_newer_than(&self, other: &Self) -> bool {
         match self.major.cmp(&other.major) {
             std::cmp::Ordering::Greater => true,
             std::cmp::Ordering::Less => false,
@@ -98,7 +99,7 @@ impl Ord for Version {
 
 /// Error returned when parsing a version string fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VersionParseError {
+pub(crate) enum VersionParseError {
     /// Wrong number of segments (expected "major.minor.patch").
     InvalidFormat(String),
     /// A numeric segment could not be parsed.
@@ -147,14 +148,14 @@ impl Version {
     /// # Errors
     ///
     /// Returns an error if the string is not in "major.minor.patch" format.
-    pub fn parse(s: &str) -> Result<Self, VersionParseError> {
+    pub(crate) fn parse(s: &str) -> Result<Self, VersionParseError> {
         s.parse()
     }
 }
 
 /// A wrapper that associates data with a version for safe migrations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Versioned<T> {
+pub(crate) struct Versioned<T> {
     /// The version when this data was created/last migrated.
     pub version: Version,
     /// The versioned data.
@@ -163,7 +164,7 @@ pub struct Versioned<T> {
 
 impl<T> Versioned<T> {
     /// Creates a new versioned wrapper with the current version.
-    pub fn new(data: T) -> Self {
+    pub(crate) fn new(data: T) -> Self {
         Self {
             version: Version::current(),
             data,
@@ -171,24 +172,24 @@ impl<T> Versioned<T> {
     }
 
     /// Creates a versioned wrapper with a specific version.
-    pub fn with_version(version: Version, data: T) -> Self {
+    pub(crate) fn with_version(version: Version, data: T) -> Self {
         Self { version, data }
     }
 
     /// Checks if this versioned data needs migration.
     #[must_use]
-    pub fn needs_migration(&self) -> bool {
+    pub(crate) fn needs_migration(&self) -> bool {
         let current = Version::current();
         current.is_newer_than(&self.version)
     }
 
     /// Extracts the inner data, consuming the wrapper.
-    pub fn into_inner(self) -> T {
+    pub(crate) fn into_inner(self) -> T {
         self.data
     }
 
     /// Maps the inner data while preserving the version.
-    pub fn map<U, F>(self, f: F) -> Versioned<U>
+    pub(crate) fn map<U, F>(self, f: F) -> Versioned<U>
     where
         F: FnOnce(T) -> U,
     {

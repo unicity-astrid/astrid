@@ -10,7 +10,8 @@ use crate::input::{MessageId, TaggedMessage};
 use crate::verification::{VerificationRequest, VerificationResponse};
 
 /// Frontend wrapper.
-pub type ArcFrontend = std::sync::Arc<dyn Frontend + Send + Sync>;
+#[allow(dead_code)] // Tracked by #298 - Frontend trait scheduled for removal
+pub(crate) type ArcFrontend = std::sync::Arc<dyn Frontend + Send + Sync>;
 
 /// The main frontend trait that all UI implementations must implement.
 ///

@@ -9,7 +9,7 @@
 //!
 //! // Now you have access to:
 //! // - SecurityError, SecurityResult
-//! // - Frontend trait and related types
+//! // - Connector adapter traits and types
 //! // - Identity types
 //! // - Common types like SessionId, Permission, RiskLevel
 //! ```
@@ -17,16 +17,15 @@
 // Errors
 pub use crate::{SecurityError, SecurityResult};
 
-// Frontend trait and related types
+// Frontend types (approval, elicitation, etc.)
 pub use crate::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, Frontend, FrontendContext, FrontendSessionInfo,
-    FrontendUser, SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
-    UserInput,
+    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendSessionInfo, FrontendUser,
+    SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
 };
 
 // Identity
-pub use crate::{AstridUserId, FrontendLink, FrontendType, LinkVerificationMethod};
+pub use crate::{AstridUserId, FrontendLink, FrontendType};
 
 // Input classification
 pub use crate::{ContextIdentifier, MessageId, TaggedMessage};
@@ -35,18 +34,15 @@ pub use crate::{ContextIdentifier, MessageId, TaggedMessage};
 pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 
 // Retry utilities
-pub use crate::{RetryConfig, RetryOutcome, retry};
+pub use crate::RetryConfig;
 
 // Verification
 pub use crate::{VerificationRequest, VerificationResponse};
-
-// Versioning
-pub use crate::{Version, VersionParseError, Versioned};
 
 // Connector
 pub use crate::{
     ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
     ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder, OutboundAdapter,
-    OutboundMessage, OutboundMessageBuilder,
+    ElicitationAdapter, InboundMessage, InboundMessageBuilder, OutboundMessage,
+    OutboundMessageBuilder,
 };

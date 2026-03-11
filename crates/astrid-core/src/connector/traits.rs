@@ -20,8 +20,9 @@ use crate::frontend::{ApprovalDecision, ApprovalRequest, ElicitationRequest, Eli
 /// calls should return [`ConnectorError::UnsupportedOperation`] — the adapter
 /// holds the `Sender` half internally. If the `Receiver` is dropped, inflight
 /// sends will fail and the adapter may treat the subscriber as disconnected.
+#[allow(dead_code)] // Tracked by #297 - will be wired through capsule connector system
 #[async_trait]
-pub trait InboundAdapter: Send + Sync {
+pub(crate) trait InboundAdapter: Send + Sync {
     /// Subscribe to inbound messages.
     ///
     /// Returns the receive half of an internal `mpsc` channel. May only be
@@ -31,8 +32,9 @@ pub trait InboundAdapter: Send + Sync {
 }
 
 /// Sends outbound messages to an external destination.
+#[allow(dead_code)] // Tracked by #297 - will be wired through capsule connector system
 #[async_trait]
-pub trait OutboundAdapter: Send + Sync {
+pub(crate) trait OutboundAdapter: Send + Sync {
     /// Send a message through this connector.
     async fn send(&self, message: OutboundMessage) -> ConnectorResult<()>;
 }

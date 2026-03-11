@@ -11,16 +11,10 @@
 //!
 //! # Adapter traits
 //!
-//! Four narrow traits describe what a connector *can do*:
+//! Two public adapter traits describe what a connector *can do*:
 //!
-//! - [`InboundAdapter`] — produce messages (e.g. user typing in Discord).
-//! - [`OutboundAdapter`] — consume messages (e.g. send a reply).
 //! - [`ApprovalAdapter`] — ask a human for approval.
 //! - [`ElicitationAdapter`] — ask a human for structured input.
-//!
-//! Blanket implementations bridge the existing [`Frontend`](crate::frontend::Frontend)
-//! trait to [`ApprovalAdapter`] and [`ElicitationAdapter`] so every frontend is
-//! automatically an adapter with zero migration cost.
 
 // ---------------------------------------------------------------------------
 
@@ -32,7 +26,7 @@ pub(crate) mod traits;
 pub(crate) mod types;
 
 pub use error::{ConnectorError, ConnectorResult};
-pub use traits::*;
+pub use traits::{ApprovalAdapter, ElicitationAdapter};
 pub use types::*;
 
 // Tests

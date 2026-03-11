@@ -32,5 +32,5 @@ pub(crate) mod traits;
 pub(crate) mod types;
 
 pub use error::{FrontendError, FrontendResult};
-pub use traits::{ArcFrontend, Frontend};
+pub use traits::Frontend;
 pub use types::*;

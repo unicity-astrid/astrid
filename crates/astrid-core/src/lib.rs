@@ -4,9 +4,8 @@
 //! - Error types for security operations
 //! - Input classification and message attribution
 //! - Identity management across frontends
-//! - The `Frontend` trait for different UI implementations
+//! - Connector adapter traits for capsule integration
 //! - Common types used throughout the runtime
-//! - Version management for state migrations
 //! - Retry utilities with exponential backoff
 
 #![deny(unsafe_code)]
@@ -41,23 +40,21 @@ pub mod http;
 pub use error::{SecurityError, SecurityResult};
 pub use frontend::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, Frontend, FrontendContext, FrontendSessionInfo,
-    FrontendUser, SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
-    UserInput,
+    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendSessionInfo, FrontendUser,
+    SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
 };
 pub use hook_event::HookEvent;
-pub use identity::{AstridUserId, FrontendLink, FrontendType, LinkVerificationMethod};
+pub use identity::{AstridUserId, FrontendLink, FrontendType};
 pub use input::{ContextIdentifier, MessageId, TaggedMessage};
-pub use retry::{RetryConfig, RetryOutcome, retry};
+pub use retry::RetryConfig;
 pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 pub use utils::truncate_to_boundary;
 pub use verification::{VerificationRequest, VerificationResponse};
-pub use version::{Version, VersionParseError, Versioned};
 
 // Connector types
 pub use connector::{
     ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
     ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder,
-    MAX_CONNECTORS_PER_PLUGIN, OutboundAdapter, OutboundMessage, OutboundMessageBuilder,
+    ElicitationAdapter, InboundMessage, InboundMessageBuilder, MAX_CONNECTORS_PER_PLUGIN,
+    OutboundMessage, OutboundMessageBuilder,
 };
