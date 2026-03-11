@@ -147,12 +147,21 @@ fn walk_and_grep(
 
     let entries_bytes = match fs::readdir(dir) {
         Ok(b) => b,
-        Err(_) => return, // unreadable dir - skip
+        Err(e) => {
+            let _ = sys::log("debug", &format!("failed to read directory '{dir}': {e}"));
+            return;
+        }
     };
 
     let entry_names: Vec<String> = match serde_json::from_slice(&entries_bytes) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(e) => {
+            let _ = sys::log(
+                "warn",
+                &format!("failed to parse directory entries for '{dir}': {e}"),
+            );
+            return;
+        }
     };
 
     for name in entry_names {
@@ -160,15 +169,17 @@ fn walk_and_grep(
             return;
         }
 
-        let path = if dir == "." {
-            name.clone()
-        } else {
-            format!("{dir}/{name}")
-        };
+        let path = std::path::PathBuf::from(dir)
+            .join(&name)
+            .to_string_lossy()
+            .into_owned();
 
         let stat_bytes = match fs::stat(&path) {
             Ok(b) => b,
-            Err(_) => continue,
+            Err(e) => {
+                let _ = sys::log("debug", &format!("failed to stat path '{path}': {e}"));
+                continue;
+            }
         };
 
         let is_dir = serde_json::from_slice::<serde_json::Value>(&stat_bytes)
@@ -190,7 +201,10 @@ fn walk_and_grep(
 fn grep_file(path: &str, pattern: &str, matches: &mut Vec<String>) {
     let content = match fs::read_string(path) {
         Ok(c) => c,
-        Err(_) => return, // binary or unreadable - skip
+        Err(e) => {
+            let _ = sys::log("debug", &format!("skipping unreadable file '{path}': {e}"));
+            return;
+        }
     };
 
     grep_content(path, &content, pattern, matches);
