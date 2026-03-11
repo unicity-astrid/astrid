@@ -6,7 +6,17 @@ mod tests {
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, McpServerDef, PackageDef};
     use std::collections::HashMap;
     use std::fs;
+    use std::sync::Arc;
     use tempfile::tempdir;
+
+    fn test_secure_mcp_client() -> astrid_mcp::SecureMcpClient {
+        let client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let capabilities = Arc::new(astrid_capabilities::CapabilityStore::in_memory());
+        let audit = Arc::new(astrid_audit::AuditLog::in_memory(
+            astrid_crypto::KeyPair::generate(),
+        ));
+        astrid_mcp::SecureMcpClient::new(client, capabilities, audit, astrid_core::SessionId::new())
+    }
 
     fn dummy_manifest(command: &str, allowed_commands: Vec<&str>) -> CapsuleManifest {
         CapsuleManifest {
@@ -70,7 +80,7 @@ mod tests {
         // If we check the substring AFTER path resolution, it might pass because "npx" is in the path.
         // We must ensure it fails against the raw "./bin/npx-malicious" string.
         let manifest = dummy_manifest("./bin/npx-malicious", vec!["npx"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,
@@ -128,7 +138,7 @@ mod tests {
 
         // The user granted capability for "bin/my-tool"
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,
@@ -182,7 +192,7 @@ mod tests {
         fs::write(&arch_slice, "MZ...").unwrap();
 
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,

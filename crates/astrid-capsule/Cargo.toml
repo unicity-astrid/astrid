@@ -30,6 +30,10 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 astrid-workspace.workspace = true
 
+[dev-dependencies]
+astrid-audit = { workspace = true }
+astrid-crypto = { workspace = true }
+
 [features]
 default = ["approval"]
 approval = ["astrid-approval"]

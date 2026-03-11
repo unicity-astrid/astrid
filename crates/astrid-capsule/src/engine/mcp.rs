@@ -7,26 +7,32 @@ use crate::context::CapsuleContext;
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::{CapsuleManifest, McpServerDef};
 
-use astrid_mcp::McpClient;
+use astrid_mcp::SecureMcpClient;
 
 /// Executes Legacy Host MCP servers via `stdio`.
 ///
 /// This engine requires the `host_process` capability. It securely spawns
 /// the host command (e.g. `npx` or `python`) and manages its stdio pipes,
 /// forwarding the JSON-RPC traffic to the Astrid IPC bus.
+///
+/// Server lifecycle ops (`connect_dynamic`, `disconnect`) go through
+/// `SecureMcpClient` so they are audit-logged. Internal interceptor hook
+/// calls use the bare inner `McpClient` with `AuthorizationProof::System`
+/// semantics - they are kernel infrastructure, not user-facing tool calls.
 pub struct McpHostEngine {
     manifest: CapsuleManifest,
     server_def: McpServerDef,
     capsule_dir: PathBuf,
-    mcp_client: McpClient,
+    mcp_client: SecureMcpClient,
 }
 
 impl McpHostEngine {
+    /// Create a new MCP host engine.
     pub fn new(
         manifest: CapsuleManifest,
         server_def: McpServerDef,
         capsule_dir: PathBuf,
-        mcp_client: McpClient,
+        mcp_client: SecureMcpClient,
     ) -> Self {
         Self {
             manifest,
@@ -181,7 +187,10 @@ impl ExecutionEngine for McpHostEngine {
             "payload": params,
         });
 
-        let client = self.mcp_client.clone();
+        // Interceptor hooks are kernel-internal infrastructure, not
+        // user-facing tool calls. Use the bare inner McpClient directly -
+        // no capability check needed for the kernel invoking its own hooks.
+        let client = self.mcp_client.inner().clone();
 
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {

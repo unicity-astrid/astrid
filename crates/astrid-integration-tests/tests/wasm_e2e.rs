@@ -11,6 +11,15 @@ use astrid_events::EventBus;
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
 use serde_json::json;
 
+fn test_secure_mcp_client() -> astrid_mcp::SecureMcpClient {
+    let client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+    let capabilities = Arc::new(astrid_capabilities::CapabilityStore::in_memory());
+    let audit = Arc::new(astrid_audit::AuditLog::in_memory(
+        astrid_crypto::KeyPair::generate(),
+    ));
+    astrid_mcp::SecureMcpClient::new(client, capabilities, audit, astrid_core::SessionId::new())
+}
+
 async fn setup_test_capsule(
     tools: Vec<ToolDef>,
     fs_read_caps: Vec<String>,
@@ -85,8 +94,7 @@ async fn setup_test_capsule(
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-    let loader = CapsuleLoader::new(mcp_client);
+    let loader = CapsuleLoader::new(test_secure_mcp_client());
 
     let mut capsule = loader
         .create_capsule(manifest, fixture_path.parent().unwrap().to_path_buf())
@@ -192,8 +200,7 @@ async fn setup_test_capsule_with_global(
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-    let loader = CapsuleLoader::new(mcp_client);
+    let loader = CapsuleLoader::new(test_secure_mcp_client());
 
     let mut capsule = loader
         .create_capsule(manifest, fixture_path.parent().unwrap().to_path_buf())

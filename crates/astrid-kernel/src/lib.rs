@@ -165,7 +165,7 @@ impl Kernel {
         let manifest = astrid_capsule::discovery::load_manifest(&manifest_path)
             .map_err(|e| anyhow::anyhow!(e))?;
 
-        let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp.inner().clone());
+        let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp.clone());
         let mut capsule = loader.create_capsule(manifest, dir.clone())?;
 
         // Build the context — use the shared kernel KV so capsules can

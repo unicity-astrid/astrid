@@ -6,7 +6,7 @@
 //! - Approval flow integration
 
 use astrid_audit::{AuditAction, AuditLog, AuditOutcome, AuthorizationProof};
-use astrid_capabilities::{AuditEntryId, CapabilityStore, CapabilityValidator};
+use astrid_capabilities::{CapabilityError, CapabilityStore, CapabilityValidator};
 use astrid_core::{Permission, SessionId};
 use astrid_crypto::ContentHash;
 use serde_json::Value;
@@ -24,8 +24,9 @@ use crate::types::{ToolDefinition, ToolResult};
 pub enum ToolAuthorization {
     /// Authorized by capability token.
     Authorized {
-        /// The audit entry ID for this authorization.
-        audit_id: AuditEntryId,
+        /// The cryptographic proof from the authorizing token, ready to pass
+        /// into `call_tool` for audit logging.
+        proof: AuthorizationProof,
     },
     /// Requires user approval.
     RequiresApproval {
@@ -69,58 +70,68 @@ impl SecureMcpClient {
 
     /// Check authorization for a tool call.
     ///
+    /// This is a read-only validation - no audit entry is written. The audit
+    /// record is created inside [`call_tool`] when the tool is actually invoked,
+    /// so every audit entry carries the real args hash.
+    ///
+    /// For single-use tokens, calling this method consumes the token. A second
+    /// call for the same resource will return [`ToolAuthorization::RequiresApproval`].
+    ///
     /// # Errors
     ///
-    /// Returns an error if the audit log cannot be written.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the authorization result indicates authorized but no token is present.
-    /// This should never happen in practice as authorization implies a token exists.
+    /// Returns an error if a single-use token cannot be consumed.
     pub fn check_authorization(&self, server: &str, tool: &str) -> McpResult<ToolAuthorization> {
         let resource = format!("mcp://{server}:{tool}");
 
-        let validator = CapabilityValidator::new(&self.capabilities);
+        let validator = CapabilityValidator::new(&self.capabilities)
+            .trust_issuer(self.audit.runtime_public_key());
 
         let result = validator.check(&resource, Permission::Invoke);
 
-        if result.is_authorized() {
-            // Log the authorized access
-            let audit_id = {
-                let token = result.token().expect("authorization implies token exists");
-                self.audit
-                    .append(
-                        self.session_id.clone(),
-                        AuditAction::McpToolCall {
-                            server: server.to_string(),
-                            tool: tool.to_string(),
-                            args_hash: ContentHash::zero(), // Will be updated when actually called
-                        },
-                        AuthorizationProof::Capability {
-                            token_id: token.id.clone(),
-                            token_hash: token.content_hash(),
-                        },
-                        AuditOutcome::success_with("authorization check"),
-                    )
-                    .map_err(|e| McpError::TransportError(e.to_string()))?
-            };
+        if let Some(found_token) = result.token() {
+            // Consume single-use tokens to prevent replay.
+            // `use_token` validates + marks used atomically.
+            match self.capabilities.use_token(&found_token.id) {
+                Ok(token) => {
+                    let proof = AuthorizationProof::Capability {
+                        token_id: token.id.clone(),
+                        token_hash: token.content_hash(),
+                    };
 
-            debug!(
-                server = server,
-                tool = tool,
-                "Tool call authorized by capability"
-            );
+                    debug!(
+                        server = server,
+                        tool = tool,
+                        token_id = %token.id,
+                        "Tool call authorized by capability"
+                    );
 
-            Ok(ToolAuthorization::Authorized { audit_id })
-        } else {
-            debug!(server = server, tool = tool, "Tool call requires approval");
-
-            Ok(ToolAuthorization::RequiresApproval {
-                server: server.to_string(),
-                tool: tool.to_string(),
-                resource,
-            })
+                    return Ok(ToolAuthorization::Authorized { proof });
+                },
+                // Token was already consumed or expired since the find_capability
+                // call. Fall through to RequiresApproval.
+                Err(
+                    CapabilityError::TokenAlreadyUsed { .. }
+                    | CapabilityError::TokenExpired { .. }
+                    | CapabilityError::TokenRevoked { .. },
+                ) => {
+                    debug!(
+                        server = server,
+                        tool = tool,
+                        "Token found but already consumed/expired/revoked"
+                    );
+                },
+                // Unexpected storage or crypto errors are real failures.
+                Err(e) => return Err(McpError::TransportError(e.to_string())),
+            }
         }
+
+        debug!(server = server, tool = tool, "Tool call requires approval");
+
+        Ok(ToolAuthorization::RequiresApproval {
+            server: server.to_string(),
+            tool: tool.to_string(),
+            resource,
+        })
     }
 
     /// Call a tool with authorization check.
@@ -201,18 +212,8 @@ impl SecureMcpClient {
         args: Value,
     ) -> McpResult<Result<ToolResult, ToolAuthorization>> {
         match self.check_authorization(server, tool)? {
-            ToolAuthorization::Authorized { audit_id: _ } => {
-                let result = self
-                    .call_tool(
-                        server,
-                        tool,
-                        args,
-                        AuthorizationProof::Capability {
-                            token_id: astrid_core::TokenId::new(), // This would be the actual token
-                            token_hash: ContentHash::zero(),
-                        },
-                    )
-                    .await?;
+            ToolAuthorization::Authorized { proof } => {
+                let result = self.call_tool(server, tool, args, proof).await?;
                 Ok(Ok(result))
             },
             auth @ ToolAuthorization::RequiresApproval { .. } => Ok(Err(auth)),
@@ -304,15 +305,31 @@ impl SecureMcpClient {
 
     /// Dynamically connect a new server using a provided configuration.
     ///
-    /// This delegates directly to the underlying [`McpClient`] — server
-    /// lifecycle operations (connect/disconnect) are infrastructure, not
-    /// agent-initiated tool calls, so no capability check is performed.
+    /// Server lifecycle operations do not require capability checks, but they
+    /// are audit-logged so the audit trail records which servers ran during
+    /// the session.
     ///
     /// # Errors
     ///
     /// Returns an error if the server is already running or cannot be started.
     pub async fn connect_dynamic(&self, name: &str, config: ServerConfig) -> McpResult<()> {
-        self.client.connect_dynamic(name, config).await
+        let transport = format!("{:?}", config.transport);
+        self.client.connect_dynamic(name, config).await?;
+
+        let _ = self.audit.append(
+            self.session_id.clone(),
+            AuditAction::ServerStarted {
+                name: name.to_string(),
+                transport,
+                binary_hash: None,
+            },
+            AuthorizationProof::System {
+                reason: "dynamic server connection".to_string(),
+            },
+            AuditOutcome::success(),
+        );
+
+        Ok(())
     }
 
     /// Disconnect from all servers.
@@ -341,11 +358,37 @@ impl SecureMcpClient {
 
     /// Connect to all auto-start servers.
     ///
+    /// Each successfully started server is audit-logged.
+    ///
     /// # Errors
     ///
     /// Returns an error only if refreshing the tools cache fails.
     pub async fn connect_auto_servers(&self) -> McpResult<usize> {
-        self.client.connect_auto_servers().await
+        let count = self.client.connect_auto_servers().await?;
+
+        // Log each server that is now running
+        for name in self.client.list_servers().await {
+            let transport = self
+                .client
+                .server_manager()
+                .get_config(&name)
+                .map_or_else(|| "unknown".to_string(), |c| format!("{:?}", c.transport));
+
+            let _ = self.audit.append(
+                self.session_id.clone(),
+                AuditAction::ServerStarted {
+                    name,
+                    transport,
+                    binary_hash: None,
+                },
+                AuthorizationProof::System {
+                    reason: "auto-start server".to_string(),
+                },
+                AuditOutcome::success(),
+            );
+        }
+
+        Ok(count)
     }
 
     /// Get the underlying MCP client.
@@ -398,16 +441,52 @@ impl std::fmt::Debug for SecureMcpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use astrid_capabilities::{CapabilityToken, ResourcePattern, TokenScope};
     use astrid_crypto::KeyPair;
 
-    fn make_secure_client() -> SecureMcpClient {
+    /// Build a `SecureMcpClient` wired to in-memory stores, returning a
+    /// reconstructed copy of the runtime keypair so tests can mint tokens
+    /// signed by the trusted issuer.
+    fn make_secure_client_with_key() -> (SecureMcpClient, KeyPair) {
         let config = crate::config::ServersConfig::default();
         let client = McpClient::with_config(config);
         let capabilities = Arc::new(CapabilityStore::in_memory());
-        let keypair = KeyPair::generate();
-        let audit = Arc::new(AuditLog::in_memory(keypair));
+        // Generate the runtime key and extract the secret bytes before
+        // moving it into AuditLog (KeyPair is ZeroizeOnDrop, not Clone).
+        let runtime_key = KeyPair::generate();
+        let secret_bytes = runtime_key.secret_key_bytes();
+        let audit = Arc::new(AuditLog::in_memory(runtime_key));
+        // Reconstruct from the secret bytes for token signing in tests.
+        let signing_key = KeyPair::from_secret_key(&secret_bytes).unwrap();
         let session_id = SessionId::new();
-        SecureMcpClient::new(client, capabilities, audit, session_id)
+        let secure = SecureMcpClient::new(client, capabilities, audit, session_id);
+        (secure, signing_key)
+    }
+
+    fn make_secure_client() -> SecureMcpClient {
+        make_secure_client_with_key().0
+    }
+
+    /// Mint a token signed by the runtime key (the trusted issuer) and add
+    /// it to the capability store.
+    fn grant_capability(
+        secure: &SecureMcpClient,
+        resource: &str,
+        single_use: bool,
+        signing_key: &KeyPair,
+    ) -> CapabilityToken {
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact(resource).unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            signing_key.key_id(),
+            astrid_capabilities::AuditEntryId::new(),
+            signing_key,
+            None,
+            single_use,
+        );
+        secure.capabilities.add(token.clone()).unwrap();
+        token
     }
 
     #[tokio::test]
@@ -455,6 +534,54 @@ mod tests {
         assert!(
             matches!(auth, ToolAuthorization::RequiresApproval { .. }),
             "Empty capability store should deny by default"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_authorized_token_produces_correct_proof() {
+        let (secure, runtime_key) = make_secure_client_with_key();
+        let token = grant_capability(&secure, "mcp://my-server:my-tool", false, &runtime_key);
+
+        let auth = secure.check_authorization("my-server", "my-tool").unwrap();
+
+        match auth {
+            ToolAuthorization::Authorized { proof } => match proof {
+                AuthorizationProof::Capability {
+                    token_id,
+                    token_hash,
+                } => {
+                    assert_eq!(token_id, token.id, "Proof must carry the actual token ID");
+                    assert_eq!(
+                        token_hash,
+                        token.content_hash(),
+                        "Proof must carry the actual token hash"
+                    );
+                },
+                other => panic!("Expected Capability proof, got {other:?}"),
+            },
+            ToolAuthorization::RequiresApproval { .. } => {
+                panic!("Expected Authorized, got RequiresApproval")
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_single_use_token_cannot_be_replayed() {
+        let (secure, runtime_key) = make_secure_client_with_key();
+        grant_capability(&secure, "mcp://replay-server:tool", true, &runtime_key);
+
+        // First check consumes the token
+        let first = secure.check_authorization("replay-server", "tool").unwrap();
+        assert!(
+            matches!(first, ToolAuthorization::Authorized { .. }),
+            "First use of single-use token should be authorized"
+        );
+
+        // Second check must fail - token was consumed
+        let second = secure.check_authorization("replay-server", "tool").unwrap();
+        assert!(
+            matches!(second, ToolAuthorization::RequiresApproval { .. }),
+            "Single-use token must not be reusable"
         );
     }
 

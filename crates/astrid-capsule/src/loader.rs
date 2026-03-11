@@ -6,18 +6,18 @@ use crate::capsule::{Capsule, CompositeCapsule};
 use crate::error::CapsuleResult;
 use crate::manifest::CapsuleManifest;
 
-use astrid_mcp::McpClient;
+use astrid_mcp::SecureMcpClient;
 
 /// Responsible for translating a declarative `Capsule.toml` manifest into
 /// a live, unified `CompositeCapsule` packed with the correct execution engines.
 pub struct CapsuleLoader {
-    mcp_client: McpClient,
+    mcp_client: SecureMcpClient,
 }
 
 impl CapsuleLoader {
     /// Create a new Capsule Loader.
     #[must_use]
-    pub fn new(mcp_client: McpClient) -> Self {
+    pub fn new(mcp_client: SecureMcpClient) -> Self {
         Self { mcp_client }
     }
 
