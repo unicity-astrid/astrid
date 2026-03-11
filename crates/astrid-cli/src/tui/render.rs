@@ -1080,6 +1080,14 @@ fn render_selection_picker(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
+/// Strip control characters and ANSI escape sequences from external strings
+/// (e.g. capsule manifest prompts) before rendering in the TUI.
+fn sanitize_control_chars(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .collect()
+}
+
 #[expect(clippy::too_many_arguments, clippy::too_many_lines)]
 fn render_onboarding_menu(
     frame: &mut Frame,
@@ -1123,17 +1131,19 @@ fn render_onboarding_menu(
             "    "
         };
 
-        let mut spans = vec![Span::styled(prefix, style), Span::styled(&field.key, style)];
+        let clean_key = sanitize_control_chars(&field.key);
+        let mut spans = vec![Span::styled(prefix, style), Span::styled(clean_key, style)];
 
         if is_current {
+            let clean_prompt = sanitize_control_chars(&field.prompt);
             let hint = match &field.field_type {
                 astrid_events::ipc::OnboardingFieldType::Enum(_) => {
                     "\u{2191}\u{2193} to select, Enter to confirm".to_string()
                 },
                 astrid_events::ipc::OnboardingFieldType::Array => {
-                    format!("{} (empty to finish)", field.prompt)
+                    format!("{clean_prompt} (empty to finish)")
                 },
-                _ => field.prompt.clone(),
+                _ => clean_prompt,
             };
             spans.push(Span::styled(
                 format!("  \u{2190} {hint}"),

@@ -84,6 +84,10 @@ fn handle_selection_input(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// Maximum length (in bytes) for a single onboarding input value.
+/// Guards against accidental clipboard paste of very large content.
+const MAX_INPUT_LEN: usize = 4096;
+
 /// Maximum array items that fit in 1/3 of the terminal, accounting for the
 /// title row and remaining onboarding keys.
 fn max_array_items(terminal_height: u16, total_keys: usize) -> usize {
@@ -221,6 +225,11 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
             let answer = app.input.clone();
             app.input.clear();
             app.cursor_pos = 0;
+
+            if !answer.is_empty() && answer.len() > MAX_INPUT_LEN {
+                app.push_notice("Input too long (max 4096 bytes). Please shorten it.");
+                return;
+            }
 
             let mut array_capped = false;
 
