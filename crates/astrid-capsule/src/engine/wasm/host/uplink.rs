@@ -1,24 +1,10 @@
 use astrid_core::UplinkProfile;
-use astrid_core::identity::FrontendType;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
 pub(crate) const MAX_INBOUND_MESSAGE_BYTES: usize = 1_048_576;
-
-pub(crate) fn parse_frontend_type(platform: &[u8]) -> FrontendType {
-    let platform_str = String::from_utf8_lossy(platform).to_lowercase();
-    match platform_str.as_str() {
-        "discord" => FrontendType::Discord,
-        "whatsapp" | "whats_app" => FrontendType::WhatsApp,
-        "telegram" => FrontendType::Telegram,
-        "slack" => FrontendType::Slack,
-        "web" => FrontendType::Web,
-        "cli" => FrontendType::Cli,
-        other => FrontendType::Custom(other.to_string()),
-    }
-}
 
 pub(crate) fn parse_uplink_profile(profile: &[u8]) -> Result<UplinkProfile, Error> {
     let profile_str = String::from_utf8_lossy(profile).to_lowercase();
@@ -74,7 +60,7 @@ pub(crate) fn astrid_uplink_send_impl(
         .registered_uplinks
         .iter()
         .find(|c| c.id == uplink_id)
-        .map(|c| c.frontend_type.clone())
+        .map(|c| c.platform.clone())
         .ok_or_else(|| {
             Error::msg(format!(
                 "uplink {uplink_id} not registered by capsule {capsule_id}"
@@ -115,7 +101,9 @@ pub(crate) fn astrid_uplink_register_impl(
 
     let name_str = String::from_utf8_lossy(&name).into_owned();
 
-    let frontend_type = parse_frontend_type(&platform_bytes);
+    let platform = String::from_utf8_lossy(&platform_bytes)
+        .trim()
+        .to_ascii_lowercase();
     let profile = parse_uplink_profile(&profile_bytes)?;
 
     let ud = user_data.get()?;
@@ -151,7 +139,7 @@ pub(crate) fn astrid_uplink_register_impl(
         ))
     })?;
 
-    let descriptor = astrid_core::UplinkDescriptor::builder(name_str, frontend_type)
+    let descriptor = astrid_core::UplinkDescriptor::builder(name_str, platform)
         .source(source)
         .capabilities(astrid_core::UplinkCapabilities::receive_only())
         .profile(profile)

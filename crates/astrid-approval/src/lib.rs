@@ -16,9 +16,9 @@
 //! # Relationship to Frontend Types
 //!
 //! The approval types in this crate are the **internal** representation used by
-//! the security system. The types in [`astrid_core::frontend`] are the
-//! **UI-facing** types that frontends render. The approval manager converts
-//! between them when presenting requests to users.
+//! the security system. The types in [`astrid_core::types`] (`ApprovalRequest`,
+//! `ApprovalDecision`, `ApprovalOption`) are the shared vocabulary. The approval
+//! manager converts between them when presenting requests to users.
 //!
 //! # Example
 //!

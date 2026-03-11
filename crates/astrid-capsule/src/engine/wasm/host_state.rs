@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::capsule::CapsuleId;
-use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_PLUGIN, UplinkDescriptor};
+use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkDescriptor};
 use astrid_storage::ScopedKvStore;
 
 use crate::security::CapsuleSecurityGate;
@@ -97,17 +97,17 @@ impl HostState {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The per-plugin uplink limit ([`MAX_UPLINKS_PER_PLUGIN`]) has been reached.
+    /// - The per-capsule uplink limit ([`MAX_UPLINKS_PER_CAPSULE`]) has been reached.
     /// - A uplink with the same name and platform already exists.
     pub fn register_uplink(&mut self, descriptor: UplinkDescriptor) -> Result<(), &'static str> {
-        if self.registered_uplinks.len() >= MAX_UPLINKS_PER_PLUGIN {
+        if self.registered_uplinks.len() >= MAX_UPLINKS_PER_CAPSULE {
             return Err("uplink registration limit reached");
         }
         // Reject duplicate name+platform combinations
         let duplicate = self
             .registered_uplinks
             .iter()
-            .any(|c| c.name == descriptor.name && c.frontend_type == descriptor.frontend_type);
+            .any(|c| c.name == descriptor.name && c.platform == descriptor.platform);
         if duplicate {
             return Err("duplicate uplink name and platform");
         }
@@ -194,7 +194,6 @@ mod tests {
     #[test]
     fn register_uplink_accumulates() {
         use crate::capsule::CapsuleId;
-        use astrid_core::identity::FrontendType;
         use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -235,7 +234,7 @@ mod tests {
 
         assert!(state.uplinks().is_empty());
 
-        let desc = UplinkDescriptor::builder("test-conn", FrontendType::Discord)
+        let desc = UplinkDescriptor::builder("test-conn", "discord")
             .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
@@ -297,7 +296,6 @@ mod tests {
     #[test]
     fn register_uplink_rejects_at_limit() {
         use crate::capsule::CapsuleId;
-        use astrid_core::identity::FrontendType;
         use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -336,9 +334,8 @@ mod tests {
             next_stream_id: 1,
         };
 
-        // Fill to the limit
-        for i in 0..MAX_UPLINKS_PER_PLUGIN {
-            let desc = UplinkDescriptor::builder(format!("conn-{i}"), FrontendType::Discord)
+        for i in 0..MAX_UPLINKS_PER_CAPSULE {
+            let desc = UplinkDescriptor::builder(format!("conn-{i}"), "discord")
                 .source(UplinkSource::Wasm {
                     capsule_id: "test".into(),
                 })
@@ -348,10 +345,9 @@ mod tests {
             assert!(state.register_uplink(desc).is_ok());
         }
 
-        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_PLUGIN);
+        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
 
-        // One more should fail
-        let extra = UplinkDescriptor::builder("over-limit", FrontendType::Discord)
+        let extra = UplinkDescriptor::builder("over-limit", "discord")
             .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
@@ -359,13 +355,12 @@ mod tests {
             .profile(UplinkProfile::Chat)
             .build();
         assert!(state.register_uplink(extra).is_err());
-        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_PLUGIN);
+        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
     }
 
     #[test]
     fn register_uplink_rejects_duplicate_name_and_platform() {
         use crate::capsule::CapsuleId;
-        use astrid_core::identity::FrontendType;
         use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -404,7 +399,7 @@ mod tests {
             next_stream_id: 1,
         };
 
-        let desc1 = UplinkDescriptor::builder("my-conn", FrontendType::Discord)
+        let desc1 = UplinkDescriptor::builder("my-conn", "discord")
             .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
@@ -413,8 +408,7 @@ mod tests {
             .build();
         assert!(state.register_uplink(desc1).is_ok());
 
-        // Same name + same platform → rejected
-        let desc2 = UplinkDescriptor::builder("my-conn", FrontendType::Discord)
+        let desc2 = UplinkDescriptor::builder("my-conn", "discord")
             .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
@@ -424,8 +418,7 @@ mod tests {
         let err = state.register_uplink(desc2).unwrap_err();
         assert!(err.contains("duplicate"), "expected duplicate error: {err}");
 
-        // Same name + different platform → allowed
-        let desc3 = UplinkDescriptor::builder("my-conn", FrontendType::Telegram)
+        let desc3 = UplinkDescriptor::builder("my-conn", "telegram")
             .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })

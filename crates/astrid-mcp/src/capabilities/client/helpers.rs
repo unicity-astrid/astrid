@@ -3,38 +3,24 @@
 //! All functions here are used exclusively by `handler.rs`
 //! (`handle_inbound_message`, `register_channels_locally`).
 
-use astrid_core::FrontendType;
 #[cfg(test)]
 use astrid_core::UplinkCapabilities;
 use serde_json::Value;
 use tracing::warn;
 
-/// Maximum length for a custom platform name (128 bytes).
+/// Maximum length for a platform name (128 bytes).
 ///
 /// Platform names that exceed this limit are truncated at a UTF-8 character
-/// boundary. Known platform names (discord, telegram, etc.) are never
-/// affected since they are matched before the custom fallback.
+/// boundary.
 pub(super) const MAX_PLATFORM_NAME_BYTES: usize = 128;
 
-/// Map a platform name string to a [`FrontendType`].
-///
-/// Custom platform names are truncated to [`MAX_PLATFORM_NAME_BYTES`].
-pub(super) fn map_platform_name(name: &str) -> FrontendType {
-    match name.to_lowercase().as_str() {
-        "telegram" => FrontendType::Telegram,
-        "discord" => FrontendType::Discord,
-        "slack" => FrontendType::Slack,
-        "whatsapp" => FrontendType::WhatsApp,
-        "web" => FrontendType::Web,
-        "cli" => FrontendType::Cli,
-        other => {
-            let truncated = if other.len() > MAX_PLATFORM_NAME_BYTES {
-                &other[..other.floor_char_boundary(MAX_PLATFORM_NAME_BYTES)]
-            } else {
-                other
-            };
-            FrontendType::Custom(truncated.to_string())
-        },
+/// Normalize a platform name string: lowercase + truncate to [`MAX_PLATFORM_NAME_BYTES`].
+pub(super) fn normalize_platform_name(name: &str) -> String {
+    let lowered = name.trim().to_ascii_lowercase();
+    if lowered.len() > MAX_PLATFORM_NAME_BYTES {
+        lowered[..lowered.floor_char_boundary(MAX_PLATFORM_NAME_BYTES)].to_string()
+    } else {
+        lowered
     }
 }
 
@@ -204,50 +190,18 @@ mod tests {
     use crate::capabilities::client::notice::MAX_PLATFORM_USER_ID_BYTES;
 
     #[test]
-    fn test_map_platform_name() {
-        assert!(matches!(
-            map_platform_name("Telegram"),
-            FrontendType::Telegram
-        ));
-        assert!(matches!(
-            map_platform_name("DISCORD"),
-            FrontendType::Discord
-        ));
-        assert!(matches!(map_platform_name("slack"), FrontendType::Slack));
-        assert!(matches!(
-            map_platform_name("WhatsApp"),
-            FrontendType::WhatsApp
-        ));
-        assert!(matches!(map_platform_name("web"), FrontendType::Web));
-        assert!(matches!(map_platform_name("cli"), FrontendType::Cli));
-        assert!(matches!(
-            map_platform_name("matrix"),
-            FrontendType::Custom(_)
-        ));
-        if let FrontendType::Custom(name) = map_platform_name("Matrix") {
-            assert_eq!(name, "matrix");
-        }
+    fn test_normalize_platform_name() {
+        assert_eq!(normalize_platform_name("Telegram"), "telegram");
+        assert_eq!(normalize_platform_name("DISCORD"), "discord");
+        assert_eq!(normalize_platform_name("Matrix"), "matrix");
+        assert_eq!(normalize_platform_name(""), "");
     }
 
     #[test]
-    fn test_map_platform_name_empty_string() {
-        let ft = map_platform_name("");
-        assert!(matches!(ft, FrontendType::Custom(ref s) if s.is_empty()));
-    }
-
-    #[test]
-    fn test_map_platform_name_long_custom_truncated() {
+    fn test_normalize_platform_name_long_truncated() {
         let long_name = "x".repeat(300);
-        let ft = map_platform_name(&long_name);
-        if let FrontendType::Custom(s) = ft {
-            assert!(
-                s.len() <= MAX_PLATFORM_NAME_BYTES,
-                "custom platform name should be truncated to {MAX_PLATFORM_NAME_BYTES}, got {}",
-                s.len()
-            );
-        } else {
-            panic!("expected Custom variant");
-        }
+        let result = normalize_platform_name(&long_name);
+        assert!(result.len() <= MAX_PLATFORM_NAME_BYTES);
     }
 
     #[test]

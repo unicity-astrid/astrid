@@ -1,11 +1,12 @@
 //! Astrid Core - Foundation types for the Astrid secure agent runtime.
 //!
 //! This crate provides:
-//! - Identity management across frontends
+//! - Identity management across platforms
 //! - Uplink types for capsule integration
-//! - Frontend types (approval, elicitation)
+//! - Approval and elicitation primitives
+//! - Capsule ABI types (WASM host-guest interface)
 //! - Common types used throughout the runtime
-//! - Retry utilities with exponential backoff
+//! - Retry configuration with exponential backoff
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
@@ -16,33 +17,30 @@
 
 pub mod prelude;
 
+pub mod capsule_abi;
 pub mod dirs;
+pub mod elicitation;
 pub mod env_policy;
-pub mod frontend;
 pub mod identity;
-pub(crate) mod input;
-pub mod plugin_abi;
 pub mod retry;
 pub mod types;
-pub(crate) mod utils;
-pub(crate) mod version;
-
 pub mod uplink;
+pub(crate) mod utils;
 
-pub use frontend::{
-    ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendUser, SelectOption,
-    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
+pub use elicitation::{
+    ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
+    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
-pub use identity::{AstridUserId, FrontendType};
-pub use input::MessageId;
+pub use identity::AstridUserId;
 pub use retry::RetryConfig;
-pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
+pub use types::{
+    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
+    Timestamp, TokenId,
+};
 pub use utils::truncate_to_boundary;
 
 // Uplink types
 pub use uplink::{
-    InboundMessage, InboundMessageBuilder, MAX_UPLINKS_PER_PLUGIN, OutboundMessage,
-    OutboundMessageBuilder, UplinkCapabilities, UplinkDescriptor, UplinkDescriptorBuilder,
+    InboundMessage, MAX_UPLINKS_PER_CAPSULE, OutboundMessage, UplinkCapabilities, UplinkDescriptor,
     UplinkError, UplinkId, UplinkProfile, UplinkResult, UplinkSource,
 };

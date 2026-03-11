@@ -236,6 +236,144 @@ impl RiskLevel {
     }
 }
 
+/// Request for user approval of an operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalRequest {
+    /// Unique request ID
+    pub request_id: Uuid,
+    /// Operation being requested
+    pub operation: String,
+    /// Human-readable description
+    pub description: String,
+    /// Risk level
+    pub risk_level: RiskLevel,
+    /// Resource being accessed (if applicable)
+    pub resource: Option<String>,
+    /// Suggested options
+    pub options: Vec<ApprovalOption>,
+}
+
+impl ApprovalRequest {
+    /// Create a new approval request.
+    #[must_use]
+    pub fn new(operation: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            request_id: Uuid::new_v4(),
+            operation: operation.into(),
+            description: description.into(),
+            risk_level: RiskLevel::Medium,
+            resource: None,
+            options: vec![
+                ApprovalOption::AllowOnce,
+                ApprovalOption::AllowSession,
+                ApprovalOption::AllowWorkspace,
+                ApprovalOption::AllowAlways,
+                ApprovalOption::Deny,
+            ],
+        }
+    }
+
+    /// Set the risk level.
+    #[must_use]
+    pub fn with_risk_level(mut self, level: RiskLevel) -> Self {
+        self.risk_level = level;
+        self
+    }
+
+    /// Set the resource.
+    #[must_use]
+    pub fn with_resource(mut self, resource: impl Into<String>) -> Self {
+        self.resource = Some(resource.into());
+        self
+    }
+
+    /// Set custom options.
+    #[must_use]
+    pub fn with_options(mut self, options: Vec<ApprovalOption>) -> Self {
+        self.options = options;
+        self
+    }
+}
+
+/// Available approval options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalOption {
+    /// Allow this one time
+    AllowOnce,
+    /// Allow for the current session
+    AllowSession,
+    /// Allow for the current workspace (persists in workspace state.db)
+    AllowWorkspace,
+    /// Allow always (creates capability token)
+    AllowAlways,
+    /// Deny the operation
+    Deny,
+}
+
+impl fmt::Display for ApprovalOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AllowOnce => write!(f, "Allow Once"),
+            Self::AllowSession => write!(f, "Allow Session"),
+            Self::AllowWorkspace => write!(f, "Allow Workspace"),
+            Self::AllowAlways => write!(f, "Allow Always"),
+            Self::Deny => write!(f, "Deny"),
+        }
+    }
+}
+
+/// User's decision on an approval request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalDecision {
+    /// Request ID this responds to
+    pub request_id: Uuid,
+    /// The option selected
+    pub decision: ApprovalOption,
+    /// When the decision was made
+    pub decided_at: DateTime<Utc>,
+    /// Optional reason provided by user
+    pub reason: Option<String>,
+}
+
+impl ApprovalDecision {
+    /// Create a new approval decision.
+    #[must_use]
+    pub fn new(request_id: Uuid, decision: ApprovalOption) -> Self {
+        Self {
+            request_id,
+            decision,
+            decided_at: Utc::now(),
+            reason: None,
+        }
+    }
+
+    /// Add a reason.
+    #[must_use]
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+
+    /// Check if this is an approval (not denial).
+    #[must_use]
+    pub fn is_approved(&self) -> bool {
+        !matches!(self.decision, ApprovalOption::Deny)
+    }
+
+    /// Check if this creates a persistent capability token.
+    #[must_use]
+    pub fn creates_capability(&self) -> bool {
+        matches!(self.decision, ApprovalOption::AllowAlways)
+    }
+
+    /// Check if this creates a workspace-scoped allowance.
+    #[must_use]
+    pub fn creates_workspace_allowance(&self) -> bool {
+        matches!(self.decision, ApprovalOption::AllowWorkspace)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

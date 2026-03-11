@@ -1,18 +1,18 @@
-//! Mirror Rust types for the WIT plugin ABI (`astrid:plugin@0.1.0`).
+//! Mirror Rust types for the WIT capsule ABI (`astrid:capsule@0.1.0`).
 //!
 //! These types are the shared vocabulary between the Astrid host and WASM
-//! plugin guests. They mirror the records and enums defined in
-//! `wit/astrid-plugin.wit` exactly, ensuring a single source of truth for
+//! capsule guests. They mirror the records and enums defined in
+//! `wit/astrid-capsule.wit` exactly, ensuring a single source of truth for
 //! serialization formats.
 //!
 //! Used by:
-//! - **WS-1** (Plugin traits) — function signatures
-//! - **WS-3** (Extism integration) — host ↔ guest serialization
-//! - **WS-5** (`OpenClaw` shim) — ABI translation layer
+//! - **WS-1** (Capsule traits) - function signatures
+//! - **WS-3** (Extism integration) - host / guest serialization
+//! - **WS-5** (`OpenClaw` shim) - ABI translation layer
 
 use serde::{Deserialize, Serialize};
 
-/// Log severity level for structured plugin logging.
+/// Log severity level for structured capsule logging.
 ///
 /// Maps to the WIT `log-level` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -41,11 +41,11 @@ pub struct KeyValuePair {
     pub value: String,
 }
 
-/// Context passed to a plugin when a hook fires.
+/// Context passed to a capsule when a hook fires.
 ///
-/// Maps to the WIT `plugin-context` record.
+/// Maps to the WIT `capsule-context` record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PluginContext {
+pub struct CapsuleAbiContext {
     /// The event name that triggered this hook (e.g. `"pre-tool-call"`).
     pub event: String,
     /// Session ID for the current interaction.
@@ -56,11 +56,11 @@ pub struct PluginContext {
     pub data: Option<String>,
 }
 
-/// Result returned by a plugin after hook execution.
+/// Result returned by a capsule after hook execution.
 ///
-/// Maps to the WIT `plugin-result` record.
+/// Maps to the WIT `capsule-result` record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PluginResult {
+pub struct CapsuleAbiResult {
     /// Action directive (e.g. `"continue"`, `"abort"`, `"modify"`).
     pub action: String,
     /// Optional payload as a JSON string.
@@ -89,7 +89,7 @@ pub struct ToolOutput {
     pub is_error: bool,
 }
 
-/// Metadata describing a tool that a plugin exposes.
+/// Metadata describing a tool that a capsule exposes.
 ///
 /// Maps to the WIT `tool-definition` record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,8 +163,8 @@ mod tests {
     }
 
     #[test]
-    fn plugin_context_round_trip() {
-        round_trip(&PluginContext {
+    fn capsule_abi_context_round_trip() {
+        round_trip(&CapsuleAbiContext {
             event: "pre-tool-call".into(),
             session_id: "sess-123".into(),
             user_id: Some("user-456".into()),
@@ -173,8 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn plugin_context_minimal_round_trip() {
-        round_trip(&PluginContext {
+    fn capsule_abi_context_minimal_round_trip() {
+        round_trip(&CapsuleAbiContext {
             event: "post-response".into(),
             session_id: "sess-789".into(),
             user_id: None,
@@ -183,12 +183,12 @@ mod tests {
     }
 
     #[test]
-    fn plugin_result_round_trip() {
-        round_trip(&PluginResult {
+    fn capsule_abi_result_round_trip() {
+        round_trip(&CapsuleAbiResult {
             action: "continue".into(),
             data: None,
         });
-        round_trip(&PluginResult {
+        round_trip(&CapsuleAbiResult {
             action: "modify".into(),
             data: Some(r#"{"patched":true}"#.into()),
         });

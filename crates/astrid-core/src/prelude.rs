@@ -13,28 +13,26 @@
 //! // - Common types like SessionId, Permission, RiskLevel
 //! ```
 
-// Frontend types (approval, elicitation, etc.)
+// Elicitation (MCP server-initiated user input)
 pub use crate::{
-    ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendUser, SelectOption,
-    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
+    ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
+    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
 
 // Identity
-pub use crate::{AstridUserId, FrontendType};
+pub use crate::AstridUserId;
 
-// Input classification
-pub use crate::MessageId;
-
-// Common types
-pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
+// Common types (approval, permissions, IDs)
+pub use crate::{
+    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
+    Timestamp, TokenId,
+};
 
 // Retry utilities
 pub use crate::RetryConfig;
 
 // Uplink
 pub use crate::{
-    InboundMessage, InboundMessageBuilder, OutboundMessage, OutboundMessageBuilder,
-    UplinkCapabilities, UplinkDescriptor, UplinkDescriptorBuilder, UplinkError, UplinkId,
+    InboundMessage, OutboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkError, UplinkId,
     UplinkProfile, UplinkResult, UplinkSource,
 };

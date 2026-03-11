@@ -1,4 +1,4 @@
-//! Uplink abstraction - unified types for frontends, plugins, and bridges.
+//! Uplink abstraction - unified types for platforms, capsules, and bridges.
 //!
 //! A **uplink** is any component that can send or receive messages on behalf
 //! of the Astrid runtime. The three current flavours are:
@@ -6,8 +6,8 @@
 //! | Source | Example |
 //! |--------|---------|
 //! | [`UplinkSource::Native`] | CLI capsule uplink |
-//! | [`UplinkSource::Wasm`] | WASM plugin providing a tool |
-//! | [`UplinkSource::OpenClaw`] | OpenClaw-bridged plugin |
+//! | [`UplinkSource::Wasm`] | WASM capsule providing a tool |
+//! | [`UplinkSource::OpenClaw`] | OpenClaw-bridged capsule |
 
 // ---------------------------------------------------------------------------
 
@@ -25,7 +25,6 @@ pub use types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::identity::FrontendType;
     use std::str::FromStr;
     use uuid::Uuid;
 
@@ -170,31 +169,31 @@ mod tests {
     #[test]
     fn source_new_wasm_rejects_empty() {
         let err = UplinkSource::new_wasm("").unwrap_err();
-        assert!(matches!(err, UplinkError::InvalidPluginId(_)));
+        assert!(matches!(err, UplinkError::InvalidCapsuleId(_)));
     }
 
     #[test]
     fn source_new_wasm_rejects_uppercase() {
         let err = UplinkSource::new_wasm("MyPlugin").unwrap_err();
-        assert!(matches!(err, UplinkError::InvalidPluginId(_)));
+        assert!(matches!(err, UplinkError::InvalidCapsuleId(_)));
     }
 
     #[test]
     fn source_new_wasm_rejects_leading_hyphen() {
         let err = UplinkSource::new_wasm("-bad").unwrap_err();
-        assert!(matches!(err, UplinkError::InvalidPluginId(_)));
+        assert!(matches!(err, UplinkError::InvalidCapsuleId(_)));
     }
 
     #[test]
     fn source_new_wasm_rejects_trailing_hyphen() {
         let err = UplinkSource::new_wasm("bad-").unwrap_err();
-        assert!(matches!(err, UplinkError::InvalidPluginId(_)));
+        assert!(matches!(err, UplinkError::InvalidCapsuleId(_)));
     }
 
     #[test]
     fn source_new_wasm_rejects_special_chars() {
         let err = UplinkSource::new_wasm("path/../traversal").unwrap_err();
-        assert!(matches!(err, UplinkError::InvalidPluginId(_)));
+        assert!(matches!(err, UplinkError::InvalidCapsuleId(_)));
     }
 
     #[test]
@@ -225,7 +224,7 @@ mod tests {
 
     #[test]
     fn descriptor_builder() {
-        let desc = UplinkDescriptor::builder("discord-bot", FrontendType::Discord)
+        let desc = UplinkDescriptor::builder("discord-bot", "discord")
             .source(UplinkSource::Native)
             .capabilities(UplinkCapabilities::full())
             .profile(UplinkProfile::Chat)
@@ -233,7 +232,7 @@ mod tests {
             .build();
 
         assert_eq!(desc.name, "discord-bot");
-        assert_eq!(desc.frontend_type, FrontendType::Discord);
+        assert_eq!(desc.platform, "discord");
         assert_eq!(desc.source, UplinkSource::Native);
         assert_eq!(desc.capabilities, UplinkCapabilities::full());
         assert_eq!(desc.profile, UplinkProfile::Chat);
@@ -242,7 +241,7 @@ mod tests {
 
     #[test]
     fn descriptor_serde_roundtrip() {
-        let desc = UplinkDescriptor::builder("cli", FrontendType::Cli)
+        let desc = UplinkDescriptor::builder("cli", "cli")
             .capabilities(UplinkCapabilities::full())
             .build();
 
@@ -253,7 +252,7 @@ mod tests {
 
     #[test]
     fn descriptor_builder_defaults() {
-        let desc = UplinkDescriptor::builder("minimal", FrontendType::Cli).build();
+        let desc = UplinkDescriptor::builder("minimal", "cli").build();
         assert_eq!(desc.profile, UplinkProfile::Chat);
         assert_eq!(desc.capabilities, UplinkCapabilities::default());
         assert_eq!(desc.source, UplinkSource::Native);
@@ -265,7 +264,7 @@ mod tests {
     #[test]
     fn inbound_message_builder() {
         let id = UplinkId::new();
-        let msg = InboundMessage::builder(id, FrontendType::Discord, "user123", "hello")
+        let msg = InboundMessage::builder(id, "discord", "user123", "hello")
             .context(serde_json::json!({"key": "value"}))
             .thread_id("thread-1")
             .build();
@@ -280,7 +279,7 @@ mod tests {
     #[test]
     fn inbound_message_serde_roundtrip() {
         let id = UplinkId::new();
-        let msg = InboundMessage::builder(id, FrontendType::Discord, "user1", "test")
+        let msg = InboundMessage::builder(id, "discord", "user1", "test")
             .context(serde_json::json!({"nested": {"deep": [1, 2, 3]}}))
             .build();
 
@@ -293,7 +292,7 @@ mod tests {
     #[test]
     fn inbound_message_empty_content() {
         let id = UplinkId::new();
-        let msg = InboundMessage::builder(id, FrontendType::Cli, "", "").build();
+        let msg = InboundMessage::builder(id, "cli", "", "").build();
         assert!(msg.platform_user_id.is_empty());
         assert!(msg.content.is_empty());
     }
@@ -342,8 +341,8 @@ mod tests {
         let e = UplinkError::UnsupportedOperation("rich_media".into());
         assert_eq!(e.to_string(), "unsupported operation: rich_media");
 
-        let e = UplinkError::InvalidPluginId("bad".into());
-        assert_eq!(e.to_string(), "invalid plugin id: bad");
+        let e = UplinkError::InvalidCapsuleId("bad".into());
+        assert_eq!(e.to_string(), "invalid capsule id: bad");
     }
 
     // --- UplinkProfile::FromStr ---

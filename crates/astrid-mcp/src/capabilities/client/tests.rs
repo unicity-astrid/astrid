@@ -7,13 +7,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use astrid_core::{
-    FrontendType, InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile,
-    UplinkSource,
+    InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile, UplinkSource,
 };
 use tokio::sync::mpsc;
 
 use super::super::handler::CapabilitiesHandler;
-use super::bridge::{MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_PLUGIN};
+use super::bridge::{MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_CAPSULE};
 use super::handler::AstridClientHandler;
 use super::notice::{
     MAX_CONTEXT_BYTES, MAX_NOTIFICATION_PAYLOAD_BYTES, MAX_PLATFORM_USER_ID_BYTES,
@@ -45,7 +44,7 @@ fn test_handler(
 fn register_test_uplink(
     shared: &Arc<Mutex<Vec<UplinkDescriptor>>>,
     name: &str,
-    platform: FrontendType,
+    platform: &str,
     plugin_id: &str,
 ) -> UplinkId {
     let source = UplinkSource::new_openclaw(plugin_id).expect("valid plugin_id");
@@ -68,8 +67,7 @@ fn register_test_uplink(
 fn test_inbound_message_notification() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
-    let expected_id =
-        register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+    let expected_id = register_test_uplink(&shared, "telegram", "telegram", "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -83,7 +81,7 @@ fn test_inbound_message_notification() {
 
     let msg = inbound_rx.try_recv().expect("should receive message");
     assert_eq!(msg.uplink_id, expected_id);
-    assert!(matches!(msg.platform, FrontendType::Telegram));
+    assert_eq!(msg.platform, "telegram");
     assert_eq!(msg.platform_user_id, "user-123");
     assert_eq!(msg.content, "Hello from Telegram");
 }
@@ -164,14 +162,14 @@ fn test_inbound_message_no_uplinks_fallback() {
 
     let msg = inbound_rx.try_recv().expect("should receive message");
     assert_eq!(msg.content, "orphan message");
-    assert!(matches!(msg.platform, FrontendType::Custom(_)));
+    assert!(!msg.platform.is_empty());
 }
 
 #[test]
 fn test_inbound_message_non_matching_channel() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
-    register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+    register_test_uplink(&shared, "telegram", "telegram", "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -181,7 +179,7 @@ fn test_inbound_message_non_matching_channel() {
     handler.handle_inbound_message(Some(msg_params));
 
     let msg = inbound_rx.try_recv().expect("should receive message");
-    assert!(matches!(msg.platform, FrontendType::Telegram));
+    assert_eq!(msg.platform, "telegram");
 }
 
 #[test]
@@ -249,8 +247,7 @@ fn test_handlers_reject_missing_params() {
 fn test_inbound_message_channel_name_fallback_key() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
-    let expected_id =
-        register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+    let expected_id = register_test_uplink(&shared, "telegram", "telegram", "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -449,5 +446,8 @@ fn test_size_constants_have_expected_values() {
     assert_eq!(MAX_CONTEXT_BYTES, 64 * 1024); // 64 KB
     assert_eq!(MAX_PLATFORM_USER_ID_BYTES, 512);
     assert_eq!(MAX_CHANNEL_NAME_LEN, 128);
-    assert_eq!(MAX_CHANNELS_PER_PLUGIN, astrid_core::MAX_UPLINKS_PER_PLUGIN);
+    assert_eq!(
+        MAX_CHANNELS_PER_CAPSULE,
+        astrid_core::MAX_UPLINKS_PER_CAPSULE
+    );
 }

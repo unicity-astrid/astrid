@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use tracing::{debug, info};
 
-use astrid_core::identity::FrontendType;
 use astrid_core::{UplinkCapabilities, UplinkDescriptor, UplinkId};
 
 use crate::capsule::{Capsule, CapsuleId};
@@ -210,10 +209,10 @@ impl CapsuleRegistry {
 
     /// Find a uplink that serves the given platform type.
     #[must_use]
-    pub fn find_uplink_by_platform(&self, platform: &FrontendType) -> Option<&UplinkDescriptor> {
+    pub fn find_uplink_by_platform(&self, platform: &str) -> Option<&UplinkDescriptor> {
         self.uplinks
             .values()
-            .find(|(_, desc)| &desc.frontend_type == platform)
+            .find(|(_, desc)| desc.platform == platform)
             .map(|(_, desc)| desc)
     }
 

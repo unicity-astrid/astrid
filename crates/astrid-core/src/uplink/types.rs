@@ -6,17 +6,16 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use super::error::{UplinkError, UplinkResult};
-use crate::frontend::Attachment;
-use crate::identity::FrontendType;
+use crate::identity::normalize_platform;
 
 // Limits
 // ---------------------------------------------------------------------------
 
-/// Maximum number of uplinks a single plugin may register.
+/// Maximum number of uplinks a single capsule may register.
 ///
 /// Enforced by the WASM host, the MCP notification handler, and the
 /// `McpPlugin` drain. All three must use this constant to stay in sync.
-pub const MAX_UPLINKS_PER_PLUGIN: usize = 32;
+pub const MAX_UPLINKS_PER_CAPSULE: usize = 32;
 
 // ---------------------------------------------------------------------------
 // UplinkId
@@ -200,7 +199,7 @@ impl FromStr for UplinkProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UplinkSource {
-    /// Built-in frontend (CLI, Discord, Web).
+    /// Built-in native platform (CLI, Discord, Web).
     Native,
     /// WASM capsule providing a uplink.
     Wasm {
@@ -229,7 +228,7 @@ impl UplinkSource {
     ///
     /// # Errors
     ///
-    /// Returns [`UplinkError::InvalidPluginId`] if the ID is empty,
+    /// Returns [`UplinkError::InvalidCapsuleId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
     pub fn new_wasm(capsule_id: impl Into<String>) -> UplinkResult<Self> {
@@ -246,7 +245,7 @@ impl UplinkSource {
     ///
     /// # Errors
     ///
-    /// Returns [`UplinkError::InvalidPluginId`] if the ID is empty,
+    /// Returns [`UplinkError::InvalidCapsuleId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
     pub fn new_openclaw(capsule_id: impl Into<String>) -> UplinkResult<Self> {
@@ -256,23 +255,23 @@ impl UplinkSource {
     }
 }
 
-/// Validate that a plugin ID is non-empty, contains only `[a-z0-9-]`, and
+/// Validate that a capsule ID is non-empty, contains only `[a-z0-9-]`, and
 /// does not start or end with a hyphen. Mirrors the rules in
 /// `CapsuleId::validate` from `astrid-capsule`.
 fn validate_capsule_id(id: &str) -> UplinkResult<()> {
     if id.is_empty() {
-        return Err(UplinkError::InvalidPluginId(
+        return Err(UplinkError::InvalidCapsuleId(
             "capsule_id must not be empty".into(),
         ));
     }
     let first = id.as_bytes()[0];
     if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
-        return Err(UplinkError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id must start with [a-z0-9], got {id:?}"
         )));
     }
     if id.ends_with('-') {
-        return Err(UplinkError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id must not end with a hyphen, got {id:?}"
         )));
     }
@@ -280,7 +279,7 @@ fn validate_capsule_id(id: &str) -> UplinkResult<()> {
         .chars()
         .find(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-'))
     {
-        return Err(UplinkError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id contains invalid character {bad:?}"
         )));
     }
@@ -327,8 +326,8 @@ pub struct UplinkDescriptor {
     pub id: UplinkId,
     /// Human-readable name.
     pub name: String,
-    /// The platform type this uplink serves.
-    pub frontend_type: FrontendType,
+    /// The platform this uplink serves (e.g. "discord", "telegram", "cli").
+    pub platform: String,
     /// Where the uplink comes from.
     pub source: UplinkSource,
     /// What the uplink can do.
@@ -345,7 +344,7 @@ pub struct UplinkDescriptor {
 #[derive(Debug)]
 pub struct UplinkDescriptorBuilder {
     name: String,
-    frontend_type: FrontendType,
+    platform: String,
     source: UplinkSource,
     capabilities: UplinkCapabilities,
     profile: UplinkProfile,
@@ -357,11 +356,11 @@ impl UplinkDescriptor {
     #[must_use]
     pub fn builder(
         name: impl Into<String>,
-        frontend_type: FrontendType,
+        platform: impl Into<String>,
     ) -> UplinkDescriptorBuilder {
         UplinkDescriptorBuilder {
             name: name.into(),
-            frontend_type,
+            platform: normalize_platform(platform.into()),
             source: UplinkSource::Native,
             capabilities: UplinkCapabilities::default(),
             profile: UplinkProfile::Chat,
@@ -405,7 +404,7 @@ impl UplinkDescriptorBuilder {
         UplinkDescriptor {
             id: UplinkId::new(),
             name: self.name,
-            frontend_type: self.frontend_type,
+            platform: self.platform,
             source: self.source,
             capabilities: self.capabilities,
             profile: self.profile,
@@ -424,16 +423,14 @@ impl UplinkDescriptorBuilder {
 pub struct InboundMessage {
     /// Which uplink produced this message.
     pub uplink_id: UplinkId,
-    /// Platform the message originated on.
-    pub platform: FrontendType,
+    /// Platform the message originated on (e.g. "discord", "telegram").
+    pub platform: String,
     /// Platform-specific user identifier (e.g. Discord snowflake).
     pub platform_user_id: String,
     /// Textual content.
     pub content: String,
     /// Opaque context payload (JSON) for bridge compatibility.
     pub context: serde_json::Value,
-    /// Attached files / URLs.
-    pub attachments: Vec<Attachment>,
     /// Thread identifier, if threaded.
     pub thread_id: Option<String>,
     /// When the message was created.
@@ -444,11 +441,10 @@ pub struct InboundMessage {
 #[derive(Debug)]
 pub struct InboundMessageBuilder {
     uplink_id: UplinkId,
-    platform: FrontendType,
+    platform: String,
     platform_user_id: String,
     content: String,
     context: serde_json::Value,
-    attachments: Vec<Attachment>,
     thread_id: Option<String>,
     timestamp: DateTime<Utc>,
 }
@@ -458,17 +454,16 @@ impl InboundMessage {
     #[must_use]
     pub fn builder(
         uplink_id: UplinkId,
-        platform: FrontendType,
+        platform: impl Into<String>,
         platform_user_id: impl Into<String>,
         content: impl Into<String>,
     ) -> InboundMessageBuilder {
         InboundMessageBuilder {
             uplink_id,
-            platform,
+            platform: normalize_platform(platform.into()),
             platform_user_id: platform_user_id.into(),
             content: content.into(),
             context: serde_json::Value::Null,
-            attachments: Vec::new(),
             thread_id: None,
             timestamp: Utc::now(),
         }
@@ -480,13 +475,6 @@ impl InboundMessageBuilder {
     #[must_use]
     pub fn context(mut self, context: serde_json::Value) -> Self {
         self.context = context;
-        self
-    }
-
-    /// Add an attachment.
-    #[must_use]
-    pub fn attachment(mut self, attachment: Attachment) -> Self {
-        self.attachments.push(attachment);
         self
     }
 
@@ -513,7 +501,6 @@ impl InboundMessageBuilder {
             platform_user_id: self.platform_user_id,
             content: self.content,
             context: self.context,
-            attachments: self.attachments,
             thread_id: self.thread_id,
             timestamp: self.timestamp,
         }
@@ -533,8 +520,6 @@ pub struct OutboundMessage {
     pub target_user_id: String,
     /// Textual content.
     pub content: String,
-    /// Attached files / URLs.
-    pub attachments: Vec<Attachment>,
     /// Thread identifier, if threaded.
     pub thread_id: Option<String>,
     /// Message ID this is replying to, if any.
@@ -547,7 +532,6 @@ pub struct OutboundMessageBuilder {
     uplink_id: UplinkId,
     target_user_id: String,
     content: String,
-    attachments: Vec<Attachment>,
     thread_id: Option<String>,
     reply_to: Option<String>,
 }
@@ -564,7 +548,6 @@ impl OutboundMessage {
             uplink_id,
             target_user_id: target_user_id.into(),
             content: content.into(),
-            attachments: Vec::new(),
             thread_id: None,
             reply_to: None,
         }
@@ -572,13 +555,6 @@ impl OutboundMessage {
 }
 
 impl OutboundMessageBuilder {
-    /// Add an attachment.
-    #[must_use]
-    pub fn attachment(mut self, attachment: Attachment) -> Self {
-        self.attachments.push(attachment);
-        self
-    }
-
     /// Set the thread ID.
     #[must_use]
     pub fn thread_id(mut self, thread_id: impl Into<String>) -> Self {
@@ -600,7 +576,6 @@ impl OutboundMessageBuilder {
             uplink_id: self.uplink_id,
             target_user_id: self.target_user_id,
             content: self.content,
-            attachments: self.attachments,
             thread_id: self.thread_id,
             reply_to: self.reply_to,
         }

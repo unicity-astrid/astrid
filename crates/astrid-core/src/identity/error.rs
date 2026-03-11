@@ -9,11 +9,11 @@ pub enum IdentityError {
     #[error("identity verification failed: {0}")]
     VerificationFailed(String),
 
-    /// Frontend link already exists
-    #[error("frontend already linked: {frontend} -> {existing_id}")]
-    FrontendAlreadyLinked {
-        /// The frontend type
-        frontend: String,
+    /// Platform link already exists
+    #[error("platform already linked: {platform} -> {existing_id}")]
+    PlatformAlreadyLinked {
+        /// The platform name
+        platform: String,
         /// The existing linked identity
         existing_id: String,
     },
@@ -21,10 +21,6 @@ pub enum IdentityError {
     /// Verification request expired
     #[error("verification expired")]
     VerificationExpired,
-
-    /// Verification was cancelled
-    #[error("verification cancelled")]
-    VerificationCancelled,
 
     /// Internal identity error
     #[error("internal identity error: {0}")]

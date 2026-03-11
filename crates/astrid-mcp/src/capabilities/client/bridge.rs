@@ -1,13 +1,13 @@
 //! Bridge channel types.
 //!
-//! These types are deserialized from untrusted plugin subprocess output.
+//! These types are deserialized from untrusted capsule subprocess output.
 //! All fields must be validated before use.
 
-use astrid_core::MAX_UPLINKS_PER_PLUGIN;
+use astrid_core::MAX_UPLINKS_PER_CAPSULE;
 use serde::Deserialize;
 
-/// Maximum channels a single plugin can register (bounds memory from untrusted plugins).
-pub(super) const MAX_CHANNELS_PER_PLUGIN: usize = MAX_UPLINKS_PER_PLUGIN;
+/// Maximum channels a single capsule can register (bounds memory from untrusted capsules).
+pub(super) const MAX_CHANNELS_PER_CAPSULE: usize = MAX_UPLINKS_PER_CAPSULE;
 /// Maximum length of a channel name in bytes.
 pub(super) const MAX_CHANNEL_NAME_LEN: usize = 128;
 

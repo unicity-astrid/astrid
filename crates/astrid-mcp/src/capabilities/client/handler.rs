@@ -3,8 +3,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use astrid_core::{
-    FrontendType, InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile,
-    UplinkSource,
+    InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile, UplinkSource,
 };
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -13,7 +12,7 @@ use tracing::{debug, warn};
 use super::super::handler::CapabilitiesHandler;
 use super::bridge::BridgeChannelInfo;
 use super::helpers::{
-    estimate_json_size, extract_inbound_content, extract_platform_user_id, map_platform_name,
+    estimate_json_size, extract_inbound_content, extract_platform_user_id, normalize_platform_name,
 };
 use super::notice::{
     MAX_CONTEXT_BYTES, MAX_NOTIFICATION_PAYLOAD_BYTES, MAX_PLATFORM_USER_ID_BYTES, ServerNotice,
@@ -167,7 +166,7 @@ impl AstridClientHandler {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if let Some(desc) = channel_name.and_then(|ch| uplinks.iter().find(|d| d.name == ch)) {
-                (desc.id, desc.frontend_type.clone())
+                (desc.id, desc.platform.clone())
             } else if let Some(desc) = uplinks.first() {
                 warn!(
                     plugin_id = %plugin_id,
@@ -175,14 +174,14 @@ impl AstridClientHandler {
                     fallback_uplink = %desc.name,
                     "inboundMessage: channel not found, falling back to first uplink"
                 );
-                (desc.id, desc.frontend_type.clone())
+                (desc.id, desc.platform.clone())
             } else {
                 warn!(
                     plugin_id = %plugin_id,
                     channel = ?channel_name,
                     "inboundMessage: no uplinks registered, using ephemeral ID"
                 );
-                (UplinkId::new(), FrontendType::Custom(plugin_id.to_string()))
+                (UplinkId::new(), plugin_id.to_string())
             }
         };
 
@@ -227,7 +226,7 @@ impl AstridClientHandler {
             }
 
             // Map platform from channel name (best effort)
-            let frontend_type = map_platform_name(&ch.name);
+            let platform = normalize_platform_name(&ch.name);
 
             // Map capabilities from typed definition
             let capabilities = ch
@@ -243,7 +242,7 @@ impl AstridClientHandler {
                     }
                 });
 
-            let descriptor = UplinkDescriptor::builder(&ch.name, frontend_type)
+            let descriptor = UplinkDescriptor::builder(&ch.name, platform)
                 .source(source.clone())
                 .profile(UplinkProfile::Bridge)
                 .capabilities(capabilities)

@@ -23,7 +23,7 @@ use super::super::convert::{convert_rmcp_schema, wrap_response_value};
 use super::super::roots::RootsRequest;
 use super::super::sampling::{SamplingContent, SamplingMessage, SamplingRequest};
 use super::bridge::{
-    MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_PLUGIN, UplinkRegisteredParams, is_valid_channel_name,
+    MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_CAPSULE, UplinkRegisteredParams, is_valid_channel_name,
 };
 use super::handler::AstridClientHandler;
 use super::notice::ServerNotice;
@@ -327,7 +327,7 @@ impl rmcp::ClientHandler for AstridClientHandler {
                             let channels: Vec<_> = params
                                 .channels
                                 .into_iter()
-                                .take(MAX_CHANNELS_PER_PLUGIN)
+                                .take(MAX_CHANNELS_PER_CAPSULE)
                                 .filter(|ch| {
                                     ch.name.len() <= MAX_CHANNEL_NAME_LEN
                                         && is_valid_channel_name(&ch.name)
