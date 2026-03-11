@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tracing::{debug, info};
 
 use astrid_core::identity::FrontendType;
-use astrid_core::{ConnectorCapabilities, ConnectorDescriptor, ConnectorId};
+use astrid_core::{UplinkCapabilities, UplinkDescriptor, UplinkId};
 
 use crate::capsule::{Capsule, CapsuleId};
 use crate::error::{CapsuleError, CapsuleResult};
@@ -40,7 +40,7 @@ pub struct CapsuleToolDefinition {
 /// their `CapsuleId` and provides cross-capsule tool lookup.
 pub struct CapsuleRegistry {
     capsules: HashMap<CapsuleId, Arc<dyn Capsule>>,
-    connectors: HashMap<ConnectorId, (CapsuleId, ConnectorDescriptor)>,
+    uplinks: HashMap<UplinkId, (CapsuleId, UplinkDescriptor)>,
 }
 
 impl CapsuleRegistry {
@@ -49,7 +49,7 @@ impl CapsuleRegistry {
     pub fn new() -> Self {
         Self {
             capsules: HashMap::new(),
-            connectors: HashMap::new(),
+            uplinks: HashMap::new(),
         }
     }
 
@@ -68,26 +68,25 @@ impl CapsuleRegistry {
             )));
         }
 
-        // Register the capsule's uplinks (connectors)
-        let mut registered_ids: Vec<ConnectorId> = Vec::new();
+        // Register the capsule's uplinks (uplinks)
+        let mut registered_ids: Vec<UplinkId> = Vec::new();
         for uplink in &capsule.manifest().uplinks {
-            let source =
-                astrid_core::connector::ConnectorSource::new_wasm(id.as_str()).map_err(|e| {
-                    CapsuleError::UnsupportedEntryPoint(format!("Failed to create source: {}", e))
-                })?;
+            let source = astrid_core::uplink::UplinkSource::new_wasm(id.as_str()).map_err(|e| {
+                CapsuleError::UnsupportedEntryPoint(format!("Failed to create source: {}", e))
+            })?;
 
             let descriptor =
-                ConnectorDescriptor::builder(uplink.name.clone(), uplink.platform.clone())
+                UplinkDescriptor::builder(uplink.name.clone(), uplink.platform.clone())
                     .source(source)
-                    .capabilities(ConnectorCapabilities::receive_only())
+                    .capabilities(UplinkCapabilities::receive_only())
                     .profile(uplink.profile)
                     .build();
 
-            match self.register_connector(&id, descriptor.clone()) {
+            match self.register_uplink(&id, descriptor.clone()) {
                 Ok(()) => registered_ids.push(descriptor.id),
                 Err(e) => {
                     for rollback_id in &registered_ids {
-                        self.connectors.remove(rollback_id);
+                        self.uplinks.remove(rollback_id);
                     }
                     return Err(e);
                 },
@@ -110,8 +109,8 @@ impl CapsuleRegistry {
             .remove(id)
             .ok_or_else(|| CapsuleError::UnsupportedEntryPoint(format!("Not found: {id}")))?;
 
-        // Clean up the capsule's connectors.
-        self.unregister_capsule_connectors(id);
+        // Clean up the capsule's uplinks.
+        self.unregister_capsule_uplinks(id);
 
         info!(capsule_id = %id, "Unregistered capsule");
         Ok(capsule)
@@ -120,13 +119,13 @@ impl CapsuleRegistry {
     /// Unload and remove all capsules from the registry.
     ///
     /// Calls [`Capsule::unload()`] on each capsule, logging errors without
-    /// short-circuiting. Connectors are cleaned up as each capsule is removed.
+    /// short-circuiting. Uplinks are cleaned up as each capsule is removed.
     #[allow(dead_code)] // Needed for graceful shutdown (not yet wired)
     pub(crate) async fn unload_all(&mut self) {
         let ids: Vec<CapsuleId> = self.capsules.keys().cloned().collect();
         for id in ids {
             if let Some(mut capsule) = self.capsules.remove(&id) {
-                self.unregister_capsule_connectors(&id);
+                self.unregister_capsule_uplinks(&id);
                 match Arc::get_mut(&mut capsule) {
                     Some(capsule) => {
                         if let Err(e) = capsule.unload().await {
@@ -177,94 +176,91 @@ impl CapsuleRegistry {
     }
 
     // -----------------------------------------------------------------
-    // Connector management
+    // Uplink management
     // -----------------------------------------------------------------
 
-    /// Look up a connector by its ID.
+    /// Look up a uplink by its ID.
     #[must_use]
-    pub fn get_connector(&self, id: &ConnectorId) -> Option<&ConnectorDescriptor> {
-        self.connectors.get(id).map(|(_, desc)| desc)
+    pub fn get_uplink(&self, id: &UplinkId) -> Option<&UplinkDescriptor> {
+        self.uplinks.get(id).map(|(_, desc)| desc)
     }
 
-    /// Register a connector for a capsule.
+    /// Register a uplink for a capsule.
     ///
     /// # Errors
     ///
-    /// Returns [`CapsuleError::ConnectorAlreadyRegistered`] if a connector
+    /// Returns [`CapsuleError::UplinkAlreadyRegistered`] if a uplink
     /// with the same ID is already in the registry.
-    pub fn register_connector(
+    pub fn register_uplink(
         &mut self,
         capsule_id: &CapsuleId,
-        descriptor: ConnectorDescriptor,
+        descriptor: UplinkDescriptor,
     ) -> CapsuleResult<()> {
-        let connector_id = descriptor.id;
-        if self.connectors.contains_key(&connector_id) {
+        let uplink_id = descriptor.id;
+        if self.uplinks.contains_key(&uplink_id) {
             return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                "Connector already registered: {connector_id}"
+                "Uplink already registered: {uplink_id}"
             )));
         }
         debug!(
             capsule_id = %capsule_id,
-            connector_id = %connector_id,
-            connector_name = %descriptor.name,
-            "Registered connector"
+            uplink_id = %uplink_id,
+            uplink_name = %descriptor.name,
+            "Registered uplink"
         );
-        self.connectors
-            .insert(connector_id, (capsule_id.clone(), descriptor));
+        self.uplinks
+            .insert(uplink_id, (capsule_id.clone(), descriptor));
         Ok(())
     }
 
-    /// Unregister a single connector by ID, returning it if it was present.
+    /// Unregister a single uplink by ID, returning it if it was present.
     ///
     /// # Errors
     ///
-    /// Returns [`CapsuleError::ConnectorNotFound`] if no connector with the
+    /// Returns [`CapsuleError::UplinkNotFound`] if no uplink with the
     /// given ID exists.
-    pub fn unregister_connector(&mut self, id: &ConnectorId) -> CapsuleResult<ConnectorDescriptor> {
+    pub fn unregister_uplink(&mut self, id: &UplinkId) -> CapsuleResult<UplinkDescriptor> {
         let (_, descriptor) =
-            self.connectors
+            self.uplinks
                 .remove(id)
                 .ok_or(CapsuleError::UnsupportedEntryPoint(format!(
-                    "Connector not found: {id}"
+                    "Uplink not found: {id}"
                 )))?;
-        debug!(connector_id = %id, "Unregistered connector");
+        debug!(uplink_id = %id, "Unregistered uplink");
         Ok(descriptor)
     }
 
-    /// Remove all connectors belonging to a capsule.
-    pub fn unregister_capsule_connectors(&mut self, capsule_id: &CapsuleId) {
-        self.connectors.retain(|_, (owner, _)| owner != capsule_id);
+    /// Remove all uplinks belonging to a capsule.
+    pub fn unregister_capsule_uplinks(&mut self, capsule_id: &CapsuleId) {
+        self.uplinks.retain(|_, (owner, _)| owner != capsule_id);
     }
 
-    /// Find a connector that serves the given platform type.
+    /// Find a uplink that serves the given platform type.
     #[must_use]
-    pub fn find_connector_by_platform(
-        &self,
-        platform: &FrontendType,
-    ) -> Option<&ConnectorDescriptor> {
-        self.connectors
+    pub fn find_uplink_by_platform(&self, platform: &FrontendType) -> Option<&UplinkDescriptor> {
+        self.uplinks
             .values()
             .find(|(_, desc)| &desc.frontend_type == platform)
             .map(|(_, desc)| desc)
     }
 
-    /// Find all connectors whose capabilities satisfy the given predicate.
+    /// Find all uplinks whose capabilities satisfy the given predicate.
     #[must_use]
-    pub fn find_connectors_with_capability(
+    pub fn find_uplinks_with_capability(
         &self,
-        check: impl Fn(&ConnectorCapabilities) -> bool,
-    ) -> Vec<&ConnectorDescriptor> {
-        self.connectors
+        check: impl Fn(&UplinkCapabilities) -> bool,
+    ) -> Vec<&UplinkDescriptor> {
+        self.uplinks
             .values()
             .filter(|(_, desc)| check(&desc.capabilities))
             .map(|(_, desc)| desc)
             .collect()
     }
 
-    /// List all registered connector descriptors.
+    /// List all registered uplink descriptors.
     #[must_use]
-    pub fn all_connector_descriptors(&self) -> Vec<&ConnectorDescriptor> {
-        self.connectors.values().map(|(_, desc)| desc).collect()
+    pub fn all_uplink_descriptors(&self) -> Vec<&UplinkDescriptor> {
+        self.uplinks.values().map(|(_, desc)| desc).collect()
     }
 
     // -----------------------------------------------------------------
@@ -343,7 +339,7 @@ impl std::fmt::Debug for CapsuleRegistry {
         f.debug_struct("CapsuleRegistry")
             .field("capsule_count", &self.capsules.len())
             .field("capsule_ids", &self.list())
-            .field("connector_count", &self.connectors.len())
+            .field("uplink_count", &self.uplinks.len())
             .finish()
     }
 }

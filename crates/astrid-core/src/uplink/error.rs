@@ -1,11 +1,11 @@
-// ConnectorError
+// UplinkError
 // ---------------------------------------------------------------------------
 
-/// Errors specific to connector operations.
+/// Errors specific to uplink operations.
 #[derive(Debug, thiserror::Error)]
-pub enum ConnectorError {
-    /// The connector is not connected or has been unregistered.
-    #[error("connector not connected")]
+pub enum UplinkError {
+    /// The uplink is not connected or has been unregistered.
+    #[error("uplink not connected")]
     NotConnected,
 
     /// Sending a message failed.
@@ -17,7 +17,7 @@ pub enum ConnectorError {
     #[error("invalid plugin id: {0}")]
     InvalidPluginId(String),
 
-    /// The requested operation is not supported by this connector.
+    /// The requested operation is not supported by this uplink.
     #[error("unsupported operation: {0}")]
     UnsupportedOperation(String),
 
@@ -40,11 +40,11 @@ pub enum ConnectorError {
     },
 
     /// Catch-all for internal errors.
-    #[error("internal connector error: {0}")]
+    #[error("internal uplink error: {0}")]
     Internal(String),
 }
 
-/// Convenience alias for connector operations.
-pub type ConnectorResult<T> = Result<T, ConnectorError>;
+/// Convenience alias for uplink operations.
+pub type UplinkResult<T> = Result<T, UplinkError>;
 
 // ---------------------------------------------------------------------------

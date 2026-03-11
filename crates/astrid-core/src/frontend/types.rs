@@ -19,6 +19,7 @@ pub struct FrontendContext {
     /// Session information
     pub session: FrontendSessionInfo,
 }
+
 impl FrontendContext {
     /// Create a new frontend context.
     #[must_use]
@@ -60,6 +61,7 @@ pub struct FrontendUser {
     /// Whether the user is an admin on this frontend
     pub is_admin: bool,
 }
+
 impl FrontendUser {
     /// Create a new frontend user.
     #[must_use]
@@ -93,6 +95,7 @@ impl FrontendUser {
         self
     }
 }
+
 /// Information about the current channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelInfo {
@@ -105,6 +108,7 @@ pub struct ChannelInfo {
     /// Guild/server ID (if applicable)
     pub guild_id: Option<String>,
 }
+
 impl ChannelInfo {
     /// Create a DM channel.
     #[must_use]
@@ -132,6 +136,7 @@ impl ChannelInfo {
         }
     }
 }
+
 /// Session information from the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrontendSessionInfo {
@@ -142,6 +147,7 @@ pub struct FrontendSessionInfo {
     /// Session metadata
     pub metadata: HashMap<String, String>,
 }
+
 impl FrontendSessionInfo {
     /// Create a new session.
     #[must_use]
@@ -160,6 +166,7 @@ impl FrontendSessionInfo {
         self
     }
 }
+
 impl Default for FrontendSessionInfo {
     fn default() -> Self {
         Self::new()

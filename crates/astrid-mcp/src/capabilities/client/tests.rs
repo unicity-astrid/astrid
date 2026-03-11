@@ -2,13 +2,13 @@
 //!
 //! These tests exercise `handle_inbound_message` and the full inbound
 //! message pipeline, including size limits, plugin-ID anti-spoofing,
-//! channel resolution, and connector fallback behaviour.
+//! channel resolution, and uplink fallback behaviour.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use astrid_core::{
-    ConnectorCapabilities, ConnectorDescriptor, ConnectorId, ConnectorProfile, ConnectorSource,
-    FrontendType, InboundMessage,
+    FrontendType, InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile,
+    UplinkSource,
 };
 use tokio::sync::mpsc;
 
@@ -21,38 +21,38 @@ use super::notice::{
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-/// Build a handler wired to inbound channel + shared connectors.
+/// Build a handler wired to inbound channel + shared uplinks.
 fn test_handler(
     plugin_id: &str,
 ) -> (
     AstridClientHandler,
     mpsc::Receiver<InboundMessage>,
-    Arc<Mutex<Vec<ConnectorDescriptor>>>,
+    Arc<Mutex<Vec<UplinkDescriptor>>>,
 ) {
     let (inbound_tx, inbound_rx) = mpsc::channel(256);
     let shared = Arc::new(Mutex::new(Vec::new()));
     let handler = AstridClientHandler::new("test-server", Arc::new(CapabilitiesHandler::new()))
         .with_plugin_id(plugin_id)
         .with_inbound_tx(inbound_tx)
-        .with_shared_connectors(Arc::clone(&shared));
+        .with_shared_uplinks(Arc::clone(&shared));
     (handler, inbound_rx, shared)
 }
 
-/// Register a connector in `shared_connectors` for inbound message tests.
+/// Register a uplink in `shared_uplinks` for inbound message tests.
 ///
 /// This simulates what `register_channels_locally` does during
 /// `on_custom_notification`.
-fn register_test_connector(
-    shared: &Arc<Mutex<Vec<ConnectorDescriptor>>>,
+fn register_test_uplink(
+    shared: &Arc<Mutex<Vec<UplinkDescriptor>>>,
     name: &str,
     platform: FrontendType,
     plugin_id: &str,
-) -> ConnectorId {
-    let source = ConnectorSource::new_openclaw(plugin_id).expect("valid plugin_id");
-    let descriptor = ConnectorDescriptor::builder(name, platform)
+) -> UplinkId {
+    let source = UplinkSource::new_openclaw(plugin_id).expect("valid plugin_id");
+    let descriptor = UplinkDescriptor::builder(name, platform)
         .source(source)
-        .profile(ConnectorProfile::Bridge)
-        .capabilities(ConnectorCapabilities::receive_only())
+        .profile(UplinkProfile::Bridge)
+        .capabilities(UplinkCapabilities::receive_only())
         .build();
     let id = descriptor.id;
     shared
@@ -69,7 +69,7 @@ fn test_inbound_message_notification() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
     let expected_id =
-        register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+        register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -82,7 +82,7 @@ fn test_inbound_message_notification() {
     handler.handle_inbound_message(Some(msg_params));
 
     let msg = inbound_rx.try_recv().expect("should receive message");
-    assert_eq!(msg.connector_id, expected_id);
+    assert_eq!(msg.uplink_id, expected_id);
     assert!(matches!(msg.platform, FrontendType::Telegram));
     assert_eq!(msg.platform_user_id, "user-123");
     assert_eq!(msg.content, "Hello from Telegram");
@@ -152,7 +152,7 @@ fn test_inbound_message_plugin_id_mismatch() {
 }
 
 #[test]
-fn test_inbound_message_no_connectors_fallback() {
+fn test_inbound_message_no_uplinks_fallback() {
     let (handler, mut inbound_rx, _) = test_handler("test-plugin");
 
     let params = serde_json::json!({
@@ -171,7 +171,7 @@ fn test_inbound_message_no_connectors_fallback() {
 fn test_inbound_message_non_matching_channel() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
-    register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+    register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -250,7 +250,7 @@ fn test_inbound_message_channel_name_fallback_key() {
     let (handler, mut inbound_rx, shared) = test_handler("test-plugin");
 
     let expected_id =
-        register_test_connector(&shared, "telegram", FrontendType::Telegram, "test-plugin");
+        register_test_uplink(&shared, "telegram", FrontendType::Telegram, "test-plugin");
 
     let msg_params = serde_json::json!({
         "pluginId": "test-plugin",
@@ -263,7 +263,7 @@ fn test_inbound_message_channel_name_fallback_key() {
     handler.handle_inbound_message(Some(msg_params));
 
     let msg = inbound_rx.try_recv().expect("should receive message");
-    assert_eq!(msg.connector_id, expected_id);
+    assert_eq!(msg.uplink_id, expected_id);
     assert_eq!(msg.content, "via channelName");
 }
 
@@ -449,8 +449,5 @@ fn test_size_constants_have_expected_values() {
     assert_eq!(MAX_CONTEXT_BYTES, 64 * 1024); // 64 KB
     assert_eq!(MAX_PLATFORM_USER_ID_BYTES, 512);
     assert_eq!(MAX_CHANNEL_NAME_LEN, 128);
-    assert_eq!(
-        MAX_CHANNELS_PER_PLUGIN,
-        astrid_core::MAX_CONNECTORS_PER_PLUGIN
-    );
+    assert_eq!(MAX_CHANNELS_PER_PLUGIN, astrid_core::MAX_UPLINKS_PER_PLUGIN);
 }

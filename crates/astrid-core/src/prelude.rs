@@ -9,7 +9,7 @@
 //!
 //! // Now you have access to:
 //! // - SecurityError, SecurityResult
-//! // - Connector adapter traits and types
+//! // - Uplink types
 //! // - Identity types
 //! // - Common types like SessionId, Permission, RiskLevel
 //! ```
@@ -36,9 +36,9 @@ pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 // Retry utilities
 pub use crate::RetryConfig;
 
-// Connector
+// Uplink
 pub use crate::{
-    ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder, ConnectorError,
-    ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource, InboundMessage,
-    InboundMessageBuilder, OutboundMessage, OutboundMessageBuilder,
+    InboundMessage, InboundMessageBuilder, OutboundMessage, OutboundMessageBuilder,
+    UplinkCapabilities, UplinkDescriptor, UplinkDescriptorBuilder, UplinkError, UplinkId,
+    UplinkProfile, UplinkResult, UplinkSource,
 };

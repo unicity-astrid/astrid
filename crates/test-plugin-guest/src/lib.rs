@@ -56,7 +56,7 @@ struct TestRoundtripArgs {
 }
 
 #[derive(Deserialize, Default, schemars::JsonSchema)]
-struct TestRegisterConnectorArgs {
+struct TestRegisterUplinkArgs {
     name: Option<String>,
     platform: Option<String>,
     profile: Option<String>,
@@ -64,7 +64,7 @@ struct TestRegisterConnectorArgs {
 
 #[derive(Deserialize, Default, schemars::JsonSchema)]
 struct TestChannelSendArgs {
-    connector_name: Option<String>,
+    uplink_name: Option<String>,
     platform: Option<String>,
     user_id: Option<String>,
     message: Option<String>,
@@ -231,18 +231,18 @@ impl TestCapsule {
         })
     }
 
-    #[astrid::tool("test-register-connector")]
-    fn handle_test_register_connector(&self, args: TestRegisterConnectorArgs) -> Result<ToolOutput, SysError> {
+    #[astrid::tool("test-register-uplink")]
+    fn handle_test_register_uplink(&self, args: TestRegisterUplinkArgs) -> Result<ToolOutput, SysError> {
         let name = args.name.unwrap_or_default();
         let platform = args.platform.unwrap_or_default();
         let profile = args.profile.unwrap_or_else(|| "chat".to_string());
 
-        let connector_id_bytes = uplink::register(&name, &platform, &profile)?;
-        let connector_id = String::from_utf8_lossy(&connector_id_bytes).to_string();
+        let uplink_id_bytes = uplink::register(&name, &platform, &profile)?;
+        let uplink_id = String::from_utf8_lossy(&uplink_id_bytes).to_string();
 
         let result = serde_json::json!({
             "registered": true,
-            "connector_id": connector_id,
+            "uplink_id": uplink_id,
             "name": name,
             "platform": platform,
             "profile": profile
@@ -256,21 +256,21 @@ impl TestCapsule {
 
     #[astrid::tool("test-channel-send")]
     fn handle_test_channel_send(&self, args: TestChannelSendArgs) -> Result<ToolOutput, SysError> {
-        let connector_name = args.connector_name.unwrap_or_default();
+        let uplink_name = args.uplink_name.unwrap_or_default();
         let platform = args.platform.unwrap_or_default();
         let user_id = args.user_id.unwrap_or_default();
         let message = args.message.unwrap_or_default();
 
-        let connector_id_bytes = uplink::register(&connector_name, &platform, "chat")?;
+        let uplink_id_bytes = uplink::register(&uplink_name, &platform, "chat")?;
 
-        let send_result_bytes = uplink::send_bytes(&connector_id_bytes, user_id.as_bytes(), message.as_bytes())?;
+        let send_result_bytes = uplink::send_bytes(&uplink_id_bytes, user_id.as_bytes(), message.as_bytes())?;
         let send_result = String::from_utf8_lossy(&send_result_bytes).to_string();
 
         let send_parsed: serde_json::Value =
             serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
 
         let result = serde_json::json!({
-            "connector_id": String::from_utf8_lossy(&connector_id_bytes).to_string(),
+            "uplink_id": String::from_utf8_lossy(&uplink_id_bytes).to_string(),
             "send_result": send_parsed,
             "user_id": user_id,
             "message": message

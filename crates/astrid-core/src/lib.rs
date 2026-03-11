@@ -4,7 +4,7 @@
 //! - Error types for security operations
 //! - Input classification and message attribution
 //! - Identity management across frontends
-//! - Connector types for capsule integration
+//! - Uplink types for capsule integration
 //! - Common types used throughout the runtime
 //! - Retry utilities with exponential backoff
 
@@ -30,7 +30,7 @@ pub mod types;
 pub(crate) mod utils;
 pub(crate) mod version;
 
-pub mod connector;
+pub mod uplink;
 
 /// HTTP utilities and protections (e.g. SSRF prevention)
 #[cfg(feature = "reqwest")]
@@ -49,9 +49,9 @@ pub use retry::RetryConfig;
 pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 pub use utils::truncate_to_boundary;
 
-// Connector types
-pub use connector::{
-    ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder, ConnectorError,
-    ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource, InboundMessage,
-    InboundMessageBuilder, MAX_CONNECTORS_PER_PLUGIN, OutboundMessage, OutboundMessageBuilder,
+// Uplink types
+pub use uplink::{
+    InboundMessage, InboundMessageBuilder, MAX_UPLINKS_PER_PLUGIN, OutboundMessage,
+    OutboundMessageBuilder, UplinkCapabilities, UplinkDescriptor, UplinkDescriptorBuilder,
+    UplinkError, UplinkId, UplinkProfile, UplinkResult, UplinkSource,
 };

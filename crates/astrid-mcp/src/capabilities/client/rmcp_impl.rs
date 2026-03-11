@@ -23,7 +23,7 @@ use super::super::convert::{convert_rmcp_schema, wrap_response_value};
 use super::super::roots::RootsRequest;
 use super::super::sampling::{SamplingContent, SamplingMessage, SamplingRequest};
 use super::bridge::{
-    ConnectorRegisteredParams, MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_PLUGIN, is_valid_channel_name,
+    MAX_CHANNEL_NAME_LEN, MAX_CHANNELS_PER_PLUGIN, UplinkRegisteredParams, is_valid_channel_name,
 };
 use super::handler::AstridClientHandler;
 use super::notice::ServerNotice;
@@ -306,9 +306,9 @@ impl rmcp::ClientHandler for AstridClientHandler {
         _context: NotificationContext<RoleClient>,
     ) {
         match notification.method.as_str() {
-            "notifications/astrid.connectorRegistered" => {
+            "notifications/astrid.uplinkRegistered" => {
                 if let Some(ref tx) = self.notice_tx {
-                    match notification.params_as::<ConnectorRegisteredParams>() {
+                    match notification.params_as::<UplinkRegisteredParams>() {
                         Ok(Some(params)) => {
                             // Log if the plugin claims a different identity than expected.
                             // server_name is "plugin:<id>"; strip the prefix for exact match.
@@ -320,7 +320,7 @@ impl rmcp::ClientHandler for AstridClientHandler {
                                 warn!(
                                     server = %self.server_name,
                                     claimed_id = %params.plugin_id,
-                                    "connectorRegistered: pluginId mismatch"
+                                    "uplinkRegistered: pluginId mismatch"
                                 );
                             }
                             // Validate: cap channels, enforce name length + character set.
@@ -336,9 +336,9 @@ impl rmcp::ClientHandler for AstridClientHandler {
                             if channels.is_empty() {
                                 return;
                             }
-                            // Also register locally for inbound message connector lookups
+                            // Also register locally for inbound message uplink lookups
                             self.register_channels_locally(expected_id, &channels);
-                            let _ = tx.send(ServerNotice::ConnectorsRegistered {
+                            let _ = tx.send(ServerNotice::UplinksRegistered {
                                 server_name: self.server_name.clone(),
                                 channels,
                             });
@@ -346,14 +346,14 @@ impl rmcp::ClientHandler for AstridClientHandler {
                         Ok(None) => {
                             warn!(
                                 server = %self.server_name,
-                                "connectorRegistered: missing params"
+                                "uplinkRegistered: missing params"
                             );
                         },
                         Err(e) => {
                             warn!(
                                 server = %self.server_name,
                                 error = %e,
-                                "connectorRegistered: failed to parse params"
+                                "uplinkRegistered: failed to parse params"
                             );
                         },
                     }

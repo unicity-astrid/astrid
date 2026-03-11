@@ -3,9 +3,9 @@
 //! All functions here are used exclusively by `handler.rs`
 //! (`handle_inbound_message`, `register_channels_locally`).
 
-#[cfg(test)]
-use astrid_core::ConnectorCapabilities;
 use astrid_core::FrontendType;
+#[cfg(test)]
+use astrid_core::UplinkCapabilities;
 use serde_json::Value;
 use tracing::warn;
 
@@ -38,7 +38,7 @@ pub(super) fn map_platform_name(name: &str) -> FrontendType {
     }
 }
 
-/// Parse connector capabilities from a channel definition JSON object.
+/// Parse uplink capabilities from a channel definition JSON object.
 ///
 /// Looks for `chatTypes` or `capabilities` arrays in the definition and maps
 /// known strings to capability flags. Falls back to `receive_only()`.
@@ -54,14 +54,14 @@ pub(super) fn map_platform_name(name: &str) -> FrontendType {
 /// and `supports_buttons` are not yet parsed from the bridge definition
 /// and default to `false`.
 #[cfg(test)]
-pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapabilities {
+pub(super) fn parse_uplink_capabilities(definition: &Value) -> UplinkCapabilities {
     let caps_array = definition
         .get("capabilities")
         .or_else(|| definition.get("chatTypes"))
         .and_then(Value::as_array);
 
     let Some(arr) = caps_array else {
-        return ConnectorCapabilities::receive_only();
+        return UplinkCapabilities::receive_only();
     };
 
     let lowered: Vec<String> = arr
@@ -71,7 +71,7 @@ pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapab
         .map(str::to_lowercase)
         .collect();
     if lowered.is_empty() {
-        return ConnectorCapabilities::receive_only();
+        return UplinkCapabilities::receive_only();
     }
 
     let can_receive = lowered
@@ -84,14 +84,14 @@ pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapab
 
     // If we parsed something meaningful, build from flags; otherwise receive_only
     if can_receive || can_send || can_approve {
-        ConnectorCapabilities {
+        UplinkCapabilities {
             can_receive,
             can_send,
             can_approve,
-            ..ConnectorCapabilities::default()
+            ..UplinkCapabilities::default()
         }
     } else {
-        ConnectorCapabilities::receive_only()
+        UplinkCapabilities::receive_only()
     }
 }
 
@@ -251,79 +251,79 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat() {
+    fn test_parse_uplink_capabilities_chat() {
         let def = serde_json::json!({ "capabilities": ["receive", "send", "approve"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_fallback() {
+    fn test_parse_uplink_capabilities_fallback() {
         let def = serde_json::json!({});
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat_types_key() {
+    fn test_parse_uplink_capabilities_chat_types_key() {
         let def = serde_json::json!({ "chatTypes": ["receive", "send"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat_bidirectional() {
+    fn test_parse_uplink_capabilities_chat_bidirectional() {
         let def = serde_json::json!({ "capabilities": ["chat"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_non_string_elements_ignored() {
+    fn test_parse_uplink_capabilities_non_string_elements_ignored() {
         let def = serde_json::json!({
             "capabilities": [42, true, null, "receive", "send"]
         });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_inbound_outbound_synonyms() {
+    fn test_parse_uplink_capabilities_inbound_outbound_synonyms() {
         let def = serde_json::json!({ "capabilities": ["inbound", "outbound"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive, "inbound should set can_receive");
         assert!(caps.can_send, "outbound should set can_send");
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_unrecognized_strings_only() {
+    fn test_parse_uplink_capabilities_unrecognized_strings_only() {
         let def = serde_json::json!({ "capabilities": ["foo", "bar", "baz"] });
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_all_non_string_elements() {
+    fn test_parse_uplink_capabilities_all_non_string_elements() {
         let def = serde_json::json!({ "capabilities": [42, true, null, [1, 2]] });
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_capabilities_key_takes_priority() {
+    fn test_parse_uplink_capabilities_capabilities_key_takes_priority() {
         let def = serde_json::json!({
             "capabilities": ["send"],
             "chatTypes": ["receive"]
         });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_send, "capabilities key should take priority");
         assert!(
             !caps.can_receive,

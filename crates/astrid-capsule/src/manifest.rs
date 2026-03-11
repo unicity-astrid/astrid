@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use astrid_core::ConnectorProfile;
+use astrid_core::UplinkProfile;
 use astrid_core::identity::FrontendType;
 
 /// A capsule manifest loaded from `Capsule.toml`.
@@ -248,7 +248,7 @@ pub struct UplinkDef {
     /// The platform identifier (e.g., "telegram", "cli").
     pub platform: FrontendType,
     /// The interaction profile (e.g., "human", "bridge").
-    pub profile: ConnectorProfile,
+    pub profile: UplinkProfile,
 }
 
 /// An LLM Provider (Agent) exposed by the capsule.

@@ -3,15 +3,15 @@
 //! These types are deserialized from untrusted plugin subprocess output.
 //! All fields must be validated before use.
 
-use astrid_core::MAX_CONNECTORS_PER_PLUGIN;
+use astrid_core::MAX_UPLINKS_PER_PLUGIN;
 use serde::Deserialize;
 
 /// Maximum channels a single plugin can register (bounds memory from untrusted plugins).
-pub(super) const MAX_CHANNELS_PER_PLUGIN: usize = MAX_CONNECTORS_PER_PLUGIN;
+pub(super) const MAX_CHANNELS_PER_PLUGIN: usize = MAX_UPLINKS_PER_PLUGIN;
 /// Maximum length of a channel name in bytes.
 pub(super) const MAX_CHANNEL_NAME_LEN: usize = 128;
 
-/// Channel info as sent by the bridge's `connectorRegistered` notification.
+/// Channel info as sent by the bridge's `uplinkRegistered` notification.
 ///
 /// # Trust boundary
 ///
@@ -42,7 +42,7 @@ pub struct BridgeChannelDefinition {
 
 /// Capability flags as declared by the bridge plugin (camelCase JSON).
 ///
-/// Maps to [`ConnectorCapabilities`](astrid_core::connector::ConnectorCapabilities)
+/// Maps to [`UplinkCapabilities`](astrid_core::uplink::UplinkCapabilities)
 /// but uses camelCase field names matching the bridge's JSON format.
 /// All flags default to `false` (least privilege).
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -72,9 +72,9 @@ pub struct BridgeChannelCapabilities {
     pub supports_buttons: bool,
 }
 
-/// Params wrapper for the `connectorRegistered` notification.
+/// Params wrapper for the `uplinkRegistered` notification.
 #[derive(Debug, Deserialize)]
-pub(super) struct ConnectorRegisteredParams {
+pub(super) struct UplinkRegisteredParams {
     #[serde(rename = "pluginId")]
     pub(super) plugin_id: String,
     pub(super) channels: Vec<BridgeChannelInfo>,
@@ -97,20 +97,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_connector_registered_params_deserialization() {
+    fn test_uplink_registered_params_deserialization() {
         let json = serde_json::json!({
             "pluginId": "channel-echo",
             "channels": [{
                 "name": "telegram",
                 "definition": {
-                    "description": "Telegram connector",
+                    "description": "Telegram uplink",
                     "capabilities": { "canReceive": true, "canSend": true }
                 }
             }]
         });
 
-        let params: ConnectorRegisteredParams =
-            serde_json::from_value(json).expect("should parse ConnectorRegisteredParams");
+        let params: UplinkRegisteredParams =
+            serde_json::from_value(json).expect("should parse UplinkRegisteredParams");
         assert_eq!(params.plugin_id, "channel-echo");
         assert_eq!(params.channels.len(), 1);
         assert_eq!(params.channels[0].name, "telegram");

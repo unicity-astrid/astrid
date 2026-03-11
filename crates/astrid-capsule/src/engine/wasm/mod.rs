@@ -209,9 +209,9 @@ impl ExecutionEngine for WasmEngine {
                 hook_manager: None, // Will be injected by Gateway
                 capsule_registry: ctx.capsule_registry.clone(),
                 runtime_handle: tokio::runtime::Handle::current(),
-                has_connector_capability: !manifest.uplinks.is_empty(),
+                has_uplink_capability: !manifest.uplinks.is_empty(),
                 inbound_tx: tx,
-                registered_connectors: Vec::new(),
+                registered_uplinks: Vec::new(),
             };
 
             let user_data = UserData::new(host_state);

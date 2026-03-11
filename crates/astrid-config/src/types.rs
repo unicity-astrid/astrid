@@ -58,8 +58,8 @@ pub struct Config {
     pub retry: RetrySection,
     /// Agent identity seed (static fallback for spark.toml).
     pub spark: SparkSection,
-    /// Pre-declared connector plugins to validate at startup.
-    pub connectors: Vec<ConnectorConfig>,
+    /// Pre-declared uplink plugins to validate at startup.
+    pub uplinks: Vec<UplinkConfig>,
     /// Pre-configured platform identity links applied at every startup.
     pub identity: IdentitySection,
 }
@@ -830,21 +830,21 @@ impl SparkSection {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorConfig
+// UplinkConfig
 // ---------------------------------------------------------------------------
 
-/// Pre-declared connector plugin entry.
+/// Pre-declared uplink plugin entry.
 ///
-/// Entries in `[[connectors]]` declare which connector plugins should be
+/// Entries in `[[uplinks]]` declare which uplink plugins should be
 /// available and which behavioural profile they should expose. At startup, the
-/// daemon validates that each declared plugin is loaded and exposes a connector
+/// daemon validates that each declared plugin is loaded and exposes a uplink
 /// with the expected profile.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ConnectorConfig {
+pub struct UplinkConfig {
     /// Plugin ID (e.g. `"openclaw-telegram"`).
     pub plugin: String,
-    /// Expected connector profile: `"chat"`, `"interactive"`, `"notify"`, or
+    /// Expected uplink profile: `"chat"`, `"interactive"`, `"notify"`, or
     /// `"bridge"`. Unknown values are logged and default to `"chat"`.
     pub profile: String,
 }
@@ -1010,22 +1010,22 @@ core = "I value clarity."
     }
 
     #[test]
-    fn test_connectors_parse() {
+    fn test_uplinks_parse() {
         let toml = r#"
-[[connectors]]
+[[uplinks]]
 plugin = "openclaw-telegram"
 profile = "chat"
 
-[[connectors]]
+[[uplinks]]
 plugin = "openclaw-discord"
 profile = "bridge"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert_eq!(cfg.connectors.len(), 2);
-        assert_eq!(cfg.connectors[0].plugin, "openclaw-telegram");
-        assert_eq!(cfg.connectors[0].profile, "chat");
-        assert_eq!(cfg.connectors[1].plugin, "openclaw-discord");
-        assert_eq!(cfg.connectors[1].profile, "bridge");
+        assert_eq!(cfg.uplinks.len(), 2);
+        assert_eq!(cfg.uplinks[0].plugin, "openclaw-telegram");
+        assert_eq!(cfg.uplinks[0].profile, "chat");
+        assert_eq!(cfg.uplinks[1].plugin, "openclaw-discord");
+        assert_eq!(cfg.uplinks[1].profile, "bridge");
     }
 
     #[test]
@@ -1050,7 +1050,7 @@ method = "admin"
     fn test_backward_compat_no_new_sections() {
         let toml = "[model]\nprovider = \"claude\"\n";
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert!(cfg.connectors.is_empty());
+        assert!(cfg.uplinks.is_empty());
         assert!(cfg.identity.links.is_empty());
     }
 

@@ -110,12 +110,12 @@ impl McpClient {
                             "Tools cache refreshed from server notification"
                         );
                     },
-                    ServerNotice::ConnectorsRegistered { server_name, .. } => {
-                        // Connector registrations are handled by McpPlugin
+                    ServerNotice::UplinksRegistered { server_name, .. } => {
+                        // Uplink registrations are handled by McpPlugin
                         // via its own notice channel. Log and move on.
                         tracing::debug!(
                             server = %server_name,
-                            "Ignoring ConnectorsRegistered in McpClient listener"
+                            "Ignoring UplinksRegistered in McpClient listener"
                         );
                     },
                 }

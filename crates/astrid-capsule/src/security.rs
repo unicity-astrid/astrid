@@ -48,20 +48,20 @@ pub trait CapsuleSecurityGate: Send + Sync {
         ))
     }
 
-    /// Check whether the plugin is allowed to register a connector.
+    /// Check whether the plugin is allowed to register a uplink.
     ///
     /// Default implementation permits all registrations. Override to enforce
-    /// connector policies (e.g. platform allowlists per plugin).
+    /// uplink policies (e.g. platform allowlists per plugin).
     ///
     /// RATIONALE: This has a permissive default (unlike the required file/HTTP
     /// methods) to maintain backward compatibility with existing
-    /// `CapsuleSecurityGate` implementors. The `has_connector_capability` flag
+    /// `CapsuleSecurityGate` implementors. The `has_uplink_capability` flag
     /// on `HostState` already gates access — this method adds operator-level
     /// policy on top.
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         _capsule_id: &str,
-        _connector_name: &str,
+        _uplink_name: &str,
         _platform: &str,
     ) -> Result<(), String> {
         Ok(())
@@ -101,10 +101,10 @@ impl CapsuleSecurityGate for AllowAllGate {
         Ok(())
     }
 
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         _capsule_id: &str,
-        _connector_name: &str,
+        _uplink_name: &str,
         _platform: &str,
     ) -> Result<(), String> {
         Ok(())
@@ -154,14 +154,14 @@ impl CapsuleSecurityGate for DenyAllGate {
         ))
     }
 
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         capsule_id: &str,
-        connector_name: &str,
+        uplink_name: &str,
         platform: &str,
     ) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: register connector {connector_name} ({platform}) (DenyAllGate)"
+            "plugin '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
         ))
     }
 }
@@ -480,18 +480,18 @@ mod interceptor_gate {
                 .map_err(|e| e.to_string())
         }
 
-        async fn check_connector_register(
+        async fn check_uplink_register(
             &self,
             capsule_id: &str,
-            connector_name: &str,
+            uplink_name: &str,
             platform: &str,
         ) -> Result<(), String> {
             let action = SensitiveAction::CapsuleExecution {
                 capsule_id: capsule_id.to_string(),
-                capability: format!("register_connector({connector_name}, {platform})"),
+                capability: format!("register_uplink({uplink_name}, {platform})"),
             };
             self.interceptor
-                .intercept(&action, "plugin host function: register connector", None)
+                .intercept(&action, "plugin host function: register uplink", None)
                 .await
                 .map(|_| ())
                 .map_err(|e| e.to_string())
@@ -815,7 +815,7 @@ mod tests {
         assert!(gate.check_file_write("p", "/tmp/f").await.is_ok());
         assert!(gate.check_net_bind("p").await.is_ok());
         assert!(
-            gate.check_connector_register("p", "my-conn", "discord")
+            gate.check_uplink_register("p", "my-conn", "discord")
                 .await
                 .is_ok()
         );
@@ -833,7 +833,7 @@ mod tests {
         assert!(gate.check_file_write("p", "/tmp/f").await.is_err());
         assert!(gate.check_net_bind("p").await.is_err());
         assert!(
-            gate.check_connector_register("p", "my-conn", "discord")
+            gate.check_uplink_register("p", "my-conn", "discord")
                 .await
                 .is_err()
         );

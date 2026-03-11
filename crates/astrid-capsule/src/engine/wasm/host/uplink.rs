@@ -1,4 +1,4 @@
-use astrid_core::ConnectorProfile;
+use astrid_core::UplinkProfile;
 use astrid_core::identity::FrontendType;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
@@ -20,14 +20,14 @@ pub(crate) fn parse_frontend_type(platform: &[u8]) -> FrontendType {
     }
 }
 
-pub(crate) fn parse_connector_profile(profile: &[u8]) -> Result<ConnectorProfile, Error> {
+pub(crate) fn parse_uplink_profile(profile: &[u8]) -> Result<UplinkProfile, Error> {
     let profile_str = String::from_utf8_lossy(profile).to_lowercase();
     match profile_str.as_str() {
-        "chat" => Ok(ConnectorProfile::Chat),
-        "interactive" => Ok(ConnectorProfile::Interactive),
-        "notify" => Ok(ConnectorProfile::Notify),
-        "bridge" => Ok(ConnectorProfile::Bridge),
-        "human" => Ok(ConnectorProfile::Chat), // Fallback map
+        "chat" => Ok(UplinkProfile::Chat),
+        "interactive" => Ok(UplinkProfile::Interactive),
+        "notify" => Ok(UplinkProfile::Notify),
+        "bridge" => Ok(UplinkProfile::Bridge),
+        "human" => Ok(UplinkProfile::Chat), // Fallback map
         other => Err(Error::msg(format!(
             "invalid uplink profile: {other:?} (expected: chat, interactive, notify, bridge, human)"
         ))),
@@ -55,10 +55,10 @@ pub(crate) fn astrid_uplink_send_impl(
         return Err(Error::msg("uplink_id too long"));
     }
 
-    let connector_uuid: uuid::Uuid = String::from_utf8_lossy(&uplink_id_bytes)
+    let uplink_uuid: uuid::Uuid = String::from_utf8_lossy(&uplink_id_bytes)
         .parse()
         .map_err(|e| Error::msg(format!("invalid uplink_id: {e}")))?;
-    let connector_id = astrid_core::ConnectorId::from_uuid(connector_uuid);
+    let uplink_id = astrid_core::UplinkId::from_uuid(uplink_uuid);
 
     let ud = user_data.get()?;
     let state = ud
@@ -71,13 +71,13 @@ pub(crate) fn astrid_uplink_send_impl(
     // For now we assume they have the capability.
 
     let platform = state
-        .registered_connectors
+        .registered_uplinks
         .iter()
-        .find(|c| c.id == connector_id)
+        .find(|c| c.id == uplink_id)
         .map(|c| c.frontend_type.clone())
         .ok_or_else(|| {
             Error::msg(format!(
-                "uplink {connector_id} not registered by capsule {capsule_id}"
+                "uplink {uplink_id} not registered by capsule {capsule_id}"
             ))
         })?;
     drop(state);
@@ -86,7 +86,7 @@ pub(crate) fn astrid_uplink_send_impl(
         .ok_or_else(|| Error::msg(format!("capsule {capsule_id} has no inbound channel")))?;
 
     let message =
-        astrid_core::InboundMessage::builder(connector_id, platform, platform_user_id, content)
+        astrid_core::InboundMessage::builder(uplink_id, platform, platform_user_id, content)
             .build();
 
     let result = match tx.try_send(message) {
@@ -116,7 +116,7 @@ pub(crate) fn astrid_uplink_register_impl(
     let name_str = String::from_utf8_lossy(&name).into_owned();
 
     let frontend_type = parse_frontend_type(&platform_bytes);
-    let profile = parse_connector_profile(&profile_bytes)?;
+    let profile = parse_uplink_profile(&profile_bytes)?;
 
     let ud = user_data.get()?;
     let (capsule_id, security, handle) = {
@@ -136,7 +136,7 @@ pub(crate) fn astrid_uplink_register_impl(
         let cname = name_str.clone();
         let plat = String::from_utf8_lossy(&platform_bytes).into_owned();
         let check = tokio::task::block_in_place(|| {
-            handle.block_on(async move { gate.check_connector_register(&pid, &cname, &plat).await })
+            handle.block_on(async move { gate.check_uplink_register(&pid, &cname, &plat).await })
         });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
@@ -145,30 +145,30 @@ pub(crate) fn astrid_uplink_register_impl(
         }
     }
 
-    let source = astrid_core::ConnectorSource::new_wasm(&capsule_id).map_err(|e| {
+    let source = astrid_core::UplinkSource::new_wasm(&capsule_id).map_err(|e| {
         Error::msg(format!(
             "failed to create uplink source for capsule {capsule_id}: {e}"
         ))
     })?;
 
-    let descriptor = astrid_core::ConnectorDescriptor::builder(name_str, frontend_type)
+    let descriptor = astrid_core::UplinkDescriptor::builder(name_str, frontend_type)
         .source(source)
-        .capabilities(astrid_core::ConnectorCapabilities::receive_only())
+        .capabilities(astrid_core::UplinkCapabilities::receive_only())
         .profile(profile)
         .build();
 
-    let connector_id = descriptor.id.to_string();
+    let uplink_id = descriptor.id.to_string();
 
     {
         let mut state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         state
-            .register_connector(descriptor)
+            .register_uplink(descriptor)
             .map_err(|e| Error::msg(format!("capsule {capsule_id}: {e}")))?;
     }
 
-    let mem = plugin.memory_new(&connector_id)?;
+    let mem = plugin.memory_new(&uplink_id)?;
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }

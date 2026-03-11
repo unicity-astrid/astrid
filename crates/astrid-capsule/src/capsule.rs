@@ -104,7 +104,7 @@ pub trait Capsule: Send + Sync {
         &[] // Default implementation returning empty list
     }
 
-    /// Extract the inbound receiver for connector messages.
+    /// Extract the inbound receiver for uplink messages.
     /// This is typically called exactly once by the OS router after loading.
     fn take_inbound_rx(
         &mut self,
