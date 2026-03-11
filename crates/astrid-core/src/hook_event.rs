@@ -1,7 +1,7 @@
 //! Hook event types shared across crates.
 //!
 //! `HookEvent` lives in `astrid-core` so that both `astrid-hooks` and
-//! `astrid-plugins` can reference it without creating a circular dependency.
+//! capsule crates can reference it without creating a circular dependency.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

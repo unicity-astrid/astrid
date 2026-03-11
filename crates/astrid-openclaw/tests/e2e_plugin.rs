@@ -218,11 +218,11 @@ fn compile_test_plugin_to_wasm() {
     // Verify WASM magic
     assert_eq!(&wasm_bytes[..4], b"\0asm", "output should be valid WASM");
 
-    // Copy to the fixture location for the astrid-plugins integration test
+    // Copy to the fixture location for the capsule integration test
     let fixture_dest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("astrid-plugins/tests/fixtures");
+        .join("astrid-capsule/tests/fixtures");
     let _ = std::fs::create_dir_all(&fixture_dest);
     std::fs::copy(&wasm_path, fixture_dest.join("test-all-endpoints.wasm"))
         .expect("copy WASM fixture");

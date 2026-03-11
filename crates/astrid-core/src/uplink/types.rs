@@ -258,7 +258,7 @@ impl UplinkSource {
 
 /// Validate that a plugin ID is non-empty, contains only `[a-z0-9-]`, and
 /// does not start or end with a hyphen. Mirrors the rules in
-/// `PluginId::validate` from `astrid-plugins`.
+/// `CapsuleId::validate` from `astrid-capsule`.
 fn validate_capsule_id(id: &str) -> UplinkResult<()> {
     if id.is_empty() {
         return Err(UplinkError::InvalidPluginId(

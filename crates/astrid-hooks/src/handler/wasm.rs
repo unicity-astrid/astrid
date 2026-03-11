@@ -4,8 +4,8 @@
 //! [`PluginContext`](astrid_core::plugin_abi::PluginContext) and interpreting
 //! the returned [`PluginResult`](astrid_core::plugin_abi::PluginResult).
 //!
-//! Host functions are shared with the plugin system via
-//! [`astrid_plugins::wasm::host_functions`].
+//! Host functions are shared with the capsule system via
+//! [`astrid_capsule::engine::wasm`].
 
 use std::collections::HashMap;
 use std::path::PathBuf;
