@@ -4,7 +4,8 @@ use thiserror::Error;
 
 /// Security-related errors that can occur in Astrid operations.
 #[derive(Debug, Error)]
-pub enum SecurityError {
+#[allow(dead_code)] // Designed for use by security subsystem, not yet wired
+pub(crate) enum SecurityError {
     // Crypto errors
     /// Signature verification failed
     #[error("signature verification failed: {0}")]
@@ -192,7 +193,8 @@ pub enum SecurityError {
 }
 
 /// Result type for security operations.
-pub type SecurityResult<T> = Result<T, SecurityError>;
+#[allow(dead_code)] // Designed for use by security subsystem, not yet wired
+pub(crate) type SecurityResult<T> = Result<T, SecurityError>;
 
 #[cfg(test)]
 mod tests {

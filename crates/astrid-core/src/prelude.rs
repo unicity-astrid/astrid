@@ -8,27 +8,23 @@
 //! use astrid_core::prelude::*;
 //!
 //! // Now you have access to:
-//! // - SecurityError, SecurityResult
 //! // - Uplink types
 //! // - Identity types
 //! // - Common types like SessionId, Permission, RiskLevel
 //! ```
 
-// Errors
-pub use crate::{SecurityError, SecurityResult};
-
 // Frontend types (approval, elicitation, etc.)
 pub use crate::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendSessionInfo, FrontendUser,
-    SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
+    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendUser, SelectOption,
+    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
 };
 
 // Identity
-pub use crate::{AstridUserId, FrontendLink, FrontendType};
+pub use crate::{AstridUserId, FrontendType};
 
 // Input classification
-pub use crate::{ContextIdentifier, MessageId, TaggedMessage};
+pub use crate::MessageId;
 
 // Common types
 pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};

@@ -93,7 +93,8 @@ impl fmt::Display for MessageId {
 /// messages with full attribution, and the system uses this to verify
 /// any claims made about who said what.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaggedMessage {
+#[allow(dead_code)] // Designed for crypto-signed message attribution, not yet wired
+pub(crate) struct TaggedMessage {
     /// Unique ID for this message (from frontend - e.g., Discord message ID)
     pub message_id: MessageId,
 
@@ -121,11 +122,12 @@ pub struct TaggedMessage {
     pub user_signature: Option<String>,
 }
 
+#[allow(dead_code)]
 impl TaggedMessage {
     /// Create a new tagged message.
     #[must_use]
     #[expect(clippy::similar_names)] // context and content are both meaningful names
-    pub fn new(
+    pub(crate) fn new(
         message_id: MessageId,
         astrid_user_id: AstridUserId,
         frontend_user_id: impl Into<String>,
@@ -147,26 +149,26 @@ impl TaggedMessage {
 
     /// Add a user signature to this message.
     #[must_use]
-    pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
+    pub(crate) fn with_signature(mut self, signature: impl Into<String>) -> Self {
         self.user_signature = Some(signature.into());
         self
     }
 
     /// Check if this message is from a DM context.
     #[must_use]
-    pub fn is_dm(&self) -> bool {
+    pub(crate) fn is_dm(&self) -> bool {
         matches!(self.context, ContextIdentifier::DirectMessage { .. })
     }
 
     /// Check if this message has a valid signature.
     #[must_use]
-    pub fn is_signed(&self) -> bool {
+    pub(crate) fn is_signed(&self) -> bool {
         self.user_signature.is_some() && self.astrid_user_id.has_signing_key()
     }
 
     /// Get the data that should be signed for this message.
     #[must_use]
-    pub fn signable_data(&self) -> Vec<u8> {
+    pub(crate) fn signable_data(&self) -> Vec<u8> {
         // Sign: message_id + user_id + timestamp + content
         let mut data = Vec::new();
         data.extend(self.message_id.to_string().as_bytes());

@@ -36,15 +36,14 @@ pub mod uplink;
 #[cfg(feature = "reqwest")]
 pub mod http;
 
-pub use error::{SecurityError, SecurityResult};
 pub use frontend::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendSessionInfo, FrontendUser,
-    SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
+    ElicitationResponse, ElicitationSchema, FrontendContext, FrontendUser, SelectOption,
+    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
 };
 pub use hook_event::HookEvent;
-pub use identity::{AstridUserId, FrontendLink, FrontendType};
-pub use input::{ContextIdentifier, MessageId, TaggedMessage};
+pub use identity::{AstridUserId, FrontendType};
+pub use input::MessageId;
 pub use retry::RetryConfig;
 pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 pub use utils::truncate_to_boundary;
