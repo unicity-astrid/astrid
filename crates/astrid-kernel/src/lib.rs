@@ -16,13 +16,15 @@ pub mod kernel_router;
 /// The Unix Domain Socket manager.
 pub mod socket;
 
+use astrid_audit::AuditLog;
 use astrid_capabilities::DirHandle;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
+use astrid_crypto::KeyPair;
 use astrid_events::EventBus;
 use astrid_mcp::{McpClient, ServerManager, ServersConfig};
 use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -52,6 +54,8 @@ pub struct Kernel {
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Shared KV store backing all capsule-scoped stores and kernel state.
     pub kv: Arc<astrid_storage::MemoryKvStore>,
+    /// Chain-linked cryptographic audit log with persistent storage.
+    pub audit_log: Arc<AuditLog>,
 }
 
 impl Kernel {
@@ -111,6 +115,9 @@ impl Kernel {
 
         let kv = Arc::new(astrid_storage::MemoryKvStore::new());
 
+        // Open persistent audit log with chain verification on boot.
+        let audit_log = open_audit_log()?;
+
         let kernel = Arc::new(Self {
             session_id,
             event_bus,
@@ -122,6 +129,7 @@ impl Kernel {
             global_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
+            audit_log,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -250,6 +258,96 @@ impl Kernel {
     }
 }
 
+/// Open (or create) the persistent audit log and verify historical chain integrity.
+///
+/// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a
+/// new one if it doesn't exist. Opens the `SurrealKV`-backed audit database at
+/// `~/.astrid/audit.db` and runs `verify_all()` to detect any tampering of
+/// historical entries. Verification failures are logged at `error!` level but
+/// do not block boot (fail-open for availability, loud alert for integrity).
+fn open_audit_log() -> std::io::Result<Arc<AuditLog>> {
+    use astrid_core::dirs::AstridHome;
+
+    let home = AstridHome::resolve()
+        .map_err(|e| std::io::Error::other(format!("cannot resolve Astrid home: {e}")))?;
+    home.ensure()
+        .map_err(|e| std::io::Error::other(format!("cannot create Astrid home dirs: {e}")))?;
+
+    let runtime_key = load_or_generate_runtime_key(&home.keys_dir())?;
+    let audit_log = AuditLog::open(home.audit_db_path(), runtime_key)
+        .map_err(|e| std::io::Error::other(format!("cannot open audit log: {e}")))?;
+
+    // Verify all historical chains on boot.
+    match audit_log.verify_all() {
+        Ok(results) => {
+            let total_sessions = results.len();
+            let mut tampered_sessions: usize = 0;
+
+            for (session_id, result) in &results {
+                if !result.valid {
+                    tampered_sessions = tampered_sessions.saturating_add(1);
+                    for issue in &result.issues {
+                        tracing::error!(
+                            session_id = %session_id,
+                            issue = %issue,
+                            "Audit chain integrity violation detected"
+                        );
+                    }
+                }
+            }
+
+            if tampered_sessions > 0 {
+                tracing::error!(
+                    total_sessions,
+                    tampered_sessions,
+                    "Audit chain verification found tampered sessions"
+                );
+            } else if total_sessions > 0 {
+                tracing::info!(
+                    total_sessions,
+                    "Audit chain verification passed for all sessions"
+                );
+            }
+        },
+        Err(e) => {
+            tracing::error!(error = %e, "Audit chain verification failed to run");
+        },
+    }
+
+    Ok(Arc::new(audit_log))
+}
+
+/// Load the runtime ed25519 signing key from disk, or generate and persist a new one.
+///
+/// The key file is 32 bytes of raw secret key material at `{keys_dir}/runtime.key`.
+fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
+    let key_path = keys_dir.join("runtime.key");
+
+    if key_path.exists() {
+        let bytes = std::fs::read(&key_path)?;
+        KeyPair::from_secret_key(&bytes).map_err(|e| {
+            std::io::Error::other(format!(
+                "invalid runtime key at {}: {e}",
+                key_path.display()
+            ))
+        })
+    } else {
+        let keypair = KeyPair::generate();
+        std::fs::create_dir_all(keys_dir)?;
+        std::fs::write(&key_path, keypair.secret_key_bytes())?;
+
+        // Secure permissions (owner-only) on Unix.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        tracing::info!(key_id = %keypair.key_id_hex(), "Generated new runtime signing key");
+        Ok(keypair)
+    }
+}
+
 /// Spawns a background task that cleanly shuts down the Kernel if there is no activity.
 ///
 /// In the current "appable" iteration of the OS, this prevents the background daemon from
@@ -297,4 +395,83 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_or_generate_creates_new_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys_dir = dir.path().join("keys");
+
+        let keypair = load_or_generate_runtime_key(&keys_dir).unwrap();
+        let key_path = keys_dir.join("runtime.key");
+
+        // Key file should exist with 32 bytes.
+        assert!(key_path.exists());
+        let bytes = std::fs::read(&key_path).unwrap();
+        assert_eq!(bytes.len(), 32);
+
+        // The written bytes should reconstruct the same public key.
+        let reloaded = KeyPair::from_secret_key(&bytes).unwrap();
+        assert_eq!(
+            keypair.public_key_bytes(),
+            reloaded.public_key_bytes(),
+            "reloaded key should match generated key"
+        );
+    }
+
+    #[test]
+    fn test_load_or_generate_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys_dir = dir.path().join("keys");
+
+        let first = load_or_generate_runtime_key(&keys_dir).unwrap();
+        let second = load_or_generate_runtime_key(&keys_dir).unwrap();
+
+        assert_eq!(
+            first.public_key_bytes(),
+            second.public_key_bytes(),
+            "loading the same key file should produce the same keypair"
+        );
+    }
+
+    #[test]
+    fn test_load_or_generate_rejects_bad_key_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys_dir = dir.path().join("keys");
+        std::fs::create_dir_all(&keys_dir).unwrap();
+
+        // Write a key file with wrong length.
+        std::fs::write(keys_dir.join("runtime.key"), [0u8; 16]).unwrap();
+
+        let result = load_or_generate_runtime_key(&keys_dir);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("invalid runtime key"),
+            "expected 'invalid runtime key' error, got: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_load_or_generate_sets_secure_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let keys_dir = dir.path().join("keys");
+
+        let _ = load_or_generate_runtime_key(&keys_dir).unwrap();
+
+        let key_path = keys_dir.join("runtime.key");
+        let mode = std::fs::metadata(&key_path).unwrap().permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "key file should have 0o600 permissions, got {mode:#o}"
+        );
+    }
 }
