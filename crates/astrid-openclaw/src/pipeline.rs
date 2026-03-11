@@ -264,6 +264,8 @@ struct Tier2Package {
 #[derive(Debug, serde::Serialize)]
 struct Tier2McpServer {
     id: String,
+    #[serde(rename = "type")]
+    server_type: String,
     command: String,
     args: Vec<String>,
 }
@@ -278,6 +280,12 @@ struct Tier2EnvDef {
     #[serde(rename = "type")]
     env_type: String,
     request: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<String>,
+    #[serde(rename = "enum", default, skip_serializing_if = "Vec::is_empty")]
+    enum_values: Vec<String>,
 }
 
 /// Generate a `Capsule.toml` for Tier 2 plugins using `[[mcp_server]]`.
@@ -301,11 +309,35 @@ fn generate_tier2_manifest(
             } else {
                 "string"
             };
+
+            let description = val
+                .get("description")
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
+            let default = val.get("default").map(|d| match d {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            });
+
+            let enum_values = val
+                .get("enum")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
             env.insert(
                 key.clone(),
                 Tier2EnvDef {
                     env_type: env_type.to_string(),
                     request: format!("Please enter value for {key}"),
+                    description,
+                    default,
+                    enum_values,
                 },
             );
         }
@@ -319,6 +351,7 @@ fn generate_tier2_manifest(
         },
         mcp_server: vec![Tier2McpServer {
             id: astrid_id.to_string(),
+            server_type: "stdio".to_string(),
             command: "node".to_string(),
             args: vec![
                 "astrid_bridge.mjs".to_string(),

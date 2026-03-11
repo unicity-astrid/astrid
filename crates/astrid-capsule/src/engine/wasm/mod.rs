@@ -40,55 +40,6 @@ impl WasmEngine {
             run_handle: None,
         }
     }
-
-    /// Build an `OnboardingField` from a manifest `EnvDef`.
-    fn build_onboarding_field(
-        key: &str,
-        def: &crate::manifest::EnvDef,
-    ) -> astrid_events::ipc::OnboardingField {
-        use astrid_events::ipc::OnboardingFieldType;
-
-        let field_type = if def.env_type == "secret" {
-            if !def.enum_values.is_empty() {
-                tracing::warn!(
-                    key = %key,
-                    "Secret field has enum_values — ignoring enum and using masked input"
-                );
-            }
-            OnboardingFieldType::Secret
-        } else if def.env_type == "array" {
-            OnboardingFieldType::Array
-        } else if def.enum_values.len() > 1 {
-            OnboardingFieldType::Enum(def.enum_values.clone())
-        } else {
-            // Empty or single-choice enums degrade to text input.
-            OnboardingFieldType::Text
-        };
-
-        let mut default = def.default.as_ref().and_then(|d| match d {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Null => None,
-            other => Some(other.to_string()),
-        });
-
-        // Single-choice enums degrade to text — auto-fill the sole valid value.
-        if def.enum_values.len() == 1 && default.is_none() {
-            default = Some(def.enum_values[0].clone());
-        }
-
-        let prompt = def
-            .request
-            .clone()
-            .unwrap_or_else(|| format!("Please enter value for {key}"));
-
-        astrid_events::ipc::OnboardingField {
-            key: key.to_string(),
-            prompt,
-            description: def.description.clone(),
-            field_type,
-            default,
-        }
-    }
 }
 
 #[async_trait]
@@ -128,63 +79,12 @@ impl ExecutionEngine for WasmEngine {
             );
         }
 
-        let mut onboarding_fields = Vec::new();
-
-        // Collect reserved kernel-injected keys so the env loop cannot override them.
         let reserved_keys: Vec<String> = wasm_config.keys().cloned().collect();
+        let resolved_env =
+            super::resolve_env(&self.manifest, ctx, &reserved_keys, "wasm_engine").await?;
 
-        for (key, def) in &self.manifest.env {
-            // Reject manifest [env] entries that collide with kernel-injected config.
-            if reserved_keys.iter().any(|k| k == key) {
-                tracing::warn!(
-                    capsule = %self.manifest.package.name,
-                    key = %key,
-                    "Capsule manifest [env] declares reserved key — ignoring"
-                );
-                continue;
-            }
-            if let Ok(Some(val_bytes)) = ctx.kv.get(key).await {
-                if let Ok(val) = String::from_utf8(val_bytes) {
-                    wasm_config.insert(key.clone(), serde_json::Value::String(val));
-                } else {
-                    onboarding_fields.push(Self::build_onboarding_field(key, def));
-                }
-            } else if def.enum_values.len() > 1 {
-                // Multi-choice enum fields always go through onboarding so the
-                // user can consciously choose, even when a default exists.
-                // The picker pre-positions to the default index.
-                onboarding_fields.push(Self::build_onboarding_field(key, def));
-            } else if let Some(default_val) = &def.default {
-                // Non-enum field with a default — inject silently.
-                wasm_config.insert(key.clone(), default_val.clone());
-            } else {
-                onboarding_fields.push(Self::build_onboarding_field(key, def));
-            }
-        }
-
-        if !onboarding_fields.is_empty() {
-            // Build the error message before moving onboarding_fields into the IPC payload.
-            let missing_display: String = onboarding_fields
-                .iter()
-                .map(|f| f.key.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let msg = astrid_events::ipc::IpcMessage::new(
-                "system.onboarding.required",
-                astrid_events::ipc::IpcPayload::OnboardingRequired {
-                    capsule_id: self.manifest.package.name.clone(),
-                    fields: onboarding_fields,
-                },
-                uuid::Uuid::nil(), // Broadcast or global event for onboarding
-            );
-            let _ = ctx.event_bus.publish(astrid_events::AstridEvent::Ipc {
-                metadata: astrid_events::EventMetadata::new("wasm_engine"),
-                message: msg,
-            });
-
-            return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                "Missing required environment variables: {missing_display}",
-            )));
+        for (key, val) in resolved_env {
+            wasm_config.insert(key, serde_json::Value::String(val));
         }
 
         let (plugin, rx, has_run) = tokio::task::block_in_place(move || {
@@ -523,7 +423,7 @@ mod tests {
             default: None,
             enum_values: vec![],
         };
-        let field = WasmEngine::build_onboarding_field("owner", &def);
+        let field = crate::engine::build_onboarding_field("owner", &def);
         assert_eq!(field.key, "owner");
         assert_eq!(field.prompt, "Enter owner address");
         assert_eq!(field.description.as_deref(), Some("The wallet address"));
@@ -543,7 +443,7 @@ mod tests {
             default: None,
             enum_values: vec!["a".into()], // enum_values ignored for secrets
         };
-        let field = WasmEngine::build_onboarding_field("apiKey", &def);
+        let field = crate::engine::build_onboarding_field("apiKey", &def);
         assert_eq!(
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Secret
@@ -559,7 +459,7 @@ mod tests {
             default: Some(serde_json::json!("testnet")),
             enum_values: vec!["testnet".into(), "mainnet".into()],
         };
-        let field = WasmEngine::build_onboarding_field("network", &def);
+        let field = crate::engine::build_onboarding_field("network", &def);
         assert_eq!(
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Enum(vec!["testnet".into(), "mainnet".into()])
@@ -576,7 +476,7 @@ mod tests {
             default: None,
             enum_values: vec![],
         };
-        let field = WasmEngine::build_onboarding_field("someKey", &def);
+        let field = crate::engine::build_onboarding_field("someKey", &def);
         assert_eq!(field.prompt, "Please enter value for someKey");
     }
 
@@ -589,7 +489,7 @@ mod tests {
             default: None,
             enum_values: vec!["only".into()],
         };
-        let field = WasmEngine::build_onboarding_field("single", &def);
+        let field = crate::engine::build_onboarding_field("single", &def);
         assert_eq!(
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Text,
@@ -611,7 +511,7 @@ mod tests {
             default: None,
             enum_values: vec![],
         };
-        let field = WasmEngine::build_onboarding_field("relays", &def);
+        let field = crate::engine::build_onboarding_field("relays", &def);
         assert_eq!(
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Array
@@ -628,7 +528,7 @@ mod tests {
             default: None,
             enum_values: vec![],
         };
-        let field = WasmEngine::build_onboarding_field("empty", &def);
+        let field = crate::engine::build_onboarding_field("empty", &def);
         assert_eq!(
             field.field_type,
             astrid_events::ipc::OnboardingFieldType::Text,

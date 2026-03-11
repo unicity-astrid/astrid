@@ -39,7 +39,7 @@ impl McpHostEngine {
 
 #[async_trait]
 impl ExecutionEngine for McpHostEngine {
-    async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
+    async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
         let original_command_str = self
             .server_def
             .command
@@ -125,13 +125,16 @@ impl ExecutionEngine for McpHostEngine {
             "Registering legacy MCP host process dynamically (Airlock Override)"
         );
 
+        // Resolve [env] from KV store / defaults / onboarding before spawning.
+        let resolved_env = super::resolve_env(&self.manifest, ctx, &[], "mcp_host_engine").await?;
+
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
         let config = astrid_mcp::ServerConfig {
             name: server_id.clone(),
             command: Some(command_str),
             args: self.server_def.args.clone(),
-            env: std::collections::HashMap::new(), // TODO: inject [env] vars here
+            env: resolved_env,
             cwd: Some(self.capsule_dir.clone()),
             restart_policy: astrid_mcp::RestartPolicy::Always, // Host engines should restart on crash
             ..Default::default()
