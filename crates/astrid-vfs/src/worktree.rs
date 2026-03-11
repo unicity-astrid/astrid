@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// This is used to lock agents into their dedicated git worktrees while mathematically
 /// preventing them from accessing or modifying local state (like `.env` files or databases)
 /// that might be present in the worktree but ignored by Git.
-pub struct WorktreeVfs {
+pub(crate) struct WorktreeVfs {
     /// The underlying capability-based filesystem.
     inner: HostVfs,
     /// The absolute security boundary.
@@ -23,7 +23,7 @@ impl WorktreeVfs {
     /// * `inner` - A `HostVfs` instance already bound to the physical worktree directory.
     /// * `boundary` - The loaded `.astridignore` rules to enforce.
     #[must_use]
-    pub fn new(inner: HostVfs, boundary: IgnoreBoundary) -> Self {
+    pub(crate) fn new(inner: HostVfs, boundary: IgnoreBoundary) -> Self {
         Self { inner, boundary }
     }
 

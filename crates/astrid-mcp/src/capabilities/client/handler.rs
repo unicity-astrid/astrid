@@ -23,7 +23,7 @@ use super::notice::{
 /// This is the handler passed to `rmcp::ServiceExt::serve()` when connecting
 /// to an MCP server. It delegates server-initiated requests (sampling, roots,
 /// elicitation) to the configured `CapabilitiesHandler`.
-pub struct AstridClientHandler {
+pub(crate) struct AstridClientHandler {
     pub(super) server_name: String,
     pub(super) inner: Arc<CapabilitiesHandler>,
     /// Channel for pushing notifications (tools changed, etc.) back to the
@@ -45,7 +45,7 @@ pub struct AstridClientHandler {
 
 impl AstridClientHandler {
     /// Create a new handler for a specific server connection.
-    pub fn new(server_name: impl Into<String>, inner: Arc<CapabilitiesHandler>) -> Self {
+    pub(crate) fn new(server_name: impl Into<String>, inner: Arc<CapabilitiesHandler>) -> Self {
         Self {
             server_name: server_name.into(),
             inner,
@@ -59,7 +59,7 @@ impl AstridClientHandler {
     /// Attach a notice sender so that notifications (tool refreshes,
     /// uplink registrations) can be forwarded to the caller.
     #[must_use]
-    pub fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
+    pub(crate) fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
         self.notice_tx = Some(tx);
         self
     }
@@ -68,22 +68,28 @@ impl AstridClientHandler {
     ///
     /// **Required** when inbound message channels are configured — an empty capsule ID
     /// causes the inbound message handler to reject all messages.
+    #[cfg(test)]
     #[must_use]
-    pub fn with_capsule_id(mut self, capsule_id: &str) -> Self {
+    pub(crate) fn with_capsule_id(mut self, capsule_id: &str) -> Self {
         self.capsule_id = capsule_id.to_string();
         self
     }
 
     /// Set the channel for inbound messages from the bridge.
+    #[cfg(test)]
     #[must_use]
-    pub fn with_inbound_tx(mut self, tx: mpsc::Sender<InboundMessage>) -> Self {
+    pub(crate) fn with_inbound_tx(mut self, tx: mpsc::Sender<InboundMessage>) -> Self {
         self.inbound_tx = Some(tx);
         self
     }
 
     /// Share the registered uplinks state for uplink ID lookups.
+    #[cfg(test)]
     #[must_use]
-    pub fn with_shared_uplinks(mut self, uplinks: Arc<Mutex<Vec<UplinkDescriptor>>>) -> Self {
+    pub(crate) fn with_shared_uplinks(
+        mut self,
+        uplinks: Arc<Mutex<Vec<UplinkDescriptor>>>,
+    ) -> Self {
         self.registered_uplinks = uplinks;
         self
     }

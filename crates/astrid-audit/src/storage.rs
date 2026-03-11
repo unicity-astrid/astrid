@@ -15,7 +15,7 @@ use crate::error::{AuditError, AuditResult};
 /// - Storing and retrieving individual entries
 /// - Session-scoped queries
 /// - Chain head tracking (latest entry per session)
-pub trait AuditStorage: Send + Sync {
+pub(crate) trait AuditStorage: Send + Sync {
     /// Store an audit entry.
     ///
     /// # Errors
@@ -43,17 +43,6 @@ pub trait AuditStorage: Send + Sync {
     ///
     /// Returns an error if retrieval or deserialization fails.
     fn get_session_entries(&self, session_id: &SessionId) -> AuditResult<Vec<AuditEntry>>;
-
-    /// Get entries in a time range.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if retrieval or deserialization fails.
-    fn get_entries_in_range(
-        &self,
-        start: chrono::DateTime<chrono::Utc>,
-        end: chrono::DateTime<chrono::Utc>,
-    ) -> AuditResult<Vec<AuditEntry>>;
 
     /// Count total entries.
     ///
@@ -84,7 +73,7 @@ pub trait AuditStorage: Send + Sync {
     fn flush(&self) -> AuditResult<()>;
 }
 
-// -- Namespace constants --
+// -- Namespace constants (crate-internal) --
 
 const NS_ENTRIES: &str = "audit:entries";
 const NS_SESSION_INDEX: &str = "audit:session_index";
@@ -125,7 +114,7 @@ where
 }
 
 /// SurrealKV-based storage backend for audit logs.
-pub struct SurrealKvAuditStorage {
+pub(crate) struct SurrealKvAuditStorage {
     store: Arc<dyn KvStore>,
 }
 
@@ -135,7 +124,7 @@ impl SurrealKvAuditStorage {
     /// # Errors
     ///
     /// Returns an error if the `SurrealKV` store fails to open.
-    pub fn open(path: impl AsRef<Path>) -> AuditResult<Self> {
+    pub(crate) fn open(path: impl AsRef<Path>) -> AuditResult<Self> {
         let store =
             SurrealKvStore::open(path).map_err(|e| AuditError::StorageError(e.to_string()))?;
         Ok(Self {
@@ -145,7 +134,7 @@ impl SurrealKvAuditStorage {
 
     /// Create an in-memory storage (for testing).
     #[must_use]
-    pub fn in_memory() -> Self {
+    pub(crate) fn in_memory() -> Self {
         Self {
             store: Arc::new(MemoryKvStore::new()),
         }
@@ -243,30 +232,6 @@ impl AuditStorage for SurrealKvAuditStorage {
                 entries.push(entry);
             }
         }
-
-        Ok(entries)
-    }
-
-    fn get_entries_in_range(
-        &self,
-        start: chrono::DateTime<chrono::Utc>,
-        end: chrono::DateTime<chrono::Utc>,
-    ) -> AuditResult<Vec<AuditEntry>> {
-        // List all sessions, then filter entries by timestamp.
-        let sessions = self.list_sessions()?;
-        let mut entries = Vec::new();
-
-        for session_id in sessions {
-            for entry in self.get_session_entries(&session_id)? {
-                let ts = entry.timestamp.0;
-                if ts >= start && ts <= end {
-                    entries.push(entry);
-                }
-            }
-        }
-
-        // Sort by timestamp.
-        entries.sort_by(|a, b| a.timestamp.0.cmp(&b.timestamp.0));
 
         Ok(entries)
     }

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// Operating mode for the workspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkspaceMode {
+pub(crate) enum WorkspaceMode {
     /// Always ask before operations outside workspace.
     #[default]
     Safe,
@@ -19,7 +19,7 @@ pub enum WorkspaceMode {
 /// Policy for handling escape requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EscapePolicy {
+pub(crate) enum EscapePolicy {
     /// Always ask the user.
     #[default]
     Ask,
@@ -31,47 +31,47 @@ pub enum EscapePolicy {
 
 /// Paths that are automatically allowed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AutoAllowPaths {
+pub(crate) struct AutoAllowPaths {
     /// Paths that are always allowed for reading.
     #[serde(default)]
-    pub read: Vec<PathBuf>,
+    pub(crate) read: Vec<PathBuf>,
     /// Paths that are always allowed for writing.
     #[serde(default)]
-    pub write: Vec<PathBuf>,
+    pub(crate) write: Vec<PathBuf>,
     /// Glob patterns for auto-allowed paths.
     #[serde(default)]
-    pub patterns: Vec<String>,
+    pub(crate) patterns: Vec<String>,
 }
 
 /// Workspace configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkspaceConfig {
+pub(crate) struct WorkspaceConfig {
     /// Root directory of the workspace.
-    pub root: PathBuf,
+    pub(crate) root: PathBuf,
     /// Operating mode.
     #[serde(default)]
-    pub mode: WorkspaceMode,
+    pub(crate) mode: WorkspaceMode,
     /// Policy for escape requests.
     #[serde(default)]
-    pub escape_policy: EscapePolicy,
+    pub(crate) escape_policy: EscapePolicy,
     /// Paths that are automatically allowed.
     #[serde(default)]
-    pub auto_allow: AutoAllowPaths,
+    pub(crate) auto_allow: AutoAllowPaths,
     /// Paths that are never allowed (even with approval).
     #[serde(default)]
-    pub never_allow: Vec<PathBuf>,
+    pub(crate) never_allow: Vec<PathBuf>,
     /// Whether to allow creating files outside workspace.
     #[serde(default)]
-    pub allow_create_outside: bool,
+    pub(crate) allow_create_outside: bool,
     /// Whether to allow deleting files outside workspace.
     #[serde(default)]
-    pub allow_delete_outside: bool,
+    pub(crate) allow_delete_outside: bool,
 }
 
 impl WorkspaceConfig {
     /// Create a new workspace configuration.
     #[must_use]
-    pub fn new(root: impl Into<PathBuf>) -> Self {
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
             mode: WorkspaceMode::Safe,
@@ -93,42 +93,42 @@ impl WorkspaceConfig {
 
     /// Set the operating mode.
     #[must_use]
-    pub fn with_mode(mut self, mode: WorkspaceMode) -> Self {
+    pub(crate) fn with_mode(mut self, mode: WorkspaceMode) -> Self {
         self.mode = mode;
         self
     }
 
     /// Set the escape policy.
     #[must_use]
-    pub fn with_escape_policy(mut self, policy: EscapePolicy) -> Self {
+    pub(crate) fn with_escape_policy(mut self, policy: EscapePolicy) -> Self {
         self.escape_policy = policy;
         self
     }
 
     /// Add an auto-allowed read path.
     #[must_use]
-    pub fn allow_read(mut self, path: impl Into<PathBuf>) -> Self {
+    pub(crate) fn allow_read(mut self, path: impl Into<PathBuf>) -> Self {
         self.auto_allow.read.push(path.into());
         self
     }
 
     /// Add an auto-allowed write path.
     #[must_use]
-    pub fn allow_write(mut self, path: impl Into<PathBuf>) -> Self {
+    pub(crate) fn allow_write(mut self, path: impl Into<PathBuf>) -> Self {
         self.auto_allow.write.push(path.into());
         self
     }
 
     /// Add a never-allowed path.
     #[must_use]
-    pub fn never_allow(mut self, path: impl Into<PathBuf>) -> Self {
+    pub(crate) fn never_allow(mut self, path: impl Into<PathBuf>) -> Self {
         self.never_allow.push(path.into());
         self
     }
 
     /// Check if a path is in the workspace.
     #[must_use]
-    pub fn is_in_workspace(&self, path: &std::path::Path) -> bool {
+    pub(crate) fn is_in_workspace(&self, path: &std::path::Path) -> bool {
         path.starts_with(&self.root)
     }
 }

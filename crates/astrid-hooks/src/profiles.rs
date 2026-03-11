@@ -6,7 +6,7 @@ use crate::hook::{FailAction, Hook, HookEvent, HookHandler};
 
 /// A profile containing a set of hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HookProfile {
+pub(crate) struct HookProfile {
     /// Profile name.
     pub name: String,
     /// Profile description.
@@ -18,7 +18,7 @@ pub struct HookProfile {
 impl HookProfile {
     /// Create a new hook profile.
     #[must_use]
-    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub(crate) fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
@@ -28,20 +28,20 @@ impl HookProfile {
 
     /// Add a hook to the profile.
     #[must_use]
-    pub fn with_hook(mut self, hook: Hook) -> Self {
+    pub(crate) fn with_hook(mut self, hook: Hook) -> Self {
         self.hooks.push(hook);
         self
     }
 
     /// Create a minimal profile with no hooks.
     #[must_use]
-    pub fn minimal() -> Self {
+    pub(crate) fn minimal() -> Self {
         Self::new("minimal", "Minimal profile with no hooks")
     }
 
     /// Create a logging profile that logs all major events.
     #[must_use]
-    pub fn logging() -> Self {
+    pub(crate) fn logging() -> Self {
         Self::new("logging", "Profile that logs all major events to stdout")
             .with_hook(
                 Hook::new(HookEvent::SessionStart)
@@ -83,7 +83,7 @@ impl HookProfile {
 
     /// Create a security profile that blocks dangerous operations.
     #[must_use]
-    pub fn security() -> Self {
+    pub(crate) fn security() -> Self {
         Self::new(
             "security",
             "Profile that adds security checks before sensitive operations",
@@ -119,7 +119,7 @@ impl HookProfile {
 
     /// Create a notification profile that sends webhooks.
     #[must_use]
-    pub fn notifications(webhook_url: impl Into<String>) -> Self {
+    pub(crate) fn notifications(webhook_url: impl Into<String>) -> Self {
         let url = webhook_url.into();
 
         Self::new(
@@ -158,7 +158,7 @@ impl HookProfile {
 
     /// Create a development profile with helpful debugging hooks.
     #[must_use]
-    pub fn development() -> Self {
+    pub(crate) fn development() -> Self {
         Self::new(
             "development",
             "Profile for development with debugging helpers",
@@ -198,7 +198,7 @@ impl HookProfile {
 
 /// Get a profile by name.
 #[must_use]
-pub fn get_profile(name: &str) -> Option<HookProfile> {
+pub(crate) fn get_profile(name: &str) -> Option<HookProfile> {
     match name {
         "minimal" => Some(HookProfile::minimal()),
         "logging" => Some(HookProfile::logging()),
@@ -210,7 +210,7 @@ pub fn get_profile(name: &str) -> Option<HookProfile> {
 
 /// List available built-in profile names.
 #[must_use]
-pub fn available_profiles() -> Vec<&'static str> {
+pub(crate) fn available_profiles() -> Vec<&'static str> {
     vec!["minimal", "logging", "security", "development"]
 }
 

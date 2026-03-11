@@ -446,15 +446,6 @@ where
     }
 }
 
-/// Set up default logging (info level, stderr, pretty format).
-///
-/// # Errors
-///
-/// Returns an error if logging cannot be initialized.
-pub fn setup_default_logging() -> TelemetryResult<()> {
-    setup_logging(&LogConfig::default())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

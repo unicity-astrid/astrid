@@ -22,17 +22,5 @@
 // Core hook types
 pub use crate::{Hook, HookEvent, HookHandler};
 
-// Manager and executor
-pub use crate::{HookExecutor, HookManager};
-
-// Configuration
-pub use crate::HooksConfig;
-
-// Discovery
-pub use crate::discover_hooks;
-
-// Profiles
-pub use crate::HookProfile;
-
 // Result type
 pub use crate::HookResult;

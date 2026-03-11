@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 /// Spawns a background task that listens to the Event Bus for `kernel.request.*` topics.
 #[must_use]
-pub fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
+pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     let mut receiver = kernel.event_bus.subscribe_topic("kernel.request.*");
 
     tokio::spawn(async move {

@@ -19,9 +19,6 @@ pub use crate::{
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
 
-// Identity
-pub use crate::AstridUserId;
-
 // Common types (approval, permissions, IDs)
 pub use crate::{
     AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
@@ -33,6 +30,6 @@ pub use crate::RetryConfig;
 
 // Uplink
 pub use crate::{
-    InboundMessage, OutboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkError, UplinkId,
-    UplinkProfile, UplinkResult, UplinkSource,
+    InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkError, UplinkId, UplinkProfile,
+    UplinkResult, UplinkSource,
 };

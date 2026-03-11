@@ -27,9 +27,9 @@ pub mod capability;
 /// Types shared across interceptors.
 pub mod types;
 
-pub use allowance::AllowanceValidator;
-pub use budget::BudgetValidator;
-pub use capability::CapabilityValidator;
+pub(crate) use allowance::AllowanceValidator;
+pub(crate) use budget::BudgetValidator;
+pub(crate) use capability::CapabilityValidator;
 pub use types::*;
 
 use crate::error::{ApprovalError, ApprovalResult};

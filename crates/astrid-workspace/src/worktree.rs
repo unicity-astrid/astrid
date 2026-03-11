@@ -12,7 +12,7 @@ use tracing::{debug, error, info};
 /// but any uncommitted WIP changes are auto-committed to the session's branch
 /// first to prevent data loss.
 #[derive(Debug)]
-pub struct ActiveWorktree {
+pub(crate) struct ActiveWorktree {
     /// The physical path to the main repository.
     repo_path: PathBuf,
     /// The physical path to the temporary worktree.
@@ -29,7 +29,7 @@ impl ActiveWorktree {
     /// # Errors
     ///
     /// Returns an error if git commands fail or directories cannot be resolved.
-    pub fn new(
+    pub(crate) fn new(
         workspace: &WorkspaceDir,
         home: &AstridHome,
         session_id: &SessionId,
@@ -92,108 +92,14 @@ impl ActiveWorktree {
 
     /// Returns the physical path to the worktree.
     #[must_use]
-    pub fn path(&self) -> &PathBuf {
+    pub(crate) fn path(&self) -> &PathBuf {
         &self.worktree_path
     }
 
     /// Returns the name of the branch.
     #[must_use]
-    pub fn branch(&self) -> &str {
+    pub(crate) fn branch(&self) -> &str {
         &self.branch_name
-    }
-
-    /// Performs Garbage Collection (GC) on orphaned worktrees.
-    ///
-    /// This should be called *only* during the daemon's initial boot sequence.
-    /// Because the daemon starts with zero active sessions in memory, any directory
-    /// found in `~/.astrid/sessions/` is guaranteed to be an orphaned worktree from
-    /// a hard crash (e.g. power loss or SIGKILL) where the `Drop` handler didn't fire.
-    ///
-    /// It forcefully removes the physical directories and relies on the user or
-    /// subsequent agent commands to run `git worktree prune` if needed, ensuring
-    /// we instantly reclaim gigabytes of disk space safely.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the sessions directory exists but cannot be read.
-    pub fn cleanup_orphaned_worktrees(home: &AstridHome) -> io::Result<()> {
-        let sessions_dir = home.sessions_dir();
-
-        if !sessions_dir.exists() {
-            return Ok(());
-        }
-
-        info!(
-            "Scanning for orphaned worktrees in {}",
-            sessions_dir.display()
-        );
-
-        let mut count: u64 = 0;
-        let mut freed_bytes: u64 = 0;
-
-        // Iterate through workspace_id directories
-        if let Ok(workspace_entries) = std::fs::read_dir(&sessions_dir) {
-            for ws_entry in workspace_entries.flatten() {
-                if let Ok(ws_file_type) = ws_entry.file_type()
-                    && ws_file_type.is_dir()
-                {
-                    // Iterate through session_id directories within the workspace
-                    if let Ok(session_entries) = std::fs::read_dir(ws_entry.path()) {
-                        for session_entry in session_entries.flatten() {
-                            if let Ok(session_file_type) = session_entry.file_type()
-                                && session_file_type.is_dir()
-                            {
-                                let worktree_path = session_entry.path();
-
-                                // Optional: Calculate size before deletion to log reclaimed space
-                                let size = match fs_extra::dir::get_size(&worktree_path) {
-                                    Ok(s) => s,
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to calculate size of orphaned worktree {}: {}",
-                                            worktree_path.display(),
-                                            e
-                                        );
-                                        0
-                                    },
-                                };
-
-                                // Forcefully remove the physical directory
-                                if let Err(e) = std::fs::remove_dir_all(&worktree_path) {
-                                    error!(
-                                        "Failed to delete orphaned worktree at {}: {}",
-                                        worktree_path.display(),
-                                        e
-                                    );
-                                } else {
-                                    count = count.saturating_add(1);
-                                    freed_bytes = freed_bytes.saturating_add(size);
-                                    debug!(
-                                        "Cleaned up orphaned worktree: {}",
-                                        worktree_path.display()
-                                    );
-                                }
-                            }
-                        }
-                    }
-
-                    // Try to clean up the workspace directory if it's now empty
-                    let _ = std::fs::remove_dir(ws_entry.path());
-                }
-            }
-        }
-
-        if count > 0 {
-            let mb = freed_bytes / 1_024 / 1_024;
-            info!(
-                "Boot GC complete: Removed {} orphaned worktrees, reclaiming {} MB of disk space.",
-                count, mb
-            );
-        } else {
-            debug!("No orphaned worktrees found.");
-        }
-
-        Ok(())
     }
 }
 

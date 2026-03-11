@@ -66,8 +66,7 @@ mod storage;
 
 pub use entry::{ApprovalScope, AuditAction, AuditEntry, AuditOutcome, AuthorizationProof};
 pub use error::{AuditError, AuditResult};
-pub use log::{AuditBuilder, AuditLog, ChainIssue, ChainVerificationResult};
-pub use storage::{AuditStorage, SurrealKvAuditStorage};
+pub use log::{AuditLog, ChainIssue, ChainVerificationResult};
 
 // Re-export AuditEntryId from capabilities for convenience
 pub use astrid_capabilities::AuditEntryId;

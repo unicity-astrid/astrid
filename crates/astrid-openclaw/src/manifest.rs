@@ -70,7 +70,7 @@ impl OpenClawManifest {
     /// Whether this plugin declares channels or providers that require
     /// host-side integration (Tier 2 / Node.js).
     #[must_use]
-    pub fn requires_host_integration(&self) -> bool {
+    pub(crate) fn requires_host_integration(&self) -> bool {
         !self.channels.is_empty() || !self.providers.is_empty()
     }
 }
@@ -79,7 +79,7 @@ impl OpenClawManifest {
 ///
 /// Uses heuristic matching on common secret key naming patterns.
 #[must_use]
-pub fn is_secret_key(key: &str) -> bool {
+pub(crate) fn is_secret_key(key: &str) -> bool {
     let lower = key.to_lowercase();
     lower.contains("api_key")
         || lower.contains("apikey")
@@ -104,19 +104,19 @@ pub fn is_secret_key(key: &str) -> bool {
 /// Shared intermediate representation used by both Tier 1 and Tier 2
 /// manifest generators to avoid duplicating the extraction logic.
 #[derive(Debug)]
-pub struct ParsedEnvField {
+pub(crate) struct ParsedEnvField {
     /// The resolved type: `"secret"`, `"array"`, or `"string"`.
-    pub env_type: String,
+    pub(crate) env_type: String,
     /// The prompt shown to the user (from `uiHints.label` or generated).
-    pub request: String,
+    pub(crate) request: String,
     /// Schema description.
-    pub description: Option<String>,
+    pub(crate) description: Option<String>,
     /// Default value (JSON null treated as absent).
-    pub default: Option<String>,
+    pub(crate) default: Option<String>,
     /// Valid choices for enum fields.
-    pub enum_values: Vec<String>,
+    pub(crate) enum_values: Vec<String>,
     /// Placeholder hint text from `uiHints.placeholder`.
-    pub placeholder: Option<String>,
+    pub(crate) placeholder: Option<String>,
 }
 
 /// Extract environment field definitions from an `OpenClawManifest`.
@@ -128,7 +128,7 @@ pub struct ParsedEnvField {
 ///
 /// Returns [`BridgeError::ConfigValidation`] if any property key
 /// contains invalid characters.
-pub fn extract_env_fields(
+pub(crate) fn extract_env_fields(
     manifest: &OpenClawManifest,
 ) -> BridgeResult<Vec<(String, ParsedEnvField)>> {
     let Some(obj) = manifest.config_schema.as_object() else {
@@ -214,7 +214,7 @@ const MANIFEST_FILENAME: &str = "openclaw.plugin.json";
 /// # Errors
 ///
 /// Returns `BridgeError::Manifest` if the file cannot be read, parsed, or fails validation.
-pub fn parse_manifest(plugin_dir: &Path) -> BridgeResult<OpenClawManifest> {
+pub(crate) fn parse_manifest(plugin_dir: &Path) -> BridgeResult<OpenClawManifest> {
     let manifest_path = plugin_dir.join(MANIFEST_FILENAME);
     let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
         BridgeError::Manifest(format!("failed to read {}: {e}", manifest_path.display()))
@@ -247,7 +247,7 @@ fn validate_manifest(m: &OpenClawManifest) -> BridgeResult<()> {
 /// # Errors
 ///
 /// Returns `BridgeError::Manifest` if no entry point can be found.
-pub fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
+pub(crate) fn resolve_entry_point(plugin_dir: &Path) -> BridgeResult<String> {
     // Try package.json → openclaw.extensions
     let pkg_path = plugin_dir.join("package.json");
     if let Ok(content) = std::fs::read_to_string(&pkg_path)
@@ -322,7 +322,7 @@ fn validate_entry_point_path(path: &str) -> BridgeResult<String> {
 ///
 /// Returns [`BridgeError::ConfigValidation`] if the key is empty or contains
 /// characters outside `[a-zA-Z0-9_-]`.
-pub fn validate_schema_key(key: &str) -> BridgeResult<()> {
+pub(crate) fn validate_schema_key(key: &str) -> BridgeResult<()> {
     if key.is_empty() {
         return Err(BridgeError::ConfigValidation(
             "config schema property key must not be empty".into(),

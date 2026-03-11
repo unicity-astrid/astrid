@@ -35,33 +35,13 @@ pub use crate::{McpError, McpResult};
 // Client types
 pub use crate::ServerManager;
 pub use crate::{McpClient, SecureMcpClient, ToolAuthorization};
-pub use crate::{ServerConfig, ServersConfig, Transport};
+pub use crate::{ServerConfig, ServersConfig};
 
 // Tool types
 pub use crate::{ToolContent, ToolDefinition, ToolResult};
 
-// Resource and prompt definitions
+// Canonical elicitation types from astrid-core
 pub use crate::{
-    PromptArgument, PromptContent, PromptDefinition, PromptMessage, ResourceContent,
-    ResourceDefinition,
+    ElicitationRequest, ElicitationResponse, ElicitationSchema, UrlElicitationRequest,
+    UrlElicitationResponse, UrlElicitationType,
 };
-
-// Server capabilities and info
-pub use crate::{ServerCapabilities, ServerInfo};
-
-// Nov 2025 MCP spec handlers and canonical elicitation types
-pub use crate::{
-    CapabilitiesHandler, ElicitationHandler, ElicitationRequest, ElicitationResponse,
-    ElicitationSchema, RootsHandler, RootsRequest, RootsResponse, SamplingHandler, SamplingRequest,
-    SamplingResponse, UrlElicitationHandler, UrlElicitationRequest, UrlElicitationResponse,
-    UrlElicitationType,
-};
-
-// Rate limiting
-pub use crate::{PendingGuard, RateLimit, RateLimitResult, RateLimiter, RateLimits};
-
-// Tasks
-pub use crate::{Task, TaskManager, TaskState};
-
-// Verification
-pub use crate::{BinaryVerifier, VerificationResult, verify_binary_hash, verify_command_hash};

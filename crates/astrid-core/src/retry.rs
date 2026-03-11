@@ -43,7 +43,8 @@ impl RetryConfig {
 
     /// Creates a configuration with no retries.
     #[must_use]
-    pub const fn no_retry() -> Self {
+    #[allow(dead_code)]
+    pub(crate) const fn no_retry() -> Self {
         Self {
             max_attempts: 0,
             initial_delay: Duration::ZERO,
@@ -88,13 +89,6 @@ impl RetryConfig {
         }
     }
 
-    /// Sets the jitter factor and returns self for builder-style configuration.
-    #[must_use]
-    pub const fn with_jitter(mut self, factor: f64) -> Self {
-        self.jitter_factor = factor;
-        self
-    }
-
     /// Calculates the delay for a given attempt number (0-indexed).
     ///
     /// Returns `Duration::ZERO` for attempt 0, then exponentially increasing
@@ -132,7 +126,12 @@ impl RetryConfig {
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
     )]
-    pub fn delay_for_attempt_with_jitter(&self, attempt: u32, random_factor: f64) -> Duration {
+    #[allow(dead_code)]
+    pub(crate) fn delay_for_attempt_with_jitter(
+        &self,
+        attempt: u32,
+        random_factor: f64,
+    ) -> Duration {
         let base_delay = self.delay_for_attempt(attempt);
 
         if self.jitter_factor <= 0.0 {
@@ -155,12 +154,14 @@ impl RetryConfig {
 
     /// Returns true if more attempts are allowed given the current attempt count.
     #[must_use]
-    pub fn should_retry(&self, current_attempt: u32) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn should_retry(&self, current_attempt: u32) -> bool {
         current_attempt < self.max_attempts
     }
 
     /// Returns an iterator over the delays for all retry attempts.
-    pub fn delays(&self) -> impl Iterator<Item = Duration> + '_ {
+    #[allow(dead_code)]
+    pub(crate) fn delays(&self) -> impl Iterator<Item = Duration> + '_ {
         (1..=self.max_attempts).map(|attempt| self.delay_for_attempt(attempt))
     }
 }

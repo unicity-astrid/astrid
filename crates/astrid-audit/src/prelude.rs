@@ -40,10 +40,7 @@ pub use crate::{AuditError, AuditResult};
 pub use crate::{ApprovalScope, AuditAction, AuditEntry, AuditOutcome, AuthorizationProof};
 
 // Log and verification
-pub use crate::{AuditBuilder, AuditLog, ChainIssue, ChainVerificationResult};
-
-// Storage
-pub use crate::{AuditStorage, SurrealKvAuditStorage};
+pub use crate::{AuditLog, ChainIssue, ChainVerificationResult};
 
 // Re-export from capabilities
 pub use crate::AuditEntryId;

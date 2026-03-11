@@ -33,11 +33,11 @@
 pub use crate::{CapabilityError, CapabilityResult};
 
 // Token types
-pub use crate::{AuditEntryId, CapabilityToken, TokenBuilder, TokenScope};
+pub use crate::{AuditEntryId, CapabilityToken, TokenScope};
 
 // Resource patterns
-pub use crate::{ResourcePattern, ResourceUri};
+pub use crate::ResourcePattern;
 
 // Store and validation
 pub use crate::CapabilityStore;
-pub use crate::{AuthorizationResult, CapabilityValidator, MultiPermissionCheck};
+pub use crate::{AuthorizationResult, CapabilityValidator};

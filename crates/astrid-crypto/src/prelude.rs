@@ -23,13 +23,10 @@
 pub use crate::{CryptoError, CryptoResult};
 
 // Key types
-pub use crate::{KeyId, KeyPair, PublicKey};
+pub use crate::{KeyPair, PublicKey};
 
 // Signature
 pub use crate::Signature;
-
-// Signature verification
-pub use crate::SignatureVerifier;
 
 // Hashing
 pub use crate::ContentHash;

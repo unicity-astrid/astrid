@@ -20,14 +20,5 @@
 //! }
 //! ```
 
-// Boundary checking
-pub use crate::{PathCheck, WorkspaceBoundary};
-
-// Configuration
-pub use crate::{EscapePolicy, WorkspaceConfig, WorkspaceMode};
-
-// Escape handling
-pub use crate::{EscapeDecision, EscapeRequest};
-
-// Profiles
-pub use crate::WorkspaceProfile;
+// Sandbox
+pub use crate::SandboxCommand;

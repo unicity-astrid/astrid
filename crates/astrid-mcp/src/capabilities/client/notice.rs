@@ -30,7 +30,7 @@ pub(super) const MAX_CONTEXT_BYTES: usize = 64 * 1024;
 /// data deserialized from an untrusted plugin subprocess. Consumers must
 /// validate channel names, capabilities, and counts before using the data
 /// for access-control decisions.
-pub enum ServerNotice {
+pub(crate) enum ServerNotice {
     /// The server pushed `notifications/tools/list_changed`; the handler has
     /// already re-fetched the tool list and attached it here.
     ToolsRefreshed {
@@ -45,6 +45,10 @@ pub enum ServerNotice {
         /// Name of the MCP server (e.g. `"capsule:my-capsule"`).
         server_name: String,
         /// Channels registered by the capsule.
+        #[expect(
+            dead_code,
+            reason = "constructed in rmcp_impl, not yet consumed by listeners"
+        )]
         channels: Vec<BridgeChannelInfo>,
     },
 }

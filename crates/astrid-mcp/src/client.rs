@@ -2,7 +2,7 @@
 //!
 //! Provides a high-level interface for interacting with MCP servers.
 
-use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
+use rmcp::model::CallToolRequestParams;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -12,11 +12,8 @@ use tracing::{debug, info, warn};
 use crate::capabilities::{CapabilitiesHandler, ServerNotice};
 use crate::config::{ServerConfig, ServersConfig};
 use crate::error::{McpError, McpResult};
-use crate::server::{McpServerStatus, ServerManager};
-use crate::types::{
-    PromptContent, PromptDefinition, ResourceContent, ResourceDefinition, ToolDefinition,
-    ToolResult,
-};
+use crate::server::ServerManager;
+use crate::types::{ToolDefinition, ToolResult};
 
 use tokio::sync::mpsc;
 
@@ -72,13 +69,6 @@ impl McpClient {
     pub fn with_config(config: ServersConfig) -> Self {
         let servers = ServerManager::new(config);
         Self::new(servers)
-    }
-
-    /// Set the capabilities handler for server-initiated requests.
-    #[must_use]
-    pub fn with_capabilities(mut self, handler: CapabilitiesHandler) -> Self {
-        self.capabilities = Arc::new(handler);
-        self
     }
 
     /// Spawn a background task that listens for `ServerNotice` messages and
@@ -309,82 +299,6 @@ impl McpClient {
         Ok(ToolResult::from(result))
     }
 
-    /// List resources from a server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running or the call fails.
-    pub async fn list_resources(&self, server: &str) -> McpResult<Vec<ResourceDefinition>> {
-        let peer = self.servers.get_peer(server).await?;
-        let resources = peer.list_all_resources().await.map_err(McpError::from)?;
-
-        Ok(resources
-            .iter()
-            .map(|r| ResourceDefinition::from_rmcp(r, server))
-            .collect())
-    }
-
-    /// Read a resource from a server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running or the call fails.
-    pub async fn read_resource(&self, server: &str, uri: &str) -> McpResult<Vec<ResourceContent>> {
-        let peer = self.servers.get_peer(server).await?;
-
-        let params = ReadResourceRequestParams {
-            meta: None,
-            uri: uri.to_string(),
-        };
-
-        let result = peer.read_resource(params).await.map_err(McpError::from)?;
-
-        Ok(result
-            .contents
-            .iter()
-            .map(ResourceContent::from_rmcp)
-            .collect())
-    }
-
-    /// List prompts from a server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running or the call fails.
-    pub async fn list_prompts(&self, server: &str) -> McpResult<Vec<PromptDefinition>> {
-        let peer = self.servers.get_peer(server).await?;
-        let prompts = peer.list_all_prompts().await.map_err(McpError::from)?;
-
-        Ok(prompts
-            .iter()
-            .map(|p| PromptDefinition::from_rmcp(p, server))
-            .collect())
-    }
-
-    /// Get a prompt from a server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running or the call fails.
-    pub async fn get_prompt(
-        &self,
-        server: &str,
-        name: &str,
-        arguments: Option<serde_json::Map<String, Value>>,
-    ) -> McpResult<PromptContent> {
-        let peer = self.servers.get_peer(server).await?;
-
-        let params = GetPromptRequestParams {
-            meta: None,
-            name: name.to_string(),
-            arguments,
-        };
-
-        let result = peer.get_prompt(params).await.map_err(McpError::from)?;
-
-        Ok(PromptContent::from_rmcp(&result))
-    }
-
     /// Refresh the tools cache from all running servers.
     async fn refresh_tools_cache(&self) -> McpResult<()> {
         let tools = self.servers.all_tools().await;
@@ -451,11 +365,6 @@ impl McpClient {
             self.refresh_tools_cache().await?;
         }
         Ok(restarted)
-    }
-
-    /// Get status snapshots for all running servers.
-    pub async fn server_statuses(&self) -> Vec<McpServerStatus> {
-        self.servers.server_statuses().await
     }
 
     /// Send a custom JSON-RPC notification to a running MCP server.

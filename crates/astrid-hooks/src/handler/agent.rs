@@ -15,12 +15,12 @@ use crate::result::{HookContext, HookExecutionResult};
 /// This handler will invoke an LLM to process hook events
 /// TODO: implement real agent handler. For now, it returns a stub response.
 #[derive(Debug, Clone, Default)]
-pub struct AgentHandler;
+pub(crate) struct AgentHandler;
 
 impl AgentHandler {
     /// Create a new agent handler.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
@@ -30,7 +30,7 @@ impl AgentHandler {
     ///
     /// Returns an error if the handler configuration is invalid.
     #[expect(clippy::unused_async)]
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         handler: &HookHandler,
         _context: &HookContext,
@@ -67,14 +67,14 @@ impl AgentHandler {
     ///
     /// Always returns `false` until the agent handler is implemented.
     #[must_use]
-    pub fn is_available() -> bool {
+    pub(crate) fn is_available() -> bool {
         false
     }
 }
 
 /// Configuration for agent execution.
 #[derive(Debug, Clone)]
-pub struct AgentConfig {
+pub(crate) struct AgentConfig {
     /// Default model to use.
     pub default_model: String,
     /// Maximum tokens for responses.

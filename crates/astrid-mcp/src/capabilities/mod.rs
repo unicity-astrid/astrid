@@ -13,13 +13,5 @@ mod handler;
 mod roots;
 mod sampling;
 
-pub use client::{
-    AstridClientHandler, BridgeChannelCapabilities, BridgeChannelDefinition, BridgeChannelInfo,
-    ServerNotice,
-};
-pub use elicitation::{ElicitationHandler, UrlElicitationHandler};
-pub use handler::CapabilitiesHandler;
-pub use roots::{Root, RootsHandler, RootsRequest, RootsResponse};
-pub use sampling::{
-    SamplingContent, SamplingHandler, SamplingMessage, SamplingRequest, SamplingResponse,
-};
+pub(crate) use client::{AstridClientHandler, ServerNotice};
+pub(crate) use handler::CapabilitiesHandler;

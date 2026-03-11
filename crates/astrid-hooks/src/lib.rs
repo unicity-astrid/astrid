@@ -46,21 +46,23 @@
 
 pub mod prelude;
 
-pub mod config;
-pub mod discovery;
-pub mod executor;
-pub mod handler;
+#[allow(dead_code)]
+pub(crate) mod config;
+#[allow(dead_code)]
+pub(crate) mod discovery;
+#[allow(dead_code)]
+pub(crate) mod executor;
+#[allow(dead_code)]
+pub(crate) mod handler;
 pub mod hook;
 pub mod hook_event;
-pub mod manager;
-pub mod profiles;
-pub mod result;
+#[allow(dead_code)]
+pub(crate) mod manager;
+#[allow(dead_code)]
+pub(crate) mod profiles;
+#[allow(dead_code)]
+pub(crate) mod result;
 
-pub use config::HooksConfig;
-pub use discovery::discover_hooks;
-pub use executor::HookExecutor;
 pub use hook::{Hook, HookHandler};
 pub use hook_event::HookEvent;
-pub use manager::HookManager;
-pub use profiles::HookProfile;
 pub use result::HookResult;

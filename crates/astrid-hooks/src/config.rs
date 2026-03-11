@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// Configuration for the hooks system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(clippy::struct_excessive_bools)]
-pub struct HooksConfig {
+pub(crate) struct HooksConfig {
     /// Whether hooks are enabled.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -94,13 +94,13 @@ impl Default for HooksConfig {
 impl HooksConfig {
     /// Create a new hooks configuration with defaults.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Create a disabled hooks configuration.
     #[must_use]
-    pub fn disabled() -> Self {
+    pub(crate) fn disabled() -> Self {
         Self {
             enabled: false,
             ..Default::default()
@@ -109,7 +109,7 @@ impl HooksConfig {
 
     /// Create a minimal configuration for testing.
     #[must_use]
-    pub fn minimal() -> Self {
+    pub(crate) fn minimal() -> Self {
         Self {
             enabled: true,
             default_timeout_secs: 5,
@@ -125,49 +125,49 @@ impl HooksConfig {
 
     /// Set the default timeout.
     #[must_use]
-    pub fn with_timeout(mut self, secs: u64) -> Self {
+    pub(crate) fn with_timeout(mut self, secs: u64) -> Self {
         self.default_timeout_secs = secs;
         self
     }
 
     /// Add a hook directory.
     #[must_use]
-    pub fn with_directory(mut self, dir: PathBuf) -> Self {
+    pub(crate) fn with_directory(mut self, dir: PathBuf) -> Self {
         self.hook_directories.push(dir);
         self
     }
 
     /// Set the profile.
     #[must_use]
-    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+    pub(crate) fn with_profile(mut self, profile: impl Into<String>) -> Self {
         self.profile = Some(profile.into());
         self
     }
 
     /// Enable WASM hooks.
     #[must_use]
-    pub fn enable_wasm(mut self) -> Self {
+    pub(crate) fn enable_wasm(mut self) -> Self {
         self.allow_wasm_hooks = true;
         self
     }
 
     /// Enable agent hooks.
     #[must_use]
-    pub fn enable_agent(mut self) -> Self {
+    pub(crate) fn enable_agent(mut self) -> Self {
         self.allow_agent_hooks = true;
         self
     }
 
     /// Add a global environment variable.
     #[must_use]
-    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub(crate) fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.global_env.insert(key.into(), value.into());
         self
     }
 
     /// Check if a handler type is allowed.
     #[must_use]
-    pub fn is_handler_allowed(&self, handler: &crate::hook::HookHandler) -> bool {
+    pub(crate) fn is_handler_allowed(&self, handler: &crate::hook::HookHandler) -> bool {
         use crate::hook::HookHandler;
 
         match handler {
@@ -183,7 +183,7 @@ impl HooksConfig {
     /// # Errors
     ///
     /// Returns an error message if the hook is invalid per this configuration.
-    pub fn validate_hook(&self, hook: &crate::hook::Hook) -> Result<(), String> {
+    pub(crate) fn validate_hook(&self, hook: &crate::hook::Hook) -> Result<(), String> {
         if !self.enabled {
             return Err("Hooks are disabled".to_string());
         }

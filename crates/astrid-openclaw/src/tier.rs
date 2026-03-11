@@ -79,7 +79,7 @@ const UNSUPPORTED_NODE_MODULES: &[&str] = &[
 /// 4. Source files import local relative paths (`./`, `../`) → Node (multi-file)
 /// 5. Default → Wasm
 #[must_use]
-pub fn detect_tier(plugin_dir: &Path, manifest: Option<&OpenClawManifest>) -> PluginTier {
+pub(crate) fn detect_tier(plugin_dir: &Path, manifest: Option<&OpenClawManifest>) -> PluginTier {
     // 1. Check for channels/providers in manifest (requires host integration)
     let needs_host = if let Some(m) = manifest {
         m.requires_host_integration()

@@ -12,7 +12,7 @@ use crate::result::{HookContext, HookExecution, HookExecutionResult, HookResult}
 /// Executes hooks using the appropriate handler.
 #[derive(Debug)]
 #[expect(clippy::struct_field_names)]
-pub struct HookExecutor {
+pub(crate) struct HookExecutor {
     command_handler: CommandHandler,
     http_handler: HttpHandler,
     wasm_handler: WasmHandler,
@@ -28,7 +28,7 @@ impl Default for HookExecutor {
 impl HookExecutor {
     /// Create a new hook executor with default workspace root (current directory).
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let workspace_root = std::env::current_dir().unwrap_or_default();
         Self {
             command_handler: CommandHandler::new(),
@@ -40,7 +40,7 @@ impl HookExecutor {
 
     /// Create a new hook executor with a specific workspace root for WASM handlers.
     #[must_use]
-    pub fn with_workspace_root(workspace_root: std::path::PathBuf) -> Self {
+    pub(crate) fn with_workspace_root(workspace_root: std::path::PathBuf) -> Self {
         Self {
             command_handler: CommandHandler::new(),
             http_handler: HttpHandler::new(),
@@ -50,7 +50,7 @@ impl HookExecutor {
     }
 
     /// Execute a single hook.
-    pub async fn execute(&self, hook: &Hook, context: &HookContext) -> HookExecution {
+    pub(crate) async fn execute(&self, hook: &Hook, context: &HookContext) -> HookExecution {
         let started_at = Utc::now();
         let timeout = Duration::from_secs(hook.timeout_secs);
 
@@ -154,7 +154,7 @@ impl HookExecutor {
     }
 
     /// Execute multiple hooks in sequence.
-    pub async fn execute_all(
+    pub(crate) async fn execute_all(
         &self,
         hooks: &[Hook],
         mut context: HookContext,
@@ -219,7 +219,7 @@ impl HookExecutor {
     /// - `ContinueWith` modifications are merged
     /// - Otherwise → Continue
     #[must_use]
-    pub fn combine_results(executions: &[HookExecution]) -> HookResult {
+    pub(crate) fn combine_results(executions: &[HookExecution]) -> HookResult {
         let mut modifications = std::collections::HashMap::new();
         let mut ask_question = None;
 
@@ -294,7 +294,7 @@ fn matches_context(matcher: &HookMatcher, context: &HookContext) -> bool {
 
 /// Builder for `HookExecution` for testing.
 #[derive(Debug)]
-pub struct HookExecutionBuilder {
+pub(crate) struct HookExecutionBuilder {
     hook_id: Uuid,
     invocation_id: Uuid,
     result: HookExecutionResult,
@@ -303,7 +303,7 @@ pub struct HookExecutionBuilder {
 impl HookExecutionBuilder {
     /// Create a new builder.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             hook_id: Uuid::new_v4(),
             invocation_id: Uuid::new_v4(),
@@ -316,14 +316,14 @@ impl HookExecutionBuilder {
 
     /// Set the result.
     #[must_use]
-    pub fn with_result(mut self, result: HookExecutionResult) -> Self {
+    pub(crate) fn with_result(mut self, result: HookExecutionResult) -> Self {
         self.result = result;
         self
     }
 
     /// Build the execution.
     #[must_use]
-    pub fn build(self) -> HookExecution {
+    pub(crate) fn build(self) -> HookExecution {
         let now = Utc::now();
         HookExecution {
             hook_id: self.hook_id,

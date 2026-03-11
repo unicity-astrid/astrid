@@ -142,7 +142,7 @@ impl Kernel {
     /// # Errors
     ///
     /// Returns an error if the manifest cannot be loaded, the capsule cannot be created, or registration fails.
-    pub async fn load_capsule(&self, dir: PathBuf) -> Result<(), anyhow::Error> {
+    async fn load_capsule(&self, dir: PathBuf) -> Result<(), anyhow::Error> {
         let manifest_path = dir.join("Capsule.toml");
         let manifest = astrid_capsule::discovery::load_manifest(&manifest_path)
             .map_err(|e| anyhow::anyhow!(e))?;

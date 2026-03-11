@@ -49,7 +49,7 @@ const PLUGIN_EXPORTS: &[&str] = &[
 /// Used for compilation cache invalidation — when the kernel changes,
 /// all cached compilations must be rebuilt.
 #[must_use]
-pub fn kernel_hash() -> String {
+pub(crate) fn kernel_hash() -> String {
     blake3::hash(QUICKJS_KERNEL).to_hex().to_string()
 }
 

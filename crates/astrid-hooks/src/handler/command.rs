@@ -43,7 +43,7 @@ const SAFE_PATH_DIRS: &[&str] = &[r"C:\Windows\System32", r"C:\Windows"];
 
 /// Handler for executing shell commands with security sandboxing.
 #[derive(Debug, Clone)]
-pub struct CommandHandler {
+pub(crate) struct CommandHandler {
     /// Whether to enable strict sandboxing (clear env, restrict PATH).
     sandboxed: bool,
 }
@@ -57,13 +57,13 @@ impl Default for CommandHandler {
 impl CommandHandler {
     /// Create a new command handler with default sandboxing enabled.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Create a new command handler with explicit sandbox setting.
     #[must_use]
-    pub fn with_sandbox(sandboxed: bool) -> Self {
+    pub(crate) fn with_sandbox(sandboxed: bool) -> Self {
         Self { sandboxed }
     }
 
@@ -154,7 +154,7 @@ impl CommandHandler {
     /// # Errors
     ///
     /// Returns an error if the handler configuration is invalid.
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         handler: &HookHandler,
         context: &HookContext,

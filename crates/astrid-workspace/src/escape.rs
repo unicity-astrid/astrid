@@ -9,29 +9,29 @@ use crate::boundaries::PathCheck;
 
 /// A request to escape the workspace boundaries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EscapeRequest {
+pub(crate) struct EscapeRequest {
     /// Unique request ID.
-    pub request_id: Uuid,
+    pub(crate) request_id: Uuid,
     /// Path being accessed.
-    pub path: PathBuf,
+    pub(crate) path: PathBuf,
     /// Operation being performed.
-    pub operation: EscapeOperation,
+    pub(crate) operation: EscapeOperation,
     /// Reason for the request.
-    pub reason: String,
+    pub(crate) reason: String,
     /// When the request was created.
-    pub created_at: DateTime<Utc>,
+    pub(crate) created_at: DateTime<Utc>,
     /// Tool that initiated the request (if applicable).
     #[serde(default)]
-    pub tool_name: Option<String>,
+    pub(crate) tool_name: Option<String>,
     /// Server that initiated the request (if applicable).
     #[serde(default)]
-    pub server_name: Option<String>,
+    pub(crate) server_name: Option<String>,
 }
 
 impl EscapeRequest {
     /// Create a new escape request.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         path: impl Into<PathBuf>,
         operation: EscapeOperation,
         reason: impl Into<String>,
@@ -49,14 +49,14 @@ impl EscapeRequest {
 
     /// Set the tool name.
     #[must_use]
-    pub fn with_tool(mut self, tool: impl Into<String>) -> Self {
+    pub(crate) fn with_tool(mut self, tool: impl Into<String>) -> Self {
         self.tool_name = Some(tool.into());
         self
     }
 
     /// Set the server name.
     #[must_use]
-    pub fn with_server(mut self, server: impl Into<String>) -> Self {
+    pub(crate) fn with_server(mut self, server: impl Into<String>) -> Self {
         self.server_name = Some(server.into());
         self
     }
@@ -65,7 +65,7 @@ impl EscapeRequest {
 /// Operation being performed outside the workspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EscapeOperation {
+pub(crate) enum EscapeOperation {
     /// Reading a file.
     Read,
     /// Writing to a file.
@@ -96,7 +96,7 @@ impl std::fmt::Display for EscapeOperation {
 /// Decision on an escape request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EscapeDecision {
+pub(crate) enum EscapeDecision {
     /// Allow this one time.
     AllowOnce,
     /// Allow for the current session.
@@ -110,27 +110,27 @@ pub enum EscapeDecision {
 impl EscapeDecision {
     /// Check if this is an allow decision.
     #[must_use]
-    pub fn is_allowed(&self) -> bool {
+    pub(crate) fn is_allowed(self) -> bool {
         !matches!(self, Self::Deny)
     }
 
     /// Check if this should be remembered.
     #[must_use]
-    pub fn should_remember(&self) -> bool {
+    pub(crate) fn should_remember(self) -> bool {
         matches!(self, Self::AllowAlways)
     }
 }
 
 /// Serializable state for `EscapeHandler` (for persistence).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EscapeState {
+pub(crate) struct EscapeState {
     /// Paths that have been permanently remembered (`AllowAlways` decisions).
-    pub remembered_paths: Vec<PathBuf>,
+    pub(crate) remembered_paths: Vec<PathBuf>,
 }
 
 /// Escape request handler.
 #[derive(Debug, Clone)]
-pub struct EscapeHandler {
+pub(crate) struct EscapeHandler {
     /// Remembered paths (`AllowAlways` decisions).
     remembered_paths: std::collections::HashSet<PathBuf>,
     /// Session-allowed paths.
@@ -140,7 +140,7 @@ pub struct EscapeHandler {
 impl EscapeHandler {
     /// Create a new escape handler.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             remembered_paths: std::collections::HashSet::new(),
             session_paths: std::collections::HashSet::new(),
@@ -151,7 +151,7 @@ impl EscapeHandler {
     ///
     /// Paths are canonicalized before storing so that comparisons are
     /// consistent regardless of how the path was originally specified.
-    pub fn process_decision(&mut self, request: &EscapeRequest, decision: EscapeDecision) {
+    pub(crate) fn process_decision(&mut self, request: &EscapeRequest, decision: EscapeDecision) {
         let canonical =
             std::fs::canonicalize(&request.path).unwrap_or_else(|_| request.path.clone());
         match decision {
@@ -169,25 +169,25 @@ impl EscapeHandler {
     ///
     /// The path is canonicalized before checking to match the stored form.
     #[must_use]
-    pub fn is_allowed(&self, path: &PathBuf) -> bool {
+    pub(crate) fn is_allowed(&self, path: &PathBuf) -> bool {
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
         self.remembered_paths.contains(&canonical) || self.session_paths.contains(&canonical)
     }
 
     /// Clear session-allowed paths.
-    pub fn clear_session(&mut self) {
+    pub(crate) fn clear_session(&mut self) {
         self.session_paths.clear();
     }
 
     /// Clear all remembered paths.
-    pub fn clear_all(&mut self) {
+    pub(crate) fn clear_all(&mut self) {
         self.remembered_paths.clear();
         self.session_paths.clear();
     }
 
     /// Export the current state for persistence.
     #[must_use]
-    pub fn export_state(&self) -> EscapeState {
+    pub(crate) fn export_state(&self) -> EscapeState {
         EscapeState {
             remembered_paths: self.remembered_paths.iter().cloned().collect(),
         }
@@ -198,7 +198,7 @@ impl EscapeHandler {
     /// Only absolute paths that can be canonicalized (i.e., exist on disk)
     /// are restored. This prevents workspace boundary bypass via injected
     /// relative or non-existent paths in the persisted state.
-    pub fn restore_state(&mut self, state: EscapeState) {
+    pub(crate) fn restore_state(&mut self, state: EscapeState) {
         for path in state.remembered_paths {
             if path.is_absolute()
                 && let Ok(canonical) = std::fs::canonicalize(&path)
@@ -218,7 +218,7 @@ impl Default for EscapeHandler {
 
 /// Result of checking escape flow.
 #[derive(Debug, Clone)]
-pub enum EscapeFlow {
+pub(crate) enum EscapeFlow {
     /// Path is allowed (in workspace or auto-allowed).
     Allowed,
     /// Path is denied (never-allowed).
@@ -230,7 +230,7 @@ pub enum EscapeFlow {
 impl EscapeFlow {
     /// Create from a path check result.
     #[must_use]
-    pub fn from_check(
+    pub(crate) fn from_check(
         check: PathCheck,
         path: PathBuf,
         operation: EscapeOperation,

@@ -34,7 +34,7 @@ pub use crate::{TelemetryError, TelemetryResult};
 pub use crate::{LogConfig, LogFormat, LogTarget};
 
 // Setup functions
-pub use crate::{setup_default_logging, setup_logging};
+pub use crate::setup_logging;
 
 // Request context
-pub use crate::{RequestContext, RequestGuard};
+pub use crate::RequestContext;

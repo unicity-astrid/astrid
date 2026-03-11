@@ -37,19 +37,19 @@ pub enum HookResult {
 impl HookResult {
     /// Create a continue result.
     #[must_use]
-    pub fn continue_() -> Self {
+    pub(crate) fn continue_() -> Self {
         Self::Continue
     }
 
     /// Create a continue-with-modifications result.
     #[must_use]
-    pub fn continue_with(modifications: HashMap<String, serde_json::Value>) -> Self {
+    pub(crate) fn continue_with(modifications: HashMap<String, serde_json::Value>) -> Self {
         Self::ContinueWith { modifications }
     }
 
     /// Create a block result.
     #[must_use]
-    pub fn block(reason: impl Into<String>) -> Self {
+    pub(crate) fn block(reason: impl Into<String>) -> Self {
         Self::Block {
             reason: reason.into(),
         }
@@ -57,7 +57,7 @@ impl HookResult {
 
     /// Create an ask result.
     #[must_use]
-    pub fn ask(question: impl Into<String>) -> Self {
+    pub(crate) fn ask(question: impl Into<String>) -> Self {
         Self::Ask {
             question: question.into(),
             default: None,
@@ -66,20 +66,20 @@ impl HookResult {
 
     /// Check if this result blocks the operation.
     #[must_use]
-    pub fn is_blocking(&self) -> bool {
+    pub(crate) fn is_blocking(&self) -> bool {
         matches!(self, Self::Block { .. })
     }
 
     /// Check if this result requires user interaction.
     #[must_use]
-    pub fn requires_interaction(&self) -> bool {
+    pub(crate) fn requires_interaction(&self) -> bool {
         matches!(self, Self::Ask { .. })
     }
 }
 
 /// Context provided to hooks during execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HookContext {
+pub(crate) struct HookContext {
     /// Unique identifier for this hook invocation.
     pub invocation_id: Uuid,
     /// The event that triggered the hook.
@@ -103,7 +103,7 @@ pub struct HookContext {
 impl HookContext {
     /// Create a new hook context.
     #[must_use]
-    pub fn new(event: HookEvent) -> Self {
+    pub(crate) fn new(event: HookEvent) -> Self {
         Self {
             invocation_id: Uuid::new_v4(),
             event,
@@ -117,39 +117,39 @@ impl HookContext {
 
     /// Set the session ID.
     #[must_use]
-    pub fn with_session(mut self, session_id: Uuid) -> Self {
+    pub(crate) fn with_session(mut self, session_id: Uuid) -> Self {
         self.session_id = Some(session_id);
         self
     }
 
     /// Set the user ID.
     #[must_use]
-    pub fn with_user(mut self, user_id: Uuid) -> Self {
+    pub(crate) fn with_user(mut self, user_id: Uuid) -> Self {
         self.user_id = Some(user_id);
         self
     }
 
     /// Add data to the context.
     #[must_use]
-    pub fn with_data(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+    pub(crate) fn with_data(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.data.insert(key.into(), value);
         self
     }
 
     /// Add a previous hook result.
-    pub fn add_previous_result(&mut self, result: HookResult) {
+    pub(crate) fn add_previous_result(&mut self, result: HookResult) {
         self.previous_results.push(result);
     }
 
     /// Get a data value.
     #[must_use]
-    pub fn get_data(&self, key: &str) -> Option<&serde_json::Value> {
+    pub(crate) fn get_data(&self, key: &str) -> Option<&serde_json::Value> {
         self.data.get(key)
     }
 
     /// Get a data value as a specific type.
     #[must_use]
-    pub fn get_data_as<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
+    pub(crate) fn get_data_as<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
         self.data
             .get(key)
             .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -157,19 +157,19 @@ impl HookContext {
 
     /// Check if any previous hook blocked.
     #[must_use]
-    pub fn was_blocked(&self) -> bool {
+    pub(crate) fn was_blocked(&self) -> bool {
         self.previous_results.iter().any(HookResult::is_blocking)
     }
 
     /// Convert context to JSON for passing to handlers.
     #[must_use]
-    pub fn to_json(&self) -> serde_json::Value {
+    pub(crate) fn to_json(&self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 
     /// Convert context to environment variables.
     #[must_use]
-    pub fn to_env_vars(&self) -> HashMap<String, String> {
+    pub(crate) fn to_env_vars(&self) -> HashMap<String, String> {
         let mut env = HashMap::new();
 
         env.insert("ASTRID_HOOK_ID".to_string(), self.invocation_id.to_string());
@@ -200,7 +200,7 @@ impl HookContext {
 
 /// Execution metadata for a hook run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HookExecution {
+pub(crate) struct HookExecution {
     /// Hook ID that was executed.
     pub hook_id: Uuid,
     /// Invocation ID from the context.
@@ -218,7 +218,7 @@ pub struct HookExecution {
 /// Result of hook execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "status")]
-pub enum HookExecutionResult {
+pub(crate) enum HookExecutionResult {
     /// Hook executed successfully.
     Success {
         /// The hook's result.
@@ -250,13 +250,13 @@ pub enum HookExecutionResult {
 impl HookExecutionResult {
     /// Check if execution was successful.
     #[must_use]
-    pub fn is_success(&self) -> bool {
+    pub(crate) fn is_success(&self) -> bool {
         matches!(self, Self::Success { .. })
     }
 
     /// Get the hook result if successful.
     #[must_use]
-    pub fn hook_result(&self) -> Option<&HookResult> {
+    pub(crate) fn hook_result(&self) -> Option<&HookResult> {
         match self {
             Self::Success { result, .. } => Some(result),
             _ => None,

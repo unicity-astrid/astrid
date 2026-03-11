@@ -464,7 +464,7 @@ fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> 
 ///
 /// Returns [`BridgeError::ConfigValidation`] if unknown keys are present or
 /// required keys are missing (when `check_required` is `true`).
-pub fn validate_config<S: std::hash::BuildHasher>(
+pub(crate) fn validate_config<S: std::hash::BuildHasher>(
     config: &HashMap<String, serde_json::Value, S>,
     schema: &serde_json::Value,
     check_required: bool,
@@ -516,20 +516,6 @@ fn build_cache(opts: &CompileOptions<'_>) -> Option<CompilationCache> {
         cache_dir.to_path_buf(),
         compiler::kernel_hash(),
     ))
-}
-
-/// Run garbage collection on the compilation cache.
-///
-/// # Errors
-///
-/// Returns [`BridgeError::Cache`] if the cache directory cannot be read.
-pub fn cache_gc(
-    cache_dir: &Path,
-    max_age_days: u64,
-    max_size_bytes: u64,
-) -> BridgeResult<crate::cache::GcStats> {
-    let cache = CompilationCache::new(cache_dir.to_path_buf(), compiler::kernel_hash());
-    cache.gc(max_age_days, max_size_bytes)
 }
 
 /// Resolve the default cache directory (`~/.astrid/cache/openclaw/`).
@@ -784,13 +770,6 @@ mod tests {
             path.ends_with("openclaw"),
             "cache dir should end with 'openclaw', got: {path:?}"
         );
-    }
-
-    #[test]
-    fn cache_gc_on_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let stats = cache_gc(dir.path(), 30, 500_000_000).unwrap();
-        assert_eq!(stats.entries_removed, 0);
     }
 
     #[test]

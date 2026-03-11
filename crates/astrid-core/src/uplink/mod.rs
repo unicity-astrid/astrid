@@ -297,37 +297,6 @@ mod tests {
         assert!(msg.content.is_empty());
     }
 
-    // -- OutboundMessage --
-
-    #[test]
-    fn outbound_message_builder() {
-        let cid = UplinkId::new();
-        let msg = OutboundMessage::builder(cid, "target-user", "response")
-            .thread_id("thread-1")
-            .reply_to("msg-42")
-            .build();
-
-        assert_eq!(msg.uplink_id, cid);
-        assert_eq!(msg.target_user_id, "target-user");
-        assert_eq!(msg.content, "response");
-        assert_eq!(msg.thread_id.as_deref(), Some("thread-1"));
-        assert_eq!(msg.reply_to.as_deref(), Some("msg-42"));
-    }
-
-    #[test]
-    fn outbound_message_serde_roundtrip() {
-        let cid = UplinkId::new();
-        let msg = OutboundMessage::builder(cid, "user-1", "hello")
-            .reply_to("prev-msg")
-            .build();
-
-        let json = serde_json::to_string(&msg).unwrap();
-        let back: OutboundMessage = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.uplink_id, cid);
-        assert_eq!(back.target_user_id, "user-1");
-        assert_eq!(back.reply_to.as_deref(), Some("prev-msg"));
-    }
-
     // -- UplinkError --
 
     #[test]

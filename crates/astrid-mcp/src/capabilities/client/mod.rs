@@ -16,6 +16,5 @@ mod rmcp_impl;
 #[cfg(test)]
 mod tests;
 
-pub use bridge::{BridgeChannelCapabilities, BridgeChannelDefinition, BridgeChannelInfo};
-pub use handler::AstridClientHandler;
-pub use notice::ServerNotice;
+pub(crate) use handler::AstridClientHandler;
+pub(crate) use notice::ServerNotice;

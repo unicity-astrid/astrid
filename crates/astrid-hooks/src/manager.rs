@@ -12,7 +12,7 @@ use crate::result::{HookContext, HookExecution, HookResult};
 
 /// Manages hooks and their execution.
 #[derive(Debug)]
-pub struct HookManager {
+pub(crate) struct HookManager {
     /// Registered hooks, indexed by ID.
     hooks: Arc<RwLock<HashMap<Uuid, Hook>>>,
     /// Hooks grouped by event type.
@@ -24,7 +24,7 @@ pub struct HookManager {
 impl HookManager {
     /// Create a new hook manager.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             hooks: Arc::new(RwLock::new(HashMap::new())),
             hooks_by_event: Arc::new(RwLock::new(HashMap::new())),
@@ -33,7 +33,7 @@ impl HookManager {
     }
 
     /// Register a hook.
-    pub async fn register(&self, hook: Hook) {
+    pub(crate) async fn register(&self, hook: Hook) {
         let hook_id = hook.id;
         let event = hook.event;
 
@@ -58,14 +58,14 @@ impl HookManager {
     }
 
     /// Register multiple hooks.
-    pub async fn register_all(&self, hooks: Vec<Hook>) {
+    pub(crate) async fn register_all(&self, hooks: Vec<Hook>) {
         for hook in hooks {
             self.register(hook).await;
         }
     }
 
     /// Unregister a hook by ID.
-    pub async fn unregister(&self, hook_id: Uuid) -> Option<Hook> {
+    pub(crate) async fn unregister(&self, hook_id: Uuid) -> Option<Hook> {
         info!(hook_id = %hook_id, "Unregistering hook");
 
         // Remove from hooks map
@@ -86,7 +86,7 @@ impl HookManager {
     }
 
     /// Enable a hook.
-    pub async fn enable(&self, hook_id: Uuid) -> bool {
+    pub(crate) async fn enable(&self, hook_id: Uuid) -> bool {
         let mut hooks = self.hooks.write().await;
         if let Some(hook) = hooks.get_mut(&hook_id) {
             hook.enabled = true;
@@ -99,7 +99,7 @@ impl HookManager {
     }
 
     /// Disable a hook.
-    pub async fn disable(&self, hook_id: Uuid) -> bool {
+    pub(crate) async fn disable(&self, hook_id: Uuid) -> bool {
         let mut hooks = self.hooks.write().await;
         if let Some(hook) = hooks.get_mut(&hook_id) {
             hook.enabled = false;
@@ -112,19 +112,19 @@ impl HookManager {
     }
 
     /// Get a hook by ID.
-    pub async fn get(&self, hook_id: Uuid) -> Option<Hook> {
+    pub(crate) async fn get(&self, hook_id: Uuid) -> Option<Hook> {
         let hooks = self.hooks.read().await;
         hooks.get(&hook_id).cloned()
     }
 
     /// Get all hooks.
-    pub async fn all(&self) -> Vec<Hook> {
+    pub(crate) async fn all(&self) -> Vec<Hook> {
         let hooks = self.hooks.read().await;
         hooks.values().cloned().collect()
     }
 
     /// Get all hooks for an event.
-    pub async fn hooks_for_event(&self, event: HookEvent) -> Vec<Hook> {
+    pub(crate) async fn hooks_for_event(&self, event: HookEvent) -> Vec<Hook> {
         let by_event = self.hooks_by_event.read().await;
         let hooks = self.hooks.read().await;
 
@@ -143,7 +143,7 @@ impl HookManager {
     /// Trigger all hooks for an event.
     ///
     /// Returns the executions and the combined result.
-    pub async fn trigger(
+    pub(crate) async fn trigger(
         &self,
         event: HookEvent,
         context: HookContext,
@@ -170,13 +170,17 @@ impl HookManager {
     }
 
     /// Trigger hooks and return only the combined result.
-    pub async fn trigger_simple(&self, event: HookEvent, context: HookContext) -> HookResult {
+    pub(crate) async fn trigger_simple(
+        &self,
+        event: HookEvent,
+        context: HookContext,
+    ) -> HookResult {
         let (_, result) = self.trigger(event, context).await;
         result
     }
 
     /// Get statistics about registered hooks.
-    pub async fn stats(&self) -> HookStats {
+    pub(crate) async fn stats(&self) -> HookStats {
         let hooks = self.hooks.read().await;
         let by_event = self.hooks_by_event.read().await;
 
@@ -193,7 +197,7 @@ impl HookManager {
     }
 
     /// Clear all hooks.
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         info!("Clearing all hooks");
         self.hooks.write().await.clear();
         self.hooks_by_event.write().await.clear();
@@ -208,7 +212,7 @@ impl Default for HookManager {
 
 /// Statistics about registered hooks.
 #[derive(Debug, Clone)]
-pub struct HookStats {
+pub(crate) struct HookStats {
     /// Total number of hooks.
     pub total: usize,
     /// Number of enabled hooks.

@@ -68,10 +68,11 @@ fn default_wasm_function() -> String {
     "handle".to_string()
 }
 
+#[allow(dead_code)]
 impl HookHandler {
     /// Create a new command handler.
     #[must_use]
-    pub fn command(command: impl Into<String>) -> Self {
+    pub(crate) fn command(command: impl Into<String>) -> Self {
         Self::Command {
             command: command.into(),
             args: Vec::new(),
@@ -82,7 +83,7 @@ impl HookHandler {
 
     /// Create a new HTTP webhook handler.
     #[must_use]
-    pub fn http(url: impl Into<String>) -> Self {
+    pub(crate) fn http(url: impl Into<String>) -> Self {
         Self::Http {
             url: url.into(),
             method: "POST".to_string(),
@@ -93,7 +94,7 @@ impl HookHandler {
 
     /// Create a new WASM handler.
     #[must_use]
-    pub fn wasm(module_path: impl Into<String>) -> Self {
+    pub(crate) fn wasm(module_path: impl Into<String>) -> Self {
         Self::Wasm {
             module_path: module_path.into(),
             function: "handle".to_string(),
@@ -102,7 +103,7 @@ impl HookHandler {
 
     /// Create a new agent handler (stubbed).
     #[must_use]
-    pub fn agent(prompt_template: impl Into<String>) -> Self {
+    pub(crate) fn agent(prompt_template: impl Into<String>) -> Self {
         Self::Agent {
             prompt_template: prompt_template.into(),
             model: None,
@@ -112,7 +113,7 @@ impl HookHandler {
 
     /// Check if this handler is stubbed (not yet implemented).
     #[must_use]
-    pub fn is_stubbed(&self) -> bool {
+    pub(crate) fn is_stubbed(&self) -> bool {
         matches!(self, Self::Agent { .. })
     }
 }
@@ -187,10 +188,11 @@ fn default_priority() -> i32 {
     100
 }
 
+#[allow(dead_code)]
 impl Hook {
     /// Create a new hook for the given event.
     #[must_use]
-    pub fn new(event: HookEvent) -> Self {
+    pub(crate) fn new(event: HookEvent) -> Self {
         Self {
             id: Uuid::new_v4(),
             name: None,
@@ -208,63 +210,63 @@ impl Hook {
 
     /// Set the hook's name.
     #[must_use]
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+    pub(crate) fn with_name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
     }
 
     /// Set the hook's description.
     #[must_use]
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+    pub(crate) fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
 
     /// Set the handler for this hook.
     #[must_use]
-    pub fn with_handler(mut self, handler: HookHandler) -> Self {
+    pub(crate) fn with_handler(mut self, handler: HookHandler) -> Self {
         self.handler = handler;
         self
     }
 
     /// Set a matcher pattern.
     #[must_use]
-    pub fn with_matcher(mut self, matcher: HookMatcher) -> Self {
+    pub(crate) fn with_matcher(mut self, matcher: HookMatcher) -> Self {
         self.matcher = Some(matcher);
         self
     }
 
     /// Set the timeout in seconds.
     #[must_use]
-    pub fn with_timeout(mut self, secs: u64) -> Self {
+    pub(crate) fn with_timeout(mut self, secs: u64) -> Self {
         self.timeout_secs = secs;
         self
     }
 
     /// Set the failure action.
     #[must_use]
-    pub fn with_fail_action(mut self, action: FailAction) -> Self {
+    pub(crate) fn with_fail_action(mut self, action: FailAction) -> Self {
         self.fail_action = action;
         self
     }
 
     /// Enable async mode.
     #[must_use]
-    pub fn async_mode(mut self) -> Self {
+    pub(crate) fn async_mode(mut self) -> Self {
         self.async_mode = true;
         self
     }
 
     /// Disable the hook.
     #[must_use]
-    pub fn disabled(mut self) -> Self {
+    pub(crate) fn disabled(mut self) -> Self {
         self.enabled = false;
         self
     }
 
     /// Set the priority.
     #[must_use]
-    pub fn with_priority(mut self, priority: i32) -> Self {
+    pub(crate) fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
         self
     }
@@ -296,10 +298,11 @@ pub enum HookMatcher {
     },
 }
 
+#[allow(dead_code)]
 impl HookMatcher {
     /// Create a glob matcher.
     #[must_use]
-    pub fn glob(pattern: impl Into<String>) -> Self {
+    pub(crate) fn glob(pattern: impl Into<String>) -> Self {
         Self::Glob {
             pattern: pattern.into(),
         }
@@ -307,7 +310,7 @@ impl HookMatcher {
 
     /// Create a regex matcher.
     #[must_use]
-    pub fn regex(pattern: impl Into<String>) -> Self {
+    pub(crate) fn regex(pattern: impl Into<String>) -> Self {
         Self::Regex {
             pattern: pattern.into(),
         }
@@ -315,13 +318,13 @@ impl HookMatcher {
 
     /// Create a tool names matcher.
     #[must_use]
-    pub fn tools(names: Vec<String>) -> Self {
+    pub(crate) fn tools(names: Vec<String>) -> Self {
         Self::ToolNames { names }
     }
 
     /// Create a server names matcher.
     #[must_use]
-    pub fn servers(names: Vec<String>) -> Self {
+    pub(crate) fn servers(names: Vec<String>) -> Self {
         Self::ServerNames { names }
     }
 }

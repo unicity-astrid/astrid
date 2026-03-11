@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Request for operational boundaries (roots).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RootsRequest {
+pub(crate) struct RootsRequest {
     /// Request ID for correlation.
     pub request_id: Uuid,
     /// Server making the request.
@@ -18,7 +18,7 @@ pub struct RootsRequest {
 
 /// Response to a roots request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RootsResponse {
+pub(crate) struct RootsResponse {
     /// Request ID for correlation.
     pub request_id: Uuid,
     /// List of root directories/URIs the server can access.
@@ -27,7 +27,7 @@ pub struct RootsResponse {
 
 /// A root directory or URI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Root {
+pub(crate) struct Root {
     /// URI of the root (e.g., `file:///home/user/project`).
     pub uri: String,
     /// Human-readable name.
@@ -36,7 +36,7 @@ pub struct Root {
 
 /// Handler for server inquiries about operational boundaries.
 #[async_trait]
-pub trait RootsHandler: Send + Sync {
+pub(crate) trait RootsHandler: Send + Sync {
     /// Handle a roots request from a server.
     ///
     /// Returns the list of roots (directories, URIs) that the server

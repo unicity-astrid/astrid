@@ -24,16 +24,6 @@ pub struct AuditLog {
 }
 
 impl AuditLog {
-    /// Create a new audit log with a custom storage backend.
-    #[must_use]
-    pub fn with_storage(storage: Box<dyn AuditStorage>, runtime_key: KeyPair) -> Self {
-        Self {
-            storage,
-            runtime_key,
-            chain_heads: RwLock::new(std::collections::HashMap::new()),
-        }
-    }
-
     /// Create a new audit log with `SurrealKV` persistence.
     ///
     /// # Errors
@@ -339,16 +329,18 @@ impl std::fmt::Display for ChainIssue {
 }
 
 /// Builder for audit entries with fluent API.
-pub struct AuditBuilder<'a> {
+#[cfg(test)]
+pub(crate) struct AuditBuilder<'a> {
     log: &'a AuditLog,
     session_id: SessionId,
     action: Option<AuditAction>,
     authorization: Option<AuthorizationProof>,
 }
 
+#[cfg(test)]
 impl<'a> AuditBuilder<'a> {
     /// Create a new audit builder.
-    pub fn new(log: &'a AuditLog, session_id: SessionId) -> Self {
+    pub(crate) fn new(log: &'a AuditLog, session_id: SessionId) -> Self {
         Self {
             log,
             session_id,
@@ -359,14 +351,14 @@ impl<'a> AuditBuilder<'a> {
 
     /// Set the action.
     #[must_use]
-    pub fn action(mut self, action: AuditAction) -> Self {
+    pub(crate) fn action(mut self, action: AuditAction) -> Self {
         self.action = Some(action);
         self
     }
 
     /// Set the authorization.
     #[must_use]
-    pub fn authorization(mut self, auth: AuthorizationProof) -> Self {
+    pub(crate) fn authorization(mut self, auth: AuthorizationProof) -> Self {
         self.authorization = Some(auth);
         self
     }
@@ -380,7 +372,7 @@ impl<'a> AuditBuilder<'a> {
     /// # Errors
     ///
     /// Returns an error if the audit entry cannot be appended.
-    pub fn success(self) -> AuditResult<AuditEntryId> {
+    pub(crate) fn success(self) -> AuditResult<AuditEntryId> {
         self.log.append(
             self.session_id,
             self.action.expect("action required"),
@@ -401,7 +393,7 @@ impl<'a> AuditBuilder<'a> {
     /// # Errors
     ///
     /// Returns an error if the audit entry cannot be appended.
-    pub fn success_with(self, details: impl Into<String>) -> AuditResult<AuditEntryId> {
+    pub(crate) fn success_with(self, details: impl Into<String>) -> AuditResult<AuditEntryId> {
         self.log.append(
             self.session_id,
             self.action.expect("action required"),
@@ -422,7 +414,7 @@ impl<'a> AuditBuilder<'a> {
     /// # Errors
     ///
     /// Returns an error if the audit entry cannot be appended.
-    pub fn failure(self, error: impl Into<String>) -> AuditResult<AuditEntryId> {
+    pub(crate) fn failure(self, error: impl Into<String>) -> AuditResult<AuditEntryId> {
         self.log.append(
             self.session_id,
             self.action.expect("action required"),

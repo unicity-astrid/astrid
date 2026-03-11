@@ -10,25 +10,26 @@ use uuid::Uuid;
 /// The same `AstridUserId` is used whether the user is on Discord,
 /// any platform (Discord, Telegram, etc.).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AstridUserId {
+#[allow(dead_code)]
+pub(crate) struct AstridUserId {
     /// Unique identifier (UUID)
-    pub id: Uuid,
+    pub(crate) id: Uuid,
     /// Optional ed25519 public key for signing (32 bytes)
     #[serde(
         serialize_with = "serialize_optional_key",
         deserialize_with = "deserialize_optional_key"
     )]
-    pub public_key: Option<[u8; 32]>,
+    pub(crate) public_key: Option<[u8; 32]>,
     /// Display name
-    pub display_name: Option<String>,
+    pub(crate) display_name: Option<String>,
     /// When created
-    pub created_at: DateTime<Utc>,
+    pub(crate) created_at: DateTime<Utc>,
 }
 
 impl AstridUserId {
     /// Create a new Astrid user identity.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             id: Uuid::new_v4(),
             public_key: None,
@@ -39,7 +40,8 @@ impl AstridUserId {
 
     /// Create an identity with a display name.
     #[must_use]
-    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn with_display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = Some(name.into());
         self
     }
@@ -61,106 +63,14 @@ impl fmt::Display for AstridUserId {
     }
 }
 
-/// Links a platform account to an Astrid identity.
-///
-/// This enables cross-platform identity - the same user on different
-/// platforms will have the same `AstridUserId`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlatformLink {
-    /// The Astrid identity this platform account is linked to
-    pub astrid_id: Uuid,
-    /// Platform name (e.g., "discord", "telegram", "cli")
-    pub platform: String,
-    /// Platform-specific user ID (e.g., Discord snowflake, phone number)
-    pub platform_user_id: String,
-    /// When this link was created
-    pub linked_at: DateTime<Utc>,
-    /// How this link was verified
-    pub verification_method: LinkVerificationMethod,
-    /// Whether this is the primary (first linked) platform
-    pub is_primary: bool,
-}
-
-impl PlatformLink {
-    /// Create a new platform link.
-    #[must_use]
-    pub fn new(
-        astrid_id: Uuid,
-        platform: impl Into<String>,
-        platform_user_id: impl Into<String>,
-        verification_method: LinkVerificationMethod,
-        is_primary: bool,
-    ) -> Self {
-        Self {
-            astrid_id,
-            platform: normalize_platform(platform.into()),
-            platform_user_id: platform_user_id.into(),
-            linked_at: Utc::now(),
-            verification_method,
-            is_primary,
-        }
-    }
-}
-
-/// How a platform link was verified.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LinkVerificationMethod {
-    /// First platform creates identity (bootstrap)
-    InitialCreation,
-    /// Code sent to verified platform, entered in new platform
-    CodeVerification {
-        /// The platform that verified the code
-        verified_via: String,
-    },
-    /// Admin manually linked the accounts
-    AdminLink {
-        /// Admin who performed the link
-        admin_id: Uuid,
-    },
-}
-
-/// Pending link verification code.
-#[derive(Debug, Clone)]
-pub struct PendingLinkCode {
-    /// The verification code
-    pub code: String,
-    /// The Astrid identity being linked
-    pub astrid_id: Uuid,
-    /// The platform requesting the link
-    pub requesting_platform: String,
-    /// The platform user ID on the requesting platform
-    pub requesting_user_id: String,
-    /// When this code expires
-    pub expires_at: DateTime<Utc>,
-}
-
-impl PendingLinkCode {
-    /// Check if this code has expired.
-    #[must_use]
-    pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at
-    }
-}
-
 /// Normalize a platform name: trim whitespace, lowercase.
 ///
 /// This is the only normalization needed. Core doesn't know or care
 /// what platforms exist - that's the uplink's business.
 #[must_use]
-pub fn normalize_platform(name: impl Into<String>) -> String {
+pub(crate) fn normalize_platform(name: impl Into<String>) -> String {
     let s = name.into();
     s.trim().to_ascii_lowercase()
-}
-
-impl fmt::Display for LinkVerificationMethod {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InitialCreation => write!(f, "initial_creation"),
-            Self::CodeVerification { verified_via } => write!(f, "code_via:{verified_via}"),
-            Self::AdminLink { admin_id } => write!(f, "admin:{}", &admin_id.to_string()[..8]),
-        }
-    }
 }
 
 // Serde's serialize_with requires &Option<T> signature, not Option<&T>

@@ -19,7 +19,7 @@
 //! Writes use a temp directory + rename pattern to prevent partial cache entries.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -28,17 +28,17 @@ use crate::error::{BridgeError, BridgeResult};
 
 /// Metadata stored alongside each cached compilation artifact.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheMeta {
+pub(crate) struct CacheMeta {
     /// Blake3 hash of the source content (hex-encoded).
-    pub source_hash: String,
+    pub(crate) source_hash: String,
     /// When the artifact was compiled.
-    pub compiled_at: DateTime<Utc>,
+    pub(crate) compiled_at: DateTime<Utc>,
     /// Bridge version at compilation time (e.g. `"0.1.0"`).
-    pub bridge_version: String,
+    pub(crate) bridge_version: String,
     /// Blake3 hash of the `QuickJS` kernel used (hex-encoded).
-    pub kernel_hash: String,
+    pub(crate) kernel_hash: String,
     /// Blake3 hash of the compiled WASM output (hex-encoded).
-    pub wasm_hash: String,
+    pub(crate) wasm_hash: String,
 }
 
 const META_FILENAME: &str = "cache-meta.json";
@@ -47,22 +47,11 @@ const MANIFEST_FILENAME: &str = "plugin.toml";
 
 /// A successful cache lookup result.
 #[derive(Debug)]
-pub struct CacheHit {
+pub(crate) struct CacheHit {
     /// The compiled WASM bytes.
-    pub wasm: Vec<u8>,
+    pub(crate) wasm: Vec<u8>,
     /// The plugin manifest content (`plugin.toml`).
-    pub manifest: String,
-    /// The cache metadata.
-    pub meta: CacheMeta,
-}
-
-/// Statistics from a garbage collection run.
-#[derive(Debug, Default)]
-pub struct GcStats {
-    /// Number of cache entries removed.
-    pub entries_removed: u64,
-    /// Total bytes freed.
-    pub bytes_freed: u64,
+    pub(crate) manifest: String,
 }
 
 /// Compilation cache for JS/TS → WASM artifacts.
@@ -73,7 +62,7 @@ pub struct GcStats {
 /// 1. Source file changes (different blake3 hash → different cache key)
 /// 2. Bridge version changes (metadata mismatch → cache miss)
 /// 3. `QuickJS` kernel changes (metadata mismatch → cache miss)
-pub struct CompilationCache {
+pub(crate) struct CompilationCache {
     cache_dir: PathBuf,
     kernel_hash: String,
 }
@@ -87,7 +76,7 @@ impl CompilationCache {
     /// The `kernel_hash` is the blake3 hex hash of the embedded `QuickJS` kernel,
     /// used to invalidate entries when the kernel changes.
     #[must_use]
-    pub fn new(cache_dir: PathBuf, kernel_hash: String) -> Self {
+    pub(crate) fn new(cache_dir: PathBuf, kernel_hash: String) -> Self {
         Self {
             cache_dir,
             kernel_hash,
@@ -100,7 +89,7 @@ impl CompilationCache {
     /// `source_hash` and the `bridge_version` and kernel hash both match.
     /// Returns `None` on cache miss or if the entry is stale/corrupt.
     #[must_use]
-    pub fn lookup(&self, source_hash: &str, bridge_version: &str) -> Option<CacheHit> {
+    pub(crate) fn lookup(&self, source_hash: &str, bridge_version: &str) -> Option<CacheHit> {
         // source_hash is a blake3 hex digest — reject anything else to
         // prevent path traversal if a future caller passes untrusted input.
         if !source_hash.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -131,11 +120,7 @@ impl CompilationCache {
             return None;
         }
 
-        Some(CacheHit {
-            wasm,
-            manifest,
-            meta,
-        })
+        Some(CacheHit { wasm, manifest })
     }
 
     /// Store a compiled artifact in the cache.
@@ -147,7 +132,7 @@ impl CompilationCache {
     ///
     /// Returns `BridgeError::Cache` if the cache directory cannot be created
     /// or files cannot be written.
-    pub fn store(
+    pub(crate) fn store(
         &self,
         source_hash: &str,
         bridge_version: &str,
@@ -237,108 +222,6 @@ impl CompilationCache {
 
         Ok(())
     }
-
-    /// Evict stale entries older than `max_age_days` or exceeding `max_size_bytes`.
-    ///
-    /// Entries are first pruned by age, then by total size (oldest first).
-    ///
-    /// # Errors
-    ///
-    /// Returns `BridgeError::Cache` if the cache directory cannot be read.
-    pub fn gc(&self, max_age_days: u64, max_size_bytes: u64) -> BridgeResult<GcStats> {
-        let mut stats = GcStats::default();
-
-        if !self.cache_dir.exists() {
-            return Ok(stats);
-        }
-
-        let now = Utc::now();
-        let max_age = chrono::Duration::days(i64::try_from(max_age_days).unwrap_or(i64::MAX));
-
-        // Collect all cache entries with their metadata and sizes
-        let mut entries: Vec<(PathBuf, CacheMeta, u64)> = Vec::new();
-
-        let read_dir = fs::read_dir(&self.cache_dir).map_err(|e| {
-            BridgeError::Cache(format!(
-                "failed to read cache dir {}: {e}",
-                self.cache_dir.display()
-            ))
-        })?;
-
-        for entry in read_dir {
-            let Ok(entry) = entry else { continue };
-
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-
-            let meta_path = path.join(META_FILENAME);
-            let Some(meta) = fs::read(&meta_path)
-                .ok()
-                .and_then(|bytes| serde_json::from_slice::<CacheMeta>(&bytes).ok())
-            else {
-                // Corrupt entry — evict it
-                let size = dir_size(&path);
-                let _ = fs::remove_dir_all(&path);
-                stats.entries_removed = stats.entries_removed.saturating_add(1);
-                stats.bytes_freed = stats.bytes_freed.saturating_add(size);
-                continue;
-            };
-
-            let size = dir_size(&path);
-            entries.push((path, meta, size));
-        }
-
-        // Evict entries older than max_age
-        entries.retain(|(path, meta, size)| {
-            if now.signed_duration_since(meta.compiled_at) > max_age {
-                let _ = fs::remove_dir_all(path);
-                stats.entries_removed = stats.entries_removed.saturating_add(1);
-                stats.bytes_freed = stats.bytes_freed.saturating_add(*size);
-                false
-            } else {
-                true
-            }
-        });
-
-        // Evict oldest entries until total size is under max_size_bytes
-        let total_size: u64 = entries.iter().map(|(_, _, s)| s).sum();
-        if total_size > max_size_bytes {
-            // Sort oldest first
-            entries.sort_by_key(|(_, meta, _)| meta.compiled_at);
-
-            let mut current_size = total_size;
-            for (path, _, size) in &entries {
-                if current_size <= max_size_bytes {
-                    break;
-                }
-                let _ = fs::remove_dir_all(path);
-                stats.entries_removed = stats.entries_removed.saturating_add(1);
-                stats.bytes_freed = stats.bytes_freed.saturating_add(*size);
-                current_size = current_size.saturating_sub(*size);
-            }
-        }
-
-        Ok(stats)
-    }
-}
-
-/// Compute the total size of a directory and all its contents.
-fn dir_size(path: &Path) -> u64 {
-    let mut total: u64 = 0;
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_file() {
-                    total = total.saturating_add(metadata.len());
-                } else if metadata.is_dir() {
-                    total = total.saturating_add(dir_size(&entry.path()));
-                }
-            }
-        }
-    }
-    total
 }
 
 #[cfg(test)]
@@ -371,9 +254,6 @@ mod tests {
         let hit = cache.lookup("aa11bb22cc33", "0.1.0").unwrap();
         assert_eq!(hit.wasm, wasm);
         assert_eq!(hit.manifest, manifest);
-        assert_eq!(hit.meta.source_hash, "aa11bb22cc33");
-        assert_eq!(hit.meta.bridge_version, "0.1.0");
-        assert_eq!(hit.meta.kernel_hash, "kernel_hash_abc");
     }
 
     #[test]
@@ -449,85 +329,6 @@ mod tests {
 
         // Lookup should fail integrity check
         assert!(cache.lookup("dd44ee55", "0.1.0").is_none());
-    }
-
-    #[test]
-    fn gc_removes_old_entries() {
-        let (_dir, cache) = temp_cache();
-
-        // Store an entry, then backdate its metadata
-        cache
-            .store("0000aaaa", "0.1.0", b"wasm", "manifest")
-            .unwrap();
-
-        let meta_path = cache.cache_dir.join("0000aaaa").join(META_FILENAME);
-        let mut meta: CacheMeta = serde_json::from_slice(&fs::read(&meta_path).unwrap()).unwrap();
-        meta.compiled_at = Utc::now() - chrono::Duration::days(60);
-        fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap()).unwrap();
-
-        let stats = cache.gc(30, u64::MAX).unwrap();
-        assert_eq!(stats.entries_removed, 1);
-        assert!(stats.bytes_freed > 0);
-        assert!(!cache.cache_dir.join("0000aaaa").exists());
-    }
-
-    #[test]
-    fn gc_removes_entries_over_size_limit() {
-        let (_dir, cache) = temp_cache();
-
-        // Store several entries
-        let big_wasm = vec![0u8; 1024];
-        cache
-            .store("aaaa1111", "0.1.0", &big_wasm, "manifest a")
-            .unwrap();
-
-        // Backdate "aaaa1111" so it's the oldest
-        let meta_path = cache.cache_dir.join("aaaa1111").join(META_FILENAME);
-        let mut meta: CacheMeta = serde_json::from_slice(&fs::read(&meta_path).unwrap()).unwrap();
-        meta.compiled_at = Utc::now() - chrono::Duration::days(5);
-        fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap()).unwrap();
-
-        cache
-            .store("bbbb2222", "0.1.0", &big_wasm, "manifest b")
-            .unwrap();
-
-        // GC with a tiny size limit — should evict oldest entries
-        let stats = cache.gc(365, 100).unwrap();
-        assert!(stats.entries_removed >= 1);
-        assert!(stats.bytes_freed > 0);
-    }
-
-    #[test]
-    fn gc_evicts_corrupt_entries() {
-        let (_dir, cache) = temp_cache();
-
-        // Create a corrupt entry (no valid metadata)
-        let entry_dir = cache.cache_dir.join("cccc0000");
-        fs::create_dir_all(&entry_dir).unwrap();
-        fs::write(entry_dir.join("junk.dat"), b"some bytes").unwrap();
-
-        let stats = cache.gc(30, u64::MAX).unwrap();
-        assert_eq!(stats.entries_removed, 1);
-        assert!(!entry_dir.exists());
-    }
-
-    #[test]
-    fn gc_on_empty_cache() {
-        let (_dir, cache) = temp_cache();
-        let stats = cache.gc(30, 500_000_000).unwrap();
-        assert_eq!(stats.entries_removed, 0);
-        assert_eq!(stats.bytes_freed, 0);
-    }
-
-    #[test]
-    fn gc_on_nonexistent_dir() {
-        let cache = CompilationCache::new(
-            PathBuf::from("/tmp/claude/nonexistent-cache-dir-test"),
-            "hash".to_string(),
-        );
-        let stats = cache.gc(30, 500_000_000).unwrap();
-        assert_eq!(stats.entries_removed, 0);
-        assert_eq!(stats.bytes_freed, 0);
     }
 
     #[test]

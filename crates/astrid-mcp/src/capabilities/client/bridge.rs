@@ -19,7 +19,7 @@ pub(super) const MAX_CHANNEL_NAME_LEN: usize = 128;
 /// All fields must be validated before use. The [`definition`](Self::definition)
 /// field is typed (not arbitrary JSON) to bound memory usage.
 #[derive(Debug, Clone, Deserialize)]
-pub struct BridgeChannelInfo {
+pub(crate) struct BridgeChannelInfo {
     /// Channel name (e.g. "telegram", "discord").
     pub name: String,
     /// Optional channel definition metadata from the plugin.
@@ -34,7 +34,7 @@ pub struct BridgeChannelInfo {
 /// silently discarded by serde, preventing unbounded memory allocation
 /// from a malicious plugin.
 #[derive(Debug, Clone, Deserialize, Default)]
-pub struct BridgeChannelDefinition {
+pub(crate) struct BridgeChannelDefinition {
     /// Capability hints declared by the plugin for this channel.
     #[serde(default)]
     pub capabilities: Option<BridgeChannelCapabilities>,
@@ -48,7 +48,7 @@ pub struct BridgeChannelDefinition {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[expect(clippy::struct_excessive_bools)]
-pub struct BridgeChannelCapabilities {
+pub(crate) struct BridgeChannelCapabilities {
     /// Can receive inbound messages from users.
     #[serde(default)]
     pub can_receive: bool,
@@ -60,15 +60,19 @@ pub struct BridgeChannelCapabilities {
     pub can_approve: bool,
     /// Can present elicitation requests to a human.
     #[serde(default)]
+    #[expect(dead_code, reason = "deserialized from bridge JSON, not yet mapped")]
     pub can_elicit: bool,
     /// Supports rich media (images, embeds, etc.).
     #[serde(default)]
+    #[expect(dead_code, reason = "deserialized from bridge JSON, not yet mapped")]
     pub supports_rich_media: bool,
     /// Supports threaded conversations.
     #[serde(default)]
+    #[expect(dead_code, reason = "deserialized from bridge JSON, not yet mapped")]
     pub supports_threads: bool,
     /// Supports interactive buttons / action rows.
     #[serde(default)]
+    #[expect(dead_code, reason = "deserialized from bridge JSON, not yet mapped")]
     pub supports_buttons: bool,
 }
 

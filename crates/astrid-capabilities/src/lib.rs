@@ -65,7 +65,7 @@ mod validator;
 
 pub use error::{CapabilityError, CapabilityResult};
 pub use handle::{DirHandle, FileHandle};
-pub use pattern::{ResourcePattern, ResourceUri};
+pub use pattern::ResourcePattern;
 pub use store::CapabilityStore;
-pub use token::{AuditEntryId, CapabilityToken, TokenBuilder, TokenScope};
-pub use validator::{AuthorizationResult, CapabilityValidator, MultiPermissionCheck};
+pub use token::{AuditEntryId, CapabilityToken, TokenScope};
+pub use validator::{AuthorizationResult, CapabilityValidator};

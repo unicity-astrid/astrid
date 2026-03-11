@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 /// Request for LLM sampling from a server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SamplingRequest {
+pub(crate) struct SamplingRequest {
     /// Request ID for correlation.
     pub request_id: Uuid,
     /// Server making the request.
@@ -33,7 +33,7 @@ pub struct SamplingRequest {
 
 /// Message in a sampling request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SamplingMessage {
+pub(crate) struct SamplingMessage {
     /// Role: "user", "assistant", or "system".
     pub role: String,
     /// Message content.
@@ -43,7 +43,7 @@ pub struct SamplingMessage {
 /// Content in a sampling message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum SamplingContent {
+pub(crate) enum SamplingContent {
     /// Text content.
     Text {
         /// The text.
@@ -60,7 +60,7 @@ pub enum SamplingContent {
 
 /// Response to a sampling request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SamplingResponse {
+pub(crate) struct SamplingResponse {
     /// Request ID for correlation.
     pub request_id: Uuid,
     /// Whether the request was successful.
@@ -77,7 +77,7 @@ pub struct SamplingResponse {
 
 /// Handler for server-initiated LLM sampling requests.
 #[async_trait]
-pub trait SamplingHandler: Send + Sync {
+pub(crate) trait SamplingHandler: Send + Sync {
     /// Handle a sampling request from a server.
     ///
     /// The implementation should:
@@ -85,12 +85,6 @@ pub trait SamplingHandler: Send + Sync {
     /// 2. Forward to the LLM if authorized
     /// 3. Return the response
     async fn handle_sampling(&self, request: SamplingRequest) -> SamplingResponse;
-
-    /// Check if sampling is enabled for a server.
-    fn is_enabled(&self, server: &str) -> bool;
-
-    /// Get the maximum tokens allowed for a server.
-    fn max_tokens(&self, server: &str) -> Option<u32>;
 }
 
 #[cfg(test)]

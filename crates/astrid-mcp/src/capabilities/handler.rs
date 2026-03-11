@@ -8,7 +8,7 @@ use super::roots::RootsHandler;
 use super::sampling::SamplingHandler;
 
 /// Composite handler that combines all capability handlers.
-pub struct CapabilitiesHandler {
+pub(crate) struct CapabilitiesHandler {
     /// Sampling handler.
     pub sampling: Option<Box<dyn SamplingHandler>>,
     /// Roots handler.
@@ -28,7 +28,7 @@ impl Default for CapabilitiesHandler {
 impl CapabilitiesHandler {
     /// Create an empty capabilities handler.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             sampling: None,
             roots: None,
@@ -37,55 +37,27 @@ impl CapabilitiesHandler {
         }
     }
 
-    /// Set the sampling handler.
-    #[must_use]
-    pub fn with_sampling(mut self, handler: impl SamplingHandler + 'static) -> Self {
-        self.sampling = Some(Box::new(handler));
-        self
-    }
-
-    /// Set the roots handler.
-    #[must_use]
-    pub fn with_roots(mut self, handler: impl RootsHandler + 'static) -> Self {
-        self.roots = Some(Box::new(handler));
-        self
-    }
-
-    /// Set the elicitation handler.
-    #[must_use]
-    pub fn with_elicitation(mut self, handler: impl ElicitationHandler + 'static) -> Self {
-        self.elicitation = Some(Box::new(handler));
-        self
-    }
-
-    /// Set the URL elicitation handler.
-    #[must_use]
-    pub fn with_url_elicitation(mut self, handler: impl UrlElicitationHandler + 'static) -> Self {
-        self.url_elicitation = Some(Box::new(handler));
-        self
-    }
-
     /// Check if sampling is available.
     #[must_use]
-    pub fn has_sampling(&self) -> bool {
+    pub(crate) fn has_sampling(&self) -> bool {
         self.sampling.is_some()
     }
 
     /// Check if roots is available.
     #[must_use]
-    pub fn has_roots(&self) -> bool {
+    pub(crate) fn has_roots(&self) -> bool {
         self.roots.is_some()
     }
 
     /// Check if elicitation is available.
     #[must_use]
-    pub fn has_elicitation(&self) -> bool {
+    pub(crate) fn has_elicitation(&self) -> bool {
         self.elicitation.is_some()
     }
 
     /// Check if URL elicitation is available.
     #[must_use]
-    pub fn has_url_elicitation(&self) -> bool {
+    pub(crate) fn has_url_elicitation(&self) -> bool {
         self.url_elicitation.is_some()
     }
 }

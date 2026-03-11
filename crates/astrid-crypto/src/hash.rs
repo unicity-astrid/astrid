@@ -22,16 +22,6 @@ impl ContentHash {
         Self(*blake3::hash(data).as_bytes())
     }
 
-    /// Hash multiple data chunks (concatenated).
-    #[must_use]
-    pub fn hash_multi(parts: &[&[u8]]) -> Self {
-        let mut hasher = blake3::Hasher::new();
-        for part in parts {
-            hasher.update(part);
-        }
-        Self(*hasher.finalize().as_bytes())
-    }
-
     /// Create a zero hash (used for genesis entries).
     #[must_use]
     pub const fn zero() -> Self {
@@ -101,22 +91,6 @@ impl ContentHash {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD.decode(s)?;
         Self::try_from_slice(&bytes).ok_or(base64::DecodeError::InvalidLength(bytes.len()))
-    }
-
-    /// Create a hash with a prefix (for domain separation).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use astrid_crypto::ContentHash;
-    ///
-    /// let hash = ContentHash::hash_with_domain("audit-entry", b"data");
-    /// ```
-    #[must_use]
-    pub fn hash_with_domain(domain: &str, data: &[u8]) -> Self {
-        let mut hasher = blake3::Hasher::new_derive_key(domain);
-        hasher.update(data);
-        Self(*hasher.finalize().as_bytes())
     }
 }
 
@@ -192,15 +166,6 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_multi() {
-        let parts: &[&[u8]] = &[b"hello", b" ", b"world"];
-        let hash_multi = ContentHash::hash_multi(parts);
-        let hash_single = ContentHash::hash(b"hello world");
-
-        assert_eq!(hash_multi, hash_single);
-    }
-
-    #[test]
     fn test_zero_hash() {
         let zero = ContentHash::zero();
         assert!(zero.is_zero());
@@ -221,16 +186,6 @@ mod tests {
         let b64 = hash.to_base64();
         let decoded = ContentHash::from_base64(&b64).unwrap();
         assert_eq!(hash, decoded);
-    }
-
-    #[test]
-    fn test_domain_separation() {
-        let data = b"same data";
-        let hash1 = ContentHash::hash_with_domain("domain1", data);
-        let hash2 = ContentHash::hash_with_domain("domain2", data);
-
-        // Same data, different domains = different hashes
-        assert_ne!(hash1, hash2);
     }
 
     #[test]

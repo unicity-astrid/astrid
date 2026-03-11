@@ -27,15 +27,12 @@ toml = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }
-futures = { workspace = true }
 
-# Time & IDs
-chrono = { workspace = true }
+# IDs
 uuid = { workspace = true }
 
 # Tracing
@@ -44,7 +41,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tempfile = "3"
 
 [lints]
 workspace = true

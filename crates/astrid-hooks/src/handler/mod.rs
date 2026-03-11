@@ -2,24 +2,23 @@
 //!
 //! Each handler type has its own module with the execution logic.
 
-pub mod agent;
-pub mod command;
-pub mod http;
-pub mod wasm;
+pub(crate) mod agent;
+pub(crate) mod command;
+pub(crate) mod http;
+pub(crate) mod wasm;
 
-pub use agent::AgentHandler;
-pub use command::CommandHandler;
-pub use http::HttpHandler;
-pub use wasm::WasmHandler;
+pub(crate) use agent::AgentHandler;
+pub(crate) use command::CommandHandler;
+pub(crate) use http::HttpHandler;
+pub(crate) use wasm::WasmHandler;
 
-use crate::hook::HookHandler;
-use crate::result::{HookContext, HookExecutionResult, HookResult};
+use crate::result::HookResult;
 use std::time::Duration;
 use thiserror::Error;
 
 /// Errors that can occur during hook handler execution.
 #[derive(Debug, Error)]
-pub enum HandlerError {
+pub(crate) enum HandlerError {
     /// Command execution failed.
     #[error("command execution failed: {0}")]
     CommandFailed(String),
@@ -58,19 +57,7 @@ pub enum HandlerError {
 }
 
 /// Result type for handler operations.
-pub type HandlerResult<T> = Result<T, HandlerError>;
-
-/// Trait for executing hook handlers.
-#[expect(async_fn_in_trait)]
-pub trait HandlerExecutor: Send + Sync {
-    /// Execute the handler with the given context.
-    async fn execute(
-        &self,
-        handler: &HookHandler,
-        context: &HookContext,
-        timeout: Duration,
-    ) -> HandlerResult<HookExecutionResult>;
-}
+pub(crate) type HandlerResult<T> = Result<T, HandlerError>;
 
 /// Parse hook result from handler output.
 ///
@@ -82,7 +69,7 @@ pub trait HandlerExecutor: Send + Sync {
 /// # Errors
 ///
 /// Returns an error if the output is invalid JSON.
-pub fn parse_hook_result(output: &str) -> HandlerResult<HookResult> {
+pub(crate) fn parse_hook_result(output: &str) -> HandlerResult<HookResult> {
     let trimmed = output.trim();
 
     if trimmed.is_empty() {

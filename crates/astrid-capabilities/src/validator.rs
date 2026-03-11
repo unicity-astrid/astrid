@@ -127,27 +127,29 @@ impl<'a> CapabilityValidator<'a> {
 }
 
 /// Check multiple permissions at once.
-pub struct MultiPermissionCheck {
+#[cfg(test)]
+pub(crate) struct MultiPermissionCheck {
     checks: Vec<(String, Permission)>,
 }
 
+#[cfg(test)]
 impl MultiPermissionCheck {
     /// Create a new multi-permission check.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { checks: Vec::new() }
     }
 
     /// Add a permission check.
     #[must_use]
-    pub fn add(mut self, resource: impl Into<String>, permission: Permission) -> Self {
+    pub(crate) fn add(mut self, resource: impl Into<String>, permission: Permission) -> Self {
         self.checks.push((resource.into(), permission));
         self
     }
 
     /// Run all checks against a validator.
     #[must_use]
-    pub fn check_all(
+    pub(crate) fn check_all(
         &self,
         validator: &CapabilityValidator<'_>,
     ) -> Vec<(String, Permission, AuthorizationResult)> {
@@ -162,7 +164,7 @@ impl MultiPermissionCheck {
 
     /// Check if all permissions are authorized.
     #[must_use]
-    pub fn all_authorized(&self, validator: &CapabilityValidator<'_>) -> bool {
+    pub(crate) fn all_authorized(&self, validator: &CapabilityValidator<'_>) -> bool {
         self.checks
             .iter()
             .all(|(resource, permission)| validator.check(resource, *permission).is_authorized())
@@ -170,7 +172,10 @@ impl MultiPermissionCheck {
 
     /// Get permissions that require approval.
     #[must_use]
-    pub fn needs_approval(&self, validator: &CapabilityValidator<'_>) -> Vec<(String, Permission)> {
+    pub(crate) fn needs_approval(
+        &self,
+        validator: &CapabilityValidator<'_>,
+    ) -> Vec<(String, Permission)> {
         self.checks
             .iter()
             .filter(|(resource, permission)| {
@@ -181,6 +186,7 @@ impl MultiPermissionCheck {
     }
 }
 
+#[cfg(test)]
 impl Default for MultiPermissionCheck {
     fn default() -> Self {
         Self::new()

@@ -60,6 +60,7 @@
 
 pub mod prelude;
 
+pub(crate) mod capabilities;
 mod client;
 mod config;
 mod error;
@@ -67,37 +68,16 @@ mod secure;
 mod server;
 mod types;
 
-// Nov 2025 MCP spec modules
-pub mod capabilities;
-pub mod rate_limit;
-pub mod tasks;
-pub mod verification;
-
 pub use client::McpClient;
 pub use config::{RestartPolicy, ServerConfig, ServersConfig, Transport};
 pub use error::{McpError, McpResult};
 pub use secure::{SecureMcpClient, ToolAuthorization};
-pub use server::{McpServerStatus, ServerManager};
-pub use types::{
-    PromptArgument, PromptContent, PromptDefinition, PromptMessage, ResourceContent,
-    ResourceDefinition, ServerCapabilities, ServerInfo, ToolContent, ToolDefinition, ToolResult,
-};
-
-// Re-exports from new modules
-pub use capabilities::{
-    AstridClientHandler, BridgeChannelCapabilities, BridgeChannelDefinition, BridgeChannelInfo,
-    CapabilitiesHandler, ElicitationHandler, RootsHandler, RootsRequest, RootsResponse,
-    SamplingHandler, SamplingRequest, SamplingResponse, ServerNotice, UrlElicitationHandler,
-};
+pub use server::ServerManager;
+pub use types::{ToolContent, ToolDefinition, ToolResult};
 
 // Re-export canonical elicitation types from astrid-core for convenience.
 // These are the single source of truth — no duplicates in astrid-mcp.
 pub use astrid_core::{
     ElicitationRequest, ElicitationResponse, ElicitationSchema, UrlElicitationRequest,
     UrlElicitationResponse, UrlElicitationType,
-};
-pub use rate_limit::{PendingGuard, RateLimit, RateLimitResult, RateLimiter, RateLimits};
-pub use tasks::{Task, TaskManager, TaskState};
-pub use verification::{
-    BinaryVerifier, VerificationResult, verify_binary_hash, verify_command_hash,
 };

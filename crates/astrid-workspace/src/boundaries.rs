@@ -10,7 +10,7 @@ use crate::config::{EscapePolicy, WorkspaceConfig, WorkspaceMode};
 /// Result of checking a path against workspace boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PathCheck {
+pub(crate) enum PathCheck {
     /// Path is within the workspace, allowed.
     Allowed,
     /// Path is auto-allowed (outside workspace but configured).
@@ -24,19 +24,19 @@ pub enum PathCheck {
 impl PathCheck {
     /// Check if the path is allowed (directly or auto).
     #[must_use]
-    pub fn is_allowed(&self) -> bool {
+    pub(crate) fn is_allowed(self) -> bool {
         matches!(self, Self::Allowed | Self::AutoAllowed)
     }
 
     /// Check if the path requires approval.
     #[must_use]
-    pub fn needs_approval(&self) -> bool {
+    pub(crate) fn needs_approval(self) -> bool {
         matches!(self, Self::RequiresApproval)
     }
 
     /// Check if the path is never allowed.
     #[must_use]
-    pub fn is_blocked(&self) -> bool {
+    pub(crate) fn is_blocked(self) -> bool {
         matches!(self, Self::NeverAllowed)
     }
 }
@@ -45,7 +45,7 @@ impl PathCheck {
 ///
 /// Pre-compiles glob patterns for efficient matching.
 #[derive(Debug)]
-pub struct WorkspaceBoundary {
+pub(crate) struct WorkspaceBoundary {
     config: WorkspaceConfig,
     /// Pre-compiled glob matchers for auto-allow patterns.
     compiled_matchers: Vec<GlobMatcher>,
@@ -63,7 +63,7 @@ impl WorkspaceBoundary {
     ///
     /// Pre-compiles all glob patterns in the configuration.
     #[must_use]
-    pub fn new(config: WorkspaceConfig) -> Self {
+    pub(crate) fn new(config: WorkspaceConfig) -> Self {
         let compiled_matchers = config
             .auto_allow
             .patterns
@@ -85,26 +85,26 @@ impl WorkspaceBoundary {
 
     /// Get the workspace configuration.
     #[must_use]
-    pub fn config(&self) -> &WorkspaceConfig {
+    pub(crate) fn config(&self) -> &WorkspaceConfig {
         &self.config
     }
 
     /// Get the workspace root.
     #[must_use]
-    pub fn root(&self) -> &Path {
+    pub(crate) fn root(&self) -> &Path {
         &self.config.root
     }
 
     /// Check if a path is within the workspace.
     #[must_use]
-    pub fn is_in_workspace(&self, path: &Path) -> bool {
+    pub(crate) fn is_in_workspace(&self, path: &Path) -> bool {
         let expanded = self.expand_path(path);
         expanded.starts_with(&self.config.root)
     }
 
     /// Check if a path is auto-allowed.
     #[must_use]
-    pub fn is_auto_allowed(&self, path: &Path) -> bool {
+    pub(crate) fn is_auto_allowed(&self, path: &Path) -> bool {
         let expanded = self.expand_path(path);
 
         // Check read paths
@@ -133,7 +133,7 @@ impl WorkspaceBoundary {
 
     /// Check if a path is never allowed.
     #[must_use]
-    pub fn is_never_allowed(&self, path: &Path) -> bool {
+    pub(crate) fn is_never_allowed(&self, path: &Path) -> bool {
         let expanded = self.expand_path(path);
 
         for blocked in &self.config.never_allow {
@@ -153,7 +153,7 @@ impl WorkspaceBoundary {
 
     /// Check a path against the workspace boundaries.
     #[must_use]
-    pub fn check(&self, path: &Path) -> PathCheck {
+    pub(crate) fn check(&self, path: &Path) -> PathCheck {
         let expanded = self.expand_path(path);
 
         debug!(
@@ -192,7 +192,7 @@ impl WorkspaceBoundary {
     ///
     /// This resolves `.`, `..`, and symlinks if the path exists.
     #[must_use]
-    pub fn expand_path(&self, path: &Path) -> PathBuf {
+    pub(crate) fn expand_path(&self, path: &Path) -> PathBuf {
         // Try to canonicalize, fall back to the original path
         path.canonicalize().unwrap_or_else(|_| {
             // If the path doesn't exist, try to normalize it manually
@@ -206,7 +206,7 @@ impl WorkspaceBoundary {
 
     /// Check multiple paths and return the most restrictive result.
     #[must_use]
-    pub fn check_all(&self, paths: &[&Path]) -> PathCheck {
+    pub(crate) fn check_all(&self, paths: &[&Path]) -> PathCheck {
         let mut result = PathCheck::Allowed;
 
         for path in paths {

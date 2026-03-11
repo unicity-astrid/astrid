@@ -12,26 +12,6 @@ use astrid_core::{UplinkCapabilities, UplinkDescriptor, UplinkId};
 
 use crate::capsule::{Capsule, CapsuleId};
 use crate::error::{CapsuleError, CapsuleResult};
-use crate::tool::CapsuleTool;
-
-/// Fully qualified tool name: `capsule:{capsule_id}:{tool_name}`.
-///
-/// This naming convention avoids collision with built-in tools (no colons)
-/// and MCP tools (`server:tool` — single colon).
-fn qualified_tool_name(capsule_id: &CapsuleId, tool_name: &str) -> String {
-    format!("capsule:{capsule_id}:{tool_name}")
-}
-
-/// A tool definition exported for the LLM.
-#[derive(Debug, Clone)]
-pub struct CapsuleToolDefinition {
-    /// Fully qualified tool name (`capsule:{capsule_id}:{tool_name}`).
-    pub name: String,
-    /// Human-readable description.
-    pub description: String,
-    /// JSON Schema for tool input.
-    pub input_schema: serde_json::Value,
-}
 
 /// Registry of loaded capsules.
 ///
@@ -185,23 +165,6 @@ impl CapsuleRegistry {
         Ok(())
     }
 
-    /// Unregister a single uplink by ID, returning it if it was present.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CapsuleError::UplinkNotFound`] if no uplink with the
-    /// given ID exists.
-    pub fn unregister_uplink(&mut self, id: &UplinkId) -> CapsuleResult<UplinkDescriptor> {
-        let (_, descriptor) =
-            self.uplinks
-                .remove(id)
-                .ok_or(CapsuleError::UnsupportedEntryPoint(format!(
-                    "Uplink not found: {id}"
-                )))?;
-        debug!(uplink_id = %id, "Unregistered uplink");
-        Ok(descriptor)
-    }
-
     /// Remove all uplinks belonging to a capsule.
     pub fn unregister_capsule_uplinks(&mut self, capsule_id: &CapsuleId) {
         self.uplinks.retain(|_, (owner, _)| owner != capsule_id);
@@ -233,70 +196,6 @@ impl CapsuleRegistry {
     #[must_use]
     pub fn all_uplink_descriptors(&self) -> Vec<&UplinkDescriptor> {
         self.uplinks.values().map(|(_, desc)| desc).collect()
-    }
-
-    // -----------------------------------------------------------------
-    // Tool lookup
-    // -----------------------------------------------------------------
-
-    /// Find a tool by its fully qualified name (`capsule:{capsule_id}:{tool_name}`).
-    #[must_use]
-    pub fn find_tool(
-        &self,
-        qualified_name: &str,
-    ) -> Option<(Arc<dyn Capsule>, Arc<dyn CapsuleTool>)> {
-        let rest = qualified_name.strip_prefix("capsule:")?;
-        let (capsule_id_str, tool_name) = rest.split_once(':')?;
-
-        let capsule_id = CapsuleId::new(capsule_id_str).ok()?;
-        let capsule = self.capsules.get(&capsule_id)?;
-
-        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-            return None;
-        }
-
-        let tool = capsule.tools().iter().find(|t| t.name() == tool_name)?;
-
-        debug!(
-            qualified_name,
-            capsule_id = %capsule_id,
-            tool_name,
-            "Found capsule tool"
-        );
-        Some((Arc::clone(capsule), Arc::clone(tool)))
-    }
-
-    /// Check if a tool name refers to a capsule tool (`capsule:{valid_id}:{tool}`).
-    #[must_use]
-    pub fn is_capsule_tool(name: &str) -> bool {
-        if let Some(rest) = name.strip_prefix("capsule:")
-            && let Some((id, tool_name)) = rest.split_once(':')
-        {
-            return !tool_name.is_empty() && CapsuleId::new(id).is_ok();
-        }
-        false
-    }
-
-    /// Export all tool definitions from all capsules for the LLM.
-    #[must_use]
-    pub fn all_tool_definitions(&self) -> Vec<CapsuleToolDefinition> {
-        let mut defs = Vec::new();
-        for (capsule_id, capsule) in &self.capsules {
-            if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-                continue;
-            }
-            for tool in capsule.tools() {
-                if tool.name().starts_with("__astrid_") {
-                    continue;
-                }
-                defs.push(CapsuleToolDefinition {
-                    name: qualified_tool_name(capsule_id, tool.name()),
-                    description: tool.description().to_string(),
-                    input_schema: tool.input_schema(),
-                });
-            }
-        }
-        defs
     }
 }
 

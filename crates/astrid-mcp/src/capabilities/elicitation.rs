@@ -15,7 +15,7 @@ use astrid_core::{
 /// Implementations receive canonical [`ElicitationRequest`] from `astrid-core`
 /// and should return an [`ElicitationResponse`] after collecting user input.
 #[async_trait]
-pub trait ElicitationHandler: Send + Sync {
+pub(crate) trait ElicitationHandler: Send + Sync {
     /// Handle an elicitation request from a server.
     ///
     /// The implementation should:
@@ -30,7 +30,7 @@ pub trait ElicitationHandler: Send + Sync {
 /// Implementations receive canonical [`UrlElicitationRequest`] from `astrid-core`
 /// and should return a [`UrlElicitationResponse`] after the user completes the flow.
 #[async_trait]
-pub trait UrlElicitationHandler: Send + Sync {
+pub(crate) trait UrlElicitationHandler: Send + Sync {
     /// Handle a URL elicitation request from a server.
     ///
     /// The implementation should:

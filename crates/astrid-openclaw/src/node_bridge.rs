@@ -9,14 +9,14 @@ use std::path::Path;
 use crate::error::{BridgeError, BridgeResult};
 
 /// The universal MCP bridge script, embedded at compile time.
-pub const BRIDGE_SCRIPT: &str = include_str!("../bridge/astrid_bridge.mjs");
+pub(crate) const BRIDGE_SCRIPT: &str = include_str!("../bridge/astrid_bridge.mjs");
 
 /// Write the bridge script to `dest_dir/astrid_bridge.mjs`.
 ///
 /// # Errors
 ///
 /// Returns [`BridgeError::Output`] if the file cannot be written.
-pub fn write_bridge_script(dest_dir: &Path) -> BridgeResult<()> {
+pub(crate) fn write_bridge_script(dest_dir: &Path) -> BridgeResult<()> {
     let dest = dest_dir.join("astrid_bridge.mjs");
     std::fs::write(&dest, BRIDGE_SCRIPT).map_err(|e| {
         BridgeError::Output(format!(

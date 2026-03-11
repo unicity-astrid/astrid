@@ -337,7 +337,8 @@ impl std::hash::Hash for CapabilityToken {
 }
 
 /// Builder for creating capability tokens with fluent API.
-pub struct TokenBuilder {
+#[cfg(test)]
+pub(crate) struct TokenBuilder {
     resource: ResourcePattern,
     permissions: Vec<Permission>,
     scope: TokenScope,
@@ -345,10 +346,11 @@ pub struct TokenBuilder {
     single_use: bool,
 }
 
+#[cfg(test)]
 impl TokenBuilder {
     /// Create a new token builder.
     #[must_use]
-    pub fn new(resource: ResourcePattern) -> Self {
+    pub(crate) fn new(resource: ResourcePattern) -> Self {
         Self {
             resource,
             permissions: Vec::new(),
@@ -360,7 +362,7 @@ impl TokenBuilder {
 
     /// Add a permission.
     #[must_use]
-    pub fn permission(mut self, perm: Permission) -> Self {
+    pub(crate) fn permission(mut self, perm: Permission) -> Self {
         if !self.permissions.contains(&perm) {
             self.permissions.push(perm);
         }
@@ -369,7 +371,7 @@ impl TokenBuilder {
 
     /// Add multiple permissions.
     #[must_use]
-    pub fn permissions(mut self, perms: impl IntoIterator<Item = Permission>) -> Self {
+    pub(crate) fn permissions(mut self, perms: impl IntoIterator<Item = Permission>) -> Self {
         for perm in perms {
             if !self.permissions.contains(&perm) {
                 self.permissions.push(perm);
@@ -380,40 +382,40 @@ impl TokenBuilder {
 
     /// Set the scope.
     #[must_use]
-    pub fn scope(mut self, scope: TokenScope) -> Self {
+    pub(crate) fn scope(mut self, scope: TokenScope) -> Self {
         self.scope = scope;
         self
     }
 
     /// Set persistent scope.
     #[must_use]
-    pub fn persistent(self) -> Self {
+    pub(crate) fn persistent(self) -> Self {
         self.scope(TokenScope::Persistent)
     }
 
     /// Set session scope.
     #[must_use]
-    pub fn session(self) -> Self {
+    pub(crate) fn session(self) -> Self {
         self.scope(TokenScope::Session)
     }
 
     /// Set time-to-live.
     #[must_use]
-    pub fn ttl(mut self, ttl: Duration) -> Self {
+    pub(crate) fn ttl(mut self, ttl: Duration) -> Self {
         self.ttl = Some(ttl);
         self
     }
 
     /// Mark token as single-use (for replay protection).
     #[must_use]
-    pub fn single_use(mut self) -> Self {
+    pub(crate) fn single_use(mut self) -> Self {
         self.single_use = true;
         self
     }
 
     /// Build the token (requires runtime key and user context).
     #[must_use]
-    pub fn build(
+    pub(crate) fn build(
         self,
         user_id: [u8; 8],
         approval_audit_id: AuditEntryId,

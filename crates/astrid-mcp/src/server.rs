@@ -14,8 +14,6 @@ use rmcp::ServiceExt;
 use rmcp::service::{Peer, RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 
-use serde::{Deserialize, Serialize};
-
 use crate::capabilities::CapabilitiesHandler;
 use crate::capabilities::{AstridClientHandler, ServerNotice};
 use crate::config::{RestartPolicy, ServerConfig, ServersConfig, Transport};
@@ -71,23 +69,6 @@ impl RunningServer {
     pub(crate) fn peer(&self) -> Option<Peer<RoleClient>> {
         self.service.as_ref().map(|svc| svc.peer().clone())
     }
-}
-
-/// Status snapshot for a single MCP server (used for reporting).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct McpServerStatus {
-    /// Server name.
-    pub name: String,
-    /// Whether the server process is alive.
-    pub alive: bool,
-    /// Whether the server has completed the MCP handshake and is ready.
-    pub ready: bool,
-    /// Number of tools provided by this server.
-    pub tool_count: usize,
-    /// How many times this server has been restarted.
-    pub restart_count: u32,
-    /// Human-readable description.
-    pub description: Option<String>,
 }
 
 /// Manages MCP server lifecycles.
@@ -483,41 +464,6 @@ impl ServerManager {
         Ok(())
     }
 
-    /// Get server info.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running.
-    pub async fn get_server_info(&self, name: &str) -> McpResult<Option<ServerInfo>> {
-        let running = self.running.read().await;
-        let server = running
-            .get(name)
-            .ok_or_else(|| McpError::ServerNotRunning {
-                name: name.to_string(),
-            })?;
-
-        Ok(server.info.clone())
-    }
-
-    /// Update server info after connection.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server is not running.
-    pub async fn set_server_info(&self, name: &str, info: ServerInfo) -> McpResult<()> {
-        let mut running = self.running.write().await;
-        let server = running
-            .get_mut(name)
-            .ok_or_else(|| McpError::ServerNotRunning {
-                name: name.to_string(),
-            })?;
-
-        server.info = Some(info);
-        server.ready = true;
-
-        Ok(())
-    }
-
     /// Update server tools after connection.
     ///
     /// # Errors
@@ -552,22 +498,6 @@ impl ServerManager {
         }
 
         health
-    }
-
-    /// Get status snapshots for all running servers.
-    pub async fn server_statuses(&self) -> Vec<McpServerStatus> {
-        let running = self.running.read().await;
-        running
-            .values()
-            .map(|s| McpServerStatus {
-                name: s.config.name.clone(),
-                alive: s.is_alive(),
-                ready: s.ready,
-                tool_count: s.tools.len(),
-                restart_count: s.restart_count,
-                description: s.config.description.clone(),
-            })
-            .collect()
     }
 
     /// Backoff configuration for restart attempts.

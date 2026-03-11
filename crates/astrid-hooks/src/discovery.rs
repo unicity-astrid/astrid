@@ -8,10 +8,10 @@ use crate::hook::Hook;
 
 /// Errors that can occur during hook discovery.
 #[derive(Debug, Error)]
-pub enum DiscoveryError {
+pub(crate) enum DiscoveryError {
     /// Failed to read directory.
     #[error("failed to read directory {path}: {message}")]
-    DirectoryReadFailed {
+    DirectoryRead {
         /// The path that failed.
         path: PathBuf,
         /// Error message.
@@ -20,7 +20,7 @@ pub enum DiscoveryError {
 
     /// Failed to read hook file.
     #[error("failed to read hook file {path}: {message}")]
-    FileReadFailed {
+    FileRead {
         /// The path that failed.
         path: PathBuf,
         /// Error message.
@@ -29,7 +29,7 @@ pub enum DiscoveryError {
 
     /// Failed to parse hook file.
     #[error("failed to parse hook file {path}: {message}")]
-    ParseFailed {
+    Parse {
         /// The path that failed.
         path: PathBuf,
         /// Error message.
@@ -38,10 +38,10 @@ pub enum DiscoveryError {
 }
 
 /// Result type for discovery operations.
-pub type DiscoveryResult<T> = Result<T, DiscoveryError>;
+pub(crate) type DiscoveryResult<T> = Result<T, DiscoveryError>;
 
 /// Standard hook file names.
-pub const HOOK_FILE_NAMES: &[&str] = &["HOOK.toml", "hook.toml", "hooks.toml"];
+pub(crate) const HOOK_FILE_NAMES: &[&str] = &["HOOK.toml", "hook.toml", "hooks.toml"];
 
 /// Discover hooks from standard locations.
 ///
@@ -52,7 +52,7 @@ pub const HOOK_FILE_NAMES: &[&str] = &["HOOK.toml", "hook.toml", "hooks.toml"];
 /// Callers should pass the user-level hooks directory (e.g.
 /// `AstridHome::hooks_dir()`) via `extra_paths` rather than relying
 /// on hard-coded platform paths.
-pub fn discover_hooks(extra_paths: Option<&[PathBuf]>) -> Vec<Hook> {
+pub(crate) fn discover_hooks(extra_paths: Option<&[PathBuf]>) -> Vec<Hook> {
     let mut hooks = Vec::new();
 
     // Look in local .astrid/hooks directory
@@ -91,16 +91,16 @@ pub fn discover_hooks(extra_paths: Option<&[PathBuf]>) -> Vec<Hook> {
 /// # Errors
 ///
 /// Returns an error if the directory cannot be read.
-pub fn load_hooks_from_dir(dir: &Path) -> DiscoveryResult<Vec<Hook>> {
+pub(crate) fn load_hooks_from_dir(dir: &Path) -> DiscoveryResult<Vec<Hook>> {
     let mut hooks = Vec::new();
 
-    let entries = std::fs::read_dir(dir).map_err(|e| DiscoveryError::DirectoryReadFailed {
+    let entries = std::fs::read_dir(dir).map_err(|e| DiscoveryError::DirectoryRead {
         path: dir.to_path_buf(),
         message: e.to_string(),
     })?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| DiscoveryError::DirectoryReadFailed {
+        let entry = entry.map_err(|e| DiscoveryError::DirectoryRead {
             path: dir.to_path_buf(),
             message: e.to_string(),
         })?;
@@ -152,13 +152,13 @@ pub fn load_hooks_from_dir(dir: &Path) -> DiscoveryResult<Vec<Hook>> {
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
-pub fn load_hook(path: &Path) -> DiscoveryResult<Hook> {
-    let content = std::fs::read_to_string(path).map_err(|e| DiscoveryError::FileReadFailed {
+pub(crate) fn load_hook(path: &Path) -> DiscoveryResult<Hook> {
+    let content = std::fs::read_to_string(path).map_err(|e| DiscoveryError::FileRead {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
 
-    let hook: Hook = toml::from_str(&content).map_err(|e| DiscoveryError::ParseFailed {
+    let hook: Hook = toml::from_str(&content).map_err(|e| DiscoveryError::Parse {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
@@ -171,13 +171,13 @@ pub fn load_hook(path: &Path) -> DiscoveryResult<Hook> {
 /// # Errors
 ///
 /// Returns an error if the file cannot be written.
-pub fn save_hook(hook: &Hook, path: &Path) -> DiscoveryResult<()> {
-    let content = toml::to_string_pretty(hook).map_err(|e| DiscoveryError::ParseFailed {
+pub(crate) fn save_hook(hook: &Hook, path: &Path) -> DiscoveryResult<()> {
+    let content = toml::to_string_pretty(hook).map_err(|e| DiscoveryError::Parse {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
 
-    std::fs::write(path, content).map_err(|e| DiscoveryError::FileReadFailed {
+    std::fs::write(path, content).map_err(|e| DiscoveryError::FileRead {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
@@ -187,19 +187,8 @@ pub fn save_hook(hook: &Hook, path: &Path) -> DiscoveryResult<()> {
 
 /// Hooks directory in a workspace.
 #[must_use]
-pub fn workspace_hooks_dir(workspace_root: &Path) -> PathBuf {
+pub(crate) fn workspace_hooks_dir(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".astrid").join("hooks")
-}
-
-/// Ensure the hooks directory exists.
-///
-/// # Errors
-///
-/// Returns an error if the directory cannot be created.
-pub fn ensure_hooks_dir(workspace_root: &Path) -> std::io::Result<PathBuf> {
-    let dir = workspace_hooks_dir(workspace_root);
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }
 
 #[cfg(test)]

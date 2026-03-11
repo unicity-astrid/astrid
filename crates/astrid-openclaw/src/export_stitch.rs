@@ -20,7 +20,7 @@ use crate::error::{BridgeError, BridgeResult};
 ///
 /// Returns `BridgeError::ExportStitchFailed` if the input WASM is malformed
 /// or missing the `__invoke_i32` export.
-pub fn stitch_exports(wasm_bytes: &[u8], export_names: &[&str]) -> BridgeResult<Vec<u8>> {
+pub(crate) fn stitch_exports(wasm_bytes: &[u8], export_names: &[&str]) -> BridgeResult<Vec<u8>> {
     let info = gather_module_info(wasm_bytes)?;
 
     let invoke_func_idx = info.invoke_i32_func_idx.ok_or_else(|| {

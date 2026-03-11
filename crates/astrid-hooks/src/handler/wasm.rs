@@ -28,7 +28,7 @@ use crate::result::{HookContext, HookExecutionResult, HookResult};
 ///
 /// Lazily loads the WASM module on first invocation and caches the Extism
 /// plugin instance for subsequent calls.
-pub struct WasmHandler {
+pub(crate) struct WasmHandler {
     /// Cached Extism plugin (lazy-loaded).
     cached_plugin: Mutex<HashMap<String, Arc<Mutex<extism::Plugin>>>>,
     /// Configuration for WASM execution.
@@ -42,7 +42,7 @@ pub struct WasmHandler {
 impl WasmHandler {
     /// Create a new WASM handler.
     #[must_use]
-    pub fn new(workspace_root: PathBuf) -> Self {
+    pub(crate) fn new(workspace_root: PathBuf) -> Self {
         Self {
             cached_plugin: Mutex::new(HashMap::new()),
             config: WasmConfig::default(),
@@ -53,14 +53,14 @@ impl WasmHandler {
 
     /// Set the KV store for hook state persistence.
     #[must_use]
-    pub fn with_kv(mut self, kv: ScopedKvStore) -> Self {
+    pub(crate) fn with_kv(mut self, kv: ScopedKvStore) -> Self {
         self.kv = Some(kv);
         self
     }
 
     /// Set the WASM execution configuration.
     #[must_use]
-    pub fn with_config(mut self, config: WasmConfig) -> Self {
+    pub(crate) fn with_config(mut self, config: WasmConfig) -> Self {
         self.config = config;
         self
     }
@@ -74,7 +74,7 @@ impl WasmHandler {
     ///
     /// Returns an error if the module fails to load or the function call fails.
     #[expect(clippy::unused_async)]
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         handler: &HookHandler,
         context: &HookContext,
@@ -141,7 +141,7 @@ impl WasmHandler {
 
     /// Check if the WASM runtime is available.
     #[must_use]
-    pub fn is_available() -> bool {
+    pub(crate) fn is_available() -> bool {
         true
     }
 
@@ -288,7 +288,7 @@ fn map_capsule_result_to_hook_result(result: &capsule_abi::CapsuleAbiResult) -> 
 
 /// Configuration for WASM execution.
 #[derive(Debug, Clone)]
-pub struct WasmConfig {
+pub(crate) struct WasmConfig {
     /// Maximum memory in bytes.
     pub max_memory_bytes: u64,
     /// Maximum execution time.
@@ -305,19 +305,6 @@ impl Default for WasmConfig {
             enable_wasi: true,
         }
     }
-}
-
-/// WASM module metadata.
-#[derive(Debug, Clone)]
-pub struct WasmModuleInfo {
-    /// Module path.
-    pub path: String,
-    /// Module hash (for verification).
-    pub hash: Option<String>,
-    /// Exported functions.
-    pub exports: Vec<String>,
-    /// Required imports.
-    pub imports: Vec<String>,
 }
 
 #[cfg(test)]

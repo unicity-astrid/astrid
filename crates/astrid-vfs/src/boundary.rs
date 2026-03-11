@@ -7,13 +7,13 @@ use std::path::Path;
 /// a rule in the boundary will be universally denied by the OS Kernel, protecting
 /// host secrets (e.g. `.env`) from being read or corrupted by the agent.
 #[derive(Debug, Clone)]
-pub struct IgnoreBoundary {
+pub(crate) struct IgnoreBoundary {
     matcher: Gitignore,
 }
 
 impl IgnoreBoundary {
     /// Creates a new empty boundary that allows everything.
-    pub fn empty(base_dir: impl AsRef<Path>) -> Self {
+    pub(crate) fn empty(base_dir: impl AsRef<Path>) -> Self {
         Self {
             matcher: GitignoreBuilder::new(base_dir)
                 .build()
@@ -26,7 +26,10 @@ impl IgnoreBoundary {
     /// # Errors
     ///
     /// Returns an error if the string contains invalid rules or parsing fails.
-    pub fn from_content(base_dir: impl AsRef<Path>, content: &str) -> Result<Self, ignore::Error> {
+    pub(crate) fn from_content(
+        base_dir: impl AsRef<Path>,
+        content: &str,
+    ) -> Result<Self, ignore::Error> {
         let mut builder = GitignoreBuilder::new(base_dir);
         for line in content.lines() {
             let trimmed = line.trim();
@@ -44,7 +47,7 @@ impl IgnoreBoundary {
     /// # Errors
     ///
     /// Returns an error if the file cannot be read or parsed.
-    pub fn from_file(file_path: impl AsRef<Path>) -> Result<Self, ignore::Error> {
+    pub(crate) fn from_file(file_path: impl AsRef<Path>) -> Result<Self, ignore::Error> {
         let path = file_path.as_ref();
         let base_dir = path.parent().unwrap_or_else(|| Path::new(""));
         let mut builder = GitignoreBuilder::new(base_dir);
@@ -65,7 +68,7 @@ impl IgnoreBoundary {
     /// # Arguments
     /// * `path` - The absolute or relative path to check.
     /// * `is_dir` - Whether the target path is a directory (important for glob rules like `target/`).
-    pub fn is_ignored(&self, path: impl AsRef<Path>, is_dir: bool) -> bool {
+    pub(crate) fn is_ignored(&self, path: impl AsRef<Path>, is_dir: bool) -> bool {
         self.matcher.matched(path, is_dir).is_ignore()
     }
 }

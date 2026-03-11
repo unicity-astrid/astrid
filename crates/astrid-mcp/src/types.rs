@@ -212,183 +212,10 @@ impl ToolContent {
     }
 }
 
-/// Definition of an MCP resource.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceDefinition {
-    /// Resource URI.
-    pub uri: String,
-    /// Server this resource belongs to.
-    pub server: String,
-    /// Human-readable name.
-    pub name: String,
-    /// Description.
-    pub description: Option<String>,
-    /// MIME type.
-    pub mime_type: Option<String>,
-}
-
-impl ResourceDefinition {
-    /// Create from an rmcp `Resource` (which is `Annotated<RawResource>`) and server name.
-    #[must_use]
-    pub fn from_rmcp(resource: &rmcp_model::Resource, server: &str) -> Self {
-        Self {
-            uri: resource.uri.clone(),
-            server: server.to_string(),
-            name: resource.name.clone(),
-            description: resource.description.clone(),
-            mime_type: resource.mime_type.clone(),
-        }
-    }
-}
-
-/// Content returned when reading a resource.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceContent {
-    /// Resource URI.
-    pub uri: String,
-    /// Text content (for text resources).
-    pub text: Option<String>,
-    /// Binary content as base64 (for blob resources).
-    pub blob: Option<String>,
-    /// MIME type.
-    pub mime_type: Option<String>,
-}
-
-impl ResourceContent {
-    /// Convert from an rmcp `ResourceContents`.
-    #[must_use]
-    pub fn from_rmcp(contents: &rmcp_model::ResourceContents) -> Self {
-        match contents {
-            rmcp_model::ResourceContents::TextResourceContents {
-                uri,
-                mime_type,
-                text,
-                ..
-            } => Self {
-                uri: uri.clone(),
-                text: Some(text.clone()),
-                blob: None,
-                mime_type: mime_type.clone(),
-            },
-            rmcp_model::ResourceContents::BlobResourceContents {
-                uri,
-                mime_type,
-                blob,
-                ..
-            } => Self {
-                uri: uri.clone(),
-                text: None,
-                blob: Some(blob.clone()),
-                mime_type: mime_type.clone(),
-            },
-        }
-    }
-}
-
-/// Definition of an MCP prompt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptDefinition {
-    /// Prompt name.
-    pub name: String,
-    /// Server this prompt belongs to.
-    pub server: String,
-    /// Description.
-    pub description: Option<String>,
-    /// Arguments schema.
-    pub arguments: Option<Vec<PromptArgument>>,
-}
-
-impl PromptDefinition {
-    /// Create from an rmcp `Prompt` and server name.
-    #[must_use]
-    pub fn from_rmcp(prompt: &rmcp_model::Prompt, server: &str) -> Self {
-        Self {
-            name: prompt.name.clone(),
-            server: server.to_string(),
-            description: prompt.description.clone(),
-            arguments: prompt.arguments.as_ref().map(|args| {
-                args.iter()
-                    .map(|a| PromptArgument {
-                        name: a.name.clone(),
-                        description: a.description.clone(),
-                        required: a.required.unwrap_or(false),
-                    })
-                    .collect()
-            }),
-        }
-    }
-}
-
-/// Argument for an MCP prompt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptArgument {
-    /// Argument name.
-    pub name: String,
-    /// Description.
-    pub description: Option<String>,
-    /// Whether required.
-    #[serde(default)]
-    pub required: bool,
-}
-
-/// Content returned from getting a prompt.
-#[derive(Debug, Clone)]
-pub struct PromptContent {
-    /// Description of the prompt.
-    pub description: Option<String>,
-    /// Rendered prompt messages.
-    pub messages: Vec<PromptMessage>,
-}
-
-/// A message in a prompt result.
-#[derive(Debug, Clone)]
-pub struct PromptMessage {
-    /// Role of the message sender.
-    pub role: String,
-    /// Text content of the message.
-    pub content: String,
-}
-
-impl PromptContent {
-    /// Convert from an rmcp `GetPromptResult`.
-    #[must_use]
-    pub fn from_rmcp(result: &rmcp_model::GetPromptResult) -> Self {
-        Self {
-            description: result.description.clone(),
-            messages: result
-                .messages
-                .iter()
-                .map(|m| {
-                    let role = match m.role {
-                        rmcp_model::PromptMessageRole::User => "user",
-                        rmcp_model::PromptMessageRole::Assistant => "assistant",
-                    };
-                    let content = match &m.content {
-                        rmcp_model::PromptMessageContent::Text { text } => text.clone(),
-                        rmcp_model::PromptMessageContent::Image { image } => {
-                            format!("[image: {}]", image.mime_type)
-                        },
-                        rmcp_model::PromptMessageContent::Resource { resource } => {
-                            resource.get_text()
-                        },
-                        rmcp_model::PromptMessageContent::ResourceLink { link } => {
-                            format!("[resource: {}]", link.uri)
-                        },
-                    };
-                    PromptMessage {
-                        role: role.to_string(),
-                        content,
-                    }
-                })
-                .collect(),
-        }
-    }
-}
-
 /// Server capabilities.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[expect(clippy::struct_excessive_bools)]
-pub struct ServerCapabilities {
+pub(crate) struct ServerCapabilities {
     /// Whether the server supports tools.
     #[serde(default)]
     pub tools: bool,
@@ -409,7 +236,7 @@ pub struct ServerCapabilities {
 impl ServerCapabilities {
     /// Convert from rmcp `ServerCapabilities`.
     #[must_use]
-    pub fn from_rmcp(caps: &rmcp_model::ServerCapabilities) -> Self {
+    pub(crate) fn from_rmcp(caps: &rmcp_model::ServerCapabilities) -> Self {
         Self {
             tools: caps.tools.is_some(),
             resources: caps.resources.is_some(),
@@ -423,8 +250,15 @@ impl ServerCapabilities {
 }
 
 /// Information about a running server.
+///
+/// Stored per `RunningServer` after the MCP handshake. Fields are not yet
+/// consumed but will be needed when exposing server metadata to frontends.
 #[derive(Debug, Clone)]
-pub struct ServerInfo {
+#[expect(
+    dead_code,
+    reason = "fields populated from MCP handshake, not yet exposed to consumers"
+)]
+pub(crate) struct ServerInfo {
     /// Server name.
     pub name: String,
     /// Protocol version.
@@ -438,7 +272,7 @@ pub struct ServerInfo {
 impl ServerInfo {
     /// Convert from rmcp `InitializeResult` and a server name.
     #[must_use]
-    pub fn from_rmcp(info: &rmcp_model::InitializeResult, name: &str) -> Self {
+    pub(crate) fn from_rmcp(info: &rmcp_model::InitializeResult, name: &str) -> Self {
         Self {
             name: name.to_string(),
             protocol_version: info.protocol_version.to_string(),

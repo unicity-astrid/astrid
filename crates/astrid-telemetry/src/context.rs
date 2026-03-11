@@ -147,36 +147,6 @@ impl Default for RequestContext {
     }
 }
 
-/// Guard that logs when a request completes.
-pub struct RequestGuard {
-    context: RequestContext,
-    /// Held to keep the span active until the guard is dropped.
-    #[expect(dead_code)]
-    span: tracing::span::EnteredSpan,
-}
-
-impl RequestGuard {
-    /// Create a new request guard.
-    #[must_use]
-    pub fn new(context: RequestContext) -> Self {
-        let span = context.span().entered();
-        tracing::debug!("Request started");
-        Self { context, span }
-    }
-
-    /// Get the request context.
-    #[must_use]
-    pub fn context(&self) -> &RequestContext {
-        &self.context
-    }
-}
-
-impl Drop for RequestGuard {
-    fn drop(&mut self) {
-        tracing::debug!(elapsed_ms = self.context.elapsed_ms(), "Request completed");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

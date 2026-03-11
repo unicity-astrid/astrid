@@ -31,7 +31,6 @@ pub use elicitation::{
     ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
-pub use identity::AstridUserId;
 pub use retry::RetryConfig;
 pub use types::{
     AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
@@ -41,6 +40,6 @@ pub use utils::truncate_to_boundary;
 
 // Uplink types
 pub use uplink::{
-    InboundMessage, MAX_UPLINKS_PER_CAPSULE, OutboundMessage, UplinkCapabilities, UplinkDescriptor,
-    UplinkError, UplinkId, UplinkProfile, UplinkResult, UplinkSource,
+    InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkCapabilities, UplinkDescriptor, UplinkError,
+    UplinkId, UplinkProfile, UplinkResult, UplinkSource,
 };

@@ -4,7 +4,7 @@ use tracing::warn;
 
 /// Path to the local Unix Domain Socket for the kernel.
 #[must_use]
-pub fn kernel_socket_path() -> PathBuf {
+pub(crate) fn kernel_socket_path() -> PathBuf {
     use astrid_core::dirs::AstridHome;
     match AstridHome::resolve() {
         Ok(home) => home.socket_path(),
@@ -20,7 +20,7 @@ pub fn kernel_socket_path() -> PathBuf {
 ///
 /// # Errors
 /// Returns an error if the socket cannot be bound.
-pub fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
+pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
     let path = kernel_socket_path();
 
     // Remove stale socket file if it exists

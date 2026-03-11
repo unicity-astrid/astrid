@@ -168,8 +168,9 @@ impl ResourcePattern {
     /// Parse a resource URI into components.
     ///
     /// Format: `scheme://server:tool` or `scheme://path`
+    #[cfg(test)]
     #[must_use]
-    pub fn parse_uri(resource: &str) -> Option<ResourceUri> {
+    pub(crate) fn parse_uri(resource: &str) -> Option<ResourceUri> {
         let (scheme, rest) = resource.split_once("://")?;
 
         // For file:// URIs, the rest is the path
@@ -241,22 +242,24 @@ impl std::hash::Hash for ResourcePattern {
 }
 
 /// Parsed components of a resource URI.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResourceUri {
+pub(crate) struct ResourceUri {
     /// URI scheme (mcp, file, http, etc.)
-    pub scheme: String,
+    pub(crate) scheme: String,
     /// Server name (for MCP resources)
-    pub server: Option<String>,
+    pub(crate) server: Option<String>,
     /// Tool name (for MCP resources)
-    pub tool: Option<String>,
+    pub(crate) tool: Option<String>,
     /// Path (for file resources)
-    pub path: Option<String>,
+    pub(crate) path: Option<String>,
 }
 
+#[cfg(test)]
 impl ResourceUri {
     /// Create an MCP resource URI.
     #[must_use]
-    pub fn mcp(server: impl Into<String>, tool: impl Into<String>) -> Self {
+    pub(crate) fn mcp(server: impl Into<String>, tool: impl Into<String>) -> Self {
         Self {
             scheme: "mcp".to_string(),
             server: Some(server.into()),
@@ -267,7 +270,7 @@ impl ResourceUri {
 
     /// Create a file resource URI.
     #[must_use]
-    pub fn file(path: impl Into<String>) -> Self {
+    pub(crate) fn file(path: impl Into<String>) -> Self {
         Self {
             scheme: "file".to_string(),
             server: None,
@@ -278,7 +281,7 @@ impl ResourceUri {
 
     /// Convert back to a URI string.
     #[must_use]
-    pub fn to_uri(&self) -> String {
+    pub(crate) fn to_uri(&self) -> String {
         match (&self.server, &self.tool, &self.path) {
             (Some(server), Some(tool), _) => format!("{}://{}:{}", self.scheme, server, tool),
             (Some(server), None, _) => format!("{}://{}", self.scheme, server),

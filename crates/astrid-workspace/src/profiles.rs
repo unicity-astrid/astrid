@@ -7,19 +7,19 @@ use crate::config::{EscapePolicy, WorkspaceConfig, WorkspaceMode};
 
 /// A workspace profile with predefined settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkspaceProfile {
+pub(crate) struct WorkspaceProfile {
     /// Profile name.
-    pub name: String,
+    pub(crate) name: String,
     /// Profile description.
-    pub description: String,
+    pub(crate) description: String,
     /// Configuration for this profile.
-    pub config: WorkspaceConfig,
+    pub(crate) config: WorkspaceConfig,
 }
 
 impl WorkspaceProfile {
     /// Create a new workspace profile.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         name: impl Into<String>,
         description: impl Into<String>,
         config: WorkspaceConfig,
@@ -37,7 +37,7 @@ impl WorkspaceProfile {
     /// - No auto-allowed paths outside workspace
     /// - Standard protected paths
     #[must_use]
-    pub fn safe(root: impl Into<PathBuf>) -> Self {
+    pub(crate) fn safe(root: impl Into<PathBuf>) -> Self {
         let config = WorkspaceConfig::new(root)
             .with_mode(WorkspaceMode::Safe)
             .with_escape_policy(EscapePolicy::Ask);
@@ -55,7 +55,7 @@ impl WorkspaceProfile {
     /// - Auto-allow common development paths
     /// - Standard protected paths
     #[must_use]
-    pub fn power_user(root: impl Into<PathBuf>) -> Self {
+    pub(crate) fn power_user(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
 
         // Auto-allow common development locations
@@ -85,7 +85,7 @@ impl WorkspaceProfile {
     /// - All paths allowed except protected system paths
     /// - Use with caution!
     #[must_use]
-    pub fn autonomous(root: impl Into<PathBuf>) -> Self {
+    pub(crate) fn autonomous(root: impl Into<PathBuf>) -> Self {
         let config = WorkspaceConfig::new(root)
             .with_mode(WorkspaceMode::Autonomous)
             .with_escape_policy(EscapePolicy::Allow);
@@ -103,7 +103,7 @@ impl WorkspaceProfile {
     /// - Allow common CI paths
     /// - Deny escape by default (fail fast)
     #[must_use]
-    pub fn ci(root: impl Into<PathBuf>) -> Self {
+    pub(crate) fn ci(root: impl Into<PathBuf>) -> Self {
         let config = WorkspaceConfig::new(root)
             .with_mode(WorkspaceMode::Guided)
             .with_escape_policy(EscapePolicy::Deny)
@@ -127,7 +127,7 @@ fn dirs_home() -> Option<PathBuf> {
 
 /// Get a profile by name.
 #[must_use]
-pub fn get_profile(name: &str, root: impl Into<PathBuf>) -> Option<WorkspaceProfile> {
+pub(crate) fn get_profile(name: &str, root: impl Into<PathBuf>) -> Option<WorkspaceProfile> {
     let root = root.into();
     match name {
         "safe" => Some(WorkspaceProfile::safe(root)),
@@ -140,7 +140,7 @@ pub fn get_profile(name: &str, root: impl Into<PathBuf>) -> Option<WorkspaceProf
 
 /// List available profile names.
 #[must_use]
-pub fn available_profiles() -> Vec<&'static str> {
+pub(crate) fn available_profiles() -> Vec<&'static str> {
     vec!["safe", "power_user", "autonomous", "ci"]
 }
 

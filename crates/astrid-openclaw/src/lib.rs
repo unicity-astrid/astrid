@@ -21,14 +21,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 /// Bridge crate version, used for compilation cache invalidation.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub mod cache;
+pub(crate) mod cache;
 pub mod compiler;
 pub mod error;
-pub mod export_stitch;
+pub(crate) mod export_stitch;
 pub mod manifest;
-pub mod node_bridge;
+pub(crate) mod node_bridge;
 pub mod output;
 pub mod pipeline;
 pub mod shim;

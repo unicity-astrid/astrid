@@ -43,6 +43,6 @@ mod context;
 mod error;
 mod logging;
 
-pub use context::{RequestContext, RequestGuard};
+pub use context::RequestContext;
 pub use error::{TelemetryError, TelemetryResult};
-pub use logging::{LogConfig, LogFormat, LogTarget, setup_default_logging, setup_logging};
+pub use logging::{LogConfig, LogFormat, LogTarget, setup_logging};

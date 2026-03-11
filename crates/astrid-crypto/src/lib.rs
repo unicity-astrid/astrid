@@ -43,10 +43,8 @@ mod error;
 mod hash;
 mod keypair;
 mod signature;
-mod verifier;
 
 pub use error::{CryptoError, CryptoResult};
 pub use hash::ContentHash;
 pub use keypair::{KeyPair, PublicKey};
 pub use signature::Signature;
-pub use verifier::{KeyId, SignatureVerifier};

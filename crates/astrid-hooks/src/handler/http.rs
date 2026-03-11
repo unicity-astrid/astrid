@@ -15,12 +15,12 @@ use crate::result::{HookContext, HookExecutionResult, HookResult};
 
 /// Handler for HTTP webhooks.
 #[derive(Debug, Clone, Default)]
-pub struct HttpHandler;
+pub(crate) struct HttpHandler;
 
 impl HttpHandler {
     /// Create a new HTTP handler.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
@@ -32,7 +32,7 @@ impl HttpHandler {
     /// # Errors
     ///
     /// Returns an error if the handler configuration is invalid.
-    pub async fn execute(
+    pub(crate) async fn execute(
         &self,
         handler: &HookHandler,
         context: &HookContext,

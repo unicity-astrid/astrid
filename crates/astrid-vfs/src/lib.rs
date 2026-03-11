@@ -11,7 +11,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 /// Security boundary enforcement via ignore rules.
-pub mod boundary;
+#[allow(dead_code)]
+pub(crate) mod boundary;
 /// Virtual filesystem error types.
 pub mod error;
 /// Host-backed virtual filesystem implementation.
@@ -21,13 +22,12 @@ pub mod overlay;
 /// Path resolution and sandboxing utilities.
 pub mod path;
 /// Worktree-specific virtual filesystem implementation.
-pub mod worktree;
+#[allow(dead_code)]
+pub(crate) mod worktree;
 
-pub use boundary::IgnoreBoundary;
 pub use error::{VfsError, VfsResult};
 pub use host::HostVfs;
 pub use overlay::OverlayVfs;
-pub use worktree::WorktreeVfs;
 
 use astrid_capabilities::{DirHandle, FileHandle};
 use async_trait::async_trait;
