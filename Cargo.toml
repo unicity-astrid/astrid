@@ -40,7 +40,7 @@ members = [
     "crates/astrid-cli",
     "crates/astrid-capsule-cli",
     # "crates/astrid-cli-mockup",  # UI/UX prototype
-    # "crates/astrid-telegram",
+
     "crates/astrid-vfs",
     "crates/astrid-sys",
     "crates/astrid-sdk",
@@ -79,7 +79,6 @@ astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
 
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
 astrid-kernel = { path = "crates/astrid-kernel", version = "0.1.1" }
-astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }
 astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
 
 # Internal crates - Configuration
