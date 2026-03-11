@@ -1,7 +1,6 @@
-//! Hook event types shared across crates.
+//! Hook event types.
 //!
-//! `HookEvent` lives in `astrid-core` so that both `astrid-hooks` and
-//! capsule crates can reference it without creating a circular dependency.
+//! `HookEvent` is the canonical enum of lifecycle events that can trigger hooks.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -84,6 +83,52 @@ impl fmt::Display for HookEvent {
             Self::SubagentStop => write!(f, "subagent_stop"),
             Self::KernelStart => write!(f, "kernel_start"),
             Self::KernelStop => write!(f, "kernel_stop"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_hook_events_have_display_and_serde_roundtrip() {
+        let hooks: Vec<HookEvent> = vec![
+            HookEvent::SessionStart,
+            HookEvent::SessionEnd,
+            HookEvent::UserPrompt,
+            HookEvent::PreToolCall,
+            HookEvent::PostToolCall,
+            HookEvent::ToolError,
+            HookEvent::PreApproval,
+            HookEvent::PostApproval,
+            HookEvent::Notification,
+            HookEvent::PreCompact,
+            HookEvent::PostCompact,
+            HookEvent::PromptBuild,
+            HookEvent::MessageSend,
+            HookEvent::SessionReset,
+            HookEvent::ModelResolve,
+            HookEvent::MessageReceived,
+            HookEvent::MessageSent,
+            HookEvent::AgentLoopEnd,
+            HookEvent::ToolResultPersist,
+            HookEvent::SubagentStart,
+            HookEvent::SubagentStop,
+            HookEvent::KernelStart,
+            HookEvent::KernelStop,
+        ];
+
+        for hook in &hooks {
+            let display = hook.to_string();
+            assert!(
+                !display.is_empty(),
+                "Display must not be empty for {hook:?}"
+            );
+
+            let json = serde_json::to_string(hook).unwrap();
+            let parsed: HookEvent = serde_json::from_str(&json).unwrap();
+            assert_eq!(*hook, parsed, "serde round-trip failed for {hook:?}");
         }
     }
 }

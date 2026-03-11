@@ -20,7 +20,6 @@ pub mod prelude;
 pub mod dirs;
 pub mod env_policy;
 pub mod frontend;
-pub mod hook_event;
 pub mod identity;
 pub(crate) mod input;
 pub mod plugin_abi;
@@ -40,7 +39,6 @@ pub use frontend::{
     ElicitationResponse, ElicitationSchema, FrontendContext, FrontendUser, SelectOption,
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType, UserInput,
 };
-pub use hook_event::HookEvent;
 pub use identity::{AstridUserId, FrontendType};
 pub use input::MessageId;
 pub use retry::RetryConfig;
