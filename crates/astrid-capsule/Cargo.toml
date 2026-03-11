@@ -33,6 +33,12 @@ astrid-workspace.workspace = true
 [dev-dependencies]
 astrid-audit = { workspace = true }
 astrid-crypto = { workspace = true }
+# Enable test-support feature for tests (merges with the [dependencies] entry)
+astrid-mcp = { workspace = true, features = ["test-support"] }
+
+# NOTE: astrid-mcp appears in both [dependencies] and [dev-dependencies].
+# Cargo merges the feature sets: production builds get no extra features,
+# test builds additionally enable "test-support".
 
 [features]
 default = ["approval"]

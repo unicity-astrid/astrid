@@ -93,6 +93,23 @@ impl SecureMcpClient {
             // `use_token` validates + marks used atomically.
             match self.capabilities.use_token(&found_token.id) {
                 Ok(token) => {
+                    // Re-verify issuer on the token returned by use_token.
+                    // `use_token` checks expiry and signature but not issuer
+                    // trust. This explicit check closes the TOCTOU window and
+                    // ensures the security property does not rely on calling
+                    // convention.
+                    let trusted_key = self.audit.runtime_public_key();
+                    if token.issuer != trusted_key {
+                        warn!(
+                            server = server,
+                            tool = tool,
+                            "Token issuer is not the trusted runtime key"
+                        );
+                        return Err(McpError::TransportError(
+                            "token issuer is not the trusted runtime key".to_string(),
+                        ));
+                    }
+
                     let proof = AuthorizationProof::Capability {
                         token_id: token.id.clone(),
                         token_hash: token.content_hash(),
@@ -251,7 +268,7 @@ impl SecureMcpClient {
             .client
             .server_manager()
             .get_config(server_name)
-            .map_or_else(|| "unknown".to_string(), |c| format!("{:?}", c.transport));
+            .map_or_else(|| "unknown".to_string(), |c| c.transport.to_string());
 
         // Log server start
         {
@@ -313,7 +330,7 @@ impl SecureMcpClient {
     ///
     /// Returns an error if the server is already running or cannot be started.
     pub async fn connect_dynamic(&self, name: &str, config: ServerConfig) -> McpResult<()> {
-        let transport = format!("{:?}", config.transport);
+        let transport = config.transport.to_string();
         self.client.connect_dynamic(name, config).await?;
 
         let _ = self.audit.append(
@@ -334,20 +351,60 @@ impl SecureMcpClient {
 
     /// Disconnect from all servers.
     ///
+    /// Snapshots running servers before teardown and emits a `ServerStopped`
+    /// audit entry for each.
+    ///
     /// # Errors
     ///
     /// Returns an error if servers cannot be stopped.
     pub async fn disconnect_all(&self) -> McpResult<()> {
-        self.client.disconnect_all().await
+        let running = self.client.list_servers().await;
+        self.client.disconnect_all().await?;
+
+        for name in running {
+            let _ = self.audit.append(
+                self.session_id.clone(),
+                AuditAction::ServerStopped {
+                    name,
+                    reason: "disconnect_all".to_string(),
+                },
+                AuthorizationProof::System {
+                    reason: "bulk disconnect".to_string(),
+                },
+                AuditOutcome::success(),
+            );
+        }
+
+        Ok(())
     }
 
     /// Shut down the client, disconnecting from all servers.
+    ///
+    /// Snapshots running servers before teardown and emits a `ServerStopped`
+    /// audit entry for each.
     ///
     /// # Errors
     ///
     /// Returns an error if disconnection fails.
     pub async fn shutdown(&self) -> McpResult<()> {
-        self.client.shutdown().await
+        let running = self.client.list_servers().await;
+        self.client.shutdown().await?;
+
+        for name in running {
+            let _ = self.audit.append(
+                self.session_id.clone(),
+                AuditAction::ServerStopped {
+                    name,
+                    reason: "shutdown".to_string(),
+                },
+                AuthorizationProof::System {
+                    reason: "client shutdown".to_string(),
+                },
+                AuditOutcome::success(),
+            );
+        }
+
+        Ok(())
     }
 
     /// Get the server manager.
@@ -364,15 +421,22 @@ impl SecureMcpClient {
     ///
     /// Returns an error only if refreshing the tools cache fails.
     pub async fn connect_auto_servers(&self) -> McpResult<usize> {
+        // Snapshot before so we only audit newly started servers.
+        let before: std::collections::HashSet<String> =
+            self.client.list_servers().await.into_iter().collect();
+
         let count = self.client.connect_auto_servers().await?;
 
-        // Log each server that is now running
+        // Log only the servers that were actually started by this call.
         for name in self.client.list_servers().await {
+            if before.contains(&name) {
+                continue;
+            }
             let transport = self
                 .client
                 .server_manager()
                 .get_config(&name)
-                .map_or_else(|| "unknown".to_string(), |c| format!("{:?}", c.transport));
+                .map_or_else(|| "unknown".to_string(), |c| c.transport.to_string());
 
             let _ = self.audit.append(
                 self.session_id.clone(),
@@ -457,7 +521,8 @@ mod tests {
         let secret_bytes = runtime_key.secret_key_bytes();
         let audit = Arc::new(AuditLog::in_memory(runtime_key));
         // Reconstruct from the secret bytes for token signing in tests.
-        let signing_key = KeyPair::from_secret_key(&secret_bytes).unwrap();
+        let signing_key = KeyPair::from_secret_key(&secret_bytes)
+            .expect("round-trip of freshly-generated key must succeed");
         let session_id = SessionId::new();
         let secure = SecureMcpClient::new(client, capabilities, audit, session_id);
         (secure, signing_key)
@@ -582,6 +647,21 @@ mod tests {
         assert!(
             matches!(second, ToolAuthorization::RequiresApproval { .. }),
             "Single-use token must not be reusable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_token_from_untrusted_issuer_requires_approval() {
+        let (secure, _runtime_key) = make_secure_client_with_key();
+
+        // Mint a token signed by a DIFFERENT key (not the runtime key)
+        let untrusted_key = KeyPair::generate();
+        grant_capability(&secure, "mcp://server:tool", false, &untrusted_key);
+
+        let auth = secure.check_authorization("server", "tool").unwrap();
+        assert!(
+            matches!(auth, ToolAuthorization::RequiresApproval { .. }),
+            "Token signed by untrusted issuer must not authorize"
         );
     }
 

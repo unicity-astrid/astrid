@@ -93,7 +93,12 @@ impl Kernel {
         let mcp_manager = ServerManager::new(mcp_config);
         let mcp_client = McpClient::new(mcp_manager);
 
-        // 2. Bootstrap capability store and persistent audit log
+        // 2. Bootstrap capability store and persistent audit log.
+        // TODO: Wire CapabilityStore persistence. Currently in-memory only
+        // so capability tokens are lost on restart. The runtime signing key
+        // is now persisted via load_or_generate_runtime_key(), but a key
+        // rotation / migration strategy is needed before persisting tokens
+        // (a fresh key invalidates all tokens signed by the old one).
         let capabilities = Arc::new(CapabilityStore::in_memory());
         let audit_log = open_audit_log()?;
         let mcp = SecureMcpClient::new(

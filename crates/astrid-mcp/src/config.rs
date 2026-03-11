@@ -20,6 +20,15 @@ pub enum Transport {
     Sse,
 }
 
+impl std::fmt::Display for Transport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stdio => f.write_str("stdio"),
+            Self::Sse => f.write_str("sse"),
+        }
+    }
+}
+
 /// Policy for restarting a server when it dies.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
