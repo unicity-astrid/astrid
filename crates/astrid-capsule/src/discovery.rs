@@ -16,7 +16,7 @@ pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
 /// Discover capsule manifests from standard locations.
 ///
 /// Scans the following directories for `Capsule.toml` files:
-/// 1. `.astrid/plugins/` (workspace-level, relative to CWD)
+/// 1. `.astrid/capsules/` (workspace-level, relative to CWD)
 /// 2. Any additional paths provided in `extra_paths`
 ///
 /// Each subdirectory containing a `Capsule.toml` is treated as a capsule.
@@ -104,7 +104,7 @@ pub(crate) fn load_manifests_from_dir(
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n == MANIFEST_FILE_NAME)
         {
-            let plugin_dir = path.parent().unwrap_or(dir).to_path_buf();
+            let capsule_dir = path.parent().unwrap_or(dir).to_path_buf();
             match load_manifest(&path) {
                 Ok(manifest) => {
                     debug!(
@@ -112,7 +112,7 @@ pub(crate) fn load_manifests_from_dir(
                         capsule_name = %manifest.package.name,
                         "Loaded capsule manifest"
                     );
-                    manifests.push((manifest, plugin_dir));
+                    manifests.push((manifest, capsule_dir));
                 },
                 Err(e) => {
                     warn!(path = %path.display(), error = %e, "Failed to load capsule manifest");

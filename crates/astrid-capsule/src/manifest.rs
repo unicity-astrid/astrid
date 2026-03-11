@@ -43,7 +43,7 @@ pub struct CapsuleManifest {
     /// Skills this capsule provides.
     #[serde(default, rename = "skill")]
     pub skills: Vec<SkillDef>,
-    /// Uplinks this capsule provides (e.g. Telegram, CLI frontend).
+    /// Uplinks this capsule provides (e.g. Telegram, CLI).
     #[serde(default, rename = "uplink")]
     pub uplinks: Vec<UplinkDef>,
     /// LLM Providers (Agents) this capsule exposes to the OS.
@@ -238,7 +238,7 @@ pub struct SkillDef {
 
 /// An uplink provided by the capsule (e.g., Telegram, CLI).
 ///
-/// This allows the LLM agent to route messages out to a specific frontend.
+/// This allows the LLM agent to route messages out to a specific platform.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UplinkDef {
     /// Unique name of the uplink.

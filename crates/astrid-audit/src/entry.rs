@@ -270,8 +270,8 @@ pub enum AuditAction {
     SessionStarted {
         /// User ID (key ID bytes).
         user_id: [u8; 8],
-        /// Frontend type.
-        frontend: String,
+        /// Platform the session started from.
+        platform: String,
     },
 
     /// Session ended.
@@ -418,8 +418,8 @@ impl AuditAction {
             Self::ApprovalDenied { action, .. } => {
                 format!("Denied: {action}")
             },
-            Self::SessionStarted { frontend, .. } => {
-                format!("Session started via {frontend}")
+            Self::SessionStarted { platform, .. } => {
+                format!("Session started via {platform}")
             },
             Self::SessionEnded { reason, .. } => {
                 format!("Session ended: {reason}")
@@ -580,7 +580,7 @@ mod tests {
             session_id,
             AuditAction::SessionStarted {
                 user_id: keypair.key_id(),
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             },
             AuthorizationProof::System {
                 reason: "session start".to_string(),
@@ -602,7 +602,7 @@ mod tests {
             session_id.clone(),
             AuditAction::SessionStarted {
                 user_id: keypair.key_id(),
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             },
             AuthorizationProof::System {
                 reason: "session start".to_string(),
@@ -640,7 +640,7 @@ mod tests {
             session_id,
             AuditAction::SessionStarted {
                 user_id: keypair.key_id(),
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             },
             AuthorizationProof::System {
                 reason: "session start".to_string(),

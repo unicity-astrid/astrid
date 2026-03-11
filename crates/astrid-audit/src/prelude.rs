@@ -20,7 +20,7 @@
 //!     session_id.clone(),
 //!     AuditAction::SessionStarted {
 //!         user_id,
-//!         frontend: "cli".to_string(),
+//!         platform: "cli".to_string(),
 //!     },
 //!     AuthorizationProof::System {
 //!         reason: "session start".to_string(),

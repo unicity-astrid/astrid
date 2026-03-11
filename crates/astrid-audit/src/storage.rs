@@ -328,7 +328,7 @@ mod tests {
             session_id.clone(),
             AuditAction::SessionStarted {
                 user_id: keypair.key_id(),
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             },
             AuthorizationProof::System {
                 reason: "test".to_string(),
@@ -387,7 +387,7 @@ mod tests {
             session_id.clone(),
             AuditAction::SessionStarted {
                 user_id: keypair.key_id(),
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             },
             AuthorizationProof::System {
                 reason: "test".to_string(),

@@ -451,7 +451,7 @@ mod tests {
                 session_id.clone(),
                 AuditAction::SessionStarted {
                     user_id,
-                    frontend: "cli".to_string(),
+                    platform: "cli".to_string(),
                 },
                 AuthorizationProof::System {
                     reason: "test".to_string(),
@@ -502,7 +502,7 @@ mod tests {
         let entry_id = AuditBuilder::new(&log, session_id)
             .action(AuditAction::SessionStarted {
                 user_id,
-                frontend: "cli".to_string(),
+                platform: "cli".to_string(),
             })
             .authorization(AuthorizationProof::System {
                 reason: "test".to_string(),

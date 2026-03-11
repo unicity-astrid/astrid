@@ -29,8 +29,8 @@ pub struct AstridClientHandler {
     /// Channel for pushing notifications (tools changed, etc.) back to the
     /// `McpClient`. `None` if the caller does not care about notifications.
     pub(super) notice_tx: Option<mpsc::UnboundedSender<ServerNotice>>,
-    /// Plugin ID for anti-spoofing validation on inbound notifications.
-    pub(super) plugin_id: String,
+    /// Capsule ID for anti-spoofing validation on inbound notifications.
+    pub(super) capsule_id: String,
     /// Channel for inbound messages from the bridge.
     /// Bounded to 256 (set by caller in `McpPlugin::load()`).
     pub(super) inbound_tx: Option<mpsc::Sender<InboundMessage>>,
@@ -50,7 +50,7 @@ impl AstridClientHandler {
             server_name: server_name.into(),
             inner,
             notice_tx: None,
-            plugin_id: String::new(),
+            capsule_id: String::new(),
             inbound_tx: None,
             registered_uplinks: Arc::new(Mutex::new(Vec::new())),
         }
@@ -64,13 +64,13 @@ impl AstridClientHandler {
         self
     }
 
-    /// Set the plugin ID for anti-spoofing validation on inbound notifications.
+    /// Set the capsule ID for anti-spoofing validation on inbound notifications.
     ///
-    /// **Required** when inbound message channels are configured — an empty plugin ID
+    /// **Required** when inbound message channels are configured — an empty capsule ID
     /// causes the inbound message handler to reject all messages.
     #[must_use]
-    pub fn with_plugin_id(mut self, plugin_id: &str) -> Self {
-        self.plugin_id = plugin_id.to_string();
+    pub fn with_capsule_id(mut self, capsule_id: &str) -> Self {
+        self.capsule_id = capsule_id.to_string();
         self
     }
 
@@ -95,9 +95,9 @@ impl AstridClientHandler {
             return;
         };
 
-        // Reject if no plugin_id is configured (prevents empty-string bypass)
-        if self.plugin_id.is_empty() {
-            warn!("inboundMessage: no plugin_id configured, rejecting");
+        // Reject if no capsule_id is configured (prevents empty-string bypass)
+        if self.capsule_id.is_empty() {
+            warn!("inboundMessage: no capsule_id configured, rejecting");
             return;
         }
 
@@ -115,15 +115,15 @@ impl AstridClientHandler {
             return;
         }
 
-        // Extract and validate plugin_id BEFORE any content allocation (anti-spoofing)
-        let Some(plugin_id) = params.get("pluginId").and_then(Value::as_str) else {
-            warn!("inboundMessage: missing pluginId");
+        // Extract and validate capsule_id BEFORE any content allocation (anti-spoofing)
+        let Some(capsule_id) = params.get("capsuleId").and_then(Value::as_str) else {
+            warn!("inboundMessage: missing capsuleId");
             return;
         };
-        if plugin_id != self.plugin_id {
+        if capsule_id != self.capsule_id {
             warn!(
-                got = %plugin_id,
-                "inboundMessage: pluginId mismatch, rejecting"
+                got = %capsule_id,
+                "inboundMessage: capsuleId mismatch, rejecting"
             );
             return;
         }
@@ -169,7 +169,7 @@ impl AstridClientHandler {
                 (desc.id, desc.platform.clone())
             } else if let Some(desc) = uplinks.first() {
                 warn!(
-                    plugin_id = %plugin_id,
+                    capsule_id = %capsule_id,
                     channel = ?channel_name,
                     fallback_uplink = %desc.name,
                     "inboundMessage: channel not found, falling back to first uplink"
@@ -177,11 +177,11 @@ impl AstridClientHandler {
                 (desc.id, desc.platform.clone())
             } else {
                 warn!(
-                    plugin_id = %plugin_id,
+                    capsule_id = %capsule_id,
                     channel = ?channel_name,
                     "inboundMessage: no uplinks registered, using ephemeral ID"
                 );
-                (UplinkId::new(), plugin_id.to_string())
+                (UplinkId::new(), capsule_id.to_string())
             }
         };
 
@@ -203,13 +203,13 @@ impl AstridClientHandler {
     /// and populate `registered_uplinks` for inbound message lookups.
     pub(super) fn register_channels_locally(
         &self,
-        plugin_id: &str,
+        capsule_id: &str,
         channels: &[BridgeChannelInfo],
     ) {
-        let source = match UplinkSource::new_openclaw(plugin_id) {
+        let source = match UplinkSource::new_openclaw(capsule_id) {
             Ok(s) => s,
             Err(e) => {
-                warn!(error = %e, "register_channels_locally: invalid plugin_id for UplinkSource");
+                warn!(error = %e, "register_channels_locally: invalid capsule_id for UplinkSource");
                 return;
             },
         };
@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn test_register_channels_locally() {
         let handler =
-            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+            AstridClientHandler::new("capsule:test-plugin", Arc::new(CapabilitiesHandler::new()));
 
         let channels = vec![
             BridgeChannelInfo {
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_register_channels_locally_deduplicates() {
         let handler =
-            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+            AstridClientHandler::new("capsule:test-plugin", Arc::new(CapabilitiesHandler::new()));
 
         let channels = vec![BridgeChannelInfo {
             name: "telegram".to_string(),

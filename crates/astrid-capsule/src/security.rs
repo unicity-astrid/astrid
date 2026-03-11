@@ -1,6 +1,6 @@
-//! Security gate trait for plugin host function calls.
+//! Security gate trait for capsule host function calls.
 //!
-//! Decouples the plugin WASM runtime from the full security interceptor stack.
+//! Decouples the capsule WASM runtime from the full security interceptor stack.
 //! Test implementations ([`AllowAllGate`], [`DenyAllGate`]) are provided for
 //! unit testing. A concrete [`SecurityInterceptorGate`] adapter wrapping
 //! `astrid-approval`'s `SecurityInterceptor` is available behind the
@@ -9,14 +9,14 @@
 use crate::manifest::CapsuleManifest;
 use async_trait::async_trait;
 
-/// Security gate for plugin host function calls.
+/// Security gate for capsule host function calls.
 ///
 /// Each method corresponds to a class of sensitive operation that a WASM
-/// plugin can request through host functions. Implementors decide whether
+/// capsule can request through host functions. Implementors decide whether
 /// to permit or deny the operation.
 #[async_trait]
 pub trait CapsuleSecurityGate: Send + Sync {
-    /// Check whether the plugin is allowed to make an HTTP request.
+    /// Check whether the capsule is allowed to make an HTTP request.
     async fn check_http_request(
         &self,
         capsule_id: &str,
@@ -24,16 +24,16 @@ pub trait CapsuleSecurityGate: Send + Sync {
         url: &str,
     ) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to read a file.
+    /// Check whether the capsule is allowed to read a file.
     async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to write a file.
+    /// Check whether the capsule is allowed to write a file.
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to spawn a host process.
+    /// Check whether the capsule is allowed to spawn a host process.
     async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to accept connections on a bound socket.
+    /// Check whether the capsule is allowed to accept connections on a bound socket.
     ///
     /// Default implementation denies all bind operations. Override to permit
     /// capsules that declare `net_bind` capabilities.
@@ -44,14 +44,14 @@ pub trait CapsuleSecurityGate: Send + Sync {
     /// `socket_path: &str` parameter and enforce path-based confinement.
     async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: net_bind not permitted (default)"
+            "capsule '{capsule_id}' denied: net_bind not permitted (default)"
         ))
     }
 
-    /// Check whether the plugin is allowed to register a uplink.
+    /// Check whether the capsule is allowed to register a uplink.
     ///
     /// Default implementation permits all registrations. Override to enforce
-    /// uplink policies (e.g. platform allowlists per plugin).
+    /// uplink policies (e.g. platform allowlists per capsule).
     ///
     /// RATIONALE: This has a permissive default (unlike the required file/HTTP
     /// methods) to maintain backward compatibility with existing
@@ -126,31 +126,31 @@ impl CapsuleSecurityGate for DenyAllGate {
         url: &str,
     ) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: {method} {url} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: {method} {url} (DenyAllGate)"
         ))
     }
 
     async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: read {path} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: read {path} (DenyAllGate)"
         ))
     }
 
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: write {path} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: write {path} (DenyAllGate)"
         ))
     }
 
     async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
         ))
     }
 
     async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: net_bind (DenyAllGate)"
+            "capsule '{capsule_id}' denied: net_bind (DenyAllGate)"
         ))
     }
 
@@ -161,7 +161,7 @@ impl CapsuleSecurityGate for DenyAllGate {
         platform: &str,
     ) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
+            "capsule '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
         ))
     }
 }
@@ -318,7 +318,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: network access to '{url}' not declared in manifest"
+                "capsule '{capsule_id}' denied: network access to '{url}' not declared in manifest"
             ))
         }
     }
@@ -328,7 +328,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: read access to '{path}' not declared in manifest"
+                "capsule '{capsule_id}' denied: read access to '{path}' not declared in manifest"
             ))
         }
     }
@@ -338,7 +338,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: write access to '{path}' not declared in manifest"
+                "capsule '{capsule_id}' denied: write access to '{path}' not declared in manifest"
             ))
         }
     }
@@ -354,7 +354,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: host process '{command}' not declared in manifest"
+                "capsule '{capsule_id}' denied: host process '{command}' not declared in manifest"
             ))
         }
     }
@@ -372,7 +372,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: net_bind not declared in manifest"
+                "capsule '{capsule_id}' denied: net_bind not declared in manifest"
             ))
         }
     }

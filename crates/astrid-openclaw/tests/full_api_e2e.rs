@@ -383,7 +383,7 @@ fn all_astrid_events_have_event_type_strings() {
         AstridEvent::MessageSending {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::ContextCompactionStarted {
             metadata: m(),
@@ -419,12 +419,12 @@ fn all_astrid_events_have_event_type_strings() {
         AstridEvent::MessageReceived {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::MessageSent {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::MessageProcessed {
             metadata: m(),
@@ -533,20 +533,20 @@ fn all_astrid_events_have_event_type_strings() {
             subagent_id: u(),
             reason: None,
         },
-        AstridEvent::PluginLoaded {
+        AstridEvent::CapsuleLoaded {
             metadata: m(),
-            plugin_id: s(),
-            plugin_name: s(),
+            capsule_id: s(),
+            capsule_name: s(),
         },
-        AstridEvent::PluginFailed {
+        AstridEvent::CapsuleFailed {
             metadata: m(),
-            plugin_id: s(),
+            capsule_id: s(),
             error: s(),
         },
-        AstridEvent::PluginUnloaded {
+        AstridEvent::CapsuleUnloaded {
             metadata: m(),
-            plugin_id: s(),
-            plugin_name: s(),
+            capsule_id: s(),
+            capsule_name: s(),
         },
         AstridEvent::CapabilityGranted {
             metadata: m(),

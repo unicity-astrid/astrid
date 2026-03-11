@@ -152,7 +152,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -200,7 +200,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -253,7 +253,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -302,7 +302,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -367,7 +367,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),

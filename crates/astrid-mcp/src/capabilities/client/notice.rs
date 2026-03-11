@@ -42,9 +42,9 @@ pub enum ServerNotice {
     /// The bridge sent `notifications/astrid.uplinkRegistered` with a batch
     /// of channel registrations after the MCP handshake completed.
     UplinksRegistered {
-        /// Name of the MCP server (e.g. `"plugin:my-plugin"`).
+        /// Name of the MCP server (e.g. `"capsule:my-capsule"`).
         server_name: String,
-        /// Channels registered by the plugin.
+        /// Channels registered by the capsule.
         channels: Vec<BridgeChannelInfo>,
     },
 }

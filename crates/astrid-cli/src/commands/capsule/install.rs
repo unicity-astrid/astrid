@@ -131,16 +131,16 @@ pub(crate) fn install_from_openclaw(
     workspace: bool,
     home: &AstridHome,
 ) -> anyhow::Result<()> {
-    let plugin_name = source.strip_prefix("openclaw:").unwrap_or(source);
+    let capsule_name = source.strip_prefix("openclaw:").unwrap_or(source);
 
     // Step 1: Mock Registry Fetch
     // In a real implementation, this would hit https://registry.openclaw.io
     // For now, we assume the user might have a local directory with that name for testing,
     // or we just bail if it doesn't exist locally as a fallback.
-    let source_path = Path::new(plugin_name);
+    let source_path = Path::new(capsule_name);
     if !source_path.exists() {
         bail!(
-            "OpenClaw registry fetch not yet implemented. Please provide a local path to the OpenClaw plugin directory."
+            "OpenClaw registry fetch not yet implemented. Please provide a local path to the OpenClaw capsule directory."
         );
     }
 
@@ -313,7 +313,7 @@ pub(crate) fn install_from_local_path(
         std::fs::remove_dir_all(&target_dir)?;
     }
 
-    copy_plugin_dir(source_path, &target_dir)?;
+    copy_capsule_dir(source_path, &target_dir)?;
 
     Ok(())
 }
@@ -323,7 +323,7 @@ pub(crate) fn install_from_local_path(
 /// Symlinks are resolved to their target content (like `cp -rL`). This is
 /// required because `npm install` creates symlinks in `node_modules/.bin/`
 /// and the archiver also dereferences them via `follow_symlinks(true)`.
-pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
+pub(crate) fn copy_capsule_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dst).with_context(|| format!("failed to create {}", dst.display()))?;
 
     for entry in
@@ -339,7 +339,7 @@ pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
             if name == ".git" || name == "dist" || name == "target" {
                 continue;
             }
-            copy_plugin_dir(&src_path, &dst_path)?;
+            copy_capsule_dir(&src_path, &dst_path)?;
         } else if file_type.is_symlink() {
             // Dereference symlinks: resolve to the target's content and copy as
             // a regular file. This handles npm's node_modules/.bin/ symlinks.
@@ -348,7 +348,7 @@ pub(crate) fn copy_plugin_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
                 .with_context(|| format!("symlink target not found for {}", src_path.display()))?;
             if metadata.is_dir() {
                 // Symlink points to a directory - recurse into it
-                copy_plugin_dir(&src_path, &dst_path)?;
+                copy_capsule_dir(&src_path, &dst_path)?;
             } else {
                 std::fs::copy(&src_path, &dst_path)
                     .with_context(|| format!("failed to copy {}", src_path.display()))?;
@@ -368,7 +368,7 @@ fn resolve_target_dir(
 ) -> anyhow::Result<std::path::PathBuf> {
     if workspace {
         let root = std::env::current_dir().context("could not determine current directory")?;
-        Ok(root.join(".astrid").join("plugins").join(id))
+        Ok(root.join(".astrid").join("capsules").join(id))
     } else {
         Ok(home.capsules_dir().join(id))
     }
@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn copy_plugin_dir_skips_git_and_build_artifacts() {
+    fn copy_capsule_dir_skips_git_and_build_artifacts() {
         let src_dir = tempfile::tempdir().unwrap();
         let base = src_dir.path();
 
@@ -455,7 +455,7 @@ mod tests {
         std::fs::write(base.join("node_modules/pkg/index.js"), "// dep").unwrap();
 
         let dst_dir = tempfile::tempdir().unwrap();
-        copy_plugin_dir(base, dst_dir.path()).unwrap();
+        copy_capsule_dir(base, dst_dir.path()).unwrap();
 
         assert!(dst_dir.path().join("index.js").exists());
         assert!(
@@ -480,7 +480,7 @@ mod tests {
     #[cfg_attr(windows, ignore = "symlinks require elevated privileges on Windows")]
     fn install_dereferences_node_modules_bin_symlinks() {
         // Simulates the realistic npm install output: node_modules/.bin/
-        // contains relative symlinks to package executables. copy_plugin_dir
+        // contains relative symlinks to package executables. copy_capsule_dir
         // must dereference these into regular files instead of bailing.
         let capsule_dir = tempfile::tempdir().unwrap();
         let base = capsule_dir.path();

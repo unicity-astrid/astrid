@@ -150,7 +150,7 @@ pub struct Orchestrator;
 
 #[capsule]
 impl Orchestrator {
-    /// Handles `user.prompt` events from frontends (CLI, Telegram, etc.).
+    /// Handles `user.prompt` events from platforms (CLI, Telegram, etc.).
     ///
     /// Adds the user message to conversation history, then requests the
     /// system prompt from the identity capsule.
@@ -194,7 +194,7 @@ impl Orchestrator {
     /// Handles `identity.response.ready` events from the identity capsule.
     ///
     /// Receives the assembled system prompt and sends it to the prompt
-    /// builder capsule for plugin hook interception before LLM generation.
+    /// builder capsule for capsule hook interception before LLM generation.
     #[astrid::interceptor("handle_identity_response")]
     pub fn handle_identity_response(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let mut state = SessionState::load(DEFAULT_SESSION_ID);
@@ -241,7 +241,7 @@ impl Orchestrator {
 
     /// Handles `prompt_builder.response.assemble` events from the prompt builder.
     ///
-    /// Receives the final assembled prompt (after plugin hooks) and publishes
+    /// Receives the final assembled prompt (after capsule hooks) and publishes
     /// an LLM generation request to the provider capsule.
     #[astrid::interceptor("handle_prompt_response")]
     pub fn handle_prompt_response(&self, payload: serde_json::Value) -> Result<(), SysError> {
@@ -301,7 +301,7 @@ impl Orchestrator {
         match event {
             StreamEvent::TextDelta(text) => {
                 state.response_text.push_str(&text);
-                // Forward to frontend for real-time display
+                // Forward to platform for real-time display
                 let _ = ipc::publish_json(
                     "agent.stream.delta",
                     &IpcPayload::AgentResponse {
@@ -504,7 +504,7 @@ impl Orchestrator {
                 .messages
                 .push(Message::assistant(&state.response_text));
 
-            // Publish final response to frontends
+            // Publish final response to platforms
             ipc::publish_json(
                 "agent.response",
                 &IpcPayload::AgentResponse {

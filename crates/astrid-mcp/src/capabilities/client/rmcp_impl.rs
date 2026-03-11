@@ -310,17 +310,17 @@ impl rmcp::ClientHandler for AstridClientHandler {
                 if let Some(ref tx) = self.notice_tx {
                     match notification.params_as::<UplinkRegisteredParams>() {
                         Ok(Some(params)) => {
-                            // Log if the plugin claims a different identity than expected.
-                            // server_name is "plugin:<id>"; strip the prefix for exact match.
+                            // Log if the capsule claims a different identity than expected.
+                            // server_name is "capsule:<id>"; strip the prefix for exact match.
                             let expected_id = self
                                 .server_name
-                                .strip_prefix("plugin:")
+                                .strip_prefix("capsule:")
                                 .unwrap_or(&self.server_name);
-                            if params.plugin_id != expected_id {
+                            if params.capsule_id != expected_id {
                                 warn!(
                                     server = %self.server_name,
-                                    claimed_id = %params.plugin_id,
-                                    "uplinkRegistered: pluginId mismatch"
+                                    claimed_id = %params.capsule_id,
+                                    "uplinkRegistered: capsuleId mismatch"
                                 );
                             }
                             // Validate: cap channels, enforce name length + character set.

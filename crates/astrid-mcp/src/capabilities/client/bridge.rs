@@ -75,8 +75,8 @@ pub struct BridgeChannelCapabilities {
 /// Params wrapper for the `uplinkRegistered` notification.
 #[derive(Debug, Deserialize)]
 pub(super) struct UplinkRegisteredParams {
-    #[serde(rename = "pluginId")]
-    pub(super) plugin_id: String,
+    #[serde(rename = "capsuleId")]
+    pub(super) capsule_id: String,
     pub(super) channels: Vec<BridgeChannelInfo>,
 }
 
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_uplink_registered_params_deserialization() {
         let json = serde_json::json!({
-            "pluginId": "channel-echo",
+            "capsuleId": "channel-echo",
             "channels": [{
                 "name": "telegram",
                 "definition": {
@@ -111,7 +111,7 @@ mod tests {
 
         let params: UplinkRegisteredParams =
             serde_json::from_value(json).expect("should parse UplinkRegisteredParams");
-        assert_eq!(params.plugin_id, "channel-echo");
+        assert_eq!(params.capsule_id, "channel-echo");
         assert_eq!(params.channels.len(), 1);
         assert_eq!(params.channels[0].name, "telegram");
 
