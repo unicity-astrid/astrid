@@ -13,6 +13,8 @@ astrid-capsule.workspace = true
 astrid-capabilities.workspace = true
 astrid-vfs.workspace = true
 astrid-mcp.workspace = true
+astrid-audit.workspace = true
+astrid-crypto.workspace = true
 
 tokio = { workspace = true, features = ["full", "signal"] }
 tracing.workspace = true
@@ -21,6 +23,9 @@ uuid.workspace = true
 anyhow.workspace = true
 astrid-storage.workspace = true
 astrid-core.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true
