@@ -17,12 +17,12 @@ pub mod kernel_router;
 pub mod socket;
 
 use astrid_audit::AuditLog;
-use astrid_capabilities::DirHandle;
+use astrid_capabilities::{CapabilityStore, DirHandle};
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
 use astrid_crypto::KeyPair;
 use astrid_events::EventBus;
-use astrid_mcp::{McpClient, ServerManager, ServersConfig};
+use astrid_mcp::{McpClient, SecureMcpClient, ServerManager, ServersConfig};
 use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,8 +36,10 @@ pub struct Kernel {
     pub event_bus: Arc<EventBus>,
     /// The process manager (loaded WASM capsules).
     pub capsules: Arc<RwLock<CapsuleRegistry>>,
-    /// The MCP native process manager.
-    pub mcp_client: McpClient,
+    /// The secure MCP client with capability-based authorization and audit logging.
+    pub mcp: SecureMcpClient,
+    /// The capability store for this session.
+    pub capabilities: Arc<CapabilityStore>,
     /// The global Virtual File System mount.
     pub vfs: Arc<dyn Vfs>,
     /// The global physical root handle (cap-std) for the VFS.
@@ -86,15 +88,25 @@ impl Kernel {
             },
         };
 
-        // 1. Initialize MCP process manager
+        // 1. Initialize MCP process manager with security layer
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
         let mcp_manager = ServerManager::new(mcp_config);
         let mcp_client = McpClient::new(mcp_manager);
 
-        // 1. Establish the physical security boundary (sandbox handle)
+        // 2. Bootstrap capability store and persistent audit log
+        let capabilities = Arc::new(CapabilityStore::in_memory());
+        let audit_log = open_audit_log()?;
+        let mcp = SecureMcpClient::new(
+            mcp_client,
+            Arc::clone(&capabilities),
+            Arc::clone(&audit_log),
+            session_id.clone(),
+        );
+
+        // 3. Establish the physical security boundary (sandbox handle)
         let root_handle = DirHandle::new();
 
-        // 2. Initialize the physical filesystem layers
+        // 4. Initialize the physical filesystem layers
         let lower_vfs = HostVfs::new();
         lower_vfs
             .register_dir(root_handle.clone(), workspace_root.clone())
@@ -107,22 +119,20 @@ impl Kernel {
             .await
             .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
 
-        // 3. Wrap in copy-on-write OverlayVfs
+        // 5. Wrap in copy-on-write OverlayVfs
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
-        // 4. Bind the secure Unix socket natively
+        // 6. Bind the secure Unix socket natively
         let listener = socket::bind_session_socket()?;
 
         let kv = Arc::new(astrid_storage::MemoryKvStore::new());
-
-        // Open persistent audit log with chain verification on boot.
-        let audit_log = open_audit_log()?;
 
         let kernel = Arc::new(Self {
             session_id,
             event_bus,
             capsules,
-            mcp_client,
+            mcp,
+            capabilities,
             vfs: Arc::new(overlay_vfs),
             vfs_root_handle: root_handle,
             workspace_root,
@@ -155,7 +165,7 @@ impl Kernel {
         let manifest = astrid_capsule::discovery::load_manifest(&manifest_path)
             .map_err(|e| anyhow::anyhow!(e))?;
 
-        let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp_client.clone());
+        let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp.inner().clone());
         let mut capsule = loader.create_capsule(manifest, dir.clone())?;
 
         // Build the context — use the shared kernel KV so capsules can

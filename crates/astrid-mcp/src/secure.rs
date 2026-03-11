@@ -14,7 +14,9 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::client::McpClient;
+use crate::config::ServerConfig;
 use crate::error::{McpError, McpResult};
+use crate::server::ServerManager;
 use crate::types::{ToolDefinition, ToolResult};
 
 /// Authorization result for a tool call.
@@ -300,10 +302,87 @@ impl SecureMcpClient {
         self.client.list_servers().await
     }
 
+    /// Dynamically connect a new server using a provided configuration.
+    ///
+    /// This delegates directly to the underlying [`McpClient`] — server
+    /// lifecycle operations (connect/disconnect) are infrastructure, not
+    /// agent-initiated tool calls, so no capability check is performed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server is already running or cannot be started.
+    pub async fn connect_dynamic(&self, name: &str, config: ServerConfig) -> McpResult<()> {
+        self.client.connect_dynamic(name, config).await
+    }
+
+    /// Disconnect from all servers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if servers cannot be stopped.
+    pub async fn disconnect_all(&self) -> McpResult<()> {
+        self.client.disconnect_all().await
+    }
+
+    /// Shut down the client, disconnecting from all servers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if disconnection fails.
+    pub async fn shutdown(&self) -> McpResult<()> {
+        self.client.shutdown().await
+    }
+
+    /// Get the server manager.
+    #[must_use]
+    pub fn server_manager(&self) -> &ServerManager {
+        self.client.server_manager()
+    }
+
+    /// Connect to all auto-start servers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if refreshing the tools cache fails.
+    pub async fn connect_auto_servers(&self) -> McpResult<usize> {
+        self.client.connect_auto_servers().await
+    }
+
     /// Get the underlying MCP client.
     #[must_use]
     pub fn inner(&self) -> &McpClient {
         &self.client
+    }
+
+    /// Get the capability store.
+    #[must_use]
+    pub fn capabilities(&self) -> &Arc<CapabilityStore> {
+        &self.capabilities
+    }
+
+    /// Get the audit log.
+    #[must_use]
+    pub fn audit(&self) -> &Arc<AuditLog> {
+        &self.audit
+    }
+
+    /// Get the session ID.
+    #[must_use]
+    pub fn session_id(&self) -> &SessionId {
+        &self.session_id
+    }
+}
+
+/// `SecureMcpClient` is cheaply cloneable — the underlying `McpClient` is
+/// `Arc`-wrapped, and `CapabilityStore`/`AuditLog` are already behind `Arc`.
+impl Clone for SecureMcpClient {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            capabilities: Arc::clone(&self.capabilities),
+            audit: Arc::clone(&self.audit),
+            session_id: self.session_id.clone(),
+        }
     }
 }
 
@@ -321,17 +400,75 @@ mod tests {
     use super::*;
     use astrid_crypto::KeyPair;
 
-    #[tokio::test]
-    async fn test_secure_client_creation() {
+    fn make_secure_client() -> SecureMcpClient {
         let config = crate::config::ServersConfig::default();
         let client = McpClient::with_config(config);
         let capabilities = Arc::new(CapabilityStore::in_memory());
         let keypair = KeyPair::generate();
         let audit = Arc::new(AuditLog::in_memory(keypair));
         let session_id = SessionId::new();
+        SecureMcpClient::new(client, capabilities, audit, session_id)
+    }
 
-        let secure = SecureMcpClient::new(client, capabilities, audit, session_id);
-
+    #[tokio::test]
+    async fn test_secure_client_creation() {
+        let secure = make_secure_client();
         assert!(secure.list_tools().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_secure_client_clone_shares_state() {
+        let secure = make_secure_client();
+        let cloned = secure.clone();
+
+        // Both see the same empty tool list (shared ServerManager)
+        assert!(secure.list_tools().await.unwrap().is_empty());
+        assert!(cloned.list_tools().await.unwrap().is_empty());
+
+        // Same session ID
+        assert_eq!(secure.session_id(), cloned.session_id());
+
+        // Same capability store (Arc identity)
+        assert!(Arc::ptr_eq(secure.capabilities(), cloned.capabilities()));
+
+        // Same audit log (Arc identity)
+        assert!(Arc::ptr_eq(secure.audit(), cloned.audit()));
+    }
+
+    #[tokio::test]
+    async fn test_secure_client_inner_returns_bare_client() {
+        let secure = make_secure_client();
+        let inner = secure.inner();
+
+        // Inner client should also see empty tools
+        assert!(inner.list_tools().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_no_capability_returns_requires_approval() {
+        let secure = make_secure_client();
+
+        // No tokens in the store, so any tool check should require approval
+        let auth = secure
+            .check_authorization("test-server", "test-tool")
+            .unwrap();
+        assert!(
+            matches!(auth, ToolAuthorization::RequiresApproval { .. }),
+            "Empty capability store should deny by default"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delegation_methods() {
+        let secure = make_secure_client();
+
+        // list_servers delegates correctly
+        assert!(secure.list_servers().await.is_empty());
+
+        // disconnect_all on empty client succeeds
+        assert!(secure.disconnect_all().await.is_ok());
+
+        // shutdown on empty client succeeds
+        assert!(secure.shutdown().await.is_ok());
     }
 }
