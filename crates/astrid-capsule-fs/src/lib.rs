@@ -8,8 +8,11 @@
 //! Provides `read_file`, `write_file`, `replace_in_file`, `list_directory`,
 //! and `grep_search` tools to agents.
 
+mod grep;
+
 use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
+use grep::{GREP_MAX_DEPTH, GREP_MAX_FILES, GREP_MAX_MATCHES, grep_content};
 use serde::Deserialize;
 
 #[derive(Default)]
@@ -75,7 +78,7 @@ impl FsTools {
     #[astrid::tool("replace_in_file")]
     pub fn replace_in_file(&self, args: ReplaceInFileArgs) -> Result<String, SysError> {
         let content = fs::read_string(&args.file_path)?;
-        
+
         let count = content.matches(&args.old_string).count();
         if count == 0 {
             return Err(SysError::ApiError(format!("Exact string not found in {}", args.file_path)));
@@ -100,10 +103,95 @@ impl FsTools {
     }
 
     #[astrid::tool("grep_search")]
-    pub fn grep_search(&self, _args: GrepSearchArgs) -> Result<String, SysError> {
-        // Stub implementation, full grep would require recursively iterating directories
-        // and applying regex, but we will rely on the host system or a rust regex loop.
-        // For simplicity right now, returning error until full recursive ripgrep logic is added.
-        Err(SysError::ApiError("grep_search is not yet implemented in fs-tools capsule".into()))
+    pub fn grep_search(&self, args: GrepSearchArgs) -> Result<String, SysError> {
+        if args.pattern.is_empty() {
+            return Err(SysError::ApiError("pattern must not be empty".into()));
+        }
+
+        let root = args.dir_path.as_deref().unwrap_or(".");
+        let mut matches: Vec<String> = Vec::new();
+        let mut files_visited: usize = 0;
+
+        walk_and_grep(
+            root,
+            &args.pattern,
+            &mut matches,
+            &mut files_visited,
+            0,
+        );
+
+        if matches.is_empty() {
+            return Ok("No matches found.".into());
+        }
+
+        Ok(matches.join("\n"))
     }
+}
+
+/// Recursively walks `dir` and collects lines containing `pattern`.
+///
+/// Respects depth, file-count, and match-count caps to prevent runaway searches.
+fn walk_and_grep(
+    dir: &str,
+    pattern: &str,
+    matches: &mut Vec<String>,
+    files_visited: &mut usize,
+    depth: usize,
+) {
+    if depth >= GREP_MAX_DEPTH
+        || *files_visited >= GREP_MAX_FILES
+        || matches.len() >= GREP_MAX_MATCHES
+    {
+        return;
+    }
+
+    let entries_bytes = match fs::readdir(dir) {
+        Ok(b) => b,
+        Err(_) => return, // unreadable dir - skip
+    };
+
+    let entry_names: Vec<String> = match serde_json::from_slice(&entries_bytes) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    for name in entry_names {
+        if matches.len() >= GREP_MAX_MATCHES || *files_visited >= GREP_MAX_FILES {
+            return;
+        }
+
+        let path = if dir == "." {
+            name.clone()
+        } else {
+            format!("{dir}/{name}")
+        };
+
+        let stat_bytes = match fs::stat(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        let is_dir = serde_json::from_slice::<serde_json::Value>(&stat_bytes)
+            .ok()
+            .and_then(|v| v.get("isDir")?.as_bool())
+            .unwrap_or(false);
+
+        if is_dir {
+            walk_and_grep(&path, pattern, matches, files_visited, depth + 1);
+        } else {
+            *files_visited += 1;
+            grep_file(&path, pattern, matches);
+        }
+    }
+}
+
+/// Searches a single file for lines containing `pattern`, appending
+/// `path:line_number:content` to `matches`.
+fn grep_file(path: &str, pattern: &str, matches: &mut Vec<String>) {
+    let content = match fs::read_string(path) {
+        Ok(c) => c,
+        Err(_) => return, // binary or unreadable - skip
+    };
+
+    grep_content(path, &content, pattern, matches);
 }

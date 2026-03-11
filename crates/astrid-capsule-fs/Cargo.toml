@@ -6,7 +6,7 @@ description = "Core filesystem tools for the Astrid microkernel"
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 astrid-sdk = { path = "../astrid-sdk", features = ["derive"] }
