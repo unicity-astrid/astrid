@@ -76,80 +76,18 @@ pub fn generate_manifest(
     let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
 
     let mut env = HashMap::new();
-    // Map configSchema to env elicitations
-    if let Some(obj) = oc_manifest.config_schema.as_object()
-        && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
-    {
-        for (key, val) in props {
-            crate::manifest::validate_schema_key(key)?;
-
-            let is_sensitive = oc_manifest
-                .ui_hints
-                .get(key)
-                .and_then(|h| h.get("sensitive"))
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-
-            let label = oc_manifest
-                .ui_hints
-                .get(key)
-                .and_then(|h| h.get("label"))
-                .and_then(serde_json::Value::as_str)
-                .map(String::from);
-
-            let placeholder = oc_manifest
-                .ui_hints
-                .get(key)
-                .and_then(|h| h.get("placeholder"))
-                .and_then(serde_json::Value::as_str)
-                .map(String::from);
-
-            let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
-                "array"
-            } else if is_sensitive || crate::manifest::is_secret_key(key) {
-                "secret"
-            } else {
-                "string"
-            };
-
-            let description = val
-                .get("description")
-                .and_then(serde_json::Value::as_str)
-                .map(String::from);
-
-            // Non-string defaults (bool, int) are stringified - the onboarding TUI
-            // shows them as pre-filled text which the user can accept or change.
-            // JSON null is treated as absent (no default).
-            let default = val.get("default").and_then(|d| match d {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Null => None,
-                other => Some(other.to_string()),
-            });
-
-            let enum_values = val
-                .get("enum")
-                .and_then(serde_json::Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
-
-            env.insert(
-                key.clone(),
-                EnvDef {
-                    env_type: env_type.into(),
-                    request: Some(request),
-                    description,
-                    default,
-                    enum_values,
-                    placeholder,
-                },
-            );
-        }
+    for (key, f) in crate::manifest::extract_env_fields(oc_manifest)? {
+        env.insert(
+            key,
+            EnvDef {
+                env_type: f.env_type,
+                request: Some(f.request),
+                description: f.description,
+                default: f.default,
+                enum_values: f.enum_values,
+                placeholder: f.placeholder,
+            },
+        );
     }
 
     // Map OpenClaw `kind` → Astrid `categories`, `skills` → `keywords`

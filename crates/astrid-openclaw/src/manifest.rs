@@ -99,6 +99,114 @@ pub fn is_secret_key(key: &str) -> bool {
         || lower == "passphrase"
 }
 
+/// Parsed environment field from `configSchema` + `uiHints`.
+///
+/// Shared intermediate representation used by both Tier 1 and Tier 2
+/// manifest generators to avoid duplicating the extraction logic.
+#[derive(Debug)]
+pub struct ParsedEnvField {
+    /// The resolved type: `"secret"`, `"array"`, or `"string"`.
+    pub env_type: String,
+    /// The prompt shown to the user (from `uiHints.label` or generated).
+    pub request: String,
+    /// Schema description.
+    pub description: Option<String>,
+    /// Default value (JSON null treated as absent).
+    pub default: Option<String>,
+    /// Valid choices for enum fields.
+    pub enum_values: Vec<String>,
+    /// Placeholder hint text from `uiHints.placeholder`.
+    pub placeholder: Option<String>,
+}
+
+/// Extract environment field definitions from an `OpenClawManifest`.
+///
+/// Iterates `configSchema.properties`, validates keys, and merges
+/// `uiHints` (sensitive, label, placeholder) into each field.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::ConfigValidation`] if any property key
+/// contains invalid characters.
+pub fn extract_env_fields(
+    manifest: &OpenClawManifest,
+) -> BridgeResult<Vec<(String, ParsedEnvField)>> {
+    let Some(obj) = manifest.config_schema.as_object() else {
+        return Ok(Vec::new());
+    };
+    let Some(props) = obj.get("properties").and_then(|p| p.as_object()) else {
+        return Ok(Vec::new());
+    };
+
+    let mut fields = Vec::with_capacity(props.len());
+
+    for (key, val) in props {
+        validate_schema_key(key)?;
+
+        let hints = manifest.ui_hints.get(key);
+
+        let is_sensitive = hints
+            .and_then(|h| h.get("sensitive"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
+        let label = hints
+            .and_then(|h| h.get("label"))
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let placeholder = hints
+            .and_then(|h| h.get("placeholder"))
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
+            "array"
+        } else if is_sensitive || is_secret_key(key) {
+            "secret"
+        } else {
+            "string"
+        };
+
+        let description = val
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let default = val.get("default").and_then(|d| match d {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Null => None,
+            other => Some(other.to_string()),
+        });
+
+        let enum_values = val
+            .get("enum")
+            .and_then(serde_json::Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
+
+        fields.push((
+            key.clone(),
+            ParsedEnvField {
+                env_type: env_type.to_string(),
+                request,
+                description,
+                default,
+                enum_values,
+                placeholder,
+            },
+        ));
+    }
+
+    Ok(fields)
+}
+
 const MANIFEST_FILENAME: &str = "openclaw.plugin.json";
 
 /// Parse the `OpenClaw` manifest from a plugin directory.

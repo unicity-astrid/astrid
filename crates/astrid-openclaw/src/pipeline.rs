@@ -327,77 +327,19 @@ struct Tier2EnvDef {
 /// Build the `[env]` map for a Tier 2 manifest from `configSchema` + `uiHints`.
 fn build_tier2_env(oc_manifest: &OpenClawManifest) -> BridgeResult<HashMap<String, Tier2EnvDef>> {
     let mut env = HashMap::new();
-    let Some(obj) = oc_manifest.config_schema.as_object() else {
-        return Ok(env);
-    };
-    let Some(props) = obj.get("properties").and_then(|p| p.as_object()) else {
-        return Ok(env);
-    };
-
-    for (key, val) in props {
-        manifest::validate_schema_key(key)?;
-
-        let hints = oc_manifest.ui_hints.get(key);
-
-        let is_sensitive = hints
-            .and_then(|h| h.get("sensitive"))
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-
-        let label = hints
-            .and_then(|h| h.get("label"))
-            .and_then(serde_json::Value::as_str)
-            .map(String::from);
-
-        let placeholder = hints
-            .and_then(|h| h.get("placeholder"))
-            .and_then(serde_json::Value::as_str)
-            .map(String::from);
-
-        let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
-            "array"
-        } else if is_sensitive || manifest::is_secret_key(key) {
-            "secret"
-        } else {
-            "string"
-        };
-
-        let description = val
-            .get("description")
-            .and_then(serde_json::Value::as_str)
-            .map(String::from);
-
-        let default = val.get("default").and_then(|d| match d {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Null => None,
-            other => Some(other.to_string()),
-        });
-
-        let enum_values = val
-            .get("enum")
-            .and_then(serde_json::Value::as_array)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
-
+    for (key, f) in manifest::extract_env_fields(oc_manifest)? {
         env.insert(
-            key.clone(),
+            key,
             Tier2EnvDef {
-                env_type: env_type.to_string(),
-                request,
-                description,
-                default,
-                enum_values,
-                placeholder,
+                env_type: f.env_type,
+                request: f.request,
+                description: f.description,
+                default: f.default,
+                enum_values: f.enum_values,
+                placeholder: f.placeholder,
             },
         );
     }
-
     Ok(env)
 }
 

@@ -422,6 +422,7 @@ mod tests {
             description: Some("The wallet address".into()),
             default: None,
             enum_values: vec![],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("owner", &def);
         assert_eq!(field.key, "owner");
@@ -442,6 +443,7 @@ mod tests {
             description: None,
             default: None,
             enum_values: vec!["a".into()], // enum_values ignored for secrets
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("apiKey", &def);
         assert_eq!(
@@ -458,6 +460,7 @@ mod tests {
             description: None,
             default: Some(serde_json::json!("testnet")),
             enum_values: vec!["testnet".into(), "mainnet".into()],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("network", &def);
         assert_eq!(
@@ -475,6 +478,7 @@ mod tests {
             description: None,
             default: None,
             enum_values: vec![],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("someKey", &def);
         assert_eq!(field.prompt, "Please enter value for someKey");
@@ -488,6 +492,7 @@ mod tests {
             description: None,
             default: None,
             enum_values: vec!["only".into()],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("single", &def);
         assert_eq!(
@@ -510,6 +515,7 @@ mod tests {
             description: Some("Nostr relay endpoints".into()),
             default: None,
             enum_values: vec![],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("relays", &def);
         assert_eq!(
@@ -527,6 +533,7 @@ mod tests {
             description: None,
             default: None,
             enum_values: vec![],
+            placeholder: None,
         };
         let field = crate::engine::build_onboarding_field("empty", &def);
         assert_eq!(

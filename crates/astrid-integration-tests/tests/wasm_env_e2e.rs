@@ -41,6 +41,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             request: None,
             description: None,
             enum_values: vec![],
+            placeholder: None,
         },
     );
     env.insert(
@@ -51,6 +52,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             request: None,
             description: None,
             enum_values: vec![],
+            placeholder: None,
         },
     );
 
