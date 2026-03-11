@@ -11,7 +11,7 @@ use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
 
 /// Standard capsule manifest file name.
-pub const MANIFEST_FILE_NAME: &str = "Capsule.toml";
+pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
 
 /// Discover capsule manifests from standard locations.
 ///
@@ -59,7 +59,9 @@ pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<(CapsuleManife
 ///
 /// Looks for subdirectories containing `Capsule.toml` files, as well as
 /// `Capsule.toml` files directly in the directory.
-pub fn load_manifests_from_dir(dir: &Path) -> CapsuleResult<Vec<(CapsuleManifest, PathBuf)>> {
+pub(crate) fn load_manifests_from_dir(
+    dir: &Path,
+) -> CapsuleResult<Vec<(CapsuleManifest, PathBuf)>> {
     let mut manifests = Vec::new();
 
     let entries = std::fs::read_dir(dir).map_err(|e| CapsuleError::ManifestParseError {
@@ -159,12 +161,6 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
     }
 
     Ok(manifest)
-}
-
-/// Capsules directory in a workspace.
-#[must_use]
-pub fn workspace_plugins_dir(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(".astrid").join("plugins")
 }
 
 #[cfg(test)]

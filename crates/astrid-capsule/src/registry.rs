@@ -121,7 +121,8 @@ impl CapsuleRegistry {
     ///
     /// Calls [`Capsule::unload()`] on each capsule, logging errors without
     /// short-circuiting. Connectors are cleaned up as each capsule is removed.
-    pub async fn unload_all(&mut self) {
+    #[allow(dead_code)] // Needed for graceful shutdown (not yet wired)
+    pub(crate) async fn unload_all(&mut self) {
         let ids: Vec<CapsuleId> = self.capsules.keys().cloned().collect();
         for id in ids {
             if let Some(mut capsule) = self.capsules.remove(&id) {
