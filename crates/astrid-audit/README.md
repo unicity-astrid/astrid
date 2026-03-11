@@ -24,39 +24,11 @@ By weaving a continuous hash chain over Ed25519-signed entries, it guarantees ta
 
 1. **The Entry**: Defined by `AuditEntry`, each record combines session metadata, the specific `AuditAction` (e.g., `McpToolCall`, `CapabilityCreated`), the `AuthorizationProof` (why the action was allowed), and the `AuditOutcome`.
 2. **The Chain**: Modeled as a directed acyclic graph grouped by `SessionId`. When an entry is appended via `AuditLog::append`, the system retrieves the current chain head from storage, computes the previous entry's BLAKE3 hash, signs the new entry payload, and updates the head.
-3. **The Storage**: Interacts with the workspace `astrid-storage` crate, using a specialized `SurrealKvAuditStorage` implementation to map `AuditEntryId` to serialized entries and maintain session indexes.
+3. **The Storage**: Interacts with the workspace `astrid-storage` crate via an internal storage backend that maps `AuditEntryId` to serialized entries and maintains session indexes.
 
 ## Quick Start
 
-The easiest way to interact with the audit log during testing or internal development is via the `AuditBuilder`.
-
-```rust
-use astrid_audit::{AuditLog, AuditBuilder, AuditAction, AuthorizationProof};
-use astrid_core::SessionId;
-use astrid_crypto::KeyPair;
-
-// Initialize the log with the runtime's cryptographic key
-let runtime_key = KeyPair::generate();
-let log = AuditLog::in_memory(runtime_key);
-let session_id = SessionId::new();
-
-// Record a successful system action
-let entry_id = AuditBuilder::new(&log, session_id)
-    .action(AuditAction::ServerStarted {
-        name: "filesystem-mcp".to_string(),
-        transport: "stdio".to_string(),
-        binary_hash: None,
-    })
-    .authorization(AuthorizationProof::System {
-        reason: "system initialization".to_string(),
-    })
-    .success()
-    .unwrap();
-```
-
-### Recording Events
-
-Most events are recorded via the `AuditBuilder` or by calling `AuditLog::append` directly. Every action must be accompanied by an `AuthorizationProof` and an `AuditOutcome`.
+Events are recorded by calling `AuditLog::append` directly. Every action must be accompanied by an `AuthorizationProof` and an `AuditOutcome`.
 
 ```rust
 use astrid_audit::{AuditLog, AuditAction, AuditOutcome, AuthorizationProof};

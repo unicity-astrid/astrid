@@ -11,14 +11,11 @@ Robust MCP client integration and server lifecycle management for the Astralis O
 ## Core Features
 
 * **Server Lifecycle Management**: Native process control to start, stop, restart, and monitor MCP server instances directly from TOML configurations.
-* **Cryptographic Binary Verification**: Prevents supply-chain attacks by hashing and verifying server binaries (SHA-256 or BLAKE3) before execution.
 * **Capability-Based Authorization**: Zero-trust tool invocation using the Astralis capabilities system and strict, centralized audit logging.
 * **Nov 2025 MCP Spec Native**:
   * **Sampling**: Support for server-initiated LLM calls.
   * **Roots**: Dynamic server boundary inquiries.
   * **Elicitation**: Safe human-in-the-loop requests and URL credential collection.
-  * **Tasks**: Tracking for long-running operations.
-* **Robust Rate Limiting**: Built-in, configurable limits for high-volume tool execution to prevent resource exhaustion or quota breaches.
 * **Dynamic Configuration**: Hot-pluggable configuration allowing servers to be dynamically added or removed at runtime.
 
 ## Architecture
@@ -26,9 +23,8 @@ Robust MCP client integration and server lifecycle management for the Astralis O
 `astrid-mcp` is designed in layers to isolate process management from protocol logic and authorization. This separation of concerns ensures that a compromised external tool cannot bypass Astralis security boundaries.
 
 * **`ServerManager`**: Handles spawning child processes, capturing standard I/O for MCP transport, tracking process health, and enforcing restart policies.
-* **`BinaryVerifier`**: Intercepts server startup to ensure the target executable matches an expected cryptographic hash, falling back to cached verifications for rapid subsequent startups.
 * **`McpClient`**: The primary interface for caching tools, handling server notices (e.g., tool list refreshes), and orchestrating standard MCP communications over the underlying `rmcp` transport.
-* **`SecureMcpClient`**: A secure wrapper requiring `SessionId`, `CapabilityStore`, and `AuditLog` instances. It mandates that every tool invocation holds a valid capability token and logs all operations (both success and failure) to the centralized Astralis audit system.
+* **`SecureMcpClient`**: A secure wrapper requiring `SessionId`, `CapabilityStore`, and `AuditLog` instances. It mandates that every tool invocation holds a valid capability token and logs all operations (both success and failure) to the centralized Astralis audit system. (Built but not yet wired into the runtime.)
 
 ## Quick Start
 

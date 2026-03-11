@@ -96,7 +96,7 @@ fn setup_sync_logger(bus: &EventBus) {
 To protect the host process from aggressive WASM guests or misconfigured plugins, `astrid-events` enforces throughput quotas via the `IpcRateLimiter`.
 
 ```rust
-use astrid_events::{IpcRateLimiter, QuotaError};
+use astrid_events::IpcRateLimiter;
 use uuid::Uuid;
 
 let limiter = IpcRateLimiter::new();
@@ -105,8 +105,7 @@ let payload_size_bytes = 1024 * 500; // 500 KB
 
 match limiter.check_quota(plugin_id, payload_size_bytes) {
     Ok(_) => println!("Payload accepted"),
-    Err(QuotaError::RateLimited) => println!("Plugin exceeded 10MB/s frequency limit"),
-    Err(QuotaError::PayloadTooLarge) => println!("Payload exceeded 5MB hard limit"),
+    Err(e) => println!("Quota exceeded: {e}"),
 }
 ```
 

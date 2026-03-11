@@ -12,7 +12,6 @@ High-performance, structured logging and distributed request correlation for the
 
 * **Unified Configuration Pipeline**: Switch between JSON, pretty, compact, or full log formats through a simple builder or serializable configuration.
 * **Distributed Request Correlation**: The `RequestContext` system automatically tracks parent-child relationships, correlation IDs, and operational metadata across system boundaries.
-* **Automated Lifecycle Tracing**: `RequestGuard` inherently records entry and exit spans, calculating precise execution duration metrics upon drop.
 * **Flexible Output Routing**: Route traces to standard output, standard error, or rotating file appenders (daily, hourly, minutely, or never).
 * **Dynamic Directive Filtering**: Filter telemetry data at runtime using standard directive syntax (e.g., `astrid_mcp=debug,astrid_core=trace`).
 
@@ -95,27 +94,6 @@ let span = storage_ctx.span();
 let _guard = span.enter();
 
 tracing::info!("Executing storage lookup"); // Automatically tagged with correlation IDs
-```
-
-### Execution Guards
-
-To automatically track the lifecycle and duration of an operation, use `RequestGuard`. It emits debug logs when a request starts and, upon being dropped, logs the completion along with the total elapsed time in milliseconds.
-
-```rust
-use astrid_telemetry::{RequestContext, RequestGuard};
-
-fn process_data() {
-    let ctx = RequestContext::new("data_processor")
-        .with_operation("crunch_numbers");
-    
-    // The guard emits a "Request started" debug log and creates an active span
-    let _guard = RequestGuard::new(ctx);
-    
-    // ... perform complex operations ...
-    
-    // When _guard drops out of scope, it emits a "Request completed" debug log
-    // containing the `elapsed_ms` field
-}
 ```
 
 ## Development

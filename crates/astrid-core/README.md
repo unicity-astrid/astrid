@@ -10,28 +10,20 @@ Foundation types and security primitives for the Astralis secure agent runtime.
 
 ## Core Features
 
-- **Unified Identity Management**: Maps transient, platform-specific user accounts (Discord, CLI, Web) to a canonical, cryptographic internal identity (`AstridUserId`).
 - **Context Isolation**: `ContextIdentifier` enforces per-user, per-environment isolation for secure capability boundaries and approval history.
 - **Uplink Types**: Descriptors, capabilities, and message types for capsule-to-runtime communication.
-- **Frontend Types**: Approval requests, elicitation flows, and user input types used by capsule frontends.
-- **Hook Events**: Lifecycle event types for the plugin hook system.
+- **Platform Types**: Approval requests, elicitation flows, and user input types used by capsule platforms.
+- **Hook Events**: Lifecycle event types for the hook system.
 
 ## Core Concepts
 
-### 1. Cross-Frontend Identity Management
+### 1. Context Isolation
 
-Astralis serves users across multiple platforms simultaneously. `astrid-core` solves identity fragmentation through a two-layer architecture:
+Astralis isolates context per-user and per-environment via `ContextIdentifier`, which combines the platform type, the specific channel or group, and the resolved user identity. This forms the foundation for secure capability boundaries and approval history.
 
-- **Canonical Identity (`AstridUserId`)**: A UUID-based internal identifier, optionally bound to an ed25519 public key. Single source of truth for "who is this person" across the entire system.
-- **Frontend Type (`FrontendType`)**: Identifies which platform a user is interacting from (Discord, CLI, Web, etc.).
+### 2. Uplinks
 
-### 2. Context Isolation
-
-Astralis isolates context per-user and per-environment via `ContextIdentifier`, which combines the frontend type, the specific channel or group, and the resolved user identity. This forms the foundation for secure capability boundaries and approval history.
-
-### 3. Uplinks
-
-Frontends are capsule uplinks - they connect to the runtime via `UplinkDescriptor` with declared capabilities (`UplinkCapabilities`). Messages flow through `InboundMessage` and `OutboundMessage` types.
+Platforms are capsule uplinks - they connect to the runtime via `UplinkDescriptor` with declared capabilities (`UplinkCapabilities`). Messages flow through `InboundMessage`.
 
 ## Quick Start
 
@@ -46,10 +38,9 @@ astrid-core = { workspace = true }
 
 ### Key Types
 
-- **Identity**: `AstridUserId`, `FrontendType`
-- **Input**: `MessageId`, `ContextIdentifier`
-- **Frontend**: `ApprovalRequest`, `ElicitationRequest`, `FrontendContext`, `UserInput`
-- **Uplink**: `UplinkDescriptor`, `UplinkCapabilities`, `InboundMessage`, `OutboundMessage`
+- **Input**: `MessageId`, `ContextIdentifier`, `FrontendType`
+- **Platform**: `ApprovalRequest`, `ElicitationRequest`, `FrontendContext`, `UserInput`
+- **Uplink**: `UplinkDescriptor`, `UplinkCapabilities`, `InboundMessage`
 - **Primitives**: `AgentId`, `SessionId`, `TokenId`, `RiskLevel`, `Permission`
 
 ## Development
