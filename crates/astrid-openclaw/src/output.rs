@@ -50,6 +50,8 @@ struct EnvDef {
     default: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     enum_values: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
 }
 
 /// Generate `Capsule.toml` in the output directory.
@@ -95,6 +97,13 @@ pub fn generate_manifest(
                 .and_then(serde_json::Value::as_str)
                 .map(String::from);
 
+            let placeholder = oc_manifest
+                .ui_hints
+                .get(key)
+                .and_then(|h| h.get("placeholder"))
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
             let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
                 "array"
             } else if is_sensitive || crate::manifest::is_secret_key(key) {
@@ -137,6 +146,7 @@ pub fn generate_manifest(
                     description,
                     default,
                     enum_values,
+                    placeholder,
                 },
             );
         }
@@ -202,6 +212,7 @@ mod tests {
                     description: None,
                     default: None,
                     enum_values: vec![],
+                    placeholder: None,
                 },
             )]),
         };
@@ -243,6 +254,7 @@ mod tests {
                     description: None,
                     default: None,
                     enum_values: vec![],
+                    placeholder: None,
                 },
             )]),
         };

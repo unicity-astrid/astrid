@@ -320,6 +320,85 @@ struct Tier2EnvDef {
     default: Option<String>,
     #[serde(rename = "enum", default, skip_serializing_if = "Vec::is_empty")]
     enum_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+}
+
+/// Build the `[env]` map for a Tier 2 manifest from `configSchema` + `uiHints`.
+fn build_tier2_env(oc_manifest: &OpenClawManifest) -> BridgeResult<HashMap<String, Tier2EnvDef>> {
+    let mut env = HashMap::new();
+    let Some(obj) = oc_manifest.config_schema.as_object() else {
+        return Ok(env);
+    };
+    let Some(props) = obj.get("properties").and_then(|p| p.as_object()) else {
+        return Ok(env);
+    };
+
+    for (key, val) in props {
+        manifest::validate_schema_key(key)?;
+
+        let hints = oc_manifest.ui_hints.get(key);
+
+        let is_sensitive = hints
+            .and_then(|h| h.get("sensitive"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
+        let label = hints
+            .and_then(|h| h.get("label"))
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let placeholder = hints
+            .and_then(|h| h.get("placeholder"))
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
+            "array"
+        } else if is_sensitive || manifest::is_secret_key(key) {
+            "secret"
+        } else {
+            "string"
+        };
+
+        let description = val
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+
+        let default = val.get("default").and_then(|d| match d {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Null => None,
+            other => Some(other.to_string()),
+        });
+
+        let enum_values = val
+            .get("enum")
+            .and_then(serde_json::Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
+
+        env.insert(
+            key.clone(),
+            Tier2EnvDef {
+                env_type: env_type.to_string(),
+                request,
+                description,
+                default,
+                enum_values,
+                placeholder,
+            },
+        );
+    }
+
+    Ok(env)
 }
 
 /// Generate a `Capsule.toml` for Tier 2 plugins using `[[mcp_server]]`.
@@ -329,71 +408,7 @@ fn generate_tier2_manifest(
     entry_point_rel: &str,
     output_dir: &Path,
 ) -> BridgeResult<()> {
-    // Validate schema property keys before using them as TOML keys
-    let mut env = HashMap::new();
-    if let Some(obj) = oc_manifest.config_schema.as_object()
-        && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
-    {
-        for (key, val) in props {
-            manifest::validate_schema_key(key)?;
-
-            let is_sensitive = oc_manifest
-                .ui_hints
-                .get(key)
-                .and_then(|h| h.get("sensitive"))
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-
-            let label = oc_manifest
-                .ui_hints
-                .get(key)
-                .and_then(|h| h.get("label"))
-                .and_then(serde_json::Value::as_str)
-                .map(String::from);
-
-            let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
-                "array"
-            } else if is_sensitive || manifest::is_secret_key(key) {
-                "secret"
-            } else {
-                "string"
-            };
-
-            let description = val
-                .get("description")
-                .and_then(serde_json::Value::as_str)
-                .map(String::from);
-
-            let default = val.get("default").and_then(|d| match d {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Null => None,
-                other => Some(other.to_string()),
-            });
-
-            let enum_values = val
-                .get("enum")
-                .and_then(serde_json::Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
-
-            env.insert(
-                key.clone(),
-                Tier2EnvDef {
-                    env_type: env_type.to_string(),
-                    request,
-                    description,
-                    default,
-                    enum_values,
-                },
-            );
-        }
-    }
+    let env = build_tier2_env(oc_manifest)?;
 
     let uplinks: Vec<Tier2UplinkDef> = oc_manifest
         .channels

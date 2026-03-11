@@ -109,6 +109,7 @@ pub(crate) fn build_onboarding_field(
         description: def.description.clone(),
         field_type,
         default,
+        placeholder: def.placeholder.clone(),
     }
 }
 

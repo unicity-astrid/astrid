@@ -923,6 +923,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
         let mut is_secret = false;
         let mut is_enum = false;
+        let mut field_placeholder: Option<&str> = None;
         if let UiState::Onboarding {
             fields,
             current_idx,
@@ -938,6 +939,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 field.field_type,
                 astrid_events::ipc::OnboardingFieldType::Enum(_)
             );
+            field_placeholder = field.placeholder.as_deref();
         }
 
         let display_str = if is_secret {
@@ -954,12 +956,23 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             theme.border
         };
 
-        let para = Paragraph::new(Line::from(vec![
-            Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-            Span::styled(display_str, input_style),
-            Span::styled(cursor_str, Style::default().fg(cursor_color)),
-        ]))
-        .wrap(Wrap { trim: false });
+        // Show placeholder hint in dim when the input is empty.
+        let show_placeholder = display_input.is_empty() && !is_secret && !is_enum;
+        let input_spans = if show_placeholder && let Some(ph) = field_placeholder {
+            vec![
+                Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
+                Span::styled(ph, Style::default().fg(theme.border)),
+                Span::styled(cursor_str, Style::default().fg(cursor_color)),
+            ]
+        } else {
+            vec![
+                Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
+                Span::styled(display_str, input_style),
+                Span::styled(cursor_str, Style::default().fg(cursor_color)),
+            ]
+        };
+
+        let para = Paragraph::new(Line::from(input_spans)).wrap(Wrap { trim: false });
         frame.render_widget(para, input_area);
     }
 
