@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::capsule::CapsuleId;
-use astrid_core::connector::{ConnectorDescriptor, InboundMessage, MAX_CONNECTORS_PER_PLUGIN};
+use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkDescriptor};
 use astrid_storage::ScopedKvStore;
 
 use crate::security::CapsuleSecurityGate;
@@ -67,19 +67,19 @@ pub struct HostState {
     pub capsule_registry: Option<Arc<tokio::sync::RwLock<crate::registry::CapsuleRegistry>>>,
     /// Tokio runtime handle for bridging async operations in sync host functions.
     pub runtime_handle: tokio::runtime::Handle,
-    /// Whether the plugin manifest declares `CapsuleCapability::Connector`.
+    /// Whether the plugin manifest declares `CapsuleCapability::Uplink`.
     ///
-    /// Used to gate `astrid_register_connector` — only connector plugins
-    /// are allowed to register connectors.
-    pub has_connector_capability: bool,
-    /// Sender for inbound messages from connector plugins.
+    /// Used to gate `astrid_register_uplink` — only uplink plugins
+    /// are allowed to register uplinks.
+    pub has_uplink_capability: bool,
+    /// Sender for inbound messages from uplink plugins.
     ///
     /// Set during plugin loading when the manifest declares
-    /// [`CapsuleCapability::Connector`](crate::CapsuleCapability). Feeds into
+    /// [`CapsuleCapability::Uplink`](crate::CapsuleCapability). Feeds into
     /// the gateway's inbound router.
     pub inbound_tx: Option<mpsc::Sender<InboundMessage>>,
-    /// Connectors registered by the WASM guest via `astrid_register_connector`.
-    pub registered_connectors: Vec<ConnectorDescriptor>,
+    /// Uplinks registered by the WASM guest via `astrid_register_uplink`.
+    pub registered_uplinks: Vec<UplinkDescriptor>,
     /// Optional natively bound unix listener.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Active, mapped UnixStreams from the socket listener.
@@ -92,36 +92,33 @@ pub struct HostState {
 }
 
 impl HostState {
-    /// Register a connector descriptor (called from the host function).
+    /// Register a uplink descriptor (called from the host function).
     ///
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The per-plugin connector limit ([`MAX_CONNECTORS_PER_PLUGIN`]) has been reached.
-    /// - A connector with the same name and platform already exists.
-    pub fn register_connector(
-        &mut self,
-        descriptor: ConnectorDescriptor,
-    ) -> Result<(), &'static str> {
-        if self.registered_connectors.len() >= MAX_CONNECTORS_PER_PLUGIN {
-            return Err("connector registration limit reached");
+    /// - The per-capsule uplink limit ([`MAX_UPLINKS_PER_CAPSULE`]) has been reached.
+    /// - A uplink with the same name and platform already exists.
+    pub fn register_uplink(&mut self, descriptor: UplinkDescriptor) -> Result<(), &'static str> {
+        if self.registered_uplinks.len() >= MAX_UPLINKS_PER_CAPSULE {
+            return Err("uplink registration limit reached");
         }
         // Reject duplicate name+platform combinations
         let duplicate = self
-            .registered_connectors
+            .registered_uplinks
             .iter()
-            .any(|c| c.name == descriptor.name && c.frontend_type == descriptor.frontend_type);
+            .any(|c| c.name == descriptor.name && c.platform == descriptor.platform);
         if duplicate {
-            return Err("duplicate connector name and platform");
+            return Err("duplicate uplink name and platform");
         }
-        self.registered_connectors.push(descriptor);
+        self.registered_uplinks.push(descriptor);
         Ok(())
     }
 
-    /// Return the registered connectors.
+    /// Return the registered uplinks.
     #[must_use]
-    pub fn connectors(&self) -> &[ConnectorDescriptor] {
-        &self.registered_connectors
+    pub fn uplinks(&self) -> &[UplinkDescriptor] {
+        &self.registered_uplinks
     }
 
     /// Set the inbound message sender.
@@ -138,9 +135,9 @@ impl std::fmt::Debug for HostState {
             .field("vfs_root_handle", &self.vfs_root_handle)
             .field("has_global_root", &self.global_root.is_some())
             .field("has_security", &self.security.is_some())
-            .field("has_connector_capability", &self.has_connector_capability)
+            .field("has_uplink_capability", &self.has_uplink_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
-            .field("registered_connectors", &self.registered_connectors.len())
+            .field("registered_uplinks", &self.registered_uplinks.len())
             .finish_non_exhaustive()
     }
 }
@@ -155,7 +152,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -179,9 +176,9 @@ mod tests {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: rt.handle().clone(),
-            has_connector_capability: false,
+            has_uplink_capability: false,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
@@ -191,20 +188,19 @@ mod tests {
         assert!(debug.contains("test"));
         assert!(debug.contains("has_security"));
         assert!(debug.contains("has_inbound_tx"));
-        assert!(debug.contains("registered_connectors"));
+        assert!(debug.contains("registered_uplinks"));
     }
 
     #[test]
-    fn register_connector_accumulates() {
+    fn register_uplink_accumulates() {
         use crate::capsule::CapsuleId;
-        use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
-        use astrid_core::identity::FrontendType;
+        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -228,27 +224,27 @@ mod tests {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: rt.handle().clone(),
-            has_connector_capability: true,
+            has_uplink_capability: true,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
         };
 
-        assert!(state.connectors().is_empty());
+        assert!(state.uplinks().is_empty());
 
-        let desc = ConnectorDescriptor::builder("test-conn", FrontendType::Discord)
-            .source(ConnectorSource::Wasm {
+        let desc = UplinkDescriptor::builder("test-conn", "discord")
+            .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
+            .capabilities(UplinkCapabilities::receive_only())
+            .profile(UplinkProfile::Chat)
             .build();
-        state.register_connector(desc).unwrap();
+        state.register_uplink(desc).unwrap();
 
-        assert_eq!(state.connectors().len(), 1);
-        assert_eq!(state.connectors()[0].name, "test-conn");
+        assert_eq!(state.uplinks().len(), 1);
+        assert_eq!(state.uplinks()[0].name, "test-conn");
     }
 
     #[test]
@@ -257,7 +253,7 @@ mod tests {
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -281,9 +277,9 @@ mod tests {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: rt.handle().clone(),
-            has_connector_capability: false,
+            has_uplink_capability: false,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
@@ -298,16 +294,15 @@ mod tests {
     }
 
     #[test]
-    fn register_connector_rejects_at_limit() {
+    fn register_uplink_rejects_at_limit() {
         use crate::capsule::CapsuleId;
-        use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
-        use astrid_core::identity::FrontendType;
+        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -331,51 +326,48 @@ mod tests {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: rt.handle().clone(),
-            has_connector_capability: true,
+            has_uplink_capability: true,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
         };
 
-        // Fill to the limit
-        for i in 0..MAX_CONNECTORS_PER_PLUGIN {
-            let desc = ConnectorDescriptor::builder(format!("conn-{i}"), FrontendType::Discord)
-                .source(ConnectorSource::Wasm {
+        for i in 0..MAX_UPLINKS_PER_CAPSULE {
+            let desc = UplinkDescriptor::builder(format!("conn-{i}"), "discord")
+                .source(UplinkSource::Wasm {
                     capsule_id: "test".into(),
                 })
-                .capabilities(ConnectorCapabilities::receive_only())
-                .profile(ConnectorProfile::Chat)
+                .capabilities(UplinkCapabilities::receive_only())
+                .profile(UplinkProfile::Chat)
                 .build();
-            assert!(state.register_connector(desc).is_ok());
+            assert!(state.register_uplink(desc).is_ok());
         }
 
-        assert_eq!(state.connectors().len(), MAX_CONNECTORS_PER_PLUGIN);
+        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
 
-        // One more should fail
-        let extra = ConnectorDescriptor::builder("over-limit", FrontendType::Discord)
-            .source(ConnectorSource::Wasm {
+        let extra = UplinkDescriptor::builder("over-limit", "discord")
+            .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
+            .capabilities(UplinkCapabilities::receive_only())
+            .profile(UplinkProfile::Chat)
             .build();
-        assert!(state.register_connector(extra).is_err());
-        assert_eq!(state.connectors().len(), MAX_CONNECTORS_PER_PLUGIN);
+        assert!(state.register_uplink(extra).is_err());
+        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
     }
 
     #[test]
-    fn register_connector_rejects_duplicate_name_and_platform() {
+    fn register_uplink_rejects_duplicate_name_and_platform() {
         use crate::capsule::CapsuleId;
-        use astrid_core::connector::{ConnectorCapabilities, ConnectorProfile, ConnectorSource};
-        use astrid_core::identity::FrontendType;
+        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
+        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -399,43 +391,41 @@ mod tests {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: rt.handle().clone(),
-            has_connector_capability: true,
+            has_uplink_capability: true,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
         };
 
-        let desc1 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
-            .source(ConnectorSource::Wasm {
+        let desc1 = UplinkDescriptor::builder("my-conn", "discord")
+            .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
+            .capabilities(UplinkCapabilities::receive_only())
+            .profile(UplinkProfile::Chat)
             .build();
-        assert!(state.register_connector(desc1).is_ok());
+        assert!(state.register_uplink(desc1).is_ok());
 
-        // Same name + same platform → rejected
-        let desc2 = ConnectorDescriptor::builder("my-conn", FrontendType::Discord)
-            .source(ConnectorSource::Wasm {
+        let desc2 = UplinkDescriptor::builder("my-conn", "discord")
+            .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
+            .capabilities(UplinkCapabilities::receive_only())
+            .profile(UplinkProfile::Chat)
             .build();
-        let err = state.register_connector(desc2).unwrap_err();
+        let err = state.register_uplink(desc2).unwrap_err();
         assert!(err.contains("duplicate"), "expected duplicate error: {err}");
 
-        // Same name + different platform → allowed
-        let desc3 = ConnectorDescriptor::builder("my-conn", FrontendType::Telegram)
-            .source(ConnectorSource::Wasm {
+        let desc3 = UplinkDescriptor::builder("my-conn", "telegram")
+            .source(UplinkSource::Wasm {
                 capsule_id: "test".into(),
             })
-            .capabilities(ConnectorCapabilities::receive_only())
-            .profile(ConnectorProfile::Chat)
+            .capabilities(UplinkCapabilities::receive_only())
+            .profile(UplinkProfile::Chat)
             .build();
-        assert!(state.register_connector(desc3).is_ok());
-        assert_eq!(state.connectors().len(), 2);
+        assert!(state.register_uplink(desc3).is_ok());
+        assert_eq!(state.uplinks().len(), 2);
     }
 }

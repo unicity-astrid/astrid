@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
+#![deny(unreachable_pub)]
 
 //! Prompt Builder capsule — assembles LLM prompts with plugin hook interception.
 //!

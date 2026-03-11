@@ -1,4 +1,7 @@
 //! Event subscriber trait and registry.
+//!
+//! Tracked by #300 - decide: wire up subscribers or remove entirely.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -9,7 +12,7 @@ use crate::bus::EventBus;
 use crate::event::AstridEvent;
 
 /// Filter function type for event subscribers.
-pub type EventFilter = Box<dyn Fn(&AstridEvent) -> bool + Send + Sync>;
+pub(crate) type EventFilter = Box<dyn Fn(&AstridEvent) -> bool + Send + Sync>;
 
 /// Trait for synchronous event subscribers.
 ///
@@ -22,7 +25,7 @@ pub type EventFilter = Box<dyn Fn(&AstridEvent) -> bool + Send + Sync>;
 /// will create a memory leak via an `Arc` reference cycle. If a synchronous
 /// subscriber needs to publish events, store a `std::sync::Weak<EventBus>`
 /// or communicate via a separate channel.
-pub trait EventSubscriber: Send + Sync {
+pub(crate) trait EventSubscriber: Send + Sync {
     /// Called when an event is published.
     ///
     /// This method should return quickly. For heavy processing,
@@ -51,7 +54,7 @@ pub trait EventSubscriber: Send + Sync {
 
 /// Registration handle for a subscriber.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SubscriberId(Uuid);
+pub(crate) struct SubscriberId(Uuid);
 
 impl SubscriberId {
     /// Create a new subscriber ID.
@@ -63,7 +66,7 @@ impl SubscriberId {
 
 /// Registry for managing synchronous event subscribers.
 #[derive(Default)]
-pub struct SubscriberRegistry {
+pub(crate) struct SubscriberRegistry {
     subscribers: RwLock<Arc<HashMap<SubscriberId, Arc<dyn EventSubscriber>>>>,
 }
 
@@ -79,7 +82,7 @@ impl std::fmt::Debug for SubscriberRegistry {
 impl SubscriberRegistry {
     /// Create a new subscriber registry.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             subscribers: RwLock::new(Arc::new(HashMap::new())),
         }
@@ -112,7 +115,7 @@ impl SubscriberRegistry {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub fn register(&self, subscriber: Arc<dyn EventSubscriber>) -> SubscriberId {
+    pub(crate) fn register(&self, subscriber: Arc<dyn EventSubscriber>) -> SubscriberId {
         let id = SubscriberId::new();
         let name = subscriber.name().to_string();
 
@@ -132,7 +135,7 @@ impl SubscriberRegistry {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub fn unregister(&self, id: SubscriberId) -> bool {
+    pub(crate) fn unregister(&self, id: SubscriberId) -> bool {
         let removed = self.update_registry(|map| map.remove(&id).is_some());
 
         if removed {
@@ -147,7 +150,7 @@ impl SubscriberRegistry {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub fn notify(&self, event: &AstridEvent, bus: &EventBus) {
+    pub(crate) fn notify(&self, event: &AstridEvent, bus: &EventBus) {
         let subs = {
             let guard = self.subscribers.read().expect("lock poisoned");
             Arc::clone(&*guard)
@@ -190,7 +193,7 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.subscribers.read().expect("lock poisoned").len()
     }
 
@@ -200,7 +203,7 @@ impl SubscriberRegistry {
     ///
     /// Panics if the internal lock is poisoned.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.subscribers.read().expect("lock poisoned").is_empty()
     }
 
@@ -209,7 +212,7 @@ impl SubscriberRegistry {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.update_registry(|map| {
             if map.is_empty() {
                 false
@@ -223,7 +226,7 @@ impl SubscriberRegistry {
 }
 
 /// A simple filter-based subscriber.
-pub struct FilterSubscriber<F>
+pub(crate) struct FilterSubscriber<F>
 where
     F: Fn(&AstridEvent) + Send + Sync,
 {
@@ -237,7 +240,7 @@ where
     F: Fn(&AstridEvent) + Send + Sync,
 {
     /// Create a new filter subscriber.
-    pub fn new(name: impl Into<String>, handler: F) -> Self {
+    pub(crate) fn new(name: impl Into<String>, handler: F) -> Self {
         Self {
             name: name.into(),
             filter: None,
@@ -247,7 +250,7 @@ where
 
     /// Add a filter to this subscriber.
     #[must_use]
-    pub fn with_filter<P>(mut self, predicate: P) -> Self
+    pub(crate) fn with_filter<P>(mut self, predicate: P) -> Self
     where
         P: Fn(&AstridEvent) -> bool + Send + Sync + 'static,
     {

@@ -383,7 +383,7 @@ fn all_astrid_events_have_event_type_strings() {
         AstridEvent::MessageSending {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::ContextCompactionStarted {
             metadata: m(),
@@ -419,12 +419,12 @@ fn all_astrid_events_have_event_type_strings() {
         AstridEvent::MessageReceived {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::MessageSent {
             metadata: m(),
             message_id: u(),
-            frontend: s(),
+            platform: s(),
         },
         AstridEvent::MessageProcessed {
             metadata: m(),
@@ -533,20 +533,20 @@ fn all_astrid_events_have_event_type_strings() {
             subagent_id: u(),
             reason: None,
         },
-        AstridEvent::PluginLoaded {
+        AstridEvent::CapsuleLoaded {
             metadata: m(),
-            plugin_id: s(),
-            plugin_name: s(),
+            capsule_id: s(),
+            capsule_name: s(),
         },
-        AstridEvent::PluginFailed {
+        AstridEvent::CapsuleFailed {
             metadata: m(),
-            plugin_id: s(),
+            capsule_id: s(),
             error: s(),
         },
-        AstridEvent::PluginUnloaded {
+        AstridEvent::CapsuleUnloaded {
             metadata: m(),
-            plugin_id: s(),
-            plugin_name: s(),
+            capsule_id: s(),
+            capsule_name: s(),
         },
         AstridEvent::CapabilityGranted {
             metadata: m(),
@@ -670,50 +670,6 @@ fn all_astrid_events_have_event_type_strings() {
 
     // If this test compiles, every variant has a matching arm in event_type()
     // and metadata(). Any new variant without one would cause a compile error.
-}
-
-#[test]
-fn all_hook_events_have_display_strings() {
-    use astrid_core::hook_event::HookEvent;
-
-    let hooks: Vec<HookEvent> = vec![
-        HookEvent::SessionStart,
-        HookEvent::SessionEnd,
-        HookEvent::UserPrompt,
-        HookEvent::PreToolCall,
-        HookEvent::PostToolCall,
-        HookEvent::ToolError,
-        HookEvent::PreApproval,
-        HookEvent::PostApproval,
-        HookEvent::Notification,
-        HookEvent::PreCompact,
-        HookEvent::PostCompact,
-        HookEvent::PromptBuild,
-        HookEvent::MessageSend,
-        HookEvent::SessionReset,
-        HookEvent::ModelResolve,
-        HookEvent::MessageReceived,
-        HookEvent::MessageSent,
-        HookEvent::AgentLoopEnd,
-        HookEvent::ToolResultPersist,
-        HookEvent::SubagentStart,
-        HookEvent::SubagentStop,
-        HookEvent::KernelStart,
-        HookEvent::KernelStop,
-    ];
-
-    for hook in &hooks {
-        let display = hook.to_string();
-        assert!(
-            !display.is_empty(),
-            "Display must not be empty for {hook:?}"
-        );
-
-        // Verify serde round-trip
-        let json = serde_json::to_string(hook).unwrap();
-        let parsed: HookEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(*hook, parsed, "serde round-trip failed for {hook:?}");
-    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────

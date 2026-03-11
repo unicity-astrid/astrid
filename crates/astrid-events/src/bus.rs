@@ -8,7 +8,7 @@ use crate::event::AstridEvent;
 use crate::subscriber::SubscriberRegistry;
 
 /// Default channel capacity for the event bus.
-pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
+pub(crate) const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 
 /// Event bus for broadcasting events to all subscribers.
 ///
@@ -98,9 +98,10 @@ impl EventBus {
         EventReceiver::new(self.sender.subscribe(), Some(topic_pattern.into()))
     }
 
-    /// Get the synchronous subscriber registry.
+    /// Get the synchronous subscriber registry (test-only).
+    #[cfg(test)]
     #[must_use]
-    pub fn registry(&self) -> &SubscriberRegistry {
+    pub(crate) fn registry(&self) -> &SubscriberRegistry {
         &self.registry
     }
 

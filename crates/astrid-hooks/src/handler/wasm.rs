@@ -1,11 +1,11 @@
 //! WASM hook handler powered by Extism.
 //!
 //! Loads a WASM module and calls its `run-hook` export, passing a serialized
-//! [`PluginContext`](astrid_core::plugin_abi::PluginContext) and interpreting
-//! the returned [`PluginResult`](astrid_core::plugin_abi::PluginResult).
+//! [`CapsuleAbiContext`](capsule_abi::CapsuleAbiContext) and interpreting
+//! the returned [`CapsuleAbiResult`](capsule_abi::CapsuleAbiResult).
 //!
-//! Host functions are shared with the plugin system via
-//! [`astrid_plugins::wasm::host_functions`].
+//! Host functions are shared with the capsule system via
+//! [`astrid_capsule::engine::wasm`].
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use astrid_capsule::capsule::CapsuleId;
 use astrid_capsule::engine::wasm::host::register_host_functions;
 use astrid_capsule::engine::wasm::host_state::HostState;
-use astrid_core::plugin_abi;
+use astrid_core::capsule_abi;
 use astrid_storage::kv::ScopedKvStore;
 use extism::{Manifest, PluginBuilder, UserData, Wasm};
 use tracing::{debug, warn};
@@ -68,7 +68,7 @@ impl WasmHandler {
     /// Execute a WASM handler.
     ///
     /// Loads the WASM module (or uses the cached instance), then calls the
-    /// specified function with a serialized `PluginContext`.
+    /// specified function with a serialized `CapsuleAbiContext`.
     ///
     /// # Errors
     ///
@@ -97,8 +97,8 @@ impl WasmHandler {
             .get_or_load_plugin(module_path)
             .map_err(|e| HandlerError::WasmFailed(format!("failed to load WASM module: {e}")))?;
 
-        // Build PluginContext from HookContext
-        let plugin_context = plugin_abi::PluginContext {
+        // Build CapsuleAbiContext from HookContext
+        let capsule_context = capsule_abi::CapsuleAbiContext {
             event: context.event.to_string(),
             session_id: context
                 .session_id
@@ -111,7 +111,7 @@ impl WasmHandler {
             },
         };
 
-        let input_json = serde_json::to_string(&plugin_context)
+        let input_json = serde_json::to_string(&capsule_context)
             .map_err(|e| HandlerError::WasmFailed(format!("failed to serialize context: {e}")))?;
 
         // Call the WASM function
@@ -124,12 +124,14 @@ impl WasmHandler {
                 .map_err(|e| HandlerError::WasmFailed(format!("{function} call failed: {e}")))
         })?;
 
-        // Parse PluginResult
-        let plugin_result: plugin_abi::PluginResult = serde_json::from_str(&result)
-            .map_err(|e| HandlerError::ParseError(format!("failed to parse PluginResult: {e}")))?;
+        // Parse CapsuleAbiResult
+        let capsule_result: capsule_abi::CapsuleAbiResult =
+            serde_json::from_str(&result).map_err(|e| {
+                HandlerError::ParseError(format!("failed to parse CapsuleAbiResult: {e}"))
+            })?;
 
-        // Map PluginResult.action to HookResult
-        let hook_result = map_plugin_result_to_hook_result(&plugin_result);
+        // Map CapsuleAbiResult.action to HookResult
+        let hook_result = map_capsule_result_to_hook_result(&capsule_result);
 
         Ok(HookExecutionResult::Success {
             result: hook_result,
@@ -213,11 +215,11 @@ impl WasmHandler {
             hook_manager: None,
             capsule_registry: None,
             runtime_handle: tokio::runtime::Handle::current(),
-            has_connector_capability: false,
+            has_uplink_capability: false,
             inbound_tx: None,
-            registered_connectors: Vec::new(),
+            registered_uplinks: Vec::new(),
             cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
+            active_streams: HashMap::new(),
             next_stream_id: 1,
         };
         let user_data = UserData::new(host_state);
@@ -253,8 +255,8 @@ impl std::fmt::Debug for WasmHandler {
     }
 }
 
-/// Map a `PluginResult` action string to a `HookResult`.
-fn map_plugin_result_to_hook_result(result: &plugin_abi::PluginResult) -> HookResult {
+/// Map a `CapsuleAbiResult` action string to a `HookResult`.
+fn map_capsule_result_to_hook_result(result: &capsule_abi::CapsuleAbiResult) -> HookResult {
     match result.action.as_str() {
         "continue" => HookResult::Continue,
         "block" => {
@@ -278,7 +280,7 @@ fn map_plugin_result_to_hook_result(result: &plugin_abi::PluginResult) -> HookRe
             HookResult::Continue
         },
         other => {
-            warn!(action = %other, "unknown PluginResult action, treating as continue");
+            warn!(action = %other, "unknown CapsuleAbiResult action, treating as continue");
             HookResult::Continue
         },
     }
@@ -336,42 +338,42 @@ mod tests {
     }
 
     #[test]
-    fn test_map_plugin_result_continue() {
-        let result = plugin_abi::PluginResult {
+    fn test_map_capsule_result_continue() {
+        let result = capsule_abi::CapsuleAbiResult {
             action: "continue".into(),
             data: None,
         };
-        let hook = map_plugin_result_to_hook_result(&result);
+        let hook = map_capsule_result_to_hook_result(&result);
         assert!(matches!(hook, HookResult::Continue));
     }
 
     #[test]
-    fn test_map_plugin_result_block() {
-        let result = plugin_abi::PluginResult {
+    fn test_map_capsule_result_block() {
+        let result = capsule_abi::CapsuleAbiResult {
             action: "block".into(),
             data: Some("policy violation".into()),
         };
-        let hook = map_plugin_result_to_hook_result(&result);
+        let hook = map_capsule_result_to_hook_result(&result);
         assert!(matches!(hook, HookResult::Block { reason } if reason == "policy violation"));
     }
 
     #[test]
-    fn test_map_plugin_result_ask() {
-        let result = plugin_abi::PluginResult {
+    fn test_map_capsule_result_ask() {
+        let result = capsule_abi::CapsuleAbiResult {
             action: "ask".into(),
             data: Some("Are you sure?".into()),
         };
-        let hook = map_plugin_result_to_hook_result(&result);
+        let hook = map_capsule_result_to_hook_result(&result);
         assert!(matches!(hook, HookResult::Ask { question, .. } if question == "Are you sure?"));
     }
 
     #[test]
-    fn test_map_plugin_result_unknown() {
-        let result = plugin_abi::PluginResult {
+    fn test_map_capsule_result_unknown() {
+        let result = capsule_abi::CapsuleAbiResult {
             action: "unknown".into(),
             data: None,
         };
-        let hook = map_plugin_result_to_hook_result(&result);
+        let hook = map_capsule_result_to_hook_result(&result);
         assert!(matches!(hook, HookResult::Continue));
     }
 

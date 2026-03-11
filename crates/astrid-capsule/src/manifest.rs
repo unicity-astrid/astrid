@@ -9,9 +9,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use astrid_core::ConnectorProfile;
-use astrid_core::identity::FrontendType;
-
+use astrid_core::UplinkProfile;
 /// A capsule manifest loaded from `Capsule.toml`.
 ///
 /// Describes everything the runtime needs to know about a capsule before
@@ -45,7 +43,7 @@ pub struct CapsuleManifest {
     /// Skills this capsule provides.
     #[serde(default, rename = "skill")]
     pub skills: Vec<SkillDef>,
-    /// Uplinks this capsule provides (e.g. Telegram, CLI frontend).
+    /// Uplinks this capsule provides (e.g. Telegram, CLI).
     #[serde(default, rename = "uplink")]
     pub uplinks: Vec<UplinkDef>,
     /// LLM Providers (Agents) this capsule exposes to the OS.
@@ -240,15 +238,15 @@ pub struct SkillDef {
 
 /// An uplink provided by the capsule (e.g., Telegram, CLI).
 ///
-/// This allows the LLM agent to route messages out to a specific frontend.
+/// This allows the LLM agent to route messages out to a specific platform.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UplinkDef {
     /// Unique name of the uplink.
     pub name: String,
     /// The platform identifier (e.g., "telegram", "cli").
-    pub platform: FrontendType,
+    pub platform: String,
     /// The interaction profile (e.g., "human", "bridge").
-    pub profile: ConnectorProfile,
+    pub profile: UplinkProfile,
 }
 
 /// An LLM Provider (Agent) exposed by the capsule.

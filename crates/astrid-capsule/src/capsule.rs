@@ -104,7 +104,7 @@ pub trait Capsule: Send + Sync {
         &[] // Default implementation returning empty list
     }
 
-    /// Extract the inbound receiver for connector messages.
+    /// Extract the inbound receiver for uplink messages.
     /// This is typically called exactly once by the OS router after loading.
     fn take_inbound_rx(
         &mut self,
@@ -131,7 +131,7 @@ pub trait Capsule: Send + Sync {
 /// owns a collection of `ExecutionEngine`s. When loaded, it iterates through
 /// all of them, providing a unified lifecycle and security boundary for
 /// everything declared in the `Capsule.toml`.
-pub struct CompositeCapsule {
+pub(crate) struct CompositeCapsule {
     id: CapsuleId,
     manifest: CapsuleManifest,
     state: CapsuleState,
@@ -141,7 +141,7 @@ pub struct CompositeCapsule {
 
 impl CompositeCapsule {
     /// Create a new, empty Composite Capsule from a manifest.
-    pub fn new(manifest: CapsuleManifest) -> CapsuleResult<Self> {
+    pub(crate) fn new(manifest: CapsuleManifest) -> CapsuleResult<Self> {
         let id = CapsuleId::new(manifest.package.name.clone())?;
         Ok(Self {
             id,
@@ -153,7 +153,7 @@ impl CompositeCapsule {
     }
 
     /// Add an execution engine (e.g., WasmEngine, McpEngine) to this capsule.
-    pub fn add_engine(&mut self, engine: Box<dyn crate::engine::ExecutionEngine>) {
+    pub(crate) fn add_engine(&mut self, engine: Box<dyn crate::engine::ExecutionEngine>) {
         self.engines.push(engine);
     }
 }

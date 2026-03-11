@@ -11,9 +11,9 @@ mod mcp_tests;
 mod static_engine;
 pub mod wasm;
 
-pub use mcp::McpHostEngine;
-pub use static_engine::StaticEngine;
-pub use wasm::WasmEngine;
+pub(crate) use mcp::McpHostEngine;
+pub(crate) use static_engine::StaticEngine;
+pub(crate) use wasm::WasmEngine;
 
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ use crate::manifest::{CapsuleManifest, EnvDef};
 ///
 /// Examples include `WasmEngine`, `McpHostEngine`, and `StaticEngine`.
 #[async_trait]
-pub trait ExecutionEngine: Send + Sync {
+pub(crate) trait ExecutionEngine: Send + Sync {
     /// Load the engine (e.g., spawn the WASM VM or start the Node.js process).
     async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()>;
 

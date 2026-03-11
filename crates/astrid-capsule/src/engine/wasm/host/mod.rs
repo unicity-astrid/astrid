@@ -1,31 +1,31 @@
 /// Cron scheduling.
-pub mod cron;
+pub(crate) mod cron;
 /// File system operations for plugins.
-pub mod fs;
+pub(crate) mod fs;
 /// HTTP network executions for plugins.
 pub mod http;
 /// Inter-Process Communication bus.
-pub mod ipc;
+pub(crate) mod ipc;
 /// Key-Value persistent storage primitives.
-pub mod kv;
-pub mod net;
+pub(crate) mod kv;
+pub(crate) mod net;
 /// Process spawning and sandboxing.
 pub mod process;
 /// `QuickJS` ABI definitions.
-pub mod shim;
+pub(crate) mod shim;
 /// System configuration primitives.
 pub mod sys;
 /// Uplink communications with host capabilities.
-pub mod uplink;
+pub(crate) mod uplink;
 /// Utility functions for WASM host implementations.
-pub mod util;
+pub(crate) mod util;
 
 use crate::engine::wasm::host_state::HostState;
 use extism::{PluginBuilder, UserData, ValType};
 
 /// Registry of explicitly supported capability functions exposed to the WASM Runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WasmHostFunction {
+pub(crate) enum WasmHostFunction {
     FsExists,
     FsMkdir,
     FsReaddir,
@@ -57,7 +57,7 @@ pub enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub const ALL: [Self; 27] = [
+    pub(crate) const ALL: [Self; 28] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -77,6 +77,7 @@ impl WasmHostFunction {
         Self::GetConfig,
         Self::GetCaller,
         Self::HttpRequest,
+        Self::TriggerHook,
         Self::Log,
         Self::CronSchedule,
         Self::CronCancel,
@@ -88,12 +89,12 @@ impl WasmHostFunction {
     ];
 
     #[must_use]
-    pub fn from_index(index: usize) -> Option<Self> {
+    pub(crate) fn from_index(index: usize) -> Option<Self> {
         Self::ALL.get(index).copied()
     }
 
     #[must_use]
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::FsExists => "astrid_fs_exists",
             Self::FsMkdir => "astrid_fs_mkdir",
@@ -118,16 +119,16 @@ impl WasmHostFunction {
             Self::NetWrite => "astrid_net_write",
             Self::GetCaller => "astrid_get_caller",
             Self::HttpRequest => "astrid_http_request",
+            Self::TriggerHook => "astrid_trigger_hook",
             Self::Log => "astrid_log",
             Self::CronSchedule => "astrid_cron_schedule",
             Self::CronCancel => "astrid_cron_cancel",
-            Self::TriggerHook => "astrid_trigger_hook",
             Self::SpawnHost => "astrid_spawn_host",
         }
     }
 
     #[must_use]
-    pub fn arg_count(self) -> usize {
+    pub(crate) fn arg_count(self) -> usize {
         match self {
             Self::FsExists
             | Self::FsMkdir
@@ -159,7 +160,7 @@ impl WasmHostFunction {
     }
 
     #[must_use]
-    pub fn return_type(self) -> i32 {
+    pub(crate) fn return_type(self) -> i32 {
         use shim::{TYPE_I64, TYPE_VOID};
         match self {
             Self::FsMkdir
@@ -284,11 +285,11 @@ pub fn register_host_functions(
             WasmHostFunction::GetCaller => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_get_caller_impl)
             },
-            WasmHostFunction::TriggerHook => {
-                builder.with_function(func.name(), args, rets, ud, sys::astrid_trigger_hook_impl)
-            },
             WasmHostFunction::HttpRequest => {
                 builder.with_function(func.name(), args, rets, ud, http::astrid_http_request_impl)
+            },
+            WasmHostFunction::TriggerHook => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_trigger_hook_impl)
             },
             WasmHostFunction::Log => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_log_impl)

@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
+#![deny(unreachable_pub)]
 
 //! LLM Provider Registry capsule.
 //!

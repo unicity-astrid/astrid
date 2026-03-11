@@ -15,7 +15,7 @@
 //! // - astrid-capabilities (tokens, stores)
 //! // - astrid-audit (logging, verification)
 //! // - astrid-mcp (client, tools, servers)
-//! // - astrid-llm (providers, messages)
+//! // - (astrid-llm removed - LLM interaction now through capsules)
 //! // - astrid-events (event bus)
 //! // - astrid-hooks (hook system)
 //! // - astrid-workspace (boundaries)
@@ -35,7 +35,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -46,7 +46,7 @@ pub use astrid_core::prelude::*;
 pub use astrid_crypto::prelude::*;
 pub use astrid_events::prelude::*;
 pub use astrid_hooks::prelude::*;
-pub use astrid_llm::prelude::*;
+
 pub use astrid_mcp::prelude::*;
 pub use astrid_telemetry::prelude::*;
 pub use astrid_workspace::prelude::*;

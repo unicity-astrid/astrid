@@ -1,7 +1,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![allow(clippy::module_name_repetitions)]
 
 //! Astrid Kernel - The core execution engine and IPC router.
@@ -188,7 +188,7 @@ impl Kernel {
         Ok(())
     }
 
-    /// Auto-discover and load all capsules from the standard directories (`~/.astrid/plugins` and `.astrid/plugins`).
+    /// Auto-discover and load all capsules from the standard directories (`~/.astrid/capsules` and `.astrid/capsules`).
     ///
     /// Uplink/daemon capsules are loaded first so their event bus subscriptions
     /// are active before other capsules emit events (e.g. `OnboardingRequired`).

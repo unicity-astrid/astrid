@@ -17,12 +17,12 @@ pub(crate) fn render_tree_node<'a>(
 
     let indent = if node.depth > 0 {
         let pipe = "│   ".repeat(node.depth.saturating_sub(1));
-        let connector = if is_last_sibling {
+        let uplink = if is_last_sibling {
             "└── "
         } else {
             "├── "
         };
-        format!("  {pipe}{connector}")
+        format!("  {pipe}{uplink}")
     } else {
         "  ".to_string()
     };

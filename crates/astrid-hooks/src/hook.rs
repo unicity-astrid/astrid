@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use uuid::Uuid;
 
-// Re-export HookEvent from astrid-core (canonical location).
-pub use astrid_core::HookEvent;
+pub use crate::hook_event::HookEvent;
 
 /// Handler implementation for a hook.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -8,45 +8,31 @@
 //! use astrid_core::prelude::*;
 //!
 //! // Now you have access to:
-//! // - SecurityError, SecurityResult
-//! // - Frontend trait and related types
+//! // - Uplink types
 //! // - Identity types
 //! // - Common types like SessionId, Permission, RiskLevel
 //! ```
 
-// Errors
-pub use crate::{SecurityError, SecurityResult};
-
-// Frontend trait and related types
+// Elicitation (MCP server-initiated user input)
 pub use crate::{
-    ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
-    ElicitationResponse, ElicitationSchema, Frontend, FrontendContext, FrontendSessionInfo,
-    FrontendUser, SelectOption, UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
-    UserInput,
+    ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
+    UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
 
 // Identity
-pub use crate::{AstridUserId, FrontendLink, FrontendType, LinkVerificationMethod};
+pub use crate::AstridUserId;
 
-// Input classification
-pub use crate::{ContextIdentifier, MessageId, TaggedMessage};
-
-// Common types
-pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
+// Common types (approval, permissions, IDs)
+pub use crate::{
+    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
+    Timestamp, TokenId,
+};
 
 // Retry utilities
-pub use crate::{RetryConfig, RetryOutcome, retry};
+pub use crate::RetryConfig;
 
-// Verification
-pub use crate::{VerificationRequest, VerificationResponse};
-
-// Versioning
-pub use crate::{Version, VersionParseError, Versioned};
-
-// Connector
+// Uplink
 pub use crate::{
-    ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
-    ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundAdapter, InboundMessage, InboundMessageBuilder, OutboundAdapter,
-    OutboundMessage, OutboundMessageBuilder,
+    InboundMessage, OutboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkError, UplinkId,
+    UplinkProfile, UplinkResult, UplinkSource,
 };

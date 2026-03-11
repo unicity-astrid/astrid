@@ -1,4 +1,4 @@
-use astrid_core::plugin_abi::LogLevel;
+use astrid_core::capsule_abi::LogLevel;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
 use crate::engine::wasm::host::util;

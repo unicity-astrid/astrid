@@ -29,18 +29,18 @@ pub(crate) fn render_stellar(frame: &mut Frame, area: Rect, app: &App, theme: &T
             Style::default().fg(theme.muted),
         )));
     } else {
-        // Build file tree with connectors
+        // Build file tree with uplinks
         let total = app.files.len();
         for (i, entry) in app.files.iter().enumerate() {
             // Safety: total > 0 (we're iterating), and i + 1 checked before indexing
             #[expect(clippy::arithmetic_side_effects)]
             let is_last = i == total - 1 || (i + 1 < total && app.files[i + 1].depth < entry.depth);
-            let connector = if is_last { "└── " } else { "├── " };
+            let uplink = if is_last { "└── " } else { "├── " };
             let indent = "│   ".repeat(entry.depth.saturating_sub(1));
             let prefix = if entry.depth == 0 {
                 if is_last { "└── " } else { "├── " }
             } else {
-                connector
+                uplink
             };
 
             // Status indicator

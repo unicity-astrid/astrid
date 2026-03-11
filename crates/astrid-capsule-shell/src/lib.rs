@@ -1,6 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![allow(missing_docs)]
 
 //! Shell execution tools capsule for Astrid OS.

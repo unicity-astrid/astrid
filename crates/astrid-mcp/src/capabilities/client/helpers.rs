@@ -4,41 +4,27 @@
 //! (`handle_inbound_message`, `register_channels_locally`).
 
 #[cfg(test)]
-use astrid_core::ConnectorCapabilities;
-use astrid_core::FrontendType;
+use astrid_core::UplinkCapabilities;
 use serde_json::Value;
 use tracing::warn;
 
-/// Maximum length for a custom platform name (128 bytes).
+/// Maximum length for a platform name (128 bytes).
 ///
 /// Platform names that exceed this limit are truncated at a UTF-8 character
-/// boundary. Known platform names (discord, telegram, etc.) are never
-/// affected since they are matched before the custom fallback.
+/// boundary.
 pub(super) const MAX_PLATFORM_NAME_BYTES: usize = 128;
 
-/// Map a platform name string to a [`FrontendType`].
-///
-/// Custom platform names are truncated to [`MAX_PLATFORM_NAME_BYTES`].
-pub(super) fn map_platform_name(name: &str) -> FrontendType {
-    match name.to_lowercase().as_str() {
-        "telegram" => FrontendType::Telegram,
-        "discord" => FrontendType::Discord,
-        "slack" => FrontendType::Slack,
-        "whatsapp" => FrontendType::WhatsApp,
-        "web" => FrontendType::Web,
-        "cli" => FrontendType::Cli,
-        other => {
-            let truncated = if other.len() > MAX_PLATFORM_NAME_BYTES {
-                &other[..other.floor_char_boundary(MAX_PLATFORM_NAME_BYTES)]
-            } else {
-                other
-            };
-            FrontendType::Custom(truncated.to_string())
-        },
+/// Normalize a platform name string: lowercase + truncate to [`MAX_PLATFORM_NAME_BYTES`].
+pub(super) fn normalize_platform_name(name: &str) -> String {
+    let lowered = name.trim().to_ascii_lowercase();
+    if lowered.len() > MAX_PLATFORM_NAME_BYTES {
+        lowered[..lowered.floor_char_boundary(MAX_PLATFORM_NAME_BYTES)].to_string()
+    } else {
+        lowered
     }
 }
 
-/// Parse connector capabilities from a channel definition JSON object.
+/// Parse uplink capabilities from a channel definition JSON object.
 ///
 /// Looks for `chatTypes` or `capabilities` arrays in the definition and maps
 /// known strings to capability flags. Falls back to `receive_only()`.
@@ -54,14 +40,14 @@ pub(super) fn map_platform_name(name: &str) -> FrontendType {
 /// and `supports_buttons` are not yet parsed from the bridge definition
 /// and default to `false`.
 #[cfg(test)]
-pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapabilities {
+pub(super) fn parse_uplink_capabilities(definition: &Value) -> UplinkCapabilities {
     let caps_array = definition
         .get("capabilities")
         .or_else(|| definition.get("chatTypes"))
         .and_then(Value::as_array);
 
     let Some(arr) = caps_array else {
-        return ConnectorCapabilities::receive_only();
+        return UplinkCapabilities::receive_only();
     };
 
     let lowered: Vec<String> = arr
@@ -71,7 +57,7 @@ pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapab
         .map(str::to_lowercase)
         .collect();
     if lowered.is_empty() {
-        return ConnectorCapabilities::receive_only();
+        return UplinkCapabilities::receive_only();
     }
 
     let can_receive = lowered
@@ -84,14 +70,14 @@ pub(super) fn parse_connector_capabilities(definition: &Value) -> ConnectorCapab
 
     // If we parsed something meaningful, build from flags; otherwise receive_only
     if can_receive || can_send || can_approve {
-        ConnectorCapabilities {
+        UplinkCapabilities {
             can_receive,
             can_send,
             can_approve,
-            ..ConnectorCapabilities::default()
+            ..UplinkCapabilities::default()
         }
     } else {
-        ConnectorCapabilities::receive_only()
+        UplinkCapabilities::receive_only()
     }
 }
 
@@ -204,126 +190,94 @@ mod tests {
     use crate::capabilities::client::notice::MAX_PLATFORM_USER_ID_BYTES;
 
     #[test]
-    fn test_map_platform_name() {
-        assert!(matches!(
-            map_platform_name("Telegram"),
-            FrontendType::Telegram
-        ));
-        assert!(matches!(
-            map_platform_name("DISCORD"),
-            FrontendType::Discord
-        ));
-        assert!(matches!(map_platform_name("slack"), FrontendType::Slack));
-        assert!(matches!(
-            map_platform_name("WhatsApp"),
-            FrontendType::WhatsApp
-        ));
-        assert!(matches!(map_platform_name("web"), FrontendType::Web));
-        assert!(matches!(map_platform_name("cli"), FrontendType::Cli));
-        assert!(matches!(
-            map_platform_name("matrix"),
-            FrontendType::Custom(_)
-        ));
-        if let FrontendType::Custom(name) = map_platform_name("Matrix") {
-            assert_eq!(name, "matrix");
-        }
+    fn test_normalize_platform_name() {
+        assert_eq!(normalize_platform_name("Telegram"), "telegram");
+        assert_eq!(normalize_platform_name("DISCORD"), "discord");
+        assert_eq!(normalize_platform_name("Matrix"), "matrix");
+        assert_eq!(normalize_platform_name(""), "");
     }
 
     #[test]
-    fn test_map_platform_name_empty_string() {
-        let ft = map_platform_name("");
-        assert!(matches!(ft, FrontendType::Custom(ref s) if s.is_empty()));
-    }
-
-    #[test]
-    fn test_map_platform_name_long_custom_truncated() {
+    fn test_normalize_platform_name_long_truncated() {
         let long_name = "x".repeat(300);
-        let ft = map_platform_name(&long_name);
-        if let FrontendType::Custom(s) = ft {
-            assert!(
-                s.len() <= MAX_PLATFORM_NAME_BYTES,
-                "custom platform name should be truncated to {MAX_PLATFORM_NAME_BYTES}, got {}",
-                s.len()
-            );
-        } else {
-            panic!("expected Custom variant");
-        }
+        let result = normalize_platform_name(&long_name);
+        assert!(result.len() <= MAX_PLATFORM_NAME_BYTES);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat() {
+    fn test_parse_uplink_capabilities_chat() {
         let def = serde_json::json!({ "capabilities": ["receive", "send", "approve"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_fallback() {
+    fn test_parse_uplink_capabilities_fallback() {
         let def = serde_json::json!({});
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat_types_key() {
+    fn test_parse_uplink_capabilities_chat_types_key() {
         let def = serde_json::json!({ "chatTypes": ["receive", "send"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_chat_bidirectional() {
+    fn test_parse_uplink_capabilities_chat_bidirectional() {
         let def = serde_json::json!({ "capabilities": ["chat"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_non_string_elements_ignored() {
+    fn test_parse_uplink_capabilities_non_string_elements_ignored() {
         let def = serde_json::json!({
             "capabilities": [42, true, null, "receive", "send"]
         });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive);
         assert!(caps.can_send);
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_inbound_outbound_synonyms() {
+    fn test_parse_uplink_capabilities_inbound_outbound_synonyms() {
         let def = serde_json::json!({ "capabilities": ["inbound", "outbound"] });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_receive, "inbound should set can_receive");
         assert!(caps.can_send, "outbound should set can_send");
         assert!(!caps.can_approve);
     }
 
     #[test]
-    fn test_parse_connector_capabilities_unrecognized_strings_only() {
+    fn test_parse_uplink_capabilities_unrecognized_strings_only() {
         let def = serde_json::json!({ "capabilities": ["foo", "bar", "baz"] });
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_all_non_string_elements() {
+    fn test_parse_uplink_capabilities_all_non_string_elements() {
         let def = serde_json::json!({ "capabilities": [42, true, null, [1, 2]] });
-        let caps = parse_connector_capabilities(&def);
-        assert_eq!(caps, ConnectorCapabilities::receive_only());
+        let caps = parse_uplink_capabilities(&def);
+        assert_eq!(caps, UplinkCapabilities::receive_only());
     }
 
     #[test]
-    fn test_parse_connector_capabilities_capabilities_key_takes_priority() {
+    fn test_parse_uplink_capabilities_capabilities_key_takes_priority() {
         let def = serde_json::json!({
             "capabilities": ["send"],
             "chatTypes": ["receive"]
         });
-        let caps = parse_connector_capabilities(&def);
+        let caps = parse_uplink_capabilities(&def);
         assert!(caps.can_send, "capabilities key should take priority");
         assert!(
             !caps.can_receive,

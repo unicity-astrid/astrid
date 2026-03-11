@@ -13,12 +13,10 @@ astrid-crypto.workspace = true
 astrid-capabilities.workspace = true
 astrid-audit.workspace = true
 astrid-mcp.workspace = true
-astrid-llm.workspace = true
 astrid-events.workspace = true
 astrid-hooks.workspace = true
 astrid-workspace.workspace = true
 astrid-telemetry.workspace = true
-astrid-kernel.workspace = true
 
 [lints]
 workspace = true

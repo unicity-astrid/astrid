@@ -37,7 +37,7 @@
 //!     session_id.clone(),
 //!     AuditAction::SessionStarted {
 //!         user_id,
-//!         frontend: "cli".to_string(),
+//!         platform: "cli".to_string(),
 //!     },
 //!     AuthorizationProof::System {
 //!         reason: "session start".to_string(),
@@ -53,7 +53,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 

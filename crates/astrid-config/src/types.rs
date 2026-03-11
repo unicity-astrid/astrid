@@ -56,12 +56,10 @@ pub struct Config {
     pub subagents: SubagentsSection,
     /// Retry behaviour for transient failures.
     pub retry: RetrySection,
-    /// Telegram bot frontend settings.
-    pub telegram: TelegramSection,
     /// Agent identity seed (static fallback for spark.toml).
     pub spark: SparkSection,
-    /// Pre-declared connector plugins to validate at startup.
-    pub connectors: Vec<ConnectorConfig>,
+    /// Pre-declared uplink plugins to validate at startup.
+    pub uplinks: Vec<UplinkConfig>,
     /// Pre-configured platform identity links applied at every startup.
     pub identity: IdentitySection,
 }
@@ -763,66 +761,6 @@ impl Default for SubagentsSection {
 }
 
 // ---------------------------------------------------------------------------
-// TelegramSection
-// ---------------------------------------------------------------------------
-
-/// Telegram bot frontend configuration.
-#[derive(Clone, Deserialize)]
-#[serde(default)]
-pub struct TelegramSection {
-    /// Telegram Bot API token (from `@BotFather`).
-    /// Prefer environment variables over storing this in a file.
-    pub bot_token: Option<String>,
-    /// `WebSocket` URL for the daemon (e.g. `ws://127.0.0.1:3100`).
-    /// If not set, auto-discovers from `~/.astrid/daemon.port`.
-    pub daemon_url: Option<String>,
-    /// Telegram user IDs allowed to interact with the bot.
-    /// Empty means allow all users.
-    pub allowed_user_ids: Vec<u64>,
-    /// Workspace path to use when creating sessions.
-    pub workspace_path: Option<String>,
-    /// Whether the daemon should embed and auto-start the Telegram bot.
-    /// When `true` (default), the daemon spawns the bot automatically if
-    /// `bot_token` is configured. Set to `false` to run the bot as a
-    /// separate standalone process.
-    pub embedded: bool,
-}
-
-impl Default for TelegramSection {
-    fn default() -> Self {
-        Self {
-            bot_token: None,
-            daemon_url: None,
-            allowed_user_ids: Vec::new(),
-            workspace_path: None,
-            embedded: true,
-        }
-    }
-}
-
-impl std::fmt::Debug for TelegramSection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TelegramSection")
-            .field("has_bot_token", &self.bot_token.is_some())
-            .field("daemon_url", &self.daemon_url)
-            .field("allowed_user_ids", &self.allowed_user_ids)
-            .field("workspace_path", &self.workspace_path)
-            .field("embedded", &self.embedded)
-            .finish()
-    }
-}
-
-impl Serialize for TelegramSection {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("TelegramSection", 4)?;
-        // bot_token is intentionally omitted (secret).
-        state.serialize_field("daemon_url", &self.daemon_url)?;
-        state.serialize_field("allowed_user_ids", &self.allowed_user_ids)?;
-        state.serialize_field("workspace_path", &self.workspace_path)?;
-        state.serialize_field("embedded", &self.embedded)?;
-        state.end()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // RetrySection
@@ -892,21 +830,21 @@ impl SparkSection {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorConfig
+// UplinkConfig
 // ---------------------------------------------------------------------------
 
-/// Pre-declared connector plugin entry.
+/// Pre-declared uplink plugin entry.
 ///
-/// Entries in `[[connectors]]` declare which connector plugins should be
+/// Entries in `[[uplinks]]` declare which uplink plugins should be
 /// available and which behavioural profile they should expose. At startup, the
-/// daemon validates that each declared plugin is loaded and exposes a connector
+/// daemon validates that each declared plugin is loaded and exposes a uplink
 /// with the expected profile.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ConnectorConfig {
+pub struct UplinkConfig {
     /// Plugin ID (e.g. `"openclaw-telegram"`).
     pub plugin: String,
-    /// Expected connector profile: `"chat"`, `"interactive"`, `"notify"`, or
+    /// Expected uplink profile: `"chat"`, `"interactive"`, `"notify"`, or
     /// `"bridge"`. Unknown values are logged and default to `"chat"`.
     pub profile: String,
 }
@@ -1072,22 +1010,22 @@ core = "I value clarity."
     }
 
     #[test]
-    fn test_connectors_parse() {
+    fn test_uplinks_parse() {
         let toml = r#"
-[[connectors]]
+[[uplinks]]
 plugin = "openclaw-telegram"
 profile = "chat"
 
-[[connectors]]
+[[uplinks]]
 plugin = "openclaw-discord"
 profile = "bridge"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert_eq!(cfg.connectors.len(), 2);
-        assert_eq!(cfg.connectors[0].plugin, "openclaw-telegram");
-        assert_eq!(cfg.connectors[0].profile, "chat");
-        assert_eq!(cfg.connectors[1].plugin, "openclaw-discord");
-        assert_eq!(cfg.connectors[1].profile, "bridge");
+        assert_eq!(cfg.uplinks.len(), 2);
+        assert_eq!(cfg.uplinks[0].plugin, "openclaw-telegram");
+        assert_eq!(cfg.uplinks[0].profile, "chat");
+        assert_eq!(cfg.uplinks[1].plugin, "openclaw-discord");
+        assert_eq!(cfg.uplinks[1].profile, "bridge");
     }
 
     #[test]
@@ -1112,7 +1050,7 @@ method = "admin"
     fn test_backward_compat_no_new_sections() {
         let toml = "[model]\nprovider = \"claude\"\n";
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert!(cfg.connectors.is_empty());
+        assert!(cfg.uplinks.is_empty());
         assert!(cfg.identity.links.is_empty());
     }
 

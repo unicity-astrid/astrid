@@ -40,7 +40,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -51,6 +51,7 @@ pub mod discovery;
 pub mod executor;
 pub mod handler;
 pub mod hook;
+pub mod hook_event;
 pub mod manager;
 pub mod profiles;
 pub mod result;
@@ -58,7 +59,8 @@ pub mod result;
 pub use config::HooksConfig;
 pub use discovery::discover_hooks;
 pub use executor::HookExecutor;
-pub use hook::{Hook, HookEvent, HookHandler};
+pub use hook::{Hook, HookHandler};
+pub use hook_event::HookEvent;
 pub use manager::HookManager;
 pub use profiles::HookProfile;
 pub use result::HookResult;

@@ -3,8 +3,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use astrid_core::{
-    ConnectorCapabilities, ConnectorDescriptor, ConnectorId, ConnectorProfile, ConnectorSource,
-    FrontendType, InboundMessage,
+    InboundMessage, UplinkCapabilities, UplinkDescriptor, UplinkId, UplinkProfile, UplinkSource,
 };
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -13,7 +12,7 @@ use tracing::{debug, warn};
 use super::super::handler::CapabilitiesHandler;
 use super::bridge::BridgeChannelInfo;
 use super::helpers::{
-    estimate_json_size, extract_inbound_content, extract_platform_user_id, map_platform_name,
+    estimate_json_size, extract_inbound_content, extract_platform_user_id, normalize_platform_name,
 };
 use super::notice::{
     MAX_CONTEXT_BYTES, MAX_NOTIFICATION_PAYLOAD_BYTES, MAX_PLATFORM_USER_ID_BYTES, ServerNotice,
@@ -30,18 +29,18 @@ pub struct AstridClientHandler {
     /// Channel for pushing notifications (tools changed, etc.) back to the
     /// `McpClient`. `None` if the caller does not care about notifications.
     pub(super) notice_tx: Option<mpsc::UnboundedSender<ServerNotice>>,
-    /// Plugin ID for anti-spoofing validation on inbound notifications.
-    pub(super) plugin_id: String,
+    /// Capsule ID for anti-spoofing validation on inbound notifications.
+    pub(super) capsule_id: String,
     /// Channel for inbound messages from the bridge.
     /// Bounded to 256 (set by caller in `McpPlugin::load()`).
     pub(super) inbound_tx: Option<mpsc::Sender<InboundMessage>>,
-    /// Shared registered connectors for connector ID lookups on inbound messages.
+    /// Shared registered uplinks for uplink ID lookups on inbound messages.
     ///
     /// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because this is only
-    /// accessed in non-async notification handlers and updated during connector
+    /// accessed in non-async notification handlers and updated during uplink
     /// registration. The lock is never held across an `.await` point, so a
     /// blocking mutex is correct and avoids the overhead of an async-aware mutex.
-    pub(super) registered_connectors: Arc<Mutex<Vec<ConnectorDescriptor>>>,
+    pub(super) registered_uplinks: Arc<Mutex<Vec<UplinkDescriptor>>>,
 }
 
 impl AstridClientHandler {
@@ -51,27 +50,27 @@ impl AstridClientHandler {
             server_name: server_name.into(),
             inner,
             notice_tx: None,
-            plugin_id: String::new(),
+            capsule_id: String::new(),
             inbound_tx: None,
-            registered_connectors: Arc::new(Mutex::new(Vec::new())),
+            registered_uplinks: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     /// Attach a notice sender so that notifications (tool refreshes,
-    /// connector registrations) can be forwarded to the caller.
+    /// uplink registrations) can be forwarded to the caller.
     #[must_use]
     pub fn with_notice_tx(mut self, tx: mpsc::UnboundedSender<ServerNotice>) -> Self {
         self.notice_tx = Some(tx);
         self
     }
 
-    /// Set the plugin ID for anti-spoofing validation on inbound notifications.
+    /// Set the capsule ID for anti-spoofing validation on inbound notifications.
     ///
-    /// **Required** when inbound message channels are configured — an empty plugin ID
+    /// **Required** when inbound message channels are configured — an empty capsule ID
     /// causes the inbound message handler to reject all messages.
     #[must_use]
-    pub fn with_plugin_id(mut self, plugin_id: &str) -> Self {
-        self.plugin_id = plugin_id.to_string();
+    pub fn with_capsule_id(mut self, capsule_id: &str) -> Self {
+        self.capsule_id = capsule_id.to_string();
         self
     }
 
@@ -82,13 +81,10 @@ impl AstridClientHandler {
         self
     }
 
-    /// Share the registered connectors state for connector ID lookups.
+    /// Share the registered uplinks state for uplink ID lookups.
     #[must_use]
-    pub fn with_shared_connectors(
-        mut self,
-        connectors: Arc<Mutex<Vec<ConnectorDescriptor>>>,
-    ) -> Self {
-        self.registered_connectors = connectors;
+    pub fn with_shared_uplinks(mut self, uplinks: Arc<Mutex<Vec<UplinkDescriptor>>>) -> Self {
+        self.registered_uplinks = uplinks;
         self
     }
 
@@ -99,9 +95,9 @@ impl AstridClientHandler {
             return;
         };
 
-        // Reject if no plugin_id is configured (prevents empty-string bypass)
-        if self.plugin_id.is_empty() {
-            warn!("inboundMessage: no plugin_id configured, rejecting");
+        // Reject if no capsule_id is configured (prevents empty-string bypass)
+        if self.capsule_id.is_empty() {
+            warn!("inboundMessage: no capsule_id configured, rejecting");
             return;
         }
 
@@ -119,15 +115,15 @@ impl AstridClientHandler {
             return;
         }
 
-        // Extract and validate plugin_id BEFORE any content allocation (anti-spoofing)
-        let Some(plugin_id) = params.get("pluginId").and_then(Value::as_str) else {
-            warn!("inboundMessage: missing pluginId");
+        // Extract and validate capsule_id BEFORE any content allocation (anti-spoofing)
+        let Some(capsule_id) = params.get("capsuleId").and_then(Value::as_str) else {
+            warn!("inboundMessage: missing capsuleId");
             return;
         };
-        if plugin_id != self.plugin_id {
+        if capsule_id != self.capsule_id {
             warn!(
-                got = %plugin_id,
-                "inboundMessage: pluginId mismatch, rejecting"
+                got = %capsule_id,
+                "inboundMessage: capsuleId mismatch, rejecting"
             );
             return;
         }
@@ -157,44 +153,40 @@ impl AstridClientHandler {
         // Extract platform_user_id with fallback chain
         let platform_user_id = extract_platform_user_id(&msg_context, MAX_PLATFORM_USER_ID_BYTES);
 
-        // Extract channel name from context for connector lookup
+        // Extract channel name from context for uplink lookup
         let channel_name = msg_context
             .get("channel")
             .or_else(|| msg_context.get("channelName"))
             .and_then(Value::as_str);
 
-        // Resolve connector_id and platform from registered connectors
-        let (connector_id, platform) = {
-            let connectors = self
-                .registered_connectors
+        // Resolve uplink_id and platform from registered uplinks
+        let (uplink_id, platform) = {
+            let uplinks = self
+                .registered_uplinks
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            if let Some(desc) = channel_name.and_then(|ch| connectors.iter().find(|d| d.name == ch))
-            {
-                (desc.id, desc.frontend_type.clone())
-            } else if let Some(desc) = connectors.first() {
+            if let Some(desc) = channel_name.and_then(|ch| uplinks.iter().find(|d| d.name == ch)) {
+                (desc.id, desc.platform.clone())
+            } else if let Some(desc) = uplinks.first() {
                 warn!(
-                    plugin_id = %plugin_id,
+                    capsule_id = %capsule_id,
                     channel = ?channel_name,
-                    fallback_connector = %desc.name,
-                    "inboundMessage: channel not found, falling back to first connector"
+                    fallback_uplink = %desc.name,
+                    "inboundMessage: channel not found, falling back to first uplink"
                 );
-                (desc.id, desc.frontend_type.clone())
+                (desc.id, desc.platform.clone())
             } else {
                 warn!(
-                    plugin_id = %plugin_id,
+                    capsule_id = %capsule_id,
                     channel = ?channel_name,
-                    "inboundMessage: no connectors registered, using ephemeral ID"
+                    "inboundMessage: no uplinks registered, using ephemeral ID"
                 );
-                (
-                    ConnectorId::new(),
-                    FrontendType::Custom(plugin_id.to_string()),
-                )
+                (UplinkId::new(), capsule_id.to_string())
             }
         };
 
         // Build inbound message
-        let message = InboundMessage::builder(connector_id, platform, platform_user_id, content)
+        let message = InboundMessage::builder(uplink_id, platform, platform_user_id, content)
             .context(msg_context)
             .build();
 
@@ -207,23 +199,23 @@ impl AstridClientHandler {
         }
     }
 
-    /// Process validated channels from a `connectorRegistered` notification
-    /// and populate `registered_connectors` for inbound message lookups.
+    /// Process validated channels from a `uplinkRegistered` notification
+    /// and populate `registered_uplinks` for inbound message lookups.
     pub(super) fn register_channels_locally(
         &self,
-        plugin_id: &str,
+        capsule_id: &str,
         channels: &[BridgeChannelInfo],
     ) {
-        let source = match ConnectorSource::new_openclaw(plugin_id) {
+        let source = match UplinkSource::new_openclaw(capsule_id) {
             Ok(s) => s,
             Err(e) => {
-                warn!(error = %e, "register_channels_locally: invalid plugin_id for ConnectorSource");
+                warn!(error = %e, "register_channels_locally: invalid capsule_id for UplinkSource");
                 return;
             },
         };
 
         let mut shared = self
-            .registered_connectors
+            .registered_uplinks
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
 
@@ -234,25 +226,25 @@ impl AstridClientHandler {
             }
 
             // Map platform from channel name (best effort)
-            let frontend_type = map_platform_name(&ch.name);
+            let platform = normalize_platform_name(&ch.name);
 
             // Map capabilities from typed definition
             let capabilities = ch
                 .definition
                 .as_ref()
                 .and_then(|d| d.capabilities.as_ref())
-                .map_or_else(ConnectorCapabilities::receive_only, |caps| {
-                    ConnectorCapabilities {
+                .map_or_else(UplinkCapabilities::receive_only, |caps| {
+                    UplinkCapabilities {
                         can_receive: caps.can_receive,
                         can_send: caps.can_send,
                         can_approve: caps.can_approve,
-                        ..ConnectorCapabilities::default()
+                        ..UplinkCapabilities::default()
                     }
                 });
 
-            let descriptor = ConnectorDescriptor::builder(&ch.name, frontend_type)
+            let descriptor = UplinkDescriptor::builder(&ch.name, platform)
                 .source(source.clone())
-                .profile(ConnectorProfile::Bridge)
+                .profile(UplinkProfile::Bridge)
                 .capabilities(capabilities)
                 .build();
 
@@ -274,7 +266,7 @@ mod tests {
     #[test]
     fn test_register_channels_locally() {
         let handler =
-            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+            AstridClientHandler::new("capsule:test-plugin", Arc::new(CapabilitiesHandler::new()));
 
         let channels = vec![
             BridgeChannelInfo {
@@ -296,7 +288,7 @@ mod tests {
         handler.register_channels_locally("test-plugin", &channels);
 
         let shared = handler
-            .registered_connectors
+            .registered_uplinks
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         assert_eq!(shared.len(), 2);
@@ -307,7 +299,7 @@ mod tests {
     #[test]
     fn test_register_channels_locally_deduplicates() {
         let handler =
-            AstridClientHandler::new("plugin:test-plugin", Arc::new(CapabilitiesHandler::new()));
+            AstridClientHandler::new("capsule:test-plugin", Arc::new(CapabilitiesHandler::new()));
 
         let channels = vec![BridgeChannelInfo {
             name: "telegram".to_string(),
@@ -318,7 +310,7 @@ mod tests {
         handler.register_channels_locally("test-plugin", &channels);
 
         let shared = handler
-            .registered_connectors
+            .registered_uplinks
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         assert_eq!(shared.len(), 1, "duplicate channel should be deduplicated");

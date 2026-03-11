@@ -1,17 +1,17 @@
-/// WIT interface definitions for Astrid WASM-sandboxed plugins.
+/// WIT interface definitions for Astrid WASM-sandboxed capsules.
 ///
-/// Package: astrid:plugin@0.1.0
+/// Package: astrid:capsule@0.1.0
 ///
 /// This file defines the canonical contract between the Astrid host runtime
-/// and WASM plugin guests. Near-term it documents the Extism host function
+/// and WASM capsule guests. Near-term it documents the Extism host function
 /// contract (WS-3); long-term it becomes direct Component Model imports/exports
 /// when migrating to the Component Model (WS-8).
 
-package astrid:plugin@0.1.0;
+package astrid:capsule@0.1.0;
 
 /// Shared types used across host and guest interfaces.
 interface types {
-    /// Log severity level for structured plugin logging.
+    /// Log severity level for structured capsule logging.
     enum log-level {
         trace,
         debug,
@@ -26,8 +26,8 @@ interface types {
         value: string,
     }
 
-    /// Context passed to a plugin when a hook fires.
-    record plugin-context {
+    /// Context passed to a capsule when a hook fires.
+    record capsule-context {
         /// The event name that triggered this hook (e.g. "pre-tool-call").
         event: string,
         /// Session ID for the current interaction.
@@ -38,8 +38,8 @@ interface types {
         data: option<string>,
     }
 
-    /// Result returned by a plugin after hook execution.
-    record plugin-result {
+    /// Result returned by a capsule after hook execution.
+    record capsule-result {
         /// Action directive (e.g. "continue", "abort", "modify").
         action: string,
         /// Optional payload as a JSON string.
@@ -62,7 +62,7 @@ interface types {
         is-error: bool,
     }
 
-    /// Metadata describing a tool that a plugin exposes.
+    /// Metadata describing a tool that a capsule exposes.
     record tool-definition {
         /// Unique tool name.
         name: string,
@@ -83,20 +83,20 @@ interface types {
     }
 }
 
-/// Host-provided functions that plugins can call.
+/// Host-provided functions that capsules can call.
 ///
 /// All operations are capability-gated and audited by the Astrid runtime.
-/// Plugins never bypass the security model — the host enforces workspace
+/// Capsules never bypass the security model - the host enforces workspace
 /// boundaries, budget limits, and capability tokens on every call.
 interface host {
     use types.{log-level, key-value-pair, http-response};
 
-    /// Emit a structured log message attributed to the calling plugin.
+    /// Emit a structured log message attributed to the calling capsule.
     log: func(level: log-level, message: string);
 
     /// Perform a capability-gated HTTP request.
     ///
-    /// The host enforces allow-lists and rate limits based on the plugin's
+    /// The host enforces allow-lists and rate limits based on the capsule's
     /// capability tokens.
     http-request: func(
         method: string,
@@ -105,50 +105,50 @@ interface host {
         body: option<string>,
     ) -> result<http-response, string>;
 
-    /// Read a file within the plugin's workspace boundary.
+    /// Read a file within the capsule's workspace boundary.
     ///
     /// Paths are resolved relative to the workspace root. Attempts to escape
     /// the boundary return an error.
     read-file: func(path: string) -> result<string, string>;
 
-    /// Write a file within the plugin's workspace boundary.
+    /// Write a file within the capsule's workspace boundary.
     ///
     /// Paths are resolved relative to the workspace root. Attempts to escape
     /// the boundary return an error.
     write-file: func(path: string, content: string) -> result<_, string>;
 
-    /// Read a value from the plugin's scoped key-value store.
+    /// Read a value from the capsule's scoped key-value store.
     ///
-    /// Keys are namespaced to `wasm:{plugin_id}` in the underlying
-    /// `ScopedKvStore`, so plugins cannot access each other's data.
+    /// Keys are namespaced to `wasm:{capsule_id}` in the underlying
+    /// `ScopedKvStore`, so capsules cannot access each other's data.
     kv-get: func(key: string) -> result<option<string>, string>;
 
-    /// Write a value to the plugin's scoped key-value store.
+    /// Write a value to the capsule's scoped key-value store.
     kv-set: func(key: string, value: string) -> result<_, string>;
 
-    /// Read a configuration value from the plugin's manifest.
+    /// Read a configuration value from the capsule's manifest.
     get-config: func(key: string) -> result<option<string>, string>;
 }
 
-/// The plugin world — the full composed contract.
+/// The capsule world - the full composed contract.
 ///
-/// A conforming plugin imports the `host` interface and exports the three
+/// A conforming capsule imports the `host` interface and exports the three
 /// entry-point functions below.
-world plugin {
+world capsule {
     import host;
 
     /// Execute a lifecycle hook (e.g. pre-tool-call, post-response).
     ///
     /// Receives the hook context and returns a directive telling the host
     /// how to proceed.
-    export run-hook: func(ctx: types.plugin-context) -> types.plugin-result;
+    export run-hook: func(ctx: types.capsule-context) -> types.capsule-result;
 
-    /// Execute a tool invocation routed to this plugin.
+    /// Execute a tool invocation routed to this capsule.
     export execute-tool: func(input: types.tool-input) -> types.tool-output;
 
-    /// Describe the tools this plugin provides.
+    /// Describe the tools this capsule provides.
     ///
-    /// Called during plugin registration so the host can advertise
+    /// Called during capsule registration so the host can advertise
     /// available tools to the LLM.
     export describe-tools: func() -> list<types.tool-definition>;
 }

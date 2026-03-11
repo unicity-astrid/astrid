@@ -1,25 +1,21 @@
-use super::error::IdentityResult;
 use chrono::Utc;
 
-use super::error::IdentityError;
+use super::error::{IdentityError, IdentityResult};
 use super::types::{
-    AstridUserId, FrontendLink, FrontendType, LinkVerificationMethod, PendingLinkCode,
+    AstridUserId, LinkVerificationMethod, PendingLinkCode, PlatformLink, normalize_platform,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+
 /// Identity store trait for managing user identities.
 ///
 /// Implementations should handle storage (in-memory, database, etc.)
 /// and provide thread-safe access to identity data.
 #[async_trait::async_trait]
 pub trait IdentityStore: Send + Sync {
-    /// Resolve a frontend user to their Astrid identity.
-    async fn resolve(
-        &self,
-        frontend: &FrontendType,
-        frontend_user_id: &str,
-    ) -> Option<AstridUserId>;
+    /// Resolve a platform user to their Astrid identity.
+    async fn resolve(&self, platform: &str, platform_user_id: &str) -> Option<AstridUserId>;
 
     /// Get an identity by its Astrid ID.
     async fn get_by_id(&self, id: Uuid) -> Option<AstridUserId>;
@@ -27,22 +23,18 @@ pub trait IdentityStore: Send + Sync {
     /// Create a new identity for a first-time user.
     async fn create_identity(
         &self,
-        frontend: FrontendType,
-        frontend_user_id: &str,
+        platform: &str,
+        platform_user_id: &str,
     ) -> IdentityResult<AstridUserId>;
 
-    /// Create a link between a frontend account and an existing identity.
-    async fn create_link(&self, link: FrontendLink) -> IdentityResult<()>;
+    /// Create a link between a platform account and an existing identity.
+    async fn create_link(&self, link: PlatformLink) -> IdentityResult<()>;
 
-    /// Remove a link between a frontend account and an identity.
-    async fn remove_link(
-        &self,
-        frontend: &FrontendType,
-        frontend_user_id: &str,
-    ) -> IdentityResult<()>;
+    /// Remove a link between a platform account and an identity.
+    async fn remove_link(&self, platform: &str, platform_user_id: &str) -> IdentityResult<()>;
 
     /// Get all links for an identity.
-    async fn get_links(&self, astrid_id: Uuid) -> Vec<FrontendLink>;
+    async fn get_links(&self, astrid_id: Uuid) -> Vec<PlatformLink>;
 
     /// Update an identity.
     async fn update_identity(&self, identity: AstridUserId) -> IdentityResult<()>;
@@ -51,7 +43,7 @@ pub trait IdentityStore: Send + Sync {
     async fn generate_link_code(
         &self,
         astrid_id: Uuid,
-        requesting_frontend: FrontendType,
+        requesting_platform: &str,
         requesting_user_id: &str,
     ) -> IdentityResult<String>;
 
@@ -59,16 +51,19 @@ pub trait IdentityStore: Send + Sync {
     async fn verify_link_code(
         &self,
         code: &str,
-        verified_via: FrontendType,
-    ) -> IdentityResult<FrontendLink>;
+        verified_via: &str,
+    ) -> IdentityResult<PlatformLink>;
 }
+
 /// In-memory identity store for testing and simple deployments.
 #[derive(Debug, Default)]
 pub struct InMemoryIdentityStore {
     identities: std::sync::RwLock<HashMap<Uuid, AstridUserId>>,
-    links: std::sync::RwLock<HashMap<(FrontendType, String), FrontendLink>>,
+    /// Key: `(normalized_platform, platform_user_id)`
+    links: std::sync::RwLock<HashMap<(String, String), PlatformLink>>,
     pending_codes: std::sync::RwLock<HashMap<String, PendingLinkCode>>,
 }
+
 impl InMemoryIdentityStore {
     /// Create a new in-memory identity store.
     #[must_use]
@@ -88,16 +83,13 @@ impl InMemoryIdentityStore {
         format!("{code:09}")
     }
 }
+
 #[async_trait::async_trait]
 impl IdentityStore for InMemoryIdentityStore {
-    async fn resolve(
-        &self,
-        frontend: &FrontendType,
-        frontend_user_id: &str,
-    ) -> Option<AstridUserId> {
-        let normalized = frontend.clone().normalize();
+    async fn resolve(&self, platform: &str, platform_user_id: &str) -> Option<AstridUserId> {
+        let normalized = normalize_platform(platform);
         let links = self.links.read().ok()?;
-        let link = links.get(&(normalized, frontend_user_id.to_string()))?;
+        let link = links.get(&(normalized, platform_user_id.to_string()))?;
         let identities = self.identities.read().ok()?;
         identities.get(&link.astrid_id).cloned()
     }
@@ -109,10 +101,10 @@ impl IdentityStore for InMemoryIdentityStore {
 
     async fn create_identity(
         &self,
-        frontend: FrontendType,
-        frontend_user_id: &str,
+        platform: &str,
+        platform_user_id: &str,
     ) -> IdentityResult<AstridUserId> {
-        let frontend = frontend.normalize();
+        let normalized = normalize_platform(platform);
 
         // Check if already linked
         {
@@ -120,9 +112,9 @@ impl IdentityStore for InMemoryIdentityStore {
                 .links
                 .read()
                 .map_err(|e| IdentityError::Internal(format!("Failed to read links: {e}")))?;
-            if let Some(existing) = links.get(&(frontend.clone(), frontend_user_id.to_string())) {
-                return Err(IdentityError::FrontendAlreadyLinked {
-                    frontend: frontend.to_string(),
+            if let Some(existing) = links.get(&(normalized.clone(), platform_user_id.to_string())) {
+                return Err(IdentityError::PlatformAlreadyLinked {
+                    platform: normalized,
                     existing_id: existing.astrid_id.to_string(),
                 });
             }
@@ -141,10 +133,10 @@ impl IdentityStore for InMemoryIdentityStore {
         }
 
         // Create initial link
-        let link = FrontendLink::new(
+        let link = PlatformLink::new(
             id,
-            frontend.clone(),
-            frontend_user_id,
+            &normalized,
+            platform_user_id,
             LinkVerificationMethod::InitialCreation,
             true,
         );
@@ -154,23 +146,22 @@ impl IdentityStore for InMemoryIdentityStore {
                 .links
                 .write()
                 .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
-            links.insert((frontend, frontend_user_id.to_string()), link);
+            links.insert((normalized, platform_user_id.to_string()), link);
         }
 
         Ok(identity)
     }
 
-    async fn create_link(&self, link: FrontendLink) -> IdentityResult<()> {
+    async fn create_link(&self, link: PlatformLink) -> IdentityResult<()> {
         let mut links = self
             .links
             .write()
             .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
 
-        let normalized_frontend = link.frontend.clone().normalize();
-        let key = (normalized_frontend, link.frontend_user_id.clone());
+        let key = (link.platform.clone(), link.platform_user_id.clone());
         if links.contains_key(&key) {
-            return Err(IdentityError::FrontendAlreadyLinked {
-                frontend: link.frontend.to_string(),
+            return Err(IdentityError::PlatformAlreadyLinked {
+                platform: link.platform.clone(),
                 existing_id: link.astrid_id.to_string(),
             });
         }
@@ -179,26 +170,22 @@ impl IdentityStore for InMemoryIdentityStore {
         Ok(())
     }
 
-    async fn remove_link(
-        &self,
-        frontend: &FrontendType,
-        frontend_user_id: &str,
-    ) -> IdentityResult<()> {
+    async fn remove_link(&self, platform: &str, platform_user_id: &str) -> IdentityResult<()> {
         let mut links = self
             .links
             .write()
             .map_err(|e| IdentityError::Internal(format!("Failed to write links: {e}")))?;
 
-        let normalized = frontend.clone().normalize();
-        let key = (normalized, frontend_user_id.to_string());
+        let normalized = normalize_platform(platform);
+        let key = (normalized, platform_user_id.to_string());
         links.remove(&key).ok_or_else(|| {
-            IdentityError::NotFound(format!("No link found for {frontend}:{frontend_user_id}"))
+            IdentityError::NotFound(format!("No link found for {platform}:{platform_user_id}"))
         })?;
 
         Ok(())
     }
 
-    async fn get_links(&self, astrid_id: Uuid) -> Vec<FrontendLink> {
+    async fn get_links(&self, astrid_id: Uuid) -> Vec<PlatformLink> {
         let Ok(links) = self.links.read() else {
             return Vec::new();
         };
@@ -227,7 +214,7 @@ impl IdentityStore for InMemoryIdentityStore {
     async fn generate_link_code(
         &self,
         astrid_id: Uuid,
-        requesting_frontend: FrontendType,
+        requesting_platform: &str,
         requesting_user_id: &str,
     ) -> IdentityResult<String> {
         let code = Self::generate_code();
@@ -235,7 +222,7 @@ impl IdentityStore for InMemoryIdentityStore {
         let pending = PendingLinkCode {
             code: code.clone(),
             astrid_id,
-            requesting_frontend,
+            requesting_platform: normalize_platform(requesting_platform),
             requesting_user_id: requesting_user_id.to_string(),
             // Safety: chrono::Duration addition to DateTime cannot overflow for reasonable durations
             #[expect(clippy::arithmetic_side_effects)]
@@ -254,8 +241,8 @@ impl IdentityStore for InMemoryIdentityStore {
     async fn verify_link_code(
         &self,
         code: &str,
-        verified_via: FrontendType,
-    ) -> IdentityResult<FrontendLink> {
+        verified_via: &str,
+    ) -> IdentityResult<PlatformLink> {
         // Get and remove the pending code
         let pending = {
             let mut codes = self.pending_codes.write().map_err(|e| {
@@ -271,11 +258,13 @@ impl IdentityStore for InMemoryIdentityStore {
         }
 
         // Create the link
-        let link = FrontendLink::new(
+        let link = PlatformLink::new(
             pending.astrid_id,
-            pending.requesting_frontend,
+            &pending.requesting_platform,
             &pending.requesting_user_id,
-            LinkVerificationMethod::CodeVerification { verified_via },
+            LinkVerificationMethod::CodeVerification {
+                verified_via: normalize_platform(verified_via),
+            },
             false,
         );
 

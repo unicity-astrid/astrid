@@ -1,7 +1,7 @@
 //! Astrid plugin manifest (`plugin.toml`) generation and output assembly.
 //!
-//! Generates a `plugin.toml` that is serde-compatible with
-//! [`astrid_plugins::manifest::PluginManifest`] including the tagged enum
+//! Generates a `Capsule.toml` that is serde-compatible with
+//! the capsule manifest format, including the tagged enum
 //! format for `entry_point` and `capabilities`.
 
 use std::collections::HashMap;

@@ -11,12 +11,12 @@ use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
 
 /// Standard capsule manifest file name.
-pub const MANIFEST_FILE_NAME: &str = "Capsule.toml";
+pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
 
 /// Discover capsule manifests from standard locations.
 ///
 /// Scans the following directories for `Capsule.toml` files:
-/// 1. `.astrid/plugins/` (workspace-level, relative to CWD)
+/// 1. `.astrid/capsules/` (workspace-level, relative to CWD)
 /// 2. Any additional paths provided in `extra_paths`
 ///
 /// Each subdirectory containing a `Capsule.toml` is treated as a capsule.
@@ -59,7 +59,9 @@ pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<(CapsuleManife
 ///
 /// Looks for subdirectories containing `Capsule.toml` files, as well as
 /// `Capsule.toml` files directly in the directory.
-pub fn load_manifests_from_dir(dir: &Path) -> CapsuleResult<Vec<(CapsuleManifest, PathBuf)>> {
+pub(crate) fn load_manifests_from_dir(
+    dir: &Path,
+) -> CapsuleResult<Vec<(CapsuleManifest, PathBuf)>> {
     let mut manifests = Vec::new();
 
     let entries = std::fs::read_dir(dir).map_err(|e| CapsuleError::ManifestParseError {
@@ -102,7 +104,7 @@ pub fn load_manifests_from_dir(dir: &Path) -> CapsuleResult<Vec<(CapsuleManifest
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n == MANIFEST_FILE_NAME)
         {
-            let plugin_dir = path.parent().unwrap_or(dir).to_path_buf();
+            let capsule_dir = path.parent().unwrap_or(dir).to_path_buf();
             match load_manifest(&path) {
                 Ok(manifest) => {
                     debug!(
@@ -110,7 +112,7 @@ pub fn load_manifests_from_dir(dir: &Path) -> CapsuleResult<Vec<(CapsuleManifest
                         capsule_name = %manifest.package.name,
                         "Loaded capsule manifest"
                     );
-                    manifests.push((manifest, plugin_dir));
+                    manifests.push((manifest, capsule_dir));
                 },
                 Err(e) => {
                     warn!(path = %path.display(), error = %e, "Failed to load capsule manifest");
@@ -159,12 +161,6 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
     }
 
     Ok(manifest)
-}
-
-/// Capsules directory in a workspace.
-#[must_use]
-pub fn workspace_plugins_dir(workspace_root: &Path) -> PathBuf {
-    workspace_root.join(".astrid").join("plugins")
 }
 
 #[cfg(test)]

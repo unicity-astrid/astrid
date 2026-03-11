@@ -1,6 +1,6 @@
-//! Security gate trait for plugin host function calls.
+//! Security gate trait for capsule host function calls.
 //!
-//! Decouples the plugin WASM runtime from the full security interceptor stack.
+//! Decouples the capsule WASM runtime from the full security interceptor stack.
 //! Test implementations ([`AllowAllGate`], [`DenyAllGate`]) are provided for
 //! unit testing. A concrete [`SecurityInterceptorGate`] adapter wrapping
 //! `astrid-approval`'s `SecurityInterceptor` is available behind the
@@ -9,14 +9,14 @@
 use crate::manifest::CapsuleManifest;
 use async_trait::async_trait;
 
-/// Security gate for plugin host function calls.
+/// Security gate for capsule host function calls.
 ///
 /// Each method corresponds to a class of sensitive operation that a WASM
-/// plugin can request through host functions. Implementors decide whether
+/// capsule can request through host functions. Implementors decide whether
 /// to permit or deny the operation.
 #[async_trait]
 pub trait CapsuleSecurityGate: Send + Sync {
-    /// Check whether the plugin is allowed to make an HTTP request.
+    /// Check whether the capsule is allowed to make an HTTP request.
     async fn check_http_request(
         &self,
         capsule_id: &str,
@@ -24,16 +24,16 @@ pub trait CapsuleSecurityGate: Send + Sync {
         url: &str,
     ) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to read a file.
+    /// Check whether the capsule is allowed to read a file.
     async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to write a file.
+    /// Check whether the capsule is allowed to write a file.
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to spawn a host process.
+    /// Check whether the capsule is allowed to spawn a host process.
     async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String>;
 
-    /// Check whether the plugin is allowed to accept connections on a bound socket.
+    /// Check whether the capsule is allowed to accept connections on a bound socket.
     ///
     /// Default implementation denies all bind operations. Override to permit
     /// capsules that declare `net_bind` capabilities.
@@ -44,24 +44,24 @@ pub trait CapsuleSecurityGate: Send + Sync {
     /// `socket_path: &str` parameter and enforce path-based confinement.
     async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: net_bind not permitted (default)"
+            "capsule '{capsule_id}' denied: net_bind not permitted (default)"
         ))
     }
 
-    /// Check whether the plugin is allowed to register a connector.
+    /// Check whether the capsule is allowed to register a uplink.
     ///
     /// Default implementation permits all registrations. Override to enforce
-    /// connector policies (e.g. platform allowlists per plugin).
+    /// uplink policies (e.g. platform allowlists per capsule).
     ///
     /// RATIONALE: This has a permissive default (unlike the required file/HTTP
     /// methods) to maintain backward compatibility with existing
-    /// `CapsuleSecurityGate` implementors. The `has_connector_capability` flag
+    /// `CapsuleSecurityGate` implementors. The `has_uplink_capability` flag
     /// on `HostState` already gates access — this method adds operator-level
     /// policy on top.
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         _capsule_id: &str,
-        _connector_name: &str,
+        _uplink_name: &str,
         _platform: &str,
     ) -> Result<(), String> {
         Ok(())
@@ -70,8 +70,10 @@ pub trait CapsuleSecurityGate: Send + Sync {
 
 /// Security gate that permits all operations (for testing).
 #[derive(Debug, Clone, Copy, Default)]
-pub struct AllowAllGate;
+#[cfg(test)]
+pub(crate) struct AllowAllGate;
 
+#[cfg(test)]
 #[async_trait]
 impl CapsuleSecurityGate for AllowAllGate {
     async fn check_http_request(
@@ -99,10 +101,10 @@ impl CapsuleSecurityGate for AllowAllGate {
         Ok(())
     }
 
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         _capsule_id: &str,
-        _connector_name: &str,
+        _uplink_name: &str,
         _platform: &str,
     ) -> Result<(), String> {
         Ok(())
@@ -110,9 +112,11 @@ impl CapsuleSecurityGate for AllowAllGate {
 }
 
 /// Security gate that denies all operations (for testing).
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DenyAllGate;
+pub(crate) struct DenyAllGate;
 
+#[cfg(test)]
 #[async_trait]
 impl CapsuleSecurityGate for DenyAllGate {
     async fn check_http_request(
@@ -122,42 +126,42 @@ impl CapsuleSecurityGate for DenyAllGate {
         url: &str,
     ) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: {method} {url} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: {method} {url} (DenyAllGate)"
         ))
     }
 
     async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: read {path} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: read {path} (DenyAllGate)"
         ))
     }
 
     async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: write {path} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: write {path} (DenyAllGate)"
         ))
     }
 
     async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
+            "capsule '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
         ))
     }
 
     async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: net_bind (DenyAllGate)"
+            "capsule '{capsule_id}' denied: net_bind (DenyAllGate)"
         ))
     }
 
-    async fn check_connector_register(
+    async fn check_uplink_register(
         &self,
         capsule_id: &str,
-        connector_name: &str,
+        uplink_name: &str,
         platform: &str,
     ) -> Result<(), String> {
         Err(format!(
-            "plugin '{capsule_id}' denied: register connector {connector_name} ({platform}) (DenyAllGate)"
+            "capsule '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
         ))
     }
 }
@@ -173,7 +177,7 @@ impl CapsuleSecurityGate for DenyAllGate {
 /// capability entries are resolved to their physical root paths at construction
 /// time so that runtime path checks use simple `starts_with` matching.
 #[derive(Debug, Clone)]
-pub struct ManifestSecurityGate {
+pub(crate) struct ManifestSecurityGate {
     /// The original manifest. `net` and `host_process` fields are queried
     /// at runtime as-is. `fs_read` / `fs_write` are **not** used at runtime —
     /// their scheme-resolved equivalents (`resolved_fs_read` / `resolved_fs_write`)
@@ -194,7 +198,7 @@ pub struct ManifestSecurityGate {
 }
 
 impl ManifestSecurityGate {
-    pub fn new(
+    pub(crate) fn new(
         manifest: CapsuleManifest,
         workspace_root: std::path::PathBuf,
         global_root: Option<std::path::PathBuf>,
@@ -314,7 +318,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: network access to '{url}' not declared in manifest"
+                "capsule '{capsule_id}' denied: network access to '{url}' not declared in manifest"
             ))
         }
     }
@@ -324,7 +328,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: read access to '{path}' not declared in manifest"
+                "capsule '{capsule_id}' denied: read access to '{path}' not declared in manifest"
             ))
         }
     }
@@ -334,7 +338,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: write access to '{path}' not declared in manifest"
+                "capsule '{capsule_id}' denied: write access to '{path}' not declared in manifest"
             ))
         }
     }
@@ -350,7 +354,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: host process '{command}' not declared in manifest"
+                "capsule '{capsule_id}' denied: host process '{command}' not declared in manifest"
             ))
         }
     }
@@ -368,134 +372,11 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             Ok(())
         } else {
             Err(format!(
-                "plugin '{capsule_id}' denied: net_bind not declared in manifest"
+                "capsule '{capsule_id}' denied: net_bind not declared in manifest"
             ))
         }
     }
 }
-
-#[cfg(feature = "approval")]
-mod interceptor_gate {
-    use super::{CapsuleSecurityGate, async_trait};
-    use astrid_approval::action::SensitiveAction;
-    use astrid_approval::interceptor::SecurityInterceptor;
-    use astrid_core::types::Permission;
-    use std::sync::Arc;
-
-    /// Adapter that delegates security checks to [`SecurityInterceptor`].
-    ///
-    /// Creates the appropriate [`SensitiveAction`] variant for each operation
-    /// and calls `interceptor.intercept()`. A successful intercept means the
-    /// operation is allowed; an error means it is denied.
-    pub struct SecurityInterceptorGate {
-        interceptor: Arc<SecurityInterceptor>,
-    }
-
-    impl SecurityInterceptorGate {
-        /// Wrap a `SecurityInterceptor` in this gate.
-        #[must_use]
-        pub fn new(interceptor: Arc<SecurityInterceptor>) -> Self {
-            Self { interceptor }
-        }
-    }
-
-    impl std::fmt::Debug for SecurityInterceptorGate {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("SecurityInterceptorGate")
-                .finish_non_exhaustive()
-        }
-    }
-
-    #[async_trait]
-    impl CapsuleSecurityGate for SecurityInterceptorGate {
-        async fn check_http_request(
-            &self,
-            capsule_id: &str,
-            method: &str,
-            url: &str,
-        ) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleHttpRequest {
-                capsule_id: capsule_id.to_string(),
-                url: url.to_string(),
-                method: method.to_string(),
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: HTTP request", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-
-        async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleFileAccess {
-                capsule_id: capsule_id.to_string(),
-                path: path.to_string(),
-                mode: Permission::Read,
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: file read", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-
-        async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleFileAccess {
-                capsule_id: capsule_id.to_string(),
-                path: path.to_string(),
-                mode: Permission::Write,
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: file write", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-
-        async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleExecution {
-                capsule_id: capsule_id.to_string(),
-                capability: format!("host_process: {command}"),
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: host process", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-
-        async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleNetBind {
-                capsule_id: capsule_id.to_string(),
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: net_bind accept", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-
-        async fn check_connector_register(
-            &self,
-            capsule_id: &str,
-            connector_name: &str,
-            platform: &str,
-        ) -> Result<(), String> {
-            let action = SensitiveAction::CapsuleExecution {
-                capsule_id: capsule_id.to_string(),
-                capability: format!("register_connector({connector_name}, {platform})"),
-            };
-            self.interceptor
-                .intercept(&action, "plugin host function: register connector", None)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        }
-    }
-}
-
-#[cfg(feature = "approval")]
-pub use interceptor_gate::SecurityInterceptorGate;
 
 #[cfg(test)]
 mod tests {
@@ -813,7 +694,7 @@ mod tests {
         assert!(gate.check_file_write("p", "/tmp/f").await.is_ok());
         assert!(gate.check_net_bind("p").await.is_ok());
         assert!(
-            gate.check_connector_register("p", "my-conn", "discord")
+            gate.check_uplink_register("p", "my-conn", "discord")
                 .await
                 .is_ok()
         );
@@ -831,7 +712,7 @@ mod tests {
         assert!(gate.check_file_write("p", "/tmp/f").await.is_err());
         assert!(gate.check_net_bind("p").await.is_err());
         assert!(
-            gate.check_connector_register("p", "my-conn", "discord")
+            gate.check_uplink_register("p", "my-conn", "discord")
                 .await
                 .is_err()
         );

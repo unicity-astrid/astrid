@@ -139,11 +139,11 @@ pub enum AstridEvent {
         metadata: EventMetadata,
         /// Message ID.
         message_id: Uuid,
-        /// Frontend the message came from.
-        frontend: String,
+        /// Platform the message came from.
+        platform: String,
     },
 
-    /// Response message has been delivered to the user/frontend.
+    /// Response message has been delivered to the user/platform.
     ///
     /// Fired after the message is confirmed sent. Useful for auditing,
     /// logging, or triggering post-delivery side effects.
@@ -152,8 +152,8 @@ pub enum AstridEvent {
         metadata: EventMetadata,
         /// Message ID.
         message_id: Uuid,
-        /// Target frontend.
-        frontend: String,
+        /// Target platform.
+        platform: String,
     },
 
     /// Message fully processed (response sent).
@@ -178,7 +178,7 @@ pub enum AstridEvent {
         request_id: Uuid,
     },
 
-    /// A response message is about to be sent to the user/frontend.
+    /// A response message is about to be sent to the user/platform.
     ///
     /// Allows capsules to intercept or transform outbound messages.
     MessageSending {
@@ -186,8 +186,8 @@ pub enum AstridEvent {
         metadata: EventMetadata,
         /// Message ID.
         message_id: Uuid,
-        /// Target frontend.
-        frontend: String,
+        /// Target platform.
+        platform: String,
     },
 
     /// Context compaction is starting (trimming conversation history).
@@ -595,35 +595,35 @@ pub enum AstridEvent {
         overage_cents: u64,
     },
 
-    // ========== Plugin Events ==========
-    /// Plugin loaded successfully.
-    PluginLoaded {
+    // ========== Capsule Events ==========
+    /// Capsule loaded successfully.
+    CapsuleLoaded {
         /// Event metadata.
         metadata: EventMetadata,
-        /// Plugin identifier.
-        plugin_id: String,
-        /// Plugin name.
-        plugin_name: String,
+        /// Capsule identifier.
+        capsule_id: String,
+        /// Capsule name.
+        capsule_name: String,
     },
 
-    /// Plugin failed to load.
-    PluginFailed {
+    /// Capsule failed to load.
+    CapsuleFailed {
         /// Event metadata.
         metadata: EventMetadata,
-        /// Plugin identifier.
-        plugin_id: String,
+        /// Capsule identifier.
+        capsule_id: String,
         /// Error message.
         error: String,
     },
 
-    /// Plugin unloaded.
-    PluginUnloaded {
+    /// Capsule unloaded.
+    CapsuleUnloaded {
         /// Event metadata.
         metadata: EventMetadata,
-        /// Plugin identifier.
-        plugin_id: String,
-        /// Plugin name.
-        plugin_name: String,
+        /// Capsule identifier.
+        capsule_id: String,
+        /// Capsule name.
+        capsule_name: String,
     },
 
     // ========== System Events ==========
@@ -754,9 +754,9 @@ impl AstridEvent {
             | Self::SubAgentCompleted { metadata, .. }
             | Self::SubAgentFailed { metadata, .. }
             | Self::SubAgentCancelled { metadata, .. }
-            | Self::PluginLoaded { metadata, .. }
-            | Self::PluginFailed { metadata, .. }
-            | Self::PluginUnloaded { metadata, .. }
+            | Self::CapsuleLoaded { metadata, .. }
+            | Self::CapsuleFailed { metadata, .. }
+            | Self::CapsuleUnloaded { metadata, .. }
             | Self::CapabilityGranted { metadata, .. }
             | Self::CapabilityRevoked { metadata, .. }
             | Self::CapabilityChecked { metadata, .. }
@@ -827,10 +827,10 @@ impl AstridEvent {
             Self::SubAgentCompleted { .. } => "subagent_completed",
             Self::SubAgentFailed { .. } => "subagent_failed",
             Self::SubAgentCancelled { .. } => "subagent_cancelled",
-            // Plugin
-            Self::PluginLoaded { .. } => "plugin_loaded",
-            Self::PluginFailed { .. } => "plugin_failed",
-            Self::PluginUnloaded { .. } => "plugin_unloaded",
+            // Capsule
+            Self::CapsuleLoaded { .. } => "capsule_loaded",
+            Self::CapsuleFailed { .. } => "capsule_failed",
+            Self::CapsuleUnloaded { .. } => "capsule_unloaded",
             // Security
             Self::CapabilityGranted { .. } => "capability_granted",
             Self::CapabilityRevoked { .. } => "capability_revoked",
@@ -862,9 +862,10 @@ impl AstridEvent {
         }
     }
 
-    /// Check if this is a security-related event.
+    /// Check if this is a security-related event (test-only).
+    #[cfg(test)]
     #[must_use]
-    pub fn is_security_event(&self) -> bool {
+    pub(crate) fn is_security_event(&self) -> bool {
         matches!(
             self,
             Self::CapabilityGranted { .. }

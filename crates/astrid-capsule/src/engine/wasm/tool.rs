@@ -16,7 +16,7 @@ struct __AstridToolRequest {
 }
 
 /// A tool backed by a WASM capsule's `astrid_tool_call` export.
-pub struct WasmCapsuleTool {
+pub(crate) struct WasmCapsuleTool {
     name: String,
     description: String,
     input_schema: Value,

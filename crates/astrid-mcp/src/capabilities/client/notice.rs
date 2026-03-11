@@ -26,7 +26,7 @@ pub(super) const MAX_CONTEXT_BYTES: usize = 64 * 1024;
 ///
 /// # Trust boundary
 ///
-/// The [`ConnectorsRegistered`](Self::ConnectorsRegistered) variant carries
+/// The [`UplinksRegistered`](Self::UplinksRegistered) variant carries
 /// data deserialized from an untrusted plugin subprocess. Consumers must
 /// validate channel names, capabilities, and counts before using the data
 /// for access-control decisions.
@@ -39,12 +39,12 @@ pub enum ServerNotice {
         /// Updated tool list (already converted to `ToolDefinition`).
         tools: Vec<ToolDefinition>,
     },
-    /// The bridge sent `notifications/astrid.connectorRegistered` with a batch
+    /// The bridge sent `notifications/astrid.uplinkRegistered` with a batch
     /// of channel registrations after the MCP handshake completed.
-    ConnectorsRegistered {
-        /// Name of the MCP server (e.g. `"plugin:my-plugin"`).
+    UplinksRegistered {
+        /// Name of the MCP server (e.g. `"capsule:my-capsule"`).
         server_name: String,
-        /// Channels registered by the plugin.
+        /// Channels registered by the capsule.
         channels: Vec<BridgeChannelInfo>,
     },
 }

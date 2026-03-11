@@ -23,8 +23,8 @@
 //! ├── capabilities.db/              (SurrealKV — capability tokens)
 //! ├── deferred.db/                  (SurrealKV — deferred queue)
 //! ├── hooks/                        (user-level hooks)
-//! ├── plugins/                      (installed plugins)
-//! ├── cache/plugins/                (plugin compilation cache)
+//! ├── capsules/                     (installed capsules)
+//! ├── cache/capsules/               (capsule compilation cache)
 //! ├── state/                        (gateway state)
 //! ├── servers.toml                  (MCP server config)
 //! ├── gateway.toml                  (gateway daemon config)
@@ -221,7 +221,7 @@ impl AstridHome {
         self.root.join("shared")
     }
 
-    /// Installed plugins directory (`~/.astrid/plugins/`).
+    /// Installed capsules directory (`~/.astrid/capsules/`).
     #[must_use]
     pub fn capsules_dir(&self) -> PathBuf {
         self.root.join("capsules")

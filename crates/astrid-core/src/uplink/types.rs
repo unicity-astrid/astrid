@@ -5,30 +5,29 @@ use std::fmt;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use super::error::{ConnectorError, ConnectorResult};
-use crate::frontend::Attachment;
-use crate::identity::FrontendType;
+use super::error::{UplinkError, UplinkResult};
+use crate::identity::normalize_platform;
 
 // Limits
 // ---------------------------------------------------------------------------
 
-/// Maximum number of connectors a single plugin may register.
+/// Maximum number of uplinks a single capsule may register.
 ///
 /// Enforced by the WASM host, the MCP notification handler, and the
 /// `McpPlugin` drain. All three must use this constant to stay in sync.
-pub const MAX_CONNECTORS_PER_PLUGIN: usize = 32;
+pub const MAX_UPLINKS_PER_CAPSULE: usize = 32;
 
 // ---------------------------------------------------------------------------
-// ConnectorId
+// UplinkId
 // ---------------------------------------------------------------------------
 
-/// Unique, opaque identifier for a registered connector.
+/// Unique, opaque identifier for a registered uplink.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ConnectorId(Uuid);
+pub struct UplinkId(Uuid);
 
-impl ConnectorId {
-    /// Create a new random connector ID.
+impl UplinkId {
+    /// Create a new random uplink ID.
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
@@ -47,34 +46,34 @@ impl ConnectorId {
     }
 }
 
-/// Generates a random ID — equivalent to [`ConnectorId::new`].
+/// Generates a random ID — equivalent to [`UplinkId::new`].
 ///
 /// This exists for derive convenience; be aware that each call produces a
 /// unique random identifier, not a sentinel/zero value.
-impl Default for ConnectorId {
+impl Default for UplinkId {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Display for ConnectorId {
+impl fmt::Display for UplinkId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorCapabilities
+// UplinkCapabilities
 // ---------------------------------------------------------------------------
 
-/// Declares what a connector is able to do.
+/// Declares what a uplink is able to do.
 ///
 /// Every flag defaults to `false`; use the convenience constructors
 /// ([`full`](Self::full), [`notify_only`](Self::notify_only),
 /// [`receive_only`](Self::receive_only)) for common presets.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[expect(clippy::struct_excessive_bools)]
-pub struct ConnectorCapabilities {
+pub struct UplinkCapabilities {
     /// Can receive inbound messages from users.
     pub can_receive: bool,
     /// Can send outbound messages to users.
@@ -91,7 +90,7 @@ pub struct ConnectorCapabilities {
     pub supports_buttons: bool,
 }
 
-impl ConnectorCapabilities {
+impl UplinkCapabilities {
     /// All capabilities enabled.
     #[must_use]
     pub fn full() -> Self {
@@ -120,7 +119,7 @@ impl ConnectorCapabilities {
         }
     }
 
-    /// Receive-only — for ingestion connectors that consume but never reply.
+    /// Receive-only — for ingestion uplinks that consume but never reply.
     #[must_use]
     pub fn receive_only() -> Self {
         Self {
@@ -136,13 +135,13 @@ impl ConnectorCapabilities {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorProfile
+// UplinkProfile
 // ---------------------------------------------------------------------------
 
-/// High-level behavioural profile of a connector.
+/// High-level behavioural profile of a uplink.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectorProfile {
+pub enum UplinkProfile {
     /// Full chat interface (CLI, Discord, Slack).
     Chat,
     /// Interactive but not chat-based (Web dashboard, IDE panel).
@@ -153,7 +152,7 @@ pub enum ConnectorProfile {
     Bridge,
 }
 
-impl fmt::Display for ConnectorProfile {
+impl fmt::Display for UplinkProfile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Chat => write!(f, "chat"),
@@ -164,7 +163,7 @@ impl fmt::Display for ConnectorProfile {
     }
 }
 
-impl FromStr for ConnectorProfile {
+impl FromStr for UplinkProfile {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -173,16 +172,16 @@ impl FromStr for ConnectorProfile {
             "interactive" => Ok(Self::Interactive),
             "notify" => Ok(Self::Notify),
             "bridge" => Ok(Self::Bridge),
-            other => Err(format!("unknown connector profile: {other}")),
+            other => Err(format!("unknown uplink profile: {other}")),
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorSource
+// UplinkSource
 // ---------------------------------------------------------------------------
 
-/// Where a connector originates from.
+/// Where a uplink originates from.
 ///
 /// # Trust boundary
 ///
@@ -199,28 +198,28 @@ impl FromStr for ConnectorProfile {
 /// - `{"open_claw": {"capsule_id": "..."}}` for [`OpenClaw`](Self::OpenClaw)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectorSource {
-    /// Built-in frontend (CLI, Discord, Web).
+pub enum UplinkSource {
+    /// Built-in native platform (CLI, Discord, Web).
     Native,
-    /// WASM capsule providing a connector.
+    /// WASM capsule providing a uplink.
     Wasm {
         /// Capsule identifier — lowercase alphanumeric and hyphens, must not
         /// start or end with a hyphen. Validated by
-        /// [`ConnectorSource::new_wasm`]; the canonical `CapsuleId` type
+        /// [`UplinkSource::new_wasm`]; the canonical `CapsuleId` type
         /// lives in `astrid-capsule`.
         capsule_id: String,
     },
-    /// `OpenClaw`-bridged capsule connector.
+    /// `OpenClaw`-bridged capsule uplink.
     OpenClaw {
         /// Capsule identifier — lowercase alphanumeric and hyphens, must not
         /// start or end with a hyphen. Validated by
-        /// [`ConnectorSource::new_openclaw`]; the canonical `CapsuleId` type
+        /// [`UplinkSource::new_openclaw`]; the canonical `CapsuleId` type
         /// lives in `astrid-capsule`.
         capsule_id: String,
     },
 }
 
-impl ConnectorSource {
+impl UplinkSource {
     /// Create a [`Wasm`](Self::Wasm) source with a validated capsule ID.
     ///
     /// The `capsule_id` must be non-empty, contain only lowercase ASCII
@@ -229,10 +228,10 @@ impl ConnectorSource {
     ///
     /// # Errors
     ///
-    /// Returns [`ConnectorError::InvalidPluginId`] if the ID is empty,
+    /// Returns [`UplinkError::InvalidCapsuleId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
-    pub fn new_wasm(capsule_id: impl Into<String>) -> ConnectorResult<Self> {
+    pub fn new_wasm(capsule_id: impl Into<String>) -> UplinkResult<Self> {
         let id = capsule_id.into();
         validate_capsule_id(&id)?;
         Ok(Self::Wasm { capsule_id: id })
@@ -246,33 +245,33 @@ impl ConnectorSource {
     ///
     /// # Errors
     ///
-    /// Returns [`ConnectorError::InvalidPluginId`] if the ID is empty,
+    /// Returns [`UplinkError::InvalidCapsuleId`] if the ID is empty,
     /// starts or ends with a hyphen, or contains characters outside
     /// `[a-z0-9-]`.
-    pub fn new_openclaw(capsule_id: impl Into<String>) -> ConnectorResult<Self> {
+    pub fn new_openclaw(capsule_id: impl Into<String>) -> UplinkResult<Self> {
         let id = capsule_id.into();
         validate_capsule_id(&id)?;
         Ok(Self::OpenClaw { capsule_id: id })
     }
 }
 
-/// Validate that a plugin ID is non-empty, contains only `[a-z0-9-]`, and
+/// Validate that a capsule ID is non-empty, contains only `[a-z0-9-]`, and
 /// does not start or end with a hyphen. Mirrors the rules in
-/// `PluginId::validate` from `astrid-plugins`.
-fn validate_capsule_id(id: &str) -> ConnectorResult<()> {
+/// `CapsuleId::validate` from `astrid-capsule`.
+fn validate_capsule_id(id: &str) -> UplinkResult<()> {
     if id.is_empty() {
-        return Err(ConnectorError::InvalidPluginId(
+        return Err(UplinkError::InvalidCapsuleId(
             "capsule_id must not be empty".into(),
         ));
     }
     let first = id.as_bytes()[0];
     if !(first.is_ascii_lowercase() || first.is_ascii_digit()) {
-        return Err(ConnectorError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id must start with [a-z0-9], got {id:?}"
         )));
     }
     if id.ends_with('-') {
-        return Err(ConnectorError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id must not end with a hyphen, got {id:?}"
         )));
     }
@@ -280,14 +279,14 @@ fn validate_capsule_id(id: &str) -> ConnectorResult<()> {
         .chars()
         .find(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-'))
     {
-        return Err(ConnectorError::InvalidPluginId(format!(
+        return Err(UplinkError::InvalidCapsuleId(format!(
             "capsule_id contains invalid character {bad:?}"
         )));
     }
     Ok(())
 }
 
-impl fmt::Display for ConnectorSource {
+impl fmt::Display for UplinkSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Native => write!(f, "native"),
@@ -306,88 +305,88 @@ impl fmt::Display for ConnectorSource {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectorDescriptor
+// UplinkDescriptor
 // ---------------------------------------------------------------------------
 
-/// Immutable description of a registered connector.
+/// Immutable description of a registered uplink.
 ///
-/// Created via the builder pattern — call [`ConnectorDescriptor::builder`] to
+/// Created via the builder pattern — call [`UplinkDescriptor::builder`] to
 /// start.
 ///
 /// # Trust boundary
 ///
 /// The `id` and `registered_at` fields are server-assigned (generated in
-/// [`ConnectorDescriptorBuilder::build`]). This type derives [`Deserialize`]
+/// [`UplinkDescriptorBuilder::build`]). This type derives [`Deserialize`]
 /// for trusted persistence (e.g. `SurrealDB`). **Do not** deserialize from
 /// untrusted sources without post-deserialization validation — a forged `id`
-/// could allow connector impersonation.
+/// could allow uplink impersonation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConnectorDescriptor {
-    /// Unique connector identity.
-    pub id: ConnectorId,
+pub struct UplinkDescriptor {
+    /// Unique uplink identity.
+    pub id: UplinkId,
     /// Human-readable name.
     pub name: String,
-    /// The platform type this connector serves.
-    pub frontend_type: FrontendType,
-    /// Where the connector comes from.
-    pub source: ConnectorSource,
-    /// What the connector can do.
-    pub capabilities: ConnectorCapabilities,
+    /// The platform this uplink serves (e.g. "discord", "telegram", "cli").
+    pub platform: String,
+    /// Where the uplink comes from.
+    pub source: UplinkSource,
+    /// What the uplink can do.
+    pub capabilities: UplinkCapabilities,
     /// Behavioural profile.
-    pub profile: ConnectorProfile,
-    /// When this connector was registered.
+    pub profile: UplinkProfile,
+    /// When this uplink was registered.
     pub registered_at: DateTime<Utc>,
     /// Arbitrary key-value metadata.
     pub metadata: HashMap<String, String>,
 }
 
-/// Builder for [`ConnectorDescriptor`].
+/// Builder for [`UplinkDescriptor`].
 #[derive(Debug)]
-pub struct ConnectorDescriptorBuilder {
+pub struct UplinkDescriptorBuilder {
     name: String,
-    frontend_type: FrontendType,
-    source: ConnectorSource,
-    capabilities: ConnectorCapabilities,
-    profile: ConnectorProfile,
+    platform: String,
+    source: UplinkSource,
+    capabilities: UplinkCapabilities,
+    profile: UplinkProfile,
     metadata: HashMap<String, String>,
 }
 
-impl ConnectorDescriptor {
+impl UplinkDescriptor {
     /// Start building a new descriptor.
     #[must_use]
     pub fn builder(
         name: impl Into<String>,
-        frontend_type: FrontendType,
-    ) -> ConnectorDescriptorBuilder {
-        ConnectorDescriptorBuilder {
+        platform: impl Into<String>,
+    ) -> UplinkDescriptorBuilder {
+        UplinkDescriptorBuilder {
             name: name.into(),
-            frontend_type,
-            source: ConnectorSource::Native,
-            capabilities: ConnectorCapabilities::default(),
-            profile: ConnectorProfile::Chat,
+            platform: normalize_platform(platform.into()),
+            source: UplinkSource::Native,
+            capabilities: UplinkCapabilities::default(),
+            profile: UplinkProfile::Chat,
             metadata: HashMap::new(),
         }
     }
 }
 
-impl ConnectorDescriptorBuilder {
-    /// Set the connector source.
+impl UplinkDescriptorBuilder {
+    /// Set the uplink source.
     #[must_use]
-    pub fn source(mut self, source: ConnectorSource) -> Self {
+    pub fn source(mut self, source: UplinkSource) -> Self {
         self.source = source;
         self
     }
 
-    /// Set the connector capabilities.
+    /// Set the uplink capabilities.
     #[must_use]
-    pub fn capabilities(mut self, capabilities: ConnectorCapabilities) -> Self {
+    pub fn capabilities(mut self, capabilities: UplinkCapabilities) -> Self {
         self.capabilities = capabilities;
         self
     }
 
-    /// Set the connector profile.
+    /// Set the uplink profile.
     #[must_use]
-    pub fn profile(mut self, profile: ConnectorProfile) -> Self {
+    pub fn profile(mut self, profile: UplinkProfile) -> Self {
         self.profile = profile;
         self
     }
@@ -399,13 +398,13 @@ impl ConnectorDescriptorBuilder {
         self
     }
 
-    /// Consume the builder and produce a [`ConnectorDescriptor`].
+    /// Consume the builder and produce a [`UplinkDescriptor`].
     #[must_use]
-    pub fn build(self) -> ConnectorDescriptor {
-        ConnectorDescriptor {
-            id: ConnectorId::new(),
+    pub fn build(self) -> UplinkDescriptor {
+        UplinkDescriptor {
+            id: UplinkId::new(),
             name: self.name,
-            frontend_type: self.frontend_type,
+            platform: self.platform,
             source: self.source,
             capabilities: self.capabilities,
             profile: self.profile,
@@ -419,21 +418,19 @@ impl ConnectorDescriptorBuilder {
 // InboundMessage
 // ---------------------------------------------------------------------------
 
-/// A message arriving *into* the runtime from a connector.
+/// A message arriving *into* the runtime from a uplink.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InboundMessage {
-    /// Which connector produced this message.
-    pub connector_id: ConnectorId,
-    /// Platform the message originated on.
-    pub platform: FrontendType,
+    /// Which uplink produced this message.
+    pub uplink_id: UplinkId,
+    /// Platform the message originated on (e.g. "discord", "telegram").
+    pub platform: String,
     /// Platform-specific user identifier (e.g. Discord snowflake).
     pub platform_user_id: String,
     /// Textual content.
     pub content: String,
     /// Opaque context payload (JSON) for bridge compatibility.
     pub context: serde_json::Value,
-    /// Attached files / URLs.
-    pub attachments: Vec<Attachment>,
     /// Thread identifier, if threaded.
     pub thread_id: Option<String>,
     /// When the message was created.
@@ -443,12 +440,11 @@ pub struct InboundMessage {
 /// Builder for [`InboundMessage`].
 #[derive(Debug)]
 pub struct InboundMessageBuilder {
-    connector_id: ConnectorId,
-    platform: FrontendType,
+    uplink_id: UplinkId,
+    platform: String,
     platform_user_id: String,
     content: String,
     context: serde_json::Value,
-    attachments: Vec<Attachment>,
     thread_id: Option<String>,
     timestamp: DateTime<Utc>,
 }
@@ -457,18 +453,17 @@ impl InboundMessage {
     /// Start building a new inbound message.
     #[must_use]
     pub fn builder(
-        connector_id: ConnectorId,
-        platform: FrontendType,
+        uplink_id: UplinkId,
+        platform: impl Into<String>,
         platform_user_id: impl Into<String>,
         content: impl Into<String>,
     ) -> InboundMessageBuilder {
         InboundMessageBuilder {
-            connector_id,
-            platform,
+            uplink_id,
+            platform: normalize_platform(platform.into()),
             platform_user_id: platform_user_id.into(),
             content: content.into(),
             context: serde_json::Value::Null,
-            attachments: Vec::new(),
             thread_id: None,
             timestamp: Utc::now(),
         }
@@ -480,13 +475,6 @@ impl InboundMessageBuilder {
     #[must_use]
     pub fn context(mut self, context: serde_json::Value) -> Self {
         self.context = context;
-        self
-    }
-
-    /// Add an attachment.
-    #[must_use]
-    pub fn attachment(mut self, attachment: Attachment) -> Self {
-        self.attachments.push(attachment);
         self
     }
 
@@ -508,12 +496,11 @@ impl InboundMessageBuilder {
     #[must_use]
     pub fn build(self) -> InboundMessage {
         InboundMessage {
-            connector_id: self.connector_id,
+            uplink_id: self.uplink_id,
             platform: self.platform,
             platform_user_id: self.platform_user_id,
             content: self.content,
             context: self.context,
-            attachments: self.attachments,
             thread_id: self.thread_id,
             timestamp: self.timestamp,
         }
@@ -524,17 +511,15 @@ impl InboundMessageBuilder {
 // OutboundMessage
 // ---------------------------------------------------------------------------
 
-/// A message leaving the runtime toward a connector's user.
+/// A message leaving the runtime toward a uplink's user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboundMessage {
-    /// Which connector should deliver this message.
-    pub connector_id: ConnectorId,
+    /// Which uplink should deliver this message.
+    pub uplink_id: UplinkId,
     /// Target user (Astrid-resolved identity string).
     pub target_user_id: String,
     /// Textual content.
     pub content: String,
-    /// Attached files / URLs.
-    pub attachments: Vec<Attachment>,
     /// Thread identifier, if threaded.
     pub thread_id: Option<String>,
     /// Message ID this is replying to, if any.
@@ -544,10 +529,9 @@ pub struct OutboundMessage {
 /// Builder for [`OutboundMessage`].
 #[derive(Debug)]
 pub struct OutboundMessageBuilder {
-    connector_id: ConnectorId,
+    uplink_id: UplinkId,
     target_user_id: String,
     content: String,
-    attachments: Vec<Attachment>,
     thread_id: Option<String>,
     reply_to: Option<String>,
 }
@@ -556,15 +540,14 @@ impl OutboundMessage {
     /// Start building a new outbound message.
     #[must_use]
     pub fn builder(
-        connector_id: ConnectorId,
+        uplink_id: UplinkId,
         target_user_id: impl Into<String>,
         content: impl Into<String>,
     ) -> OutboundMessageBuilder {
         OutboundMessageBuilder {
-            connector_id,
+            uplink_id,
             target_user_id: target_user_id.into(),
             content: content.into(),
-            attachments: Vec::new(),
             thread_id: None,
             reply_to: None,
         }
@@ -572,13 +555,6 @@ impl OutboundMessage {
 }
 
 impl OutboundMessageBuilder {
-    /// Add an attachment.
-    #[must_use]
-    pub fn attachment(mut self, attachment: Attachment) -> Self {
-        self.attachments.push(attachment);
-        self
-    }
-
     /// Set the thread ID.
     #[must_use]
     pub fn thread_id(mut self, thread_id: impl Into<String>) -> Self {
@@ -597,14 +573,11 @@ impl OutboundMessageBuilder {
     #[must_use]
     pub fn build(self) -> OutboundMessage {
         OutboundMessage {
-            connector_id: self.connector_id,
+            uplink_id: self.uplink_id,
             target_user_id: self.target_user_id,
             content: self.content,
-            attachments: self.attachments,
             thread_id: self.thread_id,
             reply_to: self.reply_to,
         }
     }
 }
-
-// ---------------------------------------------------------------------------
