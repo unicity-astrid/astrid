@@ -862,9 +862,9 @@ impl AstridEvent {
         }
     }
 
-    /// Check if this is a security-related event.
+    /// Check if this is a security-related event (test-only).
+    #[cfg(test)]
     #[must_use]
-    #[allow(dead_code)] // Tracked by #300
     pub(crate) fn is_security_event(&self) -> bool {
         matches!(
             self,

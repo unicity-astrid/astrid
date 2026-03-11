@@ -98,9 +98,9 @@ impl EventBus {
         EventReceiver::new(self.sender.subscribe(), Some(topic_pattern.into()))
     }
 
-    /// Get the synchronous subscriber registry.
+    /// Get the synchronous subscriber registry (test-only).
+    #[cfg(test)]
     #[must_use]
-    #[allow(dead_code)] // Tracked by #300
     pub(crate) fn registry(&self) -> &SubscriberRegistry {
         &self.registry
     }

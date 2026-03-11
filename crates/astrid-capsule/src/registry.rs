@@ -116,33 +116,6 @@ impl CapsuleRegistry {
         Ok(capsule)
     }
 
-    /// Unload and remove all capsules from the registry.
-    ///
-    /// Calls [`Capsule::unload()`] on each capsule, logging errors without
-    /// short-circuiting. Uplinks are cleaned up as each capsule is removed.
-    #[allow(dead_code)] // Needed for graceful shutdown (not yet wired)
-    pub(crate) async fn unload_all(&mut self) {
-        let ids: Vec<CapsuleId> = self.capsules.keys().cloned().collect();
-        for id in ids {
-            if let Some(mut capsule) = self.capsules.remove(&id) {
-                self.unregister_capsule_uplinks(&id);
-                match Arc::get_mut(&mut capsule) {
-                    Some(capsule) => {
-                        if let Err(e) = capsule.unload().await {
-                            tracing::warn!(capsule_id = %id, error = %e, "Capsule unload error during unload_all");
-                        }
-                    },
-                    None => {
-                        tracing::warn!(
-                            capsule_id = %id,
-                            "Cannot unload capsule: still referenced by in-flight interceptor tasks"
-                        );
-                    },
-                }
-            }
-        }
-    }
-
     /// Get a shared reference to a capsule by ID.
     ///
     /// Returns a cloned `Arc` so callers can use the capsule after releasing
