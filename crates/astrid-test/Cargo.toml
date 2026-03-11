@@ -10,7 +10,7 @@ description = "Shared test utilities for Astrid secure agent runtime"
 
 [dependencies]
 astrid-core.workspace = true
-astrid-llm.workspace = true
+
 async-trait.workspace = true
 futures.workspace = true
 serde.workspace = true

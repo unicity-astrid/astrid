@@ -27,5 +27,4 @@
 // The crate already uses glob re-exports, so we mirror that pattern
 pub use crate::fixtures::*;
 pub use crate::harness::*;
-pub use crate::mock_llm::*;
 pub use crate::mocks::*;

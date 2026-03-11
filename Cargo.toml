@@ -8,12 +8,11 @@ members = [
     "crates/astrid-crypto",
     "crates/astrid-events",
     "crates/astrid-hooks",
-    "crates/astrid-llm",
+
     "crates/astrid-mcp",
     "crates/astrid-telemetry",
     "crates/astrid-test",
     "crates/astrid-workspace",
-    "crates/astrid-tools",
     "crates/astrid-prelude",
 
     # Configuration
@@ -73,11 +72,11 @@ astrid-events = { path = "crates/astrid-events", version = "0.1.1", default-feat
 astrid-hooks = { path = "crates/astrid-hooks", version = "0.1.1" }
 astrid-mcp = { path = "crates/astrid-mcp", version = "0.1.1" }
 astrid-audit = { path = "crates/astrid-audit", version = "0.1.1" }
-astrid-llm = { path = "crates/astrid-llm", version = "0.1.1" }
+
 astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.1.1" }
 astrid-test = { path = "crates/astrid-test" }
 astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
-astrid-tools = { path = "crates/astrid-tools", version = "0.1.1" }
+
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
 astrid-kernel = { path = "crates/astrid-kernel", version = "0.1.1" }
 astrid-telegram = { path = "crates/astrid-telegram", version = "0.1.1" }

@@ -13,7 +13,7 @@ astrid-crypto.workspace = true
 astrid-capabilities.workspace = true
 astrid-audit.workspace = true
 astrid-mcp.workspace = true
-astrid-llm.workspace = true
+
 astrid-events.workspace = true
 astrid-hooks.workspace = true
 astrid-workspace.workspace = true
