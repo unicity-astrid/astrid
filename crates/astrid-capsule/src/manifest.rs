@@ -185,6 +185,9 @@ pub struct EnvDef {
     /// Valid choices for enum fields.
     #[serde(default)]
     pub enum_values: Vec<String>,
+    /// Placeholder hint text shown in an empty input field (e.g. `"sk-..."`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
 }
 
 /// A context file provided by the capsule.

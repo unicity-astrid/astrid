@@ -183,6 +183,9 @@ pub struct OnboardingField {
     /// Optional default value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
+    /// Placeholder hint text shown when the input is empty (e.g. `"sk-..."`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
 }
 
 /// The type of input expected for an onboarding field.
