@@ -19,7 +19,6 @@ pub mod prelude;
 
 pub mod dirs;
 pub mod env_policy;
-pub(crate) mod error;
 pub mod frontend;
 pub mod hook_event;
 pub mod identity;

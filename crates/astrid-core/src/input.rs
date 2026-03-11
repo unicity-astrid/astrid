@@ -1,4 +1,4 @@
-//! Input Attribution - Tagged Messages and Context Identifiers
+//! Input Attribution - Message Identifiers and Context
 //!
 //! Every piece of input the LLM receives is tagged with source attribution.
 //! This is foundational to Astrid security - the system always knows WHO
@@ -6,30 +6,14 @@
 //!
 //! # Key Types
 //!
-//! - [`TaggedMessage`] - A message with full attribution
 //! - [`MessageId`] - Unique identifier for a message
 //! - [`ContextIdentifier`] - Where the message came from
-//!
-//! # Example
-//!
-//! ```rust
-//! use astrid_core::{TaggedMessage, MessageId, ContextIdentifier};
-//! use astrid_core::identity::{AstridUserId, FrontendType};
-//!
-//! let msg_id = MessageId::new("discord", "123456789");
-//! let user = AstridUserId::new();
-//! let context = ContextIdentifier::DirectMessage {
-//!     participant_ids: vec![user.id],
-//! };
-//! ```
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-use crate::identity::{AstridUserId, FrontendType};
-use crate::utils::truncate_to_boundary;
+use crate::identity::FrontendType;
 
 /// Unique message identifier.
 ///
@@ -84,115 +68,6 @@ impl MessageId {
 impl fmt::Display for MessageId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.frontend, self.id)
-    }
-}
-
-/// Every piece of input has verifiable source attribution.
-///
-/// This is the core unit of input to the Astrid system. The LLM sees
-/// messages with full attribution, and the system uses this to verify
-/// any claims made about who said what.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // Designed for crypto-signed message attribution, not yet wired
-pub(crate) struct TaggedMessage {
-    /// Unique ID for this message (from frontend - e.g., Discord message ID)
-    pub message_id: MessageId,
-
-    /// Who sent this message (Astrid identity - spans frontends)
-    pub astrid_user_id: AstridUserId,
-
-    /// Frontend-specific user ID (for display/audit)
-    pub frontend_user_id: String,
-
-    /// Which frontend this came from
-    pub frontend: FrontendType,
-
-    /// Where this message came from (channel context)
-    pub context: ContextIdentifier,
-
-    /// When the message was sent
-    pub timestamp: DateTime<Utc>,
-
-    /// The actual content
-    pub content: String,
-
-    /// Optional signature (if user has registered ed25519 key)
-    /// Stored as base64-encoded 64-byte signature
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_signature: Option<String>,
-}
-
-#[allow(dead_code)]
-impl TaggedMessage {
-    /// Create a new tagged message.
-    #[must_use]
-    #[expect(clippy::similar_names)] // context and content are both meaningful names
-    pub(crate) fn new(
-        message_id: MessageId,
-        astrid_user_id: AstridUserId,
-        frontend_user_id: impl Into<String>,
-        frontend: FrontendType,
-        context: ContextIdentifier,
-        content: impl Into<String>,
-    ) -> Self {
-        Self {
-            message_id,
-            astrid_user_id,
-            frontend_user_id: frontend_user_id.into(),
-            frontend,
-            context,
-            timestamp: Utc::now(),
-            content: content.into(),
-            user_signature: None,
-        }
-    }
-
-    /// Add a user signature to this message.
-    #[must_use]
-    pub(crate) fn with_signature(mut self, signature: impl Into<String>) -> Self {
-        self.user_signature = Some(signature.into());
-        self
-    }
-
-    /// Check if this message is from a DM context.
-    #[must_use]
-    pub(crate) fn is_dm(&self) -> bool {
-        matches!(self.context, ContextIdentifier::DirectMessage { .. })
-    }
-
-    /// Check if this message has a valid signature.
-    #[must_use]
-    pub(crate) fn is_signed(&self) -> bool {
-        self.user_signature.is_some() && self.astrid_user_id.has_signing_key()
-    }
-
-    /// Get the data that should be signed for this message.
-    #[must_use]
-    pub(crate) fn signable_data(&self) -> Vec<u8> {
-        // Sign: message_id + user_id + timestamp + content
-        let mut data = Vec::new();
-        data.extend(self.message_id.to_string().as_bytes());
-        data.extend(self.astrid_user_id.id.as_bytes());
-        data.extend(self.timestamp.to_rfc3339().as_bytes());
-        data.extend(self.content.as_bytes());
-        data
-    }
-}
-
-impl fmt::Display for TaggedMessage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}] {} ({}): {}",
-            self.message_id,
-            self.astrid_user_id,
-            self.context,
-            if self.content.len() > 50 {
-                format!("{}...", truncate_to_boundary(&self.content, 50))
-            } else {
-                self.content.clone()
-            }
-        )
     }
 }
 
@@ -389,51 +264,6 @@ impl fmt::Display for ContextIdentifier {
     }
 }
 
-/// Input classification for security decisions.
-///
-/// Different input sources have different trust levels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(dead_code)] // Tracked by #295
-pub(crate) enum InputClassification {
-    /// Verified user signature - highest trust
-    SignedUser,
-    /// Pre-authorized via capability token
-    Capability,
-    /// Tool results, external data - never execute directly
-    Untrusted,
-    /// From the agent itself (e.g., reasoning)
-    AgentInternal,
-}
-
-#[allow(dead_code)] // Tracked by #295
-impl InputClassification {
-    /// Check if this input can be trusted to make security decisions.
-    #[must_use]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn is_trusted(&self) -> bool {
-        matches!(self, Self::SignedUser | Self::Capability)
-    }
-
-    /// Check if this input should be treated as potentially malicious.
-    #[must_use]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub(crate) fn requires_sanitization(&self) -> bool {
-        matches!(self, Self::Untrusted)
-    }
-}
-
-impl fmt::Display for InputClassification {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::SignedUser => write!(f, "signed_user"),
-            Self::Capability => write!(f, "capability"),
-            Self::Untrusted => write!(f, "untrusted"),
-            Self::AgentInternal => write!(f, "agent_internal"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,29 +305,5 @@ mod tests {
         let display = ctx.to_string();
         assert!(display.contains("guild:guild123"));
         assert!(display.contains("channel:channel456"));
-    }
-
-    #[test]
-    fn test_tagged_message() {
-        let user = AstridUserId::new();
-        let msg = TaggedMessage::new(
-            MessageId::discord(123),
-            user.clone(),
-            "discord_user_123",
-            FrontendType::Discord,
-            ContextIdentifier::dm(user.id),
-            "Hello, world!",
-        );
-
-        assert!(msg.is_dm());
-        assert!(!msg.is_signed());
-    }
-
-    #[test]
-    fn test_input_classification() {
-        assert!(InputClassification::SignedUser.is_trusted());
-        assert!(InputClassification::Capability.is_trusted());
-        assert!(!InputClassification::Untrusted.is_trusted());
-        assert!(InputClassification::Untrusted.requires_sanitization());
     }
 }
