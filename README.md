@@ -228,13 +228,12 @@ The key trick: Wizer pre-initializes the QuickJS engine at compile time, so cold
 astrid (CLI) ----+
                  +--> astridd (daemon)
 astrid-telegram--+        |
-                          |-- astrid-runtime (orchestration)
-                          |     |-- astrid-llm (provider abstraction)
-                          |     |-- astrid-mcp (MCP client + server lifecycle)
-                          |     |-- astrid-tools (built-in tools)
-                          |     |-- astrid-approval (security interceptor)
-                          |     |-- astrid-capabilities (signed tokens)
-                          |     +-- astrid-workspace (boundaries)
+                          |-- astrid-llm (provider abstraction)
+                          |-- astrid-mcp (MCP client + server lifecycle)
+                          |-- astrid-tools (built-in tools)
+                          |-- astrid-approval (security interceptor)
+                          |-- astrid-capabilities (signed tokens)
+                          |-- astrid-workspace (boundaries)
                           |
                           |-- astrid-capsule (composite execution engines & manifest routing)
                           |     +-- astrid-openclaw (TS/JS -> WASM compiler)
@@ -309,7 +308,6 @@ astrid daemon stop
 - **`astrid-approval`**: [Security interceptor](crates/astrid-approval/README.md), budget tracking, and allowance system.
 - **`astrid-capabilities`**: [Signed authorization tokens](crates/astrid-capabilities/README.md) with glob-based resource patterns.
 - **`astrid-audit`**: Chain-linked audit log with SurrealKV persistence.
-- **`astrid-runtime`**: Agent sessions, context management, agentic loop.
 - **`astrid-workspace`**: Workspace boundaries and escape approval.
 - **`astrid-mcp`**: MCP client implementation.
 - **`astrid-tools`**: Built-in core runtime tools.

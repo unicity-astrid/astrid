@@ -15,7 +15,6 @@
 //! // - astrid-capabilities (tokens, stores)
 //! // - astrid-audit (logging, verification)
 //! // - astrid-mcp (client, tools, servers)
-//! // - astrid-runtime (AgentRuntime, sessions)
 //! // - astrid-llm (providers, messages)
 //! // - astrid-events (event bus)
 //! // - astrid-hooks (hook system)
@@ -31,40 +30,6 @@
 //! ```rust,ignore
 //! use astrid_core::prelude::*;
 //! use astrid_crypto::prelude::*;
-//! ```
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use astrid_prelude::*;
-//!
-//! # async fn example() -> RuntimeResult<()> {
-//! // Create crypto keys
-//! let runtime_key = KeyPair::generate();
-//! let audit_key = KeyPair::generate();
-//!
-//! // Set up audit logging
-//! let audit = AuditLog::in_memory(audit_key);
-//!
-//! // Create MCP client
-//! let mcp = McpClient::from_default_config()?;
-//!
-//! // Create LLM provider
-//! let llm = ClaudeProvider::new(ProviderConfig::new("api-key", "claude-sonnet-4-20250514"));
-//!
-//! // Create runtime
-//! let home = astrid_core::dirs::AstridHome::resolve()?;
-//! let sessions = SessionStore::from_home(&home);
-//! let runtime = AgentRuntime::new(
-//!     llm,
-//!     mcp,
-//!     audit,
-//!     sessions,
-//!     runtime_key,
-//!     RuntimeConfig::default(),
-//! );
-//! # Ok(())
-//! # }
 //! ```
 
 #![deny(unsafe_code)]
@@ -83,6 +48,5 @@ pub use astrid_events::prelude::*;
 pub use astrid_hooks::prelude::*;
 pub use astrid_llm::prelude::*;
 pub use astrid_mcp::prelude::*;
-pub use astrid_runtime::prelude::*;
 pub use astrid_telemetry::prelude::*;
 pub use astrid_workspace::prelude::*;

@@ -30,7 +30,6 @@ While this compartmentalization is a strict requirement for the system's securit
 *   **`astrid_hooks`**: Interception logic and lifecycle hook management.
 *   **`astrid_llm`**: Model providers, stream events, and message abstractions.
 *   **`astrid_mcp`**: Model Context Protocol clients, tools, and server configurations.
-*   **`astrid_runtime`**: Core execution loops, sessions, and state management.
 *   **`astrid_telemetry`**: Tracing, structured diagnostics, and log configuration.
 *   **`astrid_workspace`**: Filesystem boundary enforcement and access control definitions.
 
@@ -48,48 +47,10 @@ Bring the Astralis OS ecosystem into scope:
 ```rust
 use astrid_prelude::*;
 
-// Types from astrid-core, astrid-crypto, astrid-runtime, etc., are now available
+// Types from astrid-core, astrid-crypto, astrid-llm, etc., are now available
 ```
 
-The primary use case for `astrid-prelude` is bootstrapping the agent runtime and wiring together disparate components that span multiple security boundaries. 
-
-The following example demonstrates how the prelude provides all necessary primitives to initialize an audited, capability-backed LLM execution environment:
-
-```rust
-use astrid_prelude::*;
-
-async fn initialize_agent_runtime() -> RuntimeResult<()> {
-    // 1. Cryptography and identity (astrid-crypto)
-    let runtime_key = KeyPair::generate();
-    let audit_key = KeyPair::generate();
-
-    // 2. Secure audit logging (astrid-audit)
-    let audit = AuditLog::in_memory(audit_key);
-
-    // 3. Model Context Protocol integration (astrid-mcp)
-    let mcp = McpClient::from_default_config()?;
-
-    // 4. Intelligence provider configuration (astrid-llm)
-    let llm = ClaudeProvider::new(
-        ProviderConfig::new("api-key", "claude-sonnet-4-20250514")
-    );
-
-    // 5. Core OS configuration and instantiation (astrid-core & astrid-runtime)
-    let home = astrid_core::dirs::AstridHome::resolve()?;
-    let sessions = SessionStore::from_home(&home);
-    
-    let runtime = AgentRuntime::new(
-        llm,
-        mcp,
-        audit,
-        sessions,
-        runtime_key,
-        RuntimeConfig::default(),
-    );
-
-    Ok(())
-}
-```
+The primary use case for `astrid-prelude` is bootstrapping the agent system and wiring together disparate components that span multiple security boundaries.
 
 ## Development
 

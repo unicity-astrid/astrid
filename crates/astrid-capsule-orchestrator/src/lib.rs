@@ -5,7 +5,7 @@
 
 //! Default orchestrator capsule for Astrid OS.
 //!
-//! Replaces the monolithic `astrid-runtime::execution` loop with an
+//! Provides an
 //! event-driven state machine. Each IPC event invocation is stateless;
 //! all conversation state is persisted to KV between invocations.
 //!
