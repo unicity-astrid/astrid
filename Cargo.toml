@@ -10,7 +10,6 @@ members = [
     "crates/astrid-hooks",
     "crates/astrid-llm",
     "crates/astrid-mcp",
-    "crates/astrid-runtime",
     "crates/astrid-telemetry",
     "crates/astrid-test",
     "crates/astrid-workspace",
@@ -75,7 +74,6 @@ astrid-hooks = { path = "crates/astrid-hooks", version = "0.1.1" }
 astrid-mcp = { path = "crates/astrid-mcp", version = "0.1.1" }
 astrid-audit = { path = "crates/astrid-audit", version = "0.1.1" }
 astrid-llm = { path = "crates/astrid-llm", version = "0.1.1" }
-astrid-runtime = { path = "crates/astrid-runtime", version = "0.1.1" }
 astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.1.1" }
 astrid-test = { path = "crates/astrid-test" }
 astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }

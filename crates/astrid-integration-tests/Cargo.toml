@@ -11,7 +11,6 @@ astrid-capabilities.workspace = true
 astrid-audit.workspace = true
 astrid-mcp.workspace = true
 astrid-llm.workspace = true
-astrid-runtime.workspace = true
 astrid-approval.workspace = true
 astrid-workspace.workspace = true
 astrid-tools.workspace = true

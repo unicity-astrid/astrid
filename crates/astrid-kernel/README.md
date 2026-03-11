@@ -6,7 +6,7 @@
 
 The daemon layer for the Astrid secure agent runtime, managing multi-agent lifecycles, JSON-RPC communication, and comprehensive system health.
 
-`astrid-kernel` serves as the central nervous system of the Astralis OS. While `astrid-runtime` handles the intricate mechanics of context windows and tool execution, the gateway acts as the long-running daemon that binds these mechanics to the outside world. It abstracts the complexity of MCP server management, plugin lifecycles, and agent orchestration behind a clean, event-driven JSON-RPC over WebSocket interface.
+`astrid-kernel` serves as the central nervous system of the Astralis OS. It acts as the long-running daemon that binds LLM interactions, tool execution, and plugin lifecycles to the outside world. It abstracts the complexity of MCP server management, plugin lifecycles, and agent orchestration behind a clean, event-driven JSON-RPC over WebSocket interface.
 
 Whether you are building a CLI, a web frontend, or a custom desktop client, `astrid-kernel` provides the stable, observable boundary that ensures your agents run continuously, securely, and predictably.
 
@@ -33,8 +33,7 @@ Client Application (CLI, Web, GUI)
        ├── Message Router
        └── Health Diagnostics
                │
-       astrid-runtime (Orchestrator)
-       ├── Session & Context Management
+       astrid-capsule (Orchestrator)
        ├── astrid-llm (Provider Layer)
        └── astrid-mcp (Tool Layer)
 ```

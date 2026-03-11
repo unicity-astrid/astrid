@@ -1,7 +1,7 @@
 //! Sub-agent spawner trait for dependency inversion.
 //!
-//! `astrid-tools` defines this trait; `astrid-runtime` implements it.
-//! This avoids a circular dependency between the two crates.
+//! `astrid-tools` defines this trait; consumers implement it.
+//! This avoids circular dependencies between crates.
 
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ pub struct SubAgentResult {
 
 /// Trait for spawning sub-agents from built-in tools.
 ///
-/// Implemented by `SubAgentExecutor` in `astrid-runtime`.
+/// Implemented by consumers of this trait.
 /// Injected into `ToolContext` as `Arc<dyn SubAgentSpawner>`.
 #[async_trait::async_trait]
 pub trait SubAgentSpawner: Send + Sync {
