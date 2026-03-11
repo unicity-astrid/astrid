@@ -28,7 +28,6 @@ rand = { workspace = true }
 
 # Encoding
 base64 = { workspace = true }
-reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
@@ -36,6 +35,3 @@ tempfile = "3.10"
 
 [lints]
 workspace = true
-
-[features]
-reqwest = ["dep:reqwest"]

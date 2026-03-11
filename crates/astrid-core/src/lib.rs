@@ -1,10 +1,9 @@
-//! Astrid Core - Foundation types and traits for the Astrid secure agent runtime.
+//! Astrid Core - Foundation types for the Astrid secure agent runtime.
 //!
 //! This crate provides:
-//! - Error types for security operations
-//! - Input classification and message attribution
 //! - Identity management across frontends
 //! - Uplink types for capsule integration
+//! - Frontend types (approval, elicitation)
 //! - Common types used throughout the runtime
 //! - Retry utilities with exponential backoff
 
@@ -29,10 +28,6 @@ pub(crate) mod utils;
 pub(crate) mod version;
 
 pub mod uplink;
-
-/// HTTP utilities and protections (e.g. SSRF prevention)
-#[cfg(feature = "reqwest")]
-pub mod http;
 
 pub use frontend::{
     ApprovalDecision, ApprovalOption, ApprovalRequest, ElicitationAction, ElicitationRequest,
