@@ -11,7 +11,7 @@ use crate::manifest::CapsuleManifest;
 /// the OS memory (e.g., static skills, context files, declarative commands).
 ///
 /// Every CompositeCapsule contains a `StaticEngine` by default.
-pub struct StaticEngine {
+pub(crate) struct StaticEngine {
     _manifest: CapsuleManifest,
     _capsule_dir: PathBuf,
 }
@@ -19,7 +19,7 @@ pub struct StaticEngine {
 impl StaticEngine {
     /// Create a new StaticEngine from a capsule manifest.
     #[must_use]
-    pub fn new(manifest: CapsuleManifest, capsule_dir: PathBuf) -> Self {
+    pub(crate) fn new(manifest: CapsuleManifest, capsule_dir: PathBuf) -> Self {
         Self {
             _manifest: manifest,
             _capsule_dir: capsule_dir,

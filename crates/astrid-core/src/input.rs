@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust
-//! use astrid_core::input::{TaggedMessage, MessageId, ContextIdentifier};
+//! use astrid_core::{TaggedMessage, MessageId, ContextIdentifier};
 //! use astrid_core::identity::{AstridUserId, FrontendType};
 //!
 //! let msg_id = MessageId::new("discord", "123456789");
@@ -392,7 +392,8 @@ impl fmt::Display for ContextIdentifier {
 /// Different input sources have different trust levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum InputClassification {
+#[allow(dead_code)] // Tracked by #295
+pub(crate) enum InputClassification {
     /// Verified user signature - highest trust
     SignedUser,
     /// Pre-authorized via capability token
@@ -403,16 +404,19 @@ pub enum InputClassification {
     AgentInternal,
 }
 
+#[allow(dead_code)] // Tracked by #295
 impl InputClassification {
     /// Check if this input can be trusted to make security decisions.
     #[must_use]
-    pub fn is_trusted(&self) -> bool {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(crate) fn is_trusted(&self) -> bool {
         matches!(self, Self::SignedUser | Self::Capability)
     }
 
     /// Check if this input should be treated as potentially malicious.
     #[must_use]
-    pub fn requires_sanitization(&self) -> bool {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub(crate) fn requires_sanitization(&self) -> bool {
         matches!(self, Self::Untrusted)
     }
 }

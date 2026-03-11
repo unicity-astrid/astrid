@@ -9,7 +9,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 // These are pre-existing pedantic lints on items that became public API when

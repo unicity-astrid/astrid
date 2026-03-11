@@ -1,5 +1,8 @@
 //! Hot-reload file watcher for capsules.
 //!
+//! Tracked by #296 - wire into kernel lifecycle or remove.
+#![allow(dead_code)]
+//!
 //! Watches capsule source directories for file changes, debounces events,
 //! and emits [`WatchEvent`]s when capsule source content actually changes
 //! (verified via blake3 hashing). Runs as a daemon background task,
@@ -29,10 +32,10 @@ use crate::discovery::MANIFEST_FILE_NAME;
 use crate::error::CapsuleResult;
 
 /// Default debounce interval for file change events.
-pub const DEFAULT_DEBOUNCE: Duration = Duration::from_millis(500);
+pub(crate) const DEFAULT_DEBOUNCE: Duration = Duration::from_millis(500);
 
 /// Directory names to ignore during file watching.
-pub const IGNORED_DIRS: &[&str] = &["node_modules", "target", "dist", ".git"];
+pub(crate) const IGNORED_DIRS: &[&str] = &["node_modules", "target", "dist", ".git"];
 
 /// File extensions to exclude from source hashing (generated artifacts).
 const IGNORED_EXTENSIONS: &[&str] = &["wasm"];
@@ -42,7 +45,7 @@ const IGNORED_FILENAMES: &[&str] = &["astrid_bridge.mjs"];
 
 /// Events emitted by the capsule watcher.
 #[derive(Debug, Clone)]
-pub enum WatchEvent {
+pub(crate) enum WatchEvent {
     /// A capsule's source files changed and may need recompilation.
     CapsuleChanged {
         /// The capsule's root directory (contains `Capsule.toml` or `openclaw.plugin.json`).
@@ -56,7 +59,7 @@ pub enum WatchEvent {
 
 /// Configuration for the capsule watcher.
 #[derive(Debug, Clone)]
-pub struct WatcherConfig {
+pub(crate) struct WatcherConfig {
     /// Root directories to watch. Each should contain capsule subdirectories.
     pub watch_paths: Vec<PathBuf>,
     /// Debounce interval. File changes within this window are coalesced.
@@ -77,7 +80,7 @@ impl Default for WatcherConfig {
 /// Uses the `notify` crate for cross-platform filesystem watching and blake3
 /// hashing to prevent unnecessary recompilation when file contents haven't
 /// actually changed.
-pub struct CapsuleWatcher {
+pub(crate) struct CapsuleWatcher {
     config: WatcherConfig,
     /// blake3 hash cache per capsule directory.
     hash_cache: HashMap<PathBuf, String>,
@@ -99,7 +102,7 @@ impl CapsuleWatcher {
     /// # Errors
     ///
     /// Returns an error if the filesystem watcher cannot be initialized.
-    pub fn new(config: WatcherConfig) -> CapsuleResult<(Self, mpsc::Receiver<WatchEvent>)> {
+    pub(crate) fn new(config: WatcherConfig) -> CapsuleResult<(Self, mpsc::Receiver<WatchEvent>)> {
         let (raw_tx, raw_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = mpsc::channel(64);
 
@@ -130,7 +133,7 @@ impl CapsuleWatcher {
     /// Starts watching all configured paths and processes filesystem events
     /// until the raw event channel closes (i.e., the `notify` watcher is dropped
     /// or encounters a fatal error).
-    pub async fn run(mut self) {
+    pub(crate) async fn run(mut self) {
         // Start watching configured paths.
         for path in &self.config.watch_paths {
             if path.exists() {
@@ -367,7 +370,7 @@ fn is_in_ignored_dir(path: &Path) -> bool {
 /// Returns an error if the directory itself cannot be read. Individual
 /// unreadable files (e.g. deleted between enumeration and read) are
 /// skipped with a debug log rather than failing the entire hash.
-pub fn compute_source_hash(dir: &Path) -> std::io::Result<String> {
+pub(crate) fn compute_source_hash(dir: &Path) -> std::io::Result<String> {
     let mut hasher = blake3::Hasher::new();
     let mut paths = Vec::new();
     collect_source_paths(dir, &mut paths)?;

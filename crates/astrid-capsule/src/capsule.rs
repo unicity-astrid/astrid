@@ -153,7 +153,7 @@ impl CompositeCapsule {
     }
 
     /// Add an execution engine (e.g., WasmEngine, McpEngine) to this capsule.
-    pub fn add_engine(&mut self, engine: Box<dyn crate::engine::ExecutionEngine>) {
+    pub(crate) fn add_engine(&mut self, engine: Box<dyn crate::engine::ExecutionEngine>) {
         self.engines.push(engine);
     }
 }

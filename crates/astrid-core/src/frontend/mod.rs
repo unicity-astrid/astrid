@@ -25,11 +25,11 @@
 //! ```
 
 /// Error types for frontends.
-pub mod error;
+pub(crate) mod error;
 /// Trait definitions for frontends.
-pub mod traits;
+pub(crate) mod traits;
 /// Core types for frontends.
-pub mod types;
+pub(crate) mod types;
 
 pub use error::{FrontendError, FrontendResult};
 pub use traits::{ArcFrontend, Frontend};

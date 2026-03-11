@@ -13,7 +13,7 @@ use crate::manifest::CapsuleManifest;
 
 pub mod host;
 pub mod host_state;
-pub mod tool;
+pub(crate) mod tool;
 
 /// Executes Pure WASM Components and AstridClaw transpiled OpenClaw plugins.
 ///

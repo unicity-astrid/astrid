@@ -864,7 +864,8 @@ impl AstridEvent {
 
     /// Check if this is a security-related event.
     #[must_use]
-    pub fn is_security_event(&self) -> bool {
+    #[allow(dead_code)] // Tracked by #300
+    pub(crate) fn is_security_event(&self) -> bool {
         matches!(
             self,
             Self::CapabilityGranted { .. }

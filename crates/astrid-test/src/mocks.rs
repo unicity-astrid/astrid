@@ -6,12 +6,11 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use astrid_core::{
-    ApprovalDecision, ApprovalOption, ApprovalRequest, AstridUserId, ElicitationRequest,
-    ElicitationResponse, Frontend, FrontendContext, FrontendSessionInfo, FrontendType,
-    FrontendUser, MessageId, TaggedMessage, UrlElicitationRequest, UrlElicitationResponse,
-    UserInput, VerificationRequest, VerificationResponse,
+    ApprovalDecision, ApprovalOption, ApprovalRequest, AstridUserId, ContextIdentifier,
+    ElicitationRequest, ElicitationResponse, Frontend, FrontendContext, FrontendSessionInfo,
+    FrontendType, FrontendUser, MessageId, TaggedMessage, UrlElicitationRequest,
+    UrlElicitationResponse, UserInput, VerificationRequest, VerificationResponse,
     frontend::{ChannelInfo, ChannelType, FrontendResult},
-    input::ContextIdentifier,
 };
 
 /// Mock implementation of the `Frontend` trait for testing.

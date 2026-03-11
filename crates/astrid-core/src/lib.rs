@@ -12,7 +12,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -20,17 +20,17 @@ pub mod prelude;
 
 pub mod dirs;
 pub mod env_policy;
-pub mod error;
+pub(crate) mod error;
 pub mod frontend;
 pub mod hook_event;
 pub mod identity;
-pub mod input;
+pub(crate) mod input;
 pub mod plugin_abi;
 pub mod retry;
 pub mod types;
-pub mod utils;
-pub mod verification;
-pub mod version;
+pub(crate) mod utils;
+pub(crate) mod verification;
+pub(crate) mod version;
 
 pub mod connector;
 

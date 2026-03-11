@@ -51,7 +51,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -70,7 +70,7 @@ pub mod llm;
 mod subscriber;
 
 #[cfg(feature = "runtime")]
-pub use bus::{DEFAULT_CHANNEL_CAPACITY, EventBus, EventReceiver};
+pub use bus::{EventBus, EventReceiver};
 #[cfg(feature = "runtime")]
 pub use event::{AstridEvent, EventMetadata};
 #[cfg(feature = "runtime")]
@@ -78,7 +78,3 @@ pub use ipc::IpcMessage;
 pub use ipc::IpcPayload;
 #[cfg(feature = "runtime")]
 pub use ipc::IpcRateLimiter;
-#[cfg(feature = "runtime")]
-pub use subscriber::{
-    EventFilter, EventSubscriber, FilterSubscriber, SubscriberId, SubscriberRegistry,
-};

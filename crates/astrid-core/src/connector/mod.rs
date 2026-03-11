@@ -25,11 +25,11 @@
 // ---------------------------------------------------------------------------
 
 /// Error types for connectors.
-pub mod error;
+pub(crate) mod error;
 /// Trait definitions for connectors.
-pub mod traits;
+pub(crate) mod traits;
 /// Core types for connectors.
-pub mod types;
+pub(crate) mod types;
 
 pub use error::{ConnectorError, ConnectorResult};
 pub use traits::*;

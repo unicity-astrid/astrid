@@ -70,8 +70,10 @@ pub trait CapsuleSecurityGate: Send + Sync {
 
 /// Security gate that permits all operations (for testing).
 #[derive(Debug, Clone, Copy, Default)]
-pub struct AllowAllGate;
+#[cfg(test)]
+pub(crate) struct AllowAllGate;
 
+#[cfg(test)]
 #[async_trait]
 impl CapsuleSecurityGate for AllowAllGate {
     async fn check_http_request(
@@ -110,9 +112,11 @@ impl CapsuleSecurityGate for AllowAllGate {
 }
 
 /// Security gate that denies all operations (for testing).
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DenyAllGate;
+pub(crate) struct DenyAllGate;
 
+#[cfg(test)]
 #[async_trait]
 impl CapsuleSecurityGate for DenyAllGate {
     async fn check_http_request(
@@ -173,7 +177,7 @@ impl CapsuleSecurityGate for DenyAllGate {
 /// capability entries are resolved to their physical root paths at construction
 /// time so that runtime path checks use simple `starts_with` matching.
 #[derive(Debug, Clone)]
-pub struct ManifestSecurityGate {
+pub(crate) struct ManifestSecurityGate {
     /// The original manifest. `net` and `host_process` fields are queried
     /// at runtime as-is. `fs_read` / `fs_write` are **not** used at runtime —
     /// their scheme-resolved equivalents (`resolved_fs_read` / `resolved_fs_write`)
@@ -194,7 +198,7 @@ pub struct ManifestSecurityGate {
 }
 
 impl ManifestSecurityGate {
-    pub fn new(
+    pub(crate) fn new(
         manifest: CapsuleManifest,
         workspace_root: std::path::PathBuf,
         global_root: Option<std::path::PathBuf>,
@@ -375,6 +379,7 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
 }
 
 #[cfg(feature = "approval")]
+#[allow(dead_code)] // Tracked by #302
 mod interceptor_gate {
     use super::{CapsuleSecurityGate, async_trait};
     use astrid_approval::action::SensitiveAction;
@@ -387,14 +392,14 @@ mod interceptor_gate {
     /// Creates the appropriate [`SensitiveAction`] variant for each operation
     /// and calls `interceptor.intercept()`. A successful intercept means the
     /// operation is allowed; an error means it is denied.
-    pub struct SecurityInterceptorGate {
+    pub(super) struct SecurityInterceptorGate {
         interceptor: Arc<SecurityInterceptor>,
     }
 
     impl SecurityInterceptorGate {
         /// Wrap a `SecurityInterceptor` in this gate.
         #[must_use]
-        pub fn new(interceptor: Arc<SecurityInterceptor>) -> Self {
+        pub(super) fn new(interceptor: Arc<SecurityInterceptor>) -> Self {
             Self { interceptor }
         }
     }
@@ -493,9 +498,6 @@ mod interceptor_gate {
         }
     }
 }
-
-#[cfg(feature = "approval")]
-pub use interceptor_gate::SecurityInterceptorGate;
 
 #[cfg(test)]
 mod tests {

@@ -135,11 +135,11 @@
 #![allow(clippy::doc_markdown)]
 
 /// Error types for identity management.
-pub mod error;
+pub(crate) mod error;
 /// Trait definitions for identity storage.
-pub mod store;
+pub(crate) mod store;
 /// Core identity types.
-pub mod types;
+pub(crate) mod types;
 
 pub use error::{IdentityError, IdentityResult};
 pub use store::{IdentityStore, InMemoryIdentityStore};

@@ -1,6 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![warn(missing_docs)]
 
 //! Anthropic LLM provider capsule.

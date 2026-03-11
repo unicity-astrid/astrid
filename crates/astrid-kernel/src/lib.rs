@@ -1,7 +1,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(clippy::all)]
-#![warn(unreachable_pub)]
+#![deny(unreachable_pub)]
 #![allow(clippy::module_name_repetitions)]
 
 //! Astrid Kernel - The core execution engine and IPC router.
