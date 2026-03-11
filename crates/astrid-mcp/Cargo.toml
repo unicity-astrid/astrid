@@ -42,5 +42,8 @@ tracing = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
+[features]
+test-support = []
+
 [lints]
 workspace = true

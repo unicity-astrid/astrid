@@ -9,7 +9,7 @@ astrid-core.workspace = true
 astrid-crypto.workspace = true
 astrid-capabilities.workspace = true
 astrid-audit.workspace = true
-astrid-mcp.workspace = true
+astrid-mcp = { workspace = true, features = ["test-support"] }
 
 astrid-approval.workspace = true
 astrid-workspace.workspace = true

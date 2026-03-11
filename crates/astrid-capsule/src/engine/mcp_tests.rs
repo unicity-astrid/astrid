@@ -8,6 +8,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    use astrid_mcp::testing::test_secure_mcp_client;
+
     fn dummy_manifest(command: &str, allowed_commands: Vec<&str>) -> CapsuleManifest {
         CapsuleManifest {
             package: PackageDef {
@@ -70,7 +72,7 @@ mod tests {
         // If we check the substring AFTER path resolution, it might pass because "npx" is in the path.
         // We must ensure it fails against the raw "./bin/npx-malicious" string.
         let manifest = dummy_manifest("./bin/npx-malicious", vec!["npx"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,
@@ -128,7 +130,7 @@ mod tests {
 
         // The user granted capability for "bin/my-tool"
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,
@@ -182,7 +184,7 @@ mod tests {
         fs::write(&arch_slice, "MZ...").unwrap();
 
         let manifest = dummy_manifest("bin/my-tool", vec!["bin/my-tool"]);
-        let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
+        let mcp_client = test_secure_mcp_client();
 
         let mut engine = McpHostEngine::new(
             manifest,

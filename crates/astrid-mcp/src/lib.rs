@@ -59,6 +59,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod prelude;
+/// Test helpers for constructing [`SecureMcpClient`] in test contexts.
+/// Requires the `test-support` feature.
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 
 pub(crate) mod capabilities;
 mod client;

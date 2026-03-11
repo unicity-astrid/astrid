@@ -68,6 +68,13 @@ pub enum McpError {
         tool: String,
     },
 
+    /// Authorization explicitly denied (e.g. untrusted token issuer).
+    #[error("Authorization failed: {reason}")]
+    AuthorizationFailed {
+        /// Why authorization was denied.
+        reason: String,
+    },
+
     /// Binary hash mismatch.
     #[error("Binary hash mismatch for {name}: expected {expected}, got {actual}")]
     BinaryHashMismatch {

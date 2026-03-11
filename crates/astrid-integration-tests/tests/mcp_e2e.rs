@@ -5,6 +5,7 @@ use astrid_capsule::context::CapsuleContext;
 use astrid_capsule::loader::CapsuleLoader;
 use astrid_capsule::manifest::{CapabilitiesDef, CapsuleManifest, McpServerDef, PackageDef};
 use astrid_events::EventBus;
+use astrid_mcp::testing::test_secure_mcp_client;
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
 
 #[tokio::test]
@@ -59,8 +60,7 @@ async fn test_mcp_host_engine_capability_validation() {
         tools: vec![],
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-    let loader = CapsuleLoader::new(mcp_client);
+    let loader = CapsuleLoader::new(test_secure_mcp_client());
 
     let mut capsule = loader
         .create_capsule(manifest, PathBuf::from("/tmp"))

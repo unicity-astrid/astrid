@@ -7,6 +7,7 @@ use astrid_capsule::manifest::{
     CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef, ToolDef,
 };
 use astrid_events::EventBus;
+use astrid_mcp::testing::test_secure_mcp_client;
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
 use serde_json::json;
 
@@ -107,8 +108,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         tools,
     };
 
-    let mcp_client = astrid_mcp::McpClient::with_config(astrid_mcp::ServersConfig::default());
-    let loader = CapsuleLoader::new(mcp_client);
+    let loader = CapsuleLoader::new(test_secure_mcp_client());
     let mut capsule = loader
         .create_capsule(manifest, fixture_path.parent().unwrap().to_path_buf())
         .unwrap();
