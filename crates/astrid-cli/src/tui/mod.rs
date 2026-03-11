@@ -119,6 +119,7 @@ async fn run_loop(
     loop {
         // Render if enough time has passed.
         if last_render.elapsed() >= render_interval {
+            app.terminal_height = terminal.size()?.height;
             terminal.draw(|frame| render::render_frame(frame, app))?;
             last_render = Instant::now();
         }
@@ -238,8 +239,12 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 answers: std::collections::HashMap::new(),
                 enum_selected,
                 enum_scroll_offset: 0,
+                current_array_items: Vec::new(),
             };
-            input::prefill_field_input(app, is_first_enum, &default_val);
+            let is_first_array = first.is_some_and(|f| {
+                matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
+            });
+            input::prefill_field_input(app, is_first_enum || is_first_array, &default_val);
         } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
             request_id,
             title,

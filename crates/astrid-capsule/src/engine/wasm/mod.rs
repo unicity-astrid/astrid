@@ -56,6 +56,8 @@ impl WasmEngine {
                 );
             }
             OnboardingFieldType::Secret
+        } else if def.env_type == "array" {
+            OnboardingFieldType::Array
         } else if def.enum_values.len() > 1 {
             OnboardingFieldType::Enum(def.enum_values.clone())
         } else {
@@ -598,6 +600,23 @@ mod tests {
             Some("only"),
             "Single-choice enum should auto-fill the sole valid value"
         );
+    }
+
+    #[test]
+    fn build_onboarding_field_array() {
+        let def = crate::manifest::EnvDef {
+            env_type: "array".into(),
+            request: Some("Enter relay URLs".into()),
+            description: Some("Nostr relay endpoints".into()),
+            default: None,
+            enum_values: vec![],
+        };
+        let field = WasmEngine::build_onboarding_field("relays", &def);
+        assert_eq!(
+            field.field_type,
+            astrid_events::ipc::OnboardingFieldType::Array
+        );
+        assert_eq!(field.prompt, "Enter relay URLs");
     }
 
     #[test]

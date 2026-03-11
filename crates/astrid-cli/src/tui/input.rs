@@ -84,6 +84,20 @@ fn handle_selection_input(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// Maximum length (in bytes) for a single onboarding input value.
+/// Guards against accidental clipboard paste of very large content.
+const MAX_INPUT_LEN: usize = 4096;
+
+/// Maximum array items that fit in 1/3 of the terminal, accounting for the
+/// title row and remaining onboarding keys.
+fn max_array_items(terminal_height: u16, total_keys: usize) -> usize {
+    // 1/3 of terminal, minus 1 title row, minus the key rows themselves
+    let budget = (terminal_height as usize) / 3;
+    // title(1) + all keys + separator(1) = overhead
+    let overhead = total_keys.saturating_add(2);
+    budget.saturating_sub(overhead).max(1)
+}
+
 fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
     // Determine if the current field is an enum picker.
     let is_enum_field = matches!(
@@ -97,6 +111,8 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
     if is_enum_field {
         handle_onboarding_enum_input(app, key);
     } else {
+        // Text, Secret, and Array fields all use the text input path.
+        // Array fields interpret Enter differently (add item vs advance).
         handle_onboarding_text_input(app, key);
     }
 }
@@ -114,7 +130,7 @@ fn advance_onboarding(app: &mut App) {
     }
 
     // Reset enum state and extract pre-fill info in a single scoped borrow.
-    let (is_enum, default) = if let UiState::Onboarding {
+    let (is_enum, is_array, default) = if let UiState::Onboarding {
         fields,
         current_idx,
         enum_selected,
@@ -131,18 +147,21 @@ fn advance_onboarding(app: &mut App) {
                 astrid_events::ipc::OnboardingFieldType::Enum(_)
             )
         });
+        let is_array_field = field.is_some_and(|f| {
+            matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
+        });
 
         // Pre-position enum_selected to the default value's index if present.
         *enum_selected = field.map_or(0, default_enum_position);
 
         let default_val = field.and_then(|f| f.default.clone()).unwrap_or_default();
-        (is_enum_field, default_val)
+        (is_enum_field, is_array_field, default_val)
     } else {
         return;
     };
 
-    // Enum fields use the picker; text/secret fields get the default pre-filled.
-    prefill_field_input(app, is_enum, &default);
+    // Enum and array fields clear the input; text/secret fields get the default pre-filled.
+    prefill_field_input(app, is_enum || is_array, &default);
 }
 
 /// Compute the initial `enum_selected` index for a field, matching its default
@@ -207,10 +226,18 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
             app.input.clear();
             app.cursor_pos = 0;
 
+            if !answer.is_empty() && answer.len() > MAX_INPUT_LEN {
+                app.push_notice("Input too long (max 4096 bytes). Please shorten it.");
+                return;
+            }
+
+            let mut array_capped = false;
+
             if let UiState::Onboarding {
                 fields,
                 current_idx,
                 answers,
+                current_array_items,
                 ..
             } = &mut app.state
             {
@@ -218,11 +245,41 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
                     app.state = UiState::Idle;
                     return;
                 };
-                answers.insert(field.key.clone(), answer);
-                *current_idx = current_idx.saturating_add(1);
+
+                let is_array = matches!(
+                    field.field_type,
+                    astrid_events::ipc::OnboardingFieldType::Array
+                );
+
+                if is_array {
+                    if answer.is_empty() {
+                        // Empty input finalizes the array field
+                        let json_array = serde_json::to_string(&*current_array_items)
+                            .unwrap_or_else(|_| "[]".to_string());
+                        answers.insert(field.key.clone(), json_array);
+                        current_array_items.clear();
+                        *current_idx = current_idx.saturating_add(1);
+                    } else if current_array_items.len()
+                        >= max_array_items(app.terminal_height, fields.len())
+                    {
+                        array_capped = true;
+                    } else {
+                        // Non-empty input adds an item
+                        current_array_items.push(answer);
+                        return;
+                    }
+                } else {
+                    answers.insert(field.key.clone(), answer);
+                    *current_idx = current_idx.saturating_add(1);
+                }
             }
-            // advance_onboarding checks completion and calls finish_onboarding if done.
-            advance_onboarding(app);
+
+            if array_capped {
+                app.push_notice("Array item limit reached. Press Enter on empty to finish.");
+            } else {
+                // advance_onboarding checks completion and calls finish_onboarding if done.
+                advance_onboarding(app);
+            }
         },
         KeyCode::Char(c) => {
             app.input.insert(app.cursor_pos, c);
@@ -712,5 +769,385 @@ fn handle_error_input(app: &mut App, key: KeyEvent) {
             app.should_quit = true;
         },
         _ => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_app() -> App {
+        App::new("test".into(), "test-model".into(), "abc".into())
+    }
+
+    fn enter_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+    }
+
+    fn char_key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    fn esc_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+    }
+
+    fn set_onboarding_with_array(app: &mut App) {
+        use astrid_events::ipc::{OnboardingField, OnboardingFieldType};
+        app.state = UiState::Onboarding {
+            capsule_id: "test-capsule".into(),
+            fields: vec![
+                OnboardingField {
+                    key: "relays".into(),
+                    prompt: "Enter relay URLs".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Array,
+                    default: None,
+                },
+                OnboardingField {
+                    key: "name".into(),
+                    prompt: "Enter name".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Text,
+                    default: None,
+                },
+            ],
+            current_idx: 0,
+            answers: std::collections::HashMap::new(),
+            enum_selected: 0,
+            enum_scroll_offset: 0,
+            current_array_items: Vec::new(),
+        };
+    }
+
+    #[test]
+    fn array_field_adds_items_on_enter() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Type "wss://relay1" and press Enter
+        app.input = "wss://relay1".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Should still be on the same field, item added
+        if let UiState::Onboarding {
+            current_idx,
+            current_array_items,
+            ..
+        } = &app.state
+        {
+            assert_eq!(*current_idx, 0, "should stay on same field");
+            assert_eq!(current_array_items, &["wss://relay1"]);
+        } else {
+            panic!("expected Onboarding state");
+        }
+
+        // Add a second item
+        app.input = "wss://relay2".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        if let UiState::Onboarding {
+            current_array_items,
+            ..
+        } = &app.state
+        {
+            assert_eq!(current_array_items, &["wss://relay1", "wss://relay2"]);
+        } else {
+            panic!("expected Onboarding state");
+        }
+    }
+
+    #[test]
+    fn array_field_finalizes_on_empty_enter() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Add one item
+        app.input = "wss://relay1".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Press Enter on empty to finalize
+        handle_onboarding_input(&mut app, enter_key());
+
+        if let UiState::Onboarding {
+            current_idx,
+            answers,
+            current_array_items,
+            ..
+        } = &app.state
+        {
+            assert_eq!(*current_idx, 1, "should advance to next field");
+            assert!(current_array_items.is_empty(), "items should be cleared");
+            let stored = answers.get("relays").unwrap();
+            assert_eq!(stored, r#"["wss://relay1"]"#);
+        } else {
+            panic!("expected Onboarding state");
+        }
+    }
+
+    #[test]
+    fn array_field_empty_array_stores_empty_json() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Press Enter immediately with empty input to finalize empty array
+        handle_onboarding_input(&mut app, enter_key());
+
+        if let UiState::Onboarding {
+            current_idx,
+            answers,
+            ..
+        } = &app.state
+        {
+            assert_eq!(*current_idx, 1);
+            assert_eq!(answers.get("relays").unwrap(), "[]");
+        } else {
+            panic!("expected Onboarding state");
+        }
+    }
+
+    #[test]
+    fn non_array_field_submits_immediately() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Skip the array field with empty array
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Now on "name" (string type), type a value and press Enter
+        app.input = "my-name".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Should have submitted onboarding (both fields done)
+        assert!(
+            matches!(app.state, UiState::Idle),
+            "should transition to Idle after all fields"
+        );
+        assert_eq!(app.pending_actions.len(), 1);
+        if let PendingAction::SubmitOnboarding { answers, .. } = &app.pending_actions[0] {
+            assert_eq!(answers.get("name").unwrap(), "my-name");
+            assert_eq!(answers.get("relays").unwrap(), "[]");
+        } else {
+            panic!("expected SubmitOnboarding action");
+        }
+    }
+
+    #[test]
+    fn onboarding_esc_cancels_typed_input() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Type a character but don't submit, then cancel
+        app.input = "item1".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, char_key('x'));
+        handle_onboarding_input(&mut app, esc_key());
+
+        assert!(matches!(app.state, UiState::Idle));
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn onboarding_esc_cancels_after_accumulated_items() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Add two items via Enter
+        app.input = "wss://relay1".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        app.input = "wss://relay2".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Verify items accumulated
+        if let UiState::Onboarding {
+            current_array_items,
+            ..
+        } = &app.state
+        {
+            assert_eq!(current_array_items.len(), 2);
+        } else {
+            panic!("expected Onboarding state");
+        }
+
+        // Esc should discard everything (state dropped)
+        handle_onboarding_input(&mut app, esc_key());
+
+        assert!(matches!(app.state, UiState::Idle));
+        assert!(app.pending_actions.is_empty(), "no submit action on cancel");
+    }
+
+    #[test]
+    fn array_field_capped_by_terminal_height() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+        // Default terminal_height is 24, 2 keys in onboarding
+        // max_array_items(24, 2) = 24/3 - (2+2) = 4
+        let cap = max_array_items(app.terminal_height, 2);
+        assert_eq!(cap, 4);
+
+        // Pre-fill to the cap
+        if let UiState::Onboarding {
+            current_array_items,
+            ..
+        } = &mut app.state
+        {
+            for i in 0..cap {
+                current_array_items.push(format!("item{i}"));
+            }
+        }
+
+        // Next item should be rejected
+        app.input = "one-too-many".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        if let UiState::Onboarding {
+            current_array_items,
+            ..
+        } = &app.state
+        {
+            assert_eq!(current_array_items.len(), cap, "should not exceed cap");
+        } else {
+            panic!("expected Onboarding state");
+        }
+
+        // Should have a notice about the cap
+        assert!(
+            app.messages.iter().any(|m| m.content.contains("limit")),
+            "should show cap notice"
+        );
+    }
+
+    #[test]
+    fn array_cap_scales_with_terminal_height() {
+        // Tall terminal (60 rows, 2 keys): 60/3 - 4 = 16
+        assert_eq!(max_array_items(60, 2), 16);
+        // Short terminal (18 rows, 2 keys): 18/3 - 4 = 2
+        assert_eq!(max_array_items(18, 2), 2);
+        // Very short terminal (9 rows, 2 keys): 9/3 - 4 = 0 -> clamped to 1
+        assert_eq!(max_array_items(9, 2), 1);
+        // Many keys (24 rows, 8 keys): 24/3 - 10 = 0 -> clamped to 1
+        assert_eq!(max_array_items(24, 8), 1);
+    }
+
+    #[test]
+    fn array_items_with_special_chars_serialize_correctly() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+
+        // Add items with quotes and special characters
+        app.input = r#"value with "quotes""#.into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        app.input = "value,with,commas".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Finalize
+        handle_onboarding_input(&mut app, enter_key());
+
+        if let UiState::Onboarding { answers, .. } = &app.state {
+            let stored = answers.get("relays").unwrap();
+            let parsed: Vec<String> = serde_json::from_str(stored).unwrap();
+            assert_eq!(parsed.len(), 2);
+            assert_eq!(parsed[0], r#"value with "quotes""#);
+            assert_eq!(parsed[1], "value,with,commas");
+        } else {
+            panic!("expected Onboarding state");
+        }
+    }
+
+    #[test]
+    fn consecutive_array_fields_clear_items_between() {
+        let mut app = make_app();
+        // Two array fields back-to-back
+        app.state = UiState::Onboarding {
+            capsule_id: "test".into(),
+            fields: vec![
+                astrid_events::ipc::OnboardingField {
+                    key: "relays".into(),
+                    prompt: "Relays".into(),
+                    description: None,
+                    field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                    default: None,
+                },
+                astrid_events::ipc::OnboardingField {
+                    key: "peers".into(),
+                    prompt: "Peers".into(),
+                    description: None,
+                    field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                    default: None,
+                },
+            ],
+            current_idx: 0,
+            answers: std::collections::HashMap::new(),
+            enum_selected: 0,
+            enum_scroll_offset: 0,
+            current_array_items: Vec::new(),
+        };
+        app.terminal_height = 60;
+
+        // Add items to first array
+        app.input = "relay1".into();
+        app.cursor_pos = app.input.len();
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Finalize first array
+        handle_onboarding_input(&mut app, enter_key());
+
+        // Should now be on second array with clean items
+        if let UiState::Onboarding {
+            current_idx,
+            current_array_items,
+            answers,
+            ..
+        } = &app.state
+        {
+            assert_eq!(*current_idx, 1);
+            assert!(
+                current_array_items.is_empty(),
+                "array items should be cleared for next field"
+            );
+            assert_eq!(answers.get("relays").unwrap(), r#"["relay1"]"#);
+        } else {
+            panic!("expected Onboarding state");
+        }
+    }
+
+    #[test]
+    fn array_field_default_not_prefilled() {
+        let mut app = make_app();
+        app.state = UiState::Onboarding {
+            capsule_id: "test".into(),
+            fields: vec![astrid_events::ipc::OnboardingField {
+                key: "relays".into(),
+                prompt: "Relays".into(),
+                description: None,
+                field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                default: Some(r#"["a","b"]"#.into()),
+            }],
+            current_idx: 0,
+            answers: std::collections::HashMap::new(),
+            enum_selected: 0,
+            enum_scroll_offset: 0,
+            current_array_items: Vec::new(),
+        };
+
+        // Simulate what advance_onboarding does on field entry
+        advance_onboarding(&mut app);
+
+        // Array fields should NOT have the default pre-filled in input
+        assert!(
+            app.input.is_empty(),
+            "array field should start with empty input, not pre-filled default"
+        );
     }
 }

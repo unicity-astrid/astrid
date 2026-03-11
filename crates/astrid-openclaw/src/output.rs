@@ -80,14 +80,20 @@ pub fn generate_manifest(
     {
         for (key, val) in props {
             crate::manifest::validate_schema_key(key)?;
-            let is_secret = crate::manifest::is_secret_key(key);
+            let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
+                "array"
+            } else if crate::manifest::is_secret_key(key) {
+                "secret"
+            } else {
+                "string"
+            };
 
             let description = val
                 .get("description")
                 .and_then(serde_json::Value::as_str)
                 .map(String::from);
 
-            // Non-string defaults (bool, int) are stringified — the onboarding TUI
+            // Non-string defaults (bool, int) are stringified - the onboarding TUI
             // shows them as pre-filled text which the user can accept or change.
             let default = val.get("default").map(|d| match d {
                 serde_json::Value::String(s) => s.clone(),
@@ -110,9 +116,9 @@ pub fn generate_manifest(
             env.insert(
                 key.clone(),
                 EnvDef {
-                    env_type: if is_secret { "secret" } else { "string" }.into(),
+                    env_type: env_type.into(),
                     request: Some(request),
-                    description: description.clone(),
+                    description,
                     default,
                     enum_values,
                 },
@@ -196,6 +202,39 @@ mod tests {
         assert!(
             toml_str.contains("keywords = [\"code-assist\"]"),
             "skills should map to keywords"
+        );
+    }
+
+    #[test]
+    fn output_manifest_array_field_type() {
+        let manifest = OutputManifest {
+            package: PackageDef {
+                name: "relay-plugin".into(),
+                version: "1.0.0".into(),
+                description: None,
+                categories: vec![],
+                keywords: vec![],
+            },
+            component: Some(ComponentDef {
+                entrypoint: "plugin.wasm".into(),
+                hash: None,
+            }),
+            env: HashMap::from([(
+                "additionalRelays".into(),
+                EnvDef {
+                    env_type: "array".into(),
+                    request: Some("Enter relay URLs".into()),
+                    description: None,
+                    default: None,
+                    enum_values: vec![],
+                },
+            )]),
+        };
+
+        let toml_str = toml::to_string_pretty(&manifest).unwrap();
+        assert!(
+            toml_str.contains("type = \"array\""),
+            "array fields should serialize with type = array"
         );
     }
 

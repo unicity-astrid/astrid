@@ -292,9 +292,11 @@ fn generate_tier2_manifest(
     if let Some(obj) = oc_manifest.config_schema.as_object()
         && let Some(props) = obj.get("properties").and_then(|p| p.as_object())
     {
-        for (key, _val) in props {
+        for (key, val) in props {
             manifest::validate_schema_key(key)?;
-            let env_type = if manifest::is_secret_key(key) {
+            let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
+                "array"
+            } else if manifest::is_secret_key(key) {
                 "secret"
             } else {
                 "string"

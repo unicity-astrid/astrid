@@ -56,6 +56,8 @@ pub(crate) enum UiState {
         enum_selected: usize,
         /// Scroll offset within an enum picker.
         enum_scroll_offset: usize,
+        /// Items accumulated so far for the current array field.
+        current_array_items: Vec<String>,
     },
 }
 
@@ -217,6 +219,8 @@ pub(crate) struct App {
     pub context_usage: f32,
     pub tokens_streamed: usize,
     pub session_id_short: String,
+    /// Terminal height in rows, updated each render tick.
+    pub terminal_height: u16,
 
     // ── Timing ──
     pub last_completed: Option<(String, Duration)>,
@@ -284,6 +288,7 @@ impl App {
             context_usage: 0.0,
             tokens_streamed: 0,
             session_id_short,
+            terminal_height: 24,
 
             last_completed: None,
             last_completed_at: None,
