@@ -85,9 +85,9 @@
 //! 4. If the code matches, a new [`FrontendLink`] is created, binding the
 //!    Telegram account to the same [`AstridUserId`].
 //!
-//! ## For Frontend Implementors
+//! ## For Capsule Uplinks
 //!
-//! Every [`Frontend`](crate::frontend::Frontend) implementation should resolve
+//! Every capsule uplink (e.g. `astrid-capsule-cli`) should resolve
 //! identity on first contact with a user. The typical pattern:
 //!
 //! 1. Extract the platform-specific user ID from the incoming message.

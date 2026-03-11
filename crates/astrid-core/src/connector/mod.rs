@@ -1,32 +1,22 @@
-//! Connector abstraction — unified types for frontends, plugins, and bridges.
+//! Connector abstraction - unified types for frontends, plugins, and bridges.
 //!
 //! A **connector** is any component that can send or receive messages on behalf
 //! of the Astrid runtime. The three current flavours are:
 //!
 //! | Source | Example |
 //! |--------|---------|
-//! | [`ConnectorSource::Native`] | CLI, Discord, Web frontends |
+//! | [`ConnectorSource::Native`] | CLI capsule uplink |
 //! | [`ConnectorSource::Wasm`] | WASM plugin providing a tool |
 //! | [`ConnectorSource::OpenClaw`] | OpenClaw-bridged plugin |
-//!
-//! # Adapter traits
-//!
-//! Two public adapter traits describe what a connector *can do*:
-//!
-//! - [`ApprovalAdapter`] — ask a human for approval.
-//! - [`ElicitationAdapter`] — ask a human for structured input.
 
 // ---------------------------------------------------------------------------
 
 /// Error types for connectors.
 pub(crate) mod error;
-/// Trait definitions for connectors.
-pub(crate) mod traits;
 /// Core types for connectors.
 pub(crate) mod types;
 
 pub use error::{ConnectorError, ConnectorResult};
-pub use traits::{ApprovalAdapter, ElicitationAdapter};
 pub use types::*;
 
 // Tests

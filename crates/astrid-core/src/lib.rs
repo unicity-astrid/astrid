@@ -4,7 +4,7 @@
 //! - Error types for security operations
 //! - Input classification and message attribution
 //! - Identity management across frontends
-//! - Connector adapter traits for capsule integration
+//! - Connector types for capsule integration
 //! - Common types used throughout the runtime
 //! - Retry utilities with exponential backoff
 
@@ -28,7 +28,6 @@ pub mod plugin_abi;
 pub mod retry;
 pub mod types;
 pub(crate) mod utils;
-pub(crate) mod verification;
 pub(crate) mod version;
 
 pub mod connector;
@@ -49,12 +48,10 @@ pub use input::{ContextIdentifier, MessageId, TaggedMessage};
 pub use retry::RetryConfig;
 pub use types::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 pub use utils::truncate_to_boundary;
-pub use verification::{VerificationRequest, VerificationResponse};
 
 // Connector types
 pub use connector::{
-    ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
-    ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundMessage, InboundMessageBuilder, MAX_CONNECTORS_PER_PLUGIN,
-    OutboundMessage, OutboundMessageBuilder,
+    ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder, ConnectorError,
+    ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource, InboundMessage,
+    InboundMessageBuilder, MAX_CONNECTORS_PER_PLUGIN, OutboundMessage, OutboundMessageBuilder,
 };

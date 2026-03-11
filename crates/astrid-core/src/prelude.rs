@@ -36,13 +36,9 @@ pub use crate::{AgentId, Permission, RiskLevel, SessionId, Timestamp, TokenId};
 // Retry utilities
 pub use crate::RetryConfig;
 
-// Verification
-pub use crate::{VerificationRequest, VerificationResponse};
-
 // Connector
 pub use crate::{
-    ApprovalAdapter, ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder,
-    ConnectorError, ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource,
-    ElicitationAdapter, InboundMessage, InboundMessageBuilder, OutboundMessage,
-    OutboundMessageBuilder,
+    ConnectorCapabilities, ConnectorDescriptor, ConnectorDescriptorBuilder, ConnectorError,
+    ConnectorId, ConnectorProfile, ConnectorResult, ConnectorSource, InboundMessage,
+    InboundMessageBuilder, OutboundMessage, OutboundMessageBuilder,
 };
