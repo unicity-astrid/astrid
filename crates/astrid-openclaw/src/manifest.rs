@@ -49,6 +49,9 @@ pub struct OpenClawManifest {
     /// Skill identifiers this plugin registers.
     #[serde(default)]
     pub skills: Vec<String>,
+    /// UI hints for config fields (e.g. `{ "apiKey": { "sensitive": true, "label": "API Key" } }`).
+    #[serde(default, rename = "uiHints")]
+    pub ui_hints: serde_json::Value,
 }
 
 impl OpenClawManifest {
@@ -527,6 +530,7 @@ mod tests {
             channels: vec![],
             providers: vec![],
             skills: vec![],
+            ui_hints: serde_json::Value::Null,
         };
         assert!(!m.requires_host_integration());
     }

@@ -247,6 +247,8 @@ fn compile_tier2(
 #[derive(Debug, serde::Serialize)]
 struct Tier2Manifest {
     package: Tier2Package,
+    #[serde(default, rename = "uplink", skip_serializing_if = "Vec::is_empty")]
+    uplinks: Vec<Tier2UplinkDef>,
     mcp_server: Vec<Tier2McpServer>,
     capabilities: Tier2Capabilities,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -270,9 +272,41 @@ struct Tier2McpServer {
     args: Vec<String>,
 }
 
+#[expect(clippy::trivially_copy_pass_by_ref)]
+fn is_false(v: &bool) -> bool {
+    !v
+}
+
 #[derive(Debug, serde::Serialize)]
 struct Tier2Capabilities {
+    #[serde(default, skip_serializing_if = "is_false")]
+    uplink: bool,
     host_process: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+enum Tier2Platform {
+    Known(String),
+    Custom { custom: String },
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Tier2UplinkDef {
+    name: String,
+    platform: Tier2Platform,
+    profile: String,
+}
+
+const KNOWN_PLATFORMS: &[&str] = &["discord", "whatsapp", "telegram", "slack", "web", "cli"];
+
+fn channel_to_platform(channel: &str) -> Tier2Platform {
+    let lower = channel.to_lowercase();
+    if KNOWN_PLATFORMS.contains(&lower.as_str()) {
+        Tier2Platform::Known(lower)
+    } else {
+        Tier2Platform::Custom { custom: lower }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -302,9 +336,24 @@ fn generate_tier2_manifest(
     {
         for (key, val) in props {
             manifest::validate_schema_key(key)?;
+
+            let is_sensitive = oc_manifest
+                .ui_hints
+                .get(key)
+                .and_then(|h| h.get("sensitive"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+
+            let label = oc_manifest
+                .ui_hints
+                .get(key)
+                .and_then(|h| h.get("label"))
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
             let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
                 "array"
-            } else if manifest::is_secret_key(key) {
+            } else if is_sensitive || manifest::is_secret_key(key) {
                 "secret"
             } else {
                 "string"
@@ -330,11 +379,13 @@ fn generate_tier2_manifest(
                 })
                 .unwrap_or_default();
 
+            let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
+
             env.insert(
                 key.clone(),
                 Tier2EnvDef {
                     env_type: env_type.to_string(),
-                    request: format!("Please enter value for {key}"),
+                    request,
                     description,
                     default,
                     enum_values,
@@ -343,12 +394,23 @@ fn generate_tier2_manifest(
         }
     }
 
+    let uplinks: Vec<Tier2UplinkDef> = oc_manifest
+        .channels
+        .iter()
+        .map(|ch| Tier2UplinkDef {
+            name: ch.clone(),
+            platform: channel_to_platform(ch),
+            profile: "bridge".to_string(),
+        })
+        .collect();
+
     let manifest = Tier2Manifest {
         package: Tier2Package {
             name: astrid_id.to_string(),
             version: oc_manifest.display_version().to_string(),
             description: oc_manifest.description.clone(),
         },
+        uplinks,
         mcp_server: vec![Tier2McpServer {
             id: astrid_id.to_string(),
             server_type: "stdio".to_string(),
@@ -362,6 +424,7 @@ fn generate_tier2_manifest(
             ],
         }],
         capabilities: Tier2Capabilities {
+            uplink: !oc_manifest.channels.is_empty(),
             host_process: vec!["node".to_string()],
         },
         env,
@@ -888,5 +951,29 @@ mod tests {
         let schema = serde_json::json!(true);
         let config = HashMap::new();
         assert!(validate_config(&config, &schema, true).is_ok());
+    }
+
+    #[test]
+    fn channel_to_platform_known_returns_known() {
+        match channel_to_platform("discord") {
+            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
+            Tier2Platform::Custom { .. } => panic!("expected Known for discord"),
+        }
+    }
+
+    #[test]
+    fn channel_to_platform_unknown_returns_custom() {
+        match channel_to_platform("unicity") {
+            Tier2Platform::Custom { custom } => assert_eq!(custom, "unicity"),
+            Tier2Platform::Known(_) => panic!("expected Custom for unicity"),
+        }
+    }
+
+    #[test]
+    fn channel_to_platform_case_insensitive() {
+        match channel_to_platform("Discord") {
+            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
+            Tier2Platform::Custom { .. } => panic!("expected Known for Discord (case-insensitive)"),
+        }
     }
 }

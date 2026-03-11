@@ -78,6 +78,7 @@ fn output_manifest_round_trips_through_toml() {
         channels: vec![],
         providers: vec![],
         skills: vec![],
+        ui_hints: serde_json::Value::Null,
     };
 
     let astrid_id = astrid_openclaw::manifest::convert_id(&oc.id).unwrap();

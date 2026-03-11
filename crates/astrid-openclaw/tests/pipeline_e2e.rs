@@ -519,3 +519,188 @@ fn e2e_error_malformed_manifest() {
 
     assert!(result.is_err(), "should fail on malformed manifest");
 }
+
+/// Helper: create a Tier 2 channel plugin with configurable channels and uiHints.
+fn create_channel_plugin(dir: &Path, channels: &[&str], ui_hints: serde_json::Value) {
+    let manifest = serde_json::json!({
+        "id": "channel-plugin",
+        "name": "Channel Plugin",
+        "version": "1.0.0",
+        "description": "A channel plugin",
+        "configSchema": {
+            "type": "object",
+            "properties": {
+                "myCredential": { "type": "string" },
+                "network": {
+                    "type": "string",
+                    "enum": ["testnet", "mainnet"],
+                    "default": "testnet"
+                }
+            }
+        },
+        "channels": channels,
+        "uiHints": ui_hints,
+    });
+    std::fs::write(
+        dir.join("openclaw.plugin.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let pkg = r#"{"name": "channel-plugin", "dependencies": {"ws": "^8.0.0"}}"#;
+    std::fs::write(dir.join("package.json"), pkg).unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(
+        dir.join("src/index.js"),
+        "const ws = require('ws');\nmodule.exports = {};",
+    )
+    .unwrap();
+}
+
+#[test]
+fn tier2_channel_plugin_generates_uplink_and_capability() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    create_channel_plugin(plugin_dir.path(), &["unicity"], serde_json::json!({}));
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    let result = compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: false,
+        no_cache: true,
+    })
+    .unwrap();
+
+    assert_eq!(result.tier, PluginTier::Node);
+
+    let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
+
+    // Parse as TOML value to check structure
+    let parsed: toml::Value = toml::from_str(&capsule_toml).unwrap();
+
+    // Check [[uplink]] array
+    let uplinks = parsed.get("uplink").unwrap().as_array().unwrap();
+    assert_eq!(uplinks.len(), 1);
+    let uplink = &uplinks[0];
+    assert_eq!(uplink.get("name").unwrap().as_str().unwrap(), "unicity");
+    assert_eq!(uplink.get("profile").unwrap().as_str().unwrap(), "bridge");
+    // "unicity" is not a known platform, so it should be a table with custom key
+    let platform = uplink.get("platform").unwrap();
+    assert_eq!(
+        platform.get("custom").unwrap().as_str().unwrap(),
+        "unicity",
+        "unknown platform should serialize as {{ custom = \"unicity\" }}"
+    );
+
+    // Check capabilities.uplink = true
+    let caps = parsed.get("capabilities").unwrap();
+    assert_eq!(
+        caps.get("uplink").unwrap().as_bool().unwrap(),
+        true,
+        "capabilities.uplink should be true when channels are present"
+    );
+}
+
+#[test]
+fn tier2_known_platform_channel_serializes_as_string() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    create_channel_plugin(plugin_dir.path(), &["discord"], serde_json::json!({}));
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: false,
+        no_cache: true,
+    })
+    .unwrap();
+
+    let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
+    let parsed: toml::Value = toml::from_str(&capsule_toml).unwrap();
+
+    let uplinks = parsed.get("uplink").unwrap().as_array().unwrap();
+    let platform = &uplinks[0].get("platform").unwrap();
+    // Known platform should serialize as a bare string, not a table
+    assert_eq!(
+        platform.as_str().unwrap(),
+        "discord",
+        "known platform should serialize as bare string \"discord\""
+    );
+}
+
+#[test]
+fn tier2_uihints_sensitive_overrides_secret_detection() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    // "myCredential" is NOT caught by is_secret_key(), but uiHints marks it sensitive
+    create_channel_plugin(
+        plugin_dir.path(),
+        &[],
+        serde_json::json!({ "myCredential": { "sensitive": true } }),
+    );
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: false,
+        no_cache: true,
+    })
+    .unwrap();
+
+    let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
+    let parsed: toml::Value = toml::from_str(&capsule_toml).unwrap();
+
+    let env = parsed.get("env").unwrap();
+    let cred = env.get("myCredential").unwrap();
+    assert_eq!(
+        cred.get("type").unwrap().as_str().unwrap(),
+        "secret",
+        "myCredential should be secret via uiHints.sensitive, got:\n{capsule_toml}"
+    );
+}
+
+#[test]
+fn tier2_uihints_label_used_as_request() {
+    let plugin_dir = tempfile::tempdir().unwrap();
+    create_channel_plugin(
+        plugin_dir.path(),
+        &[],
+        serde_json::json!({ "network": { "label": "Select Network" } }),
+    );
+
+    let output_dir = tempfile::tempdir().unwrap();
+    let config = HashMap::new();
+
+    compile_plugin(&CompileOptions {
+        plugin_dir: plugin_dir.path(),
+        output_dir: output_dir.path(),
+        config: &config,
+        cache_dir: None,
+        js_only: false,
+        no_cache: true,
+    })
+    .unwrap();
+
+    let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
+    let parsed: toml::Value = toml::from_str(&capsule_toml).unwrap();
+
+    let env = parsed.get("env").unwrap();
+    let network = env.get("network").unwrap();
+    assert_eq!(
+        network.get("request").unwrap().as_str().unwrap(),
+        "Select Network",
+        "request should use uiHints label"
+    );
+}

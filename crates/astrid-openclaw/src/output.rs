@@ -80,9 +80,24 @@ pub fn generate_manifest(
     {
         for (key, val) in props {
             crate::manifest::validate_schema_key(key)?;
+
+            let is_sensitive = oc_manifest
+                .ui_hints
+                .get(key)
+                .and_then(|h| h.get("sensitive"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+
+            let label = oc_manifest
+                .ui_hints
+                .get(key)
+                .and_then(|h| h.get("label"))
+                .and_then(serde_json::Value::as_str)
+                .map(String::from);
+
             let env_type = if val.get("type").and_then(|t| t.as_str()) == Some("array") {
                 "array"
-            } else if crate::manifest::is_secret_key(key) {
+            } else if is_sensitive || crate::manifest::is_secret_key(key) {
                 "secret"
             } else {
                 "string"
@@ -110,8 +125,7 @@ pub fn generate_manifest(
                 })
                 .unwrap_or_default();
 
-            // request is the call-to-action prompt; description provides context separately.
-            let request = format!("Please enter value for {key}");
+            let request = label.unwrap_or_else(|| format!("Please enter value for {key}"));
 
             env.insert(
                 key.clone(),
@@ -285,6 +299,7 @@ mod tests {
             channels: vec![],
             providers: vec![],
             skills: vec!["code-review".into()],
+            ui_hints: serde_json::Value::Null,
         };
 
         let config = HashMap::new();
@@ -341,6 +356,7 @@ mod tests {
             channels: vec![],
             providers: vec![],
             skills: vec![],
+            ui_hints: serde_json::Value::Null,
         };
 
         let config = HashMap::new();
@@ -396,6 +412,7 @@ mod tests {
             channels: vec![],
             providers: vec![],
             skills: vec![],
+            ui_hints: serde_json::Value::Null,
         };
 
         let config = HashMap::new();
