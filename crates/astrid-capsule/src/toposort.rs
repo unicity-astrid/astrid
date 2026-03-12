@@ -283,6 +283,23 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn capability_matches_empty_strings() {
+        // Both sides empty: type and body are both "", segments are [""].
+        // This returns true (empty == empty). Locked in by test; manifest
+        // validation rejects empty capability strings before they reach here.
+        assert!(capability_matches("", ""));
+    }
+
+    #[test]
+    fn capability_matches_empty_body_after_prefix() {
+        // "topic:" has an empty body, which splits to [""]. This matches
+        // another "topic:" with empty body. Again, manifest validation
+        // prevents this from occurring in practice.
+        assert!(capability_matches("topic:", "topic:"));
+        assert!(!capability_matches("topic:", "tool:"));
+    }
+
     // -- toposort tests --
 
     #[test]
@@ -465,5 +482,47 @@ mod tests {
         assert!(
             n.iter().position(|&x| x == "a").unwrap() < n.iter().position(|&x| x == "b").unwrap()
         );
+    }
+
+    // -- shipped capsule integration tests --
+
+    #[test]
+    fn react_requires_satisfied_by_identity_and_session() {
+        // Verify that the react capsule's [dependencies].requires are
+        // actually satisfiable by the identity and session capsules'
+        // auto-derived provides (from their ipc_publish).
+        let identity = {
+            let (mut m, p) = manifest_bare("astrid-capsule-identity");
+            m.capabilities = CapabilitiesDef {
+                ipc_publish: vec!["identity.response.ready".into()],
+                ..Default::default()
+            };
+            (m, p)
+        };
+        let session = {
+            let (mut m, p) = manifest_bare("astrid-capsule-session");
+            m.capabilities = CapabilitiesDef {
+                ipc_publish: vec!["session.response.get_messages".into()],
+                ..Default::default()
+            };
+            (m, p)
+        };
+        let react = manifest_with_caps(
+            "astrid-capsule-react",
+            &[],
+            &[
+                "topic:identity.response.ready",
+                "topic:session.response.get_messages",
+            ],
+        );
+
+        let input = vec![react, identity, session];
+        let result = toposort_manifests(input).unwrap();
+        let n = names(&result);
+        let pos = |name: &str| n.iter().position(|&x| x == name).unwrap();
+
+        // React must load after both identity and session
+        assert!(pos("astrid-capsule-identity") < pos("astrid-capsule-react"));
+        assert!(pos("astrid-capsule-session") < pos("astrid-capsule-react"));
     }
 }
