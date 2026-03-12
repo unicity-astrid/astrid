@@ -205,6 +205,12 @@ impl AstridHome {
         self.sessions_dir().join("system.sock")
     }
 
+    /// Path to the session authentication token (`~/.astrid/sessions/system.token`).
+    #[must_use]
+    pub fn token_path(&self) -> PathBuf {
+        self.sessions_dir().join("system.token")
+    }
+
     /// Path to the workspace state database directory (`SurrealKV`).
     #[must_use]
     pub fn state_db_path(&self) -> PathBuf {

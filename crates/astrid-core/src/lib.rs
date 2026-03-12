@@ -23,6 +23,7 @@ pub mod elicitation;
 pub mod env_policy;
 pub mod identity;
 pub mod retry;
+pub mod session_token;
 pub mod types;
 pub mod uplink;
 pub(crate) mod utils;

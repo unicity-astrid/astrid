@@ -10,11 +10,12 @@ use astrid_events::EventBus;
 use astrid_storage::ScopedKvStore;
 use uuid::Uuid;
 
+use astrid_core::session_token::SessionToken;
+
 use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
-#[derive(Clone)]
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
     /// Global shared resources directory (`~/.astrid/shared/`). When set,
@@ -31,6 +32,9 @@ pub struct CapsuleContext {
     /// When set, WASM capsules can dispatch hooks to other capsules via
     /// the `astrid_trigger_hook` host function (the kernel mechanism).
     pub capsule_registry: Option<Arc<tokio::sync::RwLock<CapsuleRegistry>>>,
+    /// Session token for authenticating CLI socket connections. Only set for
+    /// capsules with `net_bind` capability (the CLI proxy capsule).
+    pub session_token: Option<Arc<SessionToken>>,
 }
 
 impl CapsuleContext {
@@ -49,7 +53,15 @@ impl CapsuleContext {
             event_bus,
             cli_socket_listener,
             capsule_registry: None,
+            session_token: None,
         }
+    }
+
+    /// Set the session token for socket authentication.
+    #[must_use]
+    pub fn with_session_token(mut self, token: Arc<SessionToken>) -> Self {
+        self.session_token = Some(token);
+        self
     }
 
     /// Set the capsule registry for hook dispatch.

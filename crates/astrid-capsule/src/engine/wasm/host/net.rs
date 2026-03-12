@@ -1,3 +1,7 @@
+use astrid_core::session_token::{
+    HandshakeRequest, HandshakeResponse, PROTOCOL_VERSION, SessionToken,
+};
+
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use extism::{CurrentPlugin, Error, UserData, Val};
@@ -43,9 +47,9 @@ pub(crate) fn astrid_net_accept_impl(
 ) -> Result<(), Error> {
     let ud = user_data.get()?;
 
-    // We need to fetch the listener, runtime handle, and cancel token out of the lock.
-    // Security gate was already enforced at bind time (astrid_net_bind_unix_impl).
-    let (listener_arc, rt_handle, cancel_token) = {
+    // We need to fetch the listener, runtime handle, cancel token, and session
+    // token out of the lock. Security gate was already enforced at bind time.
+    let (listener_arc, rt_handle, cancel_token, session_token) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -59,22 +63,68 @@ pub(crate) fn astrid_net_accept_impl(
             listener,
             state.runtime_handle.clone(),
             state.cancel_token.clone(),
+            state.session_token.clone(),
         )
     };
 
-    // Use the runtime handle to block on the async accept call.
-    // Respects cancellation so unload doesn't hang waiting for a connection.
-    let (stream, _addr) = rt_handle.block_on(async {
-        tokio::select! {
-            result = async {
-                let l = listener_arc.lock().await;
-                l.accept().await
-            } => result,
-            () = cancel_token.cancelled() => {
-                Err(std::io::Error::other("capsule unloading"))
+    // Accept + authenticate loop. Authentication failures (wrong UID, bad
+    // token) retry accept immediately so a malicious client cannot gate
+    // legitimate connections behind the WASM-side 100ms backoff. Only real
+    // listener errors (EMFILE, EBADF) or cancellation propagate to the WASM
+    // capsule.
+    let stream = loop {
+        // Respects cancellation so unload doesn't hang waiting for a connection.
+        // The listener Mutex is held for the duration of accept(). This is
+        // correct because this is a single-client design - only one WASM
+        // capsule thread calls accept(), and no other code path contends.
+        let (stream, _addr) = rt_handle.block_on(async {
+            tokio::select! {
+                result = async {
+                    let l = listener_arc.lock().await;
+                    l.accept().await
+                } => result,
+                () = cancel_token.cancelled() => {
+                    Err(std::io::Error::other("capsule unloading"))
+                }
             }
+        })?;
+
+        // Peer credential verification - reject connections from different UIDs.
+        // Runs before token handshake to prevent cross-UID DoS via the 5s timeout.
+        #[cfg(unix)]
+        if let Err(reason) = verify_peer_credentials(&stream) {
+            tracing::warn!(
+                security_event = true,
+                reason = %reason,
+                "Rejected socket connection: peer credential check failed"
+            );
+            drop(stream);
+            continue;
         }
-    })?;
+
+        // Authenticate the connection via session token handshake.
+        // The stream is a local variable (not behind any lock), so this
+        // cannot deadlock. The 5s timeout prevents a malicious client from
+        // holding the accept loop hostage.
+        let mut stream = stream;
+        if let Some(ref token) = session_token {
+            match rt_handle.block_on(validate_handshake(&mut stream, token)) {
+                Ok(()) => break stream,
+                Err(reason) => {
+                    tracing::warn!(
+                        security_event = true,
+                        reason = %reason,
+                        "Rejected socket connection: handshake failed"
+                    );
+                    drop(stream);
+                    continue;
+                },
+            }
+        } else {
+            // No session token configured (test/legacy mode) - accept without auth.
+            break stream;
+        }
+    };
 
     // Now re-acquire the lock to store the active stream and generate a handle ID
     let mut state = ud
@@ -269,4 +319,163 @@ pub(crate) fn astrid_net_write_impl(
     })?;
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Handshake helpers
+// ---------------------------------------------------------------------------
+
+/// Validate the client handshake: read the `HandshakeRequest`, verify the token
+/// and protocol version, then send back a `HandshakeResponse`.
+///
+/// Returns `Ok(())` on success or `Err(reason)` with a human-readable rejection
+/// reason.
+async fn validate_handshake(
+    stream: &mut tokio::net::UnixStream,
+    expected_token: &SessionToken,
+) -> Result<(), String> {
+    use tokio::io::AsyncReadExt;
+
+    // 1. Read the handshake request (length-prefixed JSON, same wire format).
+    let mut len_buf = [0u8; 4];
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.read_exact(&mut len_buf),
+    )
+    .await
+    .map_err(|_| "handshake timed out (5s)".to_string())?
+    .map_err(|e| format!("handshake read error: {e}"))?;
+
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len > 4096 {
+        return Err(format!("handshake too large: {len} bytes"));
+    }
+
+    let mut payload = vec![0u8; len];
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.read_exact(&mut payload),
+    )
+    .await
+    .map_err(|_| "handshake payload timed out".to_string())?
+    .map_err(|e| format!("handshake payload read error: {e}"))?;
+
+    let request: HandshakeRequest =
+        serde_json::from_slice(&payload).map_err(|e| format!("invalid handshake JSON: {e}"))?;
+
+    // 2. Validate protocol version FIRST - this check reveals no information
+    // about token validity. Checking version before token prevents an oracle
+    // where a "protocol mismatch" response confirms the token was correct.
+    if request.protocol_version != PROTOCOL_VERSION {
+        let reason = format!(
+            "Protocol version mismatch (client={}, server={}). \
+             Restart the daemon with `astrid daemon restart`.",
+            request.protocol_version, PROTOCOL_VERSION,
+        );
+        if let Err(e) =
+            send_handshake_response_timed(stream, &HandshakeResponse::error(&reason)).await
+        {
+            tracing::warn!(error = %e, "Failed to send handshake error response for protocol mismatch");
+        }
+        return Err(reason);
+    }
+
+    // 3. Validate token (constant-time comparison).
+    // Send a uniform error response on both malformed-hex and wrong-token
+    // paths to prevent an oracle that distinguishes the two failure modes.
+    let client_token = match SessionToken::from_hex(&request.token) {
+        Ok(t) => t,
+        Err(_) => {
+            if let Err(e) = send_handshake_response_timed(
+                stream,
+                &HandshakeResponse::error("authentication failed"),
+            )
+            .await
+            {
+                tracing::warn!(error = %e, "Failed to send handshake error response");
+            }
+            return Err("invalid session token".to_string());
+        },
+    };
+
+    if !expected_token.ct_eq(&client_token) {
+        if let Err(e) = send_handshake_response_timed(
+            stream,
+            &HandshakeResponse::error("authentication failed"),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to send handshake error response");
+        }
+        return Err("invalid session token".to_string());
+    }
+
+    // 4. All checks passed - send success response.
+    send_handshake_response_timed(stream, &HandshakeResponse::ok())
+        .await
+        .map_err(|e| format!("failed to send handshake response: {e}"))?;
+
+    // Truncate client_version to prevent log injection from oversized values.
+    // Use chars().take() to avoid panicking on multi-byte UTF-8 boundaries.
+    let safe_version: String = request.client_version.chars().take(64).collect();
+    tracing::info!(
+        client_version = %safe_version,
+        "Socket handshake succeeded"
+    );
+    Ok(())
+}
+
+/// Send a length-prefixed JSON handshake response with a 5s write timeout.
+///
+/// Wraps [`send_handshake_response`] with a timeout to prevent a stalled
+/// client from holding the accept loop hostage during the response write.
+async fn send_handshake_response_timed(
+    stream: &mut tokio::net::UnixStream,
+    response: &HandshakeResponse,
+) -> Result<(), std::io::Error> {
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        send_handshake_response(stream, response),
+    )
+    .await
+    .map_err(|_| std::io::Error::other("handshake response write timed out (5s)"))?
+}
+
+/// Send a length-prefixed JSON handshake response.
+async fn send_handshake_response(
+    stream: &mut tokio::net::UnixStream,
+    response: &HandshakeResponse,
+) -> Result<(), std::io::Error> {
+    use tokio::io::AsyncWriteExt;
+
+    let bytes = serde_json::to_vec(response)
+        .map_err(|e| std::io::Error::other(format!("serialize handshake response: {e}")))?;
+    let len = u32::try_from(bytes.len())
+        .map_err(|_| std::io::Error::other("handshake response too large"))?;
+
+    stream.write_all(&len.to_be_bytes()).await?;
+    stream.write_all(&bytes).await?;
+    stream.flush().await?;
+    Ok(())
+}
+
+/// Verify that the connecting process runs as the same UID as the daemon.
+/// Returns `Err(reason)` if the UID does not match or credentials cannot
+/// be retrieved.
+#[cfg(unix)]
+fn verify_peer_credentials(stream: &tokio::net::UnixStream) -> Result<(), String> {
+    match stream.peer_cred() {
+        Ok(cred) => {
+            let peer_uid = cred.uid();
+            let my_uid = nix::unistd::geteuid().as_raw();
+            if peer_uid != my_uid {
+                Err(format!(
+                    "peer UID {peer_uid} does not match daemon UID {my_uid}"
+                ))
+            } else {
+                Ok(())
+            }
+        },
+        Err(e) => Err(format!("failed to check peer credentials: {e}")),
+    }
 }

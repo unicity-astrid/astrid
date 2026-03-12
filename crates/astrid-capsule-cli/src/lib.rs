@@ -5,8 +5,24 @@ use extism_pdk::FnResult;
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    // 1. Subscribe to all IPC events
-    let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+    // 1. Subscribe to TUI-relevant IPC topics only.
+    // IMPORTANT: If a new event topic is consumed by the TUI, add it here.
+    // Internal pipeline events (LLM requests, tool dispatch, identity builds)
+    // must NOT be forwarded to the CLI socket.
+    let topics = [
+        "agent.response",
+        "agent.stream.delta",
+        "system.onboarding.required",
+        "astrid.lifecycle.elicit.*",
+        "kernel.response.*",
+        "kernel.capsules_loaded",
+        "registry.response.*",
+        "capsule.selection.*",
+    ];
+    let sub_handles: Vec<_> = topics
+        .iter()
+        .map(|t| ipc::subscribe(t).map_err(|e| extism_pdk::Error::msg(e.to_string())))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
@@ -41,7 +57,7 @@ pub fn run() -> FnResult<()> {
         let _ = sys::log("info", "CLI client connected to proxy");
 
         // Inner loop to read messages from the client
-        loop {
+        'inner: loop {
             // 1. Read from socket (has 50ms timeout on the host side)
             match read(&stream) {
                 Ok(bytes) => {
@@ -67,21 +83,21 @@ pub fn run() -> FnResult<()> {
                 },
             }
 
-            // 2. Poll Event Bus — extract individual IpcMessages from the poll
-            //    envelope and forward each one to the CLI socket as a standalone
-            //    IpcMessage (the CLI client deserializes IpcMessage directly).
-            match ipc::poll_bytes(&sub_handle) {
-                Ok(bytes) => {
-                    if !bytes.is_empty()
-                        && let Err(()) = forward_poll_messages(&stream, &bytes)
-                    {
-                        break;
-                    }
-                },
-                Err(_) => {
-                    // Polling error or closed channel
-                    break;
-                },
+            // 2. Poll Event Bus — check each topic subscription and forward
+            //    individual IpcMessages to the CLI socket.
+            for handle in &sub_handles {
+                match ipc::poll_bytes(handle) {
+                    Ok(bytes) => {
+                        if !bytes.is_empty()
+                            && let Err(()) = forward_poll_messages(&stream, &bytes)
+                        {
+                            break 'inner;
+                        }
+                    },
+                    Err(_) => {
+                        break 'inner;
+                    },
+                }
             }
         }
     }

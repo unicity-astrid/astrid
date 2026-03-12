@@ -64,6 +64,9 @@ pub struct Kernel {
     pub audit_log: Arc<AuditLog>,
     /// Number of active client connections (CLI sessions).
     pub active_connections: AtomicUsize,
+    /// Session token for socket authentication. Generated at boot, written to
+    /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
+    pub session_token: Arc<astrid_core::session_token::SessionToken>,
 }
 
 impl Kernel {
@@ -145,8 +148,11 @@ impl Kernel {
         // 5. Wrap in copy-on-write OverlayVfs
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
-        // 6. Bind the secure Unix socket natively
+        // 6. Bind the secure Unix socket and generate session token.
+        // Token is written to disk BEFORE the socket is available, so no
+        // client can connect before the token file exists.
         let listener = socket::bind_session_socket()?;
+        let session_token = socket::generate_session_token()?;
 
         let kv_path = home.state_db_path();
         let kv = Arc::new(
@@ -170,6 +176,7 @@ impl Kernel {
             kv,
             audit_log,
             active_connections: AtomicUsize::new(0),
+            session_token: Arc::new(session_token),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -232,7 +239,8 @@ impl Kernel {
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
         )
-        .with_registry(Arc::clone(&self.capsules));
+        .with_registry(Arc::clone(&self.capsules))
+        .with_session_token(Arc::clone(&self.session_token));
 
         capsule.load(&ctx).await?;
 

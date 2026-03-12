@@ -239,6 +239,7 @@ impl WasmHandler {
             ready_tx: None,
             host_semaphore: HostState::default_host_semaphore(),
             cancel_token: tokio_util::sync::CancellationToken::new(),
+            session_token: None,
         };
         let user_data = UserData::new(host_state);
 

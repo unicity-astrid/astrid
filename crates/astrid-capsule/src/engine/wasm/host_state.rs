@@ -127,6 +127,9 @@ pub struct HostState {
     /// Triggered during capsule unload to unblock `ipc_recv`, `elicit`, and
     /// `net_accept`/`net_read` host functions that may be waiting on I/O.
     pub cancel_token: CancellationToken,
+    /// Session token for authenticating CLI socket connections. Only set for
+    /// the CLI proxy capsule (which has `net_bind` capability).
+    pub session_token: Option<std::sync::Arc<astrid_core::session_token::SessionToken>>,
 }
 
 impl HostState {
@@ -247,6 +250,7 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
         };
 
         let debug = format!("{state:?}");
@@ -304,6 +308,7 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
         };
 
         assert!(state.uplinks().is_empty());
@@ -366,6 +371,7 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -424,6 +430,7 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -498,6 +505,7 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

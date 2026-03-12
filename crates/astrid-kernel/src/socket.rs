@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+
+use astrid_core::session_token::SessionToken;
 use tokio::net::UnixListener;
 use tracing::warn;
 
@@ -38,4 +40,29 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
     }
 
     UnixListener::bind(&path)
+}
+
+/// Generate a random session token and write it to the token file.
+///
+/// The token is written with 0o600 permissions so only the owning user
+/// can read it. The CLI reads this token at connect time and sends it
+/// as part of the handshake.
+///
+/// # Errors
+/// Returns an error if the token file cannot be written.
+pub(crate) fn generate_session_token() -> Result<SessionToken, std::io::Error> {
+    use astrid_core::dirs::AstridHome;
+
+    let token = SessionToken::generate();
+
+    let path = match AstridHome::resolve() {
+        Ok(home) => home.token_path(),
+        Err(e) => {
+            warn!(error = %e, "Failed to resolve ASTRID_HOME for token; falling back to /tmp/.astrid/sessions/system.token");
+            PathBuf::from("/tmp/.astrid/sessions/system.token")
+        },
+    };
+
+    token.write_to_file(&path)?;
+    Ok(token)
 }
