@@ -71,6 +71,25 @@ impl AsRef<str> for CapsuleId {
     }
 }
 
+/// Result of waiting for a capsule or engine to signal readiness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadyStatus {
+    /// The capsule signaled ready (or has no background task).
+    Ready,
+    /// The timeout expired before readiness was signaled.
+    Timeout,
+    /// The capsule's run loop exited or crashed before signaling ready.
+    Crashed,
+}
+
+impl ReadyStatus {
+    /// Returns `true` if the status is [`ReadyStatus::Ready`].
+    #[must_use]
+    pub fn is_ready(self) -> bool {
+        self == Self::Ready
+    }
+}
+
 /// The lifecycle state of a capsule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CapsuleState {
@@ -114,10 +133,12 @@ pub trait Capsule: Send + Sync {
 
     /// Wait for the capsule's background tasks to signal readiness.
     ///
-    /// Returns `true` if all engines are ready or have no background tasks.
-    /// Returns `false` if the timeout expires before readiness is signaled.
-    async fn wait_ready(&self, _timeout: std::time::Duration) -> bool {
-        true
+    /// Returns [`ReadyStatus::Ready`] if all engines are ready or have no
+    /// background tasks. Returns [`ReadyStatus::Timeout`] if the timeout
+    /// expires, or [`ReadyStatus::Crashed`] if the run loop exited before
+    /// signaling ready.
+    async fn wait_ready(&self, _timeout: std::time::Duration) -> ReadyStatus {
+        ReadyStatus::Ready
     }
 
     /// Invoke an interceptor handler by action name.
@@ -210,15 +231,19 @@ impl Capsule for CompositeCapsule {
         &self.tools
     }
 
-    async fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+    async fn wait_ready(&self, timeout: std::time::Duration) -> ReadyStatus {
         let deadline = tokio::time::Instant::now() + timeout;
         for engine in &self.engines {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() || !engine.wait_ready(remaining).await {
-                return false;
+            if remaining.is_zero() {
+                return ReadyStatus::Timeout;
+            }
+            let status = engine.wait_ready(remaining).await;
+            if !status.is_ready() {
+                return status;
             }
         }
-        true
+        ReadyStatus::Ready
     }
 
     fn take_inbound_rx(

@@ -270,48 +270,9 @@ impl Kernel {
             }
         }
 
-        // Wait for each uplink capsule to signal readiness instead of
-        // using a fixed sleep. This ensures subscriptions are active
-        // before non-uplink capsules emit events.
-        //
-        // Collect Arc<dyn Capsule> handles under a short-lived read lock,
-        // then drop the lock before awaiting (which can take up to 500ms
-        // per capsule). Holding the lock across await points would block
-        // any write-side access to the registry.
-        if !uplink_names.is_empty() {
-            let timeout = std::time::Duration::from_millis(500);
-            let uplink_capsules: Vec<(
-                String,
-                std::sync::Arc<dyn astrid_capsule::capsule::Capsule>,
-            )> = {
-                let registry = self.capsules.read().await;
-                uplink_names
-                    .iter()
-                    .filter_map(|name| {
-                        match astrid_capsule::capsule::CapsuleId::new(name.clone()) {
-                            Ok(capsule_id) => registry.get(&capsule_id).map(|c| (name.clone(), c)),
-                            Err(e) => {
-                                tracing::warn!(
-                                    capsule = %name,
-                                    error = %e,
-                                    "Invalid capsule ID, skipping readiness wait"
-                                );
-                                None
-                            },
-                        }
-                    })
-                    .collect()
-            };
-            for (name, capsule) in &uplink_capsules {
-                if !capsule.wait_ready(timeout).await {
-                    tracing::warn!(
-                        capsule = %name,
-                        timeout_ms = 500,
-                        "Uplink capsule did not signal ready within timeout"
-                    );
-                }
-            }
-        }
+        // Wait for uplink capsules to signal readiness before loading
+        // non-uplink capsules. This ensures IPC subscriptions are active.
+        self.await_capsule_readiness(&uplink_names).await;
 
         for (manifest, dir) in &others {
             if let Err(e) = self.load_capsule(dir.clone()).await {
@@ -322,6 +283,11 @@ impl Kernel {
                 );
             }
         }
+
+        // Wait for non-uplink run-loop capsules too, so any future
+        // dependency edges between them are respected.
+        let other_names: Vec<String> = others.iter().map(|(m, _)| m.package.name.clone()).collect();
+        self.await_capsule_readiness(&other_names).await;
 
         // Inject tool schemas into every capsule's KV namespace so any
         // capsule (e.g. react) can read them via kv::get_json("tool_schemas").
@@ -339,6 +305,70 @@ impl Kernel {
             metadata: astrid_events::EventMetadata::new("kernel"),
             message: msg,
         });
+    }
+
+    /// Wait for a set of capsules to signal readiness, in parallel.
+    ///
+    /// Collects `Arc<dyn Capsule>` handles under a short-lived read lock,
+    /// then drops the lock before awaiting. Capsules without a run loop
+    /// return `Ready` immediately and don't contribute to wait time.
+    async fn await_capsule_readiness(&self, names: &[String]) {
+        use astrid_capsule::capsule::ReadyStatus;
+
+        if names.is_empty() {
+            return;
+        }
+
+        let timeout = std::time::Duration::from_millis(500);
+        let capsules: Vec<(String, std::sync::Arc<dyn astrid_capsule::capsule::Capsule>)> = {
+            let registry = self.capsules.read().await;
+            names
+                .iter()
+                .filter_map(
+                    |name| match astrid_capsule::capsule::CapsuleId::new(name.clone()) {
+                        Ok(capsule_id) => registry.get(&capsule_id).map(|c| (name.clone(), c)),
+                        Err(e) => {
+                            tracing::warn!(
+                                capsule = %name,
+                                error = %e,
+                                "Invalid capsule ID, skipping readiness wait"
+                            );
+                            None
+                        },
+                    },
+                )
+                .collect()
+        };
+
+        // Await all capsules concurrently - independent capsules shouldn't
+        // compound each other's timeout.
+        let mut set = tokio::task::JoinSet::new();
+        for (name, capsule) in capsules {
+            set.spawn(async move {
+                let status = capsule.wait_ready(timeout).await;
+                (name, status)
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            if let Ok((name, status)) = result {
+                match status {
+                    ReadyStatus::Ready => {},
+                    ReadyStatus::Timeout => {
+                        tracing::warn!(
+                            capsule = %name,
+                            timeout_ms = 500,
+                            "Capsule did not signal ready within timeout"
+                        );
+                    },
+                    ReadyStatus::Crashed => {
+                        tracing::error!(
+                            capsule = %name,
+                            "Capsule run loop exited before signaling ready"
+                        );
+                    },
+                }
+            }
+        }
     }
 
     /// Collect all tool definitions from loaded capsule manifests and write

@@ -232,7 +232,7 @@ impl ExecutionEngine for WasmEngine {
             // `astrid_signal_ready`. The receiver is returned so
             // `WasmEngine::wait_ready` can await it.
             let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
-            host_state.ready_tx = Some(Arc::new(ready_tx));
+            host_state.ready_tx = Some(ready_tx);
 
             let user_data = UserData::new(host_state);
 
@@ -332,18 +332,18 @@ impl ExecutionEngine for WasmEngine {
         Ok(())
     }
 
-    async fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+    async fn wait_ready(&self, timeout: std::time::Duration) -> crate::capsule::ReadyStatus {
+        use crate::capsule::ReadyStatus;
+
         let Some(rx_mutex) = &self.ready_rx else {
-            return true;
+            return ReadyStatus::Ready;
         };
         let mut rx = rx_mutex.lock().await.clone();
-        // Must match Ok(Ok(_)) explicitly: Ok(Err(RecvError)) means the
-        // sender was dropped (capsule crashed) before signaling ready,
-        // which must return false - not silently succeed.
-        matches!(
-            tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await,
-            Ok(Ok(_))
-        )
+        match tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await {
+            Ok(Ok(_)) => ReadyStatus::Ready,
+            Ok(Err(_)) => ReadyStatus::Crashed, // sender dropped before signaling
+            Err(_) => ReadyStatus::Timeout,
+        }
     }
 
     fn take_inbound_rx(
@@ -711,5 +711,59 @@ mod tests {
             astrid_events::ipc::OnboardingFieldType::Text,
             "Empty enum should degrade to text"
         );
+    }
+
+    // --- wait_ready / watch channel tests ---
+
+    /// Helper: build a WasmEngine-like wait_ready from a watch receiver.
+    async fn wait_ready_from_rx(
+        rx: &tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>,
+        timeout: std::time::Duration,
+    ) -> crate::capsule::ReadyStatus {
+        use crate::capsule::ReadyStatus;
+        let mut rx = rx.lock().await.clone();
+        match tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await {
+            Ok(Ok(_)) => ReadyStatus::Ready,
+            Ok(Err(_)) => ReadyStatus::Crashed,
+            Err(_) => ReadyStatus::Timeout,
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_ready_when_pre_signaled() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let _ = tx.send(true);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(100)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_timeout_when_never_signaled() {
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(10)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Timeout);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_crashed_when_sender_dropped() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        drop(tx); // simulate capsule crash
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(100)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Crashed);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_ready_when_signaled_after_delay() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let _ = tx.send(true);
+        });
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(500)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Ready);
     }
 }
