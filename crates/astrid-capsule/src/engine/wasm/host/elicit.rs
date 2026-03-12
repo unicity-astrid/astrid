@@ -89,7 +89,7 @@ pub(crate) fn astrid_elicit_impl(
 
     // Lock state: verify lifecycle phase, subscribe to response topic, extract
     // what we need, then drop the lock before blocking.
-    let (mut receiver, runtime_handle, event_bus, capsule_id) = {
+    let (mut receiver, runtime_handle, event_bus, capsule_id, kv) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -108,8 +108,9 @@ pub(crate) fn astrid_elicit_impl(
         let runtime_handle = state.runtime_handle.clone();
         let event_bus = state.event_bus.clone();
         let capsule_id = state.capsule_id.to_string();
+        let kv = state.kv.clone();
 
-        (receiver, runtime_handle, event_bus, capsule_id)
+        (receiver, runtime_handle, event_bus, capsule_id, kv)
     };
 
     // Publish the elicit request to the event bus
@@ -151,9 +152,23 @@ pub(crate) fn astrid_elicit_impl(
             if let AstridEvent::Ipc { message, .. } = &*event {
                 match &message.payload {
                     IpcPayload::ElicitResponse { value, values, .. } => {
+                        // Detect cancellation: both value and values are None
+                        if value.is_none() && values.is_none() {
+                            return Err(Error::msg("user cancelled elicit request"));
+                        }
+
                         // Build response JSON matching what the SDK expects
                         match guest_req.kind.as_str() {
                             "secret" => {
+                                // Persist the secret to KV before returning ok
+                                let secret_key = format!("__secret:{}", guest_req.key);
+                                let secret_val = value.clone().unwrap_or_default();
+                                runtime_handle
+                                    .block_on(kv.set(&secret_key, secret_val.into_bytes()))
+                                    .map_err(|e| {
+                                        Error::msg(format!("failed to persist secret: {e}"))
+                                    })?;
+
                                 // Secret: SDK expects {"ok": true}
                                 serde_json::to_vec(&serde_json::json!({"ok": true})).map_err(
                                     |e| Error::msg(format!("failed to serialize response: {e}")),

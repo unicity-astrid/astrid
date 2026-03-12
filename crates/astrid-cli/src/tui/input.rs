@@ -241,8 +241,16 @@ fn finish_onboarding(app: &mut App) {
 fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
+            if let Some(request_id) = app.elicit_request_id.take() {
+                // Publish a cancellation response so the host function unblocks
+                app.pending_actions
+                    .push(PendingAction::SubmitElicitResponse {
+                        request_id,
+                        value: None,
+                        values: None,
+                    });
+            }
             app.push_notice("Onboarding cancelled by user.");
-            app.elicit_request_id = None;
             app.state = UiState::Idle;
             app.input.clear();
             app.cursor_pos = 0;
@@ -347,8 +355,16 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
 fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
+            if let Some(request_id) = app.elicit_request_id.take() {
+                // Publish a cancellation response so the host function unblocks
+                app.pending_actions
+                    .push(PendingAction::SubmitElicitResponse {
+                        request_id,
+                        value: None,
+                        values: None,
+                    });
+            }
             app.push_notice("Onboarding cancelled by user.");
-            app.elicit_request_id = None;
             app.state = UiState::Idle;
             app.input.clear();
             app.cursor_pos = 0;

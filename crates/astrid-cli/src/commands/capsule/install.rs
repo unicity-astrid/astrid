@@ -478,6 +478,99 @@ fn run_lifecycle_if_wasm(
     result.map_err(|e| anyhow::anyhow!("lifecycle dispatch failed: {e}"))
 }
 
+/// Prompt the user on stdin for a single elicit field (runs in a blocking thread).
+///
+/// Returns `(value, values)` where exactly one is `Some`.
+async fn prompt_stdin_field(
+    prompt: String,
+    field_type: astrid_events::ipc::OnboardingFieldType,
+    default: Option<String>,
+) -> (Option<String>, Option<Vec<String>>) {
+    use astrid_events::ipc::OnboardingFieldType;
+
+    match field_type {
+        OnboardingFieldType::Text => {
+            let val = tokio::task::spawn_blocking(move || {
+                use std::io::Write;
+                let hint = default
+                    .as_ref()
+                    .map(|d| format!(" [{d}]"))
+                    .unwrap_or_default();
+                print!("{prompt}{hint}: ");
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                let input = input.trim().to_string();
+                if input.is_empty() {
+                    default.unwrap_or_default()
+                } else {
+                    input
+                }
+            })
+            .await
+            .unwrap_or_default();
+            (Some(val), None)
+        },
+        OnboardingFieldType::Secret => {
+            let val = tokio::task::spawn_blocking(move || {
+                use std::io::Write;
+                print!("{prompt} (secret, input hidden): ");
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                input.trim().to_string()
+            })
+            .await
+            .unwrap_or_default();
+            (Some(val), None)
+        },
+        OnboardingFieldType::Enum(options) => {
+            let val = tokio::task::spawn_blocking(move || {
+                use std::io::Write;
+                println!("{prompt}:");
+                for (i, opt) in options.iter().enumerate() {
+                    println!("  {}: {opt}", i.saturating_add(1));
+                }
+                print!("Select [1-{}]: ", options.len());
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                let idx: usize = input.trim().parse().unwrap_or(0);
+                if idx >= 1 && idx <= options.len() {
+                    options[idx.saturating_sub(1)].clone()
+                } else {
+                    options.first().cloned().unwrap_or_default()
+                }
+            })
+            .await
+            .unwrap_or_default();
+            (Some(val), None)
+        },
+        OnboardingFieldType::Array => {
+            let items = tokio::task::spawn_blocking(move || {
+                use std::io::Write;
+                println!("{prompt} (enter values one per line, empty line to finish):");
+                let mut items = Vec::new();
+                loop {
+                    print!("> ");
+                    let _ = std::io::stdout().flush();
+                    let mut input = String::new();
+                    let _ = std::io::stdin().read_line(&mut input);
+                    let input = input.trim().to_string();
+                    if input.is_empty() {
+                        break;
+                    }
+                    items.push(input);
+                }
+                items
+            })
+            .await
+            .unwrap_or_default();
+            (None, Some(items))
+        },
+    }
+}
+
 /// CLI-inline elicit handler for non-TUI installs.
 ///
 /// Listens for `ElicitRequest` IPC messages and prompts on stdin,
@@ -487,13 +580,11 @@ async fn cli_elicit_handler(
     event_bus: astrid_events::EventBus,
 ) {
     use astrid_events::AstridEvent;
-    use astrid_events::ipc::{IpcPayload, OnboardingFieldType};
-    use std::io::Write;
+    use astrid_events::ipc::IpcPayload;
 
     loop {
-        // Async receive - will return None when the channel is closed
         let Some(event) = receiver.recv().await else {
-            return; // Channel closed, exit
+            return;
         };
 
         let AstridEvent::Ipc { message, .. } = &*event else {
@@ -510,80 +601,14 @@ async fn cli_elicit_handler(
         };
 
         let request_id = *request_id;
+        let prompt = field.description.as_ref().map_or_else(
+            || format!("[{capsule_id}] {}", field.key),
+            |d| format!("[{capsule_id}] {d}"),
+        );
 
-        // Render prompt
-        let prompt_text = if let Some(ref desc) = field.description {
-            format!("[{capsule_id}] {desc}")
-        } else {
-            format!("[{capsule_id}] {}", field.key)
-        };
+        let (value, values) =
+            prompt_stdin_field(prompt, field.field_type.clone(), field.default.clone()).await;
 
-        let (value, values) = match &field.field_type {
-            OnboardingFieldType::Text => {
-                let default_hint = field
-                    .default
-                    .as_ref()
-                    .map(|d| format!(" [{d}]"))
-                    .unwrap_or_default();
-                print!("{prompt_text}{default_hint}: ");
-                let _ = std::io::stdout().flush();
-                let mut input = String::new();
-                let _ = std::io::stdin().read_line(&mut input);
-                let input = input.trim().to_string();
-                let val = if input.is_empty() {
-                    field.default.clone().unwrap_or_default()
-                } else {
-                    input
-                };
-                (Some(val), None)
-            },
-            OnboardingFieldType::Secret => {
-                print!("{prompt_text} (secret, input hidden): ");
-                let _ = std::io::stdout().flush();
-                // Read without echo - best effort
-                let mut input = String::new();
-                let _ = std::io::stdin().read_line(&mut input);
-                let val = input.trim().to_string();
-                // Store in a way the has_secret check can find it
-                // For CLI-only install, the secret is just collected but
-                // the guest never sees it (SDK returns Ok(()))
-                (Some(val), None)
-            },
-            OnboardingFieldType::Enum(options) => {
-                println!("{prompt_text}:");
-                for (i, opt) in options.iter().enumerate() {
-                    println!("  {}: {opt}", i.saturating_add(1));
-                }
-                print!("Select [1-{}]: ", options.len());
-                let _ = std::io::stdout().flush();
-                let mut input = String::new();
-                let _ = std::io::stdin().read_line(&mut input);
-                let idx: usize = input.trim().parse().unwrap_or(1);
-                let val = options
-                    .get(idx.saturating_sub(1))
-                    .cloned()
-                    .unwrap_or_default();
-                (Some(val), None)
-            },
-            OnboardingFieldType::Array => {
-                println!("{prompt_text} (enter values one per line, empty line to finish):");
-                let mut items = Vec::new();
-                loop {
-                    print!("> ");
-                    let _ = std::io::stdout().flush();
-                    let mut input = String::new();
-                    let _ = std::io::stdin().read_line(&mut input);
-                    let input = input.trim().to_string();
-                    if input.is_empty() {
-                        break;
-                    }
-                    items.push(input);
-                }
-                (None, Some(items))
-            },
-        };
-
-        // Publish response
         let response_topic = format!("astrid.lifecycle.elicit.response.{request_id}");
         let response = IpcPayload::ElicitResponse {
             request_id,
