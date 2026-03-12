@@ -59,7 +59,7 @@ fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps>, Vec<Unsa
             let mut providers = Vec::new();
 
             for other in capsules {
-                if other.name == cap.name {
+                if other.name == cap.name && other.location == cap.location {
                     continue;
                 }
                 let offered = other
@@ -289,5 +289,48 @@ mod tests {
 
         assert!(unsatisfied.is_empty());
         assert!(deps[0].edges.is_empty());
+    }
+
+    #[test]
+    fn test_build_dep_graph_same_name_different_location() {
+        // Same capsule name at user and workspace level should NOT self-exclude.
+        // The workspace copy can legitimately depend on the user copy if they
+        // have different capabilities.
+        let capsules = vec![
+            InstalledCapsule {
+                name: "mycapsule".to_string(),
+                meta: Some(CapsuleMeta {
+                    version: "1.0.0".to_string(),
+                    installed_at: "2026-01-01T00:00:00Z".to_string(),
+                    updated_at: "2026-01-01T00:00:00Z".to_string(),
+                    source: None,
+                    provides: vec!["topic:foo".to_string()],
+                    requires: vec![],
+                }),
+                location: CapsuleLocation::User,
+            },
+            InstalledCapsule {
+                name: "mycapsule".to_string(),
+                meta: Some(CapsuleMeta {
+                    version: "2.0.0".to_string(),
+                    installed_at: "2026-01-01T00:00:00Z".to_string(),
+                    updated_at: "2026-01-01T00:00:00Z".to_string(),
+                    source: None,
+                    provides: vec![],
+                    requires: vec!["topic:foo".to_string()],
+                }),
+                location: CapsuleLocation::Workspace,
+            },
+        ];
+        let (deps, unsatisfied) = build_dep_graph(&capsules);
+
+        assert!(unsatisfied.is_empty());
+        // The workspace copy should see the user copy as a provider
+        let ws_deps = deps
+            .iter()
+            .find(|d| d.name == "mycapsule" && !d.edges.is_empty())
+            .expect("workspace copy should have edges");
+        assert_eq!(ws_deps.edges[0].providers.len(), 1);
+        assert_eq!(ws_deps.edges[0].providers[0].capsule_name, "mycapsule");
     }
 }

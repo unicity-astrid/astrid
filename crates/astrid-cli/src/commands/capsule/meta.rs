@@ -38,15 +38,33 @@ pub(crate) struct CapsuleMeta {
 pub(crate) fn read_meta(target_dir: &Path) -> Option<CapsuleMeta> {
     let meta_path = target_dir.join("meta.json");
     let data = std::fs::read_to_string(&meta_path).ok()?;
-    serde_json::from_str(&data).ok()
+    match serde_json::from_str::<CapsuleMeta>(&data) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            tracing::warn!(
+                path = %meta_path.display(),
+                error = %e,
+                "meta.json is corrupt, treating as missing"
+            );
+            None
+        },
+    }
 }
 
 /// Write `meta.json` to the capsule's install directory.
+///
+/// Uses atomic write (temp file + rename) to avoid corruption from
+/// crashes or power loss during write.
 pub(crate) fn write_meta(target_dir: &Path, meta: &CapsuleMeta) -> anyhow::Result<()> {
     let meta_path = target_dir.join("meta.json");
     let json = serde_json::to_string_pretty(meta).context("failed to serialize meta.json")?;
-    std::fs::write(&meta_path, json)
-        .with_context(|| format!("failed to write {}", meta_path.display()))
+    let mut tmp = tempfile::NamedTempFile::new_in(target_dir)
+        .context("failed to create temp file for meta.json")?;
+    std::io::Write::write_all(&mut tmp, json.as_bytes())
+        .context("failed to write meta.json staging")?;
+    tmp.persist(&meta_path)
+        .map_err(|e| anyhow::anyhow!("failed to persist {}: {e}", meta_path.display()))?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +72,7 @@ pub(crate) fn write_meta(target_dir: &Path, meta: &CapsuleMeta) -> anyhow::Resul
 // ---------------------------------------------------------------------------
 
 /// Where an installed capsule lives.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CapsuleLocation {
     /// User-level: `~/.astrid/capsules/`
     User,
@@ -201,5 +219,25 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "no-meta-capsule");
         assert!(results[0].meta.is_none());
+    }
+
+    #[test]
+    fn test_scan_corrupt_meta_returns_none() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let capsules_dir = tmp.path().join("capsules");
+        let cap = capsules_dir.join("corrupt-capsule");
+        std::fs::create_dir_all(&cap).expect("mkdir");
+        // Write invalid JSON
+        std::fs::write(cap.join("meta.json"), "{{not valid json").expect("write");
+
+        let mut results = Vec::new();
+        scan_dir(&capsules_dir, CapsuleLocation::User, &mut results).expect("scan");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "corrupt-capsule");
+        assert!(
+            results[0].meta.is_none(),
+            "corrupt meta.json should be treated as missing"
+        );
     }
 }

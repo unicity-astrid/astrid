@@ -53,9 +53,12 @@ fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
         let location_tag = format!("[{}]", cap.location);
         let caps_summary = format!("provides: {provides_count}, requires: {requires_count}");
 
+        // Pad the name before applying bold to avoid ANSI escape codes
+        // distorting the column width calculation.
+        let padded_name = format!("{:<30}", cap.name);
         println!(
-            "  {:<30} {:<8} {:<13} {}",
-            cap.name.bold(),
+            "  {} {:<8} {:<13} {}",
+            padded_name.bold(),
             version,
             Theme::dimmed(&location_tag),
             Theme::dimmed(&caps_summary),
