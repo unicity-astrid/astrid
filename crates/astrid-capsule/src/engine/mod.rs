@@ -46,6 +46,16 @@ pub(crate) trait ExecutionEngine: Send + Sync {
         &[]
     }
 
+    /// Wait for the engine's background task to signal readiness.
+    ///
+    /// Returns [`ReadyStatus::Ready`] if the engine is ready or has no
+    /// background task. Returns [`ReadyStatus::Timeout`] or
+    /// [`ReadyStatus::Crashed`] on failure.
+    /// Engines without background tasks return `Ready` immediately.
+    async fn wait_ready(&self, _timeout: std::time::Duration) -> crate::capsule::ReadyStatus {
+        crate::capsule::ReadyStatus::Ready
+    }
+
     /// Invoke an interceptor handler by action name.
     ///
     /// `action` is the handler name (e.g., `handle_user_prompt`) and

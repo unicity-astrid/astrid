@@ -272,9 +272,14 @@ impl Kernel {
 
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/capsules` and `.astrid/capsules`).
     ///
-    /// Uplink/daemon capsules are loaded first so their event bus subscriptions
-    /// are active before other capsules emit events (e.g. `OnboardingRequired`).
+    /// Capsules are loaded in dependency order (topological sort) with
+    /// uplink/daemon capsules loaded first. Each uplink must signal
+    /// readiness before non-uplink capsules are loaded.
+    ///
+    /// After all capsules are loaded, tool schemas are injected into every
+    /// capsule's KV namespace and the `kernel.capsules_loaded` event is published.
     pub async fn load_all_capsules(&self) {
+        use astrid_capsule::toposort::toposort_manifests;
         use astrid_core::dirs::AstridHome;
 
         let mut paths = Vec::new();
@@ -289,7 +294,35 @@ impl Kernel {
             .into_iter()
             .partition(|(m, _)| m.capabilities.uplink);
 
+        // Topological sort each partition by manifest dependencies.
+        // On cycle, the original unsorted vec is returned alongside the error.
+        let uplinks = match toposort_manifests(uplinks) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in uplink capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
+
+        let others = match toposort_manifests(others) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
+
         // Load uplinks first so their event bus subscriptions are ready.
+        let uplink_names: Vec<String> = uplinks
+            .iter()
+            .map(|(m, _)| m.package.name.clone())
+            .collect();
         for (manifest, dir) in &uplinks {
             if let Err(e) = self.load_capsule(dir.clone()).await {
                 tracing::warn!(
@@ -300,12 +333,9 @@ impl Kernel {
             }
         }
 
-        // Brief yield to let spawned background `run()` tasks initialize
-        // their event bus subscriptions before we load capsules that may
-        // emit events like OnboardingRequired.
-        if !uplinks.is_empty() {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        // Wait for uplink capsules to signal readiness before loading
+        // non-uplink capsules. This ensures IPC subscriptions are active.
+        self.await_capsule_readiness(&uplink_names).await;
 
         for (manifest, dir) in &others {
             if let Err(e) = self.load_capsule(dir.clone()).await {
@@ -316,6 +346,15 @@ impl Kernel {
                 );
             }
         }
+
+        // Wait for non-uplink run-loop capsules too, so any future
+        // dependency edges between them are respected.
+        let other_names: Vec<String> = others.iter().map(|(m, _)| m.package.name.clone()).collect();
+        self.await_capsule_readiness(&other_names).await;
+
+        // Inject tool schemas into every capsule's KV namespace so any
+        // capsule (e.g. react) can read them via kv::get_json("tool_schemas").
+        self.inject_tool_schemas().await;
 
         // Signal that all capsules have been loaded so uplink capsules
         // (like the registry) can proceed with discovery instead of
@@ -329,6 +368,128 @@ impl Kernel {
             metadata: astrid_events::EventMetadata::new("kernel"),
             message: msg,
         });
+    }
+
+    /// Wait for a set of capsules to signal readiness, in parallel.
+    ///
+    /// Collects `Arc<dyn Capsule>` handles under a short-lived read lock,
+    /// then drops the lock before awaiting. Capsules without a run loop
+    /// return `Ready` immediately and don't contribute to wait time.
+    async fn await_capsule_readiness(&self, names: &[String]) {
+        use astrid_capsule::capsule::ReadyStatus;
+
+        if names.is_empty() {
+            return;
+        }
+
+        let timeout = std::time::Duration::from_millis(500);
+        let capsules: Vec<(String, std::sync::Arc<dyn astrid_capsule::capsule::Capsule>)> = {
+            let registry = self.capsules.read().await;
+            names
+                .iter()
+                .filter_map(
+                    |name| match astrid_capsule::capsule::CapsuleId::new(name.clone()) {
+                        Ok(capsule_id) => registry.get(&capsule_id).map(|c| (name.clone(), c)),
+                        Err(e) => {
+                            tracing::warn!(
+                                capsule = %name,
+                                error = %e,
+                                "Invalid capsule ID, skipping readiness wait"
+                            );
+                            None
+                        },
+                    },
+                )
+                .collect()
+        };
+
+        // Await all capsules concurrently - independent capsules shouldn't
+        // compound each other's timeout.
+        let mut set = tokio::task::JoinSet::new();
+        for (name, capsule) in capsules {
+            set.spawn(async move {
+                let status = capsule.wait_ready(timeout).await;
+                (name, status)
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            if let Ok((name, status)) = result {
+                match status {
+                    ReadyStatus::Ready => {},
+                    ReadyStatus::Timeout => {
+                        tracing::warn!(
+                            capsule = %name,
+                            timeout_ms = timeout.as_millis(),
+                            "Capsule did not signal ready within timeout"
+                        );
+                    },
+                    ReadyStatus::Crashed => {
+                        tracing::error!(
+                            capsule = %name,
+                            "Capsule run loop exited before signaling ready"
+                        );
+                    },
+                }
+            }
+        }
+    }
+
+    /// Collect all tool definitions from loaded capsule manifests and write
+    /// them to every capsule's scoped KV namespace as `tool_schemas`.
+    async fn inject_tool_schemas(&self) {
+        use astrid_events::llm::LlmToolDefinition;
+        use astrid_storage::KvStore;
+
+        // Collect tools and capsule IDs under a short-lived read lock,
+        // then drop the guard before the async KV write loop. Holding
+        // the RwLock across N awaits would block all registry writers.
+        let (all_tools, capsule_ids) = {
+            let registry = self.capsules.read().await;
+            let tools: Vec<LlmToolDefinition> = registry
+                .values()
+                .flat_map(|capsule| {
+                    capsule.manifest().tools.iter().map(|t| LlmToolDefinition {
+                        name: t.name.clone(),
+                        description: Some(t.description.clone()),
+                        input_schema: t.input_schema.clone(),
+                    })
+                })
+                .collect();
+            let ids: Vec<String> = registry.list().iter().map(ToString::to_string).collect();
+            (tools, ids)
+        };
+
+        if all_tools.is_empty() {
+            return;
+        }
+
+        let tool_bytes = match serde_json::to_vec(&all_tools) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to serialize tool schemas");
+                return;
+            },
+        };
+
+        tracing::info!(
+            tool_count = all_tools.len(),
+            "Injecting tool schemas into capsule KV stores"
+        );
+
+        for capsule_id in &capsule_ids {
+            let namespace = format!("capsule:{capsule_id}");
+            if let Err(e) = self
+                .kv
+                .set(&namespace, "tool_schemas", tool_bytes.clone())
+                .await
+            {
+                tracing::warn!(
+                    capsule = %capsule_id,
+                    error = %e,
+                    "Failed to inject tool schemas"
+                );
+            }
+        }
     }
 }
 

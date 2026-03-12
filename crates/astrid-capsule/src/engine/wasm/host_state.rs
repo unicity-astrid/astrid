@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use crate::capsule::CapsuleId;
 use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkDescriptor};
@@ -109,6 +109,12 @@ pub struct HostState {
     pub lifecycle_phase: Option<LifecyclePhase>,
     /// Secret store for capsule credentials (keychain with KV fallback).
     pub secret_store: Arc<dyn SecretStore>,
+    /// Readiness signal sender for run-loop capsules.
+    ///
+    /// When the WASM guest calls `astrid_signal_ready`, the host sends `true`
+    /// on this channel. The kernel waits on the corresponding receiver before
+    /// loading dependent capsules.
+    pub ready_tx: Option<watch::Sender<bool>>,
 }
 
 impl HostState {
@@ -208,6 +214,7 @@ mod tests {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
+            ready_tx: None,
         };
 
         let debug = format!("{state:?}");
@@ -262,6 +269,7 @@ mod tests {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
+            ready_tx: None,
         };
 
         assert!(state.uplinks().is_empty());
@@ -321,6 +329,7 @@ mod tests {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
+            ready_tx: None,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -376,6 +385,7 @@ mod tests {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
+            ready_tx: None,
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -447,6 +457,7 @@ mod tests {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
+            ready_tx: None,
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

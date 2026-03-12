@@ -101,6 +101,34 @@ pub(crate) fn astrid_get_caller_impl(
     Ok(())
 }
 
+/// Signal that the capsule's run loop is ready (subscriptions are active).
+///
+/// Called by the WASM guest after setting up IPC subscriptions. Sends `true`
+/// on the readiness watch channel so the kernel can proceed with loading
+/// dependent capsules.
+#[expect(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_signal_ready_impl(
+    _plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    _outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if let Some(tx) = &state.ready_tx {
+        let _ = tx.send(true);
+        tracing::debug!(
+            capsule = %state.capsule_id,
+            "Capsule signaled ready"
+        );
+    }
+
+    Ok(())
+}
+
 /// Returns the current wall-clock time as milliseconds since the UNIX epoch.
 ///
 /// No inputs required. Returns the timestamp as a UTF-8 decimal string.
