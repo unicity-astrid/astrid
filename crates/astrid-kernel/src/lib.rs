@@ -308,25 +308,10 @@ impl Kernel {
 
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
 
-        // Partition: uplink/daemon capsules first, then the rest.
-        let (uplinks, others): (Vec<_>, Vec<_>) = discovered
-            .into_iter()
-            .partition(|(m, _)| m.capabilities.uplink);
-
-        // Topological sort each partition by manifest dependencies.
-        // On cycle, the original unsorted vec is returned alongside the error.
-        let uplinks = match toposort_manifests(uplinks) {
-            Ok(sorted) => sorted,
-            Err((e, original)) => {
-                tracing::error!(
-                    cycle = %e,
-                    "Dependency cycle in uplink capsules, falling back to discovery order"
-                );
-                original
-            },
-        };
-
-        let others = match toposort_manifests(others) {
+        // Topological sort ALL capsules together so cross-partition
+        // requirements (e.g. a non-uplink requiring an uplink's capability)
+        // resolve correctly without spurious "not provided" warnings.
+        let sorted = match toposort_manifests(discovered) {
             Ok(sorted) => sorted,
             Err((e, original)) => {
                 tracing::error!(
@@ -336,6 +321,12 @@ impl Kernel {
                 original
             },
         };
+
+        // Partition after sorting: uplinks first, then the rest.
+        // The relative order within each partition is preserved from the
+        // toposort, so dependency edges are still respected.
+        let (uplinks, others): (Vec<_>, Vec<_>) =
+            sorted.into_iter().partition(|(m, _)| m.capabilities.uplink);
 
         // Load uplinks first so their event bus subscriptions are ready.
         let uplink_names: Vec<String> = uplinks

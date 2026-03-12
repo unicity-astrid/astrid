@@ -233,8 +233,16 @@ impl ExecutionEngine for WasmEngine {
 
             // Create the readiness watch channel. The sender goes into
             // HostState so the WASM guest can signal ready via
-            // `astrid_signal_ready`. The receiver is returned so
-            // `WasmEngine::wait_ready` can await it.
+            // `astrid_signal_ready`. The receiver is stored only when
+            // `has_run` is true (see below).
+            //
+            // Note: for non-run capsules, ready_tx remains in HostState as
+            // an orphaned sender (receiver is dropped). This is harmless -
+            // watch::Sender::send is a no-op with no receivers, and the
+            // allocation is freed when the plugin is dropped. Ideally we'd
+            // defer channel creation to after the plugin build (when has_run
+            // is known), but Extism's UserData is type-erased and
+            // inaccessible after Plugin::build().
             let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
             host_state.ready_tx = Some(ready_tx);
 
