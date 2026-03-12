@@ -152,8 +152,9 @@ impl Kernel {
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
         // 6. Bind the secure Unix socket and generate session token.
-        // Token is written to disk BEFORE the socket is available, so no
-        // client can connect before the token file exists.
+        // The socket is bound here, but not yet listened on. The token is
+        // generated before any capsule can accept connections, preventing
+        // a race where a client connects before the token file exists.
         let listener = socket::bind_session_socket()?;
         let (session_token, token_path) = socket::generate_session_token()?;
 
