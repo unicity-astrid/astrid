@@ -17,7 +17,7 @@ astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-kernel = { workspace = true }
 astrid-capsule = { workspace = true }
-astrid-storage = { workspace = true }
+astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true }
 astrid-openclaw = { workspace = true }
 astrid-events = { workspace = true, features = ["runtime"] }

@@ -551,6 +551,8 @@ fn run_lifecycle_if_wasm(
 
     let capsule_id_owned = astrid_capsule::capsule::CapsuleId::new(capsule_id.to_string())
         .map_err(|e| anyhow::anyhow!("invalid capsule ID: {e}"))?;
+    let secret_store =
+        astrid_storage::build_secret_store(capsule_id, kv.clone(), rt.handle().clone());
     let cfg = astrid_capsule::engine::wasm::LifecycleConfig {
         wasm_bytes,
         capsule_id: capsule_id_owned,
@@ -558,6 +560,7 @@ fn run_lifecycle_if_wasm(
         kv,
         event_bus: event_bus.clone(),
         config: std::collections::HashMap::new(),
+        secret_store,
     };
 
     let result = rt.block_on(async {

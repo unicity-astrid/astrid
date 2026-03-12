@@ -13,7 +13,9 @@ default = []
 kv = ["dep:surrealkv"]
 # Enable SurrealDB full query engine (graph, document, SurrealQL)
 db = ["dep:surrealdb"]
-# Enable both
+# Enable OS keychain secret storage via the `keyring` crate
+keychain = ["dep:keyring"]
+# Enable both kv and db
 full = ["kv", "db"]
 
 [dependencies]
@@ -34,6 +36,9 @@ thiserror = { workspace = true }
 # Storage backends (optional)
 surrealkv = { workspace = true, optional = true }
 surrealdb = { workspace = true, optional = true }
+
+# OS keychain (optional)
+keyring = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

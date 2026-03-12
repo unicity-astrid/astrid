@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 use crate::capsule::CapsuleId;
 use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkDescriptor};
 use astrid_storage::ScopedKvStore;
+use astrid_storage::secret::SecretStore;
 
 /// The lifecycle phase a capsule is currently executing in.
 ///
@@ -106,6 +107,8 @@ pub struct HostState {
     /// Set to `Some(Install)` or `Some(Upgrade)` during lifecycle dispatch.
     /// Gates the `astrid_elicit` host function.
     pub lifecycle_phase: Option<LifecyclePhase>,
+    /// Secret store for capsule credentials (keychain with KV fallback).
+    pub secret_store: Arc<dyn SecretStore>,
 }
 
 impl HostState {
@@ -170,6 +173,10 @@ mod tests {
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
+            kv.clone(),
+            rt.handle().clone(),
+        ));
 
         let state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -200,6 +207,7 @@ mod tests {
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store: secret_store.clone(),
         };
 
         let debug = format!("{state:?}");
@@ -219,6 +227,10 @@ mod tests {
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
+            kv.clone(),
+            rt.handle().clone(),
+        ));
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -249,6 +261,7 @@ mod tests {
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store: secret_store.clone(),
         };
 
         assert!(state.uplinks().is_empty());
@@ -273,6 +286,10 @@ mod tests {
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
+            kv.clone(),
+            rt.handle().clone(),
+        ));
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -303,6 +320,7 @@ mod tests {
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store: secret_store.clone(),
         };
 
         assert!(state.inbound_tx.is_none());
@@ -323,6 +341,10 @@ mod tests {
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
+            kv.clone(),
+            rt.handle().clone(),
+        ));
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -353,6 +375,7 @@ mod tests {
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store: secret_store.clone(),
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -389,6 +412,10 @@ mod tests {
             .unwrap();
         let store = Arc::new(astrid_storage::MemoryKvStore::new());
         let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
+            kv.clone(),
+            rt.handle().clone(),
+        ));
 
         let mut state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
@@ -419,6 +446,7 @@ mod tests {
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store: secret_store.clone(),
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

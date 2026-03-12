@@ -89,7 +89,7 @@ pub(crate) fn astrid_elicit_impl(
 
     // Lock state: verify lifecycle phase, subscribe to response topic, extract
     // what we need, then drop the lock before blocking.
-    let (mut receiver, runtime_handle, event_bus, capsule_id, kv) = {
+    let (mut receiver, runtime_handle, event_bus, capsule_id, secret_store) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -108,9 +108,15 @@ pub(crate) fn astrid_elicit_impl(
         let runtime_handle = state.runtime_handle.clone();
         let event_bus = state.event_bus.clone();
         let capsule_id = state.capsule_id.to_string();
-        let kv = state.kv.clone();
+        let secret_store = state.secret_store.clone();
 
-        (receiver, runtime_handle, event_bus, capsule_id, kv)
+        (
+            receiver,
+            runtime_handle,
+            event_bus,
+            capsule_id,
+            secret_store,
+        )
     };
 
     // Publish the elicit request to the event bus
@@ -160,14 +166,13 @@ pub(crate) fn astrid_elicit_impl(
                         // Build response JSON matching what the SDK expects
                         match guest_req.kind.as_str() {
                             "secret" => {
-                                // Persist the secret to KV before returning ok
-                                let secret_key = format!("__secret:{}", guest_req.key);
+                                // Persist the secret via the SecretStore abstraction.
+                                // This uses the OS keychain when available, falling
+                                // back to KV storage in headless/CI environments.
                                 let secret_val = value.clone().unwrap_or_default();
-                                runtime_handle
-                                    .block_on(kv.set(&secret_key, secret_val.into_bytes()))
-                                    .map_err(|e| {
-                                        Error::msg(format!("failed to persist secret: {e}"))
-                                    })?;
+                                secret_store.set(&guest_req.key, &secret_val).map_err(|e| {
+                                    Error::msg(format!("failed to persist secret: {e}"))
+                                })?;
 
                                 // Secret: SDK expects {"ok": true}
                                 serde_json::to_vec(&serde_json::json!({"ok": true})).map_err(
@@ -218,8 +223,7 @@ pub(crate) fn astrid_elicit_impl(
 /// Host function: `astrid_has_secret(request_json) -> response_json`
 ///
 /// Checks whether a secret key has been stored for this capsule.
-/// Uses the interim KV-backed secret storage with a `__secret:` key prefix
-/// within the capsule's scoped KV namespace.
+/// Uses the [`SecretStore`] abstraction (OS keychain with KV fallback).
 #[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_has_secret_impl(
     plugin: &mut CurrentPlugin,
@@ -233,20 +237,16 @@ pub(crate) fn astrid_has_secret_impl(
 
     let ud = user_data.get()?;
 
-    // Extract KV store and runtime handle, then drop the lock before blocking.
-    let (kv, runtime_handle) = {
+    // Extract secret store, then drop the lock.
+    let secret_store = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (state.kv.clone(), state.runtime_handle.clone())
+        state.secret_store.clone()
     };
 
-    // Check the KV store using the `__secret:` prefix convention.
-    // The ScopedKvStore is already namespaced to `plugin:{capsule_id}`,
-    // so the full key path is `plugin:{capsule_id}:__secret:{key}`.
-    let secret_key = format!("__secret:{}", req.key);
-    let exists = runtime_handle
-        .block_on(kv.exists(&secret_key))
+    let exists = secret_store
+        .exists(&req.key)
         .map_err(|e| Error::msg(format!("failed to check for secret: {e}")))?;
 
     let response = serde_json::to_vec(&serde_json::json!({"exists": exists}))

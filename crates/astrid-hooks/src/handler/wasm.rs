@@ -191,6 +191,12 @@ impl WasmHandler {
         })
         .map_err(|e| HandlerError::WasmFailed(format!("Failed to register VFS root dir: {e}")))?;
 
+        let secret_store = astrid_storage::build_secret_store(
+            "hook-wasm",
+            kv.clone(),
+            tokio::runtime::Handle::current(),
+        );
+
         let host_state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -222,6 +228,7 @@ impl WasmHandler {
             active_streams: HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store,
         };
         let user_data = UserData::new(host_state);
 
