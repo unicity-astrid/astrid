@@ -181,6 +181,13 @@ pub trait Capsule: Send + Sync {
     /// The event dispatcher acquires a permit before calling
     /// [`invoke_interceptor`](Self::invoke_interceptor), preventing any single
     /// capsule from spawning unbounded tasks under high event volume.
+    ///
+    /// # Default implementation
+    ///
+    /// Returns a **shared global** semaphore as a fallback. This means all
+    /// capsules using the default share the same permit pool, which does NOT
+    /// provide per-capsule isolation. Concrete types (e.g., `CompositeCapsule`)
+    /// should override this with their own `Arc<Semaphore>`.
     fn interceptor_semaphore(&self) -> &Arc<Semaphore> {
         use std::sync::LazyLock;
         static FALLBACK: LazyLock<Arc<Semaphore>> =

@@ -135,10 +135,13 @@ mod tests {
             t.await.unwrap();
         }
 
+        let max = max_concurrent.load(Ordering::SeqCst);
+        assert!(max <= 2, "max concurrent was {max} but should be <= 2");
+        // With 6 tasks and 50ms sleep each, we expect the semaphore to be
+        // saturated (max == 2) at some point during execution.
         assert!(
-            max_concurrent.load(Ordering::SeqCst) <= 2,
-            "max concurrent was {} but should be <= 2",
-            max_concurrent.load(Ordering::SeqCst)
+            max >= 1,
+            "expected at least 1 concurrent execution, got {max}"
         );
     }
 

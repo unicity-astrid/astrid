@@ -240,7 +240,7 @@ pub(crate) fn astrid_net_write_impl(
     let data = util::get_safe_bytes(plugin, &inputs[1], 10 * 1024 * 1024)?;
 
     let ud = user_data.get()?;
-    let (stream_arc, rt_handle) = {
+    let (stream_arc, rt_handle, host_semaphore) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -249,11 +249,15 @@ pub(crate) fn astrid_net_write_impl(
             .get(&handle_id)
             .ok_or_else(|| Error::msg("Stream handle not found"))?
             .clone();
-        (stream, state.runtime_handle.clone())
+        (
+            stream,
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
     };
 
     use tokio::io::AsyncWriteExt;
-    rt_handle.block_on(async {
+    util::bounded_block_on(&rt_handle, &host_semaphore, async {
         let mut stream = stream_arc.lock().await;
         // In the CLI architecture, we expect length-prefixed writes back to the client as well
         let len = u32::try_from(data.len())

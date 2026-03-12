@@ -214,9 +214,9 @@ pub(crate) fn astrid_elicit_impl(
             }
         },
         None => {
-            // Timeout, cancellation, or channel closed
+            // Timeout expired, capsule unloading (cancellation), or channel closed.
             return Err(Error::msg(
-                "elicit request timed out waiting for user input",
+                "elicit request timed out, was cancelled, or response channel closed",
             ));
         },
     };

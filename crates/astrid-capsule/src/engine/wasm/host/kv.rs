@@ -14,12 +14,19 @@ pub(crate) fn astrid_kv_get_impl(
     let key = String::from_utf8(key_bytes).unwrap_or_default();
 
     let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let (kv, runtime_handle, host_semaphore) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.kv.clone(),
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
+    };
 
-    let result = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        state.kv.get(&key).await
+    let result = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+        kv.get(&key).await
     })
     .map_err(|e| Error::msg(format!("kv_get failed: {e}")))?;
 
@@ -47,13 +54,20 @@ pub(crate) fn astrid_kv_set_impl(
     let key = String::from_utf8(key_bytes).unwrap_or_default();
 
     let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let (kv, runtime_handle, host_semaphore) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.kv.clone(),
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
+    };
 
-    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+    util::bounded_block_on(&runtime_handle, &host_semaphore, async {
         // KV storage takes Vec<u8> directly.
-        state.kv.set(&key, value_bytes).await
+        kv.set(&key, value_bytes).await
     })
     .map_err(|e| Error::msg(format!("kv_set failed: {e}")))?;
 
@@ -71,12 +85,19 @@ pub(crate) fn astrid_kv_delete_impl(
     let key = String::from_utf8(key_bytes).unwrap_or_default();
 
     let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let (kv, runtime_handle, host_semaphore) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.kv.clone(),
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
+    };
 
-    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        state.kv.delete(&key).await
+    util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+        kv.delete(&key).await
     })
     .map_err(|e| Error::msg(format!("kv_delete failed: {e}")))?;
 

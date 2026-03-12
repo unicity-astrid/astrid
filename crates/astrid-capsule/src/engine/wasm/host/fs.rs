@@ -180,6 +180,11 @@ pub(crate) fn astrid_fs_exists_impl(
     let path = String::from_utf8(path_bytes).unwrap_or_default();
 
     let ud = user_data.get()?;
+    // Safety: HostState lock is held across bounded_block_on. This is safe because
+    // WASM is single-threaded per plugin - the plugin mutex in invoke_interceptor /
+    // run loop serializes all host function calls, so no concurrent lock contention
+    // is possible on the same UserData. The lock is needed for resolve_path/resolve_vfs
+    // which reference multiple HostState fields.
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
