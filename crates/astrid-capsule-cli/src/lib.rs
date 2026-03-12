@@ -9,6 +9,7 @@ pub fn run() -> FnResult<()> {
     let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
+    // Best-effort: failure means the host mutex is poisoned (unrecoverable).
     let _ = sys::signal_ready();
 
     // 2. Resolve the socket path from the kernel-injected config.

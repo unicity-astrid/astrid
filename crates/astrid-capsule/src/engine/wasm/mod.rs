@@ -29,6 +29,10 @@ pub struct WasmEngine {
     run_handle: Option<tokio::task::JoinHandle<()>>,
     /// Receiver for the readiness signal from the run loop.
     /// Only set for capsules that have a `run()` export.
+    /// The Mutex is required because `wait_ready` takes `&self` but we need
+    /// to clone the receiver (which marks the current value as seen). We
+    /// clone inside the lock and immediately drop it, so concurrent
+    /// `wait_ready` calls each get their own independent receiver.
     ready_rx: Option<tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>>,
 }
 

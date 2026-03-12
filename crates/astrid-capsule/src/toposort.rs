@@ -18,7 +18,11 @@ pub struct CycleError {
 
 impl fmt::Display for CycleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "dependency cycle detected: {}", self.cycle.join(" -> "))
+        write!(
+            f,
+            "dependency cycle detected (involved nodes): {}",
+            self.cycle.join(", ")
+        )
     }
 }
 

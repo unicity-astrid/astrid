@@ -356,7 +356,7 @@ impl Kernel {
                     ReadyStatus::Timeout => {
                         tracing::warn!(
                             capsule = %name,
-                            timeout_ms = 500,
+                            timeout_ms = timeout.as_millis(),
                             "Capsule did not signal ready within timeout"
                         );
                     },
