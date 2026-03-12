@@ -594,18 +594,14 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                     .collect()
             };
 
-            // Probe health once per capsule and cache the results to avoid
-            // redundant `block_in_place` calls for MCP engines.
-            let mut failed_this_tick: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-            let mut restarted = Vec::new();
-
+            // Probe health once per capsule, collect failures, then drop
+            // the Arc Vec before restarting. This ensures restart_capsule's
+            // Arc::get_mut can succeed (no other strong references held).
+            let mut failures: Vec<(String, String)> = Vec::new();
             for capsule in &ready_capsules {
                 let health = capsule.check_health();
                 if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
                     let id_str = capsule.id().to_string();
-                    failed_this_tick.insert(id_str.clone());
-
                     tracing::error!(capsule_id = %id_str, reason = %reason, "Capsule health check failed");
 
                     let msg = astrid_events::ipc::IpcMessage::new(
@@ -622,14 +618,25 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                         metadata: astrid_events::EventMetadata::new("kernel"),
                         message: msg,
                     });
+                    failures.push((id_str, reason));
+                }
+            }
 
-                    let tracker = restart_trackers
-                        .entry(id_str.clone())
-                        .or_insert_with(RestartTracker::new);
+            // Drop all Arc clones so restart_capsule's Arc::get_mut can
+            // obtain exclusive access for calling unload().
+            drop(ready_capsules);
 
-                    if attempt_capsule_restart(&kernel, &id_str, tracker).await {
-                        restarted.push(id_str);
-                    }
+            let failed_this_tick: std::collections::HashSet<&str> =
+                failures.iter().map(|(id, _)| id.as_str()).collect();
+
+            let mut restarted = Vec::new();
+            for (id_str, _reason) in &failures {
+                let tracker = restart_trackers
+                    .entry(id_str.clone())
+                    .or_insert_with(RestartTracker::new);
+
+                if attempt_capsule_restart(&kernel, id_str, tracker).await {
+                    restarted.push(id_str.clone());
                 }
             }
 
@@ -639,16 +646,18 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
             }
 
             // Prune trackers for capsules that recovered (healthy this tick).
-            // Keep exhausted trackers even if the capsule is absent from the
-            // registry (restart unregistered it but reload failed) so we
-            // don't silently forget permanently-down capsules.
+            // Keep exhausted trackers and trackers still in their backoff
+            // window (capsule may have been unregistered by a failed restart
+            // attempt and won't appear in ready_capsules next tick).
             restart_trackers.retain(|id, tracker| {
                 if tracker.exhausted() {
-                    // Never prune exhausted trackers - the capsule is
-                    // permanently down and we don't want to lose that state.
                     return true;
                 }
-                // For non-exhausted trackers, keep if still failing this tick.
+                // Keep if still within backoff - the capsule may be absent
+                // from the registry after a failed reload.
+                if tracker.last_attempt.elapsed() < tracker.backoff {
+                    return true;
+                }
                 failed_this_tick.contains(id.as_str())
             });
         }
