@@ -49,15 +49,15 @@ pub(crate) fn capability_matches(requirement: &str, provided: &str) -> bool {
     if req_type != prov_type {
         return false;
     }
-    let req_segs: Vec<&str> = req_body.split('.').collect();
-    let prov_segs: Vec<&str> = prov_body.split('.').collect();
-    if req_segs.len() != prov_segs.len() {
-        return false;
-    }
-    req_segs
-        .iter()
-        .zip(prov_segs.iter())
-        .all(|(r, p)| *r == "*" || *p == "*" || r == p)
+    // Zero-alloc: zip iterators directly instead of collecting into Vecs.
+    // After zip exhausts the shorter side, check both are fully consumed
+    // to enforce equal segment count.
+    let mut req_segs = req_body.split('.');
+    let mut prov_segs = prov_body.split('.');
+    let all_matched = (&mut req_segs)
+        .zip(&mut prov_segs)
+        .all(|(r, p)| r == "*" || p == "*" || r == p);
+    all_matched && req_segs.next().is_none() && prov_segs.next().is_none()
 }
 
 /// Sort capsule manifests in dependency order using Kahn's algorithm.
