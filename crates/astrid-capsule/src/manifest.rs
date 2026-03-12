@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +59,10 @@ pub struct CapsuleManifest {
     /// Native tools this capsule provides to the LLM agent.
     #[serde(default, rename = "tool")]
     pub tools: Vec<ToolDef>,
+    /// Cached effective provides (computed on first access).
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub effective_provides_cache: OnceLock<Vec<String>>,
 }
 
 impl CapsuleManifest {
@@ -68,24 +73,26 @@ impl CapsuleManifest {
     /// LLM providers, and uplinks using typed prefixes (`topic:`, `tool:`,
     /// `llm:`, `uplink:`).
     #[must_use]
-    pub fn effective_provides(&self) -> Vec<String> {
-        if !self.dependencies.provides.is_empty() {
-            return self.dependencies.provides.clone();
-        }
-        let mut caps = Vec::new();
-        for topic in &self.capabilities.ipc_publish {
-            caps.push(format!("topic:{topic}"));
-        }
-        for tool in &self.tools {
-            caps.push(format!("tool:{}", tool.name));
-        }
-        for provider in &self.llm_providers {
-            caps.push(format!("llm:{}", provider.id));
-        }
-        for uplink in &self.uplinks {
-            caps.push(format!("uplink:{}", uplink.name));
-        }
-        caps
+    pub fn effective_provides(&self) -> &[String] {
+        self.effective_provides_cache.get_or_init(|| {
+            if !self.dependencies.provides.is_empty() {
+                return self.dependencies.provides.clone();
+            }
+            let mut caps = Vec::new();
+            for topic in &self.capabilities.ipc_publish {
+                caps.push(format!("topic:{topic}"));
+            }
+            for tool in &self.tools {
+                caps.push(format!("tool:{}", tool.name));
+            }
+            for provider in &self.llm_providers {
+                caps.push(format!("llm:{}", provider.id));
+            }
+            for uplink in &self.uplinks {
+                caps.push(format!("uplink:{}", uplink.name));
+            }
+            caps
+        })
     }
 }
 

@@ -93,10 +93,7 @@ pub fn toposort_manifests(
     // borrows on `manifests` are released before the error path needs
     // to return ownership.
     {
-        // Pre-compute provides for all capsules. Each effective_provides()
-        // call allocates format!() strings; fine at 10-20 capsules but
-        // consider caching on DependenciesDef if counts grow large.
-        let all_provides: Vec<Vec<String>> = manifests
+        let all_provides: Vec<&[String]> = manifests
             .iter()
             .map(|(m, _)| m.effective_provides())
             .collect();
@@ -214,6 +211,7 @@ mod tests {
             interceptors: Vec::new(),
             cron_jobs: Vec::new(),
             tools: Vec::new(),
+            effective_provides_cache: std::sync::OnceLock::new(),
         };
         (m, PathBuf::from(format!("/capsules/{name}")))
     }

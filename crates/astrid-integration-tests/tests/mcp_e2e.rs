@@ -58,6 +58,7 @@ async fn test_mcp_host_engine_capability_validation() {
         interceptors: vec![],
         cron_jobs: vec![],
         tools: vec![],
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());

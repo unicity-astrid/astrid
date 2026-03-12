@@ -106,6 +106,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());

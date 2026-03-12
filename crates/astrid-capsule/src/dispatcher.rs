@@ -453,6 +453,7 @@ mod tests {
                 }],
                 cron_jobs: Vec::new(),
                 tools: Vec::new(),
+                effective_provides_cache: std::sync::OnceLock::new(),
             };
             let capsule = Self {
                 id: CapsuleId::from_static(name),

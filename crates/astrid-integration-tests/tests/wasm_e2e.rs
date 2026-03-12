@@ -84,6 +84,7 @@ async fn setup_test_capsule(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());
@@ -190,6 +191,7 @@ async fn setup_test_capsule_with_global(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());
