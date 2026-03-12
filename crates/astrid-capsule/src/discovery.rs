@@ -268,4 +268,40 @@ version = "0.1.0"
             "expected 'invalid version' error, got: {err}"
         );
     }
+
+    #[test]
+    fn load_manifest_parses_dependencies_provides_requires() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [dependencies]\n\
+             provides = [\"topic:identity.response.ready\"]\n\
+             requires = [\"topic:llm.stream.*\"]\n"
+        );
+        let m = load_from_toml(&toml).unwrap();
+        assert_eq!(
+            m.dependencies.provides,
+            vec!["topic:identity.response.ready"]
+        );
+        assert_eq!(m.dependencies.requires, vec!["topic:llm.stream.*"]);
+    }
+
+    #[test]
+    fn load_manifest_defaults_empty_dependencies() {
+        let m = load_from_toml(VALID_HEADER).unwrap();
+        assert!(m.dependencies.provides.is_empty());
+        assert!(m.dependencies.requires.is_empty());
+        assert!(m.dependencies.is_empty());
+    }
+
+    #[test]
+    fn load_manifest_parses_dependencies_provides_only() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [dependencies]\n\
+             provides = [\"topic:foo\", \"tool:bar\"]\n"
+        );
+        let m = load_from_toml(&toml).unwrap();
+        assert_eq!(m.dependencies.provides, vec!["topic:foo", "tool:bar"]);
+        assert!(m.dependencies.requires.is_empty());
+    }
 }
