@@ -10,6 +10,23 @@ use std::path::Path;
 use crate::error::{BridgeError, BridgeResult};
 use crate::manifest::OpenClawManifest;
 
+/// Fallback version when the `OpenClaw` manifest has no version or an invalid one.
+const DEFAULT_VERSION: &str = "0.0.0";
+
+/// Sanitize an `OpenClaw` version string into valid semver.
+///
+/// Returns the version as-is if it's valid semver, otherwise falls back to
+/// `"0.0.0"` with a warning. This ensures the generated `Capsule.toml` always
+/// contains a valid semver version, matching Cargo.toml conventions.
+fn sanitize_version(raw: &str) -> String {
+    if semver::Version::parse(raw).is_ok() {
+        raw.to_string()
+    } else {
+        eprintln!("warning: OpenClaw version '{raw}' is not valid semver, using {DEFAULT_VERSION}");
+        DEFAULT_VERSION.to_string()
+    }
+}
+
 /// A serializable Astrid capsule manifest matching the `CapsuleManifest` serde format.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct OutputManifest {
@@ -101,7 +118,7 @@ pub fn generate_manifest(
     let manifest = OutputManifest {
         package: PackageDef {
             name: astrid_id.to_string(),
-            version: oc_manifest.display_version().to_string(),
+            version: sanitize_version(oc_manifest.display_version()),
             description: oc_manifest.description.clone(),
             categories,
             keywords,
