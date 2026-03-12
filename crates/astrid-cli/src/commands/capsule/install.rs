@@ -10,22 +10,6 @@ use serde::{Deserialize, Serialize};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
-/// Build a `reqwest` client for GitHub API calls with optional `GITHUB_TOKEN` auth.
-fn build_github_client(timeout: std::time::Duration) -> anyhow::Result<reqwest::blocking::Client> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    if let Ok(token) = std::env::var("GITHUB_TOKEN")
-        && let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
-    {
-        headers.insert(reqwest::header::AUTHORIZATION, val);
-    }
-    reqwest::blocking::Client::builder()
-        .user_agent("astrid-cli")
-        .timeout(timeout)
-        .default_headers(headers)
-        .build()
-        .context("failed to build HTTP client")
-}
-
 /// Result of checking a remote source for a newer capsule version.
 enum UpdateCheck {
     /// A newer version is available remotely.
@@ -116,7 +100,7 @@ fn fetch_github_latest_version(
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
         || response.status() == reqwest::StatusCode::FORBIDDEN
     {
-        bail!("GitHub API rate limit exceeded - set GITHUB_TOKEN for higher limits");
+        bail!("GitHub API rate limit exceeded - try again later");
     }
     if !response.status().is_success() {
         bail!("GitHub API returned {}", response.status());
@@ -245,7 +229,10 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
         return Ok(());
     }
 
-    let client = build_github_client(std::time::Duration::from_secs(15))?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?;
 
     eprintln!(
         "Checking {} installed capsule(s) for updates...",
@@ -349,7 +336,10 @@ pub(crate) fn install_from_github(
     _is_openclaw: bool,
     original_source: Option<&str>,
 ) -> anyhow::Result<()> {
-    let client = build_github_client(std::time::Duration::from_secs(30))?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
 
     let (org, repo) = extract_github_org_repo(url).ok_or_else(|| {
         anyhow::anyhow!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo")
