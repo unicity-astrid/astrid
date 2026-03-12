@@ -52,6 +52,9 @@ pub struct Kernel {
     /// Scoped to `shared/` so that keys, databases, and capsule .env files in
     /// `~/.astrid/` are NOT accessible. Write access is intentionally not
     /// granted to any shipped capsule.
+    ///
+    /// Always `Some` in production (boot requires `AstridHome`). Remains
+    /// `Option` for compatibility with `CapsuleContext` and test fixtures.
     pub global_root: Option<PathBuf>,
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -166,6 +169,12 @@ impl Kernel {
             Arc::clone(&kernel.event_bus),
         );
         tokio::spawn(dispatcher.run());
+
+        debug_assert_eq!(
+            kernel.event_bus.subscriber_count(),
+            INTERNAL_SUBSCRIBER_COUNT,
+            "INTERNAL_SUBSCRIBER_COUNT is stale; update it when adding permanent subscribers"
+        );
 
         Ok(kernel)
     }

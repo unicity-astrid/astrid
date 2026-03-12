@@ -248,7 +248,7 @@ async fn main() -> Result<()> {
                 _ = tokio::signal::ctrl_c() => {
                     tracing::info!("Received SIGINT, shutting down");
                 }
-                () = async { sigterm.recv().await; } => {
+                _ = sigterm.recv() => {
                     tracing::info!("Received SIGTERM, shutting down");
                 }
             }

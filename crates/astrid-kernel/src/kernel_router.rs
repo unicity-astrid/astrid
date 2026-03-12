@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 #[must_use]
 pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     // Spawn the connection tracker as a sibling task.
-    spawn_connection_tracker(Arc::clone(&kernel));
+    drop(spawn_connection_tracker(Arc::clone(&kernel)));
 
     let mut receiver = kernel.event_bus.subscribe_topic("kernel.request.*");
 
@@ -47,7 +47,7 @@ pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::Jo
 /// Listens on `client.*` topics:
 /// - `client.connected` - a new socket connection was accepted.
 /// - `client.disconnect` - a client sent a graceful disconnect.
-fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) {
+fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     let mut receiver = kernel.event_bus.subscribe_topic("client.*");
 
     tokio::spawn(async move {
@@ -72,7 +72,7 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) {
                 _ => {},
             }
         }
-    });
+    })
 }
 
 #[expect(clippy::too_many_lines)]
