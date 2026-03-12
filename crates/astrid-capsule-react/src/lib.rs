@@ -145,9 +145,9 @@ fn register_active_session(session_id: &str) {
 /// mappings, and active-session lists from persisting across restarts.
 fn clear_ephemeral_keys() {
     for prefix in [
-        &format!("{TURN_KEY_PREFIX}."),
-        &format!("{REQUEST_SESSION_PREFIX}."),
-        &format!("{CALL_SESSION_PREFIX}."),
+        "react.turn.",
+        "react.req2sess.",
+        "react.call2sess.",
     ] {
         match kv::clear_prefix(prefix) {
             Ok(n) if n > 0 => {
