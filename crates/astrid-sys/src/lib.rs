@@ -102,6 +102,19 @@ extern "ExtismHost" {
     pub fn astrid_trigger_hook(event_bytes: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
+    // Lifecycle (Install & Upgrade Elicitation)
+    // -----------------------------------------------------------------------
+    /// Elicit user input during install/upgrade. Request is JSON-encoded.
+    /// Returns JSON: `{"ok":true}` for secrets, `{"value":"..."}` for text/select,
+    /// or `{"values":["..."]}` for arrays.
+    /// On user cancellation or host error, returns an Extism error (not JSON),
+    /// which surfaces as `SysError::HostError` in the SDK layer.
+    pub fn astrid_elicit(request: Vec<u8>) -> Vec<u8>;
+    /// Check whether a secret has been configured (without reading it).
+    /// Takes JSON: `{"key":"..."}`, returns JSON: `{"exists":true/false}`.
+    pub fn astrid_has_secret(request: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
     // Host Execution (The Escape Hatch)
     // -----------------------------------------------------------------------
     /// Spawn a native host process. Requires the `host_process` capability.

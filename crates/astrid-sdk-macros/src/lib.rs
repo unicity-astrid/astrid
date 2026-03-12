@@ -44,6 +44,8 @@ fn capsule_impl(
     let mut hook_arms = Vec::new();
     let mut cron_arms = Vec::new();
     let mut schema_arms = Vec::new();
+    let mut install_method: Option<syn::Ident> = None;
+    let mut upgrade_method: Option<syn::Ident> = None;
 
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
@@ -81,6 +83,69 @@ fn capsule_impl(
                     continue;
                 }
                 let attr_name = &attr.path().segments[1].ident;
+
+                // ---------------------------------------------------------------
+                // Lifecycle hooks: install / upgrade
+                // ---------------------------------------------------------------
+                if (attr_name == "install" || attr_name == "upgrade") && is_mutable {
+                    return syn::Error::new_spanned(
+                        attr,
+                        "#[astrid::mutable] cannot be used on lifecycle hooks",
+                    )
+                    .into_compile_error();
+                }
+
+                if attr_name == "install" {
+                    if install_method.is_some() {
+                        return syn::Error::new_spanned(
+                            attr,
+                            "only one #[astrid::install] method is allowed per capsule",
+                        )
+                        .into_compile_error();
+                    }
+                    // Validate: no extra typed args (only &self)
+                    if arg_type.is_some() {
+                        return syn::Error::new_spanned(
+                            &method.sig,
+                            "#[astrid::install] must have signature: fn(&self) -> Result<(), SysError>",
+                        )
+                        .into_compile_error();
+                    }
+                    install_method = Some(method_name.clone());
+                    continue;
+                }
+
+                if attr_name == "upgrade" {
+                    if upgrade_method.is_some() {
+                        return syn::Error::new_spanned(
+                            attr,
+                            "only one #[astrid::upgrade] method is allowed per capsule",
+                        )
+                        .into_compile_error();
+                    }
+                    // Validate: exactly one typed arg that must be &str
+                    let is_ref_str = arg_type.as_ref().is_some_and(|ty| {
+                        if let syn::Type::Reference(r) = ty.as_ref()
+                            && let syn::Type::Path(p) = r.elem.as_ref()
+                        {
+                            return p.path.is_ident("str");
+                        }
+                        false
+                    });
+                    if !is_ref_str {
+                        return syn::Error::new_spanned(
+                            &method.sig,
+                            "#[astrid::upgrade] must have signature: fn(&self, prev_version: &str) -> Result<(), SysError>",
+                        )
+                        .into_compile_error();
+                    }
+                    upgrade_method = Some(method_name.clone());
+                    continue;
+                }
+
+                // ---------------------------------------------------------------
+                // Existing dispatch attrs: tool / command / interceptor / cron
+                // ---------------------------------------------------------------
 
                 // Allow inferring the name from the function if no string argument is provided.
                 let name_val = if let Ok(name) = attr.parse_args::<LitStr>() {
@@ -205,6 +270,113 @@ fn capsule_impl(
             }
         }
     };
+
+    // Generate optional lifecycle exports (only when the attribute is present).
+    // For stateful capsules, persist state back to KV after the hook runs.
+    let install_export = install_method.map(|method_name| {
+        let body = if is_stateful {
+            quote! {
+                // Install always starts from Default - there is no prior state
+                // on first activation. The binding is mut so that interior state
+                // changes (RefCell, etc.) are captured by serde serialization.
+                let mut instance = #struct_name::default();
+                instance.#method_name()
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                ::astrid_sdk::prelude::kv::set_json("__state", &instance)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        } else {
+            quote! {
+                let instance = #struct_name::default();
+                instance.#method_name()
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        };
+        quote! {
+            /// WASM ABI: Called once on first install for capsule setup and elicitation.
+            /// For stateful capsules, the instance is persisted to KV after install.
+            /// Install always starts from `Default::default()` (no prior state exists).
+            #[unsafe(no_mangle)]
+            pub extern "C" fn astrid_install() -> i32 {
+                // Install takes no input - the kernel sends an empty payload.
+                // Input is ignored intentionally; reserved for future metadata.
+                fn inner(_input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                    #body
+                    let ok = ::serde_json::to_vec(&::serde_json::json!({"ok": true}))
+                        .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                    Ok(ok)
+                }
+                let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+                let output = match inner(input) {
+                    core::result::Result::Ok(x) => x,
+                    core::result::Result::Err(rc) => {
+                        let err = format!("{:?}", rc.0);
+                        if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                            unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                        }
+                        return rc.1;
+                    }
+                };
+                ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+                0
+            }
+        }
+    });
+
+    let upgrade_export = upgrade_method.map(|method_name| {
+        let body = if is_stateful {
+            quote! {
+                // JsonError covers key-not-found (host returns empty bytes which
+                // fail to parse) and corrupt state - both fall back to Default.
+                let mut instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
+                    Ok(state) => state,
+                    Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
+                    Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
+                };
+                instance.#method_name(&req.prev_version)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                ::astrid_sdk::prelude::kv::set_json("__state", &instance)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        } else {
+            quote! {
+                let instance = #struct_name::default();
+                instance.#method_name(&req.prev_version)
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        };
+        quote! {
+            /// WASM ABI: Called when upgrading from a previous version.
+            #[unsafe(no_mangle)]
+            pub extern "C" fn astrid_upgrade() -> i32 {
+                fn inner(input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                    #[derive(::serde::Deserialize)]
+                    struct __AstridUpgradeRequest {
+                        prev_version: String,
+                    }
+                    let req: __AstridUpgradeRequest = ::serde_json::from_slice(&input)
+                        .map_err(|e| ::extism_pdk::Error::msg(format!("failed to parse upgrade request: {}", e)))?;
+                    #body
+                    let ok = ::serde_json::to_vec(&::serde_json::json!({"ok": true}))
+                        .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+                    Ok(ok)
+                }
+                let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+                let output = match inner(input) {
+                    core::result::Result::Ok(x) => x,
+                    core::result::Result::Err(rc) => {
+                        let err = format!("{:?}", rc.0);
+                        if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                            unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                        }
+                        return rc.1;
+                    }
+                };
+                ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+                0
+            }
+        }
+    });
 
     // We inline the same pattern that `#[extism_pdk::plugin_fn]` would emit,
     // but with `#[doc]` attributes so that `#![warn(missing_docs)]` is satisfied
@@ -363,6 +535,9 @@ fn capsule_impl(
             ::extism_pdk::unwrap!(::extism_pdk::output(&output));
             0
         }
+
+        #install_export
+        #upgrade_export
     };
 
     expanded
@@ -440,6 +615,411 @@ mod tests {
         assert!(
             output.contains("json ! (true)"),
             "Mutable-before-tool should still produce json!(true), got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn install_generates_export() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_install"),
+            "Expected astrid_install export, got:\n{output}"
+        );
+        // Should NOT generate upgrade
+        assert!(
+            !output.contains("astrid_upgrade"),
+            "Should not generate astrid_upgrade without #[astrid::upgrade]"
+        );
+        // Non-stateful install should NOT persist state
+        assert!(
+            !output.contains("set_json"),
+            "Non-stateful install should not call set_json"
+        );
+    }
+
+    #[test]
+    fn upgrade_generates_export() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_upgrade"),
+            "Expected astrid_upgrade export, got:\n{output}"
+        );
+        assert!(
+            output.contains("__AstridUpgradeRequest"),
+            "Upgrade export should generate __AstridUpgradeRequest deserialization struct"
+        );
+        assert!(
+            output.contains("req . prev_version"),
+            "Upgrade export should pass req.prev_version to the method"
+        );
+        // Should NOT generate install
+        assert!(
+            !output.contains("astrid_install"),
+            "Should not generate astrid_install without #[astrid::install]"
+        );
+        // Non-stateful upgrade should NOT load/persist state
+        assert!(
+            !output.contains("set_json"),
+            "Non-stateful upgrade should not call set_json"
+        );
+        assert!(
+            !output.contains("get_json"),
+            "Non-stateful upgrade should not call get_json"
+        );
+    }
+
+    #[test]
+    fn no_lifecycle_no_exports() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("do_thing")]
+                fn do_thing(&self, args: DoArgs) -> Result<String, Error> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        // Tool dispatch should still be generated
+        assert!(
+            output.contains("astrid_tool_call"),
+            "Should still generate astrid_tool_call without lifecycle attrs"
+        );
+        assert!(
+            !output.contains("astrid_install"),
+            "Should not generate astrid_install without attribute"
+        );
+        assert!(
+            !output.contains("astrid_upgrade"),
+            "Should not generate astrid_upgrade without attribute"
+        );
+    }
+
+    #[test]
+    fn duplicate_install_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+                #[astrid::install]
+                fn install2(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Duplicate #[astrid::install] should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn duplicate_upgrade_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade1(&self, v: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+                #[astrid::upgrade]
+                fn upgrade2(&self, v: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Duplicate #[astrid::upgrade] should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn install_with_args_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self, args: InstallArgs) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Install with args should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn upgrade_without_args_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Upgrade without prev_version arg should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn upgrade_with_wrong_arg_type_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: u32) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Upgrade with u32 arg should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn upgrade_with_string_arg_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: String) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Upgrade with String (not &str) arg should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn both_install_and_upgrade() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_install"),
+            "Should generate astrid_install"
+        );
+        assert!(
+            output.contains("astrid_upgrade"),
+            "Should generate astrid_upgrade"
+        );
+    }
+
+    #[test]
+    fn mutable_on_install_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::mutable]
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Mutable on install should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn mutable_on_upgrade_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::mutable]
+                #[astrid::upgrade]
+                fn upgrade(&self, v: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Mutable on upgrade should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn stateful_install_persists_state() {
+        let attr = quote::quote! { state };
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_install"),
+            "Should generate astrid_install"
+        );
+        // Stateful install must persist state to KV
+        assert!(
+            output.contains("set_json"),
+            "Stateful install should persist state via set_json, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn stateful_upgrade_loads_and_persists_state() {
+        let attr = quote::quote! { state };
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_upgrade"),
+            "Should generate astrid_upgrade"
+        );
+        // Stateful upgrade must load existing state from KV
+        assert!(
+            output.contains("get_json"),
+            "Stateful upgrade should load state via get_json, got:\n{output}"
+        );
+        // And persist it back
+        assert!(
+            output.contains("set_json"),
+            "Stateful upgrade should persist state via set_json, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn stateful_both_install_and_upgrade() {
+        let attr = quote::quote! { state };
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+                #[astrid::upgrade]
+                fn upgrade(&self, prev_version: &str) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_install"),
+            "Should generate astrid_install"
+        );
+        assert!(
+            output.contains("astrid_upgrade"),
+            "Should generate astrid_upgrade"
+        );
+        // Both must persist state
+        let install_pos = output
+            .find("astrid_install")
+            .expect("astrid_install missing");
+        let upgrade_pos = output
+            .find("astrid_upgrade")
+            .expect("astrid_upgrade missing");
+        // set_json must appear after both export names (in their respective bodies)
+        let after_install = &output[install_pos..];
+        assert!(
+            after_install.contains("set_json"),
+            "Stateful install must call set_json"
+        );
+        let after_upgrade = &output[upgrade_pos..];
+        assert!(
+            after_upgrade.contains("set_json"),
+            "Stateful upgrade must call set_json"
+        );
+    }
+
+    #[test]
+    fn install_then_mutable_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::install]
+                #[astrid::mutable]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Install-then-mutable order should also produce compile_error, got:\n{output}"
         );
     }
 
