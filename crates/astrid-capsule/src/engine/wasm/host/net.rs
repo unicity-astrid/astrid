@@ -83,6 +83,20 @@ pub(crate) fn astrid_net_accept_impl(
         std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
     );
 
+    // Notify the kernel that a new client connection was accepted so the
+    // idle monitor can track active connections.
+    let connected_msg = astrid_events::ipc::IpcMessage::new(
+        "client.connected",
+        astrid_events::ipc::IpcPayload::RawJson(
+            serde_json::json!({"status": "connected", "handle_id": handle_id}),
+        ),
+        state.capsule_uuid,
+    );
+    let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
+        metadata: astrid_events::EventMetadata::new("net_accept"),
+        message: connected_msg,
+    });
+
     // Return the handle ID as a string to the WASM plugin
     let mem = plugin.memory_new(handle_id.to_string())?;
     outputs[0] = plugin.memory_to_val(mem);

@@ -238,17 +238,17 @@ async fn main() -> Result<()> {
                 ))
             );
 
+            // Register signal handlers before entering the select loop.
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .context("failed to register SIGTERM handler")?;
+
             // Wait for a termination signal, then shut down gracefully.
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     tracing::info!("Received SIGINT, shutting down");
                 }
-                () = async {
-                    let mut sigterm = tokio::signal::unix::signal(
-                        tokio::signal::unix::SignalKind::terminate(),
-                    ).expect("failed to register SIGTERM handler");
-                    sigterm.recv().await;
-                } => {
+                () = async { sigterm.recv().await; } => {
                     tracing::info!("Received SIGTERM, shutting down");
                 }
             }

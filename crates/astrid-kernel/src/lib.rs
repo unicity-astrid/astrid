@@ -78,10 +78,13 @@ impl Kernel {
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
 
-        // Resolve the Astrid home directory. Required for KV store and
-        // optional for the `global://` VFS scheme.
-        let home = AstridHome::resolve()
-            .map_err(|e| std::io::Error::other(format!("Failed to resolve Astrid home: {e}")))?;
+        // Resolve the Astrid home directory. Required for persistent KV store
+        // and audit log. Fails boot if neither $ASTRID_HOME nor $HOME is set.
+        let home = AstridHome::resolve().map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to resolve Astrid home (set $ASTRID_HOME or $HOME): {e}"
+            ))
+        })?;
 
         // Resolve the global shared directory for the `global://` VFS scheme.
         // Scoped to `~/.astrid/shared/` — NOT the full `~/.astrid/` root — so
@@ -130,7 +133,7 @@ impl Kernel {
         // 6. Bind the secure Unix socket natively
         let listener = socket::bind_session_socket()?;
 
-        let kv_path = home.root().join("state.db");
+        let kv_path = home.state_db_path();
         let kv = Arc::new(
             astrid_storage::SurrealKvStore::open(&kv_path)
                 .map_err(|e| std::io::Error::other(format!("Failed to open KV store: {e}")))?,
@@ -285,13 +288,19 @@ impl Kernel {
     }
 
     /// Record that a client connection has been closed.
+    ///
+    /// Uses `fetch_update` for atomic saturating decrement - avoids the TOCTOU
+    /// window where `fetch_sub` wraps to `usize::MAX` before a corrective store.
     pub fn connection_closed(&self) {
-        // Saturating: guard against underflow if decrement races with shutdown.
-        let prev = self.active_connections.fetch_sub(1, Ordering::Relaxed);
-        if prev == 0 {
-            // fetch_sub already wrapped; correct back to 0.
-            self.active_connections.store(0, Ordering::Relaxed);
-        }
+        let _ = self
+            .active_connections
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                if n == 0 {
+                    None
+                } else {
+                    Some(n.saturating_sub(1))
+                }
+            });
     }
 
     /// Number of active client connections.
@@ -454,6 +463,11 @@ fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
 /// Takes the minimum of both signals to handle ungraceful disconnects.
 ///
 /// Configurable via `ASTRID_IDLE_TIMEOUT_SECS` (default 300 = 5 minutes).
+/// Number of permanent internal event bus subscribers that are not client
+/// connections: `KernelRouter` (`kernel.request.*`), `ConnectionTracker` (`client.*`),
+/// and `EventDispatcher` (all events).
+const INTERNAL_SUBSCRIBER_COUNT: usize = 3;
+
 fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let grace = std::time::Duration::from_secs(30);
@@ -472,9 +486,13 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
 
             let connections = kernel.connection_count();
 
-            // Secondary signal: broadcast subscriber count. Subtract 1 for
-            // the KernelRouter's own subscription (always present).
-            let bus_subscribers = kernel.event_bus.subscriber_count().saturating_sub(1);
+            // Secondary signal: broadcast subscriber count. Subtract the
+            // permanent internal subscribers: KernelRouter (kernel.request.*),
+            // ConnectionTracker (client.*), and EventDispatcher (all events).
+            let bus_subscribers = kernel
+                .event_bus
+                .subscriber_count()
+                .saturating_sub(INTERNAL_SUBSCRIBER_COUNT);
 
             // Take the minimum: if a CLI died without Disconnect, the counter
             // stays inflated but the subscriber count drops.
@@ -599,13 +617,14 @@ mod tests {
     #[test]
     fn test_connection_counter_underflow_guard() {
         // Test the saturating behavior: decrementing from 0 should stay at 0.
+        // Mirrors the fetch_update logic in connection_closed().
         let counter = AtomicUsize::new(0);
 
-        // Simulate the guard logic from connection_closed()
-        let prev = counter.fetch_sub(1, Ordering::Relaxed);
-        if prev == 0 {
-            counter.store(0, Ordering::Relaxed);
-        }
+        let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            if n == 0 { None } else { Some(n - 1) }
+        });
+        // fetch_update returns Err(0) when the closure returns None (no-op).
+        assert!(result.is_err());
         assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 

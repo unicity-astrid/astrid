@@ -184,7 +184,7 @@ async fn run_loop(
                 astrid_events::ipc::IpcPayload::Disconnect {
                     reason: Some("quit".to_string()),
                 },
-                uuid::Uuid::nil(),
+                session_id.0,
             );
             let _ = client.send_message(msg).await;
             break;
