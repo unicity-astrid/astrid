@@ -366,4 +366,25 @@ impl TestCapsule {
             "data": null
         }))
     }
+
+    #[astrid::install]
+    fn install(&self) -> Result<(), SysError> {
+        // Exercise elicit during install lifecycle
+        let name = elicit::text("app_name", "Enter application name")?;
+        kv::set_bytes("install_app_name", name.as_bytes())?;
+
+        let has = elicit::has_secret("api_key")?;
+        if !has {
+            elicit::secret("api_key", "Enter your API key")?;
+        }
+
+        Ok(())
+    }
+
+    #[astrid::upgrade]
+    fn upgrade(&self, _previous_version: &str) -> Result<(), SysError> {
+        // Simple upgrade hook - just record that it ran
+        kv::set_bytes("upgrade_ran", b"true")?;
+        Ok(())
+    }
 }

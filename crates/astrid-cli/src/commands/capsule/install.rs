@@ -947,13 +947,34 @@ mod tests {
             version: "1.2.3".into(),
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-03-12T00:00:00Z".into(),
-            source: None,
+            source: Some("@org/my-capsule".into()),
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
         assert_eq!(loaded.version, "1.2.3");
         assert_eq!(loaded.installed_at, "2026-01-01T00:00:00Z");
         assert_eq!(loaded.updated_at, "2026-03-12T00:00:00Z");
+        assert_eq!(loaded.source.as_deref(), Some("@org/my-capsule"));
+    }
+
+    #[test]
+    fn meta_json_roundtrip_without_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let meta = CapsuleMeta {
+            version: "1.0.0".into(),
+            installed_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            source: None,
+        };
+        write_meta(dir.path(), &meta).unwrap();
+        let loaded = read_meta(dir.path()).expect("meta should be readable");
+        assert!(loaded.source.is_none());
+        // Also verify source field is omitted from JSON (skip_serializing_if)
+        let json = std::fs::read_to_string(dir.path().join("meta.json")).unwrap();
+        assert!(
+            !json.contains("source"),
+            "source: None should be omitted from JSON"
+        );
     }
 
     #[test]

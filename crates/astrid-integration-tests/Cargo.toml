@@ -25,6 +25,7 @@ tempfile = "3"
 serde_json.workspace = true
 futures.workspace = true
 chrono.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 astrid-openclaw.workspace = true
