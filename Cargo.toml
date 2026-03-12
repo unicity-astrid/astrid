@@ -198,7 +198,7 @@ extism = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
 
 # OS keychain (secret storage)
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+keyring = { version = "3", features = ["async-secret-service", "crypto-rust"] }
 
 # Async utilities
 async-trait = "0.1"
