@@ -32,8 +32,25 @@ fn sanitize_version(raw: &str) -> String {
 struct OutputManifest {
     package: PackageDef,
     component: Option<ComponentDef>,
+    #[serde(default, skip_serializing_if = "OutputDependencies::is_empty")]
+    dependencies: OutputDependencies,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     env: HashMap<String, EnvDef>,
+}
+
+/// Capability-based dependency declarations for generated capsule manifests.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct OutputDependencies {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provides: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requires: Vec<String>,
+}
+
+impl OutputDependencies {
+    fn is_empty(&self) -> bool {
+        self.provides.is_empty() && self.requires.is_empty()
+    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -127,6 +144,7 @@ pub fn generate_manifest(
             entrypoint: "plugin.wasm".into(),
             hash: Some(hash),
         }),
+        dependencies: OutputDependencies::default(),
         env,
     };
 
@@ -159,6 +177,7 @@ mod tests {
                 entrypoint: "plugin.wasm".into(),
                 hash: Some("abc123".into()),
             }),
+            dependencies: OutputDependencies::default(),
             env: HashMap::from([(
                 "apiKey".into(),
                 EnvDef {
@@ -201,6 +220,7 @@ mod tests {
                 entrypoint: "plugin.wasm".into(),
                 hash: None,
             }),
+            dependencies: OutputDependencies::default(),
             env: HashMap::from([(
                 "additionalRelays".into(),
                 EnvDef {
@@ -235,6 +255,7 @@ mod tests {
                 entrypoint: "plugin.wasm".into(),
                 hash: None,
             }),
+            dependencies: OutputDependencies::default(),
             env: HashMap::new(),
         };
 

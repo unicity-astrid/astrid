@@ -85,7 +85,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             link: vec![],
             capabilities: None,
         }],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             net_bind: vec![],

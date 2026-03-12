@@ -63,7 +63,7 @@ async fn setup_test_capsule(
             link: vec![],
             capabilities: None,
         }],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,
             net_bind: vec![],
@@ -169,7 +169,7 @@ async fn setup_test_capsule_with_global(
             link: vec![],
             capabilities: None,
         }],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             net_bind: vec![],

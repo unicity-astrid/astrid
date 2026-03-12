@@ -369,7 +369,7 @@ mod tests {
                 metadata: None,
             },
             components: Vec::new(),
-            dependencies: std::collections::HashMap::new(),
+            dependencies: Default::default(),
             capabilities: CapabilitiesDef::default(),
             env: std::collections::HashMap::new(),
             context_files: Vec::new(),

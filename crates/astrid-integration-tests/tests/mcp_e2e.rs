@@ -31,7 +31,7 @@ async fn test_mcp_host_engine_capability_validation() {
             metadata: None,
         },
         components: vec![],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             net_bind: vec![],

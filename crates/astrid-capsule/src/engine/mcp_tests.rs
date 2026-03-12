@@ -32,7 +32,7 @@ mod tests {
                 metadata: None,
             },
             components: vec![],
-            dependencies: HashMap::new(),
+            dependencies: Default::default(),
             capabilities: CapabilitiesDef {
                 net: vec![],
                 net_bind: vec![],

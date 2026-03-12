@@ -1,16 +1,17 @@
 //! Topological sort for capsule dependency ordering.
 //!
 //! Implements Kahn's algorithm to order capsules so that dependencies load
-//! before their dependents. Cycles are detected and reported.
+//! before their dependents. Edges are derived from capability-based
+//! `requires`/`provides` declarations rather than package names.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt;
 use std::path::PathBuf;
 
 use crate::manifest::CapsuleManifest;
 
 /// A manifest paired with its capsule directory path.
-type ManifestEntry = (CapsuleManifest, PathBuf);
+pub(crate) type ManifestEntry = (CapsuleManifest, PathBuf);
 
 /// Error returned when the dependency graph contains a cycle.
 #[derive(Debug, Clone)]
@@ -31,18 +32,45 @@ impl fmt::Display for CycleError {
 
 impl std::error::Error for CycleError {}
 
+/// Match a capability requirement against a provided capability.
+///
+/// Both sides may contain `*` wildcards that match a single dot-separated
+/// segment. The type prefix (before `:`) must match exactly; only the body
+/// (after `:`) supports wildcard matching.
+///
+/// # Examples
+///
+/// - `topic:llm.stream.*` matches `topic:llm.stream.anthropic`
+/// - `topic:foo` does NOT match `tool:foo` (type prefix mismatch)
+/// - `topic:a.b` does NOT match `topic:a.b.c` (segment count mismatch)
+pub(crate) fn capability_matches(requirement: &str, provided: &str) -> bool {
+    let (req_type, req_body) = requirement.split_once(':').unwrap_or(("", requirement));
+    let (prov_type, prov_body) = provided.split_once(':').unwrap_or(("", provided));
+    if req_type != prov_type {
+        return false;
+    }
+    let req_segs: Vec<&str> = req_body.split('.').collect();
+    let prov_segs: Vec<&str> = prov_body.split('.').collect();
+    if req_segs.len() != prov_segs.len() {
+        return false;
+    }
+    req_segs
+        .iter()
+        .zip(prov_segs.iter())
+        .all(|(r, p)| *r == "*" || *p == "*" || r == p)
+}
+
 /// Sort capsule manifests in dependency order using Kahn's algorithm.
 ///
-/// Capsules with no dependencies come first. Dependencies are resolved
-/// by matching `manifest.dependencies` keys against capsule package names.
+/// Capsules with no requirements come first. Dependencies are resolved by
+/// matching each capsule's `requires` against other capsules' effective
+/// `provides` using [`capability_matches`] for wildcard support.
 ///
-/// Missing dependencies (names not in the input set) are logged as warnings
-/// and treated as satisfied - the capsule still loads, it just won't have
-/// that dependency guaranteed to be loaded first.
+/// Uses any-satisfies semantics: a requirement is met when ANY single
+/// capsule provides a matching capability.
 ///
-/// Duplicate package names are logged as warnings; only the first occurrence
-/// participates in dependency resolution, later duplicates are still included
-/// in the output but treated as having no dependents.
+/// Unsatisfied requirements are logged as warnings and treated as met -
+/// the capsule still loads, it just won't have that capability guaranteed.
 ///
 /// # Errors
 ///
@@ -61,36 +89,35 @@ pub fn toposort_manifests(
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); len];
     let mut in_degree: Vec<usize> = vec![0; len];
 
-    // Build the name-to-index map and adjacency list in a scoped block
-    // so the borrows on `manifests` are released before the error path
-    // needs to return ownership.
+    // Build capability-based adjacency list in a scoped block so the
+    // borrows on `manifests` are released before the error path needs
+    // to return ownership.
     {
-        let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(len);
-        for (i, (m, _)) in manifests.iter().enumerate() {
-            let name = m.package.name.as_str();
-            if let Some(&existing) = name_to_idx.get(name) {
-                tracing::warn!(
-                    name = %name,
-                    first_path = %manifests[existing].1.display(),
-                    duplicate_path = %manifests[i].1.display(),
-                    "Duplicate capsule package name, only the first occurrence participates in dependency resolution"
-                );
-            } else {
-                name_to_idx.insert(name, i);
-            }
-        }
+        let all_provides: Vec<Vec<String>> = manifests
+            .iter()
+            .map(|(m, _)| m.effective_provides())
+            .collect();
 
         for (idx, (manifest, _)) in manifests.iter().enumerate() {
-            for dep_name in manifest.dependencies.keys() {
-                if let Some(&dep_idx) = name_to_idx.get(dep_name.as_str()) {
-                    // dep_idx must load before idx
-                    dependents[dep_idx].push(idx);
-                    in_degree[idx] += 1;
-                } else {
+            for req in &manifest.dependencies.requires {
+                let mut satisfied = false;
+                for (prov_idx, provides) in all_provides.iter().enumerate() {
+                    if prov_idx == idx {
+                        continue;
+                    }
+                    if provides.iter().any(|p| capability_matches(req, p)) {
+                        // prov_idx must load before idx
+                        dependents[prov_idx].push(idx);
+                        in_degree[idx] += 1;
+                        satisfied = true;
+                        break; // any-satisfies: one provider is enough
+                    }
+                }
+                if !satisfied {
                     tracing::warn!(
                         capsule = %manifest.package.name,
-                        dependency = %dep_name,
-                        "Capsule declares dependency on unknown capsule, ignoring"
+                        requirement = %req,
+                        "Required capability not provided by any loaded capsule"
                     );
                 }
             }
@@ -141,15 +168,13 @@ pub fn toposort_manifests(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashMap;
 
-    fn manifest(name: &str, deps: &[&str]) -> ManifestEntry {
-        let dependencies: HashMap<String, String> = deps
-            .iter()
-            .map(|d| ((*d).to_string(), "*".to_string()))
-            .collect();
+    use super::*;
+    use crate::manifest::{CapabilitiesDef, DependenciesDef, ToolDef};
 
+    /// Create a manifest with explicit provides and requires capabilities.
+    fn manifest_with_caps(name: &str, provides: &[&str], requires: &[&str]) -> ManifestEntry {
         let m = CapsuleManifest {
             package: crate::manifest::PackageDef {
                 name: name.to_string(),
@@ -171,7 +196,10 @@ mod tests {
                 metadata: None,
             },
             components: Vec::new(),
-            dependencies,
+            dependencies: DependenciesDef {
+                provides: provides.iter().map(|s| (*s).to_string()).collect(),
+                requires: requires.iter().map(|s| (*s).to_string()).collect(),
+            },
             capabilities: Default::default(),
             env: HashMap::new(),
             context_files: Vec::new(),
@@ -187,12 +215,75 @@ mod tests {
         (m, PathBuf::from(format!("/capsules/{name}")))
     }
 
+    /// Create a manifest with no explicit provides/requires (auto-derive test).
+    fn manifest_bare(name: &str) -> ManifestEntry {
+        manifest_with_caps(name, &[], &[])
+    }
+
     fn names(manifests: &[ManifestEntry]) -> Vec<&str> {
         manifests
             .iter()
             .map(|(m, _)| m.package.name.as_str())
             .collect()
     }
+
+    // -- capability_matches tests --
+
+    #[test]
+    fn capability_matches_exact() {
+        assert!(capability_matches("topic:foo.bar", "topic:foo.bar"));
+    }
+
+    #[test]
+    fn capability_matches_wildcard_in_requirement() {
+        assert!(capability_matches(
+            "topic:llm.stream.*",
+            "topic:llm.stream.anthropic"
+        ));
+    }
+
+    #[test]
+    fn capability_matches_wildcard_in_provider() {
+        assert!(capability_matches(
+            "topic:llm.request.generate.anthropic",
+            "topic:llm.request.generate.*"
+        ));
+    }
+
+    #[test]
+    fn capability_matches_type_mismatch() {
+        assert!(!capability_matches("topic:foo", "tool:foo"));
+    }
+
+    #[test]
+    fn capability_matches_segment_count_mismatch() {
+        assert!(!capability_matches("topic:a.b", "topic:a.b.c"));
+    }
+
+    #[test]
+    fn capability_matches_no_prefix() {
+        assert!(capability_matches("foo", "foo"));
+        assert!(!capability_matches("foo", "bar"));
+    }
+
+    #[test]
+    fn capability_matches_both_wildcards() {
+        assert!(capability_matches("topic:*.stream", "topic:llm.*"));
+    }
+
+    #[test]
+    fn capability_matches_middle_wildcard() {
+        assert!(capability_matches(
+            "topic:llm.*.anthropic",
+            "topic:llm.stream.anthropic"
+        ));
+        assert!(!capability_matches(
+            "topic:llm.*.anthropic",
+            "topic:llm.stream.openai"
+        ));
+    }
+
+    // -- toposort tests --
 
     #[test]
     fn empty_graph() {
@@ -202,37 +293,108 @@ mod tests {
 
     #[test]
     fn single_node() {
-        let input = vec![manifest("a", &[])];
+        let input = vec![manifest_bare("a")];
         let result = toposort_manifests(input).unwrap();
         assert_eq!(names(&result), vec!["a"]);
     }
 
     #[test]
-    fn linear_chain() {
-        // c depends on b, b depends on a => order: a, b, c
+    fn capability_edge() {
+        // B requires topic:foo, A provides topic:foo => A before B
         let input = vec![
-            manifest("c", &["b"]),
-            manifest("a", &[]),
-            manifest("b", &["a"]),
+            manifest_with_caps("b", &[], &["topic:foo"]),
+            manifest_with_caps("a", &["topic:foo"], &[]),
         ];
         let result = toposort_manifests(input).unwrap();
         let n = names(&result);
         assert!(
             n.iter().position(|&x| x == "a").unwrap() < n.iter().position(|&x| x == "b").unwrap()
         );
+    }
+
+    #[test]
+    fn wildcard_requires() {
+        // B requires topic:llm.stream.*, A provides topic:llm.stream.anthropic => A before B
+        let input = vec![
+            manifest_with_caps("b", &[], &["topic:llm.stream.*"]),
+            manifest_with_caps("a", &["topic:llm.stream.anthropic"], &[]),
+        ];
+        let result = toposort_manifests(input).unwrap();
+        let n = names(&result);
         assert!(
-            n.iter().position(|&x| x == "b").unwrap() < n.iter().position(|&x| x == "c").unwrap()
+            n.iter().position(|&x| x == "a").unwrap() < n.iter().position(|&x| x == "b").unwrap()
         );
     }
 
     #[test]
-    fn diamond_dependency() {
-        // d depends on b and c, both depend on a => a first, d last
+    fn any_satisfies_picks_first_provider() {
+        // C requires topic:llm.stream.*, both A and B provide it
+        // Only one edge created (any-satisfies), no cycle
         let input = vec![
-            manifest("d", &["b", "c"]),
-            manifest("b", &["a"]),
-            manifest("c", &["a"]),
-            manifest("a", &[]),
+            manifest_with_caps("c", &[], &["topic:llm.stream.*"]),
+            manifest_with_caps("a", &["topic:llm.stream.anthropic"], &[]),
+            manifest_with_caps("b", &["topic:llm.stream.openai"], &[]),
+        ];
+        let result = toposort_manifests(input).unwrap();
+        let n = names(&result);
+        // C must come after at least one provider
+        let c_pos = n.iter().position(|&x| x == "c").unwrap();
+        let a_pos = n.iter().position(|&x| x == "a").unwrap();
+        assert!(a_pos < c_pos);
+    }
+
+    #[test]
+    fn unsatisfied_requirement_still_succeeds() {
+        // B requires topic:missing - no provider exists, B still loads
+        let input = vec![
+            manifest_bare("a"),
+            manifest_with_caps("b", &[], &["topic:missing"]),
+        ];
+        let result = toposort_manifests(input).unwrap();
+        assert_eq!(names(&result).len(), 2);
+    }
+
+    #[test]
+    fn cycle_detected() {
+        // A requires what B provides, B requires what A provides
+        let input = vec![
+            manifest_with_caps("a", &["topic:x"], &["topic:y"]),
+            manifest_with_caps("b", &["topic:y"], &["topic:x"]),
+        ];
+        let (err, original) = toposort_manifests(input).unwrap_err();
+        assert!(err.cycle.contains(&"a".to_string()));
+        assert!(err.cycle.contains(&"b".to_string()));
+        assert!(err.to_string().contains("dependency cycle detected"));
+        assert_eq!(original.len(), 2);
+    }
+
+    #[test]
+    fn three_node_cycle() {
+        let input = vec![
+            manifest_with_caps("a", &["topic:x"], &["topic:z"]),
+            manifest_with_caps("b", &["topic:y"], &["topic:x"]),
+            manifest_with_caps("c", &["topic:z"], &["topic:y"]),
+        ];
+        let (err, original) = toposort_manifests(input).unwrap_err();
+        assert_eq!(err.cycle.len(), 3);
+        assert_eq!(original.len(), 3);
+    }
+
+    #[test]
+    fn no_dependencies_preserves_all() {
+        let input = vec![manifest_bare("x"), manifest_bare("y"), manifest_bare("z")];
+        let result = toposort_manifests(input).unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn diamond_dependency_via_capabilities() {
+        // d requires topic:b + topic:c, b and c require topic:a
+        let input = vec![
+            manifest_with_caps("d", &["topic:d"], &["topic:b", "topic:c"]),
+            manifest_with_caps("b", &["topic:b"], &["topic:a"]),
+            manifest_with_caps("c", &["topic:c"], &["topic:a"]),
+            manifest_with_caps("a", &["topic:a"], &[]),
         ];
         let result = toposort_manifests(input).unwrap();
         let n = names(&result);
@@ -243,58 +405,64 @@ mod tests {
         assert!(pos("c") < pos("d"));
     }
 
+    // -- effective_provides tests --
+
     #[test]
-    fn cycle_detected() {
-        let input = vec![manifest("a", &["b"]), manifest("b", &["a"])];
-        let (err, original) = toposort_manifests(input).unwrap_err();
-        assert!(err.cycle.contains(&"a".to_string()));
-        assert!(err.cycle.contains(&"b".to_string()));
-        assert!(err.to_string().contains("dependency cycle detected"));
-        // Original vec is returned for fallback use
-        assert_eq!(original.len(), 2);
+    fn effective_provides_auto_derives_from_ipc_publish() {
+        let (mut m, _) = manifest_bare("test");
+        m.capabilities = CapabilitiesDef {
+            ipc_publish: vec!["foo.bar".to_string(), "baz".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(m.effective_provides(), vec!["topic:foo.bar", "topic:baz"]);
     }
 
     #[test]
-    fn three_node_cycle() {
-        let input = vec![
-            manifest("a", &["c"]),
-            manifest("b", &["a"]),
-            manifest("c", &["b"]),
-        ];
-        let (err, original) = toposort_manifests(input).unwrap_err();
-        assert_eq!(err.cycle.len(), 3);
-        assert_eq!(original.len(), 3);
+    fn effective_provides_explicit_overrides_auto_derive() {
+        let (mut m, _) = manifest_bare("test");
+        m.dependencies.provides = vec!["custom:cap".to_string()];
+        m.capabilities = CapabilitiesDef {
+            ipc_publish: vec!["should.be.ignored".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(m.effective_provides(), vec!["custom:cap"]);
     }
 
     #[test]
-    fn missing_dependency_succeeds() {
-        // b depends on "missing" which isn't in the set
-        let input = vec![manifest("a", &[]), manifest("b", &["missing"])];
+    fn effective_provides_includes_tools() {
+        let (mut m, _) = manifest_bare("test");
+        m.tools = vec![ToolDef {
+            name: "run_shell".to_string(),
+            description: "Run shell".to_string(),
+            input_schema: serde_json::json!({}),
+        }];
+        assert_eq!(m.effective_provides(), vec!["tool:run_shell"]);
+    }
+
+    #[test]
+    fn effective_provides_empty_when_nothing_declared() {
+        let (m, _) = manifest_bare("test");
+        assert!(m.effective_provides().is_empty());
+    }
+
+    // -- auto-derived provides create edges in toposort --
+
+    #[test]
+    fn toposort_uses_auto_derived_provides() {
+        // A has ipc_publish = ["foo.bar"] (auto-derives topic:foo.bar)
+        // B requires topic:foo.bar
+        let (mut a, a_path) = manifest_bare("a");
+        a.capabilities = CapabilitiesDef {
+            ipc_publish: vec!["foo.bar".to_string()],
+            ..Default::default()
+        };
+        let b = manifest_with_caps("b", &[], &["topic:foo.bar"]);
+
+        let input = vec![b, (a, a_path)];
         let result = toposort_manifests(input).unwrap();
-        assert_eq!(names(&result).len(), 2);
-    }
-
-    #[test]
-    fn no_dependencies_preserves_all() {
-        let input = vec![manifest("x", &[]), manifest("y", &[]), manifest("z", &[])];
-        let result = toposort_manifests(input).unwrap();
-        assert_eq!(result.len(), 3);
-    }
-
-    #[test]
-    fn duplicate_name_preserves_all_and_succeeds() {
-        // Two capsules with the same name - both should appear in output,
-        // only the first participates in dependency resolution.
-        let input = vec![
-            manifest("a", &[]),
-            manifest("a", &[]),
-            manifest("b", &["a"]),
-        ];
-        let result = toposort_manifests(input).unwrap();
-        assert_eq!(result.len(), 3);
-        // "a" (first occurrence, index 0) must come before "b"
-        let first_a = result.iter().position(|r| r.0.package.name == "a").unwrap();
-        let b_pos = result.iter().position(|r| r.0.package.name == "b").unwrap();
-        assert!(first_a < b_pos);
+        let n = names(&result);
+        assert!(
+            n.iter().position(|&x| x == "a").unwrap() < n.iter().position(|&x| x == "b").unwrap()
+        );
     }
 }

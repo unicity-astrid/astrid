@@ -50,6 +50,12 @@ action = "handle_watchdog_tick"
 event = "system.event_bus.lagged"
 action = "handle_bus_lag"
 
+[dependencies]
+requires = [
+    "topic:identity.response.ready",
+    "topic:session.response.get_messages",
+]
+
 [capabilities]
 ipc_publish = [
     "identity.request.build",
