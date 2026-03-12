@@ -123,6 +123,14 @@ enum CapsuleCommands {
         #[arg(long)]
         workspace: bool,
     },
+    /// List all installed capsules with capability metadata
+    List {
+        /// Show full provides/requires details
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Show the capsule dependency graph
+    Deps,
 }
 
 #[derive(Subcommand)]
@@ -184,6 +192,7 @@ fn init_logging(cli: &Cli) {
 }
 
 #[tokio::main]
+#[expect(clippy::too_many_lines, reason = "top-level command dispatch")]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -286,6 +295,12 @@ async fn main() -> Result<()> {
             },
             CapsuleCommands::Update { target, workspace } => {
                 commands::capsule::install::update_capsule(target.as_deref(), workspace)?;
+            },
+            CapsuleCommands::List { verbose } => {
+                commands::capsule::list::list_capsules(verbose)?;
+            },
+            CapsuleCommands::Deps => {
+                commands::capsule::deps::show_deps()?;
             },
         },
         Some(Commands::Session { command }) => {
