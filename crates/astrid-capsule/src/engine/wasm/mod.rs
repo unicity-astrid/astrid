@@ -177,6 +177,12 @@ impl ExecutionEngine for WasmEngine {
                 gate_global_root,
             ));
 
+            let secret_store = astrid_storage::build_secret_store(
+                &manifest.package.name,
+                kv.clone(),
+                tokio::runtime::Handle::current(),
+            );
+
             let host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
                 caller_context: None,
@@ -213,6 +219,7 @@ impl ExecutionEngine for WasmEngine {
                 inbound_tx: tx,
                 registered_uplinks: Vec::new(),
                 lifecycle_phase: None,
+                secret_store,
             };
 
             let user_data = UserData::new(host_state);
@@ -365,6 +372,8 @@ pub struct LifecycleConfig {
     pub event_bus: astrid_events::EventBus,
     /// Plugin configuration values (env vars, etc.).
     pub config: std::collections::HashMap<String, serde_json::Value>,
+    /// Secret store for capsule credentials (keychain with KV fallback).
+    pub secret_store: std::sync::Arc<dyn astrid_storage::secret::SecretStore>,
 }
 
 /// Run a capsule's lifecycle hook (install or upgrade).
@@ -431,6 +440,7 @@ pub fn run_lifecycle(
         active_streams: std::collections::HashMap::new(),
         next_stream_id: 1,
         lifecycle_phase: Some(phase),
+        secret_store: cfg.secret_store,
     };
 
     let user_data = UserData::new(host_state);

@@ -34,6 +34,11 @@ fn make_lifecycle_config(wasm_bytes: Vec<u8>) -> (LifecycleConfig, ScopedKvStore
     let workspace = std::env::temp_dir().join("astrid-lifecycle-test");
     let _ = std::fs::create_dir_all(&workspace);
 
+    let secret_store = astrid_storage::build_secret_store(
+        "test-lifecycle",
+        kv.clone(),
+        tokio::runtime::Handle::current(),
+    );
     let cfg = LifecycleConfig {
         wasm_bytes,
         capsule_id: CapsuleId::new("test-lifecycle").unwrap(),
@@ -41,6 +46,7 @@ fn make_lifecycle_config(wasm_bytes: Vec<u8>) -> (LifecycleConfig, ScopedKvStore
         kv: kv.clone(),
         event_bus,
         config: std::collections::HashMap::new(),
+        secret_store,
     };
     (cfg, kv)
 }

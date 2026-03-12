@@ -191,10 +191,23 @@ impl WasmHandler {
         })
         .map_err(|e| HandlerError::WasmFailed(format!("Failed to register VFS root dir: {e}")))?;
 
+        // Derive a per-module identity from the WASM file stem so each hook
+        // module gets its own isolated keychain service / KV namespace.
+        let hook_identity = std::path::Path::new(module_path).file_stem().map_or_else(
+            || "hook:unknown".to_string(),
+            |s| format!("hook:{}", s.to_string_lossy()),
+        );
+
+        let secret_store = astrid_storage::build_secret_store(
+            &hook_identity,
+            kv.clone(),
+            tokio::runtime::Handle::current(),
+        );
+
         let host_state = HostState {
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
-            capsule_id: CapsuleId::from_static("hook-wasm"),
+            capsule_id: CapsuleId::from_static(&hook_identity),
             workspace_root: self.workspace_root.clone(),
             vfs: Arc::new(vfs),
             vfs_root_handle: root_handle,
@@ -222,6 +235,7 @@ impl WasmHandler {
             active_streams: HashMap::new(),
             next_stream_id: 1,
             lifecycle_phase: None,
+            secret_store,
         };
         let user_data = UserData::new(host_state);
 

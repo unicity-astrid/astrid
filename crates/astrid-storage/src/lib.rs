@@ -44,12 +44,17 @@
 
 pub mod error;
 pub mod kv;
+pub mod secret;
 
 #[cfg(feature = "db")]
 pub mod db;
 
 pub use error::{StorageError, StorageResult};
 pub use kv::{KvEntry, KvStore, MemoryKvStore, ScopedKvStore};
+pub use secret::{KvSecretStore, SecretStore, SecretStoreError, build_secret_store};
+
+#[cfg(feature = "keychain")]
+pub use secret::{FallbackSecretStore, KeychainSecretStore};
 
 #[cfg(feature = "kv")]
 pub use kv::SurrealKvStore;
