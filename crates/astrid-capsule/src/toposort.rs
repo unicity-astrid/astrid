@@ -33,6 +33,10 @@ impl std::error::Error for CycleError {}
 /// and treated as satisfied - the capsule still loads, it just won't have
 /// that dependency guaranteed to be loaded first.
 ///
+/// Duplicate package names are logged as warnings; only the first occurrence
+/// participates in dependency resolution, later duplicates are still included
+/// in the output but treated as having no dependents.
+///
 /// # Errors
 ///
 /// Returns [`CycleError`] if the dependency graph contains a cycle.
@@ -43,11 +47,20 @@ pub fn toposort_manifests(
         return Ok(manifests);
     }
 
-    let name_to_idx: HashMap<&str, usize> = manifests
-        .iter()
-        .enumerate()
-        .map(|(i, (m, _))| (m.package.name.as_str(), i))
-        .collect();
+    let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(manifests.len());
+    for (i, (m, _)) in manifests.iter().enumerate() {
+        let name = m.package.name.as_str();
+        if let Some(&existing) = name_to_idx.get(name) {
+            tracing::warn!(
+                name = %name,
+                first_path = %manifests[existing].1.display(),
+                duplicate_path = %m.package.name,
+                "Duplicate capsule package name, only the first occurrence participates in dependency resolution"
+            );
+        } else {
+            name_to_idx.insert(name, i);
+        }
+    }
 
     let len = manifests.len();
     // adjacency[i] = list of indices that depend on i (i.e., i must load before them)
@@ -250,5 +263,22 @@ mod tests {
         let input = vec![manifest("x", &[]), manifest("y", &[]), manifest("z", &[])];
         let result = toposort_manifests(input).unwrap();
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn duplicate_name_preserves_all_and_succeeds() {
+        // Two capsules with the same name - both should appear in output,
+        // only the first participates in dependency resolution.
+        let input = vec![
+            manifest("a", &[]),
+            manifest("a", &[]),
+            manifest("b", &["a"]),
+        ];
+        let result = toposort_manifests(input).unwrap();
+        assert_eq!(result.len(), 3);
+        // "a" (first occurrence, index 0) must come before "b"
+        let first_a = result.iter().position(|r| r.0.package.name == "a").unwrap();
+        let b_pos = result.iter().position(|r| r.0.package.name == "b").unwrap();
+        assert!(first_a < b_pos);
     }
 }

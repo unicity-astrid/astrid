@@ -236,35 +236,23 @@ impl Kernel {
             .partition(|(m, _)| m.capabilities.uplink);
 
         // Topological sort each partition by manifest dependencies.
+        // Clone the unsorted vecs so cycle fallback doesn't re-discover.
+        let uplinks_fallback = uplinks.clone();
         let uplinks = toposort_manifests(uplinks).unwrap_or_else(|e| {
             tracing::error!(
                 cycle = %e,
                 "Dependency cycle in uplink capsules, falling back to discovery order"
             );
-            // Re-discover to get the original unsorted vec.
-            let mut p = Vec::new();
-            if let Ok(home) = AstridHome::resolve() {
-                p.push(home.capsules_dir());
-            }
-            let d = astrid_capsule::discovery::discover_manifests(Some(&p));
-            d.into_iter()
-                .filter(|(m, _)| m.capabilities.uplink)
-                .collect()
+            uplinks_fallback
         });
 
+        let others_fallback = others.clone();
         let others = toposort_manifests(others).unwrap_or_else(|e| {
             tracing::error!(
                 cycle = %e,
                 "Dependency cycle in capsules, falling back to discovery order"
             );
-            let mut p = Vec::new();
-            if let Ok(home) = AstridHome::resolve() {
-                p.push(home.capsules_dir());
-            }
-            let d = astrid_capsule::discovery::discover_manifests(Some(&p));
-            d.into_iter()
-                .filter(|(m, _)| !m.capabilities.uplink)
-                .collect()
+            others_fallback
         });
 
         // Load uplinks first so their event bus subscriptions are ready.
@@ -285,14 +273,37 @@ impl Kernel {
         // Wait for each uplink capsule to signal readiness instead of
         // using a fixed sleep. This ensures subscriptions are active
         // before non-uplink capsules emit events.
+        //
+        // Collect Arc<dyn Capsule> handles under a short-lived read lock,
+        // then drop the lock before awaiting (which can take up to 500ms
+        // per capsule). Holding the lock across await points would block
+        // any write-side access to the registry.
         if !uplink_names.is_empty() {
             let timeout = std::time::Duration::from_millis(500);
-            let registry = self.capsules.read().await;
-            for name in &uplink_names {
-                let capsule_id = astrid_capsule::capsule::CapsuleId::from_static(name);
-                if let Some(capsule) = registry.get(&capsule_id)
-                    && !capsule.wait_ready(timeout).await
-                {
+            let uplink_capsules: Vec<(
+                String,
+                std::sync::Arc<dyn astrid_capsule::capsule::Capsule>,
+            )> = {
+                let registry = self.capsules.read().await;
+                uplink_names
+                    .iter()
+                    .filter_map(|name| {
+                        match astrid_capsule::capsule::CapsuleId::new(name.clone()) {
+                            Ok(capsule_id) => registry.get(&capsule_id).map(|c| (name.clone(), c)),
+                            Err(e) => {
+                                tracing::warn!(
+                                    capsule = %name,
+                                    error = %e,
+                                    "Invalid capsule ID, skipping readiness wait"
+                                );
+                                None
+                            },
+                        }
+                    })
+                    .collect()
+            };
+            for (name, capsule) in &uplink_capsules {
+                if !capsule.wait_ready(timeout).await {
                     tracing::warn!(
                         capsule = %name,
                         timeout_ms = 500,
