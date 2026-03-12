@@ -186,40 +186,38 @@ impl EventReceiver {
         };
 
         let topic = &message.topic;
-        let topic_segs: Vec<&str> = topic.split('.').collect();
 
         // Reject topics deeper than the maximum allowed depth.
-        if topic_segs.len() > Self::MAX_TOPIC_DEPTH {
+        if topic.split('.').count() > Self::MAX_TOPIC_DEPTH {
             return false;
         }
 
-        let pat_segs: Vec<&str> = pattern.split('.').collect();
-
         // Trailing wildcard: last segment is `*` and matches 1+ remaining segments.
-        let trailing_wild = pat_segs.last() == Some(&"*");
+        if let Some(prefix_pat) = pattern.strip_suffix(".*") {
+            let mut prefix_segs = prefix_pat.split('.');
+            let mut topic_segs = topic.split('.');
 
-        if trailing_wild {
-            // SAFETY: trailing_wild is true only when pat_segs.last() == Some("*"),
-            // so pat_segs is non-empty and split_last always succeeds.
-            let (_, prefix_segs) = pat_segs.split_last().expect("non-empty when trailing_wild");
-            // Topic must have more segments than the prefix (the `*` matches 1+).
-            if topic_segs.len() <= prefix_segs.len() {
-                return false;
-            }
             // All prefix segments must match (with single-segment `*` support).
-            prefix_segs
-                .iter()
-                .zip(topic_segs.iter())
-                .all(|(p, t)| *p == "*" || p == t)
+            let prefix_matched = prefix_segs
+                .by_ref()
+                .zip(topic_segs.by_ref())
+                .all(|(p, t)| p == "*" || p == t);
+
+            // Prefix must be fully consumed and topic must have 1+ remaining
+            // segments (the trailing `*` matches 1+ segments).
+            prefix_matched && prefix_segs.next().is_none() && topic_segs.next().is_some()
         } else {
             // Exact segment-count match with single-segment `*` wildcards.
-            if topic_segs.len() != pat_segs.len() {
-                return false;
-            }
-            pat_segs
-                .iter()
-                .zip(topic_segs.iter())
-                .all(|(p, t)| *p == "*" || p == t)
+            let mut pat_segs = pattern.split('.');
+            let mut topic_segs = topic.split('.');
+
+            let all_matched = pat_segs
+                .by_ref()
+                .zip(topic_segs.by_ref())
+                .all(|(p, t)| p == "*" || p == t);
+
+            // Both iterators must be exhausted (equal segment count).
+            all_matched && pat_segs.next().is_none() && topic_segs.next().is_none()
         }
     }
 
