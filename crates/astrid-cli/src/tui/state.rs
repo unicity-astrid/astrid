@@ -176,6 +176,12 @@ pub(crate) enum PendingAction {
         selected_id: String,
         selected_label: String,
     },
+    /// Respond to a lifecycle `elicit` request.
+    SubmitElicitResponse {
+        request_id: uuid::Uuid,
+        value: Option<String>,
+        values: Option<Vec<String>>,
+    },
 }
 
 /// What the user chose for approval.
@@ -237,6 +243,12 @@ pub(crate) struct App {
 
     // ── Status Bar ──
     pub status_message: Option<(String, Instant)>,
+
+    // ── Lifecycle Elicit ──
+    /// When set, the current onboarding UI is driven by a lifecycle `elicit`
+    /// request. On completion, an `ElicitResponse` is published to the event
+    /// bus instead of writing `.env.json`.
+    pub elicit_request_id: Option<uuid::Uuid>,
 }
 
 impl App {
@@ -301,6 +313,8 @@ impl App {
             copy_notice: None,
 
             status_message: None,
+
+            elicit_request_id: None,
         }
     }
 

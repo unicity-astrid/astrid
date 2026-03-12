@@ -196,16 +196,41 @@ pub(crate) fn prefill_field_input(app: &mut App, is_enum: bool, default: &str) {
 fn finish_onboarding(app: &mut App) {
     if let UiState::Onboarding {
         capsule_id,
+        fields,
         answers,
+        current_array_items,
         ..
     } = &app.state
     {
-        let cid = capsule_id.clone();
-        let final_answers = answers.clone();
-        app.pending_actions.push(PendingAction::SubmitOnboarding {
-            capsule_id: cid,
-            answers: final_answers,
-        });
+        if let Some(request_id) = app.elicit_request_id.take() {
+            // Lifecycle elicit mode: publish ElicitResponse via IPC
+            // instead of writing .env.json.
+            let field = fields.first();
+            let is_array = field.is_some_and(|f| {
+                matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
+            });
+
+            let (value, values) = if is_array {
+                (None, Some(current_array_items.clone()))
+            } else {
+                let key = field.map_or("", |f| f.key.as_str());
+                (answers.get(key).cloned(), None)
+            };
+
+            app.pending_actions
+                .push(PendingAction::SubmitElicitResponse {
+                    request_id,
+                    value,
+                    values,
+                });
+        } else {
+            let cid = capsule_id.clone();
+            let final_answers = answers.clone();
+            app.pending_actions.push(PendingAction::SubmitOnboarding {
+                capsule_id: cid,
+                answers: final_answers,
+            });
+        }
     }
     app.state = UiState::Idle;
     app.input.clear();
@@ -217,6 +242,7 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
             app.push_notice("Onboarding cancelled by user.");
+            app.elicit_request_id = None;
             app.state = UiState::Idle;
             app.input.clear();
             app.cursor_pos = 0;
@@ -322,6 +348,7 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
             app.push_notice("Onboarding cancelled by user.");
+            app.elicit_request_id = None;
             app.state = UiState::Idle;
             app.input.clear();
             app.cursor_pos = 0;

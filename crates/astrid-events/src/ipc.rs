@@ -149,6 +149,34 @@ pub enum IpcPayload {
         /// IPC topic to publish the user's choice back on.
         callback_topic: String,
     },
+    /// A lifecycle hook is requesting user input via the `elicit` API.
+    ///
+    /// Published by the `astrid_elicit` host function during `#[install]` or
+    /// `#[upgrade]`. The frontend (TUI or CLI stdin) renders the prompt,
+    /// collects the value, and publishes an [`ElicitResponse`](IpcPayload::ElicitResponse)
+    /// to `astrid.lifecycle.elicit.response.{request_id}`.
+    ElicitRequest {
+        /// Correlation ID - the host function blocks until a response with
+        /// this ID arrives.
+        request_id: Uuid,
+        /// The capsule requesting input.
+        capsule_id: String,
+        /// Field descriptor reusing the onboarding schema.
+        field: OnboardingField,
+    },
+    /// Response to an [`ElicitRequest`](IpcPayload::ElicitRequest).
+    ///
+    /// Published by the frontend after the user provides input (or cancels).
+    ElicitResponse {
+        /// Must match the `request_id` from the originating request.
+        request_id: Uuid,
+        /// The user's input. `None` if the user cancelled.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+        /// For `Array`-type fields, the collected items.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        values: Option<Vec<String>>,
+    },
     /// Arbitrary JSON data for unstructured plugins.
     Custom {
         /// Raw data.
@@ -466,5 +494,60 @@ mod tests {
         let json = serde_json::to_string(&field).unwrap();
         let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.field_type, OnboardingFieldType::Enum(vec![]));
+    }
+
+    #[test]
+    fn elicit_request_roundtrip() {
+        let payload = IpcPayload::ElicitRequest {
+            request_id: Uuid::nil(),
+            capsule_id: "my-capsule".into(),
+            field: OnboardingField {
+                key: "api_url".into(),
+                prompt: "Enter API URL".into(),
+                description: Some("The backend endpoint".into()),
+                field_type: OnboardingFieldType::Text,
+                default: Some("https://example.com".into()),
+                placeholder: None,
+            },
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn elicit_response_with_value_roundtrip() {
+        let payload = IpcPayload::ElicitResponse {
+            request_id: Uuid::nil(),
+            value: Some("hello".into()),
+            values: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn elicit_response_with_values_roundtrip() {
+        let payload = IpcPayload::ElicitResponse {
+            request_id: Uuid::nil(),
+            value: None,
+            values: Some(vec!["a".into(), "b".into(), "c".into()]),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn elicit_response_cancelled_roundtrip() {
+        let payload = IpcPayload::ElicitResponse {
+            request_id: Uuid::nil(),
+            value: None,
+            values: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
     }
 }

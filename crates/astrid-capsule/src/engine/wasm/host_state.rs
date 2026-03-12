@@ -13,6 +13,19 @@ use crate::capsule::CapsuleId;
 use astrid_core::uplink::{InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkDescriptor};
 use astrid_storage::ScopedKvStore;
 
+/// The lifecycle phase a capsule is currently executing in.
+///
+/// Set on [`HostState`] during `#[install]` or `#[upgrade]` dispatch.
+/// The `astrid_elicit` host function checks this field and rejects calls
+/// outside of a lifecycle phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecyclePhase {
+    /// First-time installation.
+    Install,
+    /// Upgrading from a previous version.
+    Upgrade,
+}
+
 use crate::security::CapsuleSecurityGate;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
@@ -89,6 +102,10 @@ pub struct HostState {
     /// Starts at 1 so that handle ID 0 is never issued — 0 is reserved as a
     /// sentinel / "no handle" value in the WASM ABI.
     pub next_stream_id: u64,
+    /// Active lifecycle phase, if any. `None` during normal runtime.
+    /// Set to `Some(Install)` or `Some(Upgrade)` during lifecycle dispatch.
+    /// Gates the `astrid_elicit` host function.
+    pub lifecycle_phase: Option<LifecyclePhase>,
 }
 
 impl HostState {
@@ -182,6 +199,7 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
 
         let debug = format!("{state:?}");
@@ -230,6 +248,7 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
 
         assert!(state.uplinks().is_empty());
@@ -283,6 +302,7 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -332,6 +352,7 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -397,6 +418,7 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

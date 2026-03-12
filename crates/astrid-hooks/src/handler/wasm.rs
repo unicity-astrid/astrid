@@ -221,6 +221,7 @@ impl WasmHandler {
             cli_socket_listener: None,
             active_streams: HashMap::new(),
             next_stream_id: 1,
+            lifecycle_phase: None,
         };
         let user_data = UserData::new(host_state);
 

@@ -260,6 +260,18 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::Elicit => crate::engine::wasm::host::elicit::astrid_elicit_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
+        WasmHostFunction::HasSecret => crate::engine::wasm::host::elicit::astrid_has_secret_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
     }
 
     if fn_outputs.is_empty() {

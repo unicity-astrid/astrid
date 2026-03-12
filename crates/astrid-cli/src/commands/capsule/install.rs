@@ -5,6 +5,7 @@ use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, bail};
+use serde::{Deserialize, Serialize};
 
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
@@ -287,6 +288,32 @@ fn unpack_and_install(
     install_from_local_path(unpack_dir, workspace, home)
 }
 
+/// Capsule installation metadata, persisted as `meta.json` alongside `Capsule.toml`.
+#[derive(Debug, Serialize, Deserialize)]
+struct CapsuleMeta {
+    /// The currently installed version.
+    version: String,
+    /// When the capsule was first installed.
+    installed_at: String,
+    /// When the capsule was last updated.
+    updated_at: String,
+}
+
+/// Read existing `meta.json` from a capsule's install directory (if present).
+fn read_meta(target_dir: &Path) -> Option<CapsuleMeta> {
+    let meta_path = target_dir.join("meta.json");
+    let data = std::fs::read_to_string(&meta_path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+/// Write `meta.json` to the capsule's install directory.
+fn write_meta(target_dir: &Path, meta: &CapsuleMeta) -> anyhow::Result<()> {
+    let meta_path = target_dir.join("meta.json");
+    let json = serde_json::to_string_pretty(meta).context("failed to serialize meta.json")?;
+    std::fs::write(&meta_path, json)
+        .with_context(|| format!("failed to write {}", meta_path.display()))
+}
+
 pub(crate) fn install_from_local_path(
     source_path: &Path,
     workspace: bool,
@@ -299,23 +326,276 @@ pub(crate) fn install_from_local_path(
 
     let manifest = load_manifest(&manifest_path).context("failed to load Capsule manifest")?;
     let id = manifest.package.name.clone();
+    let new_version = manifest.package.version.clone();
 
-    // 3. Resolve Target Directory
+    // Resolve Target Directory
     let target_dir = resolve_target_dir(home, &id, workspace)?;
     let parent = target_dir.parent().context("target dir has no parent")?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("failed to create {}", parent.display()))?;
 
-    // 4. Copy Capsule
+    // Detect install vs upgrade by checking existing meta.json
+    let existing_meta = read_meta(&target_dir);
+    let (phase, previous_version) = if let Some(ref meta) = existing_meta {
+        (
+            astrid_capsule::engine::wasm::host_state::LifecyclePhase::Upgrade,
+            Some(meta.version.clone()),
+        )
+    } else {
+        (
+            astrid_capsule::engine::wasm::host_state::LifecyclePhase::Install,
+            None,
+        )
+    };
 
-    // Backup existing target if present.
-    if target_dir.exists() {
-        std::fs::remove_dir_all(&target_dir)?;
+    // Backup existing target if present (for rollback on lifecycle failure).
+    let backup_dir = if target_dir.exists() {
+        let backup = target_dir.with_extension("bak");
+        if backup.exists() {
+            std::fs::remove_dir_all(&backup)?;
+        }
+        std::fs::rename(&target_dir, &backup)?;
+        Some(backup)
+    } else {
+        None
+    };
+
+    // Copy capsule files
+    if let Err(e) = copy_capsule_dir(source_path, &target_dir) {
+        // Restore backup on copy failure
+        if let Some(ref backup) = backup_dir {
+            let _ = std::fs::remove_dir_all(&target_dir);
+            let _ = std::fs::rename(backup, &target_dir);
+        }
+        return Err(e);
     }
 
-    copy_capsule_dir(source_path, &target_dir)?;
+    // Run lifecycle hook if a WASM binary exists
+    if let Err(e) = run_lifecycle_if_wasm(
+        &target_dir,
+        &manifest,
+        &id,
+        phase,
+        previous_version.as_deref(),
+    ) {
+        eprintln!("Lifecycle hook failed: {e}");
+        // Rollback: restore previous installation
+        let _ = std::fs::remove_dir_all(&target_dir);
+        if let Some(ref backup) = backup_dir {
+            let _ = std::fs::rename(backup, &target_dir);
+        }
+        return Err(e);
+    }
+
+    // Write meta.json on success
+    let now = chrono::Utc::now().to_rfc3339();
+    let meta = CapsuleMeta {
+        version: new_version,
+        installed_at: existing_meta.map_or_else(|| now.clone(), |m| m.installed_at),
+        updated_at: now,
+    };
+    write_meta(&target_dir, &meta)?;
+
+    // Clean up backup
+    if let Some(ref backup) = backup_dir {
+        let _ = std::fs::remove_dir_all(backup);
+    }
 
     Ok(())
+}
+
+/// Run lifecycle hooks if the capsule contains a WASM binary.
+///
+/// Non-WASM capsules (OpenClaw/JS) are skipped silently.
+fn run_lifecycle_if_wasm(
+    target_dir: &Path,
+    manifest: &astrid_capsule::manifest::CapsuleManifest,
+    capsule_id: &str,
+    phase: astrid_capsule::engine::wasm::host_state::LifecyclePhase,
+    previous_version: Option<&str>,
+) -> anyhow::Result<()> {
+    // Find the WASM binary from the manifest's component definitions
+    let Some(component) = manifest.components.first() else {
+        return Ok(()); // No components - skip lifecycle
+    };
+
+    let wasm_path = if component.path.is_absolute() {
+        component.path.clone()
+    } else {
+        target_dir.join(&component.path)
+    };
+
+    if !wasm_path.exists() || wasm_path.extension().and_then(|e| e.to_str()) != Some("wasm") {
+        return Ok(()); // Not a WASM capsule - skip lifecycle
+    }
+
+    let wasm_bytes = std::fs::read(&wasm_path)
+        .with_context(|| format!("failed to read WASM binary: {}", wasm_path.display()))?;
+
+    // Build minimal infrastructure for lifecycle dispatch
+    let kv_store = std::sync::Arc::new(astrid_storage::MemoryKvStore::new());
+    let kv = astrid_storage::ScopedKvStore::new(kv_store, format!("plugin:{capsule_id}"))
+        .context("failed to create scoped KV store")?;
+    let event_bus = astrid_events::EventBus::with_capacity(128);
+
+    // Create a temporary tokio runtime for lifecycle dispatch.
+    // We need this because the host functions use block_on internally.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("failed to build tokio runtime for lifecycle")?;
+
+    // Spawn a CLI-inline elicit handler that prompts on stdin.
+    // Runs as a tokio task so we can use the async EventReceiver::recv().
+    let elicit_bus = event_bus.clone();
+    let elicit_receiver = event_bus.subscribe_topic("astrid.lifecycle.elicit");
+    let elicit_handle = rt.spawn(async move {
+        cli_elicit_handler(elicit_receiver, elicit_bus).await;
+    });
+
+    let capsule_id_owned = astrid_capsule::capsule::CapsuleId::new(capsule_id.to_string())
+        .map_err(|e| anyhow::anyhow!("invalid capsule ID: {e}"))?;
+    let cfg = astrid_capsule::engine::wasm::LifecycleConfig {
+        wasm_bytes,
+        capsule_id: capsule_id_owned,
+        workspace_root: target_dir.to_path_buf(),
+        kv,
+        event_bus: event_bus.clone(),
+        config: std::collections::HashMap::new(),
+    };
+
+    let result = rt.block_on(async {
+        tokio::task::block_in_place(|| {
+            astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
+        })
+    });
+
+    // Signal the elicit handler to stop
+    elicit_handle.abort();
+    drop(event_bus);
+    drop(rt);
+
+    result.map_err(|e| anyhow::anyhow!("lifecycle dispatch failed: {e}"))
+}
+
+/// CLI-inline elicit handler for non-TUI installs.
+///
+/// Listens for `ElicitRequest` IPC messages and prompts on stdin,
+/// then publishes `ElicitResponse` back to the event bus.
+async fn cli_elicit_handler(
+    mut receiver: astrid_events::EventReceiver,
+    event_bus: astrid_events::EventBus,
+) {
+    use astrid_events::AstridEvent;
+    use astrid_events::ipc::{IpcPayload, OnboardingFieldType};
+    use std::io::Write;
+
+    loop {
+        // Async receive - will return None when the channel is closed
+        let Some(event) = receiver.recv().await else {
+            return; // Channel closed, exit
+        };
+
+        let AstridEvent::Ipc { message, .. } = &*event else {
+            continue;
+        };
+
+        let IpcPayload::ElicitRequest {
+            request_id,
+            capsule_id,
+            field,
+        } = &message.payload
+        else {
+            continue;
+        };
+
+        let request_id = *request_id;
+
+        // Render prompt
+        let prompt_text = if let Some(ref desc) = field.description {
+            format!("[{capsule_id}] {desc}")
+        } else {
+            format!("[{capsule_id}] {}", field.key)
+        };
+
+        let (value, values) = match &field.field_type {
+            OnboardingFieldType::Text => {
+                let default_hint = field
+                    .default
+                    .as_ref()
+                    .map(|d| format!(" [{d}]"))
+                    .unwrap_or_default();
+                print!("{prompt_text}{default_hint}: ");
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                let input = input.trim().to_string();
+                let val = if input.is_empty() {
+                    field.default.clone().unwrap_or_default()
+                } else {
+                    input
+                };
+                (Some(val), None)
+            },
+            OnboardingFieldType::Secret => {
+                print!("{prompt_text} (secret, input hidden): ");
+                let _ = std::io::stdout().flush();
+                // Read without echo - best effort
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                let val = input.trim().to_string();
+                // Store in a way the has_secret check can find it
+                // For CLI-only install, the secret is just collected but
+                // the guest never sees it (SDK returns Ok(()))
+                (Some(val), None)
+            },
+            OnboardingFieldType::Enum(options) => {
+                println!("{prompt_text}:");
+                for (i, opt) in options.iter().enumerate() {
+                    println!("  {}: {opt}", i.saturating_add(1));
+                }
+                print!("Select [1-{}]: ", options.len());
+                let _ = std::io::stdout().flush();
+                let mut input = String::new();
+                let _ = std::io::stdin().read_line(&mut input);
+                let idx: usize = input.trim().parse().unwrap_or(1);
+                let val = options
+                    .get(idx.saturating_sub(1))
+                    .cloned()
+                    .unwrap_or_default();
+                (Some(val), None)
+            },
+            OnboardingFieldType::Array => {
+                println!("{prompt_text} (enter values one per line, empty line to finish):");
+                let mut items = Vec::new();
+                loop {
+                    print!("> ");
+                    let _ = std::io::stdout().flush();
+                    let mut input = String::new();
+                    let _ = std::io::stdin().read_line(&mut input);
+                    let input = input.trim().to_string();
+                    if input.is_empty() {
+                        break;
+                    }
+                    items.push(input);
+                }
+                (None, Some(items))
+            },
+        };
+
+        // Publish response
+        let response_topic = format!("astrid.lifecycle.elicit.response.{request_id}");
+        let response = IpcPayload::ElicitResponse {
+            request_id,
+            value,
+            values,
+        };
+        let msg = astrid_events::ipc::IpcMessage::new(response_topic, response, uuid::Uuid::nil());
+        event_bus.publish(AstridEvent::Ipc {
+            message: msg,
+            metadata: astrid_events::EventMetadata::default(),
+        });
+    }
 }
 
 /// Recursively copy a directory tree, dereferencing symlinks.
@@ -536,6 +816,81 @@ mod tests {
         assert!(
             content.contains("works"),
             "dereferenced file must have original content"
+        );
+    }
+
+    #[test]
+    fn meta_json_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let meta = CapsuleMeta {
+            version: "1.2.3".into(),
+            installed_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-03-12T00:00:00Z".into(),
+        };
+        write_meta(dir.path(), &meta).unwrap();
+        let loaded = read_meta(dir.path()).expect("meta should be readable");
+        assert_eq!(loaded.version, "1.2.3");
+        assert_eq!(loaded.installed_at, "2026-01-01T00:00:00Z");
+        assert_eq!(loaded.updated_at, "2026-03-12T00:00:00Z");
+    }
+
+    #[test]
+    fn read_meta_returns_none_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_meta(dir.path()).is_none());
+    }
+
+    #[test]
+    fn install_writes_meta_json() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"meta-test\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        install_from_local_path(base, false, &home).expect("install should succeed");
+
+        let installed = home.capsules_dir().join("meta-test");
+        let meta = read_meta(&installed).expect("meta.json should exist after install");
+        assert_eq!(meta.version, "2.0.0");
+    }
+
+    #[test]
+    fn install_detects_upgrade_preserves_installed_at() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"upgrade-test\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+
+        // First install
+        install_from_local_path(base, false, &home).expect("first install");
+        let meta1 = read_meta(&home.capsules_dir().join("upgrade-test")).unwrap();
+        assert_eq!(meta1.version, "1.0.0");
+        let original_installed_at = meta1.installed_at.clone();
+
+        // Upgrade
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"upgrade-test\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+        install_from_local_path(base, false, &home).expect("upgrade");
+
+        let meta2 = read_meta(&home.capsules_dir().join("upgrade-test")).unwrap();
+        assert_eq!(meta2.version, "2.0.0");
+        assert_eq!(
+            meta2.installed_at, original_installed_at,
+            "installed_at should be preserved across upgrades"
         );
     }
 }

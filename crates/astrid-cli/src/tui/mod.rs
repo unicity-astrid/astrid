@@ -245,6 +245,41 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
             });
             input::prefill_field_input(app, is_first_enum || is_first_array, &default_val);
+        } else if let astrid_events::ipc::IpcPayload::ElicitRequest {
+            request_id,
+            capsule_id,
+            field,
+        } = &message.payload
+        {
+            let msg = format!("Capsule '{capsule_id}' is requesting input: {}", field.key);
+            app.push_notice(&msg);
+            app.status_message = Some((msg, Instant::now()));
+
+            // Store the elicit request ID so the input handler knows to
+            // publish an ElicitResponse instead of writing .env.json.
+            app.elicit_request_id = Some(*request_id);
+
+            let is_enum = matches!(
+                field.field_type,
+                astrid_events::ipc::OnboardingFieldType::Enum(_)
+            );
+            let is_array = matches!(
+                field.field_type,
+                astrid_events::ipc::OnboardingFieldType::Array
+            );
+            let enum_selected = input::default_enum_position(field);
+            let default_val = field.default.clone().unwrap_or_default();
+
+            app.state = UiState::Onboarding {
+                capsule_id: capsule_id.clone(),
+                fields: vec![field.clone()],
+                current_idx: 0,
+                answers: std::collections::HashMap::new(),
+                enum_selected,
+                enum_scroll_offset: 0,
+                current_array_items: Vec::new(),
+            };
+            input::prefill_field_input(app, is_enum || is_array, &default_val);
         } else if let astrid_events::ipc::IpcPayload::SelectionRequired {
             request_id,
             title,
@@ -472,6 +507,22 @@ async fn handle_pending_actions(
                         }
                     }
                 }
+            },
+            PendingAction::SubmitElicitResponse {
+                request_id,
+                value,
+                values,
+            } => {
+                let response_topic = format!("astrid.lifecycle.elicit.response.{request_id}");
+                let response = astrid_events::ipc::IpcPayload::ElicitResponse {
+                    request_id,
+                    value,
+                    values,
+                };
+                let msg =
+                    astrid_events::ipc::IpcMessage::new(response_topic, response, session_id.0);
+                let _ = client.send_message(msg).await;
+                app.push_notice("Lifecycle input submitted.");
             },
         }
     }

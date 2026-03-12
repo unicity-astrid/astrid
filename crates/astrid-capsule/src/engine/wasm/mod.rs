@@ -7,7 +7,7 @@ use tracing::info;
 use crate::context::CapsuleContext;
 use crate::engine::ExecutionEngine;
 use crate::engine::wasm::host::register_host_functions;
-use crate::engine::wasm::host_state::HostState;
+use crate::engine::wasm::host_state::{HostState, LifecyclePhase};
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
 
@@ -212,6 +212,7 @@ impl ExecutionEngine for WasmEngine {
                 has_uplink_capability: !manifest.uplinks.is_empty(),
                 inbound_tx: tx,
                 registered_uplinks: Vec::new(),
+                lifecycle_phase: None,
             };
 
             let user_data = UserData::new(host_state);
@@ -348,6 +349,135 @@ impl ExecutionEngine for WasmEngine {
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         })
     }
+}
+
+/// Configuration for lifecycle dispatch.
+pub struct LifecycleConfig {
+    /// The WASM binary bytes.
+    pub wasm_bytes: Vec<u8>,
+    /// Capsule identifier.
+    pub capsule_id: crate::capsule::CapsuleId,
+    /// Workspace root directory for VFS.
+    pub workspace_root: PathBuf,
+    /// Scoped KV store for the capsule.
+    pub kv: astrid_storage::ScopedKvStore,
+    /// Event bus for IPC (elicit requests flow through this).
+    pub event_bus: astrid_events::EventBus,
+    /// Plugin configuration values (env vars, etc.).
+    pub config: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Run a capsule's lifecycle hook (install or upgrade).
+///
+/// Builds a temporary, short-lived plugin instance with no wall-clock timeout
+/// (lifecycle hooks involve human interaction via `elicit`). If the WASM binary
+/// does not export the relevant function (`astrid_install` or `astrid_upgrade`),
+/// returns `Ok(())` silently.
+///
+/// # Errors
+///
+/// Returns an error if the WASM plugin fails to build or the lifecycle hook
+/// returns an error.
+pub fn run_lifecycle(
+    cfg: LifecycleConfig,
+    phase: LifecyclePhase,
+    previous_version: Option<&str>,
+) -> CapsuleResult<()> {
+    let export_name = match phase {
+        LifecyclePhase::Install => "astrid_install",
+        LifecyclePhase::Upgrade => "astrid_upgrade",
+    };
+
+    // Build a minimal VFS
+    let vfs = astrid_vfs::HostVfs::new();
+    let root_handle = astrid_capabilities::DirHandle::new();
+    tokio::runtime::Handle::current()
+        .block_on(async {
+            vfs.register_dir(root_handle.clone(), cfg.workspace_root.clone())
+                .await
+        })
+        .map_err(|e| {
+            CapsuleError::UnsupportedEntryPoint(format!(
+                "Failed to register VFS directory for lifecycle: {e}"
+            ))
+        })?;
+
+    let host_state = HostState {
+        capsule_uuid: uuid::Uuid::new_v4(),
+        caller_context: None,
+        capsule_id: cfg.capsule_id.clone(),
+        workspace_root: cfg.workspace_root,
+        vfs: Arc::new(vfs),
+        vfs_root_handle: root_handle,
+        global_root: None,
+        global_vfs: None,
+        global_vfs_root_handle: None,
+        upper_dir: None,
+        kv: cfg.kv,
+        event_bus: cfg.event_bus,
+        ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+        subscriptions: std::collections::HashMap::new(),
+        next_subscription_id: 1,
+        config: cfg.config,
+        ipc_publish_patterns: Vec::new(),
+        security: None,
+        hook_manager: None,
+        capsule_registry: None,
+        runtime_handle: tokio::runtime::Handle::current(),
+        has_uplink_capability: false,
+        inbound_tx: None,
+        registered_uplinks: Vec::new(),
+        cli_socket_listener: None,
+        active_streams: std::collections::HashMap::new(),
+        next_stream_id: 1,
+        lifecycle_phase: Some(phase),
+    };
+
+    let user_data = UserData::new(host_state);
+
+    let extism_wasm = Wasm::data(cfg.wasm_bytes);
+    // No timeout - lifecycle hooks involve human interaction via elicit.
+    let extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024);
+
+    let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
+    let builder = register_host_functions(builder, user_data);
+
+    let mut plugin = builder.build().map_err(|e| {
+        CapsuleError::UnsupportedEntryPoint(format!(
+            "Failed to build Extism plugin for lifecycle: {e}"
+        ))
+    })?;
+
+    // Check if the export exists - lifecycle hooks are optional
+    if !plugin.function_exists(export_name) {
+        tracing::debug!(
+            capsule = %cfg.capsule_id,
+            export = export_name,
+            "Capsule does not export lifecycle hook, skipping"
+        );
+        return Ok(());
+    }
+
+    tracing::info!(
+        capsule = %cfg.capsule_id,
+        phase = ?phase,
+        previous_version = previous_version.unwrap_or("(none)"),
+        "Running lifecycle hook"
+    );
+
+    // Call the lifecycle export
+    let input = previous_version.unwrap_or("");
+    plugin.call::<&str, ()>(export_name, input).map_err(|e| {
+        CapsuleError::ExecutionFailed(format!("lifecycle hook {export_name} failed: {e}"))
+    })?;
+
+    tracing::info!(
+        capsule = %cfg.capsule_id,
+        phase = ?phase,
+        "Lifecycle hook completed successfully"
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
