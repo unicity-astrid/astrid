@@ -81,7 +81,7 @@ fn discover_providers() -> Vec<ProviderEntry> {
     // Subscribe BEFORE publishing the request. Broadcast channels do not
     // replay missed messages, so if we publish first the kernel response
     // could arrive before our subscription is active and be permanently lost.
-    let sub = match ipc::subscribe("kernel.v1.response.get_capsule_metadata") {
+    let sub = match ipc::subscribe("astrid.v1.response.get_capsule_metadata") {
         Ok(h) => h,
         Err(_) => return Vec::new(),
     };
@@ -94,7 +94,7 @@ fn discover_providers() -> Vec<ProviderEntry> {
         },
     };
 
-    if ipc::publish_json("kernel.v1.request.get_capsule_metadata", &wrapped).is_err() {
+    if ipc::publish_json("astrid.v1.request.get_capsule_metadata", &wrapped).is_err() {
         let _ = ipc::unsubscribe(&sub);
         return Vec::new();
     }
@@ -343,7 +343,7 @@ pub fn run() -> FnResult<()> {
     // Single subscription for kernel.capsules_loaded — used for both initial
     // readiness wait AND reload re-discovery in the event loop. Avoids the
     // race window of unsubscribe + resubscribe where a message could be missed.
-    let capsules_loaded_sub = ipc::subscribe("kernel.v1.capsules_loaded")
+    let capsules_loaded_sub = ipc::subscribe("astrid.v1.capsules_loaded")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Wait for the kernel to signal that all capsules have been loaded.
@@ -358,7 +358,7 @@ pub fn run() -> FnResult<()> {
     if !capsules_ready {
         let _ = sys::log(
             "warn",
-            "Timed out waiting for kernel.v1.capsules_loaded — proceeding with discovery anyway",
+            "Timed out waiting for astrid.v1.capsules_loaded — proceeding with discovery anyway",
         );
     }
 

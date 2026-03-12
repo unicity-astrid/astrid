@@ -110,7 +110,7 @@ async fn test_lifecycle_install_with_elicit() {
     let event_bus = cfg.event_bus.clone();
 
     // Spawn a responder that answers elicit requests automatically
-    let mut elicit_receiver = event_bus.subscribe_topic("astrid.v1.lifecycle.elicit");
+    let mut elicit_receiver = event_bus.subscribe_topic("astrid.v1.elicit");
     let responder_bus = event_bus.clone();
     let responder = tokio::spawn(async move {
         use astrid_events::AstridEvent;
@@ -128,7 +128,7 @@ async fn test_lifecycle_install_with_elicit() {
             };
 
             let request_id = *request_id;
-            let response_topic = format!("astrid.v1.lifecycle.elicit.response.{request_id}");
+            let response_topic = format!("astrid.v1.elicit.response.{request_id}");
 
             let (value, values) = match &field.field_type {
                 astrid_events::ipc::OnboardingFieldType::Secret => {

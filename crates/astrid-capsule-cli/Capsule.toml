@@ -15,6 +15,6 @@ ipc_publish = [
     "registry.v1.get_providers",
     "registry.v1.set_active_model",
     "registry.v1.selection.*",
-    "kernel.v1.request.*",
+    "astrid.v1.request.*",
     "cli.v1.command.execute",
 ]

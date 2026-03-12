@@ -762,7 +762,7 @@ fn run_lifecycle_if_wasm(
     // Spawn a CLI-inline elicit handler that prompts on stdin.
     // Runs as a tokio task so we can use the async EventReceiver::recv().
     let elicit_bus = event_bus.clone();
-    let elicit_receiver = event_bus.subscribe_topic("astrid.v1.lifecycle.elicit");
+    let elicit_receiver = event_bus.subscribe_topic("astrid.v1.elicit");
     let elicit_handle = rt.spawn(async move {
         cli_elicit_handler(elicit_receiver, elicit_bus).await;
     });
@@ -926,7 +926,7 @@ async fn cli_elicit_handler(
         let (value, values) =
             prompt_stdin_field(prompt, field.field_type.clone(), field.default.clone()).await;
 
-        let response_topic = format!("astrid.v1.lifecycle.elicit.response.{request_id}");
+        let response_topic = format!("astrid.v1.elicit.response.{request_id}");
         let response = IpcPayload::ElicitResponse {
             request_id,
             value,

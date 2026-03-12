@@ -14,7 +14,7 @@ uplink = true
 ipc_publish = [
     "registry.v1.response.*",
     "registry.v1.active_model_changed",
-    "kernel.v1.request.get_capsule_metadata",
+    "astrid.v1.request.get_capsule_metadata",
     "registry.v1.selection.*",
 ]
 

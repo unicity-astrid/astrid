@@ -121,28 +121,28 @@ fn tier1_shim_captures_all_registration_methods() {
 
     // ── on (event handlers) ───────────────────────────────────────────
     assert!(
-        shim.contains("lifecycle.v1.message_received"),
-        "missing on('lifecycle.v1.message_received') handler"
+        shim.contains("astrid.v1.lifecycle.message_received"),
+        "missing on('astrid.v1.lifecycle.message_received') handler"
     );
     assert!(
-        shim.contains("lifecycle.v1.message_sending"),
-        "missing on('lifecycle.v1.message_sending') handler"
+        shim.contains("astrid.v1.lifecycle.message_sending"),
+        "missing on('astrid.v1.lifecycle.message_sending') handler"
     );
     assert!(
-        shim.contains("prompt_building"),
-        "missing on('prompt_building') handler"
+        shim.contains("astrid.v1.lifecycle.prompt_building"),
+        "missing on('astrid.v1.lifecycle.prompt_building') handler"
     );
     assert!(
-        shim.contains("model_resolving"),
-        "missing on('model_resolving') handler"
+        shim.contains("astrid.v1.lifecycle.model_resolving"),
+        "missing on('astrid.v1.lifecycle.model_resolving') handler"
     );
     assert!(
-        shim.contains("lifecycle.v1.context_compaction_started"),
-        "missing on('lifecycle.v1.context_compaction_started') handler"
+        shim.contains("astrid.v1.lifecycle.context_compaction_started"),
+        "missing on('astrid.v1.lifecycle.context_compaction_started') handler"
     );
     assert!(
-        shim.contains("lifecycle.v1.tool_result_persisting"),
-        "missing on('lifecycle.v1.tool_result_persisting') handler"
+        shim.contains("astrid.v1.lifecycle.tool_result_persisting"),
+        "missing on('astrid.v1.lifecycle.tool_result_persisting') handler"
     );
 }
 

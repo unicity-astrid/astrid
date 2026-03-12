@@ -785,76 +785,80 @@ impl AstridEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
             // Agent Lifecycle
-            Self::RuntimeStarted { .. } => "runtime_started",
-            Self::RuntimeStopped { .. } => "runtime_stopped",
-            Self::AgentStarted { .. } => "agent_started",
-            Self::AgentStopped { .. } => "agent_stopped",
+            Self::RuntimeStarted { .. } => "astrid.v1.lifecycle.runtime_started",
+            Self::RuntimeStopped { .. } => "astrid.v1.lifecycle.runtime_stopped",
+            Self::AgentStarted { .. } => "astrid.v1.lifecycle.agent_started",
+            Self::AgentStopped { .. } => "astrid.v1.lifecycle.agent_stopped",
             // Session
-            Self::SessionCreated { .. } => "lifecycle.v1.session_created",
-            Self::SessionEnded { .. } => "lifecycle.v1.session_ended",
-            Self::SessionResumed { .. } => "session_resumed",
+            Self::SessionCreated { .. } => "astrid.v1.lifecycle.session_created",
+            Self::SessionEnded { .. } => "astrid.v1.lifecycle.session_ended",
+            Self::SessionResumed { .. } => "astrid.v1.lifecycle.session_resumed",
             // Prompt / Cognitive Loop
-            Self::PromptBuilding { .. } => "prompt_building",
-            Self::MessageSending { .. } => "lifecycle.v1.message_sending",
-            Self::ContextCompactionStarted { .. } => "lifecycle.v1.context_compaction_started",
-            Self::ContextCompactionCompleted { .. } => "lifecycle.v1.context_compaction_completed",
-            Self::SessionResetting { .. } => "session_resetting",
-            Self::ModelResolving { .. } => "model_resolving",
-            Self::AgentLoopCompleted { .. } => "agent_loop_completed",
-            Self::ToolResultPersisting { .. } => "lifecycle.v1.tool_result_persisting",
+            Self::PromptBuilding { .. } => "astrid.v1.lifecycle.prompt_building",
+            Self::MessageSending { .. } => "astrid.v1.lifecycle.message_sending",
+            Self::ContextCompactionStarted { .. } => {
+                "astrid.v1.lifecycle.context_compaction_started"
+            },
+            Self::ContextCompactionCompleted { .. } => {
+                "astrid.v1.lifecycle.context_compaction_completed"
+            },
+            Self::SessionResetting { .. } => "astrid.v1.lifecycle.session_resetting",
+            Self::ModelResolving { .. } => "astrid.v1.lifecycle.model_resolving",
+            Self::AgentLoopCompleted { .. } => "astrid.v1.lifecycle.agent_loop_completed",
+            Self::ToolResultPersisting { .. } => "astrid.v1.lifecycle.tool_result_persisting",
             // Message Flow
-            Self::MessageReceived { .. } => "lifecycle.v1.message_received",
-            Self::MessageSent { .. } => "lifecycle.v1.message_sent",
-            Self::MessageProcessed { .. } => "message_processed",
+            Self::MessageReceived { .. } => "astrid.v1.lifecycle.message_received",
+            Self::MessageSent { .. } => "astrid.v1.lifecycle.message_sent",
+            Self::MessageProcessed { .. } => "astrid.v1.lifecycle.message_processed",
             // LLM
-            Self::LlmRequestStarted { .. } => "llm_request_started",
-            Self::LlmRequestCompleted { .. } => "llm_request_completed",
-            Self::LlmStreamStarted { .. } => "llm_stream_started",
-            Self::LlmStreamChunk { .. } => "llm_stream_chunk",
-            Self::LlmStreamCompleted { .. } => "llm_stream_completed",
+            Self::LlmRequestStarted { .. } => "astrid.v1.lifecycle.llm_request_started",
+            Self::LlmRequestCompleted { .. } => "astrid.v1.lifecycle.llm_request_completed",
+            Self::LlmStreamStarted { .. } => "astrid.v1.lifecycle.llm_stream_started",
+            Self::LlmStreamChunk { .. } => "astrid.v1.lifecycle.llm_stream_chunk",
+            Self::LlmStreamCompleted { .. } => "astrid.v1.lifecycle.llm_stream_completed",
             // Tool
-            Self::ToolCallStarted { .. } => "lifecycle.v1.tool_call_started",
-            Self::ToolCallCompleted { .. } => "lifecycle.v1.tool_call_completed",
-            Self::ToolCallFailed { .. } => "tool_call_failed",
+            Self::ToolCallStarted { .. } => "astrid.v1.lifecycle.tool_call_started",
+            Self::ToolCallCompleted { .. } => "astrid.v1.lifecycle.tool_call_completed",
+            Self::ToolCallFailed { .. } => "astrid.v1.lifecycle.tool_call_failed",
             // MCP
-            Self::McpServerConnected { .. } => "mcp_server_connected",
-            Self::McpServerDisconnected { .. } => "mcp_server_disconnected",
-            Self::McpToolCalled { .. } => "mcp_tool_called",
-            Self::McpToolCompleted { .. } => "mcp_tool_completed",
+            Self::McpServerConnected { .. } => "astrid.v1.lifecycle.mcp_server_connected",
+            Self::McpServerDisconnected { .. } => "astrid.v1.lifecycle.mcp_server_disconnected",
+            Self::McpToolCalled { .. } => "astrid.v1.lifecycle.mcp_tool_called",
+            Self::McpToolCompleted { .. } => "astrid.v1.lifecycle.mcp_tool_completed",
             // SubAgent
-            Self::SubAgentSpawned { .. } => "lifecycle.v1.sub_agent_spawned",
-            Self::SubAgentProgress { .. } => "subagent_progress",
-            Self::SubAgentCompleted { .. } => "lifecycle.v1.sub_agent_completed",
-            Self::SubAgentFailed { .. } => "lifecycle.v1.sub_agent_failed",
-            Self::SubAgentCancelled { .. } => "lifecycle.v1.sub_agent_cancelled",
+            Self::SubAgentSpawned { .. } => "astrid.v1.lifecycle.sub_agent_spawned",
+            Self::SubAgentProgress { .. } => "astrid.v1.lifecycle.sub_agent_progress",
+            Self::SubAgentCompleted { .. } => "astrid.v1.lifecycle.sub_agent_completed",
+            Self::SubAgentFailed { .. } => "astrid.v1.lifecycle.sub_agent_failed",
+            Self::SubAgentCancelled { .. } => "astrid.v1.lifecycle.sub_agent_cancelled",
             // Capsule
-            Self::CapsuleLoaded { .. } => "capsule_loaded",
-            Self::CapsuleFailed { .. } => "capsule_failed",
-            Self::CapsuleUnloaded { .. } => "capsule_unloaded",
+            Self::CapsuleLoaded { .. } => "astrid.v1.lifecycle.capsule_loaded",
+            Self::CapsuleFailed { .. } => "astrid.v1.lifecycle.capsule_failed",
+            Self::CapsuleUnloaded { .. } => "astrid.v1.lifecycle.capsule_unloaded",
             // Security
-            Self::CapabilityGranted { .. } => "capability_granted",
-            Self::CapabilityRevoked { .. } => "capability_revoked",
-            Self::CapabilityChecked { .. } => "capability_checked",
-            Self::AuthorizationDenied { .. } => "authorization_denied",
-            Self::SecurityViolation { .. } => "security_violation",
+            Self::CapabilityGranted { .. } => "astrid.v1.lifecycle.capability_granted",
+            Self::CapabilityRevoked { .. } => "astrid.v1.lifecycle.capability_revoked",
+            Self::CapabilityChecked { .. } => "astrid.v1.lifecycle.capability_checked",
+            Self::AuthorizationDenied { .. } => "astrid.v1.lifecycle.authorization_denied",
+            Self::SecurityViolation { .. } => "astrid.v1.lifecycle.security_violation",
             // Approval
-            Self::ApprovalRequested { .. } => "approval_requested",
-            Self::ApprovalGranted { .. } => "approval_granted",
-            Self::ApprovalDenied { .. } => "approval_denied",
+            Self::ApprovalRequested { .. } => "astrid.v1.lifecycle.approval_requested",
+            Self::ApprovalGranted { .. } => "astrid.v1.lifecycle.approval_granted",
+            Self::ApprovalDenied { .. } => "astrid.v1.lifecycle.approval_denied",
             // Budget
-            Self::BudgetAllocated { .. } => "budget_allocated",
-            Self::BudgetWarning { .. } => "budget_warning",
-            Self::BudgetExceeded { .. } => "budget_exceeded",
+            Self::BudgetAllocated { .. } => "astrid.v1.lifecycle.budget_allocated",
+            Self::BudgetWarning { .. } => "astrid.v1.lifecycle.budget_warning",
+            Self::BudgetExceeded { .. } => "astrid.v1.lifecycle.budget_exceeded",
             // System
-            Self::KernelStarted { .. } => "lifecycle.v1.kernel_started",
-            Self::KernelShutdown { .. } => "lifecycle.v1.kernel_shutdown",
-            Self::ConfigReloaded { .. } => "config_reloaded",
-            Self::ConfigChanged { .. } => "config_changed",
-            Self::HealthCheckCompleted { .. } => "health_check_completed",
+            Self::KernelStarted { .. } => "astrid.v1.lifecycle.kernel_started",
+            Self::KernelShutdown { .. } => "astrid.v1.lifecycle.kernel_shutdown",
+            Self::ConfigReloaded { .. } => "astrid.v1.lifecycle.config_reloaded",
+            Self::ConfigChanged { .. } => "astrid.v1.lifecycle.config_changed",
+            Self::HealthCheckCompleted { .. } => "astrid.v1.lifecycle.health_check_completed",
             // Audit
-            Self::AuditEntryCreated { .. } => "audit_entry_created",
+            Self::AuditEntryCreated { .. } => "astrid.v1.lifecycle.audit_entry_created",
             // Error
-            Self::ErrorOccurred { .. } => "error_occurred",
+            Self::ErrorOccurred { .. } => "astrid.v1.lifecycle.error_occurred",
             // IPC
             Self::Ipc { .. } => "ipc",
             // Custom
@@ -915,7 +919,7 @@ mod tests {
             metadata: EventMetadata::new("runtime"),
             version: "0.1.0".to_string(),
         };
-        assert_eq!(event.event_type(), "runtime_started");
+        assert_eq!(event.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[test]

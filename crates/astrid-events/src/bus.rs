@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(count, 1);
 
         let msg = receiver.recv().await.unwrap();
-        assert_eq!(msg.event_type(), "runtime_started");
+        assert_eq!(msg.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]
@@ -294,8 +294,8 @@ mod tests {
         let obj1 = receiver1.recv().await.unwrap();
         let obj2 = receiver2.recv().await.unwrap();
 
-        assert_eq!(obj1.event_type(), "runtime_started");
-        assert_eq!(obj2.event_type(), "runtime_started");
+        assert_eq!(obj1.event_type(), "astrid.v1.lifecycle.runtime_started");
+        assert_eq!(obj2.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]
@@ -697,7 +697,7 @@ mod tests {
 
         assert!(result.is_ok(), "recv should have woken up");
         let event = result.unwrap().unwrap();
-        assert_eq!(event.event_type(), "runtime_started");
+        assert_eq!(event.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]

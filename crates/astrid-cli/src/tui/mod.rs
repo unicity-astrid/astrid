@@ -91,7 +91,7 @@ pub(crate) async fn run(
     let req = astrid_events::kernel_api::KernelRequest::GetCommands;
     if let Ok(val) = serde_json::to_value(req) {
         let msg = astrid_events::ipc::IpcMessage::new(
-            "kernel.v1.request.get_commands",
+            "astrid.v1.request.get_commands",
             astrid_events::ipc::IpcPayload::RawJson(val),
             session_id.0,
         );
@@ -359,7 +359,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
         // When the kernel finishes loading all capsules, re-fetch commands
         // so dynamic slash commands (like /models) appear even if the CLI
         // connected before non-uplink capsules were loaded.
-        if message.topic == "kernel.v1.capsules_loaded" {
+        if message.topic == "astrid.v1.capsules_loaded" {
             app.pending_actions
                 .push(state::PendingAction::RefreshCommands);
         }
@@ -490,7 +490,7 @@ async fn handle_pending_actions(
                 let req = astrid_events::kernel_api::KernelRequest::GetCommands;
                 if let Ok(val) = serde_json::to_value(req) {
                     let msg = astrid_events::ipc::IpcMessage::new(
-                        "kernel.v1.request.get_commands",
+                        "astrid.v1.request.get_commands",
                         astrid_events::ipc::IpcPayload::RawJson(val),
                         session_id.0,
                     );
@@ -514,7 +514,7 @@ async fn handle_pending_actions(
                             let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
                             if let Ok(val) = serde_json::to_value(req) {
                                 let ipc_msg = astrid_events::ipc::IpcMessage::new(
-                                    "kernel.v1.request.reload_capsules",
+                                    "astrid.v1.request.reload_capsules",
                                     astrid_events::ipc::IpcPayload::RawJson(val),
                                     session_id.0,
                                 );
@@ -529,7 +529,7 @@ async fn handle_pending_actions(
                 value,
                 values,
             } => {
-                let response_topic = format!("astrid.v1.lifecycle.elicit.response.{request_id}");
+                let response_topic = format!("astrid.v1.elicit.response.{request_id}");
                 let response = astrid_events::ipc::IpcPayload::ElicitResponse {
                     request_id,
                     value,
@@ -599,7 +599,7 @@ async fn handle_slash_command(
                         let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
                         if let Ok(val) = serde_json::to_value(req) {
                             let msg = astrid_events::ipc::IpcMessage::new(
-                                "kernel.v1.request.reload_capsules",
+                                "astrid.v1.request.reload_capsules",
                                 astrid_events::ipc::IpcPayload::RawJson(val),
                                 session_id.0,
                             );
@@ -611,7 +611,7 @@ async fn handle_slash_command(
                         let req = astrid_events::kernel_api::KernelRequest::GetCommands;
                         if let Ok(val) = serde_json::to_value(req) {
                             let msg = astrid_events::ipc::IpcMessage::new(
-                                "kernel.v1.request.get_commands",
+                                "astrid.v1.request.get_commands",
                                 astrid_events::ipc::IpcPayload::RawJson(val),
                                 session_id.0,
                             );
@@ -630,7 +630,7 @@ async fn handle_slash_command(
             let req = astrid_events::kernel_api::KernelRequest::ReloadCapsules;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
-                    "kernel.v1.request.reload_capsules",
+                    "astrid.v1.request.reload_capsules",
                     astrid_events::ipc::IpcPayload::RawJson(val),
                     session_id.0,
                 );
@@ -641,7 +641,7 @@ async fn handle_slash_command(
             let req = astrid_events::kernel_api::KernelRequest::GetCommands;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
-                    "kernel.v1.request.get_commands",
+                    "astrid.v1.request.get_commands",
                     astrid_events::ipc::IpcPayload::RawJson(val),
                     session_id.0,
                 );
@@ -665,7 +665,7 @@ async fn handle_slash_command(
             let req = astrid_events::kernel_api::KernelRequest::GetCommands;
             if let Ok(val) = serde_json::to_value(req) {
                 let msg = astrid_events::ipc::IpcMessage::new(
-                    "kernel.v1.request.get_commands",
+                    "astrid.v1.request.get_commands",
                     astrid_events::ipc::IpcPayload::RawJson(val),
                     session_id.0,
                 );

@@ -44,7 +44,7 @@
 //!
 //! // Receive the event
 //! let event = receiver.recv().await.unwrap();
-//! assert_eq!(event.event_type(), "runtime_started");
+//! assert_eq!(event.event_type(), "astrid.v1.lifecycle.runtime_started");
 //! # }
 //! ```
 

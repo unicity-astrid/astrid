@@ -42,12 +42,12 @@ action = "handle_model_changed"
 
 # Periodic watchdog tick from the kernel for timeout enforcement
 [[interceptor]]
-event = "react.v1.watchdog.tick"
+event = "astrid.v1.watchdog.tick"
 action = "handle_watchdog_tick"
 
 # Event bus broadcast lag notification from the dispatcher
 [[interceptor]]
-event = "system.v1.event_bus.lagged"
+event = "astrid.v1.event_bus.lagged"
 action = "handle_bus_lag"
 
 [dependencies]
