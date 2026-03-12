@@ -86,9 +86,9 @@ pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::R
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
-    // 1. Explicit Local Path
+    // 1. Explicit Local Path - no source tracking (re-fetch doesn't make sense)
     if source.starts_with('.') || source.starts_with('/') {
-        return install_from_local(source, workspace, &home, Some(source));
+        return install_from_local(source, workspace, &home, None);
     }
 
     // 2. OpenClaw Explicit Prefix
@@ -112,8 +112,8 @@ pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<(
         return install_from_github(source, workspace, &home, false, Some(source));
     }
 
-    // 5. Fallback: Assume it's a local folder matching the given name
-    install_from_local(source, workspace, &home, Some(source))
+    // 5. Fallback: Assume it's a local folder - no source tracking
+    install_from_local(source, workspace, &home, None)
 }
 
 pub(crate) fn install_from_github(
