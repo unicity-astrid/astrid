@@ -101,6 +101,24 @@ pub(crate) fn astrid_get_caller_impl(
     Ok(())
 }
 
+/// Returns the current wall-clock time as milliseconds since the UNIX epoch.
+///
+/// No inputs required. Returns the timestamp as a UTF-8 decimal string.
+pub(crate) fn astrid_clock_ms_impl(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0u64, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let s = ms.to_string();
+    let mem = plugin.memory_new(&s)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
 /// Trigger request sent by WASM capsules via `hooks::trigger`.
 #[derive(serde::Deserialize)]
 struct TriggerRequest {

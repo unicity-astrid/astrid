@@ -356,6 +356,17 @@ impl ExecutionEngine for WasmEngine {
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         })
     }
+
+    fn check_health(&self) -> crate::capsule::CapsuleState {
+        if let Some(handle) = &self.run_handle
+            && handle.is_finished()
+        {
+            return crate::capsule::CapsuleState::Failed(
+                "WASM run loop exited unexpectedly".into(),
+            );
+        }
+        crate::capsule::CapsuleState::Ready
+    }
 }
 
 /// Configuration for lifecycle dispatch.

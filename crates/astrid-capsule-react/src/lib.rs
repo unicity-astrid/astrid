@@ -44,6 +44,17 @@ const REQUEST_SESSION_PREFIX: &str = "react.req2sess";
 /// KV key prefix for call_id -> session_id correlation.
 const CALL_SESSION_PREFIX: &str = "react.call2sess";
 
+/// KV key for the set of active (non-Idle) session IDs.
+///
+/// Stored as a JSON array of strings. The watchdog iterates this set
+/// to check timeouts across all sessions, not just the default one.
+///
+/// Thread safety: the read-modify-write on this key is safe because all
+/// WASM interceptor calls within a single capsule are serialized by the
+/// plugin mutex in `WasmEngine::invoke_interceptor`. Concurrent dispatches
+/// to the same capsule block on the mutex, so no lost-update race is possible.
+const ACTIVE_SESSIONS_KEY: &str = "react.active_sessions";
+
 /// Default timeout in milliseconds for session capsule requests.
 const DEFAULT_SESSION_TIMEOUT_MS: u64 = 2_000;
 
@@ -103,21 +114,65 @@ fn delete_call_sessions(call_ids: &[String]) {
     }
 }
 
-/// Resolve the session timeout from capsule config, falling back to default.
-fn session_timeout_ms() -> u64 {
-    match sys::get_config_string("session_timeout_ms") {
-        Ok(s) => match s.parse() {
+/// Load the set of active session IDs from KV.
+fn load_active_sessions() -> Vec<String> {
+    kv::get_json::<Vec<String>>(ACTIVE_SESSIONS_KEY).unwrap_or_else(|e| {
+        let _ = sys::log(
+            "warn",
+            format!("Failed to load active sessions from KV, defaulting to empty: {e}"),
+        );
+        Vec::new()
+    })
+}
+
+/// Add a session ID to the active sessions set.
+fn register_active_session(session_id: &str) {
+    let mut sessions = load_active_sessions();
+    if !sessions.iter().any(|s| s == session_id) {
+        sessions.push(session_id.to_string());
+        if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
+            let _ = sys::log(
+                "error",
+                format!("Failed to register active session '{session_id}': {e}"),
+            );
+        }
+    }
+}
+
+/// Remove a session ID from the active sessions set.
+fn unregister_active_session(session_id: &str) {
+    let mut sessions = load_active_sessions();
+    if let Some(pos) = sessions.iter().position(|s| s == session_id) {
+        sessions.swap_remove(pos);
+        if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
+            let _ = sys::log(
+                "error",
+                format!("Failed to unregister active session '{session_id}': {e}"),
+            );
+        }
+    }
+}
+
+/// Read a `u64` config value from capsule config, with warning on parse failure.
+fn get_config_u64(key: &str, default: u64) -> u64 {
+    match sys::get_config_string(key) {
+        Ok(s) => match s.trim().trim_matches('"').parse::<u64>() {
             Ok(v) => v,
             Err(e) => {
                 let _ = sys::log(
                     "warn",
-                    format!("Invalid session_timeout_ms config '{s}': {e}, using default {DEFAULT_SESSION_TIMEOUT_MS}ms"),
+                    format!("Invalid config for '{key}': \"{s}\", using default {default}. Error: {e}"),
                 );
-                DEFAULT_SESSION_TIMEOUT_MS
-            },
+                default
+            }
         },
-        Err(_) => DEFAULT_SESSION_TIMEOUT_MS,
+        Err(_) => default,
     }
+}
+
+/// Resolve the session timeout from capsule config, falling back to default.
+fn session_timeout_ms() -> u64 {
+    get_config_u64("session_timeout_ms", DEFAULT_SESSION_TIMEOUT_MS)
 }
 
 /// State machine phase for the react loop.
@@ -159,7 +214,23 @@ pub(crate) struct DispatchedToolCall {
     arguments: serde_json::Value,
     /// Result, filled in when `tool.execute.result` arrives.
     result: Option<ToolCallResult>,
+    /// The `request_id` of the turn that dispatched this tool.
+    /// Used to detect stale tool results arriving after a turn reset.
+    #[serde(default)]
+    turn_request_id: Uuid,
 }
+
+/// Default maximum number of ReAct loop iterations before forced stop.
+const DEFAULT_MAX_ITERATIONS: u32 = 25;
+
+/// Default timeout in seconds for identity/prompt builder phases.
+const DEFAULT_IDENTITY_TIMEOUT_SECS: u64 = 30;
+
+/// Default timeout in seconds for the LLM streaming phase.
+const DEFAULT_STREAMING_TIMEOUT_SECS: u64 = 120;
+
+/// Default timeout in seconds for the tool execution phase.
+const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 60;
 
 /// Ephemeral per-turn state for the react loop.
 ///
@@ -181,6 +252,12 @@ pub(crate) struct TurnState {
     pending_stream_tools: Vec<PendingToolCall>,
     /// Tool calls that have been dispatched for execution.
     dispatched_tools: Vec<DispatchedToolCall>,
+    /// Number of Streaming -> AwaitingTools -> Streaming iterations this turn.
+    #[serde(default)]
+    iteration_count: u32,
+    /// Millisecond timestamp when the current phase was entered.
+    #[serde(default)]
+    phase_entered_at_ms: u64,
 }
 
 impl Default for TurnState {
@@ -193,6 +270,8 @@ impl Default for TurnState {
             response_text: String::new(),
             pending_stream_tools: Vec::new(),
             dispatched_tools: Vec::new(),
+            iteration_count: 0,
+            phase_entered_at_ms: 0,
         }
     }
 }
@@ -219,12 +298,87 @@ impl TurnState {
         kv::set_json(&key, self)
     }
 
-    /// Reset per-turn accumulators for a new LLM generation round.
+    /// Reset per-iteration accumulators for a new LLM generation round.
+    ///
+    /// Note: `iteration_count` is NOT reset here because this is called
+    /// between ReAct loop iterations. Use `reset_conversation_turn()` to
+    /// fully reset for a new user prompt.
     fn reset_turn(&mut self) {
         self.response_text.clear();
         self.pending_stream_tools.clear();
         self.dispatched_tools.clear();
         self.request_id = Uuid::new_v4();
+    }
+
+    /// Fully reset turn state for a new conversation turn (new user prompt).
+    fn reset_conversation_turn(&mut self) {
+        self.reset_turn();
+        self.iteration_count = 0;
+    }
+
+    /// Set the phase and record the wall-clock timestamp.
+    ///
+    /// When transitioning to Idle, automatically unregisters the session
+    /// from the active sessions set so the watchdog stops checking it.
+    fn set_phase(&mut self, phase: Phase) {
+        self.phase = phase;
+        self.phase_entered_at_ms = sys::clock_ms().unwrap_or(0);
+        if phase == Phase::Idle {
+            unregister_active_session(&self.session_id);
+        }
+    }
+
+    /// Check if the current phase has exceeded its timeout.
+    ///
+    /// Returns `true` if a timeout was detected and the state was reset to Idle
+    /// (with an error response published to the frontend). Returns `false` if
+    /// the phase is within limits or the clock is unavailable.
+    fn check_phase_timeout(&mut self) -> Result<bool, SysError> {
+        if self.phase == Phase::Idle {
+            return Ok(false);
+        }
+        let now = sys::clock_ms().unwrap_or(0);
+        if now == 0 || self.phase_entered_at_ms == 0 {
+            let _ = sys::log(
+                "warn",
+                "clock_ms unavailable or phase timestamp missing - phase timeouts disabled for this check",
+            );
+            return Ok(false);
+        }
+        let elapsed_secs = now.saturating_sub(self.phase_entered_at_ms) / 1000;
+
+        let (default_secs, config_key) = match self.phase {
+            Phase::AwaitingIdentity | Phase::AwaitingPromptBuild => {
+                (DEFAULT_IDENTITY_TIMEOUT_SECS, "identity_timeout_secs")
+            },
+            Phase::Streaming => (DEFAULT_STREAMING_TIMEOUT_SECS, "streaming_timeout_secs"),
+            Phase::AwaitingTools => (DEFAULT_TOOL_TIMEOUT_SECS, "tool_timeout_secs"),
+            Phase::Idle => return Ok(false),
+        };
+        let timeout = get_config_u64(config_key, default_secs);
+
+        if elapsed_secs >= timeout {
+            let phase_name = format!("{:?}", self.phase);
+            let _ = sys::log(
+                "error",
+                format!("Phase {phase_name} timed out after {elapsed_secs}s"),
+            );
+            let _ = ipc::publish_json(
+                "agent.response",
+                &IpcPayload::AgentResponse {
+                    text: format!(
+                        "Request timed out ({phase_name} phase exceeded {timeout}s limit)"
+                    ),
+                    is_final: true,
+                    session_id: self.session_id.clone(),
+                },
+            );
+            self.reset_conversation_turn();
+            self.set_phase(Phase::Idle);
+            self.save()?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 }
 
@@ -234,6 +388,48 @@ pub struct ReactLoop;
 
 #[capsule]
 impl ReactLoop {
+    /// Handles periodic watchdog tick events from the kernel.
+    ///
+    /// Iterates all active sessions and checks if any phase has exceeded
+    /// its timeout. This is the primary timeout enforcement mechanism.
+    #[astrid::interceptor("handle_watchdog_tick")]
+    pub fn handle_watchdog_tick(&self, _payload: IpcPayload) -> Result<(), SysError> {
+        for session_id in load_active_sessions() {
+            let mut state = TurnState::load(&session_id);
+            if let Err(e) = Self::check_timeout_with_cleanup(&mut state) {
+                let _ = sys::log(
+                    "error",
+                    format!("Watchdog timeout check failed for session '{session_id}': {e}"),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Handles `system.event_bus.lagged` events from the dispatcher.
+    ///
+    /// Logs a warning when the bus overflows while any session is actively
+    /// waiting for tool results - lost messages could cause the turn to hang.
+    /// Actual recovery is handled by the watchdog timeout (B1/B2).
+    ///
+    /// Note: this notification itself may be lost if the bus is severely
+    /// overloaded. The watchdog is the actual recovery mechanism.
+    #[astrid::interceptor("handle_bus_lag")]
+    pub fn handle_bus_lag(&self, _payload: IpcPayload) -> Result<(), SysError> {
+        for session_id in load_active_sessions() {
+            let state = TurnState::load(&session_id);
+            if state.phase == Phase::AwaitingTools {
+                let _ = sys::log(
+                    "warn",
+                    format!(
+                        "Event bus lagged while session '{session_id}' awaits tool results - watchdog will recover if results were lost"
+                    ),
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Handles `user.prompt` events from platforms (CLI, Telegram, etc.).
     ///
     /// Appends the user message to the session capsule, fetches history,
@@ -288,8 +484,9 @@ impl ReactLoop {
         if state.phase != Phase::Idle {
             Self::cleanup_inflight_mappings(&state);
         }
-        state.reset_turn();
-        state.phase = Phase::AwaitingIdentity;
+        state.reset_conversation_turn();
+        state.set_phase(Phase::AwaitingIdentity);
+        register_active_session(&state.session_id);
         state.save()?;
 
         // Request system prompt from the identity capsule.
@@ -319,6 +516,11 @@ impl ReactLoop {
 
         let mut state = TurnState::load(session_id);
 
+        // Opportunistic timeout check on every interceptor invocation
+        if Self::check_timeout_with_cleanup(&mut state)? {
+            return Ok(());
+        }
+
         if state.phase != Phase::AwaitingIdentity {
             return Ok(());
         }
@@ -331,7 +533,7 @@ impl ReactLoop {
             .to_string();
 
         state.system_prompt = prompt.clone();
-        state.phase = Phase::AwaitingPromptBuild;
+        state.set_phase(Phase::AwaitingPromptBuild);
 
         // Fetch messages from session to send to prompt builder for plugin
         // hook interception. The prompt builder's response does not echo
@@ -381,6 +583,10 @@ impl ReactLoop {
 
         let mut state = TurnState::load(session_id);
 
+        if Self::check_timeout_with_cleanup(&mut state)? {
+            return Ok(());
+        }
+
         if state.phase != Phase::AwaitingPromptBuild {
             return Ok(());
         }
@@ -406,7 +612,7 @@ impl ReactLoop {
             *text = format!("{prefix}\n{text}");
         }
 
-        state.phase = Phase::Streaming;
+        state.set_phase(Phase::Streaming);
         state.save()?;
 
         Self::publish_llm_request(&state, &messages)
@@ -432,6 +638,10 @@ impl ReactLoop {
         };
 
         let mut state = TurnState::load(&session_id);
+
+        if Self::check_timeout_with_cleanup(&mut state)? {
+            return Ok(());
+        }
 
         if state.phase != Phase::Streaming {
             return Ok(());
@@ -477,7 +687,6 @@ impl ReactLoop {
                 return Self::handle_stream_done(&mut state);
             },
             StreamEvent::Error(err) => {
-                delete_request_session(&state.request_id);
                 let _ = sys::log("error", format!("LLM stream error: {err}"));
                 let _ = ipc::publish_json(
                     "agent.response",
@@ -487,7 +696,11 @@ impl ReactLoop {
                         session_id: state.session_id.clone(),
                     },
                 );
-                state.phase = Phase::Idle;
+                // Clean up ALL in-flight mappings (req2sess + call2sess)
+                // before resetting turn state to prevent orphaned KV entries.
+                Self::cleanup_inflight_mappings(&state);
+                state.reset_conversation_turn();
+                state.set_phase(Phase::Idle);
                 state.save()?;
                 return Ok(());
             },
@@ -520,12 +733,27 @@ impl ReactLoop {
 
         let mut state = TurnState::load(&session_id);
 
+        if Self::check_timeout_with_cleanup(&mut state)? {
+            return Ok(());
+        }
+
         if state.phase != Phase::AwaitingTools {
             return Ok(());
         }
 
-        // Record the result for this tool call
+        // Record the result for this tool call.
+        // Verify turn_request_id matches to reject stale results from a previous turn.
         if let Some(tc) = state.dispatched_tools.iter_mut().find(|t| t.id == call_id) {
+            if !tc.turn_request_id.is_nil() && tc.turn_request_id != state.request_id {
+                let _ = sys::log(
+                    "warn",
+                    format!(
+                        "Dropping stale tool result for {}: turn_request_id mismatch",
+                        call_id
+                    ),
+                );
+                return Ok(());
+            }
             tc.result = Some(result);
         }
 
@@ -537,6 +765,38 @@ impl ReactLoop {
             && state.dispatched_tools.iter().all(|t| t.result.is_some());
         if !all_done {
             state.save()?;
+            return Ok(());
+        }
+
+        // Check iteration bound BEFORE appending tool results to session
+        // history. If we exceed the limit, we don't want orphaned tool-call
+        // messages in history with no subsequent assistant response.
+        state.iteration_count += 1;
+        let max_iterations =
+            u32::try_from(get_config_u64("max_iterations", u64::from(DEFAULT_MAX_ITERATIONS)))
+                .unwrap_or(DEFAULT_MAX_ITERATIONS);
+
+        let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
+
+        if state.iteration_count >= max_iterations {
+            let _ = sys::log(
+                "error",
+                format!("ReAct loop exceeded {max_iterations} iterations, forcing stop"),
+            );
+            let _ = ipc::publish_json(
+                "agent.response",
+                &IpcPayload::AgentResponse {
+                    text: format!(
+                        "Stopped: ReAct loop exceeded maximum of {max_iterations} iterations."
+                    ),
+                    is_final: true,
+                    session_id: state.session_id.clone(),
+                },
+            );
+            state.reset_conversation_turn();
+            state.set_phase(Phase::Idle);
+            state.save()?;
+            delete_call_sessions(&call_ids);
             return Ok(());
         }
 
@@ -568,9 +828,8 @@ impl ReactLoop {
 
         // Commit new state before removing mappings so a save failure
         // doesn't orphan the session with deleted mappings.
-        let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
         state.reset_turn();
-        state.phase = Phase::Streaming;
+        state.set_phase(Phase::Streaming);
         state.save()?;
 
         // Safe to clean up now - new state is committed.
@@ -608,6 +867,30 @@ impl ReactLoop {
 }
 
 impl ReactLoop {
+    /// Check phase timeout and clean up in-flight KV mappings if timed out.
+    ///
+    /// Returns `true` if the phase timed out and was reset to Idle.
+    fn check_timeout_with_cleanup(state: &mut TurnState) -> Result<bool, SysError> {
+        if state.phase == Phase::Idle {
+            return Ok(false);
+        }
+        // Snapshot in-flight mapping data before potential reset
+        let request_id = state.request_id;
+        let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
+
+        if state.check_phase_timeout()? {
+            // Clean up KV correlation mappings that would otherwise leak
+            if !request_id.is_nil() {
+                delete_request_session(&request_id);
+            }
+            if !call_ids.is_empty() {
+                delete_call_sessions(&call_ids);
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     /// Called when the LLM stream finishes. Evaluates whether to dispatch
     /// tool calls or emit the final response.
     fn handle_stream_done(state: &mut TurnState) -> Result<(), SysError> {
@@ -641,6 +924,7 @@ impl ReactLoop {
                     name: tc.name.clone(),
                     arguments,
                     result: None,
+                    turn_request_id: state.request_id,
                 });
             }
 
@@ -651,7 +935,7 @@ impl ReactLoop {
 
             state.dispatched_tools = dispatched;
             state.pending_stream_tools.clear();
-            state.phase = Phase::AwaitingTools;
+            state.set_phase(Phase::AwaitingTools);
             if let Err(e) = state.save() {
                 delete_call_sessions(&call_ids);
                 return Err(e);
@@ -681,7 +965,7 @@ impl ReactLoop {
                             session_id: state.session_id.clone(),
                         },
                     );
-                    state.phase = Phase::Idle;
+                    state.set_phase(Phase::Idle);
                     state.save()?;
                     return Err(e);
                 }
@@ -704,11 +988,11 @@ impl ReactLoop {
                 },
             )?;
 
-            state.phase = Phase::Idle;
+            state.set_phase(Phase::Idle);
             state.save()?;
         } else {
             // Empty response
-            state.phase = Phase::Idle;
+            state.set_phase(Phase::Idle);
             state.save()?;
         }
 
@@ -741,8 +1025,8 @@ impl ReactLoop {
         }
         let _ = sys::log("info", format!("Cancelling turn for session {session_id}"));
         Self::cleanup_inflight_mappings(&state);
-        state.reset_turn();
-        state.phase = Phase::Idle;
+        state.reset_conversation_turn();
+        state.set_phase(Phase::Idle);
         state.save()
     }
 

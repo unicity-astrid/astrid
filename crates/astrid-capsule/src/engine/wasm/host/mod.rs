@@ -59,10 +59,11 @@ pub(crate) enum WasmHostFunction {
     SpawnHost,
     Elicit,
     HasSecret,
+    ClockMs,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 31] = [
+    pub(crate) const ALL: [Self; 32] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -94,6 +95,7 @@ impl WasmHostFunction {
         Self::NetWrite,
         Self::Elicit,
         Self::HasSecret,
+        Self::ClockMs,
     ];
 
     #[must_use]
@@ -135,6 +137,7 @@ impl WasmHostFunction {
             Self::SpawnHost => "astrid_spawn_host",
             Self::Elicit => "astrid_elicit",
             Self::HasSecret => "astrid_has_secret",
+            Self::ClockMs => "astrid_clock_ms",
         }
     }
 
@@ -169,7 +172,7 @@ impl WasmHostFunction {
             | Self::Log
             | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
-            Self::GetCaller => 0,
+            Self::GetCaller | Self::ClockMs => 0,
         }
     }
 
@@ -207,7 +210,8 @@ impl WasmHostFunction {
             | Self::NetAccept
             | Self::NetRead
             | Self::Elicit
-            | Self::HasSecret => TYPE_I64,
+            | Self::HasSecret
+            | Self::ClockMs => TYPE_I64,
         }
     }
 }
@@ -328,6 +332,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::HasSecret => {
                 builder.with_function(func.name(), args, rets, ud, elicit::astrid_has_secret_impl)
+            },
+            WasmHostFunction::ClockMs => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_clock_ms_impl)
             },
         };
     }
