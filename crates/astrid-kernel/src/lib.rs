@@ -149,6 +149,8 @@ impl Kernel {
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         drop(spawn_idle_monitor(Arc::clone(&kernel)));
+        drop(spawn_react_watchdog(Arc::clone(&kernel.event_bus)));
+        drop(spawn_capsule_health_monitor(Arc::clone(&kernel)));
 
         // Spawn the event dispatcher — routes EventBus events to capsule interceptors
         let dispatcher = astrid_capsule::dispatcher::EventDispatcher::new(
@@ -408,6 +410,87 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
                 // let _ = std::fs::remove_file(&socket_path);
                 // std::process::exit(0);
             }
+        }
+    })
+}
+
+/// Spawns a background task that periodically probes capsule health.
+///
+/// Every 10 seconds, reads the capsule registry and calls `check_health()` on
+/// each capsule that is currently in `Ready` state. If a capsule reports
+/// `Failed`, logs an error and publishes a `capsule.health.failed` IPC event.
+fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        // Skip the first immediate tick.
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+
+            let registry = kernel.capsules.read().await;
+            for capsule_id in registry.list() {
+                let Some(capsule) = registry.get(capsule_id) else {
+                    continue;
+                };
+                if !matches!(
+                    capsule.state(),
+                    astrid_capsule::capsule::CapsuleState::Ready
+                ) {
+                    continue;
+                }
+                let health = capsule.check_health();
+                if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
+                    tracing::error!(
+                        capsule_id = %capsule_id,
+                        reason = %reason,
+                        "Capsule health check failed"
+                    );
+                    let msg = astrid_events::ipc::IpcMessage::new(
+                        "capsule.health.failed",
+                        astrid_events::ipc::IpcPayload::Custom {
+                            data: serde_json::json!({
+                                "capsule_id": capsule_id.to_string(),
+                                "reason": reason,
+                            }),
+                        },
+                        uuid::Uuid::new_v4(),
+                    );
+                    let _ = kernel.event_bus.publish(astrid_events::AstridEvent::Ipc {
+                        metadata: astrid_events::EventMetadata::new("kernel"),
+                        message: msg,
+                    });
+                }
+            }
+        }
+    })
+}
+
+/// Spawns a periodic watchdog that publishes `react.watchdog.tick` events every 5 seconds.
+///
+/// The `ReAct` capsule (WASM guest) cannot use async timers, so this kernel-side task
+/// drives timeout enforcement by waking the capsule on a fixed interval. Each tick
+/// causes the capsule's `handle_watchdog_tick` interceptor to run `check_phase_timeout`.
+fn spawn_react_watchdog(event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        // The first tick fires immediately - skip it to give capsules time to load.
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "react.watchdog.tick",
+                astrid_events::ipc::IpcPayload::Custom {
+                    data: serde_json::json!({}),
+                },
+                uuid::Uuid::new_v4(),
+            );
+            let _ = event_bus.publish(astrid_events::AstridEvent::Ipc {
+                metadata: astrid_events::EventMetadata::new("kernel"),
+                message: msg,
+            });
         }
     })
 }
