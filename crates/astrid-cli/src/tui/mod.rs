@@ -178,7 +178,15 @@ async fn run_loop(
         }
 
         if app.should_quit {
-            // Socket connections drop automatically, kernel handles clean disconnect.
+            // Notify the kernel so it can update its connection count.
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "client.disconnect",
+                astrid_events::ipc::IpcPayload::Disconnect {
+                    reason: Some("quit".to_string()),
+                },
+                uuid::Uuid::nil(),
+            );
+            let _ = client.send_message(msg).await;
             break;
         }
     }

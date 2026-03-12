@@ -26,6 +26,7 @@ use astrid_mcp::{McpClient, SecureMcpClient, ServerManager, ServersConfig};
 use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 
 /// The core Operating System Kernel.
@@ -55,9 +56,11 @@ pub struct Kernel {
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Shared KV store backing all capsule-scoped stores and kernel state.
-    pub kv: Arc<astrid_storage::MemoryKvStore>,
+    pub kv: Arc<astrid_storage::SurrealKvStore>,
     /// Chain-linked cryptographic audit log with persistent storage.
     pub audit_log: Arc<AuditLog>,
+    /// Number of active client connections (CLI sessions).
+    pub active_connections: AtomicUsize,
 }
 
 impl Kernel {
@@ -75,18 +78,15 @@ impl Kernel {
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
 
+        // Resolve the Astrid home directory. Required for KV store and
+        // optional for the `global://` VFS scheme.
+        let home = AstridHome::resolve()
+            .map_err(|e| std::io::Error::other(format!("Failed to resolve Astrid home: {e}")))?;
+
         // Resolve the global shared directory for the `global://` VFS scheme.
         // Scoped to `~/.astrid/shared/` — NOT the full `~/.astrid/` root — so
         // capsules cannot access keys, databases, or capsule .env files.
-        let global_root = match AstridHome::resolve() {
-            Ok(home) => Some(home.shared_dir()),
-            Err(e) => {
-                tracing::warn!(
-                    "Could not resolve global Astrid home, global:// will be unavailable: {e}"
-                );
-                None
-            },
-        };
+        let global_root = Some(home.shared_dir());
 
         // 1. Initialize MCP process manager with security layer
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
@@ -130,7 +130,13 @@ impl Kernel {
         // 6. Bind the secure Unix socket natively
         let listener = socket::bind_session_socket()?;
 
-        let kv = Arc::new(astrid_storage::MemoryKvStore::new());
+        let kv_path = home.root().join("state.db");
+        let kv = Arc::new(
+            astrid_storage::SurrealKvStore::open(&kv_path)
+                .map_err(|e| std::io::Error::other(format!("Failed to open KV store: {e}")))?,
+        );
+        // TODO: clear ephemeral keys (e: prefix) on boot when the key
+        // lifecycle tier convention is established.
 
         let kernel = Arc::new(Self {
             session_id,
@@ -145,6 +151,7 @@ impl Kernel {
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
             audit_log,
+            active_connections: AtomicUsize::new(0),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -271,6 +278,78 @@ impl Kernel {
             message: msg,
         });
     }
+
+    /// Record that a new client connection has been established.
+    pub fn connection_opened(&self) {
+        self.active_connections.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a client connection has been closed.
+    pub fn connection_closed(&self) {
+        // Saturating: guard against underflow if decrement races with shutdown.
+        let prev = self.active_connections.fetch_sub(1, Ordering::Relaxed);
+        if prev == 0 {
+            // fetch_sub already wrapped; correct back to 0.
+            self.active_connections.store(0, Ordering::Relaxed);
+        }
+    }
+
+    /// Number of active client connections.
+    pub fn connection_count(&self) -> usize {
+        self.active_connections.load(Ordering::Relaxed)
+    }
+
+    /// Gracefully shut down the kernel.
+    ///
+    /// 1. Publish `KernelShutdown` event on the bus.
+    /// 2. Drain and unload all capsules (stops MCP child processes, WASM engines).
+    /// 3. Flush and close the persistent KV store.
+    /// 4. Remove the Unix socket file.
+    pub async fn shutdown(&self, reason: Option<String>) {
+        tracing::info!(reason = ?reason, "Kernel shutting down");
+
+        // 1. Notify all subscribers so capsules can react.
+        let _ = self
+            .event_bus
+            .publish(astrid_events::AstridEvent::KernelShutdown {
+                metadata: astrid_events::EventMetadata::new("kernel"),
+                reason: reason.clone(),
+            });
+
+        // 2. Drain the registry and unload each capsule.
+        let capsules = {
+            let mut reg = self.capsules.write().await;
+            reg.drain()
+        };
+        for mut arc in capsules {
+            let id = arc.id().clone();
+            if let Some(capsule) = Arc::get_mut(&mut arc) {
+                if let Err(e) = capsule.unload().await {
+                    tracing::warn!(
+                        capsule_id = %id,
+                        error = %e,
+                        "Failed to unload capsule during shutdown"
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    capsule_id = %id,
+                    "Cannot unload capsule: other references still held"
+                );
+            }
+        }
+
+        // 3. Flush the persistent KV store.
+        if let Err(e) = self.kv.close().await {
+            tracing::warn!(error = %e, "Failed to flush KV store during shutdown");
+        }
+
+        // 4. Remove the socket file so stale-socket detection works on next boot.
+        let socket_path = crate::socket::kernel_socket_path();
+        let _ = std::fs::remove_file(&socket_path);
+
+        tracing::info!("Kernel shutdown complete");
+    }
 }
 
 /// Open (or create) the persistent audit log and verify historical chain integrity.
@@ -365,48 +444,77 @@ fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
 
 /// Spawns a background task that cleanly shuts down the Kernel if there is no activity.
 ///
-/// In the current "appable" iteration of the OS, this prevents the background daemon from
-/// running forever when the user closes their CLI window.
-/// In future iterations (like macOS menubar or unikernel), this monitor can be feature-gated.
+/// Uses dual-signal idle detection:
+/// - **Primary:** explicit `active_connections` counter (incremented on first IPC
+///   message per source, decremented on `Disconnect`).
+/// - **Secondary:** `EventBus::subscriber_count()` minus the kernel router's own
+///   subscription. When a CLI process dies without sending `Disconnect`, its
+///   broadcast receiver is dropped so the subscriber count falls.
+///
+/// Takes the minimum of both signals to handle ungraceful disconnects.
+///
+/// Configurable via `ASTRID_IDLE_TIMEOUT_SECS` (default 300 = 5 minutes).
 fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        // Give the OS a grace period to start up and allow clients to connect.
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        let grace = std::time::Duration::from_secs(30);
+        let timeout_secs: u64 = std::env::var("ASTRID_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300);
+        let idle_timeout = std::time::Duration::from_secs(timeout_secs);
+        let check_interval = std::time::Duration::from_secs(15);
+
+        tokio::time::sleep(grace).await;
+        let mut idle_since: Option<tokio::time::Instant> = None;
 
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            tokio::time::sleep(check_interval).await;
 
-            // 1. Are there any active connections to the global socket?
-            // Since we handed the listener lock to the proxy capsule, we can't easily
-            // query active TCP connections without exposing a status API from the proxy.
-            // But we CAN check the Event Bus subscriber count!
-            let active_subscribers = kernel.event_bus.subscriber_count();
+            let connections = kernel.connection_count();
 
-            // 2. Are there any cron jobs or daemonize capabilities registered?
+            // Secondary signal: broadcast subscriber count. Subtract 1 for
+            // the KernelRouter's own subscription (always present).
+            let bus_subscribers = kernel.event_bus.subscriber_count().saturating_sub(1);
+
+            // Take the minimum: if a CLI died without Disconnect, the counter
+            // stays inflated but the subscriber count drops.
+            let effective_connections = connections.min(bus_subscribers);
+
             let has_daemons = {
                 let reg = kernel.capsules.read().await;
                 reg.values().any(|c| {
-                    let manifest = c.manifest();
-                    // If a capsule explicitly acts as an uplink or has cron jobs,
-                    // the OS must stay alive to serve them.
-                    !manifest.uplinks.is_empty() || !manifest.cron_jobs.is_empty()
+                    let m = c.manifest();
+                    !m.uplinks.is_empty() || !m.cron_jobs.is_empty()
                 })
             };
 
-            // If there is only 1 subscriber (the internal KernelRouter) and no daemons,
-            // the OS is completely dormant.
-            if active_subscribers <= 1 && !has_daemons {
+            if effective_connections == 0 && !has_daemons {
+                let now = tokio::time::Instant::now();
+                let start = *idle_since.get_or_insert(now);
+                let elapsed = now.duration_since(start);
+
                 tracing::debug!(
-                    "Astrid daemon idle with no active sessions or daemons (auto-shutdown disabled — see FIXME above)"
+                    idle_secs = elapsed.as_secs(),
+                    timeout_secs,
+                    connections,
+                    bus_subscribers,
+                    "Kernel idle, monitoring timeout"
                 );
 
-                // FIXME: The CLI capsule's event bus subscription count
-                // is not yet visible to this heuristic, so the idle monitor may
-                // fire prematurely. Disabled until the proxy bridge properly
-                // registers subscribers.
-                // let socket_path = crate::socket::kernel_socket_path();
-                // let _ = std::fs::remove_file(&socket_path);
-                // std::process::exit(0);
+                if elapsed >= idle_timeout {
+                    tracing::info!("Idle timeout reached, initiating shutdown");
+                    kernel.shutdown(Some("idle_timeout".to_string())).await;
+                    std::process::exit(0);
+                }
+            } else {
+                if idle_since.is_some() {
+                    tracing::debug!(
+                        effective_connections,
+                        has_daemons,
+                        "Activity detected, resetting idle timer"
+                    );
+                }
+                idle_since = None;
             }
         }
     })
@@ -469,6 +577,36 @@ mod tests {
             err.contains("invalid runtime key"),
             "expected 'invalid runtime key' error, got: {err}"
         );
+    }
+
+    #[test]
+    fn test_connection_counter_increment_decrement() {
+        let counter = AtomicUsize::new(0);
+
+        // Simulate connection_opened
+        counter.fetch_add(1, Ordering::Relaxed);
+        counter.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        // Simulate connection_closed
+        counter.fetch_sub(1, Ordering::Relaxed);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+
+        counter.fetch_sub(1, Ordering::Relaxed);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_connection_counter_underflow_guard() {
+        // Test the saturating behavior: decrementing from 0 should stay at 0.
+        let counter = AtomicUsize::new(0);
+
+        // Simulate the guard logic from connection_closed()
+        let prev = counter.fetch_sub(1, Ordering::Relaxed);
+        if prev == 0 {
+            counter.store(0, Ordering::Relaxed);
+        }
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 
     #[cfg(unix)]

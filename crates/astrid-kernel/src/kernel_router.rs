@@ -1,11 +1,22 @@
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use astrid_events::kernel_api::{KernelRequest, KernelResponse};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
-/// Spawns a background task that listens to the Event Bus for `kernel.request.*` topics.
+/// Spawns background tasks for the kernel management API and connection tracking.
+///
+/// Two listeners:
+/// 1. `kernel.request.*` - handles management commands (list capsules, reload, etc.)
+/// 2. `client.disconnect` - decrements the active connection counter on graceful disconnect.
+///
+/// Connection *increment* happens when the WASM proxy capsule accepts a socket
+/// connection (it publishes a `client.connected` event). For ungraceful disconnects,
+/// the idle monitor uses `EventBus::subscriber_count()` as a secondary signal.
 #[must_use]
 pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
+    // Spawn the connection tracker as a sibling task.
+    spawn_connection_tracker(Arc::clone(&kernel));
+
     let mut receiver = kernel.event_bus.subscribe_topic("kernel.request.*");
 
     tokio::spawn(async move {
@@ -29,6 +40,39 @@ pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::Jo
             }
         }
     })
+}
+
+/// Tracks client connection lifecycle events.
+///
+/// Listens on `client.*` topics:
+/// - `client.connected` - a new socket connection was accepted.
+/// - `client.disconnect` - a client sent a graceful disconnect.
+fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) {
+    let mut receiver = kernel.event_bus.subscribe_topic("client.*");
+
+    tokio::spawn(async move {
+        while let Some(event) = receiver.recv().await {
+            let astrid_events::AstridEvent::Ipc { message, .. } = &*event else {
+                continue;
+            };
+            match &message.payload {
+                IpcPayload::Disconnect { reason } => {
+                    kernel.connection_closed();
+                    debug!(reason = ?reason, "Client disconnected");
+                },
+                IpcPayload::RawJson(val) => {
+                    // client.connected events from the proxy capsule.
+                    if message.topic == "client.connected"
+                        && val.get("status").and_then(|v| v.as_str()) == Some("connected")
+                    {
+                        kernel.connection_opened();
+                        debug!("New client connection accepted");
+                    }
+                },
+                _ => {},
+            }
+        }
+    });
 }
 
 #[expect(clippy::too_many_lines)]
