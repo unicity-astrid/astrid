@@ -20,7 +20,13 @@ action = "handle_append"
 event = "session.request.get_messages"
 action = "handle_get_messages"
 
+# Clear session (create new chained session)
+[[interceptor]]
+event = "session.request.clear"
+action = "handle_clear"
+
 [capabilities]
 ipc_publish = [
     "session.response.get_messages",
+    "session.response.clear",
 ]

@@ -13,10 +13,17 @@
 //! boundaries and fetches history when building LLM requests. Prompt
 //! builder injections, system prompt assembly, context compaction -
 //! those are ephemeral per-turn transforms that never touch session.
+//!
+//! # Session chaining
+//!
+//! Sessions form a linked list via `parent_session_id`. When a session
+//! is cleared or compacted, a new session is created pointing back to
+//! the old one. History is never silently truncated.
 
 use astrid_events::llm::Message;
 use astrid_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// KV key prefix for session data.
 const SESSION_KEY_PREFIX: &str = "session.data";
@@ -24,29 +31,83 @@ const SESSION_KEY_PREFIX: &str = "session.data";
 /// Default session ID.
 const DEFAULT_SESSION_ID: &str = "default";
 
+/// Current schema version for `SessionData`.
+const SESSION_DATA_SCHEMA_VERSION: u32 = 1;
+
 /// Build the KV key for a session's data.
 fn session_key(session_id: &str) -> String {
     format!("{SESSION_KEY_PREFIX}.{session_id}")
 }
 
 /// Persistent conversation session data.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// Schema-versioned for forward-compatible deserialization. On load:
+/// - v0 (legacy, missing field): stamp to v1 and re-save.
+/// - v1 (current): use as-is.
+/// - Unknown future version: log error, start fresh (fail secure).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SessionData {
+    /// Schema version. Defaults to 0 for pre-versioning data.
+    #[serde(default)]
+    schema_version: u32,
+    /// Previous session in the chain, if this session was created
+    /// via clear or compaction.
+    #[serde(default)]
+    parent_session_id: Option<String>,
     /// Clean conversation message history.
     messages: Vec<Message>,
 }
 
+impl Default for SessionData {
+    fn default() -> Self {
+        Self {
+            schema_version: SESSION_DATA_SCHEMA_VERSION,
+            parent_session_id: None,
+            messages: Vec::new(),
+        }
+    }
+}
+
 impl SessionData {
-    /// Load session data from KV, or create default if not present.
+    /// Load session data from KV, applying schema migration as needed.
     fn load(session_id: &str) -> Self {
         let key = session_key(session_id);
-        kv::get_json::<Self>(&key).unwrap_or_else(|e| {
+        let mut data = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
             let _ = sys::log(
                 "error",
                 format!("Failed to load session data, starting fresh: {e}"),
             );
             Self::default()
-        })
+        });
+
+        match data.schema_version {
+            0 => {
+                // Pre-versioning legacy data. Stamp version and re-save.
+                data.schema_version = SESSION_DATA_SCHEMA_VERSION;
+                if let Err(e) = data.save(session_id) {
+                    let _ = sys::log(
+                        "warn",
+                        format!("Failed to re-save session after v0->v1 migration: {e}"),
+                    );
+                }
+            },
+            v if v == SESSION_DATA_SCHEMA_VERSION => {
+                // Current version, no migration needed.
+            },
+            unknown => {
+                // Unknown future version. Don't corrupt by writing old format.
+                let _ = sys::log(
+                    "error",
+                    format!(
+                        "Session '{session_id}' has unknown schema version {unknown} \
+                         (expected {SESSION_DATA_SCHEMA_VERSION}), starting fresh"
+                    ),
+                );
+                data = Self::default();
+            },
+        }
+
+        data
     }
 
     /// Persist session data to KV.
@@ -56,7 +117,7 @@ impl SessionData {
     }
 }
 
-/// Session capsule. Dumb store.
+/// Session capsule. Dumb store with session chaining.
 ///
 /// # Security note
 ///
@@ -148,5 +209,101 @@ impl Session {
                 "messages": data.messages,
             }),
         )
+    }
+
+    /// Handles `session.request.clear` events.
+    ///
+    /// Creates a new session with `parent_session_id` pointing to the
+    /// old one. The old session's data is left intact in KV for history
+    /// traversal. Returns the new session ID via `session.response.clear`.
+    #[astrid::interceptor("handle_clear")]
+    pub fn handle_clear(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let old_session_id = payload
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(DEFAULT_SESSION_ID);
+
+        let correlation_id = payload
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let new_session_id = Uuid::new_v4().to_string();
+
+        let new_data = SessionData {
+            schema_version: SESSION_DATA_SCHEMA_VERSION,
+            parent_session_id: Some(old_session_id.to_string()),
+            messages: Vec::new(),
+        };
+        new_data.save(&new_session_id)?;
+
+        let _ = sys::log(
+            "info",
+            format!(
+                "Session cleared: '{old_session_id}' -> '{new_session_id}' \
+                 (old session preserved)"
+            ),
+        );
+
+        ipc::publish_json(
+            "session.response.clear",
+            &serde_json::json!({
+                "correlation_id": correlation_id,
+                "new_session_id": new_session_id,
+                "old_session_id": old_session_id,
+            }),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests (serde-level, no host functions)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pre-versioning (v0) data with only `messages` deserializes correctly.
+    /// The `schema_version` defaults to 0 and `parent_session_id` defaults to None.
+    #[test]
+    fn test_session_data_v0_backward_compat() {
+        let v0_json = r#"{"messages":[]}"#;
+        let data: SessionData = serde_json::from_str(v0_json).unwrap();
+        assert_eq!(data.schema_version, 0);
+        assert!(data.parent_session_id.is_none());
+        assert!(data.messages.is_empty());
+    }
+
+    /// Current v1 data with all fields round-trips correctly.
+    #[test]
+    fn test_session_data_v1_round_trip() {
+        let data = SessionData {
+            schema_version: 1,
+            parent_session_id: Some("old-session-abc".into()),
+            messages: Vec::new(),
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        let loaded: SessionData = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.schema_version, 1);
+        assert_eq!(loaded.parent_session_id.as_deref(), Some("old-session-abc"));
+    }
+
+    /// Unknown future version deserializes without error (serde doesn't
+    /// know about version semantics - the `load()` function handles that).
+    #[test]
+    fn test_session_data_future_version_deserializes() {
+        let future_json = r#"{"schema_version":99,"messages":[],"extra_field":"ignored"}"#;
+        let data: SessionData = serde_json::from_str(future_json).unwrap();
+        assert_eq!(data.schema_version, 99);
+        assert!(data.messages.is_empty());
+    }
+
+    /// Default SessionData has the current schema version.
+    #[test]
+    fn test_session_data_default_has_current_version() {
+        let data = SessionData::default();
+        assert_eq!(data.schema_version, SESSION_DATA_SCHEMA_VERSION);
+        assert!(data.parent_session_id.is_none());
     }
 }

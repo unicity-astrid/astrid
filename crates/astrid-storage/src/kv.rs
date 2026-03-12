@@ -535,6 +535,39 @@ impl ScopedKvStore {
         self.inner.clear_namespace(&self.namespace).await
     }
 
+    // -- Prefix operations --
+
+    /// List all keys matching a given prefix within this namespace.
+    ///
+    /// Returns an empty vec if no keys match.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store operation fails.
+    pub async fn list_keys_with_prefix(&self, prefix: &str) -> StorageResult<Vec<String>> {
+        let all_keys = self.list_keys().await?;
+        Ok(all_keys
+            .into_iter()
+            .filter(|k| k.starts_with(prefix))
+            .collect())
+    }
+
+    /// Delete all keys matching a given prefix within this namespace.
+    ///
+    /// Returns the number of keys deleted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store operation fails.
+    pub async fn clear_prefix(&self, prefix: &str) -> StorageResult<u64> {
+        let keys = self.list_keys_with_prefix(prefix).await?;
+        let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
+        for key in &keys {
+            self.delete(key).await?;
+        }
+        Ok(count)
+    }
+
     // -- Typed convenience (JSON) --
 
     /// Deserialize a JSON value from the store.
@@ -769,6 +802,95 @@ mod tests {
     fn test_scoped_rejects_empty_namespace() {
         let store = Arc::new(MemoryKvStore::new());
         assert!(ScopedKvStore::new(store, "").is_err());
+    }
+
+    // -- ScopedKvStore prefix operations --
+
+    #[tokio::test]
+    async fn test_scoped_list_keys_with_prefix() {
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
+
+        scoped.set("react.turn.abc", b"1".to_vec()).await.unwrap();
+        scoped.set("react.turn.def", b"2".to_vec()).await.unwrap();
+        scoped
+            .set("react.req2sess.xyz", b"3".to_vec())
+            .await
+            .unwrap();
+        scoped.set("session.data.abc", b"4".to_vec()).await.unwrap();
+
+        let mut keys = scoped.list_keys_with_prefix("react.turn.").await.unwrap();
+        keys.sort();
+        assert_eq!(keys, vec!["react.turn.abc", "react.turn.def"]);
+
+        let keys = scoped
+            .list_keys_with_prefix("react.req2sess.")
+            .await
+            .unwrap();
+        assert_eq!(keys, vec!["react.req2sess.xyz"]);
+
+        let keys = scoped.list_keys_with_prefix("session.").await.unwrap();
+        assert_eq!(keys, vec!["session.data.abc"]);
+    }
+
+    #[tokio::test]
+    async fn test_scoped_clear_prefix() {
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
+
+        scoped.set("react.turn.a", b"1".to_vec()).await.unwrap();
+        scoped.set("react.turn.b", b"2".to_vec()).await.unwrap();
+        scoped.set("session.data.a", b"3".to_vec()).await.unwrap();
+
+        let cleared = scoped.clear_prefix("react.turn.").await.unwrap();
+        assert_eq!(cleared, 2);
+
+        // Session data untouched
+        assert!(scoped.exists("session.data.a").await.unwrap());
+        // React turn state cleared
+        assert!(!scoped.exists("react.turn.a").await.unwrap());
+        assert!(!scoped.exists("react.turn.b").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_scoped_clear_prefix_no_matches() {
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
+
+        scoped.set("other.key", b"1".to_vec()).await.unwrap();
+
+        let cleared = scoped.clear_prefix("react.turn.").await.unwrap();
+        assert_eq!(cleared, 0);
+        assert!(scoped.exists("other.key").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_scoped_list_keys_empty_prefix_returns_all() {
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
+
+        scoped.set("a", b"1".to_vec()).await.unwrap();
+        scoped.set("b", b"2".to_vec()).await.unwrap();
+        scoped.set("c", b"3".to_vec()).await.unwrap();
+
+        // Empty prefix matches all keys (every string starts with "")
+        let mut keys = scoped.list_keys_with_prefix("").await.unwrap();
+        keys.sort();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn test_scoped_clear_prefix_empty_clears_all() {
+        let store = Arc::new(MemoryKvStore::new());
+        let scoped = ScopedKvStore::new(store, "ns").unwrap();
+
+        scoped.set("a", b"1".to_vec()).await.unwrap();
+        scoped.set("b", b"2".to_vec()).await.unwrap();
+
+        // Empty prefix matches all keys
+        let cleared = scoped.clear_prefix("").await.unwrap();
+        assert_eq!(cleared, 2);
+        assert!(scoped.list_keys().await.unwrap().is_empty());
     }
 
     // -- SurrealKvStore tests (behind feature gate) --

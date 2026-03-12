@@ -71,6 +71,10 @@ extern "ExtismHost" {
     pub fn astrid_kv_set(key: Vec<u8>, value: Vec<u8>);
     /// Delete a value from the KV store.
     pub fn astrid_kv_delete(key: Vec<u8>);
+    /// List keys matching a prefix in the KV store. Returns JSON array of strings.
+    pub fn astrid_kv_list_keys(prefix: Vec<u8>) -> Vec<u8>;
+    /// Delete all keys matching a prefix. Returns JSON count of deleted keys.
+    pub fn astrid_kv_clear_prefix(prefix: Vec<u8>) -> Vec<u8>;
 
     /// Get a system configuration string.
     pub fn astrid_get_config(key: Vec<u8>) -> Vec<u8>;

@@ -139,6 +139,31 @@ fn register_active_session(session_id: &str) {
     }
 }
 
+/// Clear all ephemeral keys left over from a previous incarnation.
+///
+/// Called on capsule restart to prevent stale turn state, correlation
+/// mappings, and active-session lists from persisting across restarts.
+fn clear_ephemeral_keys() {
+    for prefix in [
+        &format!("{TURN_KEY_PREFIX}."),
+        &format!("{REQUEST_SESSION_PREFIX}."),
+        &format!("{CALL_SESSION_PREFIX}."),
+    ] {
+        match kv::clear_prefix(prefix) {
+            Ok(n) if n > 0 => {
+                let _ = sys::log("info", format!("Cleared {n} ephemeral keys with prefix '{prefix}'"));
+            },
+            Err(e) => {
+                let _ = sys::log("warn", format!("Failed to clear ephemeral keys '{prefix}': {e}"));
+            },
+            _ => {},
+        }
+    }
+    if let Err(e) = kv::delete(ACTIVE_SESSIONS_KEY) {
+        let _ = sys::log("warn", format!("Failed to clear active sessions key: {e}"));
+    }
+}
+
 /// Remove a session ID from the active sessions set.
 fn unregister_active_session(session_id: &str) {
     let mut sessions = load_active_sessions();
@@ -238,6 +263,11 @@ const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 60;
 /// lives in the session capsule and is fetched on demand.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct TurnState {
+    /// Schema version for forward-compatible deserialization.
+    /// TurnState is ephemeral so no migration logic is needed;
+    /// unrecognized versions simply fall back to `Default`.
+    #[serde(default)]
+    schema_version: u32,
     /// Session ID for this conversation.
     session_id: String,
     /// Current state machine phase.
@@ -263,6 +293,7 @@ pub(crate) struct TurnState {
 impl Default for TurnState {
     fn default() -> Self {
         Self {
+            schema_version: 1,
             session_id: DEFAULT_SESSION_ID.into(),
             phase: Phase::Idle,
             system_prompt: String::new(),
@@ -388,6 +419,133 @@ pub struct ReactLoop;
 
 #[capsule]
 impl ReactLoop {
+    /// Handles lifecycle restart events from the kernel.
+    ///
+    /// Called after the capsule is reloaded during a restart. Clears
+    /// all ephemeral KV keys (turn state, correlation mappings, active
+    /// sessions) to prevent stale state from a previous incarnation.
+    #[astrid::interceptor("handle_lifecycle_restart")]
+    pub fn handle_lifecycle_restart(&self, _payload: IpcPayload) -> Result<(), SysError> {
+        let _ = sys::log("info", "Lifecycle restart: clearing ephemeral keys");
+        clear_ephemeral_keys();
+        Ok(())
+    }
+
+    /// Handles session clear requests from frontends.
+    ///
+    /// Forwards the clear request to the session capsule (the authority
+    /// on session lifecycle), which creates a new session with a
+    /// `parent_session_id` pointer to the old one. React then updates
+    /// its turn state to use the new session ID.
+    #[astrid::interceptor("handle_session_clear")]
+    pub fn handle_session_clear(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        let old_session_id = payload
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(DEFAULT_SESSION_ID);
+
+        let correlation_id = Uuid::new_v4().to_string();
+        let timeout = session_timeout_ms();
+
+        // Subscribe before publishing to avoid delivery race.
+        let handle = ipc::subscribe("session.response.clear")?;
+
+        let result = (|| -> Result<String, SysError> {
+            ipc::publish_json(
+                "session.request.clear",
+                &serde_json::json!({
+                    "session_id": old_session_id,
+                    "correlation_id": correlation_id,
+                }),
+            )?;
+
+            let response_bytes = ipc::recv_bytes(&handle, timeout).map_err(|e| {
+                SysError::ApiError(format!("Session clear timed out after {timeout}ms: {e}"))
+            })?;
+
+            let envelope: serde_json::Value =
+                serde_json::from_slice(&response_bytes).map_err(|e| {
+                    SysError::ApiError(format!("Failed to parse session clear response: {e}"))
+                })?;
+
+            let ipc_messages = envelope
+                .get("messages")
+                .and_then(|m| m.as_array())
+                .ok_or_else(|| {
+                    SysError::ApiError("Session clear response has no messages array".into())
+                })?;
+
+            if ipc_messages.is_empty() {
+                return Err(SysError::ApiError(format!(
+                    "Session capsule clear timed out - no response within {timeout}ms"
+                )));
+            }
+
+            for msg in ipc_messages {
+                let data = match msg.get("payload").and_then(|p| p.get("data")) {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                let resp_correlation = data
+                    .get("correlation_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                if resp_correlation != correlation_id {
+                    continue;
+                }
+
+                let new_session_id = data
+                    .get("new_session_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        SysError::ApiError("Session clear response missing new_session_id".into())
+                    })?;
+
+                return Ok(new_session_id.to_string());
+            }
+
+            Err(SysError::ApiError(
+                "Session clear response correlation ID not found".into(),
+            ))
+        })();
+
+        let _ = ipc::unsubscribe(&handle);
+
+        let new_session_id = result?;
+
+        // Reset the old session's turn state to Idle.
+        let mut old_state = TurnState::load(old_session_id);
+        old_state.reset_conversation_turn();
+        old_state.set_phase(Phase::Idle);
+        old_state.save()?;
+        unregister_active_session(old_session_id);
+
+        // Initialize a fresh turn state for the new session.
+        let new_state = TurnState::default();
+        let key = turn_key(&new_session_id);
+        kv::set_json(&key, &new_state)?;
+
+        let _ = sys::log(
+            "info",
+            format!(
+                "Session cleared: '{old_session_id}' -> '{new_session_id}'"
+            ),
+        );
+
+        // Notify frontends of the session change.
+        ipc::publish_json(
+            "agent.session_changed",
+            &serde_json::json!({
+                "old_session_id": old_session_id,
+                "new_session_id": new_session_id,
+            }),
+        )?;
+
+        Ok(())
+    }
+
     /// Handles periodic watchdog tick events from the kernel.
     ///
     /// Iterates all active sessions and checks if any phase has exceeded

@@ -207,6 +207,26 @@ pub mod kv {
         Ok(())
     }
 
+    /// List all keys matching a prefix.
+    ///
+    /// Returns an empty vec if no keys match. The prefix is matched
+    /// against key names within the capsule's scoped namespace.
+    pub fn list_keys(prefix: impl AsRef<[u8]>) -> Result<Vec<String>, SysError> {
+        let result = unsafe { astrid_kv_list_keys(prefix.as_ref().to_vec())? };
+        let keys: Vec<String> = serde_json::from_slice(&result)?;
+        Ok(keys)
+    }
+
+    /// Delete all keys matching a prefix.
+    ///
+    /// Returns the number of keys deleted. The prefix is matched
+    /// against key names within the capsule's scoped namespace.
+    pub fn clear_prefix(prefix: impl AsRef<[u8]>) -> Result<u64, SysError> {
+        let result = unsafe { astrid_kv_clear_prefix(prefix.as_ref().to_vec())? };
+        let count: u64 = serde_json::from_slice(&result)?;
+        Ok(count)
+    }
+
     pub fn get_borsh<T: BorshDeserialize>(key: impl AsRef<[u8]>) -> Result<T, SysError> {
         let bytes = get_bytes(key)?;
         let parsed = borsh::from_slice(&bytes)?;

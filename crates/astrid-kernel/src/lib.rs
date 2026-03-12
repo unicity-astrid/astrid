@@ -286,7 +286,25 @@ impl Kernel {
         }
 
         // Re-load from disk.
-        self.load_capsule(source_dir).await
+        self.load_capsule(source_dir).await?;
+
+        // Signal the newly loaded capsule to clean up ephemeral state
+        // from the previous incarnation. Capsules that don't implement
+        // `handle_lifecycle_restart` will return an error, which is fine.
+        {
+            let registry = self.capsules.read().await;
+            if let Some(capsule) = registry.get(id)
+                && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[])
+            {
+                tracing::debug!(
+                    capsule_id = %id,
+                    error = %e,
+                    "Capsule does not handle lifecycle restart (optional)"
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/capsules` and `.astrid/capsules`).

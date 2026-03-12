@@ -50,13 +50,25 @@ action = "handle_watchdog_tick"
 event = "system.event_bus.lagged"
 action = "handle_bus_lag"
 
+# Lifecycle restart signal from the kernel (ephemeral key cleanup)
+[[interceptor]]
+event = "system.lifecycle.restart"
+action = "handle_lifecycle_restart"
+
+# Session clear request from frontends
+[[interceptor]]
+event = "session.clear"
+action = "handle_session_clear"
+
 [capabilities]
 ipc_publish = [
     "identity.request.build",
     "prompt_builder.assemble",
     "agent.stream.delta",
     "agent.response",
+    "agent.session_changed",
     "tool.request.execute",
     "llm.request.generate.*",
     "session.request.get_messages",
+    "session.request.clear",
 ]

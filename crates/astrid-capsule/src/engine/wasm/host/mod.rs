@@ -45,6 +45,8 @@ pub(crate) enum WasmHostFunction {
     KvGet,
     KvSet,
     KvDelete,
+    KvListKeys,
+    KvClearPrefix,
     GetConfig,
     NetBindUnix,
     NetAccept,
@@ -64,7 +66,7 @@ pub(crate) enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 33] = [
+    pub(crate) const ALL: [Self; 35] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -82,6 +84,8 @@ impl WasmHostFunction {
         Self::KvGet,
         Self::KvSet,
         Self::KvDelete,
+        Self::KvListKeys,
+        Self::KvClearPrefix,
         Self::GetConfig,
         Self::GetCaller,
         Self::HttpRequest,
@@ -125,6 +129,8 @@ impl WasmHostFunction {
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
             Self::KvDelete => "astrid_kv_delete",
+            Self::KvListKeys => "astrid_kv_list_keys",
+            Self::KvClearPrefix => "astrid_kv_clear_prefix",
             Self::GetConfig => "astrid_get_config",
             Self::NetBindUnix => "astrid_net_bind_unix",
             Self::NetAccept => "astrid_net_accept",
@@ -158,6 +164,8 @@ impl WasmHostFunction {
             | Self::IpcPoll
             | Self::KvGet
             | Self::KvDelete
+            | Self::KvListKeys
+            | Self::KvClearPrefix
             | Self::GetConfig
             | Self::HttpRequest
             | Self::SpawnHost
@@ -205,6 +213,8 @@ impl WasmHostFunction {
             | Self::UplinkRegister
             | Self::UplinkSend
             | Self::KvGet
+            | Self::KvListKeys
+            | Self::KvClearPrefix
             | Self::GetConfig
             | Self::SpawnHost
             | Self::HttpRequest
@@ -294,6 +304,12 @@ pub fn register_host_functions(
             },
             WasmHostFunction::KvDelete => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_delete_impl)
+            },
+            WasmHostFunction::KvListKeys => {
+                builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_list_keys_impl)
+            },
+            WasmHostFunction::KvClearPrefix => {
+                builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_clear_prefix_impl)
             },
             WasmHostFunction::NetBindUnix => {
                 builder.with_function(func.name(), args, rets, ud, net::astrid_net_bind_unix_impl)

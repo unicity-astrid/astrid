@@ -209,6 +209,20 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::KvListKeys => crate::engine::wasm::host::kv::astrid_kv_list_keys_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
+        WasmHostFunction::KvClearPrefix => {
+            crate::engine::wasm::host::kv::astrid_kv_clear_prefix_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
         WasmHostFunction::Log => {
             crate::engine::wasm::host::sys::astrid_log_impl(
                 plugin,
