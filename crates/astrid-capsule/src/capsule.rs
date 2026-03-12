@@ -112,6 +112,14 @@ pub trait Capsule: Send + Sync {
         None
     }
 
+    /// Wait for the capsule's background tasks to signal readiness.
+    ///
+    /// Returns `true` if all engines are ready or have no background tasks.
+    /// Returns `false` if the timeout expires before readiness is signaled.
+    async fn wait_ready(&self, _timeout: std::time::Duration) -> bool {
+        true
+    }
+
     /// Invoke an interceptor handler by action name.
     ///
     /// Called by the event dispatcher when an IPC event matches one of
@@ -200,6 +208,15 @@ impl Capsule for CompositeCapsule {
 
     fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
         &self.tools
+    }
+
+    async fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+        for engine in &self.engines {
+            if !engine.wait_ready(timeout).await {
+                return false;
+            }
+        }
+        true
     }
 
     fn take_inbound_rx(

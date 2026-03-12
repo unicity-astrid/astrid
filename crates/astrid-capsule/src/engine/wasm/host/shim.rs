@@ -278,6 +278,12 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::SignalReady => crate::engine::wasm::host::sys::astrid_signal_ready_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
     }
 
     if fn_outputs.is_empty() {

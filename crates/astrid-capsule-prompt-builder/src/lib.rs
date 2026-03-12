@@ -511,6 +511,9 @@ pub fn run() -> FnResult<()> {
     let after_sub = ipc::subscribe("after_prompt_build")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
+    // Signal readiness so the kernel can proceed with loading dependent capsules.
+    let _ = sys::signal_ready();
+
     let _ = sys::log("info", "Prompt Builder capsule ready");
 
     loop {

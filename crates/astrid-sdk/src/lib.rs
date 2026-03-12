@@ -313,6 +313,16 @@ pub mod sys {
         Ok(path)
     }
 
+    /// Signal that the capsule's run loop is ready.
+    ///
+    /// Call this after setting up IPC subscriptions in `run()` to let the
+    /// kernel know this capsule is ready to receive events. The kernel waits
+    /// for this signal before loading dependent capsules.
+    pub fn signal_ready() -> Result<(), SysError> {
+        unsafe { astrid_signal_ready()? };
+        Ok(())
+    }
+
     /// Retrieves the caller context (User ID and Session ID) for the current execution.
     pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
         let bytes = unsafe { astrid_get_caller()? };

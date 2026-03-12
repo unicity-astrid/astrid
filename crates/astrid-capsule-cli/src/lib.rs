@@ -8,6 +8,9 @@ pub fn run() -> FnResult<()> {
     // 1. Subscribe to all IPC events
     let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
+    // Signal readiness so the kernel can proceed with loading dependent capsules.
+    let _ = sys::signal_ready();
+
     // 2. Resolve the socket path from the kernel-injected config.
     // bind_unix is a no-op on the host side (the kernel pre-binds the socket),
     // but the path is used for logging and future diagnostics.

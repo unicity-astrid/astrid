@@ -27,6 +27,9 @@ pub struct WasmEngine {
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
     tools: Vec<Arc<dyn crate::tool::CapsuleTool>>,
     run_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Receiver for the readiness signal from the run loop.
+    /// Only set for capsules that have a `run()` export.
+    ready_rx: Option<tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>>,
 }
 
 impl WasmEngine {
@@ -38,6 +41,7 @@ impl WasmEngine {
             inbound_rx: None,
             tools: Vec::new(),
             run_handle: None,
+            ready_rx: None,
         }
     }
 }
@@ -87,7 +91,7 @@ impl ExecutionEngine for WasmEngine {
             wasm_config.insert(key, serde_json::Value::String(val));
         }
 
-        let (plugin, rx, has_run) = tokio::task::block_in_place(move || {
+        let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
             })?;
@@ -183,7 +187,7 @@ impl ExecutionEngine for WasmEngine {
                 tokio::runtime::Handle::current(),
             );
 
-            let host_state = HostState {
+            let mut host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
                 caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
@@ -220,7 +224,15 @@ impl ExecutionEngine for WasmEngine {
                 registered_uplinks: Vec::new(),
                 lifecycle_phase: None,
                 secret_store,
+                ready_tx: None,
             };
+
+            // Create the readiness watch channel. The sender goes into
+            // HostState so the WASM guest can signal ready via
+            // `astrid_signal_ready`. The receiver is returned so
+            // `WasmEngine::wait_ready` can await it.
+            let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+            host_state.ready_tx = Some(Arc::new(ready_tx));
 
             let user_data = UserData::new(host_state);
 
@@ -245,12 +257,14 @@ impl ExecutionEngine for WasmEngine {
 
             let has_run = plugin.function_exists("run");
 
-            Ok::<_, CapsuleError>((plugin, rx, has_run))
+            Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
         if has_run {
+            self.ready_rx = Some(tokio::sync::Mutex::new(ready_rx));
+
             // The run loop holds the plugin mutex for its entire lifetime.
             // We must NOT store the plugin in self.plugin, because the
             // dispatcher's invoke_interceptor() would try to acquire the same
@@ -315,6 +329,16 @@ impl ExecutionEngine for WasmEngine {
         self.plugin = None; // Drop releases WASM memory
         self.tools.clear();
         Ok(())
+    }
+
+    async fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+        let Some(rx_mutex) = &self.ready_rx else {
+            return true;
+        };
+        let mut rx = rx_mutex.lock().await.clone();
+        tokio::time::timeout(timeout, rx.wait_for(|&v| v))
+            .await
+            .is_ok()
     }
 
     fn take_inbound_rx(
@@ -441,6 +465,7 @@ pub fn run_lifecycle(
         next_stream_id: 1,
         lifecycle_phase: Some(phase),
         secret_store: cfg.secret_store,
+        ready_tx: None,
     };
 
     let user_data = UserData::new(host_state);

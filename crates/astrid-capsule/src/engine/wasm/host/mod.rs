@@ -59,10 +59,11 @@ pub(crate) enum WasmHostFunction {
     SpawnHost,
     Elicit,
     HasSecret,
+    SignalReady,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 31] = [
+    pub(crate) const ALL: [Self; 32] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -94,6 +95,7 @@ impl WasmHostFunction {
         Self::NetWrite,
         Self::Elicit,
         Self::HasSecret,
+        Self::SignalReady,
     ];
 
     #[must_use]
@@ -135,6 +137,7 @@ impl WasmHostFunction {
             Self::SpawnHost => "astrid_spawn_host",
             Self::Elicit => "astrid_elicit",
             Self::HasSecret => "astrid_has_secret",
+            Self::SignalReady => "astrid_signal_ready",
         }
     }
 
@@ -169,7 +172,7 @@ impl WasmHostFunction {
             | Self::Log
             | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
-            Self::GetCaller => 0,
+            Self::GetCaller | Self::SignalReady => 0,
         }
     }
 
@@ -187,7 +190,8 @@ impl WasmHostFunction {
             | Self::KvDelete
             | Self::Log
             | Self::CronSchedule
-            | Self::CronCancel => TYPE_VOID,
+            | Self::CronCancel
+            | Self::SignalReady => TYPE_VOID,
             Self::FsExists
             | Self::FsReaddir
             | Self::FsStat
@@ -328,6 +332,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::HasSecret => {
                 builder.with_function(func.name(), args, rets, ud, elicit::astrid_has_secret_impl)
+            },
+            WasmHostFunction::SignalReady => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_signal_ready_impl)
             },
         };
     }

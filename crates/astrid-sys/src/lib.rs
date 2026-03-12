@@ -121,4 +121,10 @@ extern "ExtismHost" {
     // -----------------------------------------------------------------------
     /// Spawn a native host process. Requires the `host_process` capability.
     pub fn astrid_spawn_host(cmd_and_args_json: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
+    // Readiness Signaling
+    // -----------------------------------------------------------------------
+    /// Signal that the capsule's run loop is ready (subscriptions are active).
+    pub fn astrid_signal_ready();
 }

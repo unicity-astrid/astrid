@@ -46,6 +46,15 @@ pub(crate) trait ExecutionEngine: Send + Sync {
         &[]
     }
 
+    /// Wait for the engine's background task to signal readiness.
+    ///
+    /// Returns `true` if the engine is ready or has no background task.
+    /// Returns `false` if the timeout expires before readiness is signaled.
+    /// Engines without background tasks return `true` immediately.
+    async fn wait_ready(&self, _timeout: std::time::Duration) -> bool {
+        true
+    }
+
     /// Invoke an interceptor handler by action name.
     ///
     /// `action` is the handler name (e.g., `handle_user_prompt`) and

@@ -336,6 +336,9 @@ pub fn run() -> FnResult<()> {
     let selection_sub = ipc::subscribe("registry.selection.callback")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
+    // Signal readiness so the kernel can proceed with loading dependent capsules.
+    let _ = sys::signal_ready();
+
     // Single subscription for kernel.capsules_loaded — used for both initial
     // readiness wait AND reload re-discovery in the event loop. Avoids the
     // race window of unsubscribe + resubscribe where a message could be missed.
