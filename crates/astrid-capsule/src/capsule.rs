@@ -1,6 +1,7 @@
 //! Capsule trait and core types.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -131,6 +132,15 @@ pub trait Capsule: Send + Sync {
     fn check_health(&self) -> CapsuleState {
         self.state()
     }
+
+    /// The directory this capsule was loaded from.
+    ///
+    /// Used by the kernel health monitor to restart crashed capsules.
+    /// Returns `None` for capsules that don't have a filesystem source
+    /// (e.g., test mocks).
+    fn source_dir(&self) -> Option<&Path> {
+        None
+    }
 }
 
 /// The universal, additive implementation of a Capsule.
@@ -145,6 +155,7 @@ pub(crate) struct CompositeCapsule {
     state: CapsuleState,
     engines: Vec<Box<dyn crate::engine::ExecutionEngine>>,
     tools: Vec<std::sync::Arc<dyn CapsuleTool>>,
+    capsule_dir: Option<PathBuf>,
 }
 
 impl CompositeCapsule {
@@ -157,7 +168,13 @@ impl CompositeCapsule {
             state: CapsuleState::Unloaded,
             engines: Vec::new(),
             tools: Vec::new(),
+            capsule_dir: None,
         })
+    }
+
+    /// Set the source directory this capsule was loaded from.
+    pub(crate) fn set_source_dir(&mut self, dir: PathBuf) {
+        self.capsule_dir = Some(dir);
     }
 
     /// Add an execution engine (e.g., WasmEngine, McpEngine) to this capsule.
@@ -243,6 +260,10 @@ impl Capsule for CompositeCapsule {
             }
         }
         self.state.clone()
+    }
+
+    fn source_dir(&self) -> Option<&Path> {
+        self.capsule_dir.as_deref()
     }
 }
 

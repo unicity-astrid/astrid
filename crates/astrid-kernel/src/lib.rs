@@ -213,6 +213,40 @@ impl Kernel {
         Ok(())
     }
 
+    /// Restart a capsule by unloading it and re-loading from its source directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capsule has no source directory, cannot be
+    /// unregistered, or fails to reload.
+    async fn restart_capsule(
+        &self,
+        id: &astrid_capsule::capsule::CapsuleId,
+    ) -> Result<(), anyhow::Error> {
+        // Get source directory before unregistering.
+        let source_dir = {
+            let registry = self.capsules.read().await;
+            let capsule = registry
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("capsule '{id}' not found in registry"))?;
+            capsule
+                .source_dir()
+                .map(std::path::Path::to_path_buf)
+                .ok_or_else(|| anyhow::anyhow!("capsule '{id}' has no source directory"))?
+        };
+
+        // Unregister (drops the old capsule, which calls unload via Drop).
+        {
+            let mut registry = self.capsules.write().await;
+            registry
+                .unregister(id)
+                .map_err(|e| anyhow::anyhow!("failed to unregister capsule '{id}': {e}"))?;
+        }
+
+        // Re-load from disk.
+        self.load_capsule(source_dir).await
+    }
+
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/capsules` and `.astrid/capsules`).
     ///
     /// Uplink/daemon capsules are loaded first so their event bus subscriptions
@@ -414,16 +448,107 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     })
 }
 
+/// Tracks restart attempts for a single capsule with exponential backoff.
+struct RestartTracker {
+    attempts: u32,
+    last_attempt: std::time::Instant,
+    backoff: std::time::Duration,
+}
+
+impl RestartTracker {
+    const MAX_ATTEMPTS: u32 = 5;
+    const INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(2);
+    const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(120);
+
+    fn new() -> Self {
+        Self {
+            attempts: 0,
+            last_attempt: std::time::Instant::now(),
+            backoff: Self::INITIAL_BACKOFF,
+        }
+    }
+
+    /// Returns `true` if a restart should be attempted now.
+    fn should_restart(&self) -> bool {
+        self.attempts < Self::MAX_ATTEMPTS && self.last_attempt.elapsed() >= self.backoff
+    }
+
+    /// Record a restart attempt and advance the backoff.
+    fn record_attempt(&mut self) {
+        self.attempts = self.attempts.saturating_add(1);
+        self.last_attempt = std::time::Instant::now();
+        self.backoff = self.backoff.saturating_mul(2).min(Self::MAX_BACKOFF);
+    }
+
+    /// Returns `true` if all retry attempts have been exhausted.
+    fn exhausted(&self) -> bool {
+        self.attempts >= Self::MAX_ATTEMPTS
+    }
+}
+
+/// Attempts to restart a failed capsule, respecting backoff and max retries.
+///
+/// Returns `true` if the tracker should be removed (successful restart).
+async fn attempt_capsule_restart(
+    kernel: &Kernel,
+    id_str: &str,
+    tracker: &mut RestartTracker,
+) -> bool {
+    if tracker.exhausted() {
+        return false;
+    }
+
+    if !tracker.should_restart() {
+        tracing::debug!(
+            capsule_id = %id_str,
+            next_attempt_in = ?tracker.backoff.saturating_sub(tracker.last_attempt.elapsed()),
+            "Waiting for backoff before next restart attempt"
+        );
+        return false;
+    }
+
+    tracker.record_attempt();
+    let attempt = tracker.attempts;
+
+    tracing::warn!(
+        capsule_id = %id_str,
+        attempt,
+        max_attempts = RestartTracker::MAX_ATTEMPTS,
+        "Attempting capsule restart"
+    );
+
+    let capsule_id = astrid_capsule::capsule::CapsuleId::from_static(id_str);
+    match kernel.restart_capsule(&capsule_id).await {
+        Ok(()) => {
+            tracing::info!(capsule_id = %id_str, attempt, "Capsule restarted successfully");
+            true
+        },
+        Err(e) => {
+            tracing::error!(capsule_id = %id_str, attempt, error = %e, "Capsule restart failed");
+            if tracker.exhausted() {
+                tracing::error!(
+                    capsule_id = %id_str,
+                    "All restart attempts exhausted - capsule will remain down"
+                );
+            }
+            false
+        },
+    }
+}
+
 /// Spawns a background task that periodically probes capsule health.
 ///
 /// Every 10 seconds, reads the capsule registry and calls `check_health()` on
 /// each capsule that is currently in `Ready` state. If a capsule reports
-/// `Failed`, logs an error and publishes a `capsule.health.failed` IPC event.
+/// `Failed`, attempts to restart it with exponential backoff (max 5 attempts).
+/// Publishes `capsule.health.failed` IPC events for each detected failure.
 fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
-        // Skip the first immediate tick.
-        interval.tick().await;
+        interval.tick().await; // Skip the first immediate tick.
+
+        let mut restart_trackers: std::collections::HashMap<String, RestartTracker> =
+            std::collections::HashMap::new();
 
         loop {
             interval.tick().await;
@@ -437,33 +562,30 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                     .into_iter()
                     .filter_map(|id| {
                         let capsule = registry.get(id)?;
-                        if matches!(
-                            capsule.state(),
-                            astrid_capsule::capsule::CapsuleState::Ready
-                        ) {
+                        if capsule.state() == astrid_capsule::capsule::CapsuleState::Ready {
                             Some(capsule)
                         } else {
                             None
                         }
                     })
                     .collect()
-                // Read lock dropped here.
             };
+
+            let mut restarted = Vec::new();
 
             for capsule in &ready_capsules {
                 let health = capsule.check_health();
                 if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
-                    tracing::error!(
-                        capsule_id = %capsule.id(),
-                        reason = %reason,
-                        "Capsule health check failed"
-                    );
+                    let id_str = capsule.id().to_string();
+
+                    tracing::error!(capsule_id = %id_str, reason = %reason, "Capsule health check failed");
+
                     let msg = astrid_events::ipc::IpcMessage::new(
                         "capsule.health.failed",
                         astrid_events::ipc::IpcPayload::Custom {
                             data: serde_json::json!({
-                                "capsule_id": capsule.id().to_string(),
-                                "reason": reason,
+                                "capsule_id": &id_str,
+                                "reason": &reason,
                             }),
                         },
                         uuid::Uuid::new_v4(),
@@ -472,8 +594,34 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                         metadata: astrid_events::EventMetadata::new("kernel"),
                         message: msg,
                     });
+
+                    let tracker = restart_trackers
+                        .entry(id_str.clone())
+                        .or_insert_with(RestartTracker::new);
+
+                    if attempt_capsule_restart(&kernel, &id_str, tracker).await {
+                        restarted.push(id_str);
+                    }
                 }
             }
+
+            // Remove trackers for successfully restarted capsules.
+            for id in &restarted {
+                restart_trackers.remove(id);
+            }
+
+            // Prune trackers for capsules no longer in failed state.
+            let failed_ids: std::collections::HashSet<&str> = ready_capsules
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.check_health(),
+                        astrid_capsule::capsule::CapsuleState::Failed(_)
+                    )
+                })
+                .map(|c| c.id().as_str())
+                .collect();
+            restart_trackers.retain(|id, _| failed_ids.contains(id.as_str()));
         }
     })
 }

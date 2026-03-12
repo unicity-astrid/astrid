@@ -175,6 +175,10 @@ impl ExecutionEngine for McpHostEngine {
 
     fn check_health(&self) -> crate::capsule::CapsuleState {
         let server_id = format!("capsule:{}", self.manifest.package.name);
+        // Safety: `block_in_place` is safe here because the health monitor
+        // calls `check_health()` from a multi-threaded tokio runtime context
+        // (the kernel task), not from within a `LocalSet` or single-threaded
+        // runtime. The inner future is a short lock check, not a long I/O op.
         let is_running = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
                 .block_on(async { self.mcp_client.inner().is_server_running(&server_id).await })
