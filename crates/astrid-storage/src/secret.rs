@@ -63,6 +63,11 @@ pub trait SecretStore: Send + Sync + fmt::Debug {
 
     /// Retrieve a secret value. Returns `None` if not found.
     ///
+    /// Currently not exposed as a WASM host function (capsules use `exists()`
+    /// to check for secrets and receive values through elicitation). Kept as
+    /// part of the trait for CLI tooling and future `astrid_get_secret` host
+    /// function support.
+    ///
     /// # Errors
     ///
     /// Returns an error if the key is empty or a platform error occurs.
@@ -76,11 +81,28 @@ pub trait SecretStore: Send + Sync + fmt::Debug {
     fn delete(&self, key: &str) -> Result<bool, SecretStoreError>;
 }
 
-/// Validate that a secret key is non-empty.
+/// Validate that a secret key is non-empty and does not contain the `:`
+/// separator character (used internally for namespace isolation).
 fn validate_key(key: &str) -> Result<(), SecretStoreError> {
     if key.is_empty() {
         return Err(SecretStoreError::Invalid(
             "secret key must not be empty".into(),
+        ));
+    }
+    if key.contains(':') {
+        return Err(SecretStoreError::Invalid(
+            "secret key must not contain ':'".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Validate that a secret value is non-empty. Empty secrets are ambiguous
+/// with "not set" and should be rejected at the boundary.
+fn validate_value(value: &str) -> Result<(), SecretStoreError> {
+    if value.is_empty() {
+        return Err(SecretStoreError::Invalid(
+            "secret value must not be empty".into(),
         ));
     }
     Ok(())
@@ -128,6 +150,7 @@ impl KvSecretStore {
 impl SecretStore for KvSecretStore {
     fn set(&self, key: &str, value: &str) -> Result<(), SecretStoreError> {
         validate_key(key)?;
+        validate_value(value)?;
         let prefixed = Self::prefixed_key(key);
         self.runtime_handle
             .block_on(self.kv.set(&prefixed, value.as_bytes().to_vec()))
@@ -174,7 +197,7 @@ impl SecretStore for KvSecretStore {
 
 #[cfg(feature = "keychain")]
 mod keychain_impl {
-    use super::{SecretStore, SecretStoreError, validate_key};
+    use super::{SecretStore, SecretStoreError, validate_key, validate_value};
 
     /// OS keychain-backed secret store using the `keyring` crate.
     ///
@@ -222,7 +245,7 @@ mod keychain_impl {
         match e {
             keyring::Error::NoStorageAccess(inner) => SecretStoreError::NoAccess(inner.to_string()),
             keyring::Error::PlatformFailure(inner) => {
-                SecretStoreError::Internal(format!("platform failure: {inner}"))
+                SecretStoreError::NoAccess(format!("platform failure: {inner}"))
             },
             keyring::Error::Invalid(attr, reason) => {
                 SecretStoreError::Invalid(format!("{attr}: {reason}"))
@@ -247,6 +270,7 @@ mod keychain_impl {
     impl SecretStore for KeychainSecretStore {
         fn set(&self, key: &str, value: &str) -> Result<(), SecretStoreError> {
             validate_key(key)?;
+            validate_value(value)?;
             let entry = self.entry(key)?;
             entry.set_password(value).map_err(map_keyring_error)
         }
@@ -296,15 +320,16 @@ mod fallback_impl {
 
     use super::{KeychainSecretStore, KvSecretStore, SecretStore, SecretStoreError};
 
-    /// Composite secret store that tries the OS keychain first and falls back
-    /// to KV storage when the keychain is unavailable.
+    /// Composite secret store that probes the OS keychain at creation time and
+    /// commits to a single backend for the lifetime of the store.
     ///
-    /// On the first `NoAccess` error from the keychain, a warning is logged.
-    /// Subsequent operations continue to try the keychain (it may become
-    /// available if the user unlocks it).
+    /// This avoids split-brain: if the keychain is unavailable at construction,
+    /// all operations go to KV. If available, all go to keychain. No per-operation
+    /// fallback that could scatter secrets across both backends.
     pub struct FallbackSecretStore {
         keychain: KeychainSecretStore,
         kv: KvSecretStore,
+        use_keychain: bool,
     }
 
     impl fmt::Debug for FallbackSecretStore {
@@ -312,76 +337,79 @@ mod fallback_impl {
             f.debug_struct("FallbackSecretStore")
                 .field("keychain", &self.keychain)
                 .field("kv", &self.kv)
-                .finish()
+                .field("use_keychain", &self.use_keychain)
+                .finish_non_exhaustive()
         }
     }
 
     impl FallbackSecretStore {
         /// Create a new fallback secret store.
-        #[must_use]
+        ///
+        /// Probes the keychain with a dummy `exists()` call. If that succeeds,
+        /// all future operations go to the keychain. If it fails with
+        /// `NoAccess`, all operations go to KV and a warning is logged once.
         pub fn new(keychain: KeychainSecretStore, kv: KvSecretStore) -> Self {
-            Self { keychain, kv }
+            let use_keychain = match keychain.exists("__probe") {
+                Ok(_) | Err(SecretStoreError::Invalid(_)) => true,
+                Err(SecretStoreError::NoAccess(reason)) => {
+                    tracing::warn!(
+                        %reason,
+                        "OS keychain unavailable at startup, using KV secret storage"
+                    );
+                    false
+                },
+                Err(SecretStoreError::Internal(reason)) => {
+                    tracing::warn!(
+                        %reason,
+                        "OS keychain probe failed, using KV secret storage"
+                    );
+                    false
+                },
+            };
+            Self {
+                keychain,
+                kv,
+                use_keychain,
+            }
+        }
+
+        /// Whether this store is using the OS keychain backend.
+        #[must_use]
+        pub fn is_using_keychain(&self) -> bool {
+            self.use_keychain
         }
     }
 
     impl SecretStore for FallbackSecretStore {
         fn set(&self, key: &str, value: &str) -> Result<(), SecretStoreError> {
-            match self.keychain.set(key, value) {
-                Ok(()) => Ok(()),
-                Err(SecretStoreError::NoAccess(reason)) => {
-                    tracing::warn!(
-                        %key,
-                        %reason,
-                        "OS keychain unavailable, falling back to KV secret storage"
-                    );
-                    self.kv.set(key, value)
-                },
-                Err(e) => Err(e),
+            if self.use_keychain {
+                self.keychain.set(key, value)
+            } else {
+                self.kv.set(key, value)
             }
         }
 
         fn exists(&self, key: &str) -> Result<bool, SecretStoreError> {
-            match self.keychain.exists(key) {
-                Ok(exists) => Ok(exists),
-                Err(SecretStoreError::NoAccess(reason)) => {
-                    tracing::warn!(
-                        %key,
-                        %reason,
-                        "OS keychain unavailable, falling back to KV secret storage"
-                    );
-                    self.kv.exists(key)
-                },
-                Err(e) => Err(e),
+            if self.use_keychain {
+                self.keychain.exists(key)
+            } else {
+                self.kv.exists(key)
             }
         }
 
         fn get(&self, key: &str) -> Result<Option<String>, SecretStoreError> {
-            match self.keychain.get(key) {
-                Ok(val) => Ok(val),
-                Err(SecretStoreError::NoAccess(reason)) => {
-                    tracing::warn!(
-                        %key,
-                        %reason,
-                        "OS keychain unavailable, falling back to KV secret storage"
-                    );
-                    self.kv.get(key)
-                },
-                Err(e) => Err(e),
+            if self.use_keychain {
+                self.keychain.get(key)
+            } else {
+                self.kv.get(key)
             }
         }
 
         fn delete(&self, key: &str) -> Result<bool, SecretStoreError> {
-            match self.keychain.delete(key) {
-                Ok(deleted) => Ok(deleted),
-                Err(SecretStoreError::NoAccess(reason)) => {
-                    tracing::warn!(
-                        %key,
-                        %reason,
-                        "OS keychain unavailable, falling back to KV secret storage"
-                    );
-                    self.kv.delete(key)
-                },
-                Err(e) => Err(e),
+            if self.use_keychain {
+                self.keychain.delete(key)
+            } else {
+                self.kv.delete(key)
             }
         }
     }
@@ -404,7 +432,11 @@ pub fn build_secret_store(
     kv: ScopedKvStore,
     runtime_handle: tokio::runtime::Handle,
 ) -> Arc<dyn SecretStore> {
-    let _ = capsule_id; // used only with keychain feature
+    // capsule_id scopes the keychain service name when the keychain feature is
+    // enabled. Without the feature it is unused, but we keep the parameter for
+    // a consistent API surface.
+    #[cfg(not(feature = "keychain"))]
+    let _ = capsule_id;
     let kv_store = KvSecretStore::new(kv, runtime_handle);
 
     #[cfg(feature = "keychain")]
@@ -528,5 +560,35 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
         let secret_store = build_secret_store("test", kv, rt.handle().clone());
         assert!(!secret_store.exists("nonexistent").unwrap());
+    }
+
+    #[test]
+    fn kv_empty_value_rejected() {
+        let (store, _kv, _rt) = make_kv_store();
+        assert!(matches!(
+            store.set("api_key", ""),
+            Err(SecretStoreError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn kv_key_with_colon_rejected() {
+        let (store, _kv, _rt) = make_kv_store();
+        assert!(matches!(
+            store.set("ns:key", "value"),
+            Err(SecretStoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            store.exists("ns:key"),
+            Err(SecretStoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            store.get("ns:key"),
+            Err(SecretStoreError::Invalid(_))
+        ));
+        assert!(matches!(
+            store.delete("ns:key"),
+            Err(SecretStoreError::Invalid(_))
+        ));
     }
 }

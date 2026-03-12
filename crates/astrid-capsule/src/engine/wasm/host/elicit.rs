@@ -170,6 +170,11 @@ pub(crate) fn astrid_elicit_impl(
                                 // This uses the OS keychain when available, falling
                                 // back to KV storage in headless/CI environments.
                                 let secret_val = value.clone().unwrap_or_default();
+                                if secret_val.is_empty() {
+                                    return Err(Error::msg(
+                                        "received empty secret value from elicit response",
+                                    ));
+                                }
                                 secret_store.set(&guest_req.key, &secret_val).map_err(|e| {
                                     Error::msg(format!("failed to persist secret: {e}"))
                                 })?;
