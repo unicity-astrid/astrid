@@ -10,12 +10,81 @@ use serde::{Deserialize, Serialize};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
+/// Update one or all installed capsules by re-installing from their original source.
+///
+/// If `target` is `Some`, update only that capsule. If `None`, update all capsules
+/// that have a recorded source in `meta.json`.
+///
+/// # TODO
+/// When `target` is `None` (bare `astrid capsule update`), this should check all
+/// installed capsules for newer versions from their original repo/registry source
+/// before re-installing, rather than blindly re-fetching everything.
+pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::Result<()> {
+    let home = AstridHome::resolve()?;
+
+    if let Some(name) = target {
+        // Update a single capsule
+        let target_dir = resolve_target_dir(&home, name, workspace)?;
+        if !target_dir.exists() {
+            bail!("Capsule '{name}' is not installed.");
+        }
+
+        let meta = read_meta(&target_dir)
+            .ok_or_else(|| anyhow::anyhow!("Capsule '{name}' has no meta.json - cannot determine original source. Re-install it manually."))?;
+
+        let source = meta.source.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Capsule '{name}' was installed before source tracking was added. Re-install it manually to record the source."
+            )
+        })?;
+
+        eprintln!("Updating {name} from {source}...");
+        install_capsule(&source, workspace)
+    } else {
+        // TODO: Check all installed capsules for updates from their repo/registry
+        // source. For now, re-install everything that has a recorded source.
+        let capsules_dir = home.capsules_dir();
+        if !capsules_dir.exists() {
+            eprintln!("No capsules installed.");
+            return Ok(());
+        }
+
+        let mut updated = 0u32;
+        let mut skipped = 0u32;
+        for entry in std::fs::read_dir(&capsules_dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let meta = read_meta(&entry.path());
+            if let Some(meta) = meta
+                && let Some(ref source) = meta.source
+            {
+                eprintln!("Updating {name} from {source}...");
+                if let Err(e) = install_capsule(source, workspace) {
+                    eprintln!("Failed to update {name}: {e}");
+                } else {
+                    updated = updated.saturating_add(1);
+                }
+            } else {
+                eprintln!("Skipping {name} (no source recorded).");
+                skipped = skipped.saturating_add(1);
+            }
+        }
+
+        eprintln!("Updated {updated} capsule(s), skipped {skipped}.");
+        Ok(())
+    }
+}
+
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
     // 1. Explicit Local Path
     if source.starts_with('.') || source.starts_with('/') {
-        return install_from_local(source, workspace, &home);
+        return install_from_local(source, workspace, &home, Some(source));
     }
 
     // 2. OpenClaw Explicit Prefix
@@ -23,24 +92,24 @@ pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<(
         // If it uses the github namespace alias after the prefix
         if let Some(repo) = rest.strip_prefix('@') {
             let url = format!("https://github.com/{repo}");
-            return install_from_github(&url, workspace, &home, true);
+            return install_from_github(&url, workspace, &home, true, Some(source));
         }
-        return install_from_openclaw(rest, workspace, &home);
+        return install_from_openclaw(rest, workspace, &home, Some(source));
     }
 
     // 3. Native Namespace Alias (@org/repo) -> GitHub
     if let Some(repo) = source.strip_prefix('@') {
         let url = format!("https://github.com/{repo}");
-        return install_from_github(&url, workspace, &home, false);
+        return install_from_github(&url, workspace, &home, false, Some(source));
     }
 
     // 4. Raw GitHub URL
     if source.starts_with("github.com/") || source.starts_with("https://github.com/") {
-        return install_from_github(source, workspace, &home, false);
+        return install_from_github(source, workspace, &home, false, Some(source));
     }
 
     // 5. Fallback: Assume it's a local folder matching the given name
-    install_from_local(source, workspace, &home)
+    install_from_local(source, workspace, &home, Some(source))
 }
 
 pub(crate) fn install_from_github(
@@ -48,6 +117,7 @@ pub(crate) fn install_from_github(
     workspace: bool,
     home: &AstridHome,
     _is_openclaw: bool,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("astrid-cli")
@@ -89,7 +159,7 @@ pub(crate) fn install_from_github(
                 let mut limited_stream = download_res.take(50 * 1024 * 1024);
                 std::io::copy(&mut limited_stream, &mut file)?;
 
-                return unpack_and_install(&download_path, workspace, home);
+                return unpack_and_install(&download_path, workspace, home, original_source);
             }
         }
     }
@@ -120,7 +190,7 @@ pub(crate) fn install_from_github(
     for entry in std::fs::read_dir(&output_dir)? {
         let entry = entry?;
         if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
-            return unpack_and_install(&entry.path(), workspace, home);
+            return unpack_and_install(&entry.path(), workspace, home, original_source);
         }
     }
 
@@ -131,6 +201,7 @@ pub(crate) fn install_from_openclaw(
     source: &str,
     workspace: bool,
     home: &AstridHome,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let capsule_name = source.strip_prefix("openclaw:").unwrap_or(source);
 
@@ -145,13 +216,14 @@ pub(crate) fn install_from_openclaw(
         );
     }
 
-    transpile_and_install(source_path, workspace, home)
+    transpile_and_install(source_path, workspace, home, original_source)
 }
 
 pub(crate) fn transpile_and_install(
     source_path: &Path,
     workspace: bool,
     home: &AstridHome,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
@@ -182,13 +254,14 @@ pub(crate) fn transpile_and_install(
     );
 
     // Proceed with standard installation from the temp directory
-    install_from_local_path(output_dir, workspace, home)
+    install_from_local_path_inner(output_dir, workspace, home, original_source)
 }
 
 pub(crate) fn install_from_local(
     source: &str,
     workspace: bool,
     home: &AstridHome,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let source_path = Path::new(source);
     if !source_path.exists() {
@@ -199,12 +272,12 @@ pub(crate) fn install_from_local(
     if source_path.join("openclaw.plugin.json").exists()
         && !source_path.join("Capsule.toml").exists()
     {
-        return transpile_and_install(source_path, workspace, home);
+        return transpile_and_install(source_path, workspace, home, original_source);
     }
 
     // Unpack .capsule archive if it is a file
     if source_path.is_file() && source.ends_with(".capsule") {
-        return unpack_and_install(source_path, workspace, home);
+        return unpack_and_install(source_path, workspace, home, original_source);
     }
 
     // Auto-build Rust capsules if we point at a source directory with a Cargo.toml
@@ -223,19 +296,20 @@ pub(crate) fn install_from_local(
         for entry in std::fs::read_dir(&output_dir)? {
             let entry = entry?;
             if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
-                return unpack_and_install(&entry.path(), workspace, home);
+                return unpack_and_install(&entry.path(), workspace, home, original_source);
             }
         }
         bail!("Failed to auto-build capsule from Cargo project.");
     }
 
-    install_from_local_path(source_path, workspace, home)
+    install_from_local_path_inner(source_path, workspace, home, original_source)
 }
 
 fn unpack_and_install(
     archive_path: &Path,
     workspace: bool,
     home: &AstridHome,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for unpacking")?;
     let unpack_dir = tmp_dir.path();
@@ -285,7 +359,7 @@ fn unpack_and_install(
             .with_context(|| format!("Failed to unpack file: {}", out_path.display()))?;
     }
 
-    install_from_local_path(unpack_dir, workspace, home)
+    install_from_local_path_inner(unpack_dir, workspace, home, original_source)
 }
 
 /// Capsule installation metadata, persisted as `meta.json` alongside `Capsule.toml`.
@@ -297,6 +371,10 @@ struct CapsuleMeta {
     installed_at: String,
     /// When the capsule was last updated.
     updated_at: String,
+    /// The original install source (local path, GitHub URL, openclaw: prefix, etc.).
+    /// Used by `astrid capsule update` to re-fetch from the same source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
 }
 
 /// Read existing `meta.json` from a capsule's install directory (if present).
@@ -318,6 +396,15 @@ pub(crate) fn install_from_local_path(
     source_path: &Path,
     workspace: bool,
     home: &AstridHome,
+) -> anyhow::Result<()> {
+    install_from_local_path_inner(source_path, workspace, home, None)
+}
+
+pub(crate) fn install_from_local_path_inner(
+    source_path: &Path,
+    workspace: bool,
+    home: &AstridHome,
+    original_source: Option<&str>,
 ) -> anyhow::Result<()> {
     let manifest_path = source_path.join("Capsule.toml");
     if !manifest_path.exists() {
@@ -391,8 +478,13 @@ pub(crate) fn install_from_local_path(
     let now = chrono::Utc::now().to_rfc3339();
     let meta = CapsuleMeta {
         version: new_version,
-        installed_at: existing_meta.map_or_else(|| now.clone(), |m| m.installed_at),
+        installed_at: existing_meta
+            .as_ref()
+            .map_or_else(|| now.clone(), |m| m.installed_at.clone()),
         updated_at: now,
+        source: original_source
+            .map(String::from)
+            .or_else(|| existing_meta.and_then(|m| m.source)),
     };
     write_meta(&target_dir, &meta)?;
 
@@ -851,6 +943,7 @@ mod tests {
             version: "1.2.3".into(),
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-03-12T00:00:00Z".into(),
+            source: None,
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");

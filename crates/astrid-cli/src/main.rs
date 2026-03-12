@@ -115,6 +115,14 @@ enum CapsuleCommands {
         #[arg(long)]
         workspace: bool,
     },
+    /// Update an installed capsule (or all capsules) from its original source
+    Update {
+        /// Capsule name to update (omit to update all)
+        target: Option<String>,
+        /// Update workspace capsules instead of user-level
+        #[arg(long)]
+        workspace: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -255,6 +263,9 @@ async fn main() -> Result<()> {
         Some(Commands::Capsule { command }) => match command {
             CapsuleCommands::Install { source, workspace } => {
                 commands::capsule::install::install_capsule(&source, workspace)?;
+            },
+            CapsuleCommands::Update { target, workspace } => {
+                commands::capsule::install::update_capsule(target.as_deref(), workspace)?;
             },
         },
         Some(Commands::Session { command }) => {
