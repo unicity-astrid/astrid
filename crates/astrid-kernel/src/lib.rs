@@ -236,24 +236,28 @@ impl Kernel {
             .partition(|(m, _)| m.capabilities.uplink);
 
         // Topological sort each partition by manifest dependencies.
-        // Clone the unsorted vecs so cycle fallback doesn't re-discover.
-        let uplinks_fallback = uplinks.clone();
-        let uplinks = toposort_manifests(uplinks).unwrap_or_else(|e| {
-            tracing::error!(
-                cycle = %e,
-                "Dependency cycle in uplink capsules, falling back to discovery order"
-            );
-            uplinks_fallback
-        });
+        // On cycle, the original unsorted vec is returned alongside the error.
+        let uplinks = match toposort_manifests(uplinks) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in uplink capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
 
-        let others_fallback = others.clone();
-        let others = toposort_manifests(others).unwrap_or_else(|e| {
-            tracing::error!(
-                cycle = %e,
-                "Dependency cycle in capsules, falling back to discovery order"
-            );
-            others_fallback
-        });
+        let others = match toposort_manifests(others) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
 
         // Load uplinks first so their event bus subscriptions are ready.
         let uplink_names: Vec<String> = uplinks

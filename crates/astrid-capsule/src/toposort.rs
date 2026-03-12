@@ -9,6 +9,9 @@ use std::path::PathBuf;
 
 use crate::manifest::CapsuleManifest;
 
+/// A manifest paired with its capsule directory path.
+type ManifestEntry = (CapsuleManifest, PathBuf);
+
 /// Error returned when the dependency graph contains a cycle.
 #[derive(Debug, Clone)]
 pub struct CycleError {
@@ -43,27 +46,14 @@ impl std::error::Error for CycleError {}
 ///
 /// # Errors
 ///
-/// Returns [`CycleError`] if the dependency graph contains a cycle.
+/// Returns [`CycleError`] paired with the original unsorted vector if the
+/// dependency graph contains a cycle. This avoids cloning the input as a
+/// fallback buffer.
 pub fn toposort_manifests(
-    manifests: Vec<(CapsuleManifest, PathBuf)>,
-) -> Result<Vec<(CapsuleManifest, PathBuf)>, CycleError> {
+    manifests: Vec<ManifestEntry>,
+) -> Result<Vec<ManifestEntry>, (CycleError, Vec<ManifestEntry>)> {
     if manifests.len() <= 1 {
         return Ok(manifests);
-    }
-
-    let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(manifests.len());
-    for (i, (m, _)) in manifests.iter().enumerate() {
-        let name = m.package.name.as_str();
-        if let Some(&existing) = name_to_idx.get(name) {
-            tracing::warn!(
-                name = %name,
-                first_path = %manifests[existing].1.display(),
-                duplicate_path = %manifests[i].1.display(),
-                "Duplicate capsule package name, only the first occurrence participates in dependency resolution"
-            );
-        } else {
-            name_to_idx.insert(name, i);
-        }
     }
 
     let len = manifests.len();
@@ -71,18 +61,38 @@ pub fn toposort_manifests(
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); len];
     let mut in_degree: Vec<usize> = vec![0; len];
 
-    for (idx, (manifest, _)) in manifests.iter().enumerate() {
-        for dep_name in manifest.dependencies.keys() {
-            if let Some(&dep_idx) = name_to_idx.get(dep_name.as_str()) {
-                // dep_idx must load before idx
-                dependents[dep_idx].push(idx);
-                in_degree[idx] += 1;
-            } else {
+    // Build the name-to-index map and adjacency list in a scoped block
+    // so the borrows on `manifests` are released before the error path
+    // needs to return ownership.
+    {
+        let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(len);
+        for (i, (m, _)) in manifests.iter().enumerate() {
+            let name = m.package.name.as_str();
+            if let Some(&existing) = name_to_idx.get(name) {
                 tracing::warn!(
-                    capsule = %manifest.package.name,
-                    dependency = %dep_name,
-                    "Capsule declares dependency on unknown capsule, ignoring"
+                    name = %name,
+                    first_path = %manifests[existing].1.display(),
+                    duplicate_path = %manifests[i].1.display(),
+                    "Duplicate capsule package name, only the first occurrence participates in dependency resolution"
                 );
+            } else {
+                name_to_idx.insert(name, i);
+            }
+        }
+
+        for (idx, (manifest, _)) in manifests.iter().enumerate() {
+            for dep_name in manifest.dependencies.keys() {
+                if let Some(&dep_idx) = name_to_idx.get(dep_name.as_str()) {
+                    // dep_idx must load before idx
+                    dependents[dep_idx].push(idx);
+                    in_degree[idx] += 1;
+                } else {
+                    tracing::warn!(
+                        capsule = %manifest.package.name,
+                        dependency = %dep_name,
+                        "Capsule declares dependency on unknown capsule, ignoring"
+                    );
+                }
             }
         }
     }
@@ -115,13 +125,12 @@ pub fn toposort_manifests(
             .filter(|(_, d)| **d > 0)
             .map(|(i, _)| manifests[i].0.package.name.clone())
             .collect();
-        return Err(CycleError { cycle });
+        return Err((CycleError { cycle }, manifests));
     }
 
     // Reorder manifests according to topological order.
     // Convert to Option so we can take() by index without cloning.
-    let mut slots: Vec<Option<(CapsuleManifest, PathBuf)>> =
-        manifests.into_iter().map(Some).collect();
+    let mut slots: Vec<Option<ManifestEntry>> = manifests.into_iter().map(Some).collect();
     let sorted = order
         .into_iter()
         .map(|i| slots[i].take().expect("each index visited exactly once"))
@@ -135,7 +144,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn manifest(name: &str, deps: &[&str]) -> (CapsuleManifest, PathBuf) {
+    fn manifest(name: &str, deps: &[&str]) -> ManifestEntry {
         let dependencies: HashMap<String, String> = deps
             .iter()
             .map(|d| ((*d).to_string(), "*".to_string()))
@@ -178,7 +187,7 @@ mod tests {
         (m, PathBuf::from(format!("/capsules/{name}")))
     }
 
-    fn names(manifests: &[(CapsuleManifest, PathBuf)]) -> Vec<&str> {
+    fn names(manifests: &[ManifestEntry]) -> Vec<&str> {
         manifests
             .iter()
             .map(|(m, _)| m.package.name.as_str())
@@ -237,10 +246,12 @@ mod tests {
     #[test]
     fn cycle_detected() {
         let input = vec![manifest("a", &["b"]), manifest("b", &["a"])];
-        let err = toposort_manifests(input).unwrap_err();
+        let (err, original) = toposort_manifests(input).unwrap_err();
         assert!(err.cycle.contains(&"a".to_string()));
         assert!(err.cycle.contains(&"b".to_string()));
         assert!(err.to_string().contains("dependency cycle detected"));
+        // Original vec is returned for fallback use
+        assert_eq!(original.len(), 2);
     }
 
     #[test]
@@ -250,8 +261,9 @@ mod tests {
             manifest("b", &["a"]),
             manifest("c", &["b"]),
         ];
-        let err = toposort_manifests(input).unwrap_err();
+        let (err, original) = toposort_manifests(input).unwrap_err();
         assert_eq!(err.cycle.len(), 3);
+        assert_eq!(original.len(), 3);
     }
 
     #[test]
