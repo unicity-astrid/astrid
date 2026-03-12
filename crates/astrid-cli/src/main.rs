@@ -238,10 +238,30 @@ async fn main() -> Result<()> {
                 ))
             );
 
-            // Sleep forever to keep the Kernel alive in the background
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            // Wait for a termination signal, then shut down gracefully.
+            // SIGTERM is Unix-only; on other platforms we rely on Ctrl+C alone.
+            #[cfg(unix)]
+            {
+                let mut sigterm =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .context("failed to register SIGTERM handler")?;
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Received SIGINT, shutting down");
+                    }
+                    _ = sigterm.recv() => {
+                        tracing::info!("Received SIGTERM, shutting down");
+                    }
+                }
             }
+            #[cfg(not(unix))]
+            {
+                tokio::signal::ctrl_c()
+                    .await
+                    .context("failed to listen for Ctrl+C")?;
+                tracing::info!("Received SIGINT, shutting down");
+            }
+            kernel.shutdown(Some("signal".to_string())).await;
         },
         Some(Commands::Build {
             path,

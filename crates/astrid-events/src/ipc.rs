@@ -188,6 +188,20 @@ pub enum IpcPayload {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         values: Option<Vec<String>>,
     },
+    /// A client has connected.
+    ///
+    /// Published by the `net_accept` host function when a new socket connection
+    /// is accepted. The kernel connection tracker increments its counter.
+    Connect,
+    /// A client is disconnecting gracefully.
+    ///
+    /// Sent by the CLI (or other frontend) before closing the socket so the
+    /// kernel can update its active-connection count.
+    Disconnect {
+        /// Optional reason for disconnection (e.g. "quit", "timeout").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
     /// Arbitrary JSON data for unstructured plugins.
     Custom {
         /// Raw data.
@@ -561,5 +575,29 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn disconnect_with_reason_roundtrip() {
+        let payload = IpcPayload::Disconnect {
+            reason: Some("quit".into()),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+
+        // Verify the tag is correct for cross-boundary compat.
+        assert!(json.contains(r#""type":"disconnect""#), "json: {json}");
+    }
+
+    #[test]
+    fn disconnect_without_reason_roundtrip() {
+        let payload = IpcPayload::Disconnect { reason: None };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+
+        // reason field should be skipped when None.
+        assert!(!json.contains("reason"), "json: {json}");
     }
 }

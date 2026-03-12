@@ -197,6 +197,14 @@ impl CapsuleRegistry {
     pub fn all_uplink_descriptors(&self) -> Vec<&UplinkDescriptor> {
         self.uplinks.values().map(|(_, desc)| desc).collect()
     }
+
+    /// Remove and return all capsules, clearing uplinks too.
+    ///
+    /// Used during kernel shutdown to unload everything in one pass.
+    pub fn drain(&mut self) -> Vec<Arc<dyn Capsule>> {
+        self.uplinks.clear();
+        self.capsules.drain().map(|(_, c)| c).collect()
+    }
 }
 
 impl Default for CapsuleRegistry {

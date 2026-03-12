@@ -21,7 +21,7 @@ tracing.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
-astrid-storage.workspace = true
+astrid-storage = { workspace = true, features = ["kv"] }
 astrid-core.workspace = true
 
 [dev-dependencies]

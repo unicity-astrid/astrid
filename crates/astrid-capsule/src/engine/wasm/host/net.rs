@@ -83,6 +83,18 @@ pub(crate) fn astrid_net_accept_impl(
         std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
     );
 
+    // Notify the kernel that a new client connection was accepted so the
+    // idle monitor can track active connections.
+    let connected_msg = astrid_events::ipc::IpcMessage::new(
+        "client.connected",
+        astrid_events::ipc::IpcPayload::Connect,
+        state.capsule_uuid,
+    );
+    let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
+        metadata: astrid_events::EventMetadata::new("net_accept"),
+        message: connected_msg,
+    });
+
     // Return the handle ID as a string to the WASM plugin
     let mem = plugin.memory_new(handle_id.to_string())?;
     outputs[0] = plugin.memory_to_val(mem);
@@ -157,7 +169,31 @@ pub(crate) fn astrid_net_read_impl(
         .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
 
         Ok(payload)
-    })?;
+    });
+
+    // If the socket read failed (connection closed, broken pipe), publish a
+    // client.disconnect event so the idle monitor is notified even if the
+    // WASM proxy capsule doesn't explicitly forward the Disconnect message.
+    if let Err(ref e) = result {
+        let err_str = e.to_string();
+        if (err_str.contains("socket read error") || err_str.contains("socket payload read error"))
+            && let Ok(state) = ud.lock()
+        {
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "client.disconnect",
+                astrid_events::ipc::IpcPayload::Disconnect {
+                    reason: Some("socket_closed".to_string()),
+                },
+                state.capsule_uuid,
+            );
+            let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
+                metadata: astrid_events::EventMetadata::new("net_read"),
+                message: msg,
+            });
+        }
+    }
+
+    let result = result?;
 
     if result.is_empty() {
         let mem = plugin.memory_new("")?;
