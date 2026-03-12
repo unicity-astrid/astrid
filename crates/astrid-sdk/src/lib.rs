@@ -411,7 +411,11 @@ pub mod elicit {
     /// Check if a secret has been configured (without reading it).
     pub fn has_secret(key: &str) -> Result<bool, SysError> {
         validate_key(key)?;
-        let req_bytes = serde_json::to_vec(&serde_json::json!({"key": key}))?;
+        #[derive(Serialize)]
+        struct HasSecretRequest<'a> {
+            key: &'a str,
+        }
+        let req_bytes = serde_json::to_vec(&HasSecretRequest { key })?;
         let resp_bytes = unsafe { astrid_has_secret(req_bytes)? };
 
         #[derive(serde::Deserialize)]
@@ -422,16 +426,19 @@ pub mod elicit {
         Ok(resp.exists)
     }
 
-    /// Prompt for a text value. Blocks until the user responds.
-    /// Use [`secret()`] for sensitive data - this returns the value to the capsule.
-    pub fn text(key: &str, description: &str) -> Result<String, SysError> {
+    /// Shared implementation for text elicitation with optional default.
+    fn elicit_text(
+        key: &str,
+        description: &str,
+        default: Option<&str>,
+    ) -> Result<String, SysError> {
         validate_key(key)?;
         let req = ElicitRequest {
             kind: "text",
             key,
             description: Some(description),
             options: None,
-            default: None,
+            default,
         };
         let req_bytes = serde_json::to_vec(&req)?;
         let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
@@ -444,29 +451,19 @@ pub mod elicit {
         Ok(resp.value)
     }
 
+    /// Prompt for a text value. Blocks until the user responds.
+    /// Use [`secret()`] for sensitive data - this returns the value to the capsule.
+    pub fn text(key: &str, description: &str) -> Result<String, SysError> {
+        elicit_text(key, description, None)
+    }
+
     /// Prompt with a default value pre-filled.
     pub fn text_with_default(
         key: &str,
         description: &str,
         default: &str,
     ) -> Result<String, SysError> {
-        validate_key(key)?;
-        let req = ElicitRequest {
-            kind: "text",
-            key,
-            description: Some(description),
-            options: None,
-            default: Some(default),
-        };
-        let req_bytes = serde_json::to_vec(&req)?;
-        let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
-
-        #[derive(serde::Deserialize)]
-        struct TextResp {
-            value: String,
-        }
-        let resp: TextResp = serde_json::from_slice(&resp_bytes)?;
-        Ok(resp.value)
+        elicit_text(key, description, Some(default))
     }
 
     /// Prompt for a selection from a list. Returns the selected value.
