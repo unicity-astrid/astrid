@@ -164,19 +164,20 @@ fn forward_poll_messages(
     Ok(())
 }
 
-/// Topics the CLI is allowed to publish to the internal IPC bus.
-/// Any topic not matching this list is dropped with a warning.
+/// Exact topics the CLI is allowed to publish to the internal IPC bus.
+const ALLOWED_INGRESS_EXACT: &[&str] = &["user.prompt", "client.disconnect", "cli.command.execute"];
+
+/// Topic prefixes the CLI is allowed to publish (suffix-routed topics).
+/// IMPORTANT: Update this list when adding new CLI-originated topic prefixes.
 const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
-    "user.prompt",
-    "client.disconnect",
     "kernel.request.",
     "astrid.lifecycle.elicit.response.",
     "capsule.selection.",
-    "cli.command.execute",
 ];
 
 fn is_allowed_ingress_topic(topic: &str) -> bool {
-    ALLOWED_INGRESS_PREFIXES
-        .iter()
-        .any(|prefix| topic.starts_with(prefix))
+    ALLOWED_INGRESS_EXACT.contains(&topic)
+        || ALLOWED_INGRESS_PREFIXES
+            .iter()
+            .any(|p| topic.starts_with(p))
 }

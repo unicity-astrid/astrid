@@ -37,6 +37,16 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
                 parent.display()
             ))
         })?;
+
+        // Enforce 0o700 on the sessions directory. AstridHome::ensure() does
+        // this at boot, but if the directory was just created by create_dir_all
+        // it inherits the process umask (commonly 0o755, making the socket
+        // listable by other users).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        }
     }
 
     UnixListener::bind(&path)

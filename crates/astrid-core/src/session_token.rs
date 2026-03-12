@@ -95,10 +95,18 @@ impl SessionToken {
             f.sync_all()?;
             drop(f);
 
-            // Atomic rename on the same filesystem.
-            std::fs::rename(&tmp_path, path)?;
+            // Atomic rename on the same filesystem. Clean up temp file on
+            // failure to avoid orphaned secret-containing files.
+            if let Err(e) = std::fs::rename(&tmp_path, path) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(e);
+            }
         }
 
+        // Non-Unix fallback: no atomic rename, no explicit permissions.
+        // The token file will inherit the process umask (likely 0o644).
+        // Windows is not a supported daemon platform; this exists only
+        // for compilation and test compatibility.
         #[cfg(not(unix))]
         {
             std::fs::write(path, hex.as_bytes())?;

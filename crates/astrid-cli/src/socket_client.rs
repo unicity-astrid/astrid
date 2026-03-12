@@ -157,13 +157,20 @@ async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
     };
 
     // Send as length-prefixed JSON (same wire format as IpcMessage).
+    // Write timeout prevents indefinite stall if the daemon stops reading.
     let request_bytes =
         serde_json::to_vec(&request).context("Failed to serialize handshake request")?;
     let len = u32::try_from(request_bytes.len()).context("Handshake request too large")?;
 
-    stream.write_all(&len.to_be_bytes()).await?;
-    stream.write_all(&request_bytes).await?;
-    stream.flush().await?;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        stream.write_all(&len.to_be_bytes()).await?;
+        stream.write_all(&request_bytes).await?;
+        stream.flush().await?;
+        Ok::<(), std::io::Error>(())
+    })
+    .await
+    .context("Handshake request write timed out")?
+    .context("Failed to send handshake request")?;
 
     // Read the response.
     let mut len_buf = [0u8; 4];
