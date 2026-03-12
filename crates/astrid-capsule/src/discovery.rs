@@ -233,6 +233,17 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         }
     }
 
+    // Uplink capsules load in a partition before non-uplinks.
+    // Declaring `requires` on an uplink would violate this ordering.
+    if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
+        return Err(CapsuleError::ManifestParseError {
+            path: path.to_path_buf(),
+            message: "[dependencies].requires is not allowed on uplink capsules \
+                      (uplinks load before non-uplinks and cannot depend on them)"
+                .into(),
+        });
+    }
+
     Ok(manifest)
 }
 
@@ -424,6 +435,28 @@ version = "0.1.0"
         assert!(
             load_from_toml(&toml).is_ok(),
             "wildcards should be allowed in requires"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_uplink_with_requires() {
+        let toml = format!(
+            "{VALID_HEADER}\n[capabilities]\nuplink = true\n\n[dependencies]\nrequires = [\"topic:foo\"]"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not allowed on uplink"),
+            "expected uplink+requires rejection, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_allows_uplink_without_requires() {
+        let toml = format!("{VALID_HEADER}\n[capabilities]\nuplink = true");
+        assert!(
+            load_from_toml(&toml).is_ok(),
+            "uplink without requires should be valid"
         );
     }
 }

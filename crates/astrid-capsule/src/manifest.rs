@@ -59,7 +59,11 @@ pub struct CapsuleManifest {
     /// Native tools this capsule provides to the LLM agent.
     #[serde(default, rename = "tool")]
     pub tools: Vec<ToolDef>,
-    /// Cached effective provides (computed on first access).
+    /// Cached effective provides (computed lazily on first `effective_provides()` call).
+    ///
+    /// **Do not pre-populate.** Always initialize as `OnceLock::new()` in struct literals.
+    /// After `Clone`, the cache resets to empty and will be recomputed on next access.
+    /// Modifying fields after calling `effective_provides()` will NOT invalidate the cache.
     #[serde(skip)]
     #[doc(hidden)]
     pub effective_provides_cache: OnceLock<Vec<String>>,

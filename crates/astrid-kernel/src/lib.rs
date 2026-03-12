@@ -322,17 +322,16 @@ impl Kernel {
             },
         };
 
-        // Reject uplinks that declare `requires` - uplinks are loaded in the
-        // first partition before non-uplinks, so any `requires` pointing at a
-        // non-uplink would violate the toposort ordering. This is a manifest
-        // authoring error, not a runtime condition.
+        // Defence-in-depth: manifest validation in discovery.rs rejects
+        // uplinks with `requires`, but warn here in case a manifest bypasses
+        // the normal load path.
         for (manifest, _) in &sorted {
             if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
-                tracing::error!(
+                tracing::warn!(
                     capsule = %manifest.package.name,
                     requires = ?manifest.dependencies.requires,
-                    "Uplink capsules cannot declare [dependencies].requires - \
-                     uplinks load before non-uplinks and cannot depend on them"
+                    "Uplink capsule has [dependencies].requires - \
+                     this should have been rejected at manifest load time"
                 );
             }
         }

@@ -705,7 +705,18 @@ pub(crate) fn install_from_local_path_inner(
         source: original_source
             .map(String::from)
             .or_else(|| existing_meta.and_then(|m| m.source)),
-        provides: manifest.effective_provides().to_vec(),
+        provides: manifest
+            .effective_provides()
+            .iter()
+            .filter(|cap| {
+                // Auto-derived provides may contain wildcards from ipc_publish
+                // patterns (e.g. "topic:registry.v1.response.*"). Filter them
+                // out — meta.json provides should be concrete capabilities.
+                let body = cap.split_once(':').map_or(cap.as_str(), |(_, b)| b);
+                !body.contains('*')
+            })
+            .cloned()
+            .collect(),
         requires: manifest.dependencies.requires.clone(),
     };
     write_meta(&target_dir, &meta)?;

@@ -430,7 +430,7 @@ impl ReactLoop {
         Ok(())
     }
 
-    /// Handles `user.prompt` events from platforms (CLI, Telegram, etc.).
+    /// Handles `user.v1.prompt` events from platforms (CLI, Telegram, etc.).
     ///
     /// Appends the user message to the session capsule, fetches history,
     /// then requests the system prompt from the identity capsule.
