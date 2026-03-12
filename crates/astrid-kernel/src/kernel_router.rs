@@ -60,14 +60,9 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHand
                     kernel.connection_closed();
                     debug!(reason = ?reason, "Client disconnected");
                 },
-                IpcPayload::RawJson(val) => {
-                    // client.connected events from the proxy capsule.
-                    if message.topic == "client.connected"
-                        && val.get("status").and_then(|v| v.as_str()) == Some("connected")
-                    {
-                        kernel.connection_opened();
-                        debug!("New client connection accepted");
-                    }
+                IpcPayload::Connect => {
+                    kernel.connection_opened();
+                    debug!("New client connection accepted");
                 },
                 _ => {},
             }

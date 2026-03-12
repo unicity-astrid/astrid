@@ -87,9 +87,7 @@ pub(crate) fn astrid_net_accept_impl(
     // idle monitor can track active connections.
     let connected_msg = astrid_events::ipc::IpcMessage::new(
         "client.connected",
-        astrid_events::ipc::IpcPayload::RawJson(
-            serde_json::json!({"status": "connected", "handle_id": handle_id}),
-        ),
+        astrid_events::ipc::IpcPayload::Connect,
         state.capsule_uuid,
     );
     let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {

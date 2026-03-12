@@ -162,6 +162,8 @@ impl Kernel {
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
         drop(spawn_idle_monitor(Arc::clone(&kernel)));
+        drop(spawn_react_watchdog(Arc::clone(&kernel.event_bus)));
+        drop(spawn_capsule_health_monitor(Arc::clone(&kernel)));
 
         // Spawn the event dispatcher — routes EventBus events to capsule interceptors
         let dispatcher = astrid_capsule::dispatcher::EventDispatcher::new(
@@ -230,11 +232,73 @@ impl Kernel {
         Ok(())
     }
 
+    /// Restart a capsule by unloading it and re-loading from its source directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capsule has no source directory, cannot be
+    /// unregistered, or fails to reload.
+    async fn restart_capsule(
+        &self,
+        id: &astrid_capsule::capsule::CapsuleId,
+    ) -> Result<(), anyhow::Error> {
+        // Get source directory before unregistering.
+        let source_dir = {
+            let registry = self.capsules.read().await;
+            let capsule = registry
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("capsule '{id}' not found in registry"))?;
+            capsule
+                .source_dir()
+                .map(std::path::Path::to_path_buf)
+                .ok_or_else(|| anyhow::anyhow!("capsule '{id}' has no source directory"))?
+        };
+
+        // Unregister and explicitly unload. There is no Drop impl that
+        // calls unload() (it's async), so we must do it here to avoid
+        // leaking MCP subprocesses and other engine resources.
+        let old_capsule = {
+            let mut registry = self.capsules.write().await;
+            registry
+                .unregister(id)
+                .map_err(|e| anyhow::anyhow!("failed to unregister capsule '{id}': {e}"))?
+        };
+        // Explicitly unload the old capsule. There is no Drop impl that
+        // calls unload() (it's async), so we must do it here to avoid
+        // leaking MCP subprocesses and other engine resources.
+        // Arc::get_mut requires exclusive ownership (strong_count == 1).
+        {
+            let mut old = old_capsule;
+            if let Some(capsule) = std::sync::Arc::get_mut(&mut old) {
+                if let Err(e) = capsule.unload().await {
+                    tracing::warn!(
+                        capsule_id = %id,
+                        error = %e,
+                        "Capsule unload failed during restart"
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    capsule_id = %id,
+                    "Cannot call unload during restart - Arc still held by in-flight task"
+                );
+            }
+        }
+
+        // Re-load from disk.
+        self.load_capsule(source_dir).await
+    }
+
     /// Auto-discover and load all capsules from the standard directories (`~/.astrid/capsules` and `.astrid/capsules`).
     ///
-    /// Uplink/daemon capsules are loaded first so their event bus subscriptions
-    /// are active before other capsules emit events (e.g. `OnboardingRequired`).
+    /// Capsules are loaded in dependency order (topological sort) with
+    /// uplink/daemon capsules loaded first. Each uplink must signal
+    /// readiness before non-uplink capsules are loaded.
+    ///
+    /// After all capsules are loaded, tool schemas are injected into every
+    /// capsule's KV namespace and the `kernel.capsules_loaded` event is published.
     pub async fn load_all_capsules(&self) {
+        use astrid_capsule::toposort::toposort_manifests;
         use astrid_core::dirs::AstridHome;
 
         let mut paths = Vec::new();
@@ -249,7 +313,35 @@ impl Kernel {
             .into_iter()
             .partition(|(m, _)| m.capabilities.uplink);
 
+        // Topological sort each partition by manifest dependencies.
+        // On cycle, the original unsorted vec is returned alongside the error.
+        let uplinks = match toposort_manifests(uplinks) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in uplink capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
+
+        let others = match toposort_manifests(others) {
+            Ok(sorted) => sorted,
+            Err((e, original)) => {
+                tracing::error!(
+                    cycle = %e,
+                    "Dependency cycle in capsules, falling back to discovery order"
+                );
+                original
+            },
+        };
+
         // Load uplinks first so their event bus subscriptions are ready.
+        let uplink_names: Vec<String> = uplinks
+            .iter()
+            .map(|(m, _)| m.package.name.clone())
+            .collect();
         for (manifest, dir) in &uplinks {
             if let Err(e) = self.load_capsule(dir.clone()).await {
                 tracing::warn!(
@@ -260,12 +352,9 @@ impl Kernel {
             }
         }
 
-        // Brief yield to let spawned background `run()` tasks initialize
-        // their event bus subscriptions before we load capsules that may
-        // emit events like OnboardingRequired.
-        if !uplinks.is_empty() {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        // Wait for uplink capsules to signal readiness before loading
+        // non-uplink capsules. This ensures IPC subscriptions are active.
+        self.await_capsule_readiness(&uplink_names).await;
 
         for (manifest, dir) in &others {
             if let Err(e) = self.load_capsule(dir.clone()).await {
@@ -276,6 +365,15 @@ impl Kernel {
                 );
             }
         }
+
+        // Wait for non-uplink run-loop capsules too, so any future
+        // dependency edges between them are respected.
+        let other_names: Vec<String> = others.iter().map(|(m, _)| m.package.name.clone()).collect();
+        self.await_capsule_readiness(&other_names).await;
+
+        // Inject tool schemas into every capsule's KV namespace so any
+        // capsule (e.g. react) can read them via kv::get_json("tool_schemas").
+        self.inject_tool_schemas().await;
 
         // Signal that all capsules have been loaded so uplink capsules
         // (like the registry) can proceed with discovery instead of
@@ -393,6 +491,128 @@ impl Kernel {
         let _ = std::fs::remove_file(&socket_path);
 
         tracing::info!("Kernel shutdown complete");
+    }
+
+    /// Wait for a set of capsules to signal readiness, in parallel.
+    ///
+    /// Collects `Arc<dyn Capsule>` handles under a short-lived read lock,
+    /// then drops the lock before awaiting. Capsules without a run loop
+    /// return `Ready` immediately and don't contribute to wait time.
+    async fn await_capsule_readiness(&self, names: &[String]) {
+        use astrid_capsule::capsule::ReadyStatus;
+
+        if names.is_empty() {
+            return;
+        }
+
+        let timeout = std::time::Duration::from_millis(500);
+        let capsules: Vec<(String, std::sync::Arc<dyn astrid_capsule::capsule::Capsule>)> = {
+            let registry = self.capsules.read().await;
+            names
+                .iter()
+                .filter_map(
+                    |name| match astrid_capsule::capsule::CapsuleId::new(name.clone()) {
+                        Ok(capsule_id) => registry.get(&capsule_id).map(|c| (name.clone(), c)),
+                        Err(e) => {
+                            tracing::warn!(
+                                capsule = %name,
+                                error = %e,
+                                "Invalid capsule ID, skipping readiness wait"
+                            );
+                            None
+                        },
+                    },
+                )
+                .collect()
+        };
+
+        // Await all capsules concurrently - independent capsules shouldn't
+        // compound each other's timeout.
+        let mut set = tokio::task::JoinSet::new();
+        for (name, capsule) in capsules {
+            set.spawn(async move {
+                let status = capsule.wait_ready(timeout).await;
+                (name, status)
+            });
+        }
+        while let Some(result) = set.join_next().await {
+            if let Ok((name, status)) = result {
+                match status {
+                    ReadyStatus::Ready => {},
+                    ReadyStatus::Timeout => {
+                        tracing::warn!(
+                            capsule = %name,
+                            timeout_ms = timeout.as_millis(),
+                            "Capsule did not signal ready within timeout"
+                        );
+                    },
+                    ReadyStatus::Crashed => {
+                        tracing::error!(
+                            capsule = %name,
+                            "Capsule run loop exited before signaling ready"
+                        );
+                    },
+                }
+            }
+        }
+    }
+
+    /// Collect all tool definitions from loaded capsule manifests and write
+    /// them to every capsule's scoped KV namespace as `tool_schemas`.
+    async fn inject_tool_schemas(&self) {
+        use astrid_events::llm::LlmToolDefinition;
+        use astrid_storage::KvStore;
+
+        // Collect tools and capsule IDs under a short-lived read lock,
+        // then drop the guard before the async KV write loop. Holding
+        // the RwLock across N awaits would block all registry writers.
+        let (all_tools, capsule_ids) = {
+            let registry = self.capsules.read().await;
+            let tools: Vec<LlmToolDefinition> = registry
+                .values()
+                .flat_map(|capsule| {
+                    capsule.manifest().tools.iter().map(|t| LlmToolDefinition {
+                        name: t.name.clone(),
+                        description: Some(t.description.clone()),
+                        input_schema: t.input_schema.clone(),
+                    })
+                })
+                .collect();
+            let ids: Vec<String> = registry.list().iter().map(ToString::to_string).collect();
+            (tools, ids)
+        };
+
+        if all_tools.is_empty() {
+            return;
+        }
+
+        let tool_bytes = match serde_json::to_vec(&all_tools) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to serialize tool schemas");
+                return;
+            },
+        };
+
+        tracing::info!(
+            tool_count = all_tools.len(),
+            "Injecting tool schemas into capsule KV stores"
+        );
+
+        for capsule_id in &capsule_ids {
+            let namespace = format!("capsule:{capsule_id}");
+            if let Err(e) = self
+                .kv
+                .set(&namespace, "tool_schemas", tool_bytes.clone())
+                .await
+            {
+                tracing::warn!(
+                    capsule = %capsule_id,
+                    error = %e,
+                    "Failed to inject tool schemas"
+                );
+            }
+        }
     }
 }
 
@@ -573,6 +793,228 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     })
 }
 
+/// Tracks restart attempts for a single capsule with exponential backoff.
+struct RestartTracker {
+    attempts: u32,
+    last_attempt: std::time::Instant,
+    backoff: std::time::Duration,
+}
+
+impl RestartTracker {
+    const MAX_ATTEMPTS: u32 = 5;
+    const INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(2);
+    const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(120);
+
+    fn new() -> Self {
+        Self {
+            attempts: 0,
+            last_attempt: std::time::Instant::now(),
+            backoff: Self::INITIAL_BACKOFF,
+        }
+    }
+
+    /// Returns `true` if a restart should be attempted now.
+    fn should_restart(&self) -> bool {
+        self.attempts < Self::MAX_ATTEMPTS && self.last_attempt.elapsed() >= self.backoff
+    }
+
+    /// Record a restart attempt and advance the backoff.
+    fn record_attempt(&mut self) {
+        self.attempts = self.attempts.saturating_add(1);
+        self.last_attempt = std::time::Instant::now();
+        self.backoff = self.backoff.saturating_mul(2).min(Self::MAX_BACKOFF);
+    }
+
+    /// Returns `true` if all retry attempts have been exhausted.
+    fn exhausted(&self) -> bool {
+        self.attempts >= Self::MAX_ATTEMPTS
+    }
+}
+
+/// Attempts to restart a failed capsule, respecting backoff and max retries.
+///
+/// Returns `true` if the tracker should be removed (successful restart).
+async fn attempt_capsule_restart(
+    kernel: &Kernel,
+    id_str: &str,
+    tracker: &mut RestartTracker,
+) -> bool {
+    if tracker.exhausted() {
+        return false;
+    }
+
+    if !tracker.should_restart() {
+        tracing::debug!(
+            capsule_id = %id_str,
+            next_attempt_in = ?tracker.backoff.saturating_sub(tracker.last_attempt.elapsed()),
+            "Waiting for backoff before next restart attempt"
+        );
+        return false;
+    }
+
+    tracker.record_attempt();
+    let attempt = tracker.attempts;
+
+    tracing::warn!(
+        capsule_id = %id_str,
+        attempt,
+        max_attempts = RestartTracker::MAX_ATTEMPTS,
+        "Attempting capsule restart"
+    );
+
+    let capsule_id = astrid_capsule::capsule::CapsuleId::from_static(id_str);
+    match kernel.restart_capsule(&capsule_id).await {
+        Ok(()) => {
+            tracing::info!(capsule_id = %id_str, attempt, "Capsule restarted successfully");
+            true
+        },
+        Err(e) => {
+            tracing::error!(capsule_id = %id_str, attempt, error = %e, "Capsule restart failed");
+            if tracker.exhausted() {
+                tracing::error!(
+                    capsule_id = %id_str,
+                    "All restart attempts exhausted - capsule will remain down"
+                );
+            }
+            false
+        },
+    }
+}
+
+/// Spawns a background task that periodically probes capsule health.
+///
+/// Every 10 seconds, reads the capsule registry and calls `check_health()` on
+/// each capsule that is currently in `Ready` state. If a capsule reports
+/// `Failed`, attempts to restart it with exponential backoff (max 5 attempts).
+/// Publishes `capsule.health.failed` IPC events for each detected failure.
+fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        interval.tick().await; // Skip the first immediate tick.
+
+        let mut restart_trackers: std::collections::HashMap<String, RestartTracker> =
+            std::collections::HashMap::new();
+
+        loop {
+            interval.tick().await;
+
+            // Collect ready capsules under a brief read lock, then drop
+            // the lock before calling check_health() or publishing events.
+            let ready_capsules: Vec<std::sync::Arc<dyn astrid_capsule::capsule::Capsule>> = {
+                let registry = kernel.capsules.read().await;
+                registry
+                    .list()
+                    .into_iter()
+                    .filter_map(|id| {
+                        let capsule = registry.get(id)?;
+                        if capsule.state() == astrid_capsule::capsule::CapsuleState::Ready {
+                            Some(capsule)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            // Probe health once per capsule, collect failures, then drop
+            // the Arc Vec before restarting. This ensures restart_capsule's
+            // Arc::get_mut can succeed (no other strong references held).
+            let mut failures: Vec<(String, String)> = Vec::new();
+            for capsule in &ready_capsules {
+                let health = capsule.check_health();
+                if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
+                    let id_str = capsule.id().to_string();
+                    tracing::error!(capsule_id = %id_str, reason = %reason, "Capsule health check failed");
+
+                    let msg = astrid_events::ipc::IpcMessage::new(
+                        "capsule.health.failed",
+                        astrid_events::ipc::IpcPayload::Custom {
+                            data: serde_json::json!({
+                                "capsule_id": &id_str,
+                                "reason": &reason,
+                            }),
+                        },
+                        uuid::Uuid::new_v4(),
+                    );
+                    let _ = kernel.event_bus.publish(astrid_events::AstridEvent::Ipc {
+                        metadata: astrid_events::EventMetadata::new("kernel"),
+                        message: msg,
+                    });
+                    failures.push((id_str, reason));
+                }
+            }
+
+            // Drop all Arc clones so restart_capsule's Arc::get_mut can
+            // obtain exclusive access for calling unload().
+            drop(ready_capsules);
+
+            let failed_this_tick: std::collections::HashSet<&str> =
+                failures.iter().map(|(id, _)| id.as_str()).collect();
+
+            let mut restarted = Vec::new();
+            for (id_str, _reason) in &failures {
+                let tracker = restart_trackers
+                    .entry(id_str.clone())
+                    .or_insert_with(RestartTracker::new);
+
+                if attempt_capsule_restart(&kernel, id_str, tracker).await {
+                    restarted.push(id_str.clone());
+                }
+            }
+
+            // Remove trackers for successfully restarted capsules.
+            for id in &restarted {
+                restart_trackers.remove(id);
+            }
+
+            // Prune trackers for capsules that recovered (healthy this tick).
+            // Keep exhausted trackers and trackers still in their backoff
+            // window (capsule may have been unregistered by a failed restart
+            // attempt and won't appear in ready_capsules next tick).
+            restart_trackers.retain(|id, tracker| {
+                if tracker.exhausted() {
+                    return true;
+                }
+                // Keep if still within backoff - the capsule may be absent
+                // from the registry after a failed reload.
+                if tracker.last_attempt.elapsed() < tracker.backoff {
+                    return true;
+                }
+                failed_this_tick.contains(id.as_str())
+            });
+        }
+    })
+}
+
+/// Spawns a periodic watchdog that publishes `react.watchdog.tick` events every 5 seconds.
+///
+/// The `ReAct` capsule (WASM guest) cannot use async timers, so this kernel-side task
+/// drives timeout enforcement by waking the capsule on a fixed interval. Each tick
+/// causes the capsule's `handle_watchdog_tick` interceptor to run `check_phase_timeout`.
+fn spawn_react_watchdog(event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        // The first tick fires immediately - skip it to give capsules time to load.
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "react.watchdog.tick",
+                astrid_events::ipc::IpcPayload::Custom {
+                    data: serde_json::json!({}),
+                },
+                uuid::Uuid::new_v4(),
+            );
+            let _ = event_bus.publish(astrid_events::AstridEvent::Ipc {
+                metadata: astrid_events::EventMetadata::new("kernel"),
+                message: msg,
+            });
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -686,5 +1128,73 @@ mod tests {
             0o600,
             "key file should have 0o600 permissions, got {mode:#o}"
         );
+    }
+
+    #[test]
+    fn restart_tracker_initial_state() {
+        let tracker = RestartTracker::new();
+        assert!(!tracker.exhausted());
+        // Should not restart immediately (backoff hasn't elapsed).
+        assert!(!tracker.should_restart());
+    }
+
+    #[test]
+    fn restart_tracker_allows_restart_after_backoff() {
+        let mut tracker = RestartTracker::new();
+        // Simulate time passing by setting last_attempt in the past.
+        tracker.last_attempt = std::time::Instant::now()
+            - RestartTracker::INITIAL_BACKOFF
+            - std::time::Duration::from_millis(1);
+        assert!(tracker.should_restart());
+    }
+
+    #[test]
+    fn restart_tracker_doubles_backoff() {
+        let mut tracker = RestartTracker::new();
+        assert_eq!(tracker.backoff, RestartTracker::INITIAL_BACKOFF);
+
+        tracker.record_attempt();
+        assert_eq!(
+            tracker.backoff,
+            RestartTracker::INITIAL_BACKOFF.saturating_mul(2)
+        );
+        assert_eq!(tracker.attempts, 1);
+
+        tracker.record_attempt();
+        assert_eq!(
+            tracker.backoff,
+            RestartTracker::INITIAL_BACKOFF.saturating_mul(4)
+        );
+        assert_eq!(tracker.attempts, 2);
+    }
+
+    #[test]
+    fn restart_tracker_backoff_caps_at_max() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..20 {
+            tracker.record_attempt();
+        }
+        assert_eq!(tracker.backoff, RestartTracker::MAX_BACKOFF);
+    }
+
+    #[test]
+    fn restart_tracker_exhausted_at_max_attempts() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..RestartTracker::MAX_ATTEMPTS {
+            assert!(!tracker.exhausted());
+            tracker.record_attempt();
+        }
+        assert!(tracker.exhausted());
+    }
+
+    #[test]
+    fn restart_tracker_should_restart_false_when_exhausted() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..RestartTracker::MAX_ATTEMPTS {
+            tracker.record_attempt();
+        }
+        // Even if backoff has elapsed, exhausted tracker should not restart.
+        tracker.last_attempt = std::time::Instant::now() - RestartTracker::MAX_BACKOFF;
+        assert!(!tracker.should_restart());
     }
 }

@@ -59,10 +59,12 @@ pub(crate) enum WasmHostFunction {
     SpawnHost,
     Elicit,
     HasSecret,
+    SignalReady,
+    ClockMs,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 31] = [
+    pub(crate) const ALL: [Self; 33] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -94,6 +96,8 @@ impl WasmHostFunction {
         Self::NetWrite,
         Self::Elicit,
         Self::HasSecret,
+        Self::SignalReady,
+        Self::ClockMs,
     ];
 
     #[must_use]
@@ -135,6 +139,8 @@ impl WasmHostFunction {
             Self::SpawnHost => "astrid_spawn_host",
             Self::Elicit => "astrid_elicit",
             Self::HasSecret => "astrid_has_secret",
+            Self::SignalReady => "astrid_signal_ready",
+            Self::ClockMs => "astrid_clock_ms",
         }
     }
 
@@ -169,7 +175,7 @@ impl WasmHostFunction {
             | Self::Log
             | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
-            Self::GetCaller => 0,
+            Self::GetCaller | Self::SignalReady | Self::ClockMs => 0,
         }
     }
 
@@ -187,7 +193,8 @@ impl WasmHostFunction {
             | Self::KvDelete
             | Self::Log
             | Self::CronSchedule
-            | Self::CronCancel => TYPE_VOID,
+            | Self::CronCancel
+            | Self::SignalReady => TYPE_VOID,
             Self::FsExists
             | Self::FsReaddir
             | Self::FsStat
@@ -207,7 +214,8 @@ impl WasmHostFunction {
             | Self::NetAccept
             | Self::NetRead
             | Self::Elicit
-            | Self::HasSecret => TYPE_I64,
+            | Self::HasSecret
+            | Self::ClockMs => TYPE_I64,
         }
     }
 }
@@ -328,6 +336,12 @@ pub fn register_host_functions(
             },
             WasmHostFunction::HasSecret => {
                 builder.with_function(func.name(), args, rets, ud, elicit::astrid_has_secret_impl)
+            },
+            WasmHostFunction::SignalReady => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_signal_ready_impl)
+            },
+            WasmHostFunction::ClockMs => {
+                builder.with_function(func.name(), args, rets, ud, sys::astrid_clock_ms_impl)
             },
         };
     }

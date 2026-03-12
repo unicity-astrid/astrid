@@ -104,6 +104,12 @@ extern "ExtismHost" {
     pub fn astrid_trigger_hook(event_bytes: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
+    // Clock
+    // -----------------------------------------------------------------------
+    /// Get the current wall-clock time as milliseconds since the UNIX epoch.
+    pub fn astrid_clock_ms() -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
     // Lifecycle (Install & Upgrade Elicitation)
     // -----------------------------------------------------------------------
     /// Elicit user input during install/upgrade. Request is JSON-encoded.
@@ -121,4 +127,10 @@ extern "ExtismHost" {
     // -----------------------------------------------------------------------
     /// Spawn a native host process. Requires the `host_process` capability.
     pub fn astrid_spawn_host(cmd_and_args_json: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
+    // Readiness Signaling
+    // -----------------------------------------------------------------------
+    /// Signal that the capsule's run loop is ready (subscriptions are active).
+    pub fn astrid_signal_ready();
 }

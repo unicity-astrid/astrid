@@ -27,6 +27,13 @@ pub struct WasmEngine {
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
     tools: Vec<Arc<dyn crate::tool::CapsuleTool>>,
     run_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Receiver for the readiness signal from the run loop.
+    /// Only set for capsules that have a `run()` export.
+    /// The Mutex is required because `wait_ready` takes `&self` but we need
+    /// to clone the receiver (which marks the current value as seen). We
+    /// clone inside the lock and immediately drop it, so concurrent
+    /// `wait_ready` calls each get their own independent receiver.
+    ready_rx: Option<tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>>,
 }
 
 impl WasmEngine {
@@ -38,6 +45,7 @@ impl WasmEngine {
             inbound_rx: None,
             tools: Vec::new(),
             run_handle: None,
+            ready_rx: None,
         }
     }
 }
@@ -87,7 +95,7 @@ impl ExecutionEngine for WasmEngine {
             wasm_config.insert(key, serde_json::Value::String(val));
         }
 
-        let (plugin, rx, has_run) = tokio::task::block_in_place(move || {
+        let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
             })?;
@@ -183,7 +191,7 @@ impl ExecutionEngine for WasmEngine {
                 tokio::runtime::Handle::current(),
             );
 
-            let host_state = HostState {
+            let mut host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
                 caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
@@ -220,7 +228,15 @@ impl ExecutionEngine for WasmEngine {
                 registered_uplinks: Vec::new(),
                 lifecycle_phase: None,
                 secret_store,
+                ready_tx: None,
             };
+
+            // Create the readiness watch channel. The sender goes into
+            // HostState so the WASM guest can signal ready via
+            // `astrid_signal_ready`. The receiver is returned so
+            // `WasmEngine::wait_ready` can await it.
+            let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+            host_state.ready_tx = Some(ready_tx);
 
             let user_data = UserData::new(host_state);
 
@@ -245,12 +261,14 @@ impl ExecutionEngine for WasmEngine {
 
             let has_run = plugin.function_exists("run");
 
-            Ok::<_, CapsuleError>((plugin, rx, has_run))
+            Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
         if has_run {
+            self.ready_rx = Some(tokio::sync::Mutex::new(ready_rx));
+
             // The run loop holds the plugin mutex for its entire lifetime.
             // We must NOT store the plugin in self.plugin, because the
             // dispatcher's invoke_interceptor() would try to acquire the same
@@ -313,8 +331,23 @@ impl ExecutionEngine for WasmEngine {
             handle.abort();
         }
         self.plugin = None; // Drop releases WASM memory
+        self.ready_rx = None; // Prevent stale channel observation post-unload
         self.tools.clear();
         Ok(())
+    }
+
+    async fn wait_ready(&self, timeout: std::time::Duration) -> crate::capsule::ReadyStatus {
+        use crate::capsule::ReadyStatus;
+
+        let Some(rx_mutex) = &self.ready_rx else {
+            return ReadyStatus::Ready;
+        };
+        let mut rx = rx_mutex.lock().await.clone();
+        match tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await {
+            Ok(Ok(_)) => ReadyStatus::Ready,
+            Ok(Err(_)) => ReadyStatus::Crashed, // sender dropped before signaling
+            Err(_) => ReadyStatus::Timeout,
+        }
     }
 
     fn take_inbound_rx(
@@ -355,6 +388,17 @@ impl ExecutionEngine for WasmEngine {
                 .call::<&[u8], Vec<u8>>("astrid_hook_trigger", &input)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         })
+    }
+
+    fn check_health(&self) -> crate::capsule::CapsuleState {
+        if let Some(handle) = &self.run_handle
+            && handle.is_finished()
+        {
+            return crate::capsule::CapsuleState::Failed(
+                "WASM run loop exited unexpectedly".into(),
+            );
+        }
+        crate::capsule::CapsuleState::Ready
     }
 }
 
@@ -441,6 +485,7 @@ pub fn run_lifecycle(
         next_stream_id: 1,
         lifecycle_phase: Some(phase),
         secret_store: cfg.secret_store,
+        ready_tx: None,
     };
 
     let user_data = UserData::new(host_state);
@@ -681,5 +726,59 @@ mod tests {
             astrid_events::ipc::OnboardingFieldType::Text,
             "Empty enum should degrade to text"
         );
+    }
+
+    // --- wait_ready / watch channel tests ---
+
+    /// Helper: build a WasmEngine-like wait_ready from a watch receiver.
+    async fn wait_ready_from_rx(
+        rx: &tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>,
+        timeout: std::time::Duration,
+    ) -> crate::capsule::ReadyStatus {
+        use crate::capsule::ReadyStatus;
+        let mut rx = rx.lock().await.clone();
+        match tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await {
+            Ok(Ok(_)) => ReadyStatus::Ready,
+            Ok(Err(_)) => ReadyStatus::Crashed,
+            Err(_) => ReadyStatus::Timeout,
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_ready_when_pre_signaled() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let _ = tx.send(true);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(100)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_timeout_when_never_signaled() {
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(10)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Timeout);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_crashed_when_sender_dropped() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        drop(tx); // simulate capsule crash
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(100)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Crashed);
+    }
+
+    #[tokio::test]
+    async fn wait_ready_returns_ready_when_signaled_after_delay() {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let rx_mutex = tokio::sync::Mutex::new(rx);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let _ = tx.send(true);
+        });
+        let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(500)).await;
+        assert_eq!(status, crate::capsule::ReadyStatus::Ready);
     }
 }

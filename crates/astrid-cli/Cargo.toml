@@ -70,6 +70,7 @@ flate2.workspace = true
 extism.workspace = true
 cargo_metadata = "0.23.1"
 reqwest = { workspace = true, features = ["json"] }
+semver = { workspace = true }
 toml_edit = "0.25.3"
 
 [lints]

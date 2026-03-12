@@ -13,6 +13,7 @@ blake3.workspace = true
 chrono.workspace = true
 oxc.workspace = true
 oxc_allocator.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

@@ -188,6 +188,11 @@ pub enum IpcPayload {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         values: Option<Vec<String>>,
     },
+    /// A client has connected.
+    ///
+    /// Published by the `net_accept` host function when a new socket connection
+    /// is accepted. The kernel connection tracker increments its counter.
+    Connect,
     /// A client is disconnecting gracefully.
     ///
     /// Sent by the CLI (or other frontend) before closing the socket so the

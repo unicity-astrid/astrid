@@ -236,6 +236,7 @@ impl WasmHandler {
             next_stream_id: 1,
             lifecycle_phase: None,
             secret_store,
+            ready_tx: None,
         };
         let user_data = UserData::new(host_state);
 

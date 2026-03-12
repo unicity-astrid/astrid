@@ -313,11 +313,33 @@ pub mod sys {
         Ok(path)
     }
 
+    /// Signal that the capsule's run loop is ready.
+    ///
+    /// Call this after setting up IPC subscriptions in `run()` to let the
+    /// kernel know this capsule is ready to receive events. The kernel waits
+    /// for this signal before loading dependent capsules.
+    pub fn signal_ready() -> Result<(), SysError> {
+        unsafe { astrid_signal_ready()? };
+        Ok(())
+    }
+
     /// Retrieves the caller context (User ID and Session ID) for the current execution.
     pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
         let bytes = unsafe { astrid_get_caller()? };
         serde_json::from_slice(&bytes)
             .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
+    }
+
+    /// Returns the current wall-clock time as milliseconds since the UNIX epoch.
+    ///
+    /// This is a host call - the WASM guest has no direct access to system time.
+    /// Returns 0 if the host clock is unavailable.
+    pub fn clock_ms() -> Result<u64, SysError> {
+        let bytes = unsafe { astrid_clock_ms()? };
+        let s = String::from_utf8_lossy(&bytes);
+        s.trim()
+            .parse::<u64>()
+            .map_err(|e| SysError::ApiError(format!("clock_ms parse error: {e}")))
     }
 }
 
