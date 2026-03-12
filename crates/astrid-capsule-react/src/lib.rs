@@ -116,7 +116,13 @@ fn delete_call_sessions(call_ids: &[String]) {
 
 /// Load the set of active session IDs from KV.
 fn load_active_sessions() -> Vec<String> {
-    kv::get_json::<Vec<String>>(ACTIVE_SESSIONS_KEY).unwrap_or_default()
+    kv::get_json::<Vec<String>>(ACTIVE_SESSIONS_KEY).unwrap_or_else(|e| {
+        let _ = sys::log(
+            "warn",
+            format!("Failed to load active sessions from KV, defaulting to empty: {e}"),
+        );
+        Vec::new()
+    })
 }
 
 /// Add a session ID to the active sessions set.
@@ -124,7 +130,12 @@ fn register_active_session(session_id: &str) {
     let mut sessions = load_active_sessions();
     if !sessions.iter().any(|s| s == session_id) {
         sessions.push(session_id.to_string());
-        let _ = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions);
+        if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
+            let _ = sys::log(
+                "error",
+                format!("Failed to register active session '{session_id}': {e}"),
+            );
+        }
     }
 }
 
@@ -133,25 +144,35 @@ fn unregister_active_session(session_id: &str) {
     let mut sessions = load_active_sessions();
     if let Some(pos) = sessions.iter().position(|s| s == session_id) {
         sessions.swap_remove(pos);
-        let _ = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions);
+        if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
+            let _ = sys::log(
+                "error",
+                format!("Failed to unregister active session '{session_id}': {e}"),
+            );
+        }
+    }
+}
+
+/// Read a `u64` config value from capsule config, with warning on parse failure.
+fn get_config_u64(key: &str, default: u64) -> u64 {
+    match sys::get_config_string(key) {
+        Ok(s) => match s.trim().trim_matches('"').parse::<u64>() {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = sys::log(
+                    "warn",
+                    format!("Invalid config for '{key}': \"{s}\", using default {default}. Error: {e}"),
+                );
+                default
+            }
+        },
+        Err(_) => default,
     }
 }
 
 /// Resolve the session timeout from capsule config, falling back to default.
 fn session_timeout_ms() -> u64 {
-    match sys::get_config_string("session_timeout_ms") {
-        Ok(s) => match s.trim().trim_matches('"').parse() {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = sys::log(
-                    "warn",
-                    format!("Invalid session_timeout_ms config '{s}': {e}, using default {DEFAULT_SESSION_TIMEOUT_MS}ms"),
-                );
-                DEFAULT_SESSION_TIMEOUT_MS
-            },
-        },
-        Err(_) => DEFAULT_SESSION_TIMEOUT_MS,
-    }
+    get_config_u64("session_timeout_ms", DEFAULT_SESSION_TIMEOUT_MS)
 }
 
 /// State machine phase for the react loop.
@@ -334,10 +355,7 @@ impl TurnState {
             Phase::AwaitingTools => (DEFAULT_TOOL_TIMEOUT_SECS, "tool_timeout_secs"),
             Phase::Idle => return Ok(false),
         };
-        let timeout = sys::get_config_string(config_key)
-            .ok()
-            .and_then(|s| s.trim().trim_matches('"').parse::<u64>().ok())
-            .unwrap_or(default_secs);
+        let timeout = get_config_u64(config_key, default_secs);
 
         if elapsed_secs >= timeout {
             let phase_name = format!("{:?}", self.phase);
@@ -754,10 +772,9 @@ impl ReactLoop {
         // history. If we exceed the limit, we don't want orphaned tool-call
         // messages in history with no subsequent assistant response.
         state.iteration_count += 1;
-        let max_iterations = sys::get_config_string("max_iterations")
-            .ok()
-            .and_then(|s| s.trim().trim_matches('"').parse::<u32>().ok())
-            .unwrap_or(DEFAULT_MAX_ITERATIONS);
+        let max_iterations =
+            u32::try_from(get_config_u64("max_iterations", u64::from(DEFAULT_MAX_ITERATIONS)))
+                .unwrap_or(DEFAULT_MAX_ITERATIONS);
 
         let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
 
