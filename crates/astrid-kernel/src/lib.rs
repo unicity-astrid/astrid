@@ -334,27 +334,49 @@ impl Kernel {
                 reason: reason.clone(),
             });
 
-        // 2. Drain the registry and unload each capsule.
+        // 2. Drain the registry so the dispatcher cannot hand out new Arc clones,
+        // then unload each capsule. MCP engine unload is critical - it calls
+        // `mcp_client.disconnect()` to gracefully terminate child processes.
+        // Without explicit unload, MCP child processes become orphaned.
+        //
+        // The `EventDispatcher` temporarily clones `Arc<dyn Capsule>` into
+        // spawned interceptor tasks. After draining, no new clones can be
+        // created, but in-flight tasks may still hold references. We retry
+        // `Arc::get_mut` with brief yields to let them complete.
         let capsules = {
             let mut reg = self.capsules.write().await;
             reg.drain()
         };
         for mut arc in capsules {
             let id = arc.id().clone();
-            if let Some(capsule) = Arc::get_mut(&mut arc) {
-                if let Err(e) = capsule.unload().await {
-                    tracing::warn!(
-                        capsule_id = %id,
-                        error = %e,
-                        "Failed to unload capsule during shutdown"
-                    );
+            let mut unloaded = false;
+
+            for retry in 0..20_u32 {
+                if let Some(capsule) = Arc::get_mut(&mut arc) {
+                    if let Err(e) = capsule.unload().await {
+                        tracing::warn!(
+                            capsule_id = %id,
+                            error = %e,
+                            "Failed to unload capsule during shutdown"
+                        );
+                    }
+                    unloaded = true;
+                    break;
                 }
-            } else {
+                if retry < 19 {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            }
+
+            if !unloaded {
                 tracing::warn!(
                     capsule_id = %id,
-                    "Cannot unload capsule: other references still held"
+                    strong_count = Arc::strong_count(&arc),
+                    "Dropping capsule without explicit unload after retries exhausted; \
+                     MCP child processes may be orphaned"
                 );
             }
+            drop(arc);
         }
 
         // 3. Flush the persistent KV store.
@@ -363,6 +385,10 @@ impl Kernel {
         }
 
         // 4. Remove the socket file so stale-socket detection works on next boot.
+        // This runs AFTER capsule unload, which is the correct order: MCP child
+        // processes communicate via stdio pipes (not this Unix socket), so they
+        // are already terminated by step 2. The socket is only used for
+        // CLI-to-kernel IPC.
         let socket_path = crate::socket::kernel_socket_path();
         let _ = std::fs::remove_file(&socket_path);
 
