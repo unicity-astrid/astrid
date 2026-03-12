@@ -211,8 +211,10 @@ impl Capsule for CompositeCapsule {
     }
 
     async fn wait_ready(&self, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
         for engine in &self.engines {
-            if !engine.wait_ready(timeout).await {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() || !engine.wait_ready(remaining).await {
                 return false;
             }
         }

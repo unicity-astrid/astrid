@@ -54,7 +54,7 @@ pub fn toposort_manifests(
             tracing::warn!(
                 name = %name,
                 first_path = %manifests[existing].1.display(),
-                duplicate_path = %m.package.name,
+                duplicate_path = %manifests[i].1.display(),
                 "Duplicate capsule package name, only the first occurrence participates in dependency resolution"
             );
         } else {

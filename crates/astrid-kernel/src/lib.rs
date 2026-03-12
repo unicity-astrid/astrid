@@ -347,18 +347,24 @@ impl Kernel {
         use astrid_events::llm::LlmToolDefinition;
         use astrid_storage::KvStore;
 
-        let registry = self.capsules.read().await;
-
-        let mut all_tools: Vec<LlmToolDefinition> = Vec::new();
-        for capsule in registry.values() {
-            for tool_def in &capsule.manifest().tools {
-                all_tools.push(LlmToolDefinition {
-                    name: tool_def.name.clone(),
-                    description: Some(tool_def.description.clone()),
-                    input_schema: tool_def.input_schema.clone(),
-                });
-            }
-        }
+        // Collect tools and capsule IDs under a short-lived read lock,
+        // then drop the guard before the async KV write loop. Holding
+        // the RwLock across N awaits would block all registry writers.
+        let (all_tools, capsule_ids) = {
+            let registry = self.capsules.read().await;
+            let tools: Vec<LlmToolDefinition> = registry
+                .values()
+                .flat_map(|capsule| {
+                    capsule.manifest().tools.iter().map(|t| LlmToolDefinition {
+                        name: t.name.clone(),
+                        description: Some(t.description.clone()),
+                        input_schema: t.input_schema.clone(),
+                    })
+                })
+                .collect();
+            let ids: Vec<String> = registry.list().iter().map(ToString::to_string).collect();
+            (tools, ids)
+        };
 
         if all_tools.is_empty() {
             return;
@@ -377,7 +383,7 @@ impl Kernel {
             "Injecting tool schemas into capsule KV stores"
         );
 
-        for capsule_id in registry.list() {
+        for capsule_id in &capsule_ids {
             let namespace = format!("capsule:{capsule_id}");
             if let Err(e) = self
                 .kv

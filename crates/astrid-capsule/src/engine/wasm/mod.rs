@@ -327,6 +327,7 @@ impl ExecutionEngine for WasmEngine {
             handle.abort();
         }
         self.plugin = None; // Drop releases WASM memory
+        self.ready_rx = None; // Prevent stale channel observation post-unload
         self.tools.clear();
         Ok(())
     }
@@ -336,9 +337,13 @@ impl ExecutionEngine for WasmEngine {
             return true;
         };
         let mut rx = rx_mutex.lock().await.clone();
-        tokio::time::timeout(timeout, rx.wait_for(|&v| v))
-            .await
-            .is_ok()
+        // Must match Ok(Ok(_)) explicitly: Ok(Err(RecvError)) means the
+        // sender was dropped (capsule crashed) before signaling ready,
+        // which must return false - not silently succeed.
+        matches!(
+            tokio::time::timeout(timeout, rx.wait_for(|&v| v)).await,
+            Ok(Ok(_))
+        )
     }
 
     fn take_inbound_rx(
