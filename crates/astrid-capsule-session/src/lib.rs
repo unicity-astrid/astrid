@@ -69,10 +69,27 @@ impl Default for SessionData {
 }
 
 impl SessionData {
+    /// Apply schema migration to deserialized data (pure logic, no I/O).
+    ///
+    /// Returns `Ok((data, needs_save))` if migration succeeded or was
+    /// unnecessary. `needs_save` is true when the version was bumped.
+    /// Returns `Err(fresh_default)` if the version is unrecognized
+    /// (fail secure).
+    fn migrate(mut self) -> Result<(Self, bool), Self> {
+        match self.schema_version {
+            0 => {
+                self.schema_version = SESSION_DATA_SCHEMA_VERSION;
+                Ok((self, true))
+            },
+            v if v == SESSION_DATA_SCHEMA_VERSION => Ok((self, false)),
+            _ => Err(Self::default()),
+        }
+    }
+
     /// Load session data from KV, applying schema migration as needed.
     fn load(session_id: &str) -> Self {
         let key = session_key(session_id);
-        let mut data = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
+        let data = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
             let _ = sys::log(
                 "error",
                 format!("Failed to load session data, starting fresh: {e}"),
@@ -80,34 +97,32 @@ impl SessionData {
             Self::default()
         });
 
-        match data.schema_version {
-            0 => {
-                // Pre-versioning legacy data. Stamp version and re-save.
-                data.schema_version = SESSION_DATA_SCHEMA_VERSION;
-                if let Err(e) = data.save(session_id) {
-                    let _ = sys::log(
-                        "warn",
-                        format!("Failed to re-save session after v0->v1 migration: {e}"),
-                    );
+        match data.migrate() {
+            Ok((migrated, needs_save)) => {
+                // If version was bumped (v0 -> v1), persist the migration.
+                // No retry on save failure - the in-memory data is still
+                // usable and re-save will be attempted on next modification.
+                if needs_save {
+                    if let Err(e) = migrated.save(session_id) {
+                        let _ = sys::log(
+                            "warn",
+                            format!("Failed to re-save session after migration: {e}"),
+                        );
+                    }
                 }
+                migrated
             },
-            v if v == SESSION_DATA_SCHEMA_VERSION => {
-                // Current version, no migration needed.
-            },
-            unknown => {
-                // Unknown future version. Don't corrupt by writing old format.
+            Err(fresh) => {
                 let _ = sys::log(
                     "error",
                     format!(
-                        "Session '{session_id}' has unknown schema version {unknown} \
+                        "Session '{session_id}' has unknown schema version \
                          (expected {SESSION_DATA_SCHEMA_VERSION}), starting fresh"
                     ),
                 );
-                data = Self::default();
+                fresh
             },
         }
-
-        data
     }
 
     /// Persist session data to KV.
@@ -305,5 +320,61 @@ mod tests {
         let data = SessionData::default();
         assert_eq!(data.schema_version, SESSION_DATA_SCHEMA_VERSION);
         assert!(data.parent_session_id.is_none());
+    }
+
+    /// v0 data migrates to current version and signals needs_save.
+    #[test]
+    fn test_migrate_v0_stamps_to_current() {
+        let v0_json = r#"{"messages":[]}"#;
+        let data: SessionData = serde_json::from_str(v0_json).unwrap();
+        assert_eq!(data.schema_version, 0);
+
+        let (migrated, needs_save) = data.migrate().expect("v0 should migrate successfully");
+        assert_eq!(migrated.schema_version, SESSION_DATA_SCHEMA_VERSION);
+        assert!(needs_save, "v0 -> v1 migration should signal needs_save");
+        assert!(migrated.messages.is_empty());
+    }
+
+    /// Current version data passes through migrate unchanged.
+    #[test]
+    fn test_migrate_current_version_is_noop() {
+        let data = SessionData::default();
+        let (migrated, needs_save) = data.migrate().expect("current version should pass");
+        assert_eq!(migrated.schema_version, SESSION_DATA_SCHEMA_VERSION);
+        assert!(!needs_save, "current version should not signal needs_save");
+    }
+
+    /// Unknown future version fails migration (fail secure).
+    #[test]
+    fn test_migrate_unknown_version_fails_secure() {
+        let data = SessionData {
+            schema_version: 99,
+            parent_session_id: Some("old".into()),
+            messages: Vec::new(),
+        };
+        let fresh = data.migrate().expect_err("unknown version should fail migration");
+        assert_eq!(fresh.schema_version, SESSION_DATA_SCHEMA_VERSION);
+        assert!(fresh.parent_session_id.is_none(), "fresh default has no parent");
+    }
+
+    /// v0 data with existing messages preserves them through migration.
+    #[test]
+    fn test_migrate_v0_preserves_messages() {
+        let v0_json = r#"{"messages":[{"role":"user","content":"hello"}]}"#;
+        let data: SessionData = serde_json::from_str(v0_json).unwrap();
+        assert_eq!(data.schema_version, 0);
+        assert_eq!(data.messages.len(), 1);
+
+        let (migrated, _) = data.migrate().expect("v0 should migrate");
+        assert_eq!(migrated.messages.len(), 1);
+    }
+
+    /// v0 data with parent_session_id preserves it through migration.
+    #[test]
+    fn test_migrate_v0_preserves_parent() {
+        let v0_json = r#"{"messages":[],"parent_session_id":"parent-abc"}"#;
+        let data: SessionData = serde_json::from_str(v0_json).unwrap();
+        let (migrated, _) = data.migrate().expect("v0 should migrate");
+        assert_eq!(migrated.parent_session_id.as_deref(), Some("parent-abc"));
     }
 }

@@ -97,7 +97,8 @@ pub(crate) fn astrid_kv_list_keys_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let prefix_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let prefix = String::from_utf8(prefix_bytes).unwrap_or_default();
+    let prefix = String::from_utf8(prefix_bytes)
+        .map_err(|e| Error::msg(format!("kv_list_keys prefix is not valid UTF-8: {e}")))?;
 
     let ud = user_data.get()?;
     let state = ud
@@ -125,13 +126,17 @@ pub(crate) fn astrid_kv_clear_prefix_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let prefix_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let prefix = String::from_utf8(prefix_bytes).unwrap_or_default();
+    let prefix = String::from_utf8(prefix_bytes)
+        .map_err(|e| Error::msg(format!("kv_clear_prefix prefix is not valid UTF-8: {e}")))?;
 
     let ud = user_data.get()?;
     let state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
+    // The HostState mutex is held across the deletion loop. This is
+    // acceptable: WASM interceptor calls within a capsule are serialized
+    // by the plugin mutex, so no concurrent access is possible.
     let count = tokio::task::block_in_place(|| {
         state
             .runtime_handle

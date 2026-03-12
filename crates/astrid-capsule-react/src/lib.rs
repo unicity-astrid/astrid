@@ -309,6 +309,10 @@ impl Default for TurnState {
 
 impl TurnState {
     /// Load turn state from KV, or create default if not present.
+    ///
+    /// TurnState is ephemeral - no migration logic needed. If the schema
+    /// version is unrecognized (e.g. binary downgrade), reset to default
+    /// rather than risking misinterpreted fields.
     fn load(session_id: &str) -> Self {
         let key = turn_key(session_id);
         let mut state = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
@@ -318,6 +322,18 @@ impl TurnState {
             );
             Self::default()
         });
+
+        if state.schema_version != 0 && state.schema_version != 1 {
+            let _ = sys::log(
+                "warn",
+                format!(
+                    "TurnState has unknown schema version {}, resetting to default",
+                    state.schema_version
+                ),
+            );
+            state = Self::default();
+        }
+
         // Ensure session_id matches what was requested (handles default case)
         state.session_id = session_id.into();
         state
@@ -425,7 +441,7 @@ impl ReactLoop {
     /// all ephemeral KV keys (turn state, correlation mappings, active
     /// sessions) to prevent stale state from a previous incarnation.
     #[astrid::interceptor("handle_lifecycle_restart")]
-    pub fn handle_lifecycle_restart(&self, _payload: IpcPayload) -> Result<(), SysError> {
+    pub fn handle_lifecycle_restart(&self, _payload: serde_json::Value) -> Result<(), SysError> {
         let _ = sys::log("info", "Lifecycle restart: clearing ephemeral keys");
         clear_ephemeral_keys();
         Ok(())
@@ -477,7 +493,7 @@ impl ReactLoop {
 
             if ipc_messages.is_empty() {
                 return Err(SysError::ApiError(format!(
-                    "Session capsule clear timed out - no response within {timeout}ms"
+                    "Session clear timed out after {timeout}ms: no messages in response"
                 )));
             }
 
@@ -515,15 +531,16 @@ impl ReactLoop {
 
         let new_session_id = result?;
 
-        // Reset the old session's turn state to Idle.
-        let mut old_state = TurnState::load(old_session_id);
-        old_state.reset_conversation_turn();
-        old_state.set_phase(Phase::Idle);
-        old_state.save()?;
+        // Delete the old session's turn state - the session is done.
+        let old_key = turn_key(old_session_id);
+        if let Err(e) = kv::delete(&old_key) {
+            let _ = sys::log("warn", format!("Failed to delete old turn state key '{old_key}': {e}"));
+        }
         unregister_active_session(old_session_id);
 
         // Initialize a fresh turn state for the new session.
-        let new_state = TurnState::default();
+        let mut new_state = TurnState::default();
+        new_state.session_id = new_session_id.clone();
         let key = turn_key(&new_session_id);
         kv::set_json(&key, &new_state)?;
 
