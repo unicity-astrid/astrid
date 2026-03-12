@@ -16,9 +16,13 @@ use astrid_core::dirs::AstridHome;
 /// that have a recorded source in `meta.json`.
 ///
 /// # TODO
-/// When `target` is `None` (bare `astrid capsule update`), this should check all
-/// installed capsules for newer versions from their original repo/registry source
-/// before re-installing, rather than blindly re-fetching everything.
+/// - When `target` is `None` (bare `astrid capsule update`), this should check all
+///   installed capsules for newer versions from their original repo/registry source
+///   before re-installing, rather than blindly re-fetching everything.
+/// - Add a registry manifest (like brew formulas) that pins version + Blake3 hash
+///   per capsule. `update` should fetch the manifest, compare versions against
+///   `meta.json`, only download if newer, and verify Blake3 hash before installing.
+///   Trust chain: registry manifest (signed) -> pinned URL + Blake3 -> verified binary.
 pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
