@@ -49,20 +49,21 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
 /// as part of the handshake.
 ///
 /// # Errors
-/// Returns an error if the token file cannot be written.
+/// Returns an error if `ASTRID_HOME` cannot be resolved or the token file
+/// cannot be written. Unlike socket/CLI paths, there is no `/tmp` fallback
+/// because writing a secret token under a world-listable directory would
+/// undermine the authentication it provides.
 pub(crate) fn generate_session_token() -> Result<SessionToken, std::io::Error> {
     use astrid_core::dirs::AstridHome;
 
     let token = SessionToken::generate();
 
-    let path = match AstridHome::resolve() {
-        Ok(home) => home.token_path(),
-        Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME for token; falling back to /tmp/.astrid/sessions/system.token");
-            PathBuf::from("/tmp/.astrid/sessions/system.token")
-        },
-    };
+    let home = AstridHome::resolve().map_err(|e| {
+        std::io::Error::other(format!(
+            "Cannot generate session token: failed to resolve ASTRID_HOME: {e}"
+        ))
+    })?;
 
-    token.write_to_file(&path)?;
+    token.write_to_file(&home.token_path())?;
     Ok(token)
 }

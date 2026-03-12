@@ -189,7 +189,7 @@ async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
     let response: HandshakeResponse =
         serde_json::from_slice(&resp_payload).context("Failed to parse handshake response")?;
 
-    if response.status != "ok" {
+    if !response.is_ok() {
         let reason = response
             .reason
             .unwrap_or_else(|| "unknown error".to_string());

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -224,10 +224,12 @@ fn publish_response(kernel: &Arc<crate::Kernel>, response_topic: String, res: Ke
 // Management API rate limiting
 // ---------------------------------------------------------------------------
 
-/// Simple token bucket rate limiter for management API requests.
+/// Sliding window rate limiter for management API requests.
+/// Tracks per-request timestamps and evicts entries older than 60 seconds,
+/// preventing the 2x burst possible with fixed-window designs.
 /// Single-consumer (owned by the router task), no concurrency concerns.
 struct ManagementRateLimiter {
-    buckets: HashMap<&'static str, (Instant, u32)>,
+    buckets: HashMap<&'static str, VecDeque<Instant>>,
 }
 
 impl ManagementRateLimiter {
@@ -241,17 +243,22 @@ impl ManagementRateLimiter {
     /// Returns `true` if allowed, `false` if rate-limited.
     fn check(&mut self, method: &'static str, max_per_minute: u32) -> bool {
         let now = Instant::now();
-        let entry = self.buckets.entry(method).or_insert((now, 0));
+        let window = std::time::Duration::from_secs(60);
+        let timestamps = self.buckets.entry(method).or_default();
 
-        // Reset the window if more than 60 seconds have elapsed.
-        if now.duration_since(entry.0).as_secs() >= 60 {
-            *entry = (now, 0);
+        // Evict timestamps older than the 60-second sliding window.
+        while let Some(&oldest) = timestamps.front() {
+            if now.saturating_duration_since(oldest) >= window {
+                timestamps.pop_front();
+            } else {
+                break;
+            }
         }
 
-        if entry.1 >= max_per_minute {
+        if timestamps.len() >= max_per_minute as usize {
             return false;
         }
-        entry.1 = entry.1.saturating_add(1);
+        timestamps.push_back(now);
         true
     }
 }
@@ -298,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn rate_limiter_window_resets() {
+    fn rate_limiter_sliding_window_eviction() {
         let mut limiter = ManagementRateLimiter::new();
         // Fill the bucket
         for _ in 0..5 {
@@ -306,13 +313,40 @@ mod tests {
         }
         assert!(!limiter.check("ReloadCapsules", 5));
 
-        // Manually set the window start to 61 seconds ago to simulate expiry.
-        if let Some(entry) = limiter.buckets.get_mut("ReloadCapsules") {
-            entry.0 = Instant::now() - std::time::Duration::from_secs(61);
+        // Manually set all timestamps to 61 seconds ago to simulate expiry.
+        if let Some(timestamps) = limiter.buckets.get_mut("ReloadCapsules") {
+            let past = Instant::now() - std::time::Duration::from_secs(61);
+            for ts in timestamps.iter_mut() {
+                *ts = past;
+            }
         }
 
-        // Should be allowed again after window reset
+        // Should be allowed again after old entries are evicted
         assert!(limiter.check("ReloadCapsules", 5));
+    }
+
+    #[test]
+    fn rate_limiter_sliding_window_prevents_boundary_burst() {
+        let mut limiter = ManagementRateLimiter::new();
+        // Fill 5 requests
+        for _ in 0..5 {
+            assert!(limiter.check("ReloadCapsules", 5));
+        }
+
+        // Move only 3 of the 5 timestamps to the past (beyond 60s window).
+        // This simulates partial window expiry - only 3 slots should free up.
+        if let Some(timestamps) = limiter.buckets.get_mut("ReloadCapsules") {
+            let past = Instant::now() - std::time::Duration::from_secs(61);
+            for ts in timestamps.iter_mut().take(3) {
+                *ts = past;
+            }
+        }
+
+        // Should allow exactly 3 more (the evicted slots), not 5
+        for _ in 0..3 {
+            assert!(limiter.check("ReloadCapsules", 5));
+        }
+        assert!(!limiter.check("ReloadCapsules", 5));
     }
 
     #[test]

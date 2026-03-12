@@ -58,6 +58,13 @@ pub(crate) fn astrid_spawn_host_impl(
     let mut inner_cmd = Command::new(req.cmd);
     inner_cmd.args(&req.args);
 
+    // Strip socket-related env vars to prevent child processes from locating
+    // or authenticating to the daemon socket. The env_policy blocklist only
+    // gates config-injected vars; these are inherited from the parent process.
+    inner_cmd.env_remove("ASTRID_SOCKET_PATH");
+    inner_cmd.env_remove("ASTRID_SESSION_TOKEN");
+    inner_cmd.env_remove("ASTRID_HOME");
+
     let sandboxed_cmd = SandboxCommand::wrap(inner_cmd, &workspace_root)
         .map_err(|e| Error::msg(format!("failed to wrap command in sandbox: {e}")))?;
 

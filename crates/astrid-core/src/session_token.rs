@@ -67,17 +67,31 @@ impl SessionToken {
 
     /// Write the token to a file with owner-only permissions (0o600).
     ///
+    /// On Unix, the file is created atomically at 0o600 via `OpenOptions::mode`
+    /// to avoid a TOCTOU window where the file is briefly world-readable.
+    ///
     /// # Errors
     ///
     /// Returns an error if the file cannot be written or permissions cannot be set.
     pub fn write_to_file(&self, path: &Path) -> io::Result<()> {
         let hex = self.to_hex();
-        std::fs::write(path, hex.as_bytes())?;
 
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+            use io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)?;
+            f.write_all(hex.as_bytes())?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            std::fs::write(path, hex.as_bytes())?;
         }
 
         Ok(())
@@ -133,16 +147,27 @@ pub struct HandshakeRequest {
     pub client_version: String,
 }
 
+/// Typed status for handshake responses. Using an enum instead of a raw
+/// string prevents typo-induced mismatches between client and server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HandshakeStatus {
+    /// Handshake succeeded.
+    Ok,
+    /// Handshake failed.
+    Error,
+}
+
 /// Response sent by the daemon after validating the handshake.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HandshakeResponse {
-    /// `"ok"` on success, `"error"` on failure.
-    pub status: String,
+    /// Whether the handshake succeeded or failed.
+    pub status: HandshakeStatus,
     /// Wire protocol version of the daemon.
     pub protocol_version: u8,
     /// Semantic version of the daemon binary.
     pub server_version: String,
-    /// Human-readable reason for rejection (only set when status is `"error"`).
+    /// Human-readable reason for rejection (only set when status is `Error`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -152,7 +177,7 @@ impl HandshakeResponse {
     #[must_use]
     pub fn ok() -> Self {
         Self {
-            status: "ok".to_string(),
+            status: HandshakeStatus::Ok,
             protocol_version: PROTOCOL_VERSION,
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             reason: None,
@@ -163,11 +188,17 @@ impl HandshakeResponse {
     #[must_use]
     pub fn error(reason: impl Into<String>) -> Self {
         Self {
-            status: "error".to_string(),
+            status: HandshakeStatus::Error,
             protocol_version: PROTOCOL_VERSION,
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             reason: Some(reason.into()),
         }
+    }
+
+    /// Returns `true` if the handshake succeeded.
+    #[must_use]
+    pub fn is_ok(&self) -> bool {
+        self.status == HandshakeStatus::Ok
     }
 }
 
@@ -251,21 +282,25 @@ mod tests {
     #[test]
     fn handshake_response_ok_serializes() {
         let resp = HandshakeResponse::ok();
-        assert_eq!(resp.status, "ok");
+        assert_eq!(resp.status, HandshakeStatus::Ok);
+        assert!(resp.is_ok());
         assert_eq!(resp.protocol_version, PROTOCOL_VERSION);
         assert!(resp.reason.is_none());
 
         let json = serde_json::to_value(&resp).expect("serialize");
+        assert_eq!(json["status"], "ok");
         assert!(json.get("reason").is_none(), "reason should be skipped");
     }
 
     #[test]
     fn handshake_response_error_serializes() {
         let resp = HandshakeResponse::error("bad token");
-        assert_eq!(resp.status, "error");
+        assert_eq!(resp.status, HandshakeStatus::Error);
+        assert!(!resp.is_ok());
         assert_eq!(resp.reason.as_deref(), Some("bad token"));
 
         let json = serde_json::to_value(&resp).expect("serialize");
+        assert_eq!(json["status"], "error");
         assert_eq!(json["reason"], "bad token");
     }
 }
