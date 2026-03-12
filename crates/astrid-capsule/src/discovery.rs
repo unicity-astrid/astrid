@@ -137,6 +137,17 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
             message: e.to_string(),
         })?;
 
+    // Validate version is valid semver (same as Cargo.toml).
+    if semver::Version::parse(&manifest.package.version).is_err() {
+        return Err(CapsuleError::ManifestParseError {
+            path: path.to_path_buf(),
+            message: format!(
+                "invalid version '{}' in [package] - must be valid semver (MAJOR.MINOR.PATCH)",
+                manifest.package.version
+            ),
+        });
+    }
+
     // Validate ipc_publish and interceptor patterns for empty segments.
     let ipc_patterns = manifest
         .capabilities
@@ -224,5 +235,37 @@ version = "0.1.0"
             "{VALID_HEADER}\n[[interceptor]]\nevent = \"user.prompt\"\naction = \"handle\""
         );
         assert!(load_from_toml(&toml).is_ok());
+    }
+
+    #[test]
+    fn load_manifest_accepts_valid_semver() {
+        let toml = "[package]\nname = \"test\"\nversion = \"1.2.3\"\n";
+        assert!(load_from_toml(toml).is_ok());
+    }
+
+    #[test]
+    fn load_manifest_accepts_prerelease_semver() {
+        let toml = "[package]\nname = \"test\"\nversion = \"1.0.0-alpha.1\"\n";
+        assert!(load_from_toml(toml).is_ok());
+    }
+
+    #[test]
+    fn load_manifest_rejects_incomplete_semver() {
+        let toml = "[package]\nname = \"test\"\nversion = \"1.0\"\n";
+        let err = load_from_toml(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid version"),
+            "expected 'invalid version' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_non_semver_version() {
+        let toml = "[package]\nname = \"test\"\nversion = \"latest\"\n";
+        let err = load_from_toml(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid version"),
+            "expected 'invalid version' error, got: {err}"
+        );
     }
 }

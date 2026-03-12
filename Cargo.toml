@@ -185,6 +185,9 @@ ignore = "0.4"
 # Regex
 regex = "1.10"
 
+# Semantic versioning
+semver = "1"
+
 # DashMap
 dashmap = "6.1.0"
 

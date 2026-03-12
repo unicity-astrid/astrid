@@ -10,15 +10,170 @@ use serde::{Deserialize, Serialize};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
-/// Update one or all installed capsules by re-installing from their original source.
+/// Result of checking a remote source for a newer capsule version.
+enum UpdateCheck {
+    /// A newer version is available remotely.
+    Available { latest: semver::Version },
+    /// The installed version is already the latest (or newer).
+    UpToDate { latest: semver::Version },
+    /// Version check failed due to a transient or unexpected error.
+    Failed { reason: String },
+    /// Source type does not support remote version checking (expected, not an error).
+    Skipped { reason: String },
+}
+
+/// Strip common version prefixes (`v`, `V`) from a Git tag before semver parsing.
+fn strip_version_prefix(tag: &str) -> &str {
+    tag.strip_prefix('v')
+        .or_else(|| tag.strip_prefix('V'))
+        .unwrap_or(tag)
+}
+
+/// Extract `(org, repo)` from a GitHub URL like `https://github.com/org/repo`,
+/// `github.com/org/repo`, or `github.com/org/repo.git`. Anchors on the
+/// `github.com/` marker so extra path segments (`/tree/main`, `.git`) are
+/// safely ignored.
+fn extract_github_org_repo(url: &str) -> Option<(&str, &str)> {
+    let idx = url.find("github.com/")?;
+    let after_host = &url[idx.saturating_add("github.com/".len())..];
+    let trimmed = after_host.trim_end_matches('/');
+    let (org, rest) = trimmed.split_once('/')?;
+    // Take the first path segment as repo, stripping `.git` suffix if present
+    let repo = rest.split('/').next()?;
+    let repo = repo.strip_suffix(".git").unwrap_or(repo);
+    if org.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((org, repo))
+}
+
+/// Parse a capsule source string into `(org, repo)` for GitHub-backed sources.
 ///
-/// If `target` is `Some`, update only that capsule. If `None`, update all capsules
-/// that have a recorded source in `meta.json`.
+/// Handles `@org/repo`, `openclaw:@org/repo`, `github.com/org/repo`, and
+/// `https://github.com/org/repo`.
+fn parse_github_source(source: &str) -> Option<(String, String)> {
+    // @org/repo -> github.com/org/repo
+    if let Some(repo_path) = source.strip_prefix('@') {
+        let parts: Vec<&str> = repo_path.splitn(2, '/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+        return None;
+    }
+
+    // openclaw:@org/repo -> extract from the @org/repo part
+    if let Some(rest) = source.strip_prefix("openclaw:") {
+        if let Some(repo_path) = rest.strip_prefix('@') {
+            let parts: Vec<&str> = repo_path.splitn(2, '/').collect();
+            if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+                return Some((parts[0].to_string(), parts[1].to_string()));
+            }
+        }
+        // openclaw:name (no @) - not a GitHub source
+        return None;
+    }
+
+    // github.com/org/repo or https://github.com/org/repo
+    if source.contains("github.com/") {
+        let (org, repo) = extract_github_org_repo(source)?;
+        return Some((org.to_string(), repo.to_string()));
+    }
+
+    None
+}
+
+/// Fetch the latest release version from GitHub for a given org/repo.
+fn fetch_github_latest_version(
+    client: &reqwest::blocking::Client,
+    org: &str,
+    repo: &str,
+) -> anyhow::Result<semver::Version> {
+    let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
+    let response = client
+        .get(&api_url)
+        .send()
+        .context("failed to reach GitHub API")?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        bail!("no GitHub releases found for {org}/{repo}");
+    }
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || response.status() == reqwest::StatusCode::FORBIDDEN
+    {
+        bail!("GitHub API rate limit exceeded - try again later");
+    }
+    if !response.status().is_success() {
+        bail!("GitHub API returned {}", response.status());
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .context("failed to parse GitHub API response")?;
+    let tag_name = json
+        .get("tag_name")
+        .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("GitHub release has missing or empty tag_name"))?;
+
+    let version_str = strip_version_prefix(tag_name);
+    semver::Version::parse(version_str)
+        .with_context(|| format!("GitHub tag '{tag_name}' is not valid semver"))
+}
+
+/// Check whether a newer version is available from a capsule's source.
+fn check_remote_version(
+    client: &reqwest::blocking::Client,
+    source: &str,
+    current_version: &str,
+) -> UpdateCheck {
+    let Ok(current) = semver::Version::parse(current_version) else {
+        return UpdateCheck::Failed {
+            reason: format!("installed version '{current_version}' is not valid semver"),
+        };
+    };
+
+    // OpenClaw (non-GitHub) sources - expected, not an error
+    if source.starts_with("openclaw:") && !source.contains('@') {
+        return UpdateCheck::Skipped {
+            reason: "OpenClaw registry not yet implemented".to_string(),
+        };
+    }
+
+    // Local paths cannot be version-checked remotely - expected, not an error
+    if source.starts_with('.') || source.starts_with('/') {
+        return UpdateCheck::Skipped {
+            reason: "local source".to_string(),
+        };
+    }
+
+    // GitHub-backed sources
+    if let Some((org, repo)) = parse_github_source(source) {
+        match fetch_github_latest_version(client, &org, &repo) {
+            Ok(latest) => {
+                if latest > current {
+                    UpdateCheck::Available { latest }
+                } else {
+                    UpdateCheck::UpToDate { latest }
+                }
+            },
+            Err(e) => UpdateCheck::Failed {
+                reason: format!("{e}"),
+            },
+        }
+    } else {
+        UpdateCheck::Skipped {
+            reason: format!("unsupported source: {source}"),
+        }
+    }
+}
+
+/// Update one or all installed capsules from their original source.
+///
+/// If `target` is `Some`, force-reinstall that capsule from its recorded source.
+/// If `None`, check all installed capsules for newer versions and only update
+/// those where the remote version is strictly newer (semver comparison).
 ///
 /// # TODO
-/// - When `target` is `None` (bare `astrid capsule update`), this should check all
-///   installed capsules for newer versions from their original repo/registry source
-///   before re-installing, rather than blindly re-fetching everything.
 /// - Add a registry manifest (like brew formulas) that pins version + Blake3 hash
 ///   per capsule. `update` should fetch the manifest, compare versions against
 ///   `meta.json`, only download if newer, and verify Blake3 hash before installing.
@@ -27,7 +182,7 @@ pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::R
     let home = AstridHome::resolve()?;
 
     if let Some(name) = target {
-        // Update a single capsule
+        // Single capsule: always force-reinstall from recorded source.
         let target_dir = resolve_target_dir(&home, name, workspace)?;
         if !target_dir.exists() {
             bail!("Capsule '{name}' is not installed.");
@@ -45,42 +200,100 @@ pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::R
         eprintln!("Updating {name} from {source}...");
         install_capsule(&source, workspace)
     } else {
-        // TODO: Check all installed capsules for updates from their repo/registry
-        // source. For now, re-install everything that has a recorded source.
-        let capsules_dir = home.capsules_dir();
-        if !capsules_dir.exists() {
-            eprintln!("No capsules installed.");
-            return Ok(());
-        }
-
-        let mut updated = 0u32;
-        let mut skipped = 0u32;
-        for entry in std::fs::read_dir(&capsules_dir)? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            let meta = read_meta(&entry.path());
-            if let Some(meta) = meta
-                && let Some(ref source) = meta.source
-            {
-                eprintln!("Updating {name} from {source}...");
-                if let Err(e) = install_capsule(source, workspace) {
-                    eprintln!("Failed to update {name}: {e}");
-                } else {
-                    updated = updated.saturating_add(1);
-                }
-            } else {
-                eprintln!("Skipping {name} (no source recorded).");
-                skipped = skipped.saturating_add(1);
-            }
-        }
-
-        eprintln!("Updated {updated} capsule(s), skipped {skipped}.");
-        Ok(())
+        update_all_capsules(&home, workspace)
     }
+}
+
+/// Check all installed capsules for updates and install those with newer versions.
+fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()> {
+    let capsules_dir = home.capsules_dir();
+    if !capsules_dir.exists() {
+        eprintln!("No capsules installed.");
+        return Ok(());
+    }
+
+    // Collect installed capsules with their metadata
+    let mut capsules: Vec<(String, Option<CapsuleMeta>)> = Vec::new();
+    for entry in std::fs::read_dir(&capsules_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let meta = read_meta(&entry.path());
+        capsules.push((name, meta));
+    }
+
+    if capsules.is_empty() {
+        eprintln!("No capsules installed.");
+        return Ok(());
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?;
+
+    eprintln!(
+        "Checking {} installed capsule(s) for updates...",
+        capsules.len()
+    );
+
+    // Check phase: determine which capsules have updates available
+    let mut to_update: Vec<(String, String)> = Vec::new(); // (name, source)
+    let mut up_to_date = 0u32;
+    let mut check_failed = 0u32;
+    let mut skipped = 0u32;
+
+    for (name, meta) in &capsules {
+        let Some(meta) = meta else {
+            eprintln!("  {name}: skipped (no meta.json)");
+            skipped = skipped.saturating_add(1);
+            continue;
+        };
+        let Some(ref source) = meta.source else {
+            eprintln!("  {name}: skipped (no source recorded)");
+            skipped = skipped.saturating_add(1);
+            continue;
+        };
+
+        match check_remote_version(&client, source, &meta.version) {
+            UpdateCheck::Available { latest } => {
+                eprintln!("  {name}: {} -> {latest} (update available)", meta.version);
+                to_update.push((name.clone(), source.clone()));
+            },
+            UpdateCheck::UpToDate { latest } => {
+                eprintln!("  {name}: {} (up to date, latest: {latest})", meta.version);
+                up_to_date = up_to_date.saturating_add(1);
+            },
+            UpdateCheck::Failed { reason } => {
+                eprintln!("  {name}: {} (check failed: {reason})", meta.version);
+                check_failed = check_failed.saturating_add(1);
+            },
+            UpdateCheck::Skipped { reason } => {
+                eprintln!("  {name}: skipped ({reason})");
+                skipped = skipped.saturating_add(1);
+            },
+        }
+    }
+
+    // Install phase: update capsules with newer versions
+    let mut updated = 0u32;
+    let mut install_failed = 0u32;
+    for (name, source) in &to_update {
+        eprintln!("Updating {name} from {source}...");
+        if let Err(e) = install_capsule(source, workspace) {
+            eprintln!("  Failed to update {name}: {e}");
+            install_failed = install_failed.saturating_add(1);
+        } else {
+            updated = updated.saturating_add(1);
+        }
+    }
+
+    eprintln!(
+        "Done: {updated} updated, {up_to_date} up-to-date, {check_failed} check-failed, {skipped} skipped, {install_failed} install-failed."
+    );
+    Ok(())
 }
 
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
@@ -128,13 +341,9 @@ pub(crate) fn install_from_github(
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let url_trimmed = url.trim_end_matches('/');
-    let mut parts: Vec<&str> = url_trimmed.split('/').collect();
-    if parts.len() < 2 {
-        bail!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo");
-    }
-    let repo = parts.pop().context("Failed to get repo name from URL")?;
-    let org = parts.pop().context("Failed to get org name from URL")?;
+    let (org, repo) = extract_github_org_repo(url).ok_or_else(|| {
+        anyhow::anyhow!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo")
+    })?;
 
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
@@ -1038,5 +1247,114 @@ mod tests {
             meta2.installed_at, original_installed_at,
             "installed_at should be preserved across upgrades"
         );
+    }
+
+    #[test]
+    fn test_strip_version_prefix() {
+        assert_eq!(strip_version_prefix("v1.2.3"), "1.2.3");
+        assert_eq!(strip_version_prefix("V1.0.0"), "1.0.0");
+        assert_eq!(strip_version_prefix("1.0.0"), "1.0.0");
+        assert_eq!(strip_version_prefix("v0.0.1-alpha"), "0.0.1-alpha");
+        // Non-standard prefixes are left as-is (semver parse will fail gracefully)
+        assert_eq!(strip_version_prefix("release-1.0.0"), "release-1.0.0");
+    }
+
+    #[test]
+    fn test_extract_github_org_repo() {
+        let (org, repo) = extract_github_org_repo("https://github.com/org/repo").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+
+        let (org, repo) = extract_github_org_repo("github.com/myorg/myrepo").unwrap();
+        assert_eq!(org, "myorg");
+        assert_eq!(repo, "myrepo");
+
+        // Trailing slash
+        let (org, repo) = extract_github_org_repo("https://github.com/org/repo/").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+
+        // Too short
+        assert!(extract_github_org_repo("singlepart").is_none());
+    }
+
+    #[test]
+    fn test_parse_github_source_at_prefix() {
+        let (org, repo) = parse_github_source("@org/repo").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_parse_github_source_https() {
+        let (org, repo) = parse_github_source("https://github.com/org/repo").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_parse_github_source_bare() {
+        let (org, repo) = parse_github_source("github.com/org/repo").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_parse_github_source_openclaw_at() {
+        let (org, repo) = parse_github_source("openclaw:@org/repo").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_parse_github_source_non_github() {
+        assert!(parse_github_source("openclaw:my-capsule").is_none());
+        assert!(parse_github_source("./local/path").is_none());
+        assert!(parse_github_source("/absolute/path").is_none());
+    }
+
+    #[test]
+    fn test_check_remote_version_openclaw_skipped() {
+        let client = reqwest::blocking::Client::new();
+        let result = check_remote_version(&client, "openclaw:my-capsule", "1.0.0");
+        assert!(matches!(result, UpdateCheck::Skipped { reason } if reason.contains("OpenClaw")));
+    }
+
+    #[test]
+    fn test_check_remote_version_invalid_semver() {
+        let client = reqwest::blocking::Client::new();
+        let result = check_remote_version(&client, "@org/repo", "not-a-version");
+        assert!(
+            matches!(result, UpdateCheck::Failed { reason } if reason.contains("not valid semver"))
+        );
+    }
+
+    #[test]
+    fn test_check_remote_version_local_skipped() {
+        let client = reqwest::blocking::Client::new();
+        let result = check_remote_version(&client, "./local/path", "1.0.0");
+        assert!(
+            matches!(result, UpdateCheck::Skipped { reason } if reason.contains("local source"))
+        );
+
+        let result = check_remote_version(&client, "/absolute/path", "1.0.0");
+        assert!(
+            matches!(result, UpdateCheck::Skipped { reason } if reason.contains("local source"))
+        );
+    }
+
+    #[test]
+    fn test_extract_github_org_repo_extra_path() {
+        // Extra path segments after org/repo should be ignored
+        let (org, repo) = extract_github_org_repo("https://github.com/org/repo/tree/main").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_extract_github_org_repo_git_suffix() {
+        let (org, repo) = extract_github_org_repo("https://github.com/org/repo.git").unwrap();
+        assert_eq!(org, "org");
+        assert_eq!(repo, "repo");
     }
 }
