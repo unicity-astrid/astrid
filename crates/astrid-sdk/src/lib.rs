@@ -393,6 +393,8 @@ pub mod elicit {
             default: None,
         };
         let req_bytes = serde_json::to_vec(&req)?;
+        // SAFETY: FFI call to Extism host function. The host validates the
+        // request and returns a well-formed JSON response or an Extism error.
         let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
 
         #[derive(serde::Deserialize)]
@@ -416,6 +418,8 @@ pub mod elicit {
             key: &'a str,
         }
         let req_bytes = serde_json::to_vec(&HasSecretRequest { key })?;
+        // SAFETY: FFI call to Extism host function. The host checks the
+        // SecretStore and returns a JSON response or an Extism error.
         let resp_bytes = unsafe { astrid_has_secret(req_bytes)? };
 
         #[derive(serde::Deserialize)]
@@ -441,6 +445,8 @@ pub mod elicit {
             default,
         };
         let req_bytes = serde_json::to_vec(&req)?;
+        // SAFETY: FFI call to Extism host function. The host validates the
+        // request and returns a well-formed JSON response or an Extism error.
         let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
 
         #[derive(serde::Deserialize)]
@@ -482,6 +488,8 @@ pub mod elicit {
             default: None,
         };
         let req_bytes = serde_json::to_vec(&req)?;
+        // SAFETY: FFI call to Extism host function. The host validates the
+        // request and returns a well-formed JSON response or an Extism error.
         let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
 
         #[derive(serde::Deserialize)]
@@ -509,6 +517,8 @@ pub mod elicit {
             default: None,
         };
         let req_bytes = serde_json::to_vec(&req)?;
+        // SAFETY: FFI call to Extism host function. The host validates the
+        // request and returns a well-formed JSON response or an Extism error.
         let resp_bytes = unsafe { astrid_elicit(req_bytes)? };
 
         #[derive(serde::Deserialize)]
