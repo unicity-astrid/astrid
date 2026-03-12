@@ -405,9 +405,19 @@ fn generate_tier2_manifest(
         dependencies: {
             let mut provides = Vec::new();
             for channel in &oc_manifest.channels {
+                if channel.is_empty() || channel.split('.').any(str::is_empty) {
+                    return Err(BridgeError::Manifest(format!(
+                        "channel name '{channel}' is invalid (empty or contains empty segments)"
+                    )));
+                }
                 provides.push(format!("uplink:{channel}"));
             }
             for provider in &oc_manifest.providers {
+                if provider.is_empty() || provider.split('.').any(str::is_empty) {
+                    return Err(BridgeError::Manifest(format!(
+                        "provider name '{provider}' is invalid (empty or contains empty segments)"
+                    )));
+                }
                 provides.push(format!("llm:{provider}"));
             }
             Tier2Dependencies {

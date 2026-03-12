@@ -485,6 +485,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wildcard_body_in_requires_matches_all_providers_of_type() {
+        // "topic:*" matches any single-segment topic body.
+        // This is unusual but valid - creates ordering edges to all topic providers.
+        let input = vec![
+            manifest_with_caps("consumer", &[], &["topic:*"]),
+            manifest_with_caps("provider-a", &["topic:foo"], &[]),
+            manifest_with_caps("provider-b", &["topic:bar"], &[]),
+        ];
+        let result = toposort_manifests(input).unwrap();
+        let n = names(&result);
+        let pos = |name: &str| n.iter().position(|&x| x == name).unwrap();
+        // Both providers must load before the consumer
+        assert!(pos("provider-a") < pos("consumer"));
+        assert!(pos("provider-b") < pos("consumer"));
+    }
+
     // -- shipped capsule integration tests --
 
     #[test]

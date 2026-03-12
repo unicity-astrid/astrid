@@ -167,11 +167,14 @@ impl EventReceiver {
 
     /// Check if an event matches our topic pattern.
     ///
-    /// Uses segment-aware matching consistent with the dispatcher's
-    /// `topic_matches`. A `*` in the pattern matches exactly one segment.
-    /// A trailing `*` as the last segment matches one or more remaining
-    /// segments (namespace subscription). Topics deeper than 20 segments
-    /// are rejected.
+    /// Uses segment-aware matching. A `*` in a non-trailing position matches
+    /// exactly one segment. A trailing `*` (last segment) matches one or more
+    /// remaining segments, enabling namespace-level subscriptions (e.g.
+    /// `astrid.v1.lifecycle.*` matches all lifecycle events regardless of depth).
+    ///
+    /// Note: this differs from `dispatcher::topic_matches` used for interceptor
+    /// routing, where `*` always matches exactly one segment (equal segment
+    /// count is required). Topics deeper than 20 segments are rejected.
     fn matches(&self, event: &AstridEvent) -> bool {
         let Some(pattern) = &self.topic_pattern else {
             return true;
@@ -577,6 +580,8 @@ mod tests {
     #[tokio::test]
     async fn test_topic_subscription_wildcard() {
         let bus = EventBus::new();
+        // Trailing `*` matches 1+ segments; "astrid.*" is a namespace subscription
+        // that matches any topic starting with "astrid." regardless of depth.
         let mut wildcard_receiver = bus.subscribe_topic("astrid.*");
 
         let msg1 = crate::ipc::IpcMessage::new(
