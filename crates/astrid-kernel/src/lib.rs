@@ -601,17 +601,23 @@ mod tests {
     fn test_connection_counter_increment_decrement() {
         let counter = AtomicUsize::new(0);
 
-        // Simulate connection_opened
+        // Simulate connection_opened (fetch_add)
         counter.fetch_add(1, Ordering::Relaxed);
         counter.fetch_add(1, Ordering::Relaxed);
         assert_eq!(counter.load(Ordering::Relaxed), 2);
 
-        // Simulate connection_closed
-        counter.fetch_sub(1, Ordering::Relaxed);
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-
-        counter.fetch_sub(1, Ordering::Relaxed);
-        assert_eq!(counter.load(Ordering::Relaxed), 0);
+        // Simulate connection_closed using the same fetch_update logic
+        // as the real implementation to exercise the actual code path.
+        for expected in [1, 0] {
+            let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                if n == 0 {
+                    None
+                } else {
+                    Some(n.saturating_sub(1))
+                }
+            });
+            assert_eq!(counter.load(Ordering::Relaxed), expected);
+        }
     }
 
     #[test]
