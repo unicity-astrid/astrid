@@ -100,11 +100,7 @@ impl ExecutionEngine for WasmEngine {
         }
 
         // Create shared concurrency controls before entering the blocking plugin build.
-        let host_semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(
-            std::thread::available_parallelism()
-                .map(|n| n.get().saturating_sub(2).max(2))
-                .unwrap_or(2),
-        ));
+        let host_semaphore = HostState::default_host_semaphore();
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let cancel_token_for_state = cancel_token.clone();
 
@@ -521,11 +517,7 @@ pub fn run_lifecycle(
         lifecycle_phase: Some(phase),
         secret_store: cfg.secret_store,
         ready_tx: None,
-        host_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(
-            std::thread::available_parallelism()
-                .map(|n| n.get().saturating_sub(2).max(2))
-                .unwrap_or(2),
-        )),
+        host_semaphore: HostState::default_host_semaphore(),
         cancel_token: tokio_util::sync::CancellationToken::new(),
     };
 

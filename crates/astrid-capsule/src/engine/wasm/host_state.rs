@@ -120,6 +120,7 @@ pub struct HostState {
     ///
     /// Limits the number of concurrent `block_in_place` / `block_on` operations
     /// across all capsules to prevent tokio thread-pool exhaustion.
+    /// Created via [`default_host_semaphore`].
     pub host_semaphore: Arc<Semaphore>,
     /// Cooperative cancellation token for long-running host function calls.
     ///
@@ -156,6 +157,19 @@ impl HostState {
     #[must_use]
     pub fn uplinks(&self) -> &[UplinkDescriptor] {
         &self.registered_uplinks
+    }
+
+    /// Create the default host semaphore for bounding concurrent blocking calls.
+    ///
+    /// Reserves 2 threads for the tokio scheduler and event dispatch, with a
+    /// minimum of 2 permits so capsules can always make progress.
+    #[must_use]
+    pub fn default_host_semaphore() -> Arc<Semaphore> {
+        Arc::new(Semaphore::new(
+            std::thread::available_parallelism()
+                .map(|n| n.get().saturating_sub(2).max(2))
+                .unwrap_or(2),
+        ))
     }
 
     /// Set the inbound message sender.
