@@ -322,9 +322,27 @@ impl Kernel {
             },
         };
 
+        // Reject uplinks that declare `requires` - uplinks are loaded in the
+        // first partition before non-uplinks, so any `requires` pointing at a
+        // non-uplink would violate the toposort ordering. This is a manifest
+        // authoring error, not a runtime condition.
+        for (manifest, _) in &sorted {
+            if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
+                tracing::error!(
+                    capsule = %manifest.package.name,
+                    requires = ?manifest.dependencies.requires,
+                    "Uplink capsules cannot declare [dependencies].requires - \
+                     uplinks load before non-uplinks and cannot depend on them"
+                );
+            }
+        }
+
         // Partition after sorting: uplinks first, then the rest.
         // The relative order within each partition is preserved from the
-        // toposort, so dependency edges are still respected.
+        // toposort, so dependency edges are still respected. Cross-partition
+        // edges (non-uplink requiring an uplink) are satisfied by construction
+        // since all uplinks load first. The inverse (uplink requiring a
+        // non-uplink) is rejected above.
         let (uplinks, others): (Vec<_>, Vec<_>) =
             sorted.into_iter().partition(|(m, _)| m.capabilities.uplink);
 

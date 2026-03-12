@@ -220,6 +220,17 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
                 ),
             });
         }
+        // Wildcards are only valid in `requires` (pattern matching).
+        // In `provides`, a capsule must declare concrete capabilities.
+        if kind == "provides" && body.contains('*') {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].provides '{cap}' contains a wildcard - \
+                     provides must be concrete capabilities, not patterns"
+                ),
+            });
+        }
     }
 
     Ok(manifest)
@@ -393,6 +404,26 @@ version = "0.1.0"
         assert!(
             err.to_string().contains("empty segments"),
             "expected 'empty segments' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_wildcard_in_provides() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:llm.stream.*\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("wildcard"),
+            "expected 'wildcard' error for provides with *, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_allows_wildcard_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"topic:llm.stream.*\"]");
+        assert!(
+            load_from_toml(&toml).is_ok(),
+            "wildcards should be allowed in requires"
         );
     }
 }
