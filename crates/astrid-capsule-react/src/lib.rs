@@ -48,6 +48,11 @@ const CALL_SESSION_PREFIX: &str = "react.call2sess";
 ///
 /// Stored as a JSON array of strings. The watchdog iterates this set
 /// to check timeouts across all sessions, not just the default one.
+///
+/// Thread safety: the read-modify-write on this key is safe because all
+/// WASM interceptor calls within a single capsule are serialized by the
+/// plugin mutex in `WasmEngine::invoke_interceptor`. Concurrent dispatches
+/// to the same capsule block on the mutex, so no lost-update race is possible.
 const ACTIVE_SESSIONS_KEY: &str = "react.active_sessions";
 
 /// Default timeout in milliseconds for session capsule requests.
@@ -334,7 +339,7 @@ impl TurnState {
             .and_then(|s| s.trim().trim_matches('"').parse::<u64>().ok())
             .unwrap_or(default_secs);
 
-        if elapsed_secs > timeout {
+        if elapsed_secs >= timeout {
             let phase_name = format!("{:?}", self.phase);
             let _ = sys::log(
                 "error",
