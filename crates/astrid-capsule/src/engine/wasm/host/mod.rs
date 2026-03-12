@@ -42,6 +42,7 @@ pub(crate) enum WasmHostFunction {
     UplinkSend,
     KvGet,
     KvSet,
+    KvDelete,
     GetConfig,
     NetBindUnix,
     NetAccept,
@@ -57,7 +58,7 @@ pub(crate) enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 28] = [
+    pub(crate) const ALL: [Self; 29] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -74,6 +75,7 @@ impl WasmHostFunction {
         Self::UplinkSend,
         Self::KvGet,
         Self::KvSet,
+        Self::KvDelete,
         Self::GetConfig,
         Self::GetCaller,
         Self::HttpRequest,
@@ -112,6 +114,7 @@ impl WasmHostFunction {
             Self::UplinkSend => "astrid_uplink_send",
             Self::KvGet => "astrid_kv_get",
             Self::KvSet => "astrid_kv_set",
+            Self::KvDelete => "astrid_kv_delete",
             Self::GetConfig => "astrid_get_config",
             Self::NetBindUnix => "astrid_net_bind_unix",
             Self::NetAccept => "astrid_net_accept",
@@ -140,6 +143,7 @@ impl WasmHostFunction {
             | Self::IpcUnsubscribe
             | Self::IpcPoll
             | Self::KvGet
+            | Self::KvDelete
             | Self::GetConfig
             | Self::HttpRequest
             | Self::SpawnHost
@@ -170,6 +174,7 @@ impl WasmHostFunction {
             | Self::IpcPublish
             | Self::IpcUnsubscribe
             | Self::KvSet
+            | Self::KvDelete
             | Self::Log
             | Self::CronSchedule
             | Self::CronCancel => TYPE_VOID,
@@ -266,6 +271,9 @@ pub fn register_host_functions(
             },
             WasmHostFunction::KvSet => {
                 builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_set_impl)
+            },
+            WasmHostFunction::KvDelete => {
+                builder.with_function(func.name(), args, rets, ud, kv::astrid_kv_delete_impl)
             },
             WasmHostFunction::NetBindUnix => {
                 builder.with_function(func.name(), args, rets, ud, net::astrid_net_bind_unix_impl)

@@ -183,16 +183,16 @@ max_pending_requests = 50
 # trusted = true
 # restart_policy = "always"  # Always restart when the server dies
 #
-# [servers.orchestrator]
+# [servers.react]
 # transport = "stdio"
-# command = "astrid-orchestrator"
-# args = ["--config", "orchestrator.toml"]
+# command = "astrid-react"
+# args = ["--config", "react.toml"]
 # auto_start = true
 # trusted = true
 # binary_hash = "sha256:abc123..."  # Optional: verify binary integrity
 #
 # # Restart on failure with max 5 retries (exponential backoff applied):
-# [servers.orchestrator.restart_policy]
+# [servers.react.restart_policy]
 # on_failure = { max_retries = 5 }
 
 # ============================================================================

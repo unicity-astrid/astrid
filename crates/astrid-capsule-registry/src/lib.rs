@@ -204,7 +204,7 @@ fn resolve_providers(entries: &[CapsuleMetadataEntry]) -> Vec<ProviderEntry> {
     providers
 }
 
-/// Publish the active model changed event so the orchestrator (and frontends) can react.
+/// Publish the active model changed event so the react loop (and frontends) can respond.
 fn publish_model_changed(provider: &ProviderEntry) {
     let _ = ipc::publish_json("registry.active_model_changed", provider);
 }

@@ -6,7 +6,7 @@
 //! Identity builder capsule for Astrid OS.
 //!
 //! Subscribes to `identity.request.build` IPC events and generates the
-//! system prompt for the orchestrator capsule by reading workspace
+//! system prompt for the react capsule by reading workspace
 //! configuration files (AGENTS.md, .astridignore) and the spark identity.
 
 use astrid_sdk::prelude::*;
@@ -24,6 +24,10 @@ pub struct BuildRequest {
     pub workspace_root: String,
     /// Optional agent identity configuration (from spark.toml).
     pub spark: Option<SparkConfig>,
+    /// Session ID for correlation. Echoed back in the response so the
+    /// react loop can resolve the correct turn state without a KV lookup.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// Agent identity configuration fields from spark.toml.
@@ -75,6 +79,9 @@ impl SparkConfig {
 pub struct BuildResponse {
     /// The fully assembled system prompt string.
     pub prompt: String,
+    /// Session ID echoed from the request for correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 const TOOL_GUIDELINES: &str = "\
@@ -152,7 +159,10 @@ impl IdentityBuilder {
             }
         }
 
-        let response = BuildResponse { prompt };
+        let response = BuildResponse {
+            prompt,
+            session_id: req.session_id,
+        };
         ipc::publish_json("identity.response.ready", &response)?;
 
         Ok(())

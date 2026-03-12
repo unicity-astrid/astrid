@@ -190,7 +190,9 @@ async fn run_loop(
 #[expect(clippy::too_many_lines)]
 fn handle_daemon_event(app: &mut App, event: AstridEvent) {
     if let AstridEvent::Ipc { message, .. } = event {
-        if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } = &message.payload {
+        if let astrid_events::ipc::IpcPayload::AgentResponse { text, is_final, .. } =
+            &message.payload
+        {
             // Transition to streaming state on first non-empty delta
             if !text.is_empty() && !matches!(app.state, UiState::Streaming { .. }) {
                 app.state = UiState::Streaming {
@@ -377,9 +379,10 @@ async fn handle_pending_actions(
             },
             PendingAction::CancelTurn => {
                 // Send an empty UserInput with a special __cancel__ context
-                // This signals to the Orchestrator to abort the current ReAct loop
+                // This signals to the react capsule to abort the current loop
                 let cancel_payload = astrid_events::ipc::IpcPayload::UserInput {
                     text: String::new(),
+                    session_id: session_id.0.to_string(),
                     context: Some(serde_json::json!({"action": "cancel_turn"})),
                 };
                 let msg = astrid_events::ipc::IpcMessage::new(
@@ -611,6 +614,7 @@ async fn handle_slash_command(
                 "cli.command.execute",
                 astrid_events::ipc::IpcPayload::UserInput {
                     text: cmd.to_string(),
+                    session_id: session_id.0.to_string(),
                     context: None,
                 },
                 session_id.0,

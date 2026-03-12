@@ -47,6 +47,11 @@ impl IpcMessage {
     }
 }
 
+/// Default session ID for conversations.
+fn default_session_id() -> String {
+    "default".into()
+}
+
 /// Standardized cross-boundary payload schemas.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -57,6 +62,9 @@ pub enum IpcPayload {
     UserInput {
         /// The raw text input.
         text: String,
+        /// Session ID for conversation continuity. Defaults to `"default"`.
+        #[serde(default = "default_session_id")]
+        session_id: String,
         /// Optional extra context.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context: Option<Value>,
@@ -67,6 +75,9 @@ pub enum IpcPayload {
         text: String,
         /// True if this is the final response in a chain.
         is_final: bool,
+        /// Session ID for multi-session attribution.
+        #[serde(default = "default_session_id")]
+        session_id: String,
     },
     /// An interceptor request for capability approval.
     ApprovalRequired {
@@ -366,6 +377,7 @@ mod tests {
             IpcPayload::AgentResponse {
                 text: "hello".into(),
                 is_final: true,
+                session_id: "default".into(),
             },
             Uuid::new_v4(),
         );

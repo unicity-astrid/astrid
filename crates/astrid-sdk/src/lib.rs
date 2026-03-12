@@ -197,6 +197,16 @@ pub mod kv {
         set_bytes(key, &bytes)
     }
 
+    /// Delete a key from the KV store.
+    ///
+    /// This is idempotent: deleting a non-existent key succeeds silently.
+    /// The underlying store returns whether the key existed, but that
+    /// information is not surfaced through the WASM host boundary.
+    pub fn delete(key: impl AsRef<[u8]>) -> Result<(), SysError> {
+        unsafe { astrid_kv_delete(key.as_ref().to_vec())? };
+        Ok(())
+    }
+
     pub fn get_borsh<T: BorshDeserialize>(key: impl AsRef<[u8]>) -> Result<T, SysError> {
         let bytes = get_bytes(key)?;
         let parsed = borsh::from_slice(&bytes)?;

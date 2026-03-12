@@ -203,6 +203,12 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::KvDelete => crate::engine::wasm::host::kv::astrid_kv_delete_impl(
+            plugin,
+            &fn_inputs,
+            &mut fn_outputs,
+            user_data,
+        )?,
         WasmHostFunction::Log => {
             crate::engine::wasm::host::sys::astrid_log_impl(
                 plugin,

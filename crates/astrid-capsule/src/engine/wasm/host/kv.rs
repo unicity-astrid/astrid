@@ -63,3 +63,28 @@ pub(crate) fn astrid_kv_set_impl(
 
     Ok(())
 }
+
+#[expect(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_kv_delete_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    _outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let key_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let key = String::from_utf8(key_bytes).unwrap_or_default();
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    tokio::task::block_in_place(|| {
+        state
+            .runtime_handle
+            .block_on(async { state.kv.delete(&key).await })
+    })
+    .map_err(|e| Error::msg(format!("kv_delete failed: {e}")))?;
+
+    Ok(())
+}
