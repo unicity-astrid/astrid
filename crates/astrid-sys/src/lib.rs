@@ -104,6 +104,12 @@ extern "ExtismHost" {
     pub fn astrid_trigger_hook(event_bytes: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
+    // Clock
+    // -----------------------------------------------------------------------
+    /// Get the current wall-clock time as milliseconds since the UNIX epoch.
+    pub fn astrid_clock_ms() -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
     // Lifecycle (Install & Upgrade Elicitation)
     // -----------------------------------------------------------------------
     /// Elicit user input during install/upgrade. Request is JSON-encoded.

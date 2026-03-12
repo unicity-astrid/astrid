@@ -40,6 +40,16 @@ action = "handle_tool_result"
 event = "registry.active_model_changed"
 action = "handle_model_changed"
 
+# Periodic watchdog tick from the kernel for timeout enforcement
+[[interceptor]]
+event = "react.watchdog.tick"
+action = "handle_watchdog_tick"
+
+# Event bus broadcast lag notification from the dispatcher
+[[interceptor]]
+event = "system.event_bus.lagged"
+action = "handle_bus_lag"
+
 [capabilities]
 ipc_publish = [
     "identity.request.build",

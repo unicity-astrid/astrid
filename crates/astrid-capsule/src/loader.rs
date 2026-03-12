@@ -63,8 +63,10 @@ impl CapsuleLoader {
         // directly into the OS memory without booting any VMs or Processes.
         composite.add_engine(Box::new(crate::engine::StaticEngine::new(
             manifest.clone(),
-            capsule_dir,
+            capsule_dir.clone(),
         )));
+
+        composite.set_source_dir(capsule_dir);
 
         Ok(Box::new(composite))
     }

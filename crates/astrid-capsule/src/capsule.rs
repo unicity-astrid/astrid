@@ -1,6 +1,7 @@
 //! Capsule trait and core types.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -152,6 +153,23 @@ pub trait Capsule: Send + Sync {
             "interceptors not supported".into(),
         ))
     }
+
+    /// Probe liveness beyond what `state()` reports.
+    ///
+    /// Returns the current state by default. Composite capsules delegate
+    /// to their engines, which can detect silently exited background tasks.
+    fn check_health(&self) -> CapsuleState {
+        self.state()
+    }
+
+    /// The directory this capsule was loaded from.
+    ///
+    /// Used by the kernel health monitor to restart crashed capsules.
+    /// Returns `None` for capsules that don't have a filesystem source
+    /// (e.g., test mocks).
+    fn source_dir(&self) -> Option<&Path> {
+        None
+    }
 }
 
 /// The universal, additive implementation of a Capsule.
@@ -166,6 +184,7 @@ pub(crate) struct CompositeCapsule {
     state: CapsuleState,
     engines: Vec<Box<dyn crate::engine::ExecutionEngine>>,
     tools: Vec<std::sync::Arc<dyn CapsuleTool>>,
+    capsule_dir: Option<PathBuf>,
 }
 
 impl CompositeCapsule {
@@ -178,7 +197,13 @@ impl CompositeCapsule {
             state: CapsuleState::Unloaded,
             engines: Vec::new(),
             tools: Vec::new(),
+            capsule_dir: None,
         })
+    }
+
+    /// Set the source directory this capsule was loaded from.
+    pub(crate) fn set_source_dir(&mut self, dir: PathBuf) {
+        self.capsule_dir = Some(dir);
     }
 
     /// Add an execution engine (e.g., WasmEngine, McpEngine) to this capsule.
@@ -269,5 +294,124 @@ impl Capsule for CompositeCapsule {
         Err(CapsuleError::NotSupported(
             "no engine supports interceptors".into(),
         ))
+    }
+
+    fn check_health(&self) -> CapsuleState {
+        for engine in &self.engines {
+            let health = engine.check_health();
+            if let CapsuleState::Failed(_) = &health {
+                return health;
+            }
+        }
+        self.state.clone()
+    }
+
+    fn source_dir(&self) -> Option<&Path> {
+        self.capsule_dir.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::ExecutionEngine;
+    use crate::manifest::{CapabilitiesDef, PackageDef};
+    use async_trait::async_trait;
+
+    /// A mock engine that always reports healthy.
+    struct HealthyEngine;
+
+    #[async_trait]
+    impl ExecutionEngine for HealthyEngine {
+        async fn load(&mut self, _ctx: &crate::context::CapsuleContext) -> CapsuleResult<()> {
+            Ok(())
+        }
+        async fn unload(&mut self) -> CapsuleResult<()> {
+            Ok(())
+        }
+    }
+
+    /// A mock engine that reports failed health.
+    struct FailedEngine;
+
+    #[async_trait]
+    impl ExecutionEngine for FailedEngine {
+        async fn load(&mut self, _ctx: &crate::context::CapsuleContext) -> CapsuleResult<()> {
+            Ok(())
+        }
+        async fn unload(&mut self) -> CapsuleResult<()> {
+            Ok(())
+        }
+        fn check_health(&self) -> CapsuleState {
+            CapsuleState::Failed("engine crashed".into())
+        }
+    }
+
+    fn test_manifest() -> CapsuleManifest {
+        CapsuleManifest {
+            package: PackageDef {
+                name: "test-capsule".into(),
+                version: "0.0.1".into(),
+                description: None,
+                authors: Vec::new(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                license: None,
+                license_file: None,
+                readme: None,
+                keywords: Vec::new(),
+                categories: Vec::new(),
+                astrid_version: None,
+                publish: None,
+                include: None,
+                exclude: None,
+                metadata: None,
+            },
+            components: Vec::new(),
+            dependencies: std::collections::HashMap::new(),
+            capabilities: CapabilitiesDef::default(),
+            env: std::collections::HashMap::new(),
+            context_files: Vec::new(),
+            commands: Vec::new(),
+            mcp_servers: Vec::new(),
+            skills: Vec::new(),
+            uplinks: Vec::new(),
+            llm_providers: Vec::new(),
+            interceptors: Vec::new(),
+            cron_jobs: Vec::new(),
+            tools: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn composite_check_health_all_healthy() {
+        let mut capsule = CompositeCapsule::new(test_manifest()).unwrap();
+        capsule.state = CapsuleState::Ready;
+        capsule.add_engine(Box::new(HealthyEngine));
+        capsule.add_engine(Box::new(HealthyEngine));
+
+        assert_eq!(capsule.check_health(), CapsuleState::Ready);
+    }
+
+    #[test]
+    fn composite_check_health_returns_first_failure() {
+        let mut capsule = CompositeCapsule::new(test_manifest()).unwrap();
+        capsule.state = CapsuleState::Ready;
+        capsule.add_engine(Box::new(HealthyEngine));
+        capsule.add_engine(Box::new(FailedEngine));
+
+        assert_eq!(
+            capsule.check_health(),
+            CapsuleState::Failed("engine crashed".into())
+        );
+    }
+
+    #[test]
+    fn composite_check_health_no_engines_returns_state() {
+        let mut capsule = CompositeCapsule::new(test_manifest()).unwrap();
+        capsule.state = CapsuleState::Ready;
+
+        assert_eq!(capsule.check_health(), CapsuleState::Ready);
     }
 }

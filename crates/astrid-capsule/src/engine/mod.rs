@@ -69,6 +69,15 @@ pub(crate) trait ExecutionEngine: Send + Sync {
             "interceptors not supported by this engine".into(),
         ))
     }
+
+    /// Probe engine liveness beyond what `state()` reports.
+    ///
+    /// The default implementation returns the capsule's current state.
+    /// Engines with background tasks (e.g., `WasmEngine`) override this
+    /// to detect when a run loop has silently exited.
+    fn check_health(&self) -> crate::capsule::CapsuleState {
+        crate::capsule::CapsuleState::Ready
+    }
 }
 
 /// Build an [`OnboardingField`] from a manifest [`EnvDef`].

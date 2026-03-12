@@ -329,6 +329,18 @@ pub mod sys {
         serde_json::from_slice(&bytes)
             .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
     }
+
+    /// Returns the current wall-clock time as milliseconds since the UNIX epoch.
+    ///
+    /// This is a host call - the WASM guest has no direct access to system time.
+    /// Returns 0 if the host clock is unavailable.
+    pub fn clock_ms() -> Result<u64, SysError> {
+        let bytes = unsafe { astrid_clock_ms()? };
+        let s = String::from_utf8_lossy(&bytes);
+        s.trim()
+            .parse::<u64>()
+            .map_err(|e| SysError::ApiError(format!("clock_ms parse error: {e}")))
+    }
 }
 
 /// The Hooks Airlock — Executing User Middleware

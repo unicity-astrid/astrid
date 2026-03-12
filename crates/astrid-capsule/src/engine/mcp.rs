@@ -173,6 +173,39 @@ impl ExecutionEngine for McpHostEngine {
         Ok(())
     }
 
+    fn check_health(&self) -> crate::capsule::CapsuleState {
+        let server_id = format!("capsule:{}", self.manifest.package.name);
+        // Requires multi-threaded tokio runtime (the kernel health monitor
+        // satisfies this). `health_check()` calls `is_alive()` on each
+        // running server, which checks `RunningService::is_closed()` to
+        // detect crashed subprocesses. `is_server_running()` only checks
+        // HashMap membership and would miss a dead process.
+        debug_assert!(
+            tokio::runtime::Handle::try_current()
+                .map(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
+                .unwrap_or(false),
+            "check_health() with block_in_place requires multi-threaded tokio runtime"
+        );
+        let is_alive = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let health = self
+                    .mcp_client
+                    .inner()
+                    .server_manager()
+                    .health_check()
+                    .await;
+                health.get(&server_id).copied().unwrap_or(false)
+            })
+        });
+        if is_alive {
+            crate::capsule::CapsuleState::Ready
+        } else {
+            crate::capsule::CapsuleState::Failed(format!(
+                "MCP server '{server_id}' is no longer running"
+            ))
+        }
+    }
+
     fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
