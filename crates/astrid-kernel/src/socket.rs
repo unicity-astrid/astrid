@@ -4,19 +4,6 @@ use astrid_core::session_token::SessionToken;
 use tokio::net::UnixListener;
 use tracing::warn;
 
-/// Path to the session token file for the kernel.
-#[must_use]
-pub(crate) fn kernel_token_path() -> PathBuf {
-    use astrid_core::dirs::AstridHome;
-    match AstridHome::resolve() {
-        Ok(home) => home.token_path(),
-        Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME for token path");
-            PathBuf::from("/tmp/.astrid/sessions/system.token")
-        },
-    }
-}
-
 /// Path to the local Unix Domain Socket for the kernel.
 #[must_use]
 pub(crate) fn kernel_socket_path() -> PathBuf {
@@ -57,6 +44,10 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
 
 /// Generate a random session token and write it to the token file.
 ///
+/// Returns both the token and the path it was written to. The caller should
+/// store the path so that the exact same path is used for cleanup at shutdown
+/// (avoids fallback mismatch if the env changes between boot and shutdown).
+///
 /// The token is written with 0o600 permissions so only the owning user
 /// can read it. The CLI reads this token at connect time and sends it
 /// as part of the handshake.
@@ -66,7 +57,7 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
 /// cannot be written. Unlike socket/CLI paths, there is no `/tmp` fallback
 /// because writing a secret token under a world-listable directory would
 /// undermine the authentication it provides.
-pub(crate) fn generate_session_token() -> Result<SessionToken, std::io::Error> {
+pub(crate) fn generate_session_token() -> Result<(SessionToken, PathBuf), std::io::Error> {
     use astrid_core::dirs::AstridHome;
 
     let token = SessionToken::generate();
@@ -77,6 +68,7 @@ pub(crate) fn generate_session_token() -> Result<SessionToken, std::io::Error> {
         ))
     })?;
 
-    token.write_to_file(&home.token_path())?;
-    Ok(token)
+    let path = home.token_path();
+    token.write_to_file(&path)?;
+    Ok((token, path))
 }

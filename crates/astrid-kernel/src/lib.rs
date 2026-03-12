@@ -67,6 +67,9 @@ pub struct Kernel {
     /// Session token for socket authentication. Generated at boot, written to
     /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
     pub session_token: Arc<astrid_core::session_token::SessionToken>,
+    /// Path where the session token was written at boot. Stored so shutdown
+    /// uses the exact same path (avoids fallback mismatch if env changes).
+    token_path: PathBuf,
 }
 
 impl Kernel {
@@ -152,7 +155,7 @@ impl Kernel {
         // Token is written to disk BEFORE the socket is available, so no
         // client can connect before the token file exists.
         let listener = socket::bind_session_socket()?;
-        let session_token = socket::generate_session_token()?;
+        let (session_token, token_path) = socket::generate_session_token()?;
 
         let kv_path = home.state_db_path();
         let kv = Arc::new(
@@ -177,6 +180,7 @@ impl Kernel {
             audit_log,
             active_connections: AtomicUsize::new(0),
             session_token: Arc::new(session_token),
+            token_path,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -518,8 +522,7 @@ impl Kernel {
         // CLI-to-kernel IPC.
         let socket_path = crate::socket::kernel_socket_path();
         let _ = std::fs::remove_file(&socket_path);
-        let token_path = crate::socket::kernel_token_path();
-        let _ = std::fs::remove_file(&token_path);
+        let _ = std::fs::remove_file(&self.token_path);
 
         tracing::info!("Kernel shutdown complete");
     }

@@ -16,6 +16,10 @@ use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
+///
+/// Not `Clone` by design - `session_token` holds secret bytes that should
+/// not be accidentally duplicated. Use `Arc<SessionToken>` for cheap sharing.
+/// Constructed via `new()` + builder methods (`with_session_token`, etc.).
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
     /// Global shared resources directory (`~/.astrid/shared/`). When set,

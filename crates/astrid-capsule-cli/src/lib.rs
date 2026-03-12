@@ -67,10 +67,27 @@ pub fn run() -> FnResult<()> {
                             if let (Some(topic), Some(payload)) = (
                                 msg.get("topic").and_then(|t| t.as_str()),
                                 msg.get("payload"),
-                            ) && let Err(e) = ipc::publish_json(topic, payload)
-                            {
-                                let _ =
-                                    sys::log("error", format!("Failed to publish IPC: {:?}", e));
+                            ) {
+                                // Ingress topic allowlist: only publish to topics the
+                                // CLI legitimately needs. Prevents an authenticated
+                                // client from injecting into internal pipeline topics.
+                                // IMPORTANT: Update this list when adding new
+                                // CLI-originated topics.
+                                if is_allowed_ingress_topic(topic) {
+                                    if let Err(e) = ipc::publish_json(topic, payload) {
+                                        let _ = sys::log(
+                                            "error",
+                                            format!("Failed to publish IPC: {:?}", e),
+                                        );
+                                    }
+                                } else {
+                                    let _ = sys::log(
+                                        "warn",
+                                        format!(
+                                            "Dropped ingress message to blocked topic: {topic}"
+                                        ),
+                                    );
+                                }
                             }
                         } else {
                             let _ = sys::log("warn", "Received malformed IPC payload from socket");
@@ -145,4 +162,21 @@ fn forward_poll_messages(
     }
 
     Ok(())
+}
+
+/// Topics the CLI is allowed to publish to the internal IPC bus.
+/// Any topic not matching this list is dropped with a warning.
+const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
+    "user.prompt",
+    "client.disconnect",
+    "kernel.request.",
+    "astrid.lifecycle.elicit.response.",
+    "capsule.selection.",
+    "cli.command.execute",
+];
+
+fn is_allowed_ingress_topic(topic: &str) -> bool {
+    ALLOWED_INGRESS_PREFIXES
+        .iter()
+        .any(|prefix| topic.starts_with(prefix))
 }

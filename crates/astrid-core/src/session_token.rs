@@ -84,7 +84,7 @@ impl SessionToken {
             use io::Write;
             use std::os::unix::fs::OpenOptionsExt;
 
-            let tmp_path = path.with_extension("tmp");
+            let tmp_path = path.with_extension(format!("{}.tmp", std::process::id()));
             let mut f = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
