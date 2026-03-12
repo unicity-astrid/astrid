@@ -59,8 +59,10 @@ pub(crate) fn astrid_spawn_host_impl(
     inner_cmd.args(&req.args);
 
     // Strip socket-related env vars to prevent child processes from locating
-    // or authenticating to the daemon socket. The env_policy blocklist only
-    // gates config-injected vars; these are inherited from the parent process.
+    // or authenticating to the daemon socket. The env_policy blocklist gates
+    // config-injected vars, but `env_remove` also strips vars inherited from
+    // the parent process (Rust's Command adds these to an explicit remove-list
+    // applied at spawn time). Both layers are needed.
     inner_cmd.env_remove("ASTRID_SOCKET_PATH");
     inner_cmd.env_remove("ASTRID_SESSION_TOKEN");
     inner_cmd.env_remove("ASTRID_HOME");

@@ -24,15 +24,15 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
 }
 
 /// Path to the session authentication token file.
-fn token_path() -> std::path::PathBuf {
+///
+/// # Errors
+/// Returns an error if `ASTRID_HOME` cannot be resolved. No `/tmp` fallback
+/// is used because the server explicitly refuses to write tokens there.
+fn token_path() -> anyhow::Result<std::path::PathBuf> {
     use astrid_core::dirs::AstridHome;
-    match AstridHome::resolve() {
-        Ok(home) => home.token_path(),
-        Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME for token path");
-            std::path::PathBuf::from("/tmp/.astrid/sessions/system.token")
-        },
-    }
+    let home = AstridHome::resolve()
+        .map_err(|e| anyhow::anyhow!("Failed to resolve ASTRID_HOME for token path: {e}"))?;
+    Ok(home.token_path())
 }
 
 /// A client connection to the Kernel's Unix Domain Socket.
@@ -142,7 +142,7 @@ impl SocketClient {
 /// Send the authentication handshake to the daemon and validate the response.
 async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
     // Read the session token from disk (fresh on every connect, no caching).
-    let tok_path = token_path();
+    let tok_path = token_path()?;
     let token = SessionToken::read_from_file(&tok_path).with_context(|| {
         format!(
             "Failed to read session token from {}. Is the daemon running?",
@@ -181,10 +181,13 @@ async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
     }
 
     let mut resp_payload = vec![0u8; resp_len];
-    stream
-        .read_exact(&mut resp_payload)
-        .await
-        .context("Failed to read handshake response payload")?;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        stream.read_exact(&mut resp_payload),
+    )
+    .await
+    .context("Handshake response payload timed out")?
+    .context("Failed to read handshake response payload")?;
 
     let response: HandshakeResponse =
         serde_json::from_slice(&resp_payload).context("Failed to parse handshake response")?;

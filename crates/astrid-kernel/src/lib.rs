@@ -510,13 +510,16 @@ impl Kernel {
             tracing::warn!(error = %e, "Failed to flush KV store during shutdown");
         }
 
-        // 4. Remove the socket file so stale-socket detection works on next boot.
+        // 4. Remove the socket and token files so stale-socket detection works
+        // on next boot and the auth token doesn't persist on disk after shutdown.
         // This runs AFTER capsule unload, which is the correct order: MCP child
         // processes communicate via stdio pipes (not this Unix socket), so they
         // are already terminated by step 2. The socket is only used for
         // CLI-to-kernel IPC.
         let socket_path = crate::socket::kernel_socket_path();
         let _ = std::fs::remove_file(&socket_path);
+        let token_path = crate::socket::kernel_token_path();
+        let _ = std::fs::remove_file(&token_path);
 
         tracing::info!("Kernel shutdown complete");
     }

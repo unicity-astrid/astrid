@@ -67,8 +67,11 @@ impl SessionToken {
 
     /// Write the token to a file with owner-only permissions (0o600).
     ///
-    /// On Unix, the file is created atomically at 0o600 via `OpenOptions::mode`
-    /// to avoid a TOCTOU window where the file is briefly world-readable.
+    /// On Unix, this uses write-then-rename atomicity: writes to a temporary
+    /// file at 0o600 (via `OpenOptions::mode` to avoid a TOCTOU permissions
+    /// window), then atomically renames it to the target path. This prevents
+    /// a racing `read_from_file` from seeing a truncated/empty file during
+    /// daemon restarts.
     ///
     /// # Errors
     ///
@@ -80,13 +83,20 @@ impl SessionToken {
         {
             use io::Write;
             use std::os::unix::fs::OpenOptionsExt;
+
+            let tmp_path = path.with_extension("tmp");
             let mut f = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(true)
                 .mode(0o600)
-                .open(path)?;
+                .open(&tmp_path)?;
             f.write_all(hex.as_bytes())?;
+            f.sync_all()?;
+            drop(f);
+
+            // Atomic rename on the same filesystem.
+            std::fs::rename(&tmp_path, path)?;
         }
 
         #[cfg(not(unix))]

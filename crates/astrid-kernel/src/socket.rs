@@ -4,6 +4,19 @@ use astrid_core::session_token::SessionToken;
 use tokio::net::UnixListener;
 use tracing::warn;
 
+/// Path to the session token file for the kernel.
+#[must_use]
+pub(crate) fn kernel_token_path() -> PathBuf {
+    use astrid_core::dirs::AstridHome;
+    match AstridHome::resolve() {
+        Ok(home) => home.token_path(),
+        Err(e) => {
+            warn!(error = %e, "Failed to resolve ASTRID_HOME for token path");
+            PathBuf::from("/tmp/.astrid/sessions/system.token")
+        },
+    }
+}
+
 /// Path to the local Unix Domain Socket for the kernel.
 #[must_use]
 pub(crate) fn kernel_socket_path() -> PathBuf {
