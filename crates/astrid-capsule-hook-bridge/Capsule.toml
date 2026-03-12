@@ -12,76 +12,76 @@ type = "executable"
 
 # ── Session lifecycle ──
 [[interceptor]]
-event = "session_created"
+event = "astrid.v1.lifecycle.session_created"
 action = "on_session_created"
 
 [[interceptor]]
-event = "session_ended"
+event = "astrid.v1.lifecycle.session_ended"
 action = "on_session_ended"
 
 # ── Tool hooks ──
 [[interceptor]]
-event = "tool_call_started"
+event = "astrid.v1.lifecycle.tool_call_started"
 action = "on_tool_call_started"
 
 [[interceptor]]
-event = "tool_call_completed"
+event = "astrid.v1.lifecycle.tool_call_completed"
 action = "on_tool_call_completed"
 
 [[interceptor]]
-event = "tool_result_persisting"
+event = "astrid.v1.lifecycle.tool_result_persisting"
 action = "on_tool_result_persisting"
 
 # ── Message hooks ──
 [[interceptor]]
-event = "message_received"
+event = "astrid.v1.lifecycle.message_received"
 action = "on_message_received"
 
 [[interceptor]]
-event = "message_sending"
+event = "astrid.v1.lifecycle.message_sending"
 action = "on_message_sending"
 
 [[interceptor]]
-event = "message_sent"
+event = "astrid.v1.lifecycle.message_sent"
 action = "on_message_sent"
 
 # ── Sub-agent hooks ──
 [[interceptor]]
-event = "sub_agent_spawned"
+event = "astrid.v1.lifecycle.sub_agent_spawned"
 action = "on_subagent_spawned"
 
 [[interceptor]]
-event = "sub_agent_completed"
+event = "astrid.v1.lifecycle.sub_agent_completed"
 action = "on_subagent_completed"
 
 [[interceptor]]
-event = "sub_agent_failed"
+event = "astrid.v1.lifecycle.sub_agent_failed"
 action = "on_subagent_failed"
 
 [[interceptor]]
-event = "sub_agent_cancelled"
+event = "astrid.v1.lifecycle.sub_agent_cancelled"
 action = "on_subagent_cancelled"
 
 # ── Context compaction ──
 [[interceptor]]
-event = "context_compaction_started"
+event = "astrid.v1.lifecycle.context_compaction_started"
 action = "on_compaction_started"
 
 [[interceptor]]
-event = "context_compaction_completed"
+event = "astrid.v1.lifecycle.context_compaction_completed"
 action = "on_compaction_completed"
 
 # ── Kernel lifecycle ──
 [[interceptor]]
-event = "kernel_started"
+event = "astrid.v1.lifecycle.kernel_started"
 action = "on_kernel_started"
 
 [[interceptor]]
-event = "kernel_shutdown"
+event = "astrid.v1.lifecycle.kernel_shutdown"
 action = "on_kernel_shutdown"
 
 [capabilities]
 # Hook bridge needs to publish hook results on the event bus
 ipc_publish = [
-    "hook.result.*",
+    "hook.v1.result.*",
 ]

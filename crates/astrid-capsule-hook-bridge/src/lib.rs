@@ -80,27 +80,27 @@ struct HookResult {
 fn mapping_for_event(event_type: &str) -> Option<HookMapping> {
     match event_type {
         // Session lifecycle
-        "session_created" => Some(HookMapping {
+        "astrid.v1.lifecycle.session_created" => Some(HookMapping {
             hook_name: "session_start",
             merge: MergeSemantics::None,
         }),
-        "session_ended" => Some(HookMapping {
+        "astrid.v1.lifecycle.session_ended" => Some(HookMapping {
             hook_name: "session_end",
             merge: MergeSemantics::None,
         }),
 
         // Tool hooks
-        "tool_call_started" => Some(HookMapping {
+        "astrid.v1.lifecycle.tool_call_started" => Some(HookMapping {
             hook_name: "before_tool_call",
             merge: MergeSemantics::ToolCallBefore,
         }),
-        "tool_call_completed" => Some(HookMapping {
+        "astrid.v1.lifecycle.tool_call_completed" => Some(HookMapping {
             hook_name: "after_tool_call",
             merge: MergeSemantics::LastNonNull {
                 field: "modified_result",
             },
         }),
-        "tool_result_persisting" => Some(HookMapping {
+        "astrid.v1.lifecycle.tool_result_persisting" => Some(HookMapping {
             hook_name: "tool_result_persist",
             merge: MergeSemantics::LastNonNull {
                 field: "transformed_result",
@@ -108,47 +108,49 @@ fn mapping_for_event(event_type: &str) -> Option<HookMapping> {
         }),
 
         // Message hooks
-        "message_received" => Some(HookMapping {
+        "astrid.v1.lifecycle.message_received" => Some(HookMapping {
             hook_name: "message_received",
             merge: MergeSemantics::None,
         }),
-        "message_sending" => Some(HookMapping {
+        "astrid.v1.lifecycle.message_sending" => Some(HookMapping {
             hook_name: "message_sending",
             merge: MergeSemantics::LastNonNull {
                 field: "modified_content",
             },
         }),
-        "message_sent" => Some(HookMapping {
+        "astrid.v1.lifecycle.message_sent" => Some(HookMapping {
             hook_name: "message_sent",
             merge: MergeSemantics::None,
         }),
 
         // Sub-agent hooks
-        "sub_agent_spawned" => Some(HookMapping {
+        "astrid.v1.lifecycle.sub_agent_spawned" => Some(HookMapping {
             hook_name: "subagent_start",
             merge: MergeSemantics::None,
         }),
-        "sub_agent_completed" | "sub_agent_failed" | "sub_agent_cancelled" => Some(HookMapping {
+        "astrid.v1.lifecycle.sub_agent_completed"
+        | "astrid.v1.lifecycle.sub_agent_failed"
+        | "astrid.v1.lifecycle.sub_agent_cancelled" => Some(HookMapping {
             hook_name: "subagent_stop",
             merge: MergeSemantics::None,
         }),
 
         // Context compaction (broadcast-only observation hooks)
-        "context_compaction_started" => Some(HookMapping {
+        "astrid.v1.lifecycle.context_compaction_started" => Some(HookMapping {
             hook_name: "on_compaction_started",
             merge: MergeSemantics::None,
         }),
-        "context_compaction_completed" => Some(HookMapping {
+        "astrid.v1.lifecycle.context_compaction_completed" => Some(HookMapping {
             hook_name: "on_compaction_completed",
             merge: MergeSemantics::None,
         }),
 
         // Kernel lifecycle
-        "kernel_started" => Some(HookMapping {
+        "astrid.v1.lifecycle.kernel_started" => Some(HookMapping {
             hook_name: "kernel_start",
             merge: MergeSemantics::None,
         }),
-        "kernel_shutdown" => Some(HookMapping {
+        "astrid.v1.lifecycle.kernel_shutdown" => Some(HookMapping {
             hook_name: "kernel_stop",
             merge: MergeSemantics::None,
         }),
@@ -274,14 +276,14 @@ impl HookBridge {
     /// Handle `session_created` lifecycle event.
     #[astrid::interceptor("on_session_created")]
     pub fn on_session_created(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("session_created", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.session_created", payload)?;
         Ok(())
     }
 
     /// Handle `session_ended` lifecycle event.
     #[astrid::interceptor("on_session_ended")]
     pub fn on_session_ended(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("session_ended", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.session_ended", payload)?;
         Ok(())
     }
 
@@ -292,13 +294,13 @@ impl HookBridge {
     /// Returns merged result with potential skip/modified_params.
     #[astrid::interceptor("on_tool_call_started")]
     pub fn on_tool_call_started(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
-        handle_lifecycle("tool_call_started", payload)
+        handle_lifecycle("astrid.v1.lifecycle.tool_call_started", payload)
     }
 
     /// Handle `tool_call_completed` — maps to `after_tool_call` hook.
     #[astrid::interceptor("on_tool_call_completed")]
     pub fn on_tool_call_completed(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
-        handle_lifecycle("tool_call_completed", payload)
+        handle_lifecycle("astrid.v1.lifecycle.tool_call_completed", payload)
     }
 
     /// Handle `tool_result_persisting` — maps to `tool_result_persist` hook.
@@ -307,7 +309,7 @@ impl HookBridge {
         &self,
         payload: serde_json::Value,
     ) -> Result<Vec<u8>, SysError> {
-        handle_lifecycle("tool_result_persisting", payload)
+        handle_lifecycle("astrid.v1.lifecycle.tool_result_persisting", payload)
     }
 
     // ── Message hooks ──
@@ -315,20 +317,20 @@ impl HookBridge {
     /// Handle `message_received` lifecycle event.
     #[astrid::interceptor("on_message_received")]
     pub fn on_message_received(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("message_received", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.message_received", payload)?;
         Ok(())
     }
 
     /// Handle `message_sending` — maps to `message_sending` hook.
     #[astrid::interceptor("on_message_sending")]
     pub fn on_message_sending(&self, payload: serde_json::Value) -> Result<Vec<u8>, SysError> {
-        handle_lifecycle("message_sending", payload)
+        handle_lifecycle("astrid.v1.lifecycle.message_sending", payload)
     }
 
     /// Handle `message_sent` lifecycle event.
     #[astrid::interceptor("on_message_sent")]
     pub fn on_message_sent(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("message_sent", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.message_sent", payload)?;
         Ok(())
     }
 
@@ -337,28 +339,28 @@ impl HookBridge {
     /// Handle `sub_agent_spawned` lifecycle event.
     #[astrid::interceptor("on_subagent_spawned")]
     pub fn on_subagent_spawned(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("sub_agent_spawned", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.sub_agent_spawned", payload)?;
         Ok(())
     }
 
     /// Handle `sub_agent_completed` lifecycle event.
     #[astrid::interceptor("on_subagent_completed")]
     pub fn on_subagent_completed(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("sub_agent_completed", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.sub_agent_completed", payload)?;
         Ok(())
     }
 
     /// Handle `sub_agent_failed` lifecycle event.
     #[astrid::interceptor("on_subagent_failed")]
     pub fn on_subagent_failed(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("sub_agent_failed", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.sub_agent_failed", payload)?;
         Ok(())
     }
 
     /// Handle `sub_agent_cancelled` lifecycle event.
     #[astrid::interceptor("on_subagent_cancelled")]
     pub fn on_subagent_cancelled(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("sub_agent_cancelled", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.sub_agent_cancelled", payload)?;
         Ok(())
     }
 
@@ -367,14 +369,14 @@ impl HookBridge {
     /// Handle `context_compaction_started` lifecycle event.
     #[astrid::interceptor("on_compaction_started")]
     pub fn on_compaction_started(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("context_compaction_started", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.context_compaction_started", payload)?;
         Ok(())
     }
 
     /// Handle `context_compaction_completed` lifecycle event.
     #[astrid::interceptor("on_compaction_completed")]
     pub fn on_compaction_completed(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("context_compaction_completed", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.context_compaction_completed", payload)?;
         Ok(())
     }
 
@@ -383,14 +385,14 @@ impl HookBridge {
     /// Handle `kernel_started` lifecycle event.
     #[astrid::interceptor("on_kernel_started")]
     pub fn on_kernel_started(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("kernel_started", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.kernel_started", payload)?;
         Ok(())
     }
 
     /// Handle `kernel_shutdown` lifecycle event.
     #[astrid::interceptor("on_kernel_shutdown")]
     pub fn on_kernel_shutdown(&self, payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = handle_lifecycle("kernel_shutdown", payload)?;
+        let _ = handle_lifecycle("astrid.v1.lifecycle.kernel_shutdown", payload)?;
         Ok(())
     }
 }

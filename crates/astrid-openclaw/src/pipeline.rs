@@ -251,8 +251,25 @@ struct Tier2Manifest {
     uplinks: Vec<Tier2UplinkDef>,
     mcp_server: Vec<Tier2McpServer>,
     capabilities: Tier2Capabilities,
+    #[serde(default, skip_serializing_if = "Tier2Dependencies::is_empty")]
+    dependencies: Tier2Dependencies,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     env: HashMap<String, Tier2EnvDef>,
+}
+
+/// Capability-based dependency declarations for Tier 2 capsule manifests.
+#[derive(Debug, Default, serde::Serialize)]
+struct Tier2Dependencies {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provides: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requires: Vec<String>,
+}
+
+impl Tier2Dependencies {
+    fn is_empty(&self) -> bool {
+        self.provides.is_empty() && self.requires.is_empty()
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -384,6 +401,29 @@ fn generate_tier2_manifest(
         capabilities: Tier2Capabilities {
             uplink: !oc_manifest.channels.is_empty(),
             host_process: vec!["node".to_string()],
+        },
+        dependencies: {
+            let mut provides = Vec::new();
+            for channel in &oc_manifest.channels {
+                if channel.is_empty() || channel.split('.').any(str::is_empty) {
+                    return Err(BridgeError::Manifest(format!(
+                        "channel name '{channel}' is invalid (empty or contains empty segments)"
+                    )));
+                }
+                provides.push(format!("uplink:{channel}"));
+            }
+            for provider in &oc_manifest.providers {
+                if provider.is_empty() || provider.split('.').any(str::is_empty) {
+                    return Err(BridgeError::Manifest(format!(
+                        "provider name '{provider}' is invalid (empty or contains empty segments)"
+                    )));
+                }
+                provides.push(format!("llm:{provider}"));
+            }
+            Tier2Dependencies {
+                provides,
+                ..Default::default()
+            }
         },
         env,
     };

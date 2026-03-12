@@ -12,63 +12,69 @@ type = "executable"
 
 # User input from frontends (CLI, Telegram, etc.)
 [[interceptor]]
-event = "user.prompt"
+event = "user.v1.prompt"
 action = "handle_user_prompt"
 
 # System prompt returned by the identity capsule
 [[interceptor]]
-event = "identity.response.ready"
+event = "identity.v1.response.ready"
 action = "handle_identity_response"
 
 # Assembled prompt returned by the prompt builder capsule
 [[interceptor]]
-event = "prompt_builder.response.assemble"
+event = "prompt_builder.v1.response.assemble"
 action = "handle_prompt_response"
 
 # LLM streaming events from any provider capsule
 [[interceptor]]
-event = "llm.stream.*"
+event = "llm.v1.stream.*"
 action = "handle_llm_stream"
 
 # Tool execution results from the tool router
 [[interceptor]]
-event = "tool.execute.result"
+event = "tool.v1.execute.result"
 action = "handle_tool_result"
 
 # Active model changed by the registry capsule
 [[interceptor]]
-event = "registry.active_model_changed"
+event = "registry.v1.active_model_changed"
 action = "handle_model_changed"
 
 # Periodic watchdog tick from the kernel for timeout enforcement
 [[interceptor]]
-event = "react.watchdog.tick"
+event = "astrid.v1.watchdog.tick"
 action = "handle_watchdog_tick"
 
 # Event bus broadcast lag notification from the dispatcher
 [[interceptor]]
-event = "system.event_bus.lagged"
+event = "astrid.v1.event_bus.lagged"
 action = "handle_bus_lag"
 
 # Lifecycle restart signal from the kernel (ephemeral key cleanup)
 [[interceptor]]
-event = "system.lifecycle.restart"
+event = "system.v1.lifecycle.restart"
 action = "handle_lifecycle_restart"
 
 # Session clear request from frontends
 [[interceptor]]
-event = "session.clear"
+event = "session.v1.clear"
 action = "handle_session_clear"
+
+[dependencies]
+requires = [
+    "topic:identity.v1.response.ready",
+    "topic:session.v1.response.get_messages",
+]
 
 [capabilities]
 ipc_publish = [
-    "identity.request.build",
-    "prompt_builder.assemble",
-    "agent.stream.delta",
-    "agent.response",
-    "agent.session_changed",
-    "tool.request.execute",
-    "llm.request.generate.*",
-    "session.request.get_messages",
-    "session.request.clear",
+    "identity.v1.request.build",
+    "prompt_builder.v1.assemble",
+    "agent.v1.stream.delta",
+    "agent.v1.response",
+    "agent.v1.session_changed",
+    "tool.v1.request.execute",
+    "llm.v1.request.generate.*",
+    "session.v1.request.get_messages",
+    "session.v1.request.clear",
 ]

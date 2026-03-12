@@ -10,13 +10,13 @@
 //!
 //! # IPC Protocol
 //!
-//! **Queries** (publish to these topics, registry responds on `registry.response.*`):
-//! - `registry.get_providers` — returns list of available LLM providers
-//! - `registry.get_active_model` — returns the currently active model
-//! - `registry.set_active_model` — payload: `{"model_id": "..."}`, sets active model
+//! **Queries** (publish to these topics, registry responds on `registry.v1.response.*`):
+//! - `registry.v1.get_providers` — returns list of available LLM providers
+//! - `registry.v1.get_active_model` — returns the currently active model
+//! - `registry.v1.set_active_model` — payload: `{"model_id": "..."}`, sets active model
 //!
 //! **Events** (published by registry):
-//! - `registry.active_model_changed` — payload: `ProviderEntry`, emitted on model change
+//! - `registry.v1.active_model_changed` — payload: `ProviderEntry`, emitted on model change
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -81,7 +81,7 @@ fn discover_providers() -> Vec<ProviderEntry> {
     // Subscribe BEFORE publishing the request. Broadcast channels do not
     // replay missed messages, so if we publish first the kernel response
     // could arrive before our subscription is active and be permanently lost.
-    let sub = match ipc::subscribe("kernel.response.get_capsule_metadata") {
+    let sub = match ipc::subscribe("astrid.v1.response.get_capsule_metadata") {
         Ok(h) => h,
         Err(_) => return Vec::new(),
     };
@@ -94,7 +94,7 @@ fn discover_providers() -> Vec<ProviderEntry> {
         },
     };
 
-    if ipc::publish_json("kernel.request.get_capsule_metadata", &wrapped).is_err() {
+    if ipc::publish_json("astrid.v1.request.get_capsule_metadata", &wrapped).is_err() {
         let _ = ipc::unsubscribe(&sub);
         return Vec::new();
     }
@@ -182,14 +182,14 @@ fn resolve_providers(entries: &[CapsuleMetadataEntry]) -> Vec<ProviderEntry> {
             let request_topic = entry
                 .interceptor_events
                 .iter()
-                .find(|e| e.starts_with("llm.request.generate"))
+                .find(|e| e.starts_with("llm.v1.request.generate"))
                 .cloned()
-                .unwrap_or_else(|| format!("llm.request.generate.{}", entry.name));
+                .unwrap_or_else(|| format!("llm.v1.request.generate.{}", entry.name));
 
             let suffix = request_topic
-                .strip_prefix("llm.request.generate.")
+                .strip_prefix("llm.v1.request.generate.")
                 .unwrap_or(&entry.name);
-            let stream_topic = format!("llm.stream.{suffix}");
+            let stream_topic = format!("llm.v1.stream.{suffix}");
 
             providers.push(ProviderEntry {
                 id: llm_def.id.clone(),
@@ -206,10 +206,10 @@ fn resolve_providers(entries: &[CapsuleMetadataEntry]) -> Vec<ProviderEntry> {
 
 /// Publish the active model changed event so the react loop (and frontends) can respond.
 fn publish_model_changed(provider: &ProviderEntry) {
-    let _ = ipc::publish_json("registry.active_model_changed", provider);
+    let _ = ipc::publish_json("registry.v1.active_model_changed", provider);
 }
 
-/// Handle a `registry.get_providers` request.
+/// Handle a `registry.v1.get_providers` request.
 fn handle_get_providers() {
     let providers = discover_providers();
     let mut state = load_state();
@@ -228,10 +228,10 @@ fn handle_get_providers() {
         );
     }
 
-    let _ = ipc::publish_json("registry.response.get_providers", &state.providers);
+    let _ = ipc::publish_json("registry.v1.response.get_providers", &state.providers);
 }
 
-/// Handle a `registry.get_active_model` request.
+/// Handle a `registry.v1.get_active_model` request.
 fn handle_get_active_model() {
     let state = load_state();
     let active = state
@@ -239,10 +239,10 @@ fn handle_get_active_model() {
         .as_ref()
         .and_then(|id| state.providers.iter().find(|p| &p.id == id));
 
-    let _ = ipc::publish_json("registry.response.get_active_model", &active);
+    let _ = ipc::publish_json("registry.v1.response.get_active_model", &active);
 }
 
-/// Handle a `registry.set_active_model` request.
+/// Handle a `registry.v1.set_active_model` request.
 ///
 /// The payload is the serialized `IpcPayload` from the IPC message.
 /// For `IpcPayload::Custom { data }`, the JSON shape is
@@ -259,7 +259,7 @@ fn handle_set_active_model(payload: &serde_json::Value) {
         Some(id) => id.to_string(),
         None => {
             let _ = ipc::publish_json(
-                "registry.response.set_active_model",
+                "registry.v1.response.set_active_model",
                 &serde_json::json!({"error": "missing model_id"}),
             );
             return;
@@ -278,12 +278,12 @@ fn handle_set_active_model(payload: &serde_json::Value) {
         save_state(&state);
         publish_model_changed(&provider);
         let _ = ipc::publish_json(
-            "registry.response.set_active_model",
+            "registry.v1.response.set_active_model",
             &serde_json::json!({"status": "ok", "active_model": provider}),
         );
     } else {
         let _ = ipc::publish_json(
-            "registry.response.set_active_model",
+            "registry.v1.response.set_active_model",
             &serde_json::json!({"error": format!("unknown model: {model_id}")}),
         );
     }
@@ -326,14 +326,14 @@ fn auto_select_if_single(state: &mut RegistryState) {
 pub fn run() -> FnResult<()> {
     let _ = sys::log("info", "Registry capsule starting");
 
-    let sub = ipc::subscribe("registry.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+    let sub = ipc::subscribe("registry.v1.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Subscribe to CLI command execution so we can handle `/models`.
     let cmd_sub =
-        ipc::subscribe("cli.command.execute").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        ipc::subscribe("cli.v1.command.execute").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Subscribe to model selection callbacks from the TUI picker.
-    let selection_sub = ipc::subscribe("registry.selection.callback")
+    let selection_sub = ipc::subscribe("registry.v1.selection.callback")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
@@ -343,7 +343,7 @@ pub fn run() -> FnResult<()> {
     // Single subscription for kernel.capsules_loaded — used for both initial
     // readiness wait AND reload re-discovery in the event loop. Avoids the
     // race window of unsubscribe + resubscribe where a message could be missed.
-    let capsules_loaded_sub = ipc::subscribe("kernel.capsules_loaded")
+    let capsules_loaded_sub = ipc::subscribe("astrid.v1.capsules_loaded")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Wait for the kernel to signal that all capsules have been loaded.
@@ -358,7 +358,7 @@ pub fn run() -> FnResult<()> {
     if !capsules_ready {
         let _ = sys::log(
             "warn",
-            "Timed out waiting for kernel.capsules_loaded — proceeding with discovery anyway",
+            "Timed out waiting for astrid.v1.capsules_loaded — proceeding with discovery anyway",
         );
     }
 
@@ -457,14 +457,14 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
         };
 
         // Skip our own response messages to avoid unnecessary processing.
-        if topic.starts_with("registry.response.") || topic == "registry.active_model_changed" {
+        if topic.starts_with("registry.v1.response.") || topic == "registry.v1.active_model_changed" {
             continue;
         }
 
         match topic {
-            "registry.get_providers" => handle_get_providers(),
-            "registry.get_active_model" => handle_get_active_model(),
-            "registry.set_active_model" => {
+            "registry.v1.get_providers" => handle_get_providers(),
+            "registry.v1.get_active_model" => handle_get_active_model(),
+            "registry.v1.set_active_model" => {
                 if let Some(payload) = msg.get("payload") {
                     handle_set_active_model(payload);
                 }
@@ -474,7 +474,7 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
     }
 }
 
-/// Parse `cli.command.execute` envelopes and handle `/models`.
+/// Parse `cli.v1.command.execute` envelopes and handle `/models`.
 fn handle_command_envelope(poll_bytes: &[u8]) {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
@@ -554,12 +554,12 @@ fn handle_set_active_model_by_id(model_id: &str) {
         save_state(&state);
         publish_model_changed(&provider);
         let _ = ipc::publish_json(
-            "registry.response.set_active_model",
+            "registry.v1.response.set_active_model",
             &serde_json::json!({"status": "ok", "active_model": provider}),
         );
     } else {
         let _ = ipc::publish_json(
-            "registry.response.set_active_model",
+            "registry.v1.response.set_active_model",
             &serde_json::json!({"error": format!("unknown model: {model_id}")}),
         );
     }
@@ -608,8 +608,8 @@ fn emit_model_selection() {
         "request_id": request_id,
         "title": "Select LLM Model",
         "options": options,
-        "callback_topic": "registry.selection.callback",
+        "callback_topic": "registry.v1.selection.callback",
     });
 
-    let _ = ipc::publish_json("registry.response.models", &selection);
+    let _ = ipc::publish_json("registry.v1.response.models", &selection);
 }

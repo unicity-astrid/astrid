@@ -369,7 +369,7 @@ mod tests {
                 metadata: None,
             },
             components: Vec::new(),
-            dependencies: std::collections::HashMap::new(),
+            dependencies: Default::default(),
             capabilities: CapabilitiesDef::default(),
             env: std::collections::HashMap::new(),
             context_files: Vec::new(),
@@ -381,6 +381,7 @@ mod tests {
             interceptors: Vec::new(),
             cron_jobs: Vec::new(),
             tools: Vec::new(),
+            effective_provides_cache: std::sync::OnceLock::new(),
         }
     }
 
@@ -413,5 +414,51 @@ mod tests {
         capsule.state = CapsuleState::Ready;
 
         assert_eq!(capsule.check_health(), CapsuleState::Ready);
+    }
+
+    // -- wait_ready tests --
+
+    /// A mock engine that never signals ready (simulates slow startup).
+    struct SlowEngine;
+
+    #[async_trait]
+    impl ExecutionEngine for SlowEngine {
+        async fn load(&mut self, _ctx: &crate::context::CapsuleContext) -> CapsuleResult<()> {
+            Ok(())
+        }
+        async fn unload(&mut self) -> CapsuleResult<()> {
+            Ok(())
+        }
+        async fn wait_ready(&self, timeout: std::time::Duration) -> ReadyStatus {
+            tokio::time::sleep(timeout).await;
+            ReadyStatus::Timeout
+        }
+    }
+
+    #[tokio::test]
+    async fn composite_wait_ready_first_engine_timeout_starves_second() {
+        // With a shared deadline, if the first engine consumes the entire
+        // budget, the second engine gets zero time and returns Timeout
+        // immediately. This test locks in the shared-deadline contract.
+        let mut capsule = CompositeCapsule::new(test_manifest()).unwrap();
+        capsule.add_engine(Box::new(SlowEngine));
+        capsule.add_engine(Box::new(HealthyEngine));
+
+        let status = capsule
+            .wait_ready(std::time::Duration::from_millis(50))
+            .await;
+        assert_eq!(status, ReadyStatus::Timeout);
+    }
+
+    #[tokio::test]
+    async fn composite_wait_ready_all_healthy() {
+        let mut capsule = CompositeCapsule::new(test_manifest()).unwrap();
+        capsule.add_engine(Box::new(HealthyEngine));
+        capsule.add_engine(Box::new(HealthyEngine));
+
+        let status = capsule
+            .wait_ready(std::time::Duration::from_millis(100))
+            .await;
+        assert_eq!(status, ReadyStatus::Ready);
     }
 }

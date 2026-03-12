@@ -191,7 +191,7 @@ impl ExecutionEngine for WasmEngine {
                 tokio::runtime::Handle::current(),
             );
 
-            let mut host_state = HostState {
+            let host_state = HostState {
                 capsule_uuid: uuid::Uuid::new_v4(),
                 caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
@@ -231,14 +231,10 @@ impl ExecutionEngine for WasmEngine {
                 ready_tx: None,
             };
 
-            // Create the readiness watch channel. The sender goes into
-            // HostState so the WASM guest can signal ready via
-            // `astrid_signal_ready`. The receiver is returned so
-            // `WasmEngine::wait_ready` can await it.
-            let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
-            host_state.ready_tx = Some(ready_tx);
-
+            // ready_tx starts as None; only set after plugin build if
+            // the WASM binary exports a run() function (see below).
             let user_data = UserData::new(host_state);
+            let user_data_ref = user_data.clone();
 
             let extism_wasm = Wasm::data(wasm_bytes);
             let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
@@ -261,13 +257,31 @@ impl ExecutionEngine for WasmEngine {
 
             let has_run = plugin.function_exists("run");
 
+            // Only allocate the watch channel for run-loop capsules.
+            // UserData is Arc-based so the clone lets us inject the sender
+            // into HostState after the plugin build.
+            let ready_rx = if has_run {
+                let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+                let ud = user_data_ref.get().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
+                })?;
+                ud.lock()
+                    .map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
+                    })?
+                    .ready_tx = Some(ready_tx);
+                Some(ready_rx)
+            } else {
+                None
+            };
+
             Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
 
         if has_run {
-            self.ready_rx = Some(tokio::sync::Mutex::new(ready_rx));
+            self.ready_rx = ready_rx.map(tokio::sync::Mutex::new);
 
             // The run loop holds the plugin mutex for its entire lifetime.
             // We must NOT store the plugin in self.plugin, because the

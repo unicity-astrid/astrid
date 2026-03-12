@@ -7,7 +7,7 @@
 //!
 //! Receives `tool.request.execute` events from the react loop, validates
 //! the tool name, forwards the request to the appropriate tool capsule's
-//! topic, and routes results back to `tool.execute.result`.
+//! topic, and routes results back to `tool.v1.execute.result`.
 
 use astrid_events::ipc::IpcPayload;
 use astrid_events::llm::ToolCallResult;
@@ -52,7 +52,7 @@ impl ToolRouter {
             );
         }
 
-        let forward_topic = format!("tool.execute.{tool_name}");
+        let forward_topic = format!("tool.v1.execute.{tool_name}");
 
         let _ = sys::log("info", format!("Routing tool request: {tool_name} -> {forward_topic}"));
 
@@ -92,7 +92,7 @@ impl ToolRouter {
         );
 
         ipc::publish_json(
-            "tool.execute.result",
+            "tool.v1.execute.result",
             &IpcPayload::ToolExecuteResult { call_id, result },
         )
     }
@@ -102,7 +102,7 @@ impl ToolRouter {
     /// Publish an error result back to the react loop for a failed tool dispatch.
     fn publish_error_result(call_id: &str, error_message: String) -> Result<(), SysError> {
         ipc::publish_json(
-            "tool.execute.result",
+            "tool.v1.execute.result",
             &IpcPayload::ToolExecuteResult {
                 call_id: call_id.to_string(),
                 result: ToolCallResult {

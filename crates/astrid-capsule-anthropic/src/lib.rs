@@ -5,9 +5,9 @@
 
 //! Anthropic LLM provider capsule.
 //!
-//! Subscribes to `llm.request.generate.anthropic` IPC events, calls the
+//! Subscribes to `llm.v1.request.generate.anthropic` IPC events, calls the
 //! Anthropic Messages API via the HTTP airlock, parses the SSE streaming
-//! response, and publishes standardized `llm.stream.anthropic` events back
+//! response, and publishes standardized `llm.v1.stream.anthropic` events back
 //! to the event bus.
 
 mod schemas;
@@ -42,7 +42,7 @@ impl AnthropicProvider {
             if let Err(e) = Self::execute_request(request_id, &messages, &tools, &system) {
                 let _ = sys::log("error", format!("LLM request failed: {e}"));
                 let _ = ipc::publish_json(
-                    "llm.stream.anthropic",
+                    "llm.v1.stream.anthropic",
                     &IpcPayload::LlmStreamEvent {
                         request_id,
                         event: StreamEvent::Error(e.to_string()),
@@ -229,7 +229,7 @@ impl AnthropicProvider {
     /// Publish a stream event to the event bus with the original request ID.
     fn publish_stream(request_id: Uuid, event: StreamEvent) -> Result<(), SysError> {
         ipc::publish_json(
-            "llm.stream.anthropic",
+            "llm.v1.stream.anthropic",
             &IpcPayload::LlmStreamEvent { request_id, event },
         )
     }

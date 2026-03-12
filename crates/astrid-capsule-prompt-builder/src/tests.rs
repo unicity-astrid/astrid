@@ -230,14 +230,14 @@ fn parse_hook_responses_from_ipc_envelope() {
     let envelope = serde_json::json!({
         "messages": [
             {
-                "topic": "prompt_builder.hook_response.req-42",
+                "topic": "prompt_builder.v1.hook_response.req-42",
                 "source_id": "plugin-date-context",
                 "payload": {
                     "prependSystemContext": "Current date: 2026-03-08"
                 }
             },
             {
-                "topic": "prompt_builder.hook_response.req-42",
+                "topic": "prompt_builder.v1.hook_response.req-42",
                 "source_id": "plugin-format-rules",
                 "payload": {
                     "appendSystemContext": "Always use markdown.",
@@ -245,7 +245,7 @@ fn parse_hook_responses_from_ipc_envelope() {
                 }
             },
             {
-                "topic": "prompt_builder.hook_response.req-42",
+                "topic": "prompt_builder.v1.hook_response.req-42",
                 "source_id": "plugin-custom-prompt",
                 "payload": {
                     "data": {
@@ -363,36 +363,36 @@ fn assemble_response_serializes_correctly() {
 
 #[test]
 fn should_dispatch_assemble_topic() {
-    assert!(should_dispatch_topic("prompt_builder.assemble"));
+    assert!(should_dispatch_topic("prompt_builder.v1.assemble"));
 }
 
 #[test]
 fn should_not_dispatch_own_response_topics() {
-    assert!(!should_dispatch_topic("prompt_builder.response.assemble"));
-    assert!(!should_dispatch_topic("prompt_builder.response.foo"));
+    assert!(!should_dispatch_topic("prompt_builder.v1.response.assemble"));
+    assert!(!should_dispatch_topic("prompt_builder.v1.response.foo"));
 }
 
 #[test]
 fn should_not_dispatch_hook_response_topics() {
     assert!(!should_dispatch_topic(
-        "prompt_builder.hook_response.req-42"
+        "prompt_builder.v1.hook_response.req-42"
     ));
     assert!(!should_dispatch_topic(
-        "prompt_builder.hook_response.abc-123"
+        "prompt_builder.v1.hook_response.abc-123"
     ));
 }
 
 #[test]
 fn should_not_dispatch_interceptor_topics() {
-    assert!(!should_dispatch_topic("before_prompt_build"));
-    assert!(!should_dispatch_topic("after_prompt_build"));
+    assert!(!should_dispatch_topic("prompt_builder.v1.hook.before_build"));
+    assert!(!should_dispatch_topic("prompt_builder.v1.hook.after_build"));
 }
 
 #[test]
 fn should_dispatch_unrelated_topics() {
     // These would be ignored by the match anyway, but shouldn't be filtered.
-    assert!(should_dispatch_topic("prompt_builder.some_other_action"));
-    assert!(should_dispatch_topic("prompt_builder.status"));
+    assert!(should_dispatch_topic("prompt_builder.v1.some_other_action"));
+    assert!(should_dispatch_topic("prompt_builder.v1.status"));
 }
 
 // ── Response topic isolation tests ────────────────────────────
@@ -400,8 +400,8 @@ fn should_dispatch_unrelated_topics() {
 #[test]
 fn response_topics_are_unique_per_request_id() {
     // Proves that concurrent requests can't cross-contaminate.
-    let topic_a = format!("prompt_builder.hook_response.{}", "req-aaa");
-    let topic_b = format!("prompt_builder.hook_response.{}", "req-bbb");
+    let topic_a = format!("prompt_builder.v1.hook_response.{}", "req-aaa");
+    let topic_b = format!("prompt_builder.v1.hook_response.{}", "req-bbb");
     assert_ne!(topic_a, topic_b);
     // Each topic is specific enough that subscribing to one won't receive the other.
     assert!(!topic_a.ends_with("req-bbb"));
@@ -418,12 +418,12 @@ fn before_prompt_build_payload_includes_response_topic() {
         request_id: "req-99".to_string(),
         model: "claude".to_string(),
         provider: "anthropic".to_string(),
-        response_topic: "prompt_builder.hook_response.req-99".to_string(),
+        response_topic: "prompt_builder.v1.hook_response.req-99".to_string(),
     };
     let json = serde_json::to_value(&payload).expect("serialize");
     assert_eq!(
         json["response_topic"],
-        "prompt_builder.hook_response.req-99"
+        "prompt_builder.v1.hook_response.req-99"
     );
     // Plugins need this field to know where to send their response.
     assert!(json.get("response_topic").is_some());
@@ -437,7 +437,7 @@ fn before_prompt_build_payload_round_trips() {
         request_id: "req-123".to_string(),
         model: "claude-sonnet-4-20250514".to_string(),
         provider: "anthropic".to_string(),
-        response_topic: "prompt_builder.hook_response.req-123".to_string(),
+        response_topic: "prompt_builder.v1.hook_response.req-123".to_string(),
     };
     let bytes = serde_json::to_vec(&original).expect("serialize");
     let restored: BeforePromptBuildPayload =
@@ -447,7 +447,7 @@ fn before_prompt_build_payload_round_trips() {
     assert_eq!(restored.model, "claude-sonnet-4-20250514");
     assert_eq!(
         restored.response_topic,
-        "prompt_builder.hook_response.req-123"
+        "prompt_builder.v1.hook_response.req-123"
     );
 }
 
@@ -489,7 +489,7 @@ fn parse_hook_responses_ignores_unrelated_payload() {
     // should not be parsed as a HookResponse.
     let envelope = serde_json::json!({
         "messages": [{
-            "topic": "prompt_builder.hook_response.req-1",
+            "topic": "prompt_builder.v1.hook_response.req-1",
             "source_id": "some-capsule",
             "payload": {
                 "status": "ok",

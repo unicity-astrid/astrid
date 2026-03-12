@@ -12,21 +12,21 @@ type = "executable"
 
 # Append messages to conversation history
 [[interceptor]]
-event = "session.append"
+event = "session.v1.append"
 action = "handle_append"
 
 # Serve conversation history on request
 [[interceptor]]
-event = "session.request.get_messages"
+event = "session.v1.request.get_messages"
 action = "handle_get_messages"
 
 # Clear session (create new chained session)
 [[interceptor]]
-event = "session.request.clear"
+event = "session.v1.request.clear"
 action = "handle_clear"
 
 [capabilities]
 ipc_publish = [
-    "session.response.get_messages",
-    "session.response.clear",
+    "session.v1.response.get_messages",
+    "session.v1.response.clear",
 ]

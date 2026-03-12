@@ -323,7 +323,7 @@ impl TurnState {
             Self::default()
         });
 
-        if state.schema_version != 0 && state.schema_version != 1 {
+        if !matches!(state.schema_version, 0 | 1) {
             let _ = sys::log(
                 "warn",
                 format!(
@@ -411,7 +411,7 @@ impl TurnState {
                 format!("Phase {phase_name} timed out after {elapsed_secs}s"),
             );
             let _ = ipc::publish_json(
-                "agent.response",
+                "agent.v1.response",
                 &IpcPayload::AgentResponse {
                     text: format!(
                         "Request timed out ({phase_name} phase exceeded {timeout}s limit)"
@@ -464,11 +464,11 @@ impl ReactLoop {
         let timeout = session_timeout_ms();
 
         // Subscribe before publishing to avoid delivery race.
-        let handle = ipc::subscribe("session.response.clear")?;
+        let handle = ipc::subscribe("session.v1.response.clear")?;
 
         let result = (|| -> Result<String, SysError> {
             ipc::publish_json(
-                "session.request.clear",
+                "session.v1.request.clear",
                 &serde_json::json!({
                     "session_id": old_session_id,
                     "correlation_id": correlation_id,
@@ -553,7 +553,7 @@ impl ReactLoop {
 
         // Notify frontends of the session change.
         ipc::publish_json(
-            "agent.session_changed",
+            "agent.v1.session_changed",
             &serde_json::json!({
                 "old_session_id": old_session_id,
                 "new_session_id": new_session_id,
@@ -605,7 +605,7 @@ impl ReactLoop {
         Ok(())
     }
 
-    /// Handles `user.prompt` events from platforms (CLI, Telegram, etc.).
+    /// Handles `user.v1.prompt` events from platforms (CLI, Telegram, etc.).
     ///
     /// Appends the user message to the session capsule, fetches history,
     /// then requests the system prompt from the identity capsule.
@@ -667,7 +667,7 @@ impl ReactLoop {
         // Request system prompt from the identity capsule.
         // session_id is threaded through so the response echoes it back.
         ipc::publish_json(
-            "identity.request.build",
+            "identity.v1.request.build",
             &serde_json::json!({
                 "workspace_root": sys::get_config_string("workspace_root").unwrap_or_default(),
                 "session_id": state.session_id,
@@ -677,7 +677,7 @@ impl ReactLoop {
         Ok(())
     }
 
-    /// Handles `identity.response.ready` events from the identity capsule.
+    /// Handles `identity.v1.response.ready` events from the identity capsule.
     ///
     /// Receives the assembled system prompt and sends it to the prompt
     /// builder capsule for capsule hook interception before LLM generation.
@@ -725,14 +725,14 @@ impl ReactLoop {
         // Derive the active provider from the registry's LLM topic.
         let llm_topic = Self::active_llm_topic();
         let provider = llm_topic
-            .strip_prefix("llm.request.generate.")
+            .strip_prefix("llm.v1.request.generate.")
             .unwrap_or("unknown")
             .to_string();
 
         // Send to prompt builder for plugin hook interception.
         // session_id is threaded through so the response echoes it back.
         ipc::publish_json(
-            "prompt_builder.assemble",
+            "prompt_builder.v1.assemble",
             &serde_json::json!({
                 "messages": messages,
                 "system_prompt": prompt,
@@ -832,7 +832,7 @@ impl ReactLoop {
                 state.response_text.push_str(&text);
                 // Forward to platform for real-time display
                 let _ = ipc::publish_json(
-                    "agent.stream.delta",
+                    "agent.v1.stream.delta",
                     &IpcPayload::AgentResponse {
                         text,
                         is_final: false,
@@ -864,7 +864,7 @@ impl ReactLoop {
             StreamEvent::Error(err) => {
                 let _ = sys::log("error", format!("LLM stream error: {err}"));
                 let _ = ipc::publish_json(
-                    "agent.response",
+                    "agent.v1.response",
                     &IpcPayload::AgentResponse {
                         text: format!("LLM error: {err}"),
                         is_final: true,
@@ -959,7 +959,7 @@ impl ReactLoop {
                 format!("ReAct loop exceeded {max_iterations} iterations, forcing stop"),
             );
             let _ = ipc::publish_json(
-                "agent.response",
+                "agent.v1.response",
                 &IpcPayload::AgentResponse {
                     text: format!(
                         "Stopped: ReAct loop exceeded maximum of {max_iterations} iterations."
@@ -1022,7 +1022,7 @@ impl ReactLoop {
     pub fn handle_model_changed(&self, payload: IpcPayload) -> Result<(), SysError> {
         if let IpcPayload::Custom { data } = payload {
             if let Some(topic) = data.get("request_topic").and_then(|t| t.as_str()) {
-                if !topic.starts_with("llm.request.generate.") {
+                if !topic.starts_with("llm.v1.request.generate.") {
                     let _ = sys::log(
                         "warn",
                         format!("Rejected model change with invalid topic: {topic}"),
@@ -1120,7 +1120,7 @@ impl ReactLoop {
             // the mappings we wrote so they don't leak.
             for tc in &state.dispatched_tools {
                 if let Err(e) = ipc::publish_json(
-                    "tool.request.execute",
+                    "tool.v1.request.execute",
                     &IpcPayload::ToolExecuteRequest {
                         call_id: tc.id.clone(),
                         tool_name: tc.name.clone(),
@@ -1133,7 +1133,7 @@ impl ReactLoop {
                     );
                     delete_call_sessions(&call_ids);
                     let _ = ipc::publish_json(
-                        "agent.response",
+                        "agent.v1.response",
                         &IpcPayload::AgentResponse {
                             text: format!("Failed to dispatch tool {}: {e}", tc.name),
                             is_final: true,
@@ -1155,7 +1155,7 @@ impl ReactLoop {
 
             // Publish final response to platforms
             ipc::publish_json(
-                "agent.response",
+                "agent.v1.response",
                 &IpcPayload::AgentResponse {
                     text: state.response_text.clone(),
                     is_final: true,
@@ -1280,7 +1280,7 @@ impl ReactLoop {
         let timeout = session_timeout_ms();
 
         // Subscribe BEFORE publishing to avoid delivery race
-        let handle = ipc::subscribe("session.response.get_messages")?;
+        let handle = ipc::subscribe("session.v1.response.get_messages")?;
 
         // Guard: ensure unsubscribe runs even on early return
         let result = (|| -> Result<Vec<Message>, SysError> {
@@ -1297,7 +1297,7 @@ impl ReactLoop {
                 }
             }
 
-            ipc::publish_json("session.request.get_messages", &request)?;
+            ipc::publish_json("session.v1.request.get_messages", &request)?;
 
             let response_bytes = ipc::recv_bytes(&handle, timeout).map_err(|e| {
                 SysError::ApiError(format!(
@@ -1381,7 +1381,7 @@ impl ReactLoop {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| {
                 sys::get_config_string("llm_provider_topic")
-                    .unwrap_or_else(|_| "llm.request.generate.anthropic".into())
+                    .unwrap_or_else(|_| "llm.v1.request.generate.anthropic".into())
             })
     }
 

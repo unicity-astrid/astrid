@@ -61,7 +61,7 @@ impl EventDispatcher {
     /// and lifecycle events (by `event_type()`). Should be spawned as a
     /// background tokio task.
     ///
-    /// Monitors broadcast channel lag and publishes `system.event_bus.lagged`
+    /// Monitors broadcast channel lag and publishes `astrid.v1.event_bus.lagged`
     /// IPC events when messages are dropped, rate-limited to at most once per
     /// 10 seconds to avoid feedback loops.
     pub async fn run(self) {
@@ -87,7 +87,7 @@ impl EventDispatcher {
                 // is acceptable - the watchdog timeout is the actual recovery mechanism.
                 // The 10s rate limit prevents amplification feedback loops.
                 let msg = astrid_events::ipc::IpcMessage::new(
-                    "system.event_bus.lagged",
+                    "astrid.v1.event_bus.lagged",
                     astrid_events::ipc::IpcPayload::Custom {
                         data: serde_json::json!({ "lagged_count": lagged }),
                     },
@@ -105,7 +105,7 @@ impl EventDispatcher {
                 },
                 other => {
                     // Route lifecycle events to capsules with matching interceptors.
-                    // Uses event_type() (e.g. "tool_call_started") as the topic.
+                    // Uses event_type() (e.g. "astrid.v1.lifecycle.tool_call_started") as the topic.
                     self.dispatch_lifecycle(other);
                 },
             }
@@ -438,7 +438,7 @@ mod tests {
                     metadata: None,
                 },
                 components: Vec::new(),
-                dependencies: std::collections::HashMap::new(),
+                dependencies: Default::default(),
                 capabilities: CapabilitiesDef::default(),
                 env: std::collections::HashMap::new(),
                 context_files: Vec::new(),
@@ -453,6 +453,7 @@ mod tests {
                 }],
                 cron_jobs: Vec::new(),
                 tools: Vec::new(),
+                effective_provides_cache: std::sync::OnceLock::new(),
             };
             let capsule = Self {
                 id: CapsuleId::from_static(name),
@@ -597,7 +598,8 @@ mod tests {
     #[tokio::test]
     async fn dispatch_routes_lifecycle_events() {
         // Lifecycle events are dispatched by event_type() as the topic.
-        let (capsule, invoked) = MockCapsule::new("lifecycle-capsule", "tool_call_started");
+        let (capsule, invoked) =
+            MockCapsule::new("lifecycle-capsule", "astrid.v1.lifecycle.tool_call_started");
 
         let mut registry = CapsuleRegistry::new();
         registry.register(Box::new(capsule)).unwrap();
@@ -634,7 +636,7 @@ mod tests {
 
         // A capsule that listens for lag events.
         let (lag_capsule, _lag_invoked) =
-            MockCapsule::new("lag-listener", "system.event_bus.lagged");
+            MockCapsule::new("lag-listener", "astrid.v1.event_bus.lagged");
 
         let mut registry = CapsuleRegistry::new();
         registry.register(Box::new(lag_capsule)).unwrap();
@@ -654,7 +656,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // If lag was detected, the dispatcher should have published
-        // system.event_bus.lagged which routes to our lag-listener capsule.
+        // astrid.v1.event_bus.lagged which routes to our lag-listener capsule.
         // Note: this test may not trigger lag on fast machines where the
         // dispatcher drains fast enough. That's acceptable - the test
         // validates the wiring, not the race condition.

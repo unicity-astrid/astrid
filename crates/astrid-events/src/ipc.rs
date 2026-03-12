@@ -165,7 +165,7 @@ pub enum IpcPayload {
     /// Published by the `astrid_elicit` host function during `#[install]` or
     /// `#[upgrade]`. The frontend (TUI or CLI stdin) renders the prompt,
     /// collects the value, and publishes an [`ElicitResponse`](IpcPayload::ElicitResponse)
-    /// to `astrid.lifecycle.elicit.response.{request_id}`.
+    /// to `astrid.v1.elicit.response.{request_id}`.
     ElicitRequest {
         /// Correlation ID - the host function blocks until a response with
         /// this ID arrives.

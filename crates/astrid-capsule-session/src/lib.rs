@@ -218,7 +218,7 @@ impl Session {
         }
 
         ipc::publish_json(
-            "session.response.get_messages",
+            "session.v1.response.get_messages",
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "messages": data.messages,
@@ -226,11 +226,11 @@ impl Session {
         )
     }
 
-    /// Handles `session.request.clear` events.
+    /// Handles `session.v1.request.clear` events.
     ///
     /// Creates a new session with `parent_session_id` pointing to the
     /// old one. The old session's data is left intact in KV for history
-    /// traversal. Returns the new session ID via `session.response.clear`.
+    /// traversal. Returns the new session ID via `session.v1.response.clear`.
     #[astrid::interceptor("handle_clear")]
     pub fn handle_clear(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let old_session_id = payload
@@ -261,7 +261,7 @@ impl Session {
         );
 
         ipc::publish_json(
-            "session.response.clear",
+            "session.v1.response.clear",
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "new_session_id": new_session_id,

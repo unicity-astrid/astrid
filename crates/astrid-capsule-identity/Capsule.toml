@@ -14,8 +14,8 @@ type = "executable"
 capabilities = { fs_read = ["workspace://"] }
 
 [capabilities]
-ipc_publish = ["identity.response.ready"]
+ipc_publish = ["identity.v1.response.ready"]
 
 [[interceptor]]
-event = "identity.request.build"
+event = "identity.v1.request.build"
 action = "handle_build_request"

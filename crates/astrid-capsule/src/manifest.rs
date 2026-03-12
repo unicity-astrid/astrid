@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -22,9 +23,9 @@ pub struct CapsuleManifest {
     /// The WASM components provided by this capsule.
     #[serde(default, rename = "component")]
     pub components: Vec<ComponentDef>,
-    /// Dependencies on other capsules.
+    /// Capability-based dependency declarations for boot ordering.
     #[serde(default)]
-    pub dependencies: HashMap<String, String>,
+    pub dependencies: DependenciesDef,
     /// Capabilities requested by this capsule.
     #[serde(default)]
     pub capabilities: CapabilitiesDef,
@@ -58,6 +59,83 @@ pub struct CapsuleManifest {
     /// Native tools this capsule provides to the LLM agent.
     #[serde(default, rename = "tool")]
     pub tools: Vec<ToolDef>,
+    /// Cached effective provides (computed lazily on first `effective_provides()` call).
+    ///
+    /// **Do not pre-populate.** Always initialize as `OnceLock::new()` in struct literals.
+    /// After `Clone`, the cache carries over the already-initialized value. Mutating
+    /// fields of the clone after `effective_provides()` was called on either the
+    /// original or the clone will return stale data.
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub effective_provides_cache: OnceLock<Vec<String>>,
+}
+
+impl CapsuleManifest {
+    /// Compute the effective set of provided capabilities.
+    ///
+    /// If `dependencies.provides` is explicitly non-empty, returns it directly.
+    /// Otherwise, auto-derives capabilities from `ipc_publish` topics, tools,
+    /// LLM providers, and uplinks using typed prefixes (`topic:`, `tool:`,
+    /// `llm:`, `uplink:`).
+    #[must_use]
+    pub fn effective_provides(&self) -> &[String] {
+        self.effective_provides_cache.get_or_init(|| {
+            if !self.dependencies.provides.is_empty() {
+                return self.dependencies.provides.clone();
+            }
+            let mut caps = Vec::new();
+            for topic in &self.capabilities.ipc_publish {
+                caps.push(format!("topic:{topic}"));
+            }
+            for tool in &self.tools {
+                caps.push(format!("tool:{}", tool.name));
+            }
+            for provider in &self.llm_providers {
+                caps.push(format!("llm:{}", provider.id));
+            }
+            for uplink in &self.uplinks {
+                caps.push(format!("uplink:{}", uplink.name));
+            }
+            caps
+        })
+    }
+}
+
+/// Capability-based dependency declarations for boot ordering.
+///
+/// Capsules declare what capabilities they `provide` to the system and what
+/// they `require` to be present before booting. Capabilities use typed
+/// prefixes:
+///
+/// - `topic:llm.stream.anthropic` - IPC topic
+/// - `tool:run_shell_command` - tool availability
+/// - `llm:claude-3-5-sonnet` - LLM provider
+/// - `uplink:cli` - uplink/frontend
+///
+/// Wildcards (`*`) match a single dot-separated segment:
+/// `topic:llm.stream.*` matches `topic:llm.stream.anthropic`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DependenciesDef {
+    /// Capabilities this capsule provides to the system.
+    ///
+    /// Auto-derived from `ipc_publish`, `tools`, `llm_providers`, and
+    /// `uplinks` if not explicitly declared.
+    #[serde(default)]
+    pub provides: Vec<String>,
+
+    /// Capabilities that MUST be provided by another loaded capsule
+    /// before this capsule boots. Any single provider satisfying a
+    /// requirement is sufficient (any-satisfies semantic).
+    #[serde(default)]
+    pub requires: Vec<String>,
+}
+
+impl DependenciesDef {
+    /// Returns `true` if no capabilities are declared.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.provides.is_empty() && self.requires.is_empty()
+    }
 }
 
 /// Package identity metadata.

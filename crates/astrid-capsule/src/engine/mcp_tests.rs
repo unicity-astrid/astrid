@@ -32,7 +32,7 @@ mod tests {
                 metadata: None,
             },
             components: vec![],
-            dependencies: HashMap::new(),
+            dependencies: Default::default(),
             capabilities: CapabilitiesDef {
                 net: vec![],
                 net_bind: vec![],
@@ -59,6 +59,7 @@ mod tests {
             llm_providers: vec![],
             interceptors: vec![],
             cron_jobs: vec![],
+            effective_provides_cache: std::sync::OnceLock::new(),
         }
     }
 

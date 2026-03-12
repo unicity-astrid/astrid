@@ -63,7 +63,7 @@ async fn setup_test_capsule(
             link: vec![],
             capabilities: None,
         }],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: net_caps,
             net_bind: vec![],
@@ -84,6 +84,7 @@ async fn setup_test_capsule(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());
@@ -169,7 +170,7 @@ async fn setup_test_capsule_with_global(
             link: vec![],
             capabilities: None,
         }],
-        dependencies: std::collections::HashMap::default(),
+        dependencies: Default::default(),
         capabilities: CapabilitiesDef {
             net: vec![],
             net_bind: vec![],
@@ -190,6 +191,7 @@ async fn setup_test_capsule_with_global(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());

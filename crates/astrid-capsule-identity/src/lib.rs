@@ -5,7 +5,7 @@
 
 //! Identity builder capsule for Astrid OS.
 //!
-//! Subscribes to `identity.request.build` IPC events and generates the
+//! Subscribes to `identity.v1.request.build` IPC events and generates the
 //! system prompt for the react capsule by reading workspace
 //! configuration files (AGENTS.md, .astridignore) and the spark identity.
 
@@ -107,8 +107,8 @@ const TOOL_GUIDELINES: &str = "\
 
 #[capsule]
 impl IdentityBuilder {
-    /// Handles `identity.request.build` events. Reads workspace configuration
-    /// and publishes the assembled system prompt to `identity.response.ready`.
+    /// Handles `identity.v1.request.build` events. Reads workspace configuration
+    /// and publishes the assembled system prompt to `identity.v1.response.ready`.
     #[astrid::interceptor("handle_build_request")]
     pub fn build_system_prompt(&self, req: BuildRequest) -> Result<(), SysError> {
         let workspace_root = req.workspace_root.trim_end_matches('/');
@@ -163,7 +163,7 @@ impl IdentityBuilder {
             prompt,
             session_id: req.session_id,
         };
-        ipc::publish_json("identity.response.ready", &response)?;
+        ipc::publish_json("identity.v1.response.ready", &response)?;
 
         Ok(())
     }

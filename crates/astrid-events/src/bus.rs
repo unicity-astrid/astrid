@@ -90,9 +90,9 @@ impl EventBus {
     /// Subscribe to IPC events matching a specific topic pattern.
     ///
     /// The pattern can be an exact match (e.g. `astrid.cli.input`)
-    /// or a trailing wildcard suffix (e.g. `astrid.*`). Middle wildcards
-    /// (e.g. `astrid.*.event`) are not currently supported and will be
-    /// treated as exact literal string matches.
+    /// or end with a trailing `*` (e.g. `astrid.v1.request.*`) which matches
+    /// one or more remaining dot-separated segments up to a maximum depth of 20.
+    /// Middle wildcards (e.g. `astrid.*.event`) match exactly one segment.
     #[must_use]
     pub fn subscribe_topic(&self, topic_pattern: impl Into<String>) -> EventReceiver {
         EventReceiver::new(self.sender.subscribe(), Some(topic_pattern.into()))
@@ -162,22 +162,62 @@ impl EventReceiver {
         }
     }
 
+    /// Maximum allowed topic depth (dot-separated segments).
+    const MAX_TOPIC_DEPTH: usize = 20;
+
     /// Check if an event matches our topic pattern.
+    ///
+    /// Uses segment-aware matching. A `*` in a non-trailing position matches
+    /// exactly one segment. A trailing `*` (last segment) matches one or more
+    /// remaining segments, enabling namespace-level subscriptions (e.g.
+    /// `astrid.v1.lifecycle.*` matches all lifecycle events regardless of depth).
+    ///
+    /// Note: this differs from `dispatcher::topic_matches` used for interceptor
+    /// routing, where `*` always matches exactly one segment (equal segment
+    /// count is required). Topics deeper than 20 segments are rejected.
     fn matches(&self, event: &AstridEvent) -> bool {
         let Some(pattern) = &self.topic_pattern else {
             return true;
         };
 
-        if let AstridEvent::Ipc { message, .. } = event {
-            // Simple wildcard matching: if pattern ends with '*', check prefix.
-            if let Some(prefix) = pattern.strip_suffix('*') {
-                message.topic.starts_with(prefix)
-            } else {
-                message.topic == *pattern
-            }
-        } else {
+        let AstridEvent::Ipc { message, .. } = event else {
             // If a topic pattern is set, we ONLY care about matching IPC events.
-            false
+            return false;
+        };
+
+        let topic = &message.topic;
+
+        // Reject topics deeper than the maximum allowed depth.
+        if topic.split('.').count() > Self::MAX_TOPIC_DEPTH {
+            return false;
+        }
+
+        // Trailing wildcard: last segment is `*` and matches 1+ remaining segments.
+        if let Some(prefix_pat) = pattern.strip_suffix(".*") {
+            let mut prefix_segs = prefix_pat.split('.');
+            let mut topic_segs = topic.split('.');
+
+            // All prefix segments must match (with single-segment `*` support).
+            let prefix_matched = prefix_segs
+                .by_ref()
+                .zip(topic_segs.by_ref())
+                .all(|(p, t)| p == "*" || p == t);
+
+            // Prefix must be fully consumed and topic must have 1+ remaining
+            // segments (the trailing `*` matches 1+ segments).
+            prefix_matched && prefix_segs.next().is_none() && topic_segs.next().is_some()
+        } else {
+            // Exact segment-count match with single-segment `*` wildcards.
+            let mut pat_segs = pattern.split('.');
+            let mut topic_segs = topic.split('.');
+
+            let all_matched = pat_segs
+                .by_ref()
+                .zip(topic_segs.by_ref())
+                .all(|(p, t)| p == "*" || p == t);
+
+            // Both iterators must be exhausted (equal segment count).
+            all_matched && pat_segs.next().is_none() && topic_segs.next().is_none()
         }
     }
 
@@ -274,7 +314,7 @@ mod tests {
         assert_eq!(count, 1);
 
         let msg = receiver.recv().await.unwrap();
-        assert_eq!(msg.event_type(), "runtime_started");
+        assert_eq!(msg.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]
@@ -294,8 +334,8 @@ mod tests {
         let obj1 = receiver1.recv().await.unwrap();
         let obj2 = receiver2.recv().await.unwrap();
 
-        assert_eq!(obj1.event_type(), "runtime_started");
-        assert_eq!(obj2.event_type(), "runtime_started");
+        assert_eq!(obj1.event_type(), "astrid.v1.lifecycle.runtime_started");
+        assert_eq!(obj2.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]
@@ -538,6 +578,8 @@ mod tests {
     #[tokio::test]
     async fn test_topic_subscription_wildcard() {
         let bus = EventBus::new();
+        // Trailing `*` matches 1+ segments; "astrid.*" is a namespace subscription
+        // that matches any topic starting with "astrid." regardless of depth.
         let mut wildcard_receiver = bus.subscribe_topic("astrid.*");
 
         let msg1 = crate::ipc::IpcMessage::new(
@@ -597,6 +639,81 @@ mod tests {
 
         // Specific receiver should strictly ignore non-IPC events
         assert!(specific_receiver.try_recv().is_none());
+    }
+
+    /// Helper to create an IPC event with a given topic.
+    fn ipc_event(topic: &str) -> AstridEvent {
+        AstridEvent::Ipc {
+            metadata: EventMetadata::new("test"),
+            message: crate::ipc::IpcMessage::new(
+                topic,
+                crate::ipc::IpcPayload::UserInput {
+                    text: "x".into(),
+                    session_id: "default".into(),
+                    context: None,
+                },
+                uuid::Uuid::new_v4(),
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wildcard_matches_multiple_depths() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("astrid.v1.request.*");
+
+        // 4 segments: should match (1 segment after prefix)
+        bus.publish(ipc_event("astrid.v1.request.list_capsules"));
+        assert!(receiver.try_recv().is_some());
+
+        // 5 segments: should also match (trailing * = 1+ segments)
+        bus.publish(ipc_event("astrid.v1.request.foo.bar"));
+        assert!(receiver.try_recv().is_some());
+
+        // 3 segments (fewer than prefix + 1): should NOT match
+        bus.publish(ipc_event("astrid.v1.request"));
+        assert!(receiver.try_recv().is_none());
+
+        // Different prefix: should NOT match
+        bus.publish(ipc_event("system.v1.request.foo"));
+        assert!(receiver.try_recv().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_wildcard_rejects_deep_topics() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("a.*");
+
+        // 21 segments: exceeds MAX_TOPIC_DEPTH of 20
+        let deep = (0..21)
+            .map(|i| format!("s{i}"))
+            .collect::<Vec<_>>()
+            .join(".");
+        let topic = format!("a.{deep}");
+        bus.publish(ipc_event(&topic));
+        assert!(receiver.try_recv().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_middle_wildcard_matches_one_segment() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("astrid.*.input");
+
+        // Exact match with one middle segment
+        bus.publish(ipc_event("astrid.cli.input"));
+        assert!(receiver.try_recv().is_some());
+
+        // Different middle segment also matches
+        bus.publish(ipc_event("astrid.telegram.input"));
+        assert!(receiver.try_recv().is_some());
+
+        // Wrong last segment: should NOT match
+        bus.publish(ipc_event("astrid.cli.output"));
+        assert!(receiver.try_recv().is_none());
+
+        // Extra segment: should NOT match (segment count mismatch)
+        bus.publish(ipc_event("astrid.cli.sub.input"));
+        assert!(receiver.try_recv().is_none());
     }
 
     #[tokio::test]
@@ -697,7 +814,7 @@ mod tests {
 
         assert!(result.is_ok(), "recv should have woken up");
         let event = result.unwrap().unwrap();
-        assert_eq!(event.event_type(), "runtime_started");
+        assert_eq!(event.event_type(), "astrid.v1.lifecycle.runtime_started");
     }
 
     #[tokio::test]

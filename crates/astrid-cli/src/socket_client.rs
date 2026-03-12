@@ -93,7 +93,7 @@ impl SocketClient {
             context: None,
         };
 
-        let msg = IpcMessage::new("user.prompt", payload, self.session_id.0);
+        let msg = IpcMessage::new("user.v1.prompt", payload, self.session_id.0);
 
         self.send_message(msg).await
     }

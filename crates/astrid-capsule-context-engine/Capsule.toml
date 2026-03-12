@@ -12,7 +12,7 @@ type = "executable"
 
 [capabilities]
 ipc_publish = [
-    "context_engine.response.*",
-    "before_compaction",
-    "after_compaction",
+    "context_engine.v1.response.*",
+    "context_engine.v1.hook.before_compaction",
+    "context_engine.v1.hook.after_compaction",
 ]

@@ -6,18 +6,18 @@ use tracing::{debug, info, warn};
 /// Spawns background tasks for the kernel management API and connection tracking.
 ///
 /// Two listeners:
-/// 1. `kernel.request.*` - handles management commands (list capsules, reload, etc.)
-/// 2. `client.disconnect` - decrements the active connection counter on graceful disconnect.
+/// 1. `astrid.v1.request.*` - handles management commands (list capsules, reload, etc.)
+/// 2. `client.v1.disconnect` - decrements the active connection counter on graceful disconnect.
 ///
 /// Connection *increment* happens when the WASM proxy capsule accepts a socket
-/// connection (it publishes a `client.connected` event). For ungraceful disconnects,
+/// connection (it publishes a `client.v1.connected` event). For ungraceful disconnects,
 /// the idle monitor uses `EventBus::subscriber_count()` as a secondary signal.
 #[must_use]
 pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
     // Spawn the connection tracker as a sibling task.
     drop(spawn_connection_tracker(Arc::clone(&kernel)));
 
-    let mut receiver = kernel.event_bus.subscribe_topic("kernel.request.*");
+    let mut receiver = kernel.event_bus.subscribe_topic("astrid.v1.request.*");
 
     tokio::spawn(async move {
         while let Some(event) = receiver.recv().await {
@@ -44,11 +44,11 @@ pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::Jo
 
 /// Tracks client connection lifecycle events.
 ///
-/// Listens on `client.*` topics:
-/// - `client.connected` - a new socket connection was accepted.
-/// - `client.disconnect` - a client sent a graceful disconnect.
+/// Listens on `client.v1.*` topics:
+/// - `client.v1.connected` - a new socket connection was accepted.
+/// - `client.v1.disconnect` - a client sent a graceful disconnect.
 fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHandle<()> {
-    let mut receiver = kernel.event_bus.subscribe_topic("client.*");
+    let mut receiver = kernel.event_bus.subscribe_topic("client.v1.*");
 
     tokio::spawn(async move {
         while let Some(event) = receiver.recv().await {
@@ -72,7 +72,11 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHand
 
 #[expect(clippy::too_many_lines)]
 async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelRequest) {
-    let response_topic = topic.replace("kernel.request.", "kernel.response.");
+    let response_topic = if let Some(suffix) = topic.strip_prefix("astrid.v1.request.") {
+        format!("astrid.v1.response.{suffix}")
+    } else {
+        topic.clone()
+    };
 
     let res = match req {
         KernelRequest::InstallCapsule { source, workspace } => {

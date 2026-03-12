@@ -171,6 +171,79 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         }
     }
 
+    // Validate dependency capability strings.
+    let dep_caps = manifest
+        .dependencies
+        .provides
+        .iter()
+        .map(|c| ("provides", c.as_str()))
+        .chain(
+            manifest
+                .dependencies
+                .requires
+                .iter()
+                .map(|c| ("requires", c.as_str())),
+        );
+
+    for (kind, cap) in dep_caps {
+        if cap.is_empty() {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!("[dependencies].{kind} contains an empty capability string"),
+            });
+        }
+        let Some((prefix, body)) = cap.split_once(':') else {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' must have a type prefix \
+                     (e.g. topic:, tool:, llm:, uplink:)"
+                ),
+            });
+        };
+        const KNOWN_PREFIXES: &[&str] = &["topic", "tool", "llm", "uplink"];
+        if !KNOWN_PREFIXES.contains(&prefix) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' has unknown prefix '{prefix}:' \
+                     (expected one of: topic:, tool:, llm:, uplink:)"
+                ),
+            });
+        }
+        if !crate::dispatcher::has_valid_segments(body) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' body contains empty segments \
+                     (consecutive dots, leading/trailing dots, or is empty)"
+                ),
+            });
+        }
+        // Wildcards are only valid in `requires` (pattern matching).
+        // In `provides`, a capsule must declare concrete capabilities.
+        if kind == "provides" && body.contains('*') {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].provides '{cap}' contains a wildcard - \
+                     provides must be concrete capabilities, not patterns"
+                ),
+            });
+        }
+    }
+
+    // Uplink capsules load in a partition before non-uplinks.
+    // Declaring `requires` on an uplink would violate this ordering.
+    if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
+        return Err(CapsuleError::ManifestParseError {
+            path: path.to_path_buf(),
+            message: "[dependencies].requires is not allowed on uplink capsules \
+                      (uplinks load before non-uplinks and cannot depend on them)"
+                .into(),
+        });
+    }
+
     Ok(manifest)
 }
 
@@ -266,6 +339,124 @@ version = "0.1.0"
         assert!(
             err.to_string().contains("invalid version"),
             "expected 'invalid version' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_parses_dependencies_provides_requires() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [dependencies]\n\
+             provides = [\"topic:identity.response.ready\"]\n\
+             requires = [\"topic:llm.stream.*\"]\n"
+        );
+        let m = load_from_toml(&toml).unwrap();
+        assert_eq!(
+            m.dependencies.provides,
+            vec!["topic:identity.response.ready"]
+        );
+        assert_eq!(m.dependencies.requires, vec!["topic:llm.stream.*"]);
+    }
+
+    #[test]
+    fn load_manifest_defaults_empty_dependencies() {
+        let m = load_from_toml(VALID_HEADER).unwrap();
+        assert!(m.dependencies.provides.is_empty());
+        assert!(m.dependencies.requires.is_empty());
+        assert!(m.dependencies.is_empty());
+    }
+
+    #[test]
+    fn load_manifest_parses_dependencies_provides_only() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [dependencies]\n\
+             provides = [\"topic:foo\", \"tool:bar\"]\n"
+        );
+        let m = load_from_toml(&toml).unwrap();
+        assert_eq!(m.dependencies.provides, vec!["topic:foo", "tool:bar"]);
+        assert!(m.dependencies.requires.is_empty());
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_capability_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("empty capability string"),
+            "expected 'empty capability string' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_missing_prefix_in_provides() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"no_prefix\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("must have a type prefix"),
+            "expected 'must have a type prefix' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_unknown_prefix_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"service:foo\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown prefix"),
+            "expected 'unknown prefix' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_segments_in_dependency_body() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:a..b\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("empty segments"),
+            "expected 'empty segments' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_wildcard_in_provides() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:llm.stream.*\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("wildcard"),
+            "expected 'wildcard' error for provides with *, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_allows_wildcard_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"topic:llm.stream.*\"]");
+        assert!(
+            load_from_toml(&toml).is_ok(),
+            "wildcards should be allowed in requires"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_uplink_with_requires() {
+        let toml = format!(
+            "{VALID_HEADER}\n[capabilities]\nuplink = true\n\n[dependencies]\nrequires = [\"topic:foo\"]"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not allowed on uplink"),
+            "expected uplink+requires rejection, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_allows_uplink_without_requires() {
+        let toml = format!("{VALID_HEADER}\n[capabilities]\nuplink = true");
+        assert!(
+            load_from_toml(&toml).is_ok(),
+            "uplink without requires should be valid"
         );
     }
 }
