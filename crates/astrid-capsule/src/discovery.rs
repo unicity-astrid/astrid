@@ -171,6 +171,57 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         }
     }
 
+    // Validate dependency capability strings.
+    let dep_caps = manifest
+        .dependencies
+        .provides
+        .iter()
+        .map(|c| ("provides", c.as_str()))
+        .chain(
+            manifest
+                .dependencies
+                .requires
+                .iter()
+                .map(|c| ("requires", c.as_str())),
+        );
+
+    for (kind, cap) in dep_caps {
+        if cap.is_empty() {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!("[dependencies].{kind} contains an empty capability string"),
+            });
+        }
+        let Some((prefix, body)) = cap.split_once(':') else {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' must have a type prefix \
+                     (e.g. topic:, tool:, llm:, uplink:)"
+                ),
+            });
+        };
+        const KNOWN_PREFIXES: &[&str] = &["topic", "tool", "llm", "uplink"];
+        if !KNOWN_PREFIXES.contains(&prefix) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' has unknown prefix '{prefix}:' \
+                     (expected one of: topic:, tool:, llm:, uplink:)"
+                ),
+            });
+        }
+        if !crate::dispatcher::has_valid_segments(body) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[dependencies].{kind} '{cap}' body contains empty segments \
+                     (consecutive dots, leading/trailing dots, or is empty)"
+                ),
+            });
+        }
+    }
+
     Ok(manifest)
 }
 
@@ -303,5 +354,45 @@ version = "0.1.0"
         let m = load_from_toml(&toml).unwrap();
         assert_eq!(m.dependencies.provides, vec!["topic:foo", "tool:bar"]);
         assert!(m.dependencies.requires.is_empty());
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_capability_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("empty capability string"),
+            "expected 'empty capability string' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_missing_prefix_in_provides() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"no_prefix\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("must have a type prefix"),
+            "expected 'must have a type prefix' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_unknown_prefix_in_requires() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"service:foo\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown prefix"),
+            "expected 'unknown prefix' error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_empty_segments_in_dependency_body() {
+        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:a..b\"]");
+        let err = load_from_toml(&toml).unwrap_err();
+        assert!(
+            err.to_string().contains("empty segments"),
+            "expected 'empty segments' error, got: {err}"
+        );
     }
 }

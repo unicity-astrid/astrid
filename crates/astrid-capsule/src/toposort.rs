@@ -110,7 +110,7 @@ pub fn toposort_manifests(
                         dependents[prov_idx].push(idx);
                         in_degree[idx] += 1;
                         satisfied = true;
-                        break; // any-satisfies: one provider is enough
+                        // Continue: all providers get an ordering edge.
                     }
                 }
                 if !satisfied {
@@ -327,9 +327,9 @@ mod tests {
     }
 
     #[test]
-    fn any_satisfies_picks_first_provider() {
-        // C requires topic:llm.stream.*, both A and B provide it
-        // Only one edge created (any-satisfies), no cycle
+    fn all_providers_ordered_before_consumer() {
+        // C requires topic:llm.stream.*, both A and B provide it.
+        // All providers get ordering edges, so both A and B load before C.
         let input = vec![
             manifest_with_caps("c", &[], &["topic:llm.stream.*"]),
             manifest_with_caps("a", &["topic:llm.stream.anthropic"], &[]),
@@ -337,10 +337,11 @@ mod tests {
         ];
         let result = toposort_manifests(input).unwrap();
         let n = names(&result);
-        // C must come after at least one provider
         let c_pos = n.iter().position(|&x| x == "c").unwrap();
         let a_pos = n.iter().position(|&x| x == "a").unwrap();
+        let b_pos = n.iter().position(|&x| x == "b").unwrap();
         assert!(a_pos < c_pos);
+        assert!(b_pos < c_pos);
     }
 
     #[test]
