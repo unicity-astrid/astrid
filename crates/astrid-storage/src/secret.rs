@@ -378,6 +378,17 @@ mod fallback_impl {
         pub fn is_using_keychain(&self) -> bool {
             self.use_keychain
         }
+
+        /// Force the KV backend regardless of keychain availability.
+        /// Used in tests to exercise the degradation path.
+        #[cfg(test)]
+        pub(crate) fn new_kv_only(keychain: KeychainSecretStore, kv: KvSecretStore) -> Self {
+            Self {
+                keychain,
+                kv,
+                use_keychain: false,
+            }
+        }
     }
 
     impl SecretStore for FallbackSecretStore {
@@ -560,6 +571,79 @@ mod tests {
         let kv = ScopedKvStore::new(store, "plugin:test").unwrap();
         let secret_store = build_secret_store("test", kv, rt.handle().clone());
         assert!(!secret_store.exists("nonexistent").unwrap());
+    }
+
+    // -----------------------------------------------------------------------
+    // FallbackSecretStore tests (keychain feature)
+    // -----------------------------------------------------------------------
+
+    #[cfg(feature = "keychain")]
+    mod fallback_tests {
+        use std::sync::Arc;
+
+        use crate::MemoryKvStore;
+        use crate::kv::ScopedKvStore;
+        use crate::secret::{FallbackSecretStore, KeychainSecretStore, KvSecretStore, SecretStore};
+
+        fn make_fallback_kv_only() -> FallbackSecretStore {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let store = Arc::new(MemoryKvStore::new());
+            let kv = ScopedKvStore::new(store, "plugin:fallback-test").unwrap();
+            let kv_store = KvSecretStore::new(kv, rt.handle().clone());
+            let keychain = KeychainSecretStore::new("fallback-test");
+            // Force KV-only mode to test the degradation path
+            FallbackSecretStore::new_kv_only(keychain, kv_store)
+        }
+
+        #[test]
+        fn fallback_kv_only_reports_not_using_keychain() {
+            let store = make_fallback_kv_only();
+            assert!(!store.is_using_keychain());
+        }
+
+        #[test]
+        fn fallback_kv_only_set_and_exists() {
+            let store = make_fallback_kv_only();
+            assert!(!store.exists("api_key").unwrap());
+            store.set("api_key", "sk-12345").unwrap();
+            assert!(store.exists("api_key").unwrap());
+        }
+
+        #[test]
+        fn fallback_kv_only_set_and_get() {
+            let store = make_fallback_kv_only();
+            store.set("api_key", "sk-12345").unwrap();
+            assert_eq!(store.get("api_key").unwrap(), Some("sk-12345".into()));
+        }
+
+        #[test]
+        fn fallback_kv_only_delete() {
+            let store = make_fallback_kv_only();
+            store.set("api_key", "sk-12345").unwrap();
+            assert!(store.delete("api_key").unwrap());
+            assert!(!store.exists("api_key").unwrap());
+        }
+
+        #[test]
+        fn fallback_kv_only_delete_nonexistent() {
+            let store = make_fallback_kv_only();
+            assert!(!store.delete("missing").unwrap());
+        }
+
+        #[test]
+        fn fallback_kv_only_rejects_empty_value() {
+            let store = make_fallback_kv_only();
+            assert!(store.set("key", "").is_err());
+        }
+
+        #[test]
+        fn fallback_kv_only_rejects_colon_key() {
+            let store = make_fallback_kv_only();
+            assert!(store.set("ns:key", "val").is_err());
+        }
     }
 
     #[test]
