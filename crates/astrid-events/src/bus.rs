@@ -496,6 +496,7 @@ mod tests {
             "astrid.cli.input",
             crate::ipc::IpcPayload::UserInput {
                 text: "hello".into(),
+                session_id: "default".into(),
                 context: None,
             },
             uuid::Uuid::new_v4(),
@@ -516,6 +517,7 @@ mod tests {
             "astrid.telegram.input",
             crate::ipc::IpcPayload::UserInput {
                 text: "hello".into(),
+                session_id: "default".into(),
                 context: None,
             },
             uuid::Uuid::new_v4(),
@@ -542,6 +544,7 @@ mod tests {
             "astrid.cli.input",
             crate::ipc::IpcPayload::UserInput {
                 text: "hello".into(),
+                session_id: "default".into(),
                 context: None,
             },
             uuid::Uuid::new_v4(),
@@ -555,6 +558,7 @@ mod tests {
             "system.log",
             crate::ipc::IpcPayload::UserInput {
                 text: "hello".into(),
+                session_id: "default".into(),
                 context: None,
             },
             uuid::Uuid::new_v4(),

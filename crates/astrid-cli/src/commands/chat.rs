@@ -89,7 +89,7 @@ async fn run_json_chat(
             };
 
             match message.payload {
-                astrid_events::ipc::IpcPayload::AgentResponse { text, is_final } => {
+                astrid_events::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
                     formatter.format_text(&text);
                     if is_final {
                         formatter.flush_markdown();

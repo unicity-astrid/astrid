@@ -13,7 +13,7 @@ type = "executable"
 [capabilities]
 ipc_publish = ["tool.execute.*", "tool.execute.result"]
 
-# Tool execution requests from the orchestrator
+# Tool execution requests from the react loop
 [[interceptor]]
 event = "tool.request.execute"
 action = "handle_execute_request"

@@ -33,7 +33,7 @@ Client Application (CLI, Web, GUI)
        ├── Message Router
        └── Health Diagnostics
                │
-       astrid-capsule (Orchestrator)
+       astrid-capsule (React + Session)
        ├── astrid-llm (Provider Layer)
        └── astrid-mcp (Tool Layer)
 ```

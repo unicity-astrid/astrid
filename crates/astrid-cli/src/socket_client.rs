@@ -89,6 +89,7 @@ impl SocketClient {
     pub async fn send_input(&mut self, text: String) -> Result<()> {
         let payload = IpcPayload::UserInput {
             text,
+            session_id: self.session_id.0.to_string(),
             context: None,
         };
 

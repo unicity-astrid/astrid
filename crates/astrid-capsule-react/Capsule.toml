@@ -1,13 +1,13 @@
 [package]
-name = "astrid-capsule-orchestrator"
+name = "astrid-capsule-react"
 version = "0.1.0"
-description = "Default event-driven orchestrator for Astrid OS"
+description = "ReAct loop: stateless coordinator for LLM reasoning and tool execution"
 authors = ["Astrid Core Team"]
 astrid-version = ">=0.1.0"
 
 [[component]]
-id = "orchestrator"
-file = "astrid_capsule_orchestrator.wasm"
+id = "react"
+file = "astrid_capsule_react.wasm"
 type = "executable"
 
 # User input from frontends (CLI, Telegram, etc.)
@@ -48,4 +48,5 @@ ipc_publish = [
     "agent.response",
     "tool.request.execute",
     "llm.request.generate.*",
+    "session.request.get_messages",
 ]

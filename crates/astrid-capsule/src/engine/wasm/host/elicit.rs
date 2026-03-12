@@ -54,7 +54,7 @@ fn map_to_onboarding_field(req: &GuestElicitRequest) -> Result<OnboardingField, 
 
     Ok(OnboardingField {
         key: req.key.clone(),
-        prompt: req.description.clone().unwrap_or_else(|| req.key.clone()),
+        prompt: req.description.as_ref().unwrap_or(&req.key).clone(),
         description: req.description.clone(),
         field_type,
         default: req.default.clone(),
@@ -247,7 +247,7 @@ pub(crate) fn astrid_has_secret_impl(
     let secret_key = format!("__secret:{}", req.key);
     let exists = runtime_handle
         .block_on(kv.exists(&secret_key))
-        .unwrap_or(false);
+        .map_err(|e| Error::msg(format!("failed to check for secret: {e}")))?;
 
     let response = serde_json::to_vec(&serde_json::json!({"exists": exists}))
         .map_err(|e| Error::msg(format!("failed to serialize has_secret response: {e}")))?;

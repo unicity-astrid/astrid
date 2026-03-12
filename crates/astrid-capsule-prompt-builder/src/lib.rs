@@ -4,7 +4,7 @@
 
 //! Prompt Builder capsule — assembles LLM prompts with plugin hook interception.
 //!
-//! This capsule owns the prompt assembly pipeline. When the orchestrator needs
+//! This capsule owns the prompt assembly pipeline. When the react loop needs
 //! a prompt assembled, it publishes to `prompt_builder.assemble`. The prompt
 //! builder then:
 //!
@@ -44,7 +44,7 @@ impl Config {
     }
 }
 
-/// Request from the orchestrator to assemble a prompt.
+/// Request from the react loop to assemble a prompt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct AssembleRequest {
@@ -62,9 +62,12 @@ struct AssembleRequest {
     /// The LLM provider identifier.
     #[serde(default)]
     provider: String,
+    /// Session ID echoed back for react loop correlation.
+    #[serde(default)]
+    session_id: Option<String>,
 }
 
-/// Response returned to the orchestrator with the assembled prompt.
+/// Response returned to the react loop with the assembled prompt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct AssembleResponse {
@@ -74,6 +77,9 @@ struct AssembleResponse {
     user_context_prefix: String,
     /// The original request ID for correlation.
     request_id: String,
+    /// Session ID echoed from the request for react loop correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
 }
 
 /// Payload sent to plugin capsules via the `before_prompt_build` interceptor.
@@ -427,6 +433,7 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
         system_prompt: merged.system_prompt.clone(),
         user_context_prefix: merged.user_context_prefix.clone(),
         request_id: request.request_id.clone(),
+        session_id: request.session_id.clone(),
     };
 
     let _ = ipc::publish_json("prompt_builder.response.assemble", &response);

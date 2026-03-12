@@ -5,7 +5,7 @@
 
 //! Tool router capsule for Astrid OS.
 //!
-//! Receives `tool.request.execute` events from the orchestrator, validates
+//! Receives `tool.request.execute` events from the react loop, validates
 //! the tool name, forwards the request to the appropriate tool capsule's
 //! topic, and routes results back to `tool.execute.result`.
 
@@ -19,11 +19,11 @@ pub struct ToolRouter;
 
 #[capsule]
 impl ToolRouter {
-    /// Handles `tool.request.execute` events from the orchestrator.
+    /// Handles `tool.request.execute` events from the react loop.
     ///
     /// Validates the tool name, builds the forward topic, and publishes the
     /// request to the specific tool capsule. If the tool name is invalid or
-    /// the publish fails, returns an error result to the orchestrator.
+    /// the publish fails, returns an error result to the react loop.
     #[astrid::interceptor("handle_execute_request")]
     pub fn handle_execute_request(&self, req: IpcPayload) -> Result<(), SysError> {
         let (call_id, tool_name, arguments) = match req {
@@ -78,7 +78,7 @@ impl ToolRouter {
 
     /// Handles tool execution results from tool capsules.
     ///
-    /// Forwards the result back to the orchestrator via `tool.execute.result`.
+    /// Forwards the result back to the react loop via `tool.execute.result`.
     #[astrid::interceptor("handle_execute_result")]
     pub fn handle_execute_result(&self, res: IpcPayload) -> Result<(), SysError> {
         let (call_id, result) = match res {
@@ -99,7 +99,7 @@ impl ToolRouter {
 }
 
 impl ToolRouter {
-    /// Publish an error result back to the orchestrator for a failed tool dispatch.
+    /// Publish an error result back to the react loop for a failed tool dispatch.
     fn publish_error_result(call_id: &str, error_message: String) -> Result<(), SysError> {
         ipc::publish_json(
             "tool.execute.result",

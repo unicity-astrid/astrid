@@ -1,0 +1,26 @@
+[package]
+name = "astrid-capsule-session"
+version = "0.1.0"
+description = "Persistent conversation session store"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "session"
+file = "astrid_capsule_session.wasm"
+type = "executable"
+
+# Append messages to conversation history
+[[interceptor]]
+event = "session.append"
+action = "handle_append"
+
+# Serve conversation history on request
+[[interceptor]]
+event = "session.request.get_messages"
+action = "handle_get_messages"
+
+[capabilities]
+ipc_publish = [
+    "session.response.get_messages",
+]

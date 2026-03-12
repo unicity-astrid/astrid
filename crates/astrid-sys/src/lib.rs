@@ -69,6 +69,8 @@ extern "ExtismHost" {
     pub fn astrid_kv_get(key: Vec<u8>) -> Vec<u8>;
     /// Set a value in the KV store.
     pub fn astrid_kv_set(key: Vec<u8>, value: Vec<u8>);
+    /// Delete a value from the KV store.
+    pub fn astrid_kv_delete(key: Vec<u8>);
 
     /// Get a system configuration string.
     pub fn astrid_get_config(key: Vec<u8>) -> Vec<u8>;
