@@ -309,7 +309,7 @@ pub(crate) fn astrid_ipc_recv_impl(
 
     // Temporarily remove the receiver from the map so we can drop the lock
     // before blocking. WASM is single-threaded so no concurrent access is possible.
-    let (mut receiver, runtime_handle) = {
+    let (mut receiver, runtime_handle, cancel_token) = {
         let mut state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -318,24 +318,28 @@ pub(crate) fn astrid_ipc_recv_impl(
             .remove(&handle_id)
             .ok_or_else(|| Error::msg("Subscription handle not found"))?;
         let runtime_handle = state.runtime_handle.clone();
-        (receiver, runtime_handle)
+        let cancel_token = state.cancel_token.clone();
+        (receiver, runtime_handle, cancel_token)
     };
 
-    // Block the WASM thread until a message arrives or timeout expires.
-    // The WASM engine runs inside block_in_place, so blocking here is safe.
+    // Block the WASM thread until a message arrives, timeout expires, or the
+    // capsule is unloaded (cancellation). The WASM engine runs inside
+    // block_in_place, so blocking here is safe.
     let event = runtime_handle.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            receiver.recv(),
-        )
-        .await
+        tokio::select! {
+            result = tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                receiver.recv(),
+            ) => result.ok().flatten(),
+            () = cancel_token.cancelled() => None,
+        }
     });
 
     // Collect the blocking-wake message (if any) plus drain remaining.
     let mut drain = drain_receiver(&mut receiver, util::MAX_GUEST_PAYLOAD_LEN as usize);
 
     // Prepend the message that woke us (it was consumed by recv, not try_recv).
-    if let Ok(Some(event)) = event
+    if let Some(event) = event
         && let AstridEvent::Ipc { message, .. } = &*event
     {
         drain.messages.insert(0, message.clone());
@@ -573,6 +577,39 @@ mod tests {
         assert_eq!(
             total, 5,
             "should get all 5 messages (1 from recv + rest from drain)"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_token_unblocks_recv() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe_topic("cancel.test");
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+
+        let token = cancel_token.clone();
+
+        // Cancel after 50ms.
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            token.cancel();
+        });
+
+        // Block on recv with a long timeout. Cancellation should unblock it
+        // well before the 60-second timeout.
+        let start = std::time::Instant::now();
+        let event = tokio::select! {
+            result = tokio::time::timeout(
+                std::time::Duration::from_millis(60_000),
+                receiver.recv(),
+            ) => result.ok().flatten(),
+            () = cancel_token.cancelled() => None,
+        };
+
+        let elapsed = start.elapsed();
+        assert!(event.is_none(), "should return None on cancellation");
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "should unblock promptly, took {elapsed:?}"
         );
     }
 }

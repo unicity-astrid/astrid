@@ -107,7 +107,7 @@ pub(crate) fn astrid_uplink_register_impl(
     let profile = parse_uplink_profile(&profile_bytes)?;
 
     let ud = user_data.get()?;
-    let (capsule_id, security, handle) = {
+    let (capsule_id, security, handle, host_semaphore) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -115,6 +115,7 @@ pub(crate) fn astrid_uplink_register_impl(
             state.capsule_id.as_str().to_owned(),
             state.security.clone(),
             state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
         )
     };
 
@@ -123,8 +124,8 @@ pub(crate) fn astrid_uplink_register_impl(
         let pid = capsule_id.clone();
         let cname = name_str.clone();
         let plat = String::from_utf8_lossy(&platform_bytes).into_owned();
-        let check = tokio::task::block_in_place(|| {
-            handle.block_on(async move { gate.check_uplink_register(&pid, &cname, &plat).await })
+        let check = util::bounded_block_on(&handle, &host_semaphore, async move {
+            gate.check_uplink_register(&pid, &cname, &plat).await
         });
         if let Err(reason) = check {
             return Err(Error::msg(format!(

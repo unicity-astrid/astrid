@@ -34,6 +34,9 @@ pub struct WasmEngine {
     /// clone inside the lock and immediately drop it, so concurrent
     /// `wait_ready` calls each get their own independent receiver.
     ready_rx: Option<tokio::sync::Mutex<tokio::sync::watch::Receiver<bool>>>,
+    /// Cancellation token for cooperative shutdown of blocking host functions.
+    /// Triggered during `unload()` before aborting the run handle.
+    cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl WasmEngine {
@@ -46,6 +49,7 @@ impl WasmEngine {
             tools: Vec::new(),
             run_handle: None,
             ready_rx: None,
+            cancel_token: None,
         }
     }
 }
@@ -94,6 +98,15 @@ impl ExecutionEngine for WasmEngine {
         for (key, val) in resolved_env {
             wasm_config.insert(key, serde_json::Value::String(val));
         }
+
+        // Create shared concurrency controls before entering the blocking plugin build.
+        let host_semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(
+            std::thread::available_parallelism()
+                .map(|n| n.get().saturating_sub(2).max(2))
+                .unwrap_or(2),
+        ));
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+        let cancel_token_for_state = cancel_token.clone();
 
         let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
@@ -229,6 +242,8 @@ impl ExecutionEngine for WasmEngine {
                 lifecycle_phase: None,
                 secret_store,
                 ready_tx: None,
+                host_semaphore,
+                cancel_token: cancel_token_for_state,
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -279,6 +294,7 @@ impl ExecutionEngine for WasmEngine {
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
+        self.cancel_token = Some(cancel_token);
 
         if has_run {
             self.ready_rx = ready_rx.map(tokio::sync::Mutex::new);
@@ -290,13 +306,13 @@ impl ExecutionEngine for WasmEngine {
             // internally via ipc::subscribe, so they don't need host-side
             // interceptor dispatch.
             if !self.manifest.interceptors.is_empty() {
-                tracing::warn!(
-                    capsule = %self.manifest.package.name,
-                    "Capsule declares both run() and [[interceptor]] entries. \
-                     Interceptors will NOT be dispatched for run-loop capsules \
-                     (plugin is exclusively held by the run loop). Move event \
-                     handling into the run() function via ipc::subscribe instead."
-                );
+                return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                    "Capsule '{}' declares both run() and [[interceptor]] entries. \
+                     The run loop holds the plugin mutex exclusively, making \
+                     interceptor dispatch impossible. Move event handling into \
+                     run() via ipc::subscribe.",
+                    self.manifest.package.name
+                )));
             }
             let capsule_name = self.manifest.package.name.clone();
             // Must spawn on a worker thread (not spawn_blocking) because WASM
@@ -341,6 +357,11 @@ impl ExecutionEngine for WasmEngine {
             capsule = %self.manifest.package.name,
             "Unloading WASM component"
         );
+        // Signal cooperative cancellation to unblock ipc_recv/elicit/net calls
+        // before aborting the run handle.
+        if let Some(token) = self.cancel_token.take() {
+            token.cancel();
+        }
         if let Some(handle) = self.run_handle.take() {
             handle.abort();
         }
@@ -500,6 +521,12 @@ pub fn run_lifecycle(
         lifecycle_phase: Some(phase),
         secret_store: cfg.secret_store,
         ready_tx: None,
+        host_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(
+            std::thread::available_parallelism()
+                .map(|n| n.get().saturating_sub(2).max(2))
+                .unwrap_or(2),
+        )),
+        cancel_token: tokio_util::sync::CancellationToken::new(),
     };
 
     let user_data = UserData::new(host_state);

@@ -18,10 +18,8 @@ pub(crate) fn astrid_kv_get_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let result = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.kv.get(&key).await })
+    let result = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        state.kv.get(&key).await
     })
     .map_err(|e| Error::msg(format!("kv_get failed: {e}")))?;
 
@@ -53,11 +51,9 @@ pub(crate) fn astrid_kv_set_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            // KV storage takes Vec<u8> directly.
-            state.kv.set(&key, value_bytes).await
-        })
+    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        // KV storage takes Vec<u8> directly.
+        state.kv.set(&key, value_bytes).await
     })
     .map_err(|e| Error::msg(format!("kv_set failed: {e}")))?;
 
@@ -79,10 +75,8 @@ pub(crate) fn astrid_kv_delete_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.kv.delete(&key).await })
+    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        state.kv.delete(&key).await
     })
     .map_err(|e| Error::msg(format!("kv_delete failed: {e}")))?;
 

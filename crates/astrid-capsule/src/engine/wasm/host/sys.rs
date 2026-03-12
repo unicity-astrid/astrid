@@ -173,6 +173,7 @@ pub(crate) fn astrid_trigger_hook_impl(
     let caller_id = state.capsule_id.clone();
     let registry = state.capsule_registry.clone();
     let rt_handle = state.runtime_handle.clone();
+    let host_semaphore = state.host_semaphore.clone();
     drop(state);
 
     let result_bytes = if let Some(registry) = registry {
@@ -191,44 +192,39 @@ pub(crate) fn astrid_trigger_hook_impl(
         // the async RwLock, but we do NOT call invoke_interceptor here
         // (which itself does block_in_place and would panic if nested).
         let matches: Vec<(std::sync::Arc<dyn crate::capsule::Capsule>, String)> =
-            tokio::task::block_in_place(|| {
-                rt_handle.block_on(async {
-                    let registry = registry.read().await;
-                    let mut matches = Vec::new();
+            util::bounded_block_on(&rt_handle, &host_semaphore, async {
+                let registry = registry.read().await;
+                let mut matches = Vec::new();
 
-                    for capsule_id in registry.list() {
-                        // Skip the calling capsule to prevent recursion.
-                        if *capsule_id == caller_id {
+                for capsule_id in registry.list() {
+                    // Skip the calling capsule to prevent recursion.
+                    if *capsule_id == caller_id {
+                        continue;
+                    }
+                    if let Some(capsule) = registry.get(capsule_id) {
+                        if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
                             continue;
                         }
-                        if let Some(capsule) = registry.get(capsule_id) {
-                            if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
-                                continue;
-                            }
-                            for interceptor in &capsule.manifest().interceptors {
-                                if crate::dispatcher::topic_matches(
-                                    &request.hook,
-                                    &interceptor.event,
-                                ) {
-                                    matches.push((
-                                        std::sync::Arc::clone(&capsule),
-                                        interceptor.action.clone(),
-                                    ));
-                                }
+                        for interceptor in &capsule.manifest().interceptors {
+                            if crate::dispatcher::topic_matches(&request.hook, &interceptor.event) {
+                                matches.push((
+                                    std::sync::Arc::clone(&capsule),
+                                    interceptor.action.clone(),
+                                ));
                             }
                         }
                     }
-                    matches
-                    // Read lock dropped here.
-                })
+                }
+                matches
+                // Read lock dropped here.
             });
 
         // Step 2: Dispatch each interceptor via spawned tasks and collect
         // results. Each invoke_interceptor call may use block_in_place
         // internally, which is safe because it runs in its own spawned task
         // (not nested inside our block_on).
-        let responses: Vec<serde_json::Value> = tokio::task::block_in_place(|| {
-            rt_handle.block_on(async {
+        let responses: Vec<serde_json::Value> =
+            util::bounded_block_on(&rt_handle, &host_semaphore, async {
                 let mut join_set = tokio::task::JoinSet::new();
 
                 for (capsule, action) in matches {
@@ -271,8 +267,7 @@ pub(crate) fn astrid_trigger_hook_impl(
                     }
                 }
                 responses
-            })
-        });
+            });
 
         match serde_json::to_vec(&responses) {
             Ok(bytes) => bytes,

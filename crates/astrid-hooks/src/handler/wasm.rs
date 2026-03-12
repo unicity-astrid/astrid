@@ -237,6 +237,12 @@ impl WasmHandler {
             lifecycle_phase: None,
             secret_store,
             ready_tx: None,
+            host_semaphore: Arc::new(tokio::sync::Semaphore::new(
+                std::thread::available_parallelism()
+                    .map(|n| n.get().saturating_sub(2).max(2))
+                    .unwrap_or(2),
+            )),
+            cancel_token: tokio_util::sync::CancellationToken::new(),
         };
         let user_data = UserData::new(host_state);
 

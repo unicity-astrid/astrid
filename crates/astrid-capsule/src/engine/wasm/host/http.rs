@@ -128,7 +128,7 @@ pub(crate) fn astrid_http_request_impl(
     let req: HttpRequest = serde_json::from_str(&request_json)
         .map_err(|e| Error::msg(format!("invalid http request json: {e}")))?;
 
-    let (capsule_id, security, runtime_handle) = {
+    let (capsule_id, security, runtime_handle, host_semaphore) = {
         let ud = user_data.get()?;
         let state = ud
             .lock()
@@ -137,6 +137,7 @@ pub(crate) fn astrid_http_request_impl(
             state.capsule_id.as_str().to_owned(),
             state.security.clone(),
             state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
         )
     };
 
@@ -151,9 +152,8 @@ pub(crate) fn astrid_http_request_impl(
         let pid = capsule_id.clone();
         let full_url = req.url.clone();
         let m = req.method.clone();
-        let check = tokio::task::block_in_place(|| {
-            runtime_handle
-                .block_on(async move { gate.check_http_request(&pid, &m, &full_url).await })
+        let check = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+            gate.check_http_request(&pid, &m, &full_url).await
         });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
@@ -194,8 +194,8 @@ pub(crate) fn astrid_http_request_impl(
         request_builder = request_builder.body(body);
     }
 
-    let response = tokio::task::block_in_place(|| {
-        runtime_handle.block_on(async move { request_builder.send().await })
+    let response = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+        request_builder.send().await
     })
     .map_err(|e| Error::msg(format!("http request failed: {e}")))?;
 
@@ -208,21 +208,19 @@ pub(crate) fn astrid_http_request_impl(
         }
     }
 
-    let body_result = tokio::task::block_in_place(|| {
-        runtime_handle.block_on(async move {
-            let mut response = response;
-            let mut bytes = Vec::new();
-            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-                if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                    return Err(format!(
-                        "HTTP response exceeded maximum payload limit ({} bytes)",
-                        util::MAX_GUEST_PAYLOAD_LEN
-                    ));
-                }
-                bytes.extend_from_slice(&chunk);
+    let body_result = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+        let mut response = response;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+            if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
+                return Err(format!(
+                    "HTTP response exceeded maximum payload limit ({} bytes)",
+                    util::MAX_GUEST_PAYLOAD_LEN
+                ));
             }
-            String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
-        })
+            bytes.extend_from_slice(&chunk);
+        }
+        String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
     });
 
     let body =

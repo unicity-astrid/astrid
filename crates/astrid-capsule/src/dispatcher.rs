@@ -182,7 +182,22 @@ fn spawn_interceptor_fanout(
             let payload = Arc::clone(&payload_bytes);
             let topic = Arc::clone(&topic);
 
+            let semaphore = capsule.interceptor_semaphore().clone();
             tokio::task::spawn(async move {
+                // Acquire per-capsule permit to bound concurrent invocations.
+                // Prevents a single capsule from spawning unbounded tasks under
+                // high-frequency event bursts.
+                let _permit = match semaphore.acquire().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        warn!(
+                            capsule_id = %capsule_id,
+                            "Interceptor semaphore closed, skipping"
+                        );
+                        return;
+                    },
+                };
+
                 debug!(
                     capsule_id = %capsule_id,
                     action = %action,

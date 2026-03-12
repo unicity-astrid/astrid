@@ -40,12 +40,13 @@ pub(crate) fn astrid_spawn_host_impl(
     let security = state.security.clone();
     let capsule_id = state.capsule_id.as_str().to_owned();
     let handle = state.runtime_handle.clone();
+    let semaphore = state.host_semaphore.clone();
     drop(state);
 
     if let Some(sec) = security {
         let cmd = req.cmd.to_string();
-        tokio::task::block_in_place(|| {
-            handle.block_on(async { sec.check_host_process(&capsule_id, &cmd).await })
+        util::bounded_block_on(&handle, &semaphore, async {
+            sec.check_host_process(&capsule_id, &cmd).await
         })
         .map_err(|e| Error::msg(format!("Security Check Failed: {e}")))?;
     } else {

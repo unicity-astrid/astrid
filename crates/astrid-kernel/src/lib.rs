@@ -69,6 +69,11 @@ pub struct Kernel {
 impl Kernel {
     /// Boot a new Kernel instance mounted at the specified directory.
     ///
+    /// # Panics
+    ///
+    /// Panics if called on a single-threaded tokio runtime. The capsule
+    /// system uses `block_in_place` which requires a multi-threaded runtime.
+    ///
     /// # Errors
     ///
     /// Returns an error if the VFS mount paths cannot be registered.
@@ -77,6 +82,13 @@ impl Kernel {
         workspace_root: PathBuf,
     ) -> Result<Arc<Self>, std::io::Error> {
         use astrid_core::dirs::AstridHome;
+
+        assert!(
+            tokio::runtime::Handle::current().runtime_flavor()
+                == tokio::runtime::RuntimeFlavor::MultiThread,
+            "Kernel requires a multi-threaded tokio runtime (block_in_place panics on \
+             single-threaded). Use #[tokio::main] or Runtime::new() instead of current_thread."
+        );
 
         let event_bus = Arc::new(EventBus::new());
         let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));

@@ -194,11 +194,10 @@ pub(crate) fn astrid_fs_exists_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_read(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_read(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
                 "security denied exists check: {reason}"
@@ -209,16 +208,14 @@ pub(crate) fn astrid_fs_exists_impl(
     // Phase 2: resolve to VFS
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    let exists = tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            vfs_path
-                .vfs
-                .exists(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                )
-                .await
-        })
+    let exists = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        vfs_path
+            .vfs
+            .exists(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+            )
+            .await
     })
     .unwrap_or(false);
 
@@ -254,11 +251,10 @@ pub(crate) fn astrid_fs_mkdir_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_write(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_write(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied mkdir: {reason}")));
         }
@@ -266,16 +262,14 @@ pub(crate) fn astrid_fs_mkdir_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            vfs_path
-                .vfs
-                .mkdir(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                )
-                .await
-        })
+    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        vfs_path
+            .vfs
+            .mkdir(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+            )
+            .await
     })
     .map_err(|e| Error::msg(format!("mkdir failed: {e}")))?;
 
@@ -304,11 +298,10 @@ pub(crate) fn astrid_fs_readdir_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_read(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_read(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied readdir: {reason}")));
         }
@@ -316,16 +309,14 @@ pub(crate) fn astrid_fs_readdir_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    let entries = tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            vfs_path
-                .vfs
-                .readdir(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                )
-                .await
-        })
+    let entries = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        vfs_path
+            .vfs
+            .readdir(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+            )
+            .await
     })
     .map_err(|e| Error::msg(format!("readdir failed: {e}")))?;
 
@@ -363,11 +354,10 @@ pub(crate) fn astrid_fs_stat_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_read(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_read(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied stat: {reason}")));
         }
@@ -375,16 +365,14 @@ pub(crate) fn astrid_fs_stat_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    let metadata = tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            vfs_path
-                .vfs
-                .stat(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                )
-                .await
-        })
+    let metadata = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        vfs_path
+            .vfs
+            .stat(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+            )
+            .await
     })
     .map_err(|e| Error::msg(format!("stat failed: {e}")))?;
 
@@ -423,11 +411,10 @@ pub(crate) fn astrid_fs_unlink_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_write(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_write(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied unlink: {reason}")));
         }
@@ -435,16 +422,14 @@ pub(crate) fn astrid_fs_unlink_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            vfs_path
-                .vfs
-                .unlink(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                )
-                .await
-        })
+    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        vfs_path
+            .vfs
+            .unlink(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+            )
+            .await
     })
     .map_err(|e| Error::msg(format!("unlink failed: {e}")))?;
 
@@ -474,11 +459,10 @@ pub(crate) fn astrid_read_file_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_read(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_read(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied read_file: {reason}")));
         }
@@ -486,8 +470,8 @@ pub(crate) fn astrid_read_file_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    let content_bytes = tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
+    let content_bytes =
+        util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
             let metadata = vfs_path
                 .vfs
                 .stat(
@@ -516,8 +500,7 @@ pub(crate) fn astrid_read_file_impl(
             let _ = vfs_path.vfs.close(&handle).await;
             data
         })
-    })
-    .map_err(|e| Error::msg(format!("read_file failed: {e}")))?;
+        .map_err(|e| Error::msg(format!("read_file failed: {e}")))?;
 
     let mem = plugin.memory_new(&content_bytes)?;
     outputs[0] = plugin.memory_to_val(mem);
@@ -549,11 +532,10 @@ pub(crate) fn astrid_write_file_impl(
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
         let pid = capsule_id.clone();
-        let check = tokio::task::block_in_place(|| {
-            state
-                .runtime_handle
-                .block_on(async move { gate.check_file_write(&pid, &p).await })
-        });
+        let check =
+            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
+                gate.check_file_write(&pid, &p).await
+            });
         if let Err(reason) = check {
             return Err(Error::msg(format!("security denied write_file: {reason}")));
         }
@@ -561,22 +543,20 @@ pub(crate) fn astrid_write_file_impl(
 
     let vfs_path = resolve_vfs(&state, &resolved)?;
 
-    tokio::task::block_in_place(|| {
-        state.runtime_handle.block_on(async {
-            // Note: pass truncate=true to emulate standard write behavior
-            let handle = vfs_path
-                .vfs
-                .open(
-                    &vfs_path.handle,
-                    vfs_path.relative.to_string_lossy().as_ref(),
-                    true,
-                    true,
-                )
-                .await?;
-            let res = vfs_path.vfs.write(&handle, &content_bytes).await;
-            let _ = vfs_path.vfs.close(&handle).await;
-            res
-        })
+    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        // Note: pass truncate=true to emulate standard write behavior
+        let handle = vfs_path
+            .vfs
+            .open(
+                &vfs_path.handle,
+                vfs_path.relative.to_string_lossy().as_ref(),
+                true,
+                true,
+            )
+            .await?;
+        let res = vfs_path.vfs.write(&handle, &content_bytes).await;
+        let _ = vfs_path.vfs.close(&handle).await;
+        res
     })
     .map_err(|e| Error::msg(format!("write_file failed: {e}")))?;
 

@@ -6,7 +6,7 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 ///
 /// The kernel pre-binds the socket and provides it via `HostState`. This
 /// function enforces the security gate before the capsule can use the
-/// listener — subsequent `accept()` calls do not re-check.
+/// listener - subsequent `accept()` calls do not re-check.
 pub(crate) fn astrid_net_bind_unix_impl(
     _: &mut CurrentPlugin,
     _: &[Val],
@@ -23,8 +23,9 @@ pub(crate) fn astrid_net_bind_unix_impl(
         let capsule_id = state.capsule_id.as_str().to_owned();
         let gate = gate.clone();
         let handle = state.runtime_handle.clone();
-        tokio::task::block_in_place(|| {
-            handle.block_on(async move { gate.check_net_bind(&capsule_id).await })
+        let semaphore = state.host_semaphore.clone();
+        util::bounded_block_on(&handle, &semaphore, async move {
+            gate.check_net_bind(&capsule_id).await
         })
         .map_err(|e| Error::msg(format!("security denied net_bind: {e}")))?;
     }
@@ -42,9 +43,9 @@ pub(crate) fn astrid_net_accept_impl(
 ) -> Result<(), Error> {
     let ud = user_data.get()?;
 
-    // We need to fetch the listener and the runtime handle out of the lock.
+    // We need to fetch the listener, runtime handle, and cancel token out of the lock.
     // Security gate was already enforced at bind time (astrid_net_bind_unix_impl).
-    let (listener_arc, rt_handle) = {
+    let (listener_arc, rt_handle, cancel_token) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -54,13 +55,25 @@ pub(crate) fn astrid_net_accept_impl(
             .clone()
             .ok_or_else(|| Error::msg("No CLI Socket Listener available in HostState"))?;
 
-        (listener, state.runtime_handle.clone())
+        (
+            listener,
+            state.runtime_handle.clone(),
+            state.cancel_token.clone(),
+        )
     };
 
-    // Use the runtime handle to block on the async accept call
+    // Use the runtime handle to block on the async accept call.
+    // Respects cancellation so unload doesn't hang waiting for a connection.
     let (stream, _addr) = rt_handle.block_on(async {
-        let l = listener_arc.lock().await;
-        l.accept().await
+        tokio::select! {
+            result = async {
+                let l = listener_arc.lock().await;
+                l.accept().await
+            } => result,
+            () = cancel_token.cancelled() => {
+                Err(std::io::Error::other("capsule unloading"))
+            }
+        }
     })?;
 
     // Now re-acquire the lock to store the active stream and generate a handle ID
@@ -114,7 +127,7 @@ pub(crate) fn astrid_net_read_impl(
         .map_err(|_| Error::msg("Invalid stream handle"))?;
 
     let ud = user_data.get()?;
-    let (stream_arc, rt_handle) = {
+    let (stream_arc, rt_handle, cancel_token) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -123,7 +136,11 @@ pub(crate) fn astrid_net_read_impl(
             .get(&handle_id)
             .ok_or_else(|| Error::msg("Stream handle not found"))?
             .clone();
-        (stream, state.runtime_handle.clone())
+        (
+            stream,
+            state.runtime_handle.clone(),
+            state.cancel_token.clone(),
+        )
     };
 
     // We don't want to block the thread *forever* if there is no data,
@@ -141,12 +158,16 @@ pub(crate) fn astrid_net_read_impl(
         // Wait for exactly 4 bytes (the length prefix used by the IPC protocol).
         // Distinguish between a genuine timeout (no data yet) and an I/O error
         // (peer disconnect, broken pipe) to avoid spin-looping on dead connections.
-        match tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            stream.read_exact(&mut len_buf),
-        )
-        .await
-        {
+        // Also respect cancellation to unblock on capsule unload.
+        match tokio::select! {
+            result = tokio::time::timeout(
+                std::time::Duration::from_millis(50),
+                stream.read_exact(&mut len_buf),
+            ) => result,
+            () = cancel_token.cancelled() => {
+                return Ok(Vec::new());
+            }
+        } {
             Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
             Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
             Ok(Ok(_)) => {}, // Got the 4-byte length prefix

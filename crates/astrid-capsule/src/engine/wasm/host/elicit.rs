@@ -89,7 +89,7 @@ pub(crate) fn astrid_elicit_impl(
 
     // Lock state: verify lifecycle phase, subscribe to response topic, extract
     // what we need, then drop the lock before blocking.
-    let (mut receiver, runtime_handle, event_bus, capsule_id, secret_store) = {
+    let (mut receiver, runtime_handle, event_bus, capsule_id, secret_store, cancel_token) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -109,6 +109,7 @@ pub(crate) fn astrid_elicit_impl(
         let event_bus = state.event_bus.clone();
         let capsule_id = state.capsule_id.to_string();
         let secret_store = state.secret_store.clone();
+        let cancel_token = state.cancel_token.clone();
 
         (
             receiver,
@@ -116,6 +117,7 @@ pub(crate) fn astrid_elicit_impl(
             event_bus,
             capsule_id,
             secret_store,
+            cancel_token,
         )
     };
 
@@ -143,18 +145,21 @@ pub(crate) fn astrid_elicit_impl(
         "Published elicit request, waiting for response"
     );
 
-    // Block the WASM thread until a response arrives or timeout expires.
+    // Block the WASM thread until a response arrives, timeout expires, or
+    // the capsule is unloaded (cancellation).
     let event = runtime_handle.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_millis(MAX_ELICIT_TIMEOUT_MS),
-            receiver.recv(),
-        )
-        .await
+        tokio::select! {
+            result = tokio::time::timeout(
+                std::time::Duration::from_millis(MAX_ELICIT_TIMEOUT_MS),
+                receiver.recv(),
+            ) => result.ok().flatten(),
+            () = cancel_token.cancelled() => None,
+        }
     });
 
     // Extract the response
     let response_json = match event {
-        Ok(Some(event)) => {
+        Some(event) => {
             if let AstridEvent::Ipc { message, .. } = &*event {
                 match &message.payload {
                     IpcPayload::ElicitResponse { value, values, .. } => {
@@ -208,12 +213,8 @@ pub(crate) fn astrid_elicit_impl(
                 return Err(Error::msg("unexpected event type in elicit response"));
             }
         },
-        Ok(None) => {
-            // Channel closed - host error
-            return Err(Error::msg("elicit response channel closed unexpectedly"));
-        },
-        Err(_) => {
-            // Timeout - surface as host error (SDK maps to SysError::HostError)
+        None => {
+            // Timeout, cancellation, or channel closed
             return Err(Error::msg(
                 "elicit request timed out waiting for user input",
             ));
