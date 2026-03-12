@@ -82,6 +82,10 @@ impl EventDispatcher {
                 last_lag_notification = std::time::Instant::now();
 
                 // Publish a lag notification so capsules can react.
+                // Note: This notification is published onto the same bus that just
+                // overflowed, so it may itself be dropped under sustained load. This
+                // is acceptable - the watchdog timeout is the actual recovery mechanism.
+                // The 10s rate limit prevents amplification feedback loops.
                 let msg = astrid_events::ipc::IpcMessage::new(
                     "system.event_bus.lagged",
                     astrid_events::ipc::IpcPayload::Custom {

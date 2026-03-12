@@ -173,6 +173,21 @@ impl ExecutionEngine for McpHostEngine {
         Ok(())
     }
 
+    fn check_health(&self) -> crate::capsule::CapsuleState {
+        let server_id = format!("capsule:{}", self.manifest.package.name);
+        let is_running = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { self.mcp_client.inner().is_server_running(&server_id).await })
+        });
+        if is_running {
+            crate::capsule::CapsuleState::Ready
+        } else {
+            crate::capsule::CapsuleState::Failed(format!(
+                "MCP server '{server_id}' is no longer running"
+            ))
+        }
+    }
+
     fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
         let server_id = format!("capsule:{}", self.manifest.package.name);
 

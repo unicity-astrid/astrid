@@ -428,21 +428,33 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
         loop {
             interval.tick().await;
 
-            let registry = kernel.capsules.read().await;
-            for capsule_id in registry.list() {
-                let Some(capsule) = registry.get(capsule_id) else {
-                    continue;
-                };
-                if !matches!(
-                    capsule.state(),
-                    astrid_capsule::capsule::CapsuleState::Ready
-                ) {
-                    continue;
-                }
+            // Collect ready capsules under a brief read lock, then drop
+            // the lock before calling check_health() or publishing events.
+            let ready_capsules: Vec<std::sync::Arc<dyn astrid_capsule::capsule::Capsule>> = {
+                let registry = kernel.capsules.read().await;
+                registry
+                    .list()
+                    .into_iter()
+                    .filter_map(|id| {
+                        let capsule = registry.get(id)?;
+                        if matches!(
+                            capsule.state(),
+                            astrid_capsule::capsule::CapsuleState::Ready
+                        ) {
+                            Some(capsule)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+                // Read lock dropped here.
+            };
+
+            for capsule in &ready_capsules {
                 let health = capsule.check_health();
                 if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
                     tracing::error!(
-                        capsule_id = %capsule_id,
+                        capsule_id = %capsule.id(),
                         reason = %reason,
                         "Capsule health check failed"
                     );
@@ -450,7 +462,7 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                         "capsule.health.failed",
                         astrid_events::ipc::IpcPayload::Custom {
                             data: serde_json::json!({
-                                "capsule_id": capsule_id.to_string(),
+                                "capsule_id": capsule.id().to_string(),
                                 "reason": reason,
                             }),
                         },
