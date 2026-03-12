@@ -135,7 +135,7 @@ fn unregister_active_session(session_id: &str) {
 /// Resolve the session timeout from capsule config, falling back to default.
 fn session_timeout_ms() -> u64 {
     match sys::get_config_string("session_timeout_ms") {
-        Ok(s) => match s.parse() {
+        Ok(s) => match s.trim().trim_matches('"').parse() {
             Ok(v) => v,
             Err(e) => {
                 let _ = sys::log(
@@ -373,7 +373,12 @@ impl ReactLoop {
     pub fn handle_watchdog_tick(&self, _payload: IpcPayload) -> Result<(), SysError> {
         for session_id in load_active_sessions() {
             let mut state = TurnState::load(&session_id);
-            Self::check_timeout_with_cleanup(&mut state)?;
+            if let Err(e) = Self::check_timeout_with_cleanup(&mut state) {
+                let _ = sys::log(
+                    "error",
+                    format!("Watchdog timeout check failed for session '{session_id}': {e}"),
+                );
+            }
         }
         Ok(())
     }
@@ -751,7 +756,7 @@ impl ReactLoop {
 
         let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
 
-        if state.iteration_count > max_iterations {
+        if state.iteration_count >= max_iterations {
             let _ = sys::log(
                 "error",
                 format!("ReAct loop exceeded {max_iterations} iterations, forcing stop"),
