@@ -95,6 +95,34 @@ fn namespace_range_end(namespace: &str) -> Vec<u8> {
     buf
 }
 
+/// Build the exclusive upper bound for a prefix range scan within a namespace.
+///
+/// For prefix "foo" in namespace "ns", this returns the key just after all
+/// keys starting with "ns\0foo". Works by incrementing the last byte of
+/// the prefix. If the prefix is empty, falls back to the full namespace
+/// range end.
+#[cfg(feature = "kv")]
+fn prefix_range_end(namespace: &str, prefix: &str) -> Vec<u8> {
+    if prefix.is_empty() {
+        return namespace_range_end(namespace);
+    }
+    let mut buf = composite_key(namespace, prefix);
+    // Increment the last byte to form the exclusive upper bound.
+    // If the last byte is 0xFF, pop and try the next one up.
+    while let Some(&last) = buf.last() {
+        if let Some(next) = last.checked_add(1) {
+            // Safety: we just confirmed `buf.last()` is `Some`.
+            if let Some(slot) = buf.last_mut() {
+                *slot = next;
+            }
+            return buf;
+        }
+        buf.pop();
+    }
+    // All bytes were 0xFF - fall back to namespace end.
+    namespace_range_end(namespace)
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -140,6 +168,19 @@ pub trait KvStore: Send + Sync {
 
     /// List all keys in a namespace.
     async fn list_keys(&self, namespace: &str) -> StorageResult<Vec<String>>;
+
+    /// List keys matching a prefix within a namespace.
+    ///
+    /// Default implementation filters `list_keys` output. Backends
+    /// should override with a native range scan when available.
+    async fn list_keys_with_prefix(
+        &self,
+        namespace: &str,
+        prefix: &str,
+    ) -> StorageResult<Vec<String>> {
+        let all = self.list_keys(namespace).await?;
+        Ok(all.into_iter().filter(|k| k.starts_with(prefix)).collect())
+    }
 
     /// Delete all keys in a namespace.
     async fn clear_namespace(&self, namespace: &str) -> StorageResult<u64>;
@@ -209,10 +250,28 @@ impl KvStore for MemoryKvStore {
             .data
             .read()
             .map_err(|e| StorageError::Internal(e.to_string()))?;
-        let prefix = format!("{namespace}\0");
+        let ns_prefix = format!("{namespace}\0");
         Ok(data
             .keys()
-            .filter_map(|k| k.strip_prefix(&prefix).map(String::from))
+            .filter_map(|k| k.strip_prefix(&ns_prefix).map(String::from))
+            .collect())
+    }
+
+    async fn list_keys_with_prefix(
+        &self,
+        namespace: &str,
+        prefix: &str,
+    ) -> StorageResult<Vec<String>> {
+        let data = self
+            .data
+            .read()
+            .map_err(|e| StorageError::Internal(e.to_string()))?;
+        let full_prefix = format!("{namespace}\0{prefix}");
+        let ns_prefix_len = namespace.len().saturating_add(1);
+        Ok(data
+            .keys()
+            .filter(|k| k.starts_with(&full_prefix))
+            .filter_map(|k| k.get(ns_prefix_len..).map(String::from))
             .collect())
     }
 
@@ -362,6 +421,36 @@ impl KvStore for SurrealKvStore {
         validate_namespace(namespace)?;
         let start = namespace_range_start(namespace);
         let end = namespace_range_end(namespace);
+        let prefix_len = namespace.len().saturating_add(1); // namespace + \0
+
+        let tx = self
+            .tree
+            .begin_with_mode(surrealkv::Mode::ReadOnly)
+            .map_err(|ref e| map_kv_err(e))?;
+        let mut iter = tx.range(&start, &end).map_err(|ref e| map_kv_err(e))?;
+        iter.seek_first().map_err(|ref e| map_kv_err(e))?;
+
+        let mut keys = Vec::new();
+        while iter.valid() {
+            let raw_key = iter.key();
+            if raw_key.len() > prefix_len
+                && let Ok(key_str) = std::str::from_utf8(&raw_key[prefix_len..])
+            {
+                keys.push(key_str.to_string());
+            }
+            iter.next().map_err(|ref e| map_kv_err(e))?;
+        }
+        Ok(keys)
+    }
+
+    async fn list_keys_with_prefix(
+        &self,
+        namespace: &str,
+        prefix: &str,
+    ) -> StorageResult<Vec<String>> {
+        validate_namespace(namespace)?;
+        let start = composite_key(namespace, prefix);
+        let end = prefix_range_end(namespace, prefix);
         let prefix_len = namespace.len().saturating_add(1); // namespace + \0
 
         let tx = self
@@ -545,11 +634,9 @@ impl ScopedKvStore {
     ///
     /// Returns an error if the underlying store operation fails.
     pub async fn list_keys_with_prefix(&self, prefix: &str) -> StorageResult<Vec<String>> {
-        let all_keys = self.list_keys().await?;
-        Ok(all_keys
-            .into_iter()
-            .filter(|k| k.starts_with(prefix))
-            .collect())
+        self.inner
+            .list_keys_with_prefix(&self.namespace, prefix)
+            .await
     }
 
     /// Delete all keys matching a given prefix within this namespace.
