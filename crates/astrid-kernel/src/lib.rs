@@ -235,12 +235,35 @@ impl Kernel {
                 .ok_or_else(|| anyhow::anyhow!("capsule '{id}' has no source directory"))?
         };
 
-        // Unregister (drops the old capsule, which calls unload via Drop).
-        {
+        // Unregister and explicitly unload. There is no Drop impl that
+        // calls unload() (it's async), so we must do it here to avoid
+        // leaking MCP subprocesses and other engine resources.
+        let old_capsule = {
             let mut registry = self.capsules.write().await;
             registry
                 .unregister(id)
-                .map_err(|e| anyhow::anyhow!("failed to unregister capsule '{id}': {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to unregister capsule '{id}': {e}"))?
+        };
+        // Explicitly unload the old capsule. There is no Drop impl that
+        // calls unload() (it's async), so we must do it here to avoid
+        // leaking MCP subprocesses and other engine resources.
+        // Arc::get_mut requires exclusive ownership (strong_count == 1).
+        {
+            let mut old = old_capsule;
+            if let Some(capsule) = std::sync::Arc::get_mut(&mut old) {
+                if let Err(e) = capsule.unload().await {
+                    tracing::warn!(
+                        capsule_id = %id,
+                        error = %e,
+                        "Capsule unload failed during restart"
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    capsule_id = %id,
+                    "Cannot call unload during restart - Arc still held by in-flight task"
+                );
+            }
         }
 
         // Re-load from disk.
@@ -571,12 +594,17 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                     .collect()
             };
 
+            // Probe health once per capsule and cache the results to avoid
+            // redundant `block_in_place` calls for MCP engines.
+            let mut failed_this_tick: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             let mut restarted = Vec::new();
 
             for capsule in &ready_capsules {
                 let health = capsule.check_health();
                 if let astrid_capsule::capsule::CapsuleState::Failed(reason) = health {
                     let id_str = capsule.id().to_string();
+                    failed_this_tick.insert(id_str.clone());
 
                     tracing::error!(capsule_id = %id_str, reason = %reason, "Capsule health check failed");
 
@@ -610,18 +638,19 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                 restart_trackers.remove(id);
             }
 
-            // Prune trackers for capsules no longer in failed state.
-            let failed_ids: std::collections::HashSet<&str> = ready_capsules
-                .iter()
-                .filter(|c| {
-                    matches!(
-                        c.check_health(),
-                        astrid_capsule::capsule::CapsuleState::Failed(_)
-                    )
-                })
-                .map(|c| c.id().as_str())
-                .collect();
-            restart_trackers.retain(|id, _| failed_ids.contains(id.as_str()));
+            // Prune trackers for capsules that recovered (healthy this tick).
+            // Keep exhausted trackers even if the capsule is absent from the
+            // registry (restart unregistered it but reload failed) so we
+            // don't silently forget permanently-down capsules.
+            restart_trackers.retain(|id, tracker| {
+                if tracker.exhausted() {
+                    // Never prune exhausted trackers - the capsule is
+                    // permanently down and we don't want to lose that state.
+                    return true;
+                }
+                // For non-exhausted trackers, keep if still failing this tick.
+                failed_this_tick.contains(id.as_str())
+            });
         }
     })
 }
@@ -731,5 +760,73 @@ mod tests {
             0o600,
             "key file should have 0o600 permissions, got {mode:#o}"
         );
+    }
+
+    #[test]
+    fn restart_tracker_initial_state() {
+        let tracker = RestartTracker::new();
+        assert!(!tracker.exhausted());
+        // Should not restart immediately (backoff hasn't elapsed).
+        assert!(!tracker.should_restart());
+    }
+
+    #[test]
+    fn restart_tracker_allows_restart_after_backoff() {
+        let mut tracker = RestartTracker::new();
+        // Simulate time passing by setting last_attempt in the past.
+        tracker.last_attempt = std::time::Instant::now()
+            - RestartTracker::INITIAL_BACKOFF
+            - std::time::Duration::from_millis(1);
+        assert!(tracker.should_restart());
+    }
+
+    #[test]
+    fn restart_tracker_doubles_backoff() {
+        let mut tracker = RestartTracker::new();
+        assert_eq!(tracker.backoff, RestartTracker::INITIAL_BACKOFF);
+
+        tracker.record_attempt();
+        assert_eq!(
+            tracker.backoff,
+            RestartTracker::INITIAL_BACKOFF.saturating_mul(2)
+        );
+        assert_eq!(tracker.attempts, 1);
+
+        tracker.record_attempt();
+        assert_eq!(
+            tracker.backoff,
+            RestartTracker::INITIAL_BACKOFF.saturating_mul(4)
+        );
+        assert_eq!(tracker.attempts, 2);
+    }
+
+    #[test]
+    fn restart_tracker_backoff_caps_at_max() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..20 {
+            tracker.record_attempt();
+        }
+        assert_eq!(tracker.backoff, RestartTracker::MAX_BACKOFF);
+    }
+
+    #[test]
+    fn restart_tracker_exhausted_at_max_attempts() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..RestartTracker::MAX_ATTEMPTS {
+            assert!(!tracker.exhausted());
+            tracker.record_attempt();
+        }
+        assert!(tracker.exhausted());
+    }
+
+    #[test]
+    fn restart_tracker_should_restart_false_when_exhausted() {
+        let mut tracker = RestartTracker::new();
+        for _ in 0..RestartTracker::MAX_ATTEMPTS {
+            tracker.record_attempt();
+        }
+        // Even if backoff has elapsed, exhausted tracker should not restart.
+        tracker.last_attempt = std::time::Instant::now() - RestartTracker::MAX_BACKOFF;
+        assert!(!tracker.should_restart());
     }
 }

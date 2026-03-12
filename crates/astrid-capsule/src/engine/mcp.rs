@@ -175,15 +175,29 @@ impl ExecutionEngine for McpHostEngine {
 
     fn check_health(&self) -> crate::capsule::CapsuleState {
         let server_id = format!("capsule:{}", self.manifest.package.name);
-        // Safety: `block_in_place` is safe here because the health monitor
-        // calls `check_health()` from a multi-threaded tokio runtime context
-        // (the kernel task), not from within a `LocalSet` or single-threaded
-        // runtime. The inner future is a short lock check, not a long I/O op.
-        let is_running = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { self.mcp_client.inner().is_server_running(&server_id).await })
+        // Requires multi-threaded tokio runtime (the kernel health monitor
+        // satisfies this). `health_check()` calls `is_alive()` on each
+        // running server, which checks `RunningService::is_closed()` to
+        // detect crashed subprocesses. `is_server_running()` only checks
+        // HashMap membership and would miss a dead process.
+        debug_assert!(
+            tokio::runtime::Handle::try_current()
+                .map(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
+                .unwrap_or(false),
+            "check_health() with block_in_place requires multi-threaded tokio runtime"
+        );
+        let is_alive = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let health = self
+                    .mcp_client
+                    .inner()
+                    .server_manager()
+                    .health_check()
+                    .await;
+                health.get(&server_id).copied().unwrap_or(false)
+            })
         });
-        if is_running {
+        if is_alive {
             crate::capsule::CapsuleState::Ready
         } else {
             crate::capsule::CapsuleState::Failed(format!(
