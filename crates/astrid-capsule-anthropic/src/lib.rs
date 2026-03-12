@@ -5,7 +5,7 @@
 
 //! Anthropic LLM provider capsule.
 //!
-//! Subscribes to `llm.request.generate.anthropic` IPC events, calls the
+//! Subscribes to `llm.v1.request.generate.anthropic` IPC events, calls the
 //! Anthropic Messages API via the HTTP airlock, parses the SSE streaming
 //! response, and publishes standardized `llm.v1.stream.anthropic` events back
 //! to the event bus.

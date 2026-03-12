@@ -329,7 +329,7 @@ export default {
             description: "Detect friendly messages"
         });
 
-        api.on("before_prompt_build", (event, ctx) => {
+        api.on("prompt_builder.v1.hook.before_build", (event, ctx) => {
             return { appendSystemContext: "Be friendly." };
         }, { priority: 50 });
 

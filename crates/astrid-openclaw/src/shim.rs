@@ -1078,7 +1078,7 @@ module.exports.astrid_hook_trigger = function() {
 
   // Collect handler return values — last non-null result wins.
   // This allows interceptor hooks to modify or override data flowing
-  // through the pipeline (e.g. before_prompt_build returning extra context).
+  // through the pipeline (e.g. prompt_builder.v1.hook.before_build returning extra context).
   var lastResult = null;
 
   // Dispatch to registerHook handlers

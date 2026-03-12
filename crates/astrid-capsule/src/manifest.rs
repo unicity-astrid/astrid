@@ -62,8 +62,9 @@ pub struct CapsuleManifest {
     /// Cached effective provides (computed lazily on first `effective_provides()` call).
     ///
     /// **Do not pre-populate.** Always initialize as `OnceLock::new()` in struct literals.
-    /// After `Clone`, the cache resets to empty and will be recomputed on next access.
-    /// Modifying fields after calling `effective_provides()` will NOT invalidate the cache.
+    /// After `Clone`, the cache carries over the already-initialized value. Mutating
+    /// fields of the clone after `effective_provides()` was called on either the
+    /// original or the clone will return stale data.
     #[serde(skip)]
     #[doc(hidden)]
     pub effective_provides_cache: OnceLock<Vec<String>>,

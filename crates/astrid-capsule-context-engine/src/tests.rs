@@ -258,14 +258,14 @@ fn parse_hook_responses_from_ipc_envelope() {
     let envelope = serde_json::json!({
         "messages": [
             {
-                "topic": "context_engine.hook_response.compact-1",
+                "topic": "context_engine.v1.hook_response.compact-1",
                 "source_id": "plugin-a",
                 "payload": {
                     "pinnedMessageIds": ["msg-1", "msg-2"]
                 }
             },
             {
-                "topic": "context_engine.hook_response.compact-1",
+                "topic": "context_engine.v1.hook_response.compact-1",
                 "source_id": "plugin-b",
                 "payload": {
                     "skip": true

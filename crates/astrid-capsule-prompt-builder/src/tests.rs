@@ -489,7 +489,7 @@ fn parse_hook_responses_ignores_unrelated_payload() {
     // should not be parsed as a HookResponse.
     let envelope = serde_json::json!({
         "messages": [{
-            "topic": "prompt_builder.hook_response.req-1",
+            "topic": "prompt_builder.v1.hook_response.req-1",
             "source_id": "some-capsule",
             "payload": {
                 "status": "ok",
