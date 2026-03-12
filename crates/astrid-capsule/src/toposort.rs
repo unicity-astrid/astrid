@@ -286,9 +286,12 @@ mod tests {
 
     #[test]
     fn capability_matches_empty_strings() {
-        // Both sides empty: type and body are both "", segments are [""].
-        // This returns true (empty == empty). Locked in by test; manifest
-        // validation rejects empty capability strings before they reach here.
+        // capability_matches("", "") returns true as an implementation artifact:
+        // split_once(':') on "" gives None, so both types are ""; split('.')
+        // on "" gives [""], so both bodies match. This is only safe because
+        // manifest validation (load_manifest) rejects empty strings before any
+        // call to toposort_manifests. Tests that bypass manifest validation
+        // must not pass empty strings here.
         assert!(capability_matches("", ""));
     }
 

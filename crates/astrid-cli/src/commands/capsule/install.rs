@@ -773,6 +773,9 @@ fn run_lifecycle_if_wasm(
     // Spawn a CLI-inline elicit handler that prompts on stdin.
     // Runs as a tokio task so we can use the async EventReceiver::recv().
     let elicit_bus = event_bus.clone();
+    // Exact match: the elicit host function publishes to "astrid.v1.elicit".
+    // If the topic is ever extended (e.g. "astrid.v1.elicit.request"), update
+    // this subscription and the integration test in lifecycle_e2e.rs.
     let elicit_receiver = event_bus.subscribe_topic("astrid.v1.elicit");
     let elicit_handle = rt.spawn(async move {
         cli_elicit_handler(elicit_receiver, elicit_bus).await;
