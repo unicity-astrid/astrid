@@ -588,6 +588,13 @@ struct CapsuleMeta {
     /// Used by `astrid capsule update` to re-fetch from the same source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<String>,
+    /// Resolved capabilities this capsule provides (baked from `effective_provides()`
+    /// at install time so registries and tooling can read them without running Rust).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provides: Vec<String>,
+    /// Capabilities this capsule requires from other capsules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    requires: Vec<String>,
 }
 
 /// Read existing `meta.json` from a capsule's install directory (if present).
@@ -698,6 +705,8 @@ pub(crate) fn install_from_local_path_inner(
         source: original_source
             .map(String::from)
             .or_else(|| existing_meta.and_then(|m| m.source)),
+        provides: manifest.effective_provides().to_vec(),
+        requires: manifest.dependencies.requires.clone(),
     };
     write_meta(&target_dir, &meta)?;
 
@@ -1160,6 +1169,8 @@ mod tests {
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-03-12T00:00:00Z".into(),
             source: Some("@org/my-capsule".into()),
+            provides: vec!["tool:run_shell".into(), "topic:session.response.*".into()],
+            requires: vec!["topic:identity.response.ready".into()],
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1167,6 +1178,8 @@ mod tests {
         assert_eq!(loaded.installed_at, "2026-01-01T00:00:00Z");
         assert_eq!(loaded.updated_at, "2026-03-12T00:00:00Z");
         assert_eq!(loaded.source.as_deref(), Some("@org/my-capsule"));
+        assert_eq!(loaded.provides.len(), 2);
+        assert_eq!(loaded.requires, vec!["topic:identity.response.ready"]);
     }
 
     #[test]
@@ -1177,15 +1190,25 @@ mod tests {
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
             source: None,
+            provides: vec![],
+            requires: vec![],
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
         assert!(loaded.source.is_none());
-        // Also verify source field is omitted from JSON (skip_serializing_if)
+        // Also verify optional fields are omitted from JSON (skip_serializing_if)
         let json = std::fs::read_to_string(dir.path().join("meta.json")).unwrap();
         assert!(
             !json.contains("source"),
             "source: None should be omitted from JSON"
+        );
+        assert!(
+            !json.contains("provides"),
+            "empty provides should be omitted from JSON"
+        );
+        assert!(
+            !json.contains("requires"),
+            "empty requires should be omitted from JSON"
         );
     }
 
