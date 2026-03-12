@@ -121,12 +121,12 @@ fn tier1_shim_captures_all_registration_methods() {
 
     // ── on (event handlers) ───────────────────────────────────────────
     assert!(
-        shim.contains("message_received"),
-        "missing on('message_received') handler"
+        shim.contains("lifecycle.v1.message_received"),
+        "missing on('lifecycle.v1.message_received') handler"
     );
     assert!(
-        shim.contains("message_sending"),
-        "missing on('message_sending') handler"
+        shim.contains("lifecycle.v1.message_sending"),
+        "missing on('lifecycle.v1.message_sending') handler"
     );
     assert!(
         shim.contains("prompt_building"),
@@ -137,12 +137,12 @@ fn tier1_shim_captures_all_registration_methods() {
         "missing on('model_resolving') handler"
     );
     assert!(
-        shim.contains("context_compaction_started"),
-        "missing on('context_compaction_started') handler"
+        shim.contains("lifecycle.v1.context_compaction_started"),
+        "missing on('lifecycle.v1.context_compaction_started') handler"
     );
     assert!(
-        shim.contains("tool_result_persisting"),
-        "missing on('tool_result_persisting') handler"
+        shim.contains("lifecycle.v1.tool_result_persisting"),
+        "missing on('lifecycle.v1.tool_result_persisting') handler"
     );
 }
 

@@ -135,11 +135,11 @@ module.exports = {
     });
 
     // ── 13. on (event handler) ────────────────────────────────────────
-    context.on("message_received", function(data) {
+    context.on("lifecycle.v1.message_received", function(data) {
       context.logger.debug("event: message received");
     });
 
-    context.on("message_sending", function(data) {
+    context.on("lifecycle.v1.message_sending", function(data) {
       context.logger.debug("event: message sending");
     });
 
@@ -151,11 +151,11 @@ module.exports = {
       context.logger.debug("event: model resolving");
     });
 
-    context.on("context_compaction_started", function(data) {
+    context.on("lifecycle.v1.context_compaction_started", function(data) {
       context.logger.debug("event: context compaction started");
     });
 
-    context.on("tool_result_persisting", function(data) {
+    context.on("lifecycle.v1.tool_result_persisting", function(data) {
       context.logger.debug("event: tool result persisting");
     });
 

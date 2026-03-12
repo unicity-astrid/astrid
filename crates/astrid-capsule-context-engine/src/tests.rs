@@ -223,12 +223,12 @@ fn before_compaction_payload_includes_response_topic() {
         message_count: 0,
         estimated_tokens: 0,
         max_tokens: 100_000,
-        response_topic: "context_engine.hook_response.compact-123-0".to_string(),
+        response_topic: "context_engine.v1.hook_response.compact-123-0".to_string(),
     };
     let json = serde_json::to_value(&payload).expect("serialize");
     assert_eq!(
         json["response_topic"],
-        "context_engine.hook_response.compact-123-0"
+        "context_engine.v1.hook_response.compact-123-0"
     );
 }
 
@@ -380,31 +380,31 @@ fn target_tokens_clamped_to_max_tokens() {
 
 #[test]
 fn should_dispatch_compact_topic() {
-    assert!(should_dispatch_topic("context_engine.compact"));
+    assert!(should_dispatch_topic("context_engine.v1.compact"));
 }
 
 #[test]
 fn should_dispatch_estimate_topic() {
-    assert!(should_dispatch_topic("context_engine.estimate_tokens"));
+    assert!(should_dispatch_topic("context_engine.v1.estimate_tokens"));
 }
 
 #[test]
 fn should_not_dispatch_own_response_topics() {
-    assert!(!should_dispatch_topic("context_engine.response.compact"));
+    assert!(!should_dispatch_topic("context_engine.v1.response.compact"));
     assert!(!should_dispatch_topic(
-        "context_engine.response.estimate_tokens"
+        "context_engine.v1.response.estimate_tokens"
     ));
 }
 
 #[test]
 fn should_not_dispatch_hook_response_topics() {
     assert!(!should_dispatch_topic(
-        "context_engine.hook_response.compact-123"
+        "context_engine.v1.hook_response.compact-123"
     ));
 }
 
 #[test]
 fn should_not_dispatch_interceptor_topics() {
-    assert!(!should_dispatch_topic("before_compaction"));
-    assert!(!should_dispatch_topic("after_compaction"));
+    assert!(!should_dispatch_topic("context_engine.v1.hook.before_compaction"));
+    assert!(!should_dispatch_topic("context_engine.v1.hook.after_compaction"));
 }

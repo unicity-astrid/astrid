@@ -12,10 +12,10 @@ file = "astrid_capsule_registry.wasm"
 [capabilities]
 uplink = true
 ipc_publish = [
-    "registry.response.*",
-    "registry.active_model_changed",
-    "kernel.request.get_capsule_metadata",
-    "registry.selection.*",
+    "registry.v1.response.*",
+    "registry.v1.active_model_changed",
+    "kernel.v1.request.get_capsule_metadata",
+    "registry.v1.selection.*",
 ]
 
 [[command]]

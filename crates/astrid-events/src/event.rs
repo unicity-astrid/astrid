@@ -790,21 +790,21 @@ impl AstridEvent {
             Self::AgentStarted { .. } => "agent_started",
             Self::AgentStopped { .. } => "agent_stopped",
             // Session
-            Self::SessionCreated { .. } => "session_created",
-            Self::SessionEnded { .. } => "session_ended",
+            Self::SessionCreated { .. } => "lifecycle.v1.session_created",
+            Self::SessionEnded { .. } => "lifecycle.v1.session_ended",
             Self::SessionResumed { .. } => "session_resumed",
             // Prompt / Cognitive Loop
             Self::PromptBuilding { .. } => "prompt_building",
-            Self::MessageSending { .. } => "message_sending",
-            Self::ContextCompactionStarted { .. } => "context_compaction_started",
-            Self::ContextCompactionCompleted { .. } => "context_compaction_completed",
+            Self::MessageSending { .. } => "lifecycle.v1.message_sending",
+            Self::ContextCompactionStarted { .. } => "lifecycle.v1.context_compaction_started",
+            Self::ContextCompactionCompleted { .. } => "lifecycle.v1.context_compaction_completed",
             Self::SessionResetting { .. } => "session_resetting",
             Self::ModelResolving { .. } => "model_resolving",
             Self::AgentLoopCompleted { .. } => "agent_loop_completed",
-            Self::ToolResultPersisting { .. } => "tool_result_persisting",
+            Self::ToolResultPersisting { .. } => "lifecycle.v1.tool_result_persisting",
             // Message Flow
-            Self::MessageReceived { .. } => "message_received",
-            Self::MessageSent { .. } => "message_sent",
+            Self::MessageReceived { .. } => "lifecycle.v1.message_received",
+            Self::MessageSent { .. } => "lifecycle.v1.message_sent",
             Self::MessageProcessed { .. } => "message_processed",
             // LLM
             Self::LlmRequestStarted { .. } => "llm_request_started",
@@ -813,8 +813,8 @@ impl AstridEvent {
             Self::LlmStreamChunk { .. } => "llm_stream_chunk",
             Self::LlmStreamCompleted { .. } => "llm_stream_completed",
             // Tool
-            Self::ToolCallStarted { .. } => "tool_call_started",
-            Self::ToolCallCompleted { .. } => "tool_call_completed",
+            Self::ToolCallStarted { .. } => "lifecycle.v1.tool_call_started",
+            Self::ToolCallCompleted { .. } => "lifecycle.v1.tool_call_completed",
             Self::ToolCallFailed { .. } => "tool_call_failed",
             // MCP
             Self::McpServerConnected { .. } => "mcp_server_connected",
@@ -822,11 +822,11 @@ impl AstridEvent {
             Self::McpToolCalled { .. } => "mcp_tool_called",
             Self::McpToolCompleted { .. } => "mcp_tool_completed",
             // SubAgent
-            Self::SubAgentSpawned { .. } => "subagent_spawned",
+            Self::SubAgentSpawned { .. } => "lifecycle.v1.sub_agent_spawned",
             Self::SubAgentProgress { .. } => "subagent_progress",
-            Self::SubAgentCompleted { .. } => "subagent_completed",
-            Self::SubAgentFailed { .. } => "subagent_failed",
-            Self::SubAgentCancelled { .. } => "subagent_cancelled",
+            Self::SubAgentCompleted { .. } => "lifecycle.v1.sub_agent_completed",
+            Self::SubAgentFailed { .. } => "lifecycle.v1.sub_agent_failed",
+            Self::SubAgentCancelled { .. } => "lifecycle.v1.sub_agent_cancelled",
             // Capsule
             Self::CapsuleLoaded { .. } => "capsule_loaded",
             Self::CapsuleFailed { .. } => "capsule_failed",
@@ -846,8 +846,8 @@ impl AstridEvent {
             Self::BudgetWarning { .. } => "budget_warning",
             Self::BudgetExceeded { .. } => "budget_exceeded",
             // System
-            Self::KernelStarted { .. } => "kernel_started",
-            Self::KernelShutdown { .. } => "kernel_shutdown",
+            Self::KernelStarted { .. } => "lifecycle.v1.kernel_started",
+            Self::KernelShutdown { .. } => "lifecycle.v1.kernel_shutdown",
             Self::ConfigReloaded { .. } => "config_reloaded",
             Self::ConfigChanged { .. } => "config_changed",
             Self::HealthCheckCompleted { .. } => "health_check_completed",

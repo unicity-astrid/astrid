@@ -194,7 +194,7 @@ pub(crate) async fn resolve_env(
             .join(", ");
 
         let msg = astrid_events::ipc::IpcMessage::new(
-            "system.onboarding.required",
+            "system.v1.onboarding.required",
             astrid_events::ipc::IpcPayload::OnboardingRequired {
                 capsule_id: manifest.package.name.clone(),
                 fields: onboarding_fields,

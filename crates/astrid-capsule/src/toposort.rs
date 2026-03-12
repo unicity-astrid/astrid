@@ -495,7 +495,7 @@ mod tests {
         let identity = {
             let (mut m, p) = manifest_bare("astrid-capsule-identity");
             m.capabilities = CapabilitiesDef {
-                ipc_publish: vec!["identity.response.ready".into()],
+                ipc_publish: vec!["identity.v1.response.ready".into()],
                 ..Default::default()
             };
             (m, p)
@@ -503,7 +503,7 @@ mod tests {
         let session = {
             let (mut m, p) = manifest_bare("astrid-capsule-session");
             m.capabilities = CapabilitiesDef {
-                ipc_publish: vec!["session.response.get_messages".into()],
+                ipc_publish: vec!["session.v1.response.get_messages".into()],
                 ..Default::default()
             };
             (m, p)
@@ -512,8 +512,8 @@ mod tests {
             "astrid-capsule-react",
             &[],
             &[
-                "topic:identity.response.ready",
-                "topic:session.response.get_messages",
+                "topic:identity.v1.response.ready",
+                "topic:session.v1.response.get_messages",
             ],
         );
 

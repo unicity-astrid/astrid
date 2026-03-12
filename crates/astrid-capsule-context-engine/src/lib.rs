@@ -4,27 +4,27 @@
 
 //! Context Engine capsule — pluggable compaction with interceptor hook support.
 //!
-//! Manages context window compaction and fires `before_compaction` /
-//! `after_compaction` interceptors to plugin capsules via IPC. The default
+//! Manages context window compaction and fires `context_engine.v1.hook.before_compaction` /
+//! `context_engine.v1.hook.after_compaction` interceptors to plugin capsules via IPC. The default
 //! strategy is simple token-budget trimming. A different capsule claiming
 //! the same IPC topics can replace this one entirely.
 //!
 //! # IPC Protocol
 //!
 //! **Requests** (publish to these topics):
-//! - `context_engine.compact` — compact a session's messages
-//! - `context_engine.estimate_tokens` — estimate token count for messages
+//! - `context_engine.v1.compact` — compact a session's messages
+//! - `context_engine.v1.estimate_tokens` — estimate token count for messages
 //!
 //! **Responses** (published by context engine):
-//! - `context_engine.response.compact` — compacted messages and stats
-//! - `context_engine.response.estimate_tokens` — estimated token count
+//! - `context_engine.v1.response.compact` — compacted messages and stats
+//! - `context_engine.v1.response.estimate_tokens` — estimated token count
 //!
 //! # Interceptor Hooks (fired via IPC)
 //!
-//! - `before_compaction` — request-response: plugins can mark messages as
+//! - `context_engine.v1.hook.before_compaction` — request-response: plugins can mark messages as
 //!   protected or skip compaction entirely. Plugins respond on a per-request
 //!   response topic included in the hook payload.
-//! - `after_compaction` — fire-and-forget notification with stats.
+//! - `context_engine.v1.hook.after_compaction` — fire-and-forget notification with stats.
 
 mod strategy;
 
@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 
 // ── IPC payload types ───────────────────────────────────────────────
 
-/// IPC request payload for `context_engine.compact`.
+/// IPC request payload for `context_engine.v1.compact`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CompactRequest {
     /// Session being compacted.
@@ -50,7 +50,7 @@ struct CompactRequest {
     target_tokens: u64,
 }
 
-/// IPC response payload for `context_engine.response.compact`.
+/// IPC response payload for `context_engine.v1.response.compact`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CompactResponse {
     /// Messages after compaction.
@@ -63,21 +63,21 @@ struct CompactResponse {
     strategy: String,
 }
 
-/// IPC request payload for `context_engine.estimate_tokens`.
+/// IPC request payload for `context_engine.v1.estimate_tokens`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EstimateRequest {
     /// Messages to estimate token count for.
     messages: Vec<serde_json::Value>,
 }
 
-/// IPC response payload for `context_engine.response.estimate_tokens`.
+/// IPC response payload for `context_engine.v1.response.estimate_tokens`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EstimateResponse {
     /// Estimated total token count.
     estimated_tokens: u64,
 }
 
-/// Payload sent to plugin capsules via the `before_compaction` IPC hook.
+/// Payload sent to plugin capsules via the `context_engine.v1.hook.before_compaction` IPC hook.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BeforeCompactionPayload {
     /// Session being compacted.
@@ -94,7 +94,7 @@ struct BeforeCompactionPayload {
     response_topic: String,
 }
 
-/// A single plugin's response to the `before_compaction` hook.
+/// A single plugin's response to the `context_engine.v1.hook.before_compaction` hook.
 ///
 /// All fields are optional. The context engine merges responses from
 /// multiple plugins: any `skip: true` wins, `protected_message_ids`
@@ -120,7 +120,7 @@ impl BeforeCompactionHookResponse {
     }
 }
 
-/// Fire-and-forget notification payload for `after_compaction`.
+/// Fire-and-forget notification payload for `context_engine.v1.hook.after_compaction`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AfterCompactionPayload {
     /// Session that was compacted.
@@ -195,13 +195,13 @@ pub fn run() -> FnResult<()> {
         ),
     );
 
-    let sub = ipc::subscribe("context_engine.*")
+    let sub = ipc::subscribe("context_engine.v1.*")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Subscribe to our own hook topics so we can drain them.
-    let hook_sub = ipc::subscribe("before_compaction")
+    let hook_sub = ipc::subscribe("context_engine.v1.hook.before_compaction")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-    let after_sub = ipc::subscribe("after_compaction")
+    let after_sub = ipc::subscribe("context_engine.v1.hook.after_compaction")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
@@ -237,10 +237,10 @@ pub fn run() -> FnResult<()> {
 
 /// Returns `true` if the topic should be dispatched (not a self-echo).
 fn should_dispatch_topic(topic: &str) -> bool {
-    !topic.starts_with("context_engine.response.")
-        && !topic.starts_with("context_engine.hook_response.")
-        && topic != "before_compaction"
-        && topic != "after_compaction"
+    !topic.starts_with("context_engine.v1.response.")
+        && !topic.starts_with("context_engine.v1.hook_response.")
+        && topic != "context_engine.v1.hook.before_compaction"
+        && topic != "context_engine.v1.hook.after_compaction"
 }
 
 /// Parse the poll envelope and dispatch individual messages.
@@ -289,8 +289,8 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
         let request_value = payload.get("data").unwrap_or(payload);
 
         match topic {
-            "context_engine.compact" => handle_compact(request_value, config),
-            "context_engine.estimate_tokens" => handle_estimate_tokens(request_value),
+            "context_engine.v1.compact" => handle_compact(request_value, config),
+            "context_engine.v1.estimate_tokens" => handle_estimate_tokens(request_value),
             _ => {},
         }
     }
@@ -298,14 +298,14 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
 
 // ── Compact handler ─────────────────────────────────────────────────
 
-/// Handle a `context_engine.compact` request.
+/// Handle a `context_engine.v1.compact` request.
 ///
 /// 1. Parse the request
 /// 2. Clamp `target_tokens` to not exceed `max_tokens`
-/// 3. Fire `before_compaction` hook via IPC
+/// 3. Fire `context_engine.v1.hook.before_compaction` hook via IPC
 /// 4. Merge responses (any skip → skip, union of pinned IDs)
 /// 5. Run compaction strategy
-/// 6. Fire `after_compaction` notification
+/// 6. Fire `context_engine.v1.hook.after_compaction` notification
 /// 7. Publish compacted result
 fn handle_compact(payload: &serde_json::Value, config: &Config) {
     let request: CompactRequest = match serde_json::from_value(payload.clone()) {
@@ -313,7 +313,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
         Err(e) => {
             let _ = sys::log("error", format!("Failed to parse compact request: {e}"));
             let _ = ipc::publish_json(
-                "context_engine.response.compact",
+                "context_engine.v1.response.compact",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
             );
             return;
@@ -341,7 +341,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
             messages_removed: 0,
             strategy: "skipped".to_string(),
         };
-        let _ = ipc::publish_json("context_engine.response.compact", &response);
+        let _ = ipc::publish_json("context_engine.v1.response.compact", &response);
         return;
     }
 
@@ -376,7 +376,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
         messages_removed,
         strategy: strategy_name,
     };
-    let _ = ipc::publish_json("context_engine.response.compact", &response);
+    let _ = ipc::publish_json("context_engine.v1.response.compact", &response);
 
     let _ = sys::log(
         "info",
@@ -390,14 +390,14 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
 
 // ── Estimate handler ────────────────────────────────────────────────
 
-/// Handle a `context_engine.estimate_tokens` request.
+/// Handle a `context_engine.v1.estimate_tokens` request.
 fn handle_estimate_tokens(payload: &serde_json::Value) {
     let request: EstimateRequest = match serde_json::from_value(payload.clone()) {
         Ok(r) => r,
         Err(e) => {
             let _ = sys::log("error", format!("Failed to parse estimate_tokens request: {e}"));
             let _ = ipc::publish_json(
-                "context_engine.response.estimate_tokens",
+                "context_engine.v1.response.estimate_tokens",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
             );
             return;
@@ -406,7 +406,7 @@ fn handle_estimate_tokens(payload: &serde_json::Value) {
 
     let estimated_tokens = strategy::estimate_total_tokens(&request.messages);
     let response = EstimateResponse { estimated_tokens };
-    let _ = ipc::publish_json("context_engine.response.estimate_tokens", &response);
+    let _ = ipc::publish_json("context_engine.v1.response.estimate_tokens", &response);
 }
 
 // ── Interceptor hook firing via IPC ─────────────────────────────────
@@ -419,9 +419,9 @@ struct MergedBeforeCompaction {
     protected_ids: HashSet<String>,
 }
 
-/// Fire the `before_compaction` hook via IPC and collect plugin responses.
+/// Fire the `context_engine.v1.hook.before_compaction` hook via IPC and collect plugin responses.
 ///
-/// Publishes the hook payload on the `before_compaction` IPC topic with a
+/// Publishes the hook payload on the `context_engine.v1.hook.before_compaction` IPC topic with a
 /// per-request response topic. Polls for plugin responses within the
 /// configured timeout window.
 fn fire_before_compaction(
@@ -439,7 +439,7 @@ fn fire_before_compaction(
         REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     );
 
-    let response_topic = format!("context_engine.hook_response.{request_id}");
+    let response_topic = format!("context_engine.v1.hook_response.{request_id}");
 
     // Subscribe BEFORE publishing to avoid missing fast responses.
     let sub = match ipc::subscribe(&response_topic) {
@@ -465,10 +465,10 @@ fn fire_before_compaction(
         response_topic: response_topic.clone(),
     };
 
-    if let Err(e) = ipc::publish_json("before_compaction", &payload) {
+    if let Err(e) = ipc::publish_json("context_engine.v1.hook.before_compaction", &payload) {
         let _ = sys::log(
             "error",
-            format!("Failed to publish before_compaction event: {e}"),
+            format!("Failed to publish context_engine.v1.hook.before_compaction event: {e}"),
         );
         let _ = ipc::unsubscribe(&sub);
         return MergedBeforeCompaction {
@@ -506,7 +506,7 @@ fn fire_before_compaction(
     if !responses.is_empty() {
         let _ = sys::log(
             "info",
-            format!("Collected {} before_compaction responses", responses.len()),
+            format!("Collected {} context_engine.v1.hook.before_compaction responses", responses.len()),
         );
     }
 
@@ -559,7 +559,7 @@ fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<BeforeCompactionHookRes
     }
 }
 
-/// Merge `before_compaction` responses from multiple plugins.
+/// Merge `context_engine.v1.hook.before_compaction` responses from multiple plugins.
 ///
 /// - `skip`: any `true` → skip compaction
 /// - `pinned_message_ids`: union of all responses
@@ -578,7 +578,7 @@ fn merge_before_compaction_responses(
     MergedBeforeCompaction { skip, protected_ids }
 }
 
-/// Fire the `after_compaction` notification (fire-and-forget).
+/// Fire the `context_engine.v1.hook.after_compaction` notification (fire-and-forget).
 fn fire_after_compaction(
     session_id: &str,
     messages_before: u32,
@@ -595,7 +595,7 @@ fn fire_after_compaction(
         tokens_after,
         strategy_used: strategy_used.to_string(),
     };
-    let _ = ipc::publish_json("after_compaction", &payload);
+    let _ = ipc::publish_json("context_engine.v1.hook.after_compaction", &payload);
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ file = "astrid_capsule_prompt_builder.wasm"
 
 [capabilities]
 ipc_publish = [
-    "prompt_builder.response.*",
-    "before_prompt_build",
-    "after_prompt_build",
+    "prompt_builder.v1.response.*",
+    "prompt_builder.v1.hook.before_build",
+    "prompt_builder.v1.hook.after_build",
 ]

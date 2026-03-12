@@ -123,7 +123,7 @@ async fn run_json_chat(
                     // TUI handles this correctly, JSON mode auto-aborts for safety unless headless approvals are enabled
                     client
                         .send_message(astrid_events::ipc::IpcMessage::new(
-                            "user.approval",
+                            "user.v1.approval",
                             astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
                                 "approved": false,
                                 "reason": "Approval not supported in JSON REPL mode"

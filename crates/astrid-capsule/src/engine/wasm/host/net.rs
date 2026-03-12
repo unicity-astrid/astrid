@@ -86,7 +86,7 @@ pub(crate) fn astrid_net_accept_impl(
     // Notify the kernel that a new client connection was accepted so the
     // idle monitor can track active connections.
     let connected_msg = astrid_events::ipc::IpcMessage::new(
-        "client.connected",
+        "client.v1.connected",
         astrid_events::ipc::IpcPayload::Connect,
         state.capsule_uuid,
     );
@@ -180,7 +180,7 @@ pub(crate) fn astrid_net_read_impl(
             && let Ok(state) = ud.lock()
         {
             let msg = astrid_events::ipc::IpcMessage::new(
-                "client.disconnect",
+                "client.v1.disconnect",
                 astrid_events::ipc::IpcPayload::Disconnect {
                     reason: Some("socket_closed".to_string()),
                 },

@@ -11,14 +11,14 @@ file = "astrid_capsule_router.wasm"
 type = "executable"
 
 [capabilities]
-ipc_publish = ["tool.execute.*", "tool.execute.result"]
+ipc_publish = ["tool.v1.execute.*", "tool.v1.execute.result"]
 
 # Tool execution requests from the react loop
 [[interceptor]]
-event = "tool.request.execute"
+event = "tool.v1.request.execute"
 action = "handle_execute_request"
 
-# Tool results from tool capsules (wildcard match on tool.execute.*.result)
+# Tool results from tool capsules (wildcard match on tool.v1.execute.*.result)
 [[interceptor]]
-event = "tool.execute.*.result"
+event = "tool.v1.execute.*.result"
 action = "handle_execute_result"

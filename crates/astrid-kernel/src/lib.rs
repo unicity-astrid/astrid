@@ -296,7 +296,7 @@ impl Kernel {
     /// readiness before non-uplink capsules are loaded.
     ///
     /// After all capsules are loaded, tool schemas are injected into every
-    /// capsule's KV namespace and the `kernel.capsules_loaded` event is published.
+    /// capsule's KV namespace and the `kernel.v1.capsules_loaded` event is published.
     pub async fn load_all_capsules(&self) {
         use astrid_capsule::toposort::toposort_manifests;
         use astrid_core::dirs::AstridHome;
@@ -370,7 +370,7 @@ impl Kernel {
         // (like the registry) can proceed with discovery instead of
         // polling with arbitrary timeouts.
         let msg = astrid_events::ipc::IpcMessage::new(
-            "kernel.capsules_loaded",
+            "kernel.v1.capsules_loaded",
             astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({"status": "ready"})),
             self.session_id.0,
         );
@@ -877,7 +877,7 @@ async fn attempt_capsule_restart(
 /// Every 10 seconds, reads the capsule registry and calls `check_health()` on
 /// each capsule that is currently in `Ready` state. If a capsule reports
 /// `Failed`, attempts to restart it with exponential backoff (max 5 attempts).
-/// Publishes `capsule.health.failed` IPC events for each detected failure.
+/// Publishes `capsule.v1.health.failed` IPC events for each detected failure.
 fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
@@ -918,7 +918,7 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
                     tracing::error!(capsule_id = %id_str, reason = %reason, "Capsule health check failed");
 
                     let msg = astrid_events::ipc::IpcMessage::new(
-                        "capsule.health.failed",
+                        "capsule.v1.health.failed",
                         astrid_events::ipc::IpcPayload::Custom {
                             data: serde_json::json!({
                                 "capsule_id": &id_str,
@@ -977,7 +977,7 @@ fn spawn_capsule_health_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<
     })
 }
 
-/// Spawns a periodic watchdog that publishes `react.watchdog.tick` events every 5 seconds.
+/// Spawns a periodic watchdog that publishes `react.v1.watchdog.tick` events every 5 seconds.
 ///
 /// The `ReAct` capsule (WASM guest) cannot use async timers, so this kernel-side task
 /// drives timeout enforcement by waking the capsule on a fixed interval. Each tick
@@ -992,7 +992,7 @@ fn spawn_react_watchdog(event_bus: Arc<EventBus>) -> tokio::task::JoinHandle<()>
             interval.tick().await;
 
             let msg = astrid_events::ipc::IpcMessage::new(
-                "react.watchdog.tick",
+                "react.v1.watchdog.tick",
                 astrid_events::ipc::IpcPayload::Custom {
                     data: serde_json::json!({}),
                 },

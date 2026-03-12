@@ -142,7 +142,7 @@ impl Session {
         }
 
         ipc::publish_json(
-            "session.response.get_messages",
+            "session.v1.response.get_messages",
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "messages": data.messages,

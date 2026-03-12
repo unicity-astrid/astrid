@@ -83,7 +83,7 @@ pub(crate) fn astrid_elicit_impl(
 
     let field = map_to_onboarding_field(&guest_req)?;
     let request_id = Uuid::new_v4();
-    let response_topic = format!("astrid.lifecycle.elicit.response.{request_id}");
+    let response_topic = format!("astrid.v1.lifecycle.elicit.response.{request_id}");
 
     let ud = user_data.get()?;
 
@@ -126,7 +126,7 @@ pub(crate) fn astrid_elicit_impl(
         field,
     };
     let message = IpcMessage::new(
-        "astrid.lifecycle.elicit",
+        "astrid.v1.lifecycle.elicit",
         request_payload,
         Uuid::nil(), // Kernel-originated
     );

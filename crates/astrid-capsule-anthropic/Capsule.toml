@@ -12,7 +12,7 @@ type = "executable"
 capabilities = { net = ["api.anthropic.com"] }
 
 [capabilities]
-ipc_publish = ["llm.stream.anthropic"]
+ipc_publish = ["llm.v1.stream.anthropic"]
 
 [env]
 anthropic_api_key = { type = "secret", request = "Please enter your Anthropic API Key" }
@@ -23,5 +23,5 @@ description = "Claude 3.5 Sonnet"
 capabilities = ["text", "vision", "tools"]
 
 [[interceptor]]
-event = "llm.request.generate.anthropic"
+event = "llm.v1.request.generate.anthropic"
 action = "handle_llm_request"

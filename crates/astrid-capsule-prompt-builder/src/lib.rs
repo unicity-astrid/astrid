@@ -5,15 +5,15 @@
 //! Prompt Builder capsule — assembles LLM prompts with plugin hook interception.
 //!
 //! This capsule owns the prompt assembly pipeline. When the react loop needs
-//! a prompt assembled, it publishes to `prompt_builder.assemble`. The prompt
+//! a prompt assembled, it publishes to `prompt_builder.v1.assemble`. The prompt
 //! builder then:
 //!
-//! 1. Fires `before_prompt_build` to all plugin capsules via IPC
+//! 1. Fires `prompt_builder.v1.hook.before_build` to all plugin capsules via IPC
 //! 2. Collects plugin responses (`prependSystemContext`, `appendSystemContext`,
 //!    `systemPrompt` override, `prependContext`)
 //! 3. Merges them according to OpenClaw-compatible semantics
-//! 4. Returns the assembled prompt on `prompt_builder.response.assemble`
-//! 5. Fires `after_prompt_build` as a notification
+//! 4. Returns the assembled prompt on `prompt_builder.v1.response.assemble`
+//! 5. Fires `prompt_builder.v1.hook.after_build` as a notification
 //!
 //! # Merge Semantics
 //!
@@ -82,7 +82,7 @@ struct AssembleResponse {
     session_id: Option<String>,
 }
 
-/// Payload sent to plugin capsules via the `before_prompt_build` interceptor.
+/// Payload sent to plugin capsules via the `prompt_builder.v1.hook.before_build` interceptor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct BeforePromptBuildPayload {
@@ -95,7 +95,7 @@ struct BeforePromptBuildPayload {
     response_topic: String,
 }
 
-/// A single plugin's response to the `before_prompt_build` hook.
+/// A single plugin's response to the `prompt_builder.v1.hook.before_build` hook.
 ///
 /// All fields are optional. The prompt builder merges responses from
 /// multiple plugins according to the documented merge semantics.
@@ -244,14 +244,14 @@ struct MergedPrompt {
     user_context_prefix: String,
 }
 
-/// Fire the `before_prompt_build` interceptor and collect plugin responses.
+/// Fire the `prompt_builder.v1.hook.before_build` interceptor and collect plugin responses.
 ///
-/// Publishes the hook event on the `before_prompt_build` IPC topic and polls
+/// Publishes the hook event on the `prompt_builder.v1.hook.before_build` IPC topic and polls
 /// a dedicated response topic for plugin contributions. Returns all collected
 /// responses within the timeout window, filtered by permission gating.
 fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<HookResponse> {
     let response_topic = format!(
-        "prompt_builder.hook_response.{}",
+        "prompt_builder.v1.hook_response.{}",
         request.request_id
     );
 
@@ -276,10 +276,10 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
         response_topic: response_topic.clone(),
     };
 
-    if let Err(e) = ipc::publish_json("before_prompt_build", &payload) {
+    if let Err(e) = ipc::publish_json("prompt_builder.v1.hook.before_build", &payload) {
         let _ = sys::log(
             "error",
-            format!("Failed to publish before_prompt_build event: {e}"),
+            format!("Failed to publish prompt_builder.v1.hook.before_build event: {e}"),
         );
         let _ = ipc::unsubscribe(&sub);
         return Vec::new();
@@ -382,17 +382,17 @@ fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<SourcedHookResponse>> {
     }
 }
 
-/// Fire the `after_prompt_build` notification (fire-and-forget).
+/// Fire the `prompt_builder.v1.hook.after_build` notification (fire-and-forget).
 fn fire_after_prompt_build(system_prompt: &str, user_context_prefix: &str, request_id: &str) {
     let payload = AfterPromptBuildPayload {
         system_prompt: system_prompt.to_string(),
         user_context_prefix: user_context_prefix.to_string(),
         request_id: request_id.to_string(),
     };
-    let _ = ipc::publish_json("after_prompt_build", &payload);
+    let _ = ipc::publish_json("prompt_builder.v1.hook.after_build", &payload);
 }
 
-/// Handle a single `prompt_builder.assemble` request.
+/// Handle a single `prompt_builder.v1.assemble` request.
 fn handle_assemble(payload: &serde_json::Value, config: &Config) {
     // Extract from Custom payload envelope or direct.
     let request_value = payload
@@ -407,7 +407,7 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
                 format!("Failed to parse assemble request: {e}"),
             );
             let _ = ipc::publish_json(
-                "prompt_builder.response.assemble",
+                "prompt_builder.v1.response.assemble",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
             );
             return;
@@ -416,7 +416,7 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
 
     if request.request_id.is_empty() {
         let _ = ipc::publish_json(
-            "prompt_builder.response.assemble",
+            "prompt_builder.v1.response.assemble",
             &serde_json::json!({"error": "missing request_id"}),
         );
         return;
@@ -436,7 +436,7 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
         session_id: request.session_id.clone(),
     };
 
-    let _ = ipc::publish_json("prompt_builder.response.assemble", &response);
+    let _ = ipc::publish_json("prompt_builder.v1.response.assemble", &response);
 
     // Fire after_prompt_build notification (fire-and-forget).
     fire_after_prompt_build(&merged.system_prompt, &merged.user_context_prefix, &request.request_id);
@@ -445,12 +445,12 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
 /// Returns `true` if the topic should be dispatched (not a self-echo).
 ///
 /// Filters out our own response topics, hook response topics, and the
-/// interceptor topics we publish. Only `prompt_builder.assemble` passes.
+/// interceptor topics we publish. Only `prompt_builder.v1.assemble` passes.
 fn should_dispatch_topic(topic: &str) -> bool {
-    !topic.starts_with("prompt_builder.response.")
-        && !topic.starts_with("prompt_builder.hook_response.")
-        && topic != "before_prompt_build"
-        && topic != "after_prompt_build"
+    !topic.starts_with("prompt_builder.v1.response.")
+        && !topic.starts_with("prompt_builder.v1.hook_response.")
+        && topic != "prompt_builder.v1.hook.before_build"
+        && topic != "prompt_builder.v1.hook.after_build"
 }
 
 /// Parse the poll envelope and dispatch individual messages.
@@ -484,7 +484,7 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
             continue;
         }
 
-        if topic == "prompt_builder.assemble"
+        if topic == "prompt_builder.v1.assemble"
             && let Some(payload) = msg.get("payload")
         {
             handle_assemble(payload, config);
@@ -502,13 +502,13 @@ pub fn run() -> FnResult<()> {
         format!("Hook timeout: {}ms", config.hook_timeout_ms),
     );
 
-    let sub = ipc::subscribe("prompt_builder.*")
+    let sub = ipc::subscribe("prompt_builder.v1.*")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Also subscribe to our own hook topics so we can filter them out.
-    let hook_sub = ipc::subscribe("before_prompt_build")
+    let hook_sub = ipc::subscribe("prompt_builder.v1.hook.before_build")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-    let after_sub = ipc::subscribe("after_prompt_build")
+    let after_sub = ipc::subscribe("prompt_builder.v1.hook.after_build")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
