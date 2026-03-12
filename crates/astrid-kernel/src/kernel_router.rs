@@ -95,6 +95,7 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHand
     })
 }
 
+#[expect(clippy::too_many_lines)]
 async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelRequest) {
     let response_topic = if let Some(suffix) = topic.strip_prefix("astrid.v1.request.") {
         format!("astrid.v1.response.{suffix}")

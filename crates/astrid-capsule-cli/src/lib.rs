@@ -10,14 +10,15 @@ pub fn run() -> FnResult<()> {
     // Internal pipeline events (LLM requests, tool dispatch, identity builds)
     // must NOT be forwarded to the CLI socket.
     let topics = [
-        "agent.response",
-        "agent.stream.delta",
-        "system.onboarding.required",
-        "astrid.lifecycle.elicit.*",
-        "kernel.response.*",
-        "kernel.capsules_loaded",
-        "registry.response.*",
-        "capsule.selection.*",
+        "agent.v1.response",
+        "agent.v1.stream.delta",
+        "astrid.v1.onboarding.required",
+        "astrid.v1.elicit.*",
+        "astrid.v1.response.*",
+        "astrid.v1.capsules_loaded",
+        "registry.v1.response.*",
+        "registry.v1.active_model_changed",
+        "registry.v1.selection.*",
     ];
     let sub_handles: Vec<_> = topics
         .iter()
@@ -165,14 +166,18 @@ fn forward_poll_messages(
 }
 
 /// Exact topics the CLI is allowed to publish to the internal IPC bus.
-const ALLOWED_INGRESS_EXACT: &[&str] = &["user.prompt", "client.disconnect", "cli.command.execute"];
+const ALLOWED_INGRESS_EXACT: &[&str] = &[
+    "user.v1.prompt",
+    "client.v1.disconnect",
+    "cli.v1.command.execute",
+];
 
 /// Topic prefixes the CLI is allowed to publish (suffix-routed topics).
 /// IMPORTANT: Update this list when adding new CLI-originated topic prefixes.
 const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
-    "kernel.request.",
-    "astrid.lifecycle.elicit.response.",
-    "capsule.selection.",
+    "astrid.v1.request.",
+    "astrid.v1.elicit.response.",
+    "registry.v1.selection.",
 ];
 
 fn is_allowed_ingress_topic(topic: &str) -> bool {
