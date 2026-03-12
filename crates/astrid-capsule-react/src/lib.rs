@@ -54,9 +54,9 @@ fn turn_key(session_id: &str) -> String {
 
 /// Store a request_id -> session_id mapping so LLM stream handlers
 /// can resolve the owning session from the stream's request_id.
-fn store_request_session(request_id: &Uuid, session_id: &str) {
+fn store_request_session(request_id: &Uuid, session_id: &str) -> Result<(), SysError> {
     let key = format!("{REQUEST_SESSION_PREFIX}.{request_id}");
-    let _ = kv::set_bytes(&key, session_id.as_bytes());
+    kv::set_bytes(&key, session_id.as_bytes())
 }
 
 /// Look up session_id from a request_id.
@@ -69,11 +69,12 @@ fn lookup_session_by_request(request_id: &Uuid) -> Option<String> {
 
 /// Store call_id -> session_id mappings so tool result handlers
 /// can resolve the owning session from the tool's call_id.
-fn store_call_sessions(call_ids: &[String], session_id: &str) {
+fn store_call_sessions(call_ids: &[String], session_id: &str) -> Result<(), SysError> {
     for call_id in call_ids {
         let key = format!("{CALL_SESSION_PREFIX}.{call_id}");
-        let _ = kv::set_bytes(&key, session_id.as_bytes());
+        kv::set_bytes(&key, session_id.as_bytes())?;
     }
+    Ok(())
 }
 
 /// Look up session_id from a tool call_id.
@@ -87,14 +88,18 @@ fn lookup_session_by_call(call_id: &str) -> Option<String> {
 /// Clean up a request_id -> session_id mapping after the LLM stream completes.
 fn delete_request_session(request_id: &Uuid) {
     let key = format!("{REQUEST_SESSION_PREFIX}.{request_id}");
-    let _ = kv::delete(&key);
+    if let Err(e) = kv::delete(&key) {
+        let _ = sys::log("warn", format!("Failed to delete req2sess key '{key}': {e}"));
+    }
 }
 
 /// Clean up call_id -> session_id mappings after all tool results are collected.
 fn delete_call_sessions(call_ids: &[String]) {
     for call_id in call_ids {
         let key = format!("{CALL_SESSION_PREFIX}.{call_id}");
-        let _ = kv::delete(&key);
+        if let Err(e) = kv::delete(&key) {
+            let _ = sys::log("warn", format!("Failed to delete call2sess key '{key}': {e}"));
+        }
     }
 }
 
@@ -642,7 +647,7 @@ impl ReactLoop {
             // Store call_id -> session_id mappings BEFORE publishing so
             // results that arrive immediately are never orphaned.
             let call_ids: Vec<String> = dispatched.iter().map(|t| t.id.clone()).collect();
-            store_call_sessions(&call_ids, &state.session_id);
+            store_call_sessions(&call_ids, &state.session_id)?;
 
             state.dispatched_tools = dispatched;
             state.pending_stream_tools.clear();
@@ -751,7 +756,7 @@ impl ReactLoop {
 
         // Store request_id -> session_id mapping so handle_llm_stream
         // can resolve the owning session from the stream's request_id.
-        store_request_session(&state.request_id, &state.session_id);
+        store_request_session(&state.request_id, &state.session_id)?;
 
         if let Err(e) = ipc::publish_json(
             &llm_topic,
