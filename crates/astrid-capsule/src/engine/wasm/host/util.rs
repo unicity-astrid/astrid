@@ -93,10 +93,15 @@ where
 {
     tokio::task::block_in_place(|| {
         handle.block_on(async {
+            // The semaphore is owned by HostState and lives for the capsule's
+            // lifetime. It is never explicitly closed, so acquire only fails if
+            // the semaphore is dropped (capsule already deallocated). A panic
+            // here is the correct fail-fast: it signals a critical runtime
+            // invariant violation that cannot be recovered from.
             let _permit = semaphore
                 .acquire()
                 .await
-                .expect("host semaphore closed unexpectedly");
+                .expect("host semaphore closed: capsule HostState was dropped");
             fut.await
         })
     })
