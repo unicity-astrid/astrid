@@ -213,9 +213,13 @@ fn spawn_interceptor_fanout(
                             "Interceptor completed"
                         );
                     },
-                    Err(crate::error::CapsuleError::NotSupported(_)) => {
-                        // Run-loop capsule handles interceptors internally
-                        // via IPC auto-subscribe. Silent skip.
+                    Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                        debug!(
+                            capsule_id = %capsule_id,
+                            action = %action,
+                            reason = %msg,
+                            "Interceptor skipped (NotSupported)"
+                        );
                     },
                     Err(e) => {
                         warn!(

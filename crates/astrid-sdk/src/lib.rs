@@ -634,9 +634,15 @@ pub mod interceptors {
             let handle = binding.handle_bytes();
             let envelope = ipc::poll_bytes(&handle)?;
 
-            // Only dispatch if there are actual messages (non-empty envelope).
-            // The poll returns `{"messages":[],...}` when empty.
-            if !envelope.is_empty() {
+            // poll_bytes always returns a JSON envelope like
+            // `{"messages":[],"dropped":0,"lagged":0}`. Check the
+            // messages array before calling the handler.
+            #[derive(serde::Deserialize)]
+            struct PollEnvelope {
+                messages: Vec<serde_json::Value>,
+            }
+            let parsed: PollEnvelope = serde_json::from_slice(&envelope)?;
+            if !parsed.messages.is_empty() {
                 handler(&binding.action, &envelope);
             }
         }

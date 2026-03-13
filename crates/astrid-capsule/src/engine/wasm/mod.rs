@@ -297,7 +297,41 @@ impl ExecutionEngine for WasmEngine {
             // Auto-subscribe interceptor topics for run-loop capsules.
             // Events arrive via the IPC channel the run loop already reads from,
             // avoiding mutex contention (no external invoke_interceptor calls).
+            //
+            // Note: subscriptions are created before the WASM guest starts, so
+            // events published between subscribe and the guest's first recv/poll
+            // call are buffered in the broadcast channel (same as normal IPC).
             if has_run && !manifest.interceptors.is_empty() {
+                // Cap auto-subscribed interceptors to leave headroom for
+                // guest-initiated subscriptions (shared 128-slot pool).
+                const MAX_AUTO_SUBSCRIBE: usize = 64;
+                if manifest.interceptors.len() > MAX_AUTO_SUBSCRIBE {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "Capsule '{}' declares {} interceptors, exceeding the \
+                         auto-subscribe limit ({MAX_AUTO_SUBSCRIBE})",
+                        manifest.package.name,
+                        manifest.interceptors.len()
+                    )));
+                }
+
+                // Validate interceptor event patterns against EventReceiver
+                // semantics. Mid-segment wildcards like `a.*.b` are only
+                // supported by dispatcher::topic_matches, not by
+                // EventReceiver::matches, so they would silently never fire.
+                for interceptor in &manifest.interceptors {
+                    let segments: Vec<&str> = interceptor.event.split('.').collect();
+                    if let Some(wc_pos) = segments.iter().position(|s| *s == "*")
+                        && wc_pos + 1 < segments.len()
+                    {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "Interceptor event '{}' uses a mid-segment wildcard, \
+                             which is not supported by auto-subscribe (EventBus \
+                             only supports trailing wildcards like `foo.bar.*`)",
+                            interceptor.event
+                        )));
+                    }
+                }
+
                 let ud = user_data_ref.get().map_err(|e| {
                     CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
                 })?;
@@ -317,7 +351,7 @@ impl ExecutionEngine for WasmEngine {
                             topic: interceptor.event.clone(),
                         });
                 }
-                tracing::info!(
+                tracing::debug!(
                     capsule = %manifest.package.name,
                     count = manifest.interceptors.len(),
                     "Auto-subscribed interceptors for run-loop capsule"
