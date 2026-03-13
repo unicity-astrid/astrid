@@ -30,59 +30,88 @@ pub struct RunShellArgs {
     pub command: String,
 }
 
-/// Programs known to have meaningful subcommands for approval grouping.
-///
-/// For listed programs, non-flag tokens after the program name are extracted
-/// as subcommands (up to 2 levels deep). For unlisted programs, only the
-/// program name is used as the action to avoid leaking positional arguments
-/// (e.g. file paths) into allowance patterns.
-const MULTI_COMMAND_PROGRAMS: &[&str] = &[
-    "git",
-    "docker",
-    "kubectl",
-    "npm",
-    "npx",
-    "yarn",
-    "pnpm",
-    "cargo",
-    "pip",
-    "pip3",
-    "poetry",
-    "systemctl",
-    "brew",
-    "apt",
-    "apt-get",
-    "dnf",
-    "yum",
-    "pacman",
-    "snap",
-    "flatpak",
-    "helm",
-    "terraform",
-    "ansible",
-    "vagrant",
-    "make",
-    "cmake",
-    "go",
-    "rustup",
-    "bun",
-    "deno",
-    "uv",
-    "nix",
-    "podman",
-];
+/// Determine the safe subcommand depth for a given program.
+fn get_safe_depth(tokens: &[&str]) -> usize {
+    if tokens.is_empty() {
+        return 0;
+    }
 
-/// Maximum subcommand depth for known multi-command programs.
-///
-/// Covers sub-sub-commands like `docker compose up` (program + 2 subs)
-/// without pulling in positional arguments.
-const MAX_SUBCOMMAND_DEPTH: usize = 2;
+    // Depth 3 (Sub-sub-commands)
+    if tokens.len() >= 2 {
+        let prefix2 = format!("{} {}", tokens[0], tokens[1]);
+        if matches!(
+            prefix2.as_str(),
+            "docker compose"
+                | "aws s3"
+                | "gcloud s3"
+                | "kubectl config"
+                | "git remote"
+                | "npm run"
+                | "yarn run"
+                | "pnpm run"
+                | "bun run"
+                | "deno run"
+        ) {
+            return 3;
+        }
+    }
+
+    // Depth 2 (Standard CLI subcommands)
+    if matches!(
+        tokens[0],
+        "git"
+            | "docker"
+            | "kubectl"
+            | "cargo"
+            | "npm"
+            | "npx"
+            | "yarn"
+            | "pnpm"
+            | "pip"
+            | "pip3"
+            | "poetry"
+            | "apt"
+            | "apt-get"
+            | "brew"
+            | "dnf"
+            | "yum"
+            | "pacman"
+            | "snap"
+            | "flatpak"
+            | "helm"
+            | "terraform"
+            | "ansible"
+            | "vagrant"
+            | "make"
+            | "cmake"
+            | "go"
+            | "rustup"
+            | "bun"
+            | "deno"
+            | "uv"
+            | "nix"
+            | "podman"
+            | "gh"
+            | "fly"
+            | "flyctl"
+            | "stripe"
+            | "supabase"
+            | "vercel"
+            | "wrangler"
+            | "firebase"
+    ) {
+        return 2;
+    }
+
+    // Default fallback: 0 means exact match only (no subcommands extracted).
+    0
+}
 
 /// Extract the approval action from a shell command string.
 ///
-/// For known multi-command programs, collects the program name plus up to
-/// [`MAX_SUBCOMMAND_DEPTH`] non-flag subcommand tokens. For unknown
-/// programs, returns the exact full command string.
+/// Uses an exhaustive whitelist to determine how many subcommand tokens
+/// are safe to include in the allowance pattern. For unknown programs,
+/// returns the exact full command string.
 ///
 /// Returning the full string for unknown programs is a critical security
 /// boundary. If `rm -rf /tmp/foo` returned just `rm`, the session allowance
@@ -102,22 +131,21 @@ const MAX_SUBCOMMAND_DEPTH: usize = 2;
 /// rm /tmp/foo                       -> "rm /tmp/foo"
 /// ```
 fn extract_action(command: &str) -> String {
-    let mut tokens = command.split_whitespace();
-    let program = match tokens.next() {
-        Some(p) if !p.starts_with('-') => p,
-        _ => return String::new(),
-    };
+    let tokens: Vec<&str> = command.split_whitespace().collect();
+    if tokens.is_empty() || tokens[0].starts_with('-') {
+        return String::new();
+    }
 
-    if !MULTI_COMMAND_PROGRAMS.contains(&program) {
+    let depth = get_safe_depth(&tokens);
+    if depth == 0 {
         // SECURITY: Unknown programs must use exact-match fallback to prevent
         // generating dangerously broad `program *` glob allowances.
         return command.to_string();
     }
 
-    // Known multi-command program: extract non-flag subcommands.
-    let mut parts = vec![program];
+    let mut parts = Vec::new();
     for token in tokens {
-        if token.starts_with('-') || parts.len() > MAX_SUBCOMMAND_DEPTH {
+        if token.starts_with('-') || parts.len() == depth {
             break;
         }
         parts.push(token);
