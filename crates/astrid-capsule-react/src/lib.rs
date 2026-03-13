@@ -457,8 +457,10 @@ impl ReactLoop {
         let correlation_id = Uuid::new_v4().to_string();
         let timeout = session_timeout_ms();
 
-        // Subscribe before publishing to avoid delivery race.
-        let handle = ipc::subscribe("session.v1.response.clear")?;
+        // Subscribe to a per-request scoped topic before publishing to
+        // avoid delivery race. Only this instance receives the response.
+        let reply_topic = format!("session.v1.response.clear.{correlation_id}");
+        let handle = ipc::subscribe(&reply_topic)?;
 
         let result = (|| -> Result<String, SysError> {
             ipc::publish_json(
@@ -491,20 +493,13 @@ impl ReactLoop {
                 )));
             }
 
+            // The topic is scoped to this request, so no correlation_id check
+            // is needed. Iterate to skip non-Custom messages (no payload.data).
             for msg in ipc_messages {
                 let data = match msg.get("payload").and_then(|p| p.get("data")) {
                     Some(d) => d,
                     None => continue,
                 };
-
-                let resp_correlation = data
-                    .get("correlation_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                if resp_correlation != correlation_id {
-                    continue;
-                }
 
                 let new_session_id = data
                     .get("new_session_id")
@@ -516,9 +511,10 @@ impl ReactLoop {
                 return Ok(new_session_id.to_string());
             }
 
-            Err(SysError::ApiError(
-                "Session clear response correlation ID not found".into(),
-            ))
+            Err(SysError::ApiError(format!(
+                "Session clear response contained no usable messages \
+                 (session_id={old_session_id}, correlation_id={correlation_id})"
+            )))
         })();
 
         let _ = ipc::unsubscribe(&handle);
@@ -1246,13 +1242,9 @@ impl ReactLoop {
 
     /// Core implementation for session message fetching.
     ///
-    /// # Known limitation
-    ///
-    /// `session.response.get_messages` is a broadcast topic. If multiple
-    /// react instances fetch concurrently, one may drain the other's
-    /// response. The correlation ID check prevents misrouting, but the
-    /// drained response is lost and the other instance times out. Fix:
-    /// use request-scoped reply topics (`session.response.<correlation_id>`).
+    /// Uses a per-request scoped reply topic
+    /// (`session.v1.response.get_messages.<correlation_id>`) to prevent
+    /// cross-instance response theft under concurrent load.
     ///
     /// # IPC envelope format
     ///
@@ -1273,8 +1265,10 @@ impl ReactLoop {
         // Resolve timeout once (host call) rather than inside the closure.
         let timeout = session_timeout_ms();
 
-        // Subscribe BEFORE publishing to avoid delivery race
-        let handle = ipc::subscribe("session.v1.response.get_messages")?;
+        // Subscribe to a per-request scoped topic BEFORE publishing to avoid
+        // delivery race. Only this instance receives the response.
+        let reply_topic = format!("session.v1.response.get_messages.{correlation_id}");
+        let handle = ipc::subscribe(&reply_topic)?;
 
         // Guard: ensure unsubscribe runs even on early return
         let result = (|| -> Result<Vec<Message>, SysError> {
@@ -1305,7 +1299,7 @@ impl ReactLoop {
                 })?;
 
             // Navigate the IPC drain envelope to find the session response.
-            // Path: envelope.messages[0].payload.data.{correlation_id, messages}
+            // Path: envelope.messages[0].payload.data.{messages}
             let ipc_messages = envelope
                 .get("messages")
                 .and_then(|m| m.as_array())
@@ -1321,6 +1315,8 @@ impl ReactLoop {
                 )));
             }
 
+            // The topic is scoped to this request, so no correlation_id check
+            // is needed. Iterate to skip non-Custom messages (no payload.data).
             for msg in ipc_messages {
                 let data = match msg.get("payload").and_then(|p| p.get("data")) {
                     Some(d) => d,
@@ -1333,16 +1329,6 @@ impl ReactLoop {
                     },
                 };
 
-                let resp_correlation = data
-                    .get("correlation_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                if resp_correlation != correlation_id {
-                    continue;
-                }
-
-                // Found our response. Extract messages.
                 let messages: Vec<Message> = data
                     .get("messages")
                     .cloned()
@@ -1356,9 +1342,10 @@ impl ReactLoop {
                 return Ok(messages);
             }
 
-            Err(SysError::ApiError(
-                "Session response correlation ID not found in envelope".into(),
-            ))
+            Err(SysError::ApiError(format!(
+                "Session response envelope contained no usable messages \
+                 (session_id={session_id}, correlation_id={correlation_id})"
+            )))
         })();
 
         // Always unsubscribe, regardless of success/failure

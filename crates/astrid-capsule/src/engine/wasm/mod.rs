@@ -247,6 +247,7 @@ impl ExecutionEngine for WasmEngine {
                 } else {
                     ctx.session_token.clone()
                 },
+                interceptor_handles: Vec::new(),
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -254,15 +255,26 @@ impl ExecutionEngine for WasmEngine {
             let user_data = UserData::new(host_state);
             let user_data_ref = user_data.clone();
 
+            // Pre-scan WASM exports to detect run() before plugin build.
+            // The Extism timeout must be set on the Manifest before build,
+            // but function_exists() requires a built plugin, so we parse
+            // the raw binary's export section instead.
+            //
+            // On parse failure, default to true (no timeout) - the safe
+            // direction. A truly corrupt binary will fail Extism build
+            // moments later anyway.
+            let has_run_export = wasm_exports_contain_run(&wasm_bytes);
+
             let extism_wasm = Wasm::data(wasm_bytes);
             let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
 
-            // Long-lived capsules (uplinks, cron, daemons) must not have a wall-clock
-            // timeout. Short-lived tool capsules get a 10-second safety timeout.
+            // Long-lived capsules (uplinks, cron, run-loop daemons) must not
+            // have a wall-clock timeout. Short-lived tool capsules get a
+            // 10-second safety timeout.
             let is_daemon = !manifest.uplinks.is_empty()
                 || !manifest.cron_jobs.is_empty()
                 || manifest.capabilities.uplink;
-            if !is_daemon {
+            if !is_daemon && !has_run_export {
                 extism_manifest = extism_manifest.with_timeout(std::time::Duration::from_secs(10));
             }
 
@@ -274,6 +286,13 @@ impl ExecutionEngine for WasmEngine {
             })?;
 
             let has_run = plugin.function_exists("run");
+            if has_run != has_run_export {
+                return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                    "pre-scan/post-build run() export mismatch \
+                     (pre-scan: {has_run_export}, post-build: {has_run}). \
+                     Cannot safely determine timeout."
+                )));
+            }
 
             // Only allocate the watch channel for run-loop capsules.
             // UserData is Arc-based so the clone lets us inject the sender
@@ -293,6 +312,64 @@ impl ExecutionEngine for WasmEngine {
                 None
             };
 
+            // Auto-subscribe interceptor topics for run-loop capsules.
+            // Events arrive via the IPC channel the run loop already reads from,
+            // avoiding mutex contention (no external invoke_interceptor calls).
+            //
+            // Note: subscriptions are created before the WASM guest starts, so
+            // events published between subscribe and the guest's first recv/poll
+            // call are buffered in the broadcast channel (same as normal IPC).
+            if has_run && !manifest.interceptors.is_empty() {
+                // Cap auto-subscribed interceptors to leave headroom for
+                // guest-initiated subscriptions (shared 128-slot pool).
+                const MAX_AUTO_SUBSCRIBE: usize = 64;
+                if manifest.interceptors.len() > MAX_AUTO_SUBSCRIBE {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "Capsule '{}' declares {} interceptors, exceeding the \
+                         auto-subscribe limit ({MAX_AUTO_SUBSCRIBE})",
+                        manifest.package.name,
+                        manifest.interceptors.len()
+                    )));
+                }
+
+                // Validate interceptor event patterns have well-formed segments
+                // (no empty segments, leading/trailing dots, or empty strings).
+                for interceptor in &manifest.interceptors {
+                    if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "Interceptor event '{}' has invalid segment structure \
+                             (empty segments, leading/trailing dots, or empty string)",
+                            interceptor.event
+                        )));
+                    }
+                }
+
+                let ud = user_data_ref.get().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
+                })?;
+                let mut state = ud.lock().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
+                })?;
+                for interceptor in &manifest.interceptors {
+                    let receiver = state.event_bus.subscribe_topic(&interceptor.event);
+                    let handle_id = state.next_subscription_id;
+                    state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
+                    state.subscriptions.insert(handle_id, receiver);
+                    state
+                        .interceptor_handles
+                        .push(host_state::InterceptorHandle {
+                            handle_id,
+                            action: interceptor.action.clone(),
+                            topic: interceptor.event.clone(),
+                        });
+                }
+                tracing::debug!(
+                    capsule = %manifest.package.name,
+                    count = manifest.interceptors.len(),
+                    "Auto-subscribed interceptors for run-loop capsule"
+                );
+            }
+
             Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
 
@@ -305,18 +382,8 @@ impl ExecutionEngine for WasmEngine {
             // The run loop holds the plugin mutex for its entire lifetime.
             // We must NOT store the plugin in self.plugin, because the
             // dispatcher's invoke_interceptor() would try to acquire the same
-            // mutex — causing a deadlock. Run-loop capsules handle events
-            // internally via ipc::subscribe, so they don't need host-side
-            // interceptor dispatch.
-            if !self.manifest.interceptors.is_empty() {
-                return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                    "Capsule '{}' declares both run() and [[interceptor]] entries. \
-                     The run loop holds the plugin mutex exclusively, making \
-                     interceptor dispatch impossible. Move event handling into \
-                     run() via ipc::subscribe.",
-                    self.manifest.package.name
-                )));
-            }
+            // mutex - causing a deadlock. Run-loop capsules with interceptors
+            // receive events via auto-subscribed IPC channels instead.
             let capsule_name = self.manifest.package.name.clone();
             // Must spawn on a worker thread (not spawn_blocking) because WASM
             // host functions (fs, http, kv, etc.) use block_in_place internally,
@@ -399,10 +466,11 @@ impl ExecutionEngine for WasmEngine {
     }
 
     fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
-        let plugin = self
-            .plugin
-            .as_ref()
-            .ok_or_else(|| CapsuleError::ExecutionFailed("plugin not loaded".into()))?;
+        let plugin = self.plugin.as_ref().ok_or_else(|| {
+            CapsuleError::NotSupported(
+                "plugin handles interceptors internally via IPC auto-subscribe".into(),
+            )
+        })?;
 
         // Build the same __AstridToolRequest the macro expects:
         // { "name": "<action>", "arguments": [<payload bytes>] }
@@ -527,6 +595,7 @@ pub fn run_lifecycle(
         host_semaphore: HostState::default_host_semaphore(),
         cancel_token: tokio_util::sync::CancellationToken::new(),
         session_token: None,
+        interceptor_handles: Vec::new(),
     };
 
     let user_data = UserData::new(host_state);
@@ -574,6 +643,36 @@ pub fn run_lifecycle(
     );
 
     Ok(())
+}
+
+/// Pre-scans a WASM binary's export section to check whether it exports a
+/// function named `run`. This is used to decide whether to apply the
+/// short-lived tool timeout *before* building the Extism plugin (which is
+/// the only point at which `function_exists` becomes available).
+///
+/// On any parse error, returns `true` (no timeout) - the safe direction.
+/// A truly corrupt binary will fail the subsequent Extism build anyway.
+fn wasm_exports_contain_run(wasm_bytes: &[u8]) -> bool {
+    for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
+        match payload {
+            Ok(wasmparser::Payload::ExportSection(reader)) => {
+                // Only one export section per module; return immediately.
+                return reader.into_iter().any(|export| match export {
+                    Ok(e) => e.name == "run" && e.kind == wasmparser::ExternalKind::Func,
+                    Err(e) => {
+                        tracing::warn!("failed to parse WASM export entry: {e}");
+                        true // safe default: skip timeout
+                    },
+                });
+            },
+            Err(e) => {
+                tracing::warn!("failed to pre-scan WASM binary: {e}");
+                return true; // safe default: skip timeout
+            },
+            _ => {},
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -821,5 +920,144 @@ mod tests {
         });
         let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(500)).await;
         assert_eq!(status, crate::capsule::ReadyStatus::Ready);
+    }
+
+    // --- wasm_exports_contain_run pre-scan tests ---
+
+    /// Build a minimal valid WASM module with specified function exports.
+    fn build_wasm_module(export_names: &[&str]) -> Vec<u8> {
+        use wasm_encoder::{
+            CodeSection, ExportKind, ExportSection, Function, FunctionSection, Module, TypeSection,
+        };
+
+        let mut module = Module::new();
+
+        // Type section: one function type () -> ()
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+
+        // Function section: one function per export, all using type 0
+        let mut functions = FunctionSection::new();
+        for _ in export_names {
+            functions.function(0);
+        }
+        module.section(&functions);
+
+        // Export section
+        let mut exports = ExportSection::new();
+        for (i, name) in export_names.iter().enumerate() {
+            exports.export(*name, ExportKind::Func, i as u32);
+        }
+        module.section(&exports);
+
+        // Code section: one no-op body per function
+        let mut code = CodeSection::new();
+        for _ in export_names {
+            let mut f = Function::new(vec![]);
+            f.instruction(&wasm_encoder::Instruction::End);
+            code.function(&f);
+        }
+        module.section(&code);
+
+        module.finish()
+    }
+
+    #[test]
+    fn prescan_detects_run_export() {
+        let wasm = build_wasm_module(&["run"]);
+        assert!(wasm_exports_contain_run(&wasm), "should detect run export");
+    }
+
+    #[test]
+    fn prescan_returns_false_without_run() {
+        let wasm = build_wasm_module(&["tool_call", "install"]);
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "should not detect run when absent"
+        );
+    }
+
+    #[test]
+    fn prescan_detects_run_among_multiple_exports() {
+        let wasm = build_wasm_module(&["install", "run", "tool_call"]);
+        assert!(
+            wasm_exports_contain_run(&wasm),
+            "should detect run among multiple exports"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_false_for_empty_export_section() {
+        // Module with an empty export section (section present, count = 0).
+        // Exercises the inner-loop-zero-iterations path returning false
+        // from within the ExportSection arm.
+        let wasm = build_wasm_module(&[]);
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "empty export section should not have run"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_false_for_module_with_no_export_section() {
+        // Module with no export section at all. Exercises the fall-through
+        // path at the end of wasm_exports_contain_run (line after the loop).
+        use wasm_encoder::{Module, TypeSection};
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+        let wasm = module.finish();
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "module with no export section should not have run"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_true_for_corrupt_binary() {
+        // Corrupt/invalid bytes - should default to true (safe direction)
+        let garbage = b"not a wasm module at all";
+        assert!(
+            wasm_exports_contain_run(garbage),
+            "corrupt binary should default to true (safe: no timeout)"
+        );
+    }
+
+    #[test]
+    fn prescan_ignores_non_func_run_export() {
+        use wasm_encoder::{
+            ExportKind, ExportSection, GlobalSection, GlobalType, Module, TypeSection, ValType,
+        };
+
+        let mut module = Module::new();
+
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+
+        // Global section: one i32 global named "run"
+        let mut globals = GlobalSection::new();
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: false,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(42),
+        );
+        module.section(&globals);
+
+        // Export "run" as a global, not a function
+        let mut exports = ExportSection::new();
+        exports.export("run", ExportKind::Global, 0);
+        module.section(&exports);
+
+        let wasm = module.finish();
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "global named 'run' should not be detected as a function export"
+        );
     }
 }

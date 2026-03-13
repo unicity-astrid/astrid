@@ -213,6 +213,14 @@ fn spawn_interceptor_fanout(
                             "Interceptor completed"
                         );
                     },
+                    Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                        debug!(
+                            capsule_id = %capsule_id,
+                            action = %action,
+                            reason = %msg,
+                            "Interceptor skipped (NotSupported)"
+                        );
+                    },
                     Err(e) => {
                         warn!(
                             capsule_id = %capsule_id,

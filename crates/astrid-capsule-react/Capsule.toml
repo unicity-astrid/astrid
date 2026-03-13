@@ -66,6 +66,10 @@ requires = [
     "topic:session.v1.response.get_messages",
 ]
 
+# Runtime subscriptions (no ACL enforcement yet):
+#   session.v1.response.get_messages.<correlation_id>
+#   session.v1.response.clear.<correlation_id>
+
 [capabilities]
 ipc_publish = [
     "identity.v1.request.build",

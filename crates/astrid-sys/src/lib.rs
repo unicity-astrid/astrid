@@ -137,4 +137,11 @@ extern "ExtismHost" {
     // -----------------------------------------------------------------------
     /// Signal that the capsule's run loop is ready (subscriptions are active).
     pub fn astrid_signal_ready();
+
+    // -----------------------------------------------------------------------
+    // Interceptor Handles (Run-Loop Auto-Subscribe)
+    // -----------------------------------------------------------------------
+    /// Query auto-subscribed interceptor handle mappings.
+    /// Returns JSON array of `{handle_id, action, topic}` objects.
+    pub fn astrid_get_interceptor_handles() -> Vec<u8>;
 }

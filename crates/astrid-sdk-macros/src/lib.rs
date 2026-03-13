@@ -416,7 +416,12 @@ fn capsule_impl(
             quote! {
                 let instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
                     Ok(state) => state,
-                    Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
+                    Err(e @ ::astrid_sdk::SysError::JsonError(_)) => {
+                        let _ = ::astrid_sdk::log::warn(
+                            &format!("failed to deserialize state, falling back to default: {}", e),
+                        );
+                        Default::default()
+                    }
                     Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
                 };
                 instance.#method_name()
