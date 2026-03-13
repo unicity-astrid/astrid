@@ -209,6 +209,38 @@ pub enum IpcPayload {
     },
 }
 
+impl IpcPayload {
+    /// Returns `true` if `tag` matches a known serde variant name.
+    ///
+    /// The host IPC publish handler uses this to distinguish known structured
+    /// payloads from arbitrary guest JSON that should be wrapped as
+    /// [`Custom`](Self::Custom). Without this check, a `#[serde(other)]`
+    /// catch-all variant (e.g. `Unknown`) would silently swallow unrecognised
+    /// type tags before the `Custom` fallback path is reached.
+    #[must_use]
+    pub fn is_known_tag(tag: &str) -> bool {
+        matches!(
+            tag,
+            "raw_json"
+                | "user_input"
+                | "agent_response"
+                | "approval_required"
+                | "onboarding_required"
+                | "llm_request"
+                | "llm_stream_event"
+                | "llm_response"
+                | "tool_execute_request"
+                | "tool_execute_result"
+                | "selection_required"
+                | "elicit_request"
+                | "elicit_response"
+                | "connect"
+                | "disconnect"
+                | "custom"
+        )
+    }
+}
+
 /// A single option in a `SelectionRequired` picker.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SelectionOption {
@@ -599,5 +631,120 @@ mod tests {
 
         // reason field should be skipped when None.
         assert!(!json.contains("reason"), "json: {json}");
+    }
+
+    /// Every variant's serialized `type` tag must be recognised by
+    /// `is_known_tag`. If a new variant is added without updating the
+    /// match arm, this test fails.
+    #[test]
+    fn is_known_tag_covers_all_variants() {
+        let representatives: Vec<IpcPayload> = vec![
+            IpcPayload::RawJson(Value::Null),
+            IpcPayload::UserInput {
+                text: String::new(),
+                session_id: "s".into(),
+                context: None,
+            },
+            IpcPayload::AgentResponse {
+                text: String::new(),
+                is_final: false,
+                session_id: "s".into(),
+            },
+            IpcPayload::ApprovalRequired {
+                action: String::new(),
+                resource: String::new(),
+                reason: String::new(),
+            },
+            IpcPayload::OnboardingRequired {
+                capsule_id: String::new(),
+                fields: vec![],
+            },
+            IpcPayload::LlmRequest {
+                request_id: Uuid::nil(),
+                model: String::new(),
+                messages: vec![],
+                tools: vec![],
+                system: String::new(),
+            },
+            IpcPayload::LlmStreamEvent {
+                request_id: Uuid::nil(),
+                event: crate::llm::StreamEvent::TextDelta(String::new()),
+            },
+            IpcPayload::LlmResponse {
+                request_id: Uuid::nil(),
+                response: crate::llm::LlmResponse {
+                    message: crate::llm::Message {
+                        role: crate::llm::MessageRole::Assistant,
+                        content: crate::llm::MessageContent::Text(String::new()),
+                    },
+                    has_tool_calls: false,
+                    stop_reason: crate::llm::StopReason::EndTurn,
+                    usage: crate::llm::Usage {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                    },
+                },
+            },
+            IpcPayload::ToolExecuteRequest {
+                call_id: String::new(),
+                tool_name: String::new(),
+                arguments: Value::Null,
+            },
+            IpcPayload::ToolExecuteResult {
+                call_id: String::new(),
+                result: crate::llm::ToolCallResult {
+                    call_id: String::new(),
+                    content: String::new(),
+                    is_error: false,
+                },
+            },
+            IpcPayload::SelectionRequired {
+                request_id: String::new(),
+                title: String::new(),
+                options: vec![],
+                callback_topic: String::new(),
+            },
+            IpcPayload::ElicitRequest {
+                request_id: Uuid::nil(),
+                capsule_id: String::new(),
+                field: OnboardingField {
+                    key: String::new(),
+                    prompt: String::new(),
+                    description: None,
+                    field_type: OnboardingFieldType::Text,
+                    default: None,
+                    placeholder: None,
+                },
+            },
+            IpcPayload::ElicitResponse {
+                request_id: Uuid::nil(),
+                value: None,
+                values: None,
+            },
+            IpcPayload::Connect,
+            IpcPayload::Disconnect { reason: None },
+            IpcPayload::Custom {
+                data: Value::Object(serde_json::Map::new()),
+            },
+        ];
+
+        for variant in &representatives {
+            let json = serde_json::to_value(variant).unwrap();
+            let tag = json["type"]
+                .as_str()
+                .unwrap_or_else(|| panic!("variant {variant:?} has no `type` tag"));
+            assert!(
+                IpcPayload::is_known_tag(tag),
+                "is_known_tag does not recognise tag '{tag}' from variant {variant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_known_tag_rejects_unknown_tags() {
+        assert!(!IpcPayload::is_known_tag("my_plugin_msg"));
+        assert!(!IpcPayload::is_known_tag("unknown"));
+        assert!(!IpcPayload::is_known_tag(""));
+        assert!(!IpcPayload::is_known_tag("Raw_Json")); // wrong case
     }
 }
