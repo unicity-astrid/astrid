@@ -140,7 +140,7 @@ pub struct HostState {
     /// Cooperative cancellation token for long-running host function calls.
     ///
     /// Triggered during capsule unload to unblock `ipc_recv`, `elicit`, and
-    /// `net_accept`/`net_read` host functions that may be waiting on I/O.
+    /// `net_accept`/`net_read`/`net_write` host functions that may be waiting on I/O.
     pub cancel_token: CancellationToken,
     /// Session token for authenticating CLI socket connections. Only set for
     /// the CLI proxy capsule (which has `net_bind` capability).

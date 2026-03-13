@@ -4,6 +4,7 @@ use std::future::Future;
 
 use extism::{CurrentPlugin, Error, Val};
 use tokio::sync::Semaphore;
+use tokio_util::sync::CancellationToken;
 
 /// Maximum allowed length for a guest string or payload (10 MB).
 pub(crate) const MAX_GUEST_PAYLOAD_LEN: u64 = 10 * 1024 * 1024;
@@ -107,6 +108,35 @@ where
     })
 }
 
+/// Like [`bounded_block_on`], but also respects a [`CancellationToken`].
+///
+/// Returns `Some(T)` if the future completes before cancellation, or `None`
+/// if the token fires first. Used for host functions whose I/O can stall
+/// indefinitely (network writes to slow clients) and must abort promptly
+/// when the capsule is unloaded.
+pub(crate) fn bounded_block_on_cancellable<F, T>(
+    handle: &tokio::runtime::Handle,
+    semaphore: &Semaphore,
+    cancel_token: &CancellationToken,
+    fut: F,
+) -> Option<T>
+where
+    F: Future<Output = T>,
+{
+    tokio::task::block_in_place(|| {
+        handle.block_on(async {
+            let _permit = semaphore
+                .acquire()
+                .await
+                .expect("host semaphore closed: capsule HostState was dropped");
+            tokio::select! {
+                result = fut => Some(result),
+                () = cancel_token.cancelled() => None,
+            }
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +190,49 @@ mod tests {
 
         let err: Result<u32, &str> = bounded_block_on(&handle, &semaphore, async { Err("fail") });
         assert_eq!(err.unwrap_err(), "fail");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cancellation_unblocks_bounded_block_on_cancellable() {
+        let semaphore = Arc::new(Semaphore::new(4));
+        let handle = tokio::runtime::Handle::current();
+        let cancel_token = CancellationToken::new();
+
+        let sem = semaphore.clone();
+        let h = handle.clone();
+        let ct = cancel_token.clone();
+
+        // Cancel after 50ms while the future sleeps for 60s.
+        let cancel = cancel_token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            cancel.cancel();
+        });
+
+        let result = tokio::task::spawn(async move {
+            bounded_block_on_cancellable(&h, &sem, &ct, async {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                42u32
+            })
+        })
+        .await
+        .unwrap();
+
+        assert!(result.is_none(), "expected None on cancellation");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bounded_block_on_cancellable_normal_completion() {
+        let semaphore = Semaphore::new(4);
+        let handle = tokio::runtime::Handle::current();
+        let cancel_token = CancellationToken::new();
+
+        let result: Option<Result<u32, &str>> =
+            bounded_block_on_cancellable(&handle, &semaphore, &cancel_token, async { Ok(42) });
+        assert_eq!(result.unwrap().unwrap(), 42);
+
+        let err: Option<Result<u32, &str>> =
+            bounded_block_on_cancellable(&handle, &semaphore, &cancel_token, async { Err("fail") });
+        assert_eq!(err.unwrap().unwrap_err(), "fail");
     }
 }
