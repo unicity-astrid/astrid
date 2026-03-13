@@ -285,6 +285,13 @@ impl ExecutionEngine for WasmEngine {
             })?;
 
             let has_run = plugin.function_exists("run");
+            if has_run != has_run_export {
+                tracing::error!(
+                    has_run,
+                    has_run_export,
+                    "pre-scan/post-build run() export mismatch: timeout may be applied incorrectly"
+                );
+            }
             debug_assert_eq!(
                 has_run, has_run_export,
                 "pre-scan/post-build run() export mismatch"
@@ -940,12 +947,30 @@ mod tests {
     }
 
     #[test]
-    fn prescan_returns_false_for_empty_module() {
-        // Minimal valid WASM module with no exports
+    fn prescan_returns_false_for_empty_export_section() {
+        // Module with an empty export section (section present, count = 0).
+        // Exercises the inner-loop-zero-iterations path returning false
+        // from within the ExportSection arm.
         let wasm = build_wasm_module(&[]);
         assert!(
             !wasm_exports_contain_run(&wasm),
-            "empty module should not have run"
+            "empty export section should not have run"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_false_for_module_with_no_export_section() {
+        // Module with no export section at all. Exercises the fall-through
+        // path at the end of wasm_exports_contain_run (line after the loop).
+        use wasm_encoder::{Module, TypeSection};
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+        let wasm = module.finish();
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "module with no export section should not have run"
         );
     }
 
