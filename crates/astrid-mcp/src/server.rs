@@ -374,8 +374,9 @@ impl ServerManager {
         // Fallback order: config.cwd > workspace_root > temp_dir/astrid-mcp/<name>
         let writable_root = config
             .cwd
-            .clone()
-            .or_else(|| self.workspace_root.clone())
+            .as_ref()
+            .or(self.workspace_root.as_ref())
+            .cloned()
             .unwrap_or_else(|| std::env::temp_dir().join("astrid-mcp").join(name));
 
         // Validate writable_root and astrid_home against double-quote injection
