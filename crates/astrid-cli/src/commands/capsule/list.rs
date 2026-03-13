@@ -41,6 +41,11 @@ pub(crate) fn list_capsules(verbose: bool) -> anyhow::Result<()> {
 /// Compact: one line per capsule.
 fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
     let max_name_len = capsules.iter().map(|c| c.name.len()).max().unwrap_or(30);
+    let max_version_len = capsules
+        .iter()
+        .map(|c| c.meta.as_ref().map_or(7, |m| m.version.len()))
+        .max()
+        .unwrap_or(7); // "unknown".len()
 
     for cap in capsules {
         let (version, provides_count, requires_count) = match &cap.meta {
@@ -59,11 +64,12 @@ fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
         // distorting the column width calculation.
         let padded_name = format!("{:<width$}", cap.name, width = max_name_len);
         println!(
-            "  {} {:<8} {:<13} {}",
+            "  {} {:<width$} {:<13} {}",
             padded_name.bold(),
             version,
             Theme::dimmed(&location_tag),
             Theme::dimmed(&caps_summary),
+            width = max_version_len,
         );
     }
 }
