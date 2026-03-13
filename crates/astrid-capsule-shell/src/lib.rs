@@ -8,10 +8,10 @@
 //! Provides the `run_shell_command` tool to agents, wrapping executions
 //! securely in the host-level Escape Hatch (Seatbelt/bwrap).
 //!
-//! Each command is parsed to extract the program and subcommand, then
-//! submitted for human approval before execution. Approved commands
-//! create subcommand-level allowances (e.g. "git push" approves all
-//! future `git push` variants).
+//! Each command is parsed to extract an approval action from consecutive
+//! non-flag tokens (up to 3 deep). Approved commands create allowances
+//! at that granularity (e.g. "git push" approves all `git push` variants,
+//! "docker compose up" approves all `docker compose up` variants).
 
 use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
@@ -28,38 +28,34 @@ pub struct RunShellArgs {
     pub command: String,
 }
 
-/// Programs known to have meaningful subcommands for approval grouping.
-const MULTI_COMMAND_PROGRAMS: &[&str] = &[
-    "git", "docker", "kubectl", "npm", "npx", "yarn", "pnpm", "cargo", "pip", "pip3", "poetry",
-    "systemctl", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "snap", "flatpak", "helm",
-    "terraform", "ansible", "vagrant", "make", "cmake", "go", "rustup",
-];
-
-/// Parse a shell command string into (program, optional subcommand).
+/// Maximum number of non-flag tokens to include in the approval action.
 ///
-/// For multi-command tools like git, returns ("git", Some("push")).
-/// For simple tools like ls, returns ("ls", None).
-fn parse_command(command: &str) -> (&str, Option<&str>) {
-    let mut parts = command.split_whitespace();
-    let program = match parts.next() {
-        Some(p) => p,
-        None => return ("", None),
-    };
+/// Covers sub-sub-commands like `docker compose up` (depth 3) without
+/// pulling in positional arguments like remote names or file paths.
+const MAX_ACTION_DEPTH: usize = 3;
 
-    if MULTI_COMMAND_PROGRAMS.contains(&program) {
-        let subcommand = parts.next();
-        (program, subcommand)
-    } else {
-        (program, None)
-    }
-}
-
-/// Build the approval action string from parsed command parts.
-fn approval_action(program: &str, subcommand: Option<&str>) -> String {
-    match subcommand {
-        Some(sub) => format!("{program} {sub}"),
-        None => program.to_string(),
-    }
+/// Extract the approval action from a shell command string.
+///
+/// Collects consecutive non-flag tokens (up to [`MAX_ACTION_DEPTH`]),
+/// stopping at the first token that starts with `-`. No whitelist needed -
+/// all programs are treated uniformly.
+///
+/// ```text
+/// git push --force origin main      -> "git push"
+/// docker compose up -d              -> "docker compose up"
+/// kubectl config set-context --cur  -> "kubectl config set-context"
+/// ls -la /tmp                       -> "ls"
+/// cargo build --release             -> "cargo build"
+/// python -c "code"                  -> "python"
+/// cat /etc/passwd                   -> "cat /etc/passwd"
+/// ```
+fn extract_action(command: &str) -> String {
+    command
+        .split_whitespace()
+        .take(MAX_ACTION_DEPTH)
+        .take_while(|t| !t.starts_with('-'))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[expect(missing_docs)]
@@ -67,9 +63,9 @@ fn approval_action(program: &str, subcommand: Option<&str>) -> String {
 impl ShellTools {
     /// Executes a given shell command via the host sandbox escape hatch.
     ///
-    /// Before execution, parses the command to extract the program and
-    /// subcommand, then requests human approval. If denied, returns an
-    /// error without executing.
+    /// Before execution, extracts the approval action (consecutive non-flag
+    /// tokens, up to 3 deep), then requests human approval. If denied,
+    /// returns an error without executing.
     #[astrid::tool("run_shell_command")]
     pub fn run_shell_command(&self, args: RunShellArgs) -> Result<String, SysError> {
         let trimmed = args.command.trim();
@@ -77,8 +73,7 @@ impl ShellTools {
             return Err(SysError::ApiError("Command cannot be empty".into()));
         }
 
-        let (program, subcommand) = parse_command(trimmed);
-        let action = approval_action(program, subcommand);
+        let action = extract_action(trimmed);
 
         // Request approval - blocks until the user responds or timeout.
         let result = approval::request(&action, trimmed, "high")?;
@@ -109,69 +104,92 @@ impl ShellTools {
 mod tests {
     use super::*;
 
+    // -- Subcommand extraction (depth 1) --
+
     #[test]
-    fn parse_git_push() {
-        let (prog, sub) = parse_command("git push origin main");
-        assert_eq!(prog, "git");
-        assert_eq!(sub, Some("push"));
+    fn action_git_push() {
+        assert_eq!(extract_action("git push --force origin main"), "git push");
     }
 
     #[test]
-    fn parse_git_status() {
-        let (prog, sub) = parse_command("git status");
-        assert_eq!(prog, "git");
-        assert_eq!(sub, Some("status"));
+    fn action_git_status() {
+        assert_eq!(extract_action("git status"), "git status");
     }
 
     #[test]
-    fn parse_docker_run() {
-        let (prog, sub) = parse_command("docker run --rm alpine");
-        assert_eq!(prog, "docker");
-        assert_eq!(sub, Some("run"));
+    fn action_cargo_build() {
+        assert_eq!(extract_action("cargo build --release"), "cargo build");
+    }
+
+    // -- Sub-sub-command extraction (depth 2) --
+
+    #[test]
+    fn action_docker_compose_up() {
+        assert_eq!(extract_action("docker compose up -d"), "docker compose up");
     }
 
     #[test]
-    fn parse_ls_simple() {
-        let (prog, sub) = parse_command("ls -la /tmp");
-        assert_eq!(prog, "ls");
-        assert_eq!(sub, None);
+    fn action_kubectl_config_set_context() {
+        assert_eq!(
+            extract_action("kubectl config set-context --current"),
+            "kubectl config set-context"
+        );
     }
 
     #[test]
-    fn parse_empty_command() {
-        let (prog, sub) = parse_command("");
-        assert_eq!(prog, "");
-        assert_eq!(sub, None);
+    fn action_git_remote_add() {
+        assert_eq!(
+            extract_action("git remote add origin https://example.com"),
+            "git remote add"
+        );
+    }
+
+    // -- Depth cap (stops at 3 tokens) --
+
+    #[test]
+    fn action_depth_cap() {
+        // 4th non-flag token is NOT included
+        assert_eq!(extract_action("a b c d e"), "a b c");
+    }
+
+    // -- Flag stops extraction --
+
+    #[test]
+    fn action_flag_stops_immediately() {
+        assert_eq!(extract_action("ls -la /tmp"), "ls");
     }
 
     #[test]
-    fn parse_single_word_known() {
-        let (prog, sub) = parse_command("git");
-        assert_eq!(prog, "git");
-        assert_eq!(sub, None);
+    fn action_python_flag() {
+        assert_eq!(extract_action("python -c 'print(1)'"), "python");
+    }
+
+    // -- Simple programs (no flags, bare args) --
+
+    #[test]
+    fn action_cat_with_path() {
+        assert_eq!(extract_action("cat /etc/passwd"), "cat /etc/passwd");
     }
 
     #[test]
-    fn approval_action_with_subcommand() {
-        assert_eq!(approval_action("git", Some("push")), "git push");
+    fn action_unknown_tool_with_flag() {
+        assert_eq!(extract_action("my-tool --flag value"), "my-tool");
+    }
+
+    // -- Edge cases --
+
+    #[test]
+    fn action_empty() {
+        assert_eq!(extract_action(""), "");
     }
 
     #[test]
-    fn approval_action_simple_program() {
-        assert_eq!(approval_action("ls", None), "ls");
+    fn action_single_word() {
+        assert_eq!(extract_action("git"), "git");
     }
 
     #[test]
-    fn parse_cargo_build() {
-        let (prog, sub) = parse_command("cargo build --release");
-        assert_eq!(prog, "cargo");
-        assert_eq!(sub, Some("build"));
-    }
-
-    #[test]
-    fn parse_unknown_program_with_args() {
-        let (prog, sub) = parse_command("my-custom-tool --flag value");
-        assert_eq!(prog, "my-custom-tool");
-        assert_eq!(sub, None);
+    fn action_only_flags() {
+        assert_eq!(extract_action("--help"), "");
     }
 }
