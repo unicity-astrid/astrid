@@ -434,8 +434,12 @@ impl ReactLoop {
     /// Called after the capsule is reloaded during a restart. Clears
     /// all ephemeral KV keys (turn state, correlation mappings, active
     /// sessions) to prevent stale state from a previous incarnation.
+    ///
+    /// Intentionally parameterless: the kernel dispatches this with an
+    /// empty payload (`&[]`). A typed parameter would cause the macro
+    /// to attempt `serde_json::from_slice(&[])`, which always fails.
     #[astrid::interceptor("handle_lifecycle_restart")]
-    pub fn handle_lifecycle_restart(&self, _payload: serde_json::Value) -> Result<(), SysError> {
+    pub fn handle_lifecycle_restart(&self) -> Result<(), SysError> {
         let _ = log::info("Lifecycle restart: clearing ephemeral keys");
         clear_ephemeral_keys();
         Ok(())
