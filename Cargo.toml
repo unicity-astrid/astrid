@@ -46,6 +46,7 @@ members = [
     "crates/astrid-sdk",
     "crates/astrid-sdk-macros",
     "crates/astrid-capsule",
+    "crates/astrid-capsule-shell",
     "crates/astrid-capsule-skills",
     "crates/astrid-capsule-hook-bridge",
     # "crates/astrid-discord",  # Phase 7

@@ -37,10 +37,39 @@ pub struct RunShellArgs {
 /// program name is used as the action to avoid leaking positional arguments
 /// (e.g. file paths) into allowance patterns.
 const MULTI_COMMAND_PROGRAMS: &[&str] = &[
-    "git", "docker", "kubectl", "npm", "npx", "yarn", "pnpm", "cargo", "pip", "pip3", "poetry",
-    "systemctl", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "snap", "flatpak", "helm",
-    "terraform", "ansible", "vagrant", "make", "cmake", "go", "rustup", "bun", "deno", "uv",
-    "nix", "podman",
+    "git",
+    "docker",
+    "kubectl",
+    "npm",
+    "npx",
+    "yarn",
+    "pnpm",
+    "cargo",
+    "pip",
+    "pip3",
+    "poetry",
+    "systemctl",
+    "brew",
+    "apt",
+    "apt-get",
+    "dnf",
+    "yum",
+    "pacman",
+    "snap",
+    "flatpak",
+    "helm",
+    "terraform",
+    "ansible",
+    "vagrant",
+    "make",
+    "cmake",
+    "go",
+    "rustup",
+    "bun",
+    "deno",
+    "uv",
+    "nix",
+    "podman",
 ];
 
 /// Maximum subcommand depth for known multi-command programs.
@@ -53,18 +82,24 @@ const MAX_SUBCOMMAND_DEPTH: usize = 2;
 ///
 /// For known multi-command programs, collects the program name plus up to
 /// [`MAX_SUBCOMMAND_DEPTH`] non-flag subcommand tokens. For unknown
-/// programs, returns just the program name.
+/// programs, returns the exact full command string.
+///
+/// Returning the full string for unknown programs is a critical security
+/// boundary. If `rm -rf /tmp/foo` returned just `rm`, the session allowance
+/// would be `rm *`, which would allow a malicious capsule to execute `rm -rf /`
+/// without prompting. By returning the full string, the allowance becomes
+/// safely scoped to `rm -rf /tmp/foo *`.
 ///
 /// ```text
 /// git push --force origin main      -> "git push"
 /// docker compose up -d              -> "docker compose up"
 /// kubectl config set-context --cur  -> "kubectl config set-context"
-/// ls -la /tmp                       -> "ls"
+/// ls -la /tmp                       -> "ls -la /tmp"
 /// cargo build --release             -> "cargo build"
-/// python -c "code"                  -> "python"
-/// cat /etc/passwd                   -> "cat"
-/// rm -rf /tmp/foo                   -> "rm"
-/// rm /tmp/foo                       -> "rm"
+/// python -c "code"                  -> "python -c \"code\""
+/// cat /etc/passwd                   -> "cat /etc/passwd"
+/// rm -rf /tmp/foo                   -> "rm -rf /tmp/foo"
+/// rm /tmp/foo                       -> "rm /tmp/foo"
 /// ```
 fn extract_action(command: &str) -> String {
     let mut tokens = command.split_whitespace();
@@ -74,7 +109,9 @@ fn extract_action(command: &str) -> String {
     };
 
     if !MULTI_COMMAND_PROGRAMS.contains(&program) {
-        return program.to_string();
+        // SECURITY: Unknown programs must use exact-match fallback to prevent
+        // generating dangerously broad `program *` glob allowances.
+        return command.to_string();
     }
 
     // Known multi-command program: extract non-flag subcommands.
@@ -88,7 +125,6 @@ fn extract_action(command: &str) -> String {
     parts.join(" ")
 }
 
-#[expect(missing_docs)]
 #[capsule]
 impl ShellTools {
     /// Executes a given shell command via the host sandbox escape hatch.
@@ -182,32 +218,39 @@ mod tests {
         assert_eq!(extract_action("npm run build dist"), "npm run build");
     }
 
-    // -- Unknown programs return name only --
+    // -- Unknown programs return full command (exact-match safety) --
 
     #[test]
-    fn action_unknown_program_returns_name_only() {
-        // Unknown programs never include arguments in the action
-        assert_eq!(extract_action("cat /etc/passwd"), "cat");
-        assert_eq!(extract_action("rm /tmp/foo"), "rm");
-        assert_eq!(extract_action("rm -rf /tmp/foo"), "rm");
-        assert_eq!(extract_action("a b c d e"), "a");
+    fn action_unknown_program_returns_full_command() {
+        // Unknown programs return the full command string to prevent
+        // dangerously broad "program *" session allowances.
+        assert_eq!(extract_action("cat /etc/passwd"), "cat /etc/passwd");
+        assert_eq!(extract_action("rm /tmp/foo"), "rm /tmp/foo");
+        assert_eq!(extract_action("rm -rf /tmp/foo"), "rm -rf /tmp/foo");
+        assert_eq!(extract_action("a b c d e"), "a b c d e");
     }
 
-    // -- Flag stops extraction --
+    // -- Flag stops extraction (known programs only) --
 
     #[test]
-    fn action_flag_stops_immediately() {
-        assert_eq!(extract_action("ls -la /tmp"), "ls");
+    fn action_known_program_flag_stops() {
+        // Flags stop subcommand extraction for whitelisted programs
+        assert_eq!(extract_action("cargo build --release"), "cargo build");
+        assert_eq!(extract_action("git push --force origin main"), "git push");
     }
 
     #[test]
-    fn action_python_flag() {
-        assert_eq!(extract_action("python -c 'print(1)'"), "python");
-    }
-
-    #[test]
-    fn action_unknown_tool_with_flag() {
-        assert_eq!(extract_action("my-tool --flag value"), "my-tool");
+    fn action_unknown_program_with_flags_returns_full() {
+        // Unknown programs always return full command, flags included
+        assert_eq!(extract_action("ls -la /tmp"), "ls -la /tmp");
+        assert_eq!(
+            extract_action("python -c 'print(1)'"),
+            "python -c 'print(1)'"
+        );
+        assert_eq!(
+            extract_action("my-tool --flag value"),
+            "my-tool --flag value"
+        );
     }
 
     // -- Edge cases --
