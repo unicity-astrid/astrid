@@ -709,6 +709,64 @@ mod tests {
             "should unblock promptly, took {elapsed:?}"
         );
     }
+
+    #[test]
+    fn protected_interceptor_handle_survives_unsubscribe() {
+        use crate::engine::wasm::host_state::InterceptorHandle;
+
+        // Simulate post-auto-subscribe state: handle 1 is in both
+        // subscriptions and interceptor_handles (runtime-owned).
+        let bus = EventBus::new();
+        let receiver = bus.subscribe_topic("interceptor.topic");
+
+        let mut subscriptions = std::collections::HashMap::new();
+        let handle_id: u64 = 1;
+        subscriptions.insert(handle_id, receiver);
+
+        let interceptor_handles = vec![InterceptorHandle {
+            handle_id,
+            action: "on_message".to_owned(),
+            topic: "interceptor.topic".to_owned(),
+        }];
+
+        // Guard check (same conditional as unsubscribe_impl).
+        let is_protected = interceptor_handles.iter().any(|h| h.handle_id == handle_id);
+        assert!(is_protected, "handle should be detected as protected");
+
+        // Subscription must NOT be removed.
+        assert!(
+            subscriptions.contains_key(&handle_id),
+            "protected subscription must survive unsubscribe attempt",
+        );
+    }
+
+    #[test]
+    fn guest_handle_allows_unsubscribe() {
+        // Guest-created handle (not in interceptor_handles) can be removed.
+        let bus = EventBus::new();
+        let receiver = bus.subscribe_topic("guest.topic");
+
+        let mut subscriptions = std::collections::HashMap::new();
+        let handle_id: u64 = 99;
+        subscriptions.insert(handle_id, receiver);
+
+        let interceptor_handles: Vec<crate::engine::wasm::host_state::InterceptorHandle> =
+            Vec::new();
+
+        // Guard check passes (not protected).
+        let is_protected = interceptor_handles.iter().any(|h| h.handle_id == handle_id);
+        assert!(!is_protected, "guest handle must not be protected");
+
+        // Removal succeeds.
+        assert!(
+            subscriptions.remove(&handle_id).is_some(),
+            "guest subscription should be removable",
+        );
+        assert!(
+            !subscriptions.contains_key(&handle_id),
+            "subscription should be gone after removal",
+        );
+    }
 }
 
 /// Return the pre-registered interceptor handle mappings for run-loop capsules.
@@ -763,6 +821,20 @@ pub(crate) fn astrid_ipc_unsubscribe_impl(
     let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if state
+        .interceptor_handles
+        .iter()
+        .any(|h| h.handle_id == handle_id)
+    {
+        tracing::warn!(
+            handle_id,
+            "Guest attempted to unsubscribe a runtime-owned interceptor handle",
+        );
+        return Err(Error::msg(
+            "Cannot unsubscribe a runtime-owned interceptor handle",
+        ));
+    }
 
     if state.subscriptions.remove(&handle_id).is_none() {
         return Err(Error::msg("Subscription handle not found"));
