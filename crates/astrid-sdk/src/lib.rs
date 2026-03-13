@@ -46,7 +46,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 pub use extism_pdk;
 #[doc(hidden)]
 pub use schemars;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 /// Core error type for SDK operations
@@ -312,6 +312,226 @@ pub mod kv {
     pub fn set_borsh<T: BorshSerialize>(key: impl AsRef<[u8]>, value: &T) -> Result<(), SysError> {
         let bytes = borsh::to_vec(value)?;
         set_bytes(key, &bytes)
+    }
+
+    // ---- Versioned KV helpers ----
+
+    /// Internal envelope for versioned KV data.
+    ///
+    /// Wire format: `{"__sv": <version>, "data": <payload>}`.
+    /// The `__sv` prefix is deliberately ugly to avoid collision with
+    /// user struct fields.
+    #[derive(Serialize, Deserialize)]
+    struct VersionedEnvelope<T> {
+        #[serde(rename = "__sv")]
+        schema_version: u32,
+        data: T,
+    }
+
+    /// Result of reading versioned data from KV.
+    pub enum Versioned<T> {
+        /// Data is at the expected schema version.
+        Current(T),
+        /// Data is at an older version and needs migration.
+        NeedsMigration {
+            /// Raw JSON value of the `data` field.
+            raw: serde_json::Value,
+            /// The schema version that was stored.
+            stored_version: u32,
+        },
+        /// Key exists but data has no version envelope (pre-versioning legacy data).
+        Unversioned(serde_json::Value),
+        /// Key does not exist in KV.
+        NotFound,
+    }
+
+    /// Write versioned data to KV, wrapped in a schema-version envelope.
+    ///
+    /// The stored JSON looks like `{"__sv": 1, "data": { ... }}`.
+    /// Use [`get_versioned`] or [`get_versioned_or_migrate`] to read it back.
+    pub fn set_versioned<T: Serialize>(
+        key: impl AsRef<[u8]>,
+        value: &T,
+        version: u32,
+    ) -> Result<(), SysError> {
+        let envelope = VersionedEnvelope {
+            schema_version: version,
+            data: value,
+        };
+        set_json(key, &envelope)
+    }
+
+    /// Read versioned data from KV.
+    ///
+    /// Returns [`Versioned::Current`] if the stored version matches
+    /// `current_version`. Returns [`Versioned::NeedsMigration`] for older
+    /// versions. Returns an error for versions newer than `current_version`
+    /// (fail secure - don't silently interpret data from a schema you don't
+    /// understand).
+    ///
+    /// Data written by plain [`set_json`] (no envelope) returns
+    /// [`Versioned::Unversioned`].
+    pub fn get_versioned<T: DeserializeOwned>(
+        key: impl AsRef<[u8]>,
+        current_version: u32,
+    ) -> Result<Versioned<T>, SysError> {
+        let bytes = get_bytes(&key)?;
+        if bytes.is_empty() {
+            return Ok(Versioned::NotFound);
+        }
+
+        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+
+        // Detect envelope by checking for __sv (u64) + data fields.
+        let envelope_version = value.get("__sv").and_then(|v| v.as_u64());
+        let data_field = value.get("data");
+
+        match (envelope_version, data_field) {
+            (Some(v), Some(data)) => {
+                let v = u32::try_from(v)
+                    .map_err(|_| SysError::ApiError("schema version exceeds u32::MAX".into()))?;
+                if v == current_version {
+                    let parsed: T = serde_json::from_value(data.clone())?;
+                    Ok(Versioned::Current(parsed))
+                } else if v < current_version {
+                    Ok(Versioned::NeedsMigration {
+                        raw: data.clone(),
+                        stored_version: v,
+                    })
+                } else {
+                    Err(SysError::ApiError(format!(
+                        "stored schema version {v} is newer than current \
+                         version {current_version} - cannot safely read"
+                    )))
+                }
+            },
+            _ => Ok(Versioned::Unversioned(value)),
+        }
+    }
+
+    /// Read versioned data, automatically migrating older versions.
+    ///
+    /// `migrate_fn` receives the raw JSON and the stored version, and must
+    /// return a `T` at `current_version`. The migrated value is automatically
+    /// saved back to KV.
+    ///
+    /// **Warning:** The original data is overwritten after migration.
+    /// Ensure `migrate_fn` is correct - there is no rollback.
+    ///
+    /// For [`Versioned::Unversioned`] data, `migrate_fn` is called with
+    /// version 0. For [`Versioned::NotFound`], returns `None`.
+    pub fn get_versioned_or_migrate<T: Serialize + DeserializeOwned>(
+        key: impl AsRef<[u8]>,
+        current_version: u32,
+        migrate_fn: impl FnOnce(serde_json::Value, u32) -> Result<T, SysError>,
+    ) -> Result<Option<T>, SysError> {
+        let key_bytes: Vec<u8> = key.as_ref().to_vec();
+
+        match get_versioned::<T>(&key_bytes, current_version)? {
+            Versioned::Current(data) => Ok(Some(data)),
+            Versioned::NeedsMigration {
+                raw,
+                stored_version,
+            } => {
+                let migrated = migrate_fn(raw, stored_version)?;
+                set_versioned(&key_bytes, &migrated, current_version)?;
+                Ok(Some(migrated))
+            },
+            Versioned::Unversioned(raw) => {
+                let migrated = migrate_fn(raw, 0)?;
+                set_versioned(&key_bytes, &migrated, current_version)?;
+                Ok(Some(migrated))
+            },
+            Versioned::NotFound => Ok(None),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct TestData {
+            name: String,
+            count: u32,
+        }
+
+        #[test]
+        fn versioned_envelope_roundtrip() {
+            let envelope = VersionedEnvelope {
+                schema_version: 1,
+                data: TestData {
+                    name: "hello".into(),
+                    count: 42,
+                },
+            };
+            let json = serde_json::to_string(&envelope).unwrap();
+            assert!(json.contains("\"__sv\":1"));
+            assert!(json.contains("\"data\":{"));
+
+            let parsed: VersionedEnvelope<TestData> = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed.schema_version, 1);
+            assert_eq!(
+                parsed.data,
+                TestData {
+                    name: "hello".into(),
+                    count: 42,
+                }
+            );
+        }
+
+        #[test]
+        fn versioned_envelope_wire_format() {
+            let envelope = VersionedEnvelope {
+                schema_version: 3,
+                data: serde_json::json!({"key": "value"}),
+            };
+            let json = serde_json::to_string(&envelope).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(parsed["__sv"], 3);
+            assert_eq!(parsed["data"]["key"], "value");
+        }
+
+        #[test]
+        fn envelope_detection_recognizes_versioned_data() {
+            let json = r#"{"__sv":2,"data":{"name":"test","count":1}}"#;
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            let sv = value.get("__sv").and_then(|v| v.as_u64());
+            let has_data = value.get("data").is_some();
+            assert_eq!(sv, Some(2));
+            assert!(has_data);
+        }
+
+        #[test]
+        fn envelope_detection_rejects_unversioned_data() {
+            let json = r#"{"name":"test","count":1}"#;
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            let sv = value.get("__sv").and_then(|v| v.as_u64());
+            assert!(sv.is_none(), "plain data should not look like an envelope");
+        }
+
+        #[test]
+        fn envelope_detection_rejects_partial_envelope() {
+            // Has __sv but no data field.
+            let json = r#"{"__sv":1,"payload":"something"}"#;
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            let sv = value.get("__sv").and_then(|v| v.as_u64());
+            let has_data = value.get("data").is_some();
+            assert!(sv.is_some());
+            assert!(
+                !has_data,
+                "__sv without data should be treated as unversioned"
+            );
+        }
+
+        #[test]
+        fn envelope_detection_rejects_non_numeric_sv() {
+            let json = r#"{"__sv":"one","data":{}}"#;
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            let sv = value.get("__sv").and_then(|v| v.as_u64());
+            assert!(sv.is_none(), "string __sv should not match");
+        }
     }
 }
 

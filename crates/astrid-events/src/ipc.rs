@@ -207,6 +207,14 @@ pub enum IpcPayload {
         /// Raw data.
         data: Value,
     },
+    /// Unrecognized payload type from a newer protocol version.
+    ///
+    /// Deserialization of unknown `type` tags produces this variant instead
+    /// of failing, so capsules compiled against an older SDK gracefully
+    /// ignore new payload types. This variant should never be intentionally
+    /// published — it exists solely as a deserialization catch-all.
+    #[serde(other)]
+    Unknown,
 }
 
 impl IpcPayload {
@@ -780,5 +788,30 @@ mod tests {
         assert!(!IpcPayload::is_known_tag("unknown"));
         assert!(!IpcPayload::is_known_tag(""));
         assert!(!IpcPayload::is_known_tag("Raw_Json")); // wrong case
+    }
+
+    #[test]
+    fn unknown_type_tag_deserializes_to_unknown() {
+        let json = r#"{"type":"future_variant","some_data":42}"#;
+        let payload: IpcPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload, IpcPayload::Unknown);
+    }
+
+    #[test]
+    fn known_variants_unaffected_by_unknown() {
+        let payload = IpcPayload::AgentResponse {
+            text: "hello".into(),
+            is_final: true,
+            session_id: "s1".into(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn unknown_variant_serializes_as_type_unknown() {
+        let json = serde_json::to_string(&IpcPayload::Unknown).unwrap();
+        assert_eq!(json, r#"{"type":"unknown"}"#);
     }
 }

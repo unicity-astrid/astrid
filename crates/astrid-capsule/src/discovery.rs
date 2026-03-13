@@ -137,6 +137,31 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
             message: e.to_string(),
         })?;
 
+    // Enforce astrid-version (MSRV for Astrid, like rust-version in Cargo.toml).
+    // If the capsule requires a newer runtime than we are, reject it.
+    if let Some(ref constraint) = manifest.package.astrid_version {
+        let runtime = semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("valid semver");
+        match semver::VersionReq::parse(constraint) {
+            Ok(req) if !req.matches(&runtime) => {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "capsule requires astrid-version {constraint}, \
+                         but this runtime is {}",
+                        runtime
+                    ),
+                });
+            },
+            Err(e) => {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!("invalid astrid-version '{constraint}' - {e}"),
+                });
+            },
+            _ => {},
+        }
+    }
+
     // Validate version is valid semver (same as Cargo.toml).
     if semver::Version::parse(&manifest.package.version).is_err() {
         return Err(CapsuleError::ManifestParseError {
@@ -458,5 +483,45 @@ version = "0.1.0"
             load_from_toml(&toml).is_ok(),
             "uplink without requires should be valid"
         );
+    }
+
+    #[test]
+    fn load_manifest_accepts_satisfied_astrid_version() {
+        let toml = format!(
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=0.1.0\""
+        );
+        assert!(load_from_toml(&toml).is_ok());
+    }
+
+    #[test]
+    fn load_manifest_rejects_unsatisfied_astrid_version() {
+        let toml = format!(
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=99.0.0\""
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("astrid-version") && msg.contains("99.0.0"),
+            "expected astrid-version rejection, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_rejects_invalid_astrid_version() {
+        let toml = format!(
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \"not-semver\""
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid astrid-version"),
+            "expected parse error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_manifest_accepts_missing_astrid_version() {
+        // No astrid-version field at all - should load fine.
+        assert!(load_from_toml(VALID_HEADER).is_ok());
     }
 }
