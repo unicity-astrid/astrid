@@ -329,6 +329,7 @@ pub mod kv {
     }
 
     /// Result of reading versioned data from KV.
+    #[derive(Debug)]
     pub enum Versioned<T> {
         /// Data is at the expected schema version.
         Current(T),
@@ -375,15 +376,24 @@ pub mod kv {
         key: impl AsRef<[u8]>,
         current_version: u32,
     ) -> Result<Versioned<T>, SysError> {
+        let bytes = get_bytes(&key)?;
+        parse_versioned(&bytes, current_version)
+    }
+
+    /// Core parsing logic for versioned KV data, separated from FFI for
+    /// testability. Operates on raw bytes as returned by `get_bytes`.
+    fn parse_versioned<T: DeserializeOwned>(
+        bytes: &[u8],
+        current_version: u32,
+    ) -> Result<Versioned<T>, SysError> {
         // The host function `astrid_kv_get` returns an empty slice when the
         // key is absent. A present key written via set_json/set_versioned
         // always has at least the JSON envelope bytes, so empty = not found.
-        let bytes = get_bytes(&key)?;
         if bytes.is_empty() {
             return Ok(Versioned::NotFound);
         }
 
-        let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
 
         // Detect envelope by checking for __sv (u64) + data fields.
         // If __sv is present but malformed (not a number, or missing data),
@@ -479,6 +489,8 @@ pub mod kv {
             count: u32,
         }
 
+        // ---- Envelope serialization tests ----
+
         #[test]
         fn versioned_envelope_roundtrip() {
             let envelope = VersionedEnvelope {
@@ -516,48 +528,105 @@ pub mod kv {
             assert_eq!(parsed["data"]["key"], "value");
         }
 
+        // ---- parse_versioned logic tests ----
+
         #[test]
-        fn envelope_detection_recognizes_versioned_data() {
-            let json = r#"{"__sv":2,"data":{"name":"test","count":1}}"#;
-            let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            let sv = value.get("__sv").and_then(|v| v.as_u64());
-            let has_data = value.get("data").is_some();
-            assert_eq!(sv, Some(2));
-            assert!(has_data);
+        fn parse_versioned_empty_bytes_returns_not_found() {
+            let result = parse_versioned::<TestData>(b"", 1).unwrap();
+            assert!(matches!(result, Versioned::NotFound));
         }
 
         #[test]
-        fn envelope_detection_rejects_unversioned_data() {
-            let json = r#"{"name":"test","count":1}"#;
-            let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            let sv = value.get("__sv").and_then(|v| v.as_u64());
-            assert!(sv.is_none(), "plain data should not look like an envelope");
+        fn parse_versioned_current_version_returns_current() {
+            let bytes = br#"{"__sv":2,"data":{"name":"hello","count":42}}"#;
+            let result = parse_versioned::<TestData>(bytes, 2).unwrap();
+            match result {
+                Versioned::Current(data) => {
+                    assert_eq!(data.name, "hello");
+                    assert_eq!(data.count, 42);
+                },
+                other => panic!("expected Current, got {other:?}"),
+            }
         }
 
         #[test]
-        fn partial_envelope_detected_as_malformed() {
-            // __sv present but no data field - the match logic treats this
-            // as a malformed envelope (has_sv_field=true, data_field=None).
-            let json = r#"{"__sv":1,"payload":"something"}"#;
-            let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            assert!(value.get("__sv").is_some(), "__sv should be present");
+        fn parse_versioned_older_version_returns_needs_migration() {
+            let bytes = br#"{"__sv":1,"data":{"name":"old","count":1}}"#;
+            let result = parse_versioned::<TestData>(bytes, 3).unwrap();
+            match result {
+                Versioned::NeedsMigration {
+                    raw,
+                    stored_version,
+                } => {
+                    assert_eq!(stored_version, 1);
+                    assert_eq!(raw["name"], "old");
+                    assert_eq!(raw["count"], 1);
+                },
+                other => panic!("expected NeedsMigration, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn parse_versioned_newer_version_returns_error() {
+            let bytes = br#"{"__sv":5,"data":{"name":"future","count":0}}"#;
+            let result = parse_versioned::<TestData>(bytes, 2);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
             assert!(
-                value.get("data").is_none(),
-                "data should be absent - this is a malformed envelope"
+                err.contains("newer than current"),
+                "error should mention newer version: {err}"
             );
         }
 
         #[test]
-        fn non_numeric_sv_detected_as_malformed() {
-            // __sv present but not a number - the match logic treats this
-            // as malformed (has_sv_field=true, envelope_version=None).
-            let json = r#"{"__sv":"one","data":{}}"#;
-            let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            assert!(value.get("__sv").is_some(), "__sv field exists");
+        fn parse_versioned_plain_json_returns_unversioned() {
+            let bytes = br#"{"name":"legacy","count":99}"#;
+            let result = parse_versioned::<TestData>(bytes, 1).unwrap();
+            match result {
+                Versioned::Unversioned(val) => {
+                    assert_eq!(val["name"], "legacy");
+                    assert_eq!(val["count"], 99);
+                },
+                other => panic!("expected Unversioned, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn parse_versioned_malformed_sv_without_data_returns_error() {
+            let bytes = br#"{"__sv":1,"payload":"something"}"#;
+            let result = parse_versioned::<TestData>(bytes, 1);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
             assert!(
-                value.get("__sv").unwrap().as_u64().is_none(),
-                "string __sv should not parse as u64"
+                err.contains("malformed"),
+                "error should mention malformed envelope: {err}"
             );
+        }
+
+        #[test]
+        fn parse_versioned_non_numeric_sv_returns_error() {
+            let bytes = br#"{"__sv":"one","data":{}}"#;
+            let result = parse_versioned::<TestData>(bytes, 1);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("malformed"),
+                "error should mention malformed envelope: {err}"
+            );
+        }
+
+        #[test]
+        fn parse_versioned_version_zero_is_valid() {
+            // Version 0 is a legitimate version (initial schema).
+            let bytes = br#"{"__sv":0,"data":{"name":"v0","count":0}}"#;
+            let result = parse_versioned::<TestData>(bytes, 0).unwrap();
+            assert!(matches!(result, Versioned::Current(_)));
+        }
+
+        #[test]
+        fn parse_versioned_invalid_json_returns_error() {
+            let result = parse_versioned::<TestData>(b"not json", 1);
+            assert!(result.is_err());
         }
     }
 }
