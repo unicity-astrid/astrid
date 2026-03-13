@@ -226,19 +226,16 @@ impl ProcessSandboxConfig {
     ///
     /// Returns `Ok(Some(prefix))` on supported platforms, `Ok(None)` on
     /// unsupported platforms (Windows).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if generating the macOS Seatbelt profile fails.
-    pub fn sandbox_prefix(&self) -> io::Result<Option<SandboxPrefix>> {
+    #[must_use]
+    pub fn sandbox_prefix(&self) -> Option<SandboxPrefix> {
         #[cfg(target_os = "linux")]
         {
-            Ok(Some(self.build_bwrap_prefix()))
+            Some(self.build_bwrap_prefix())
         }
 
         #[cfg(target_os = "macos")]
         {
-            self.build_seatbelt_prefix().map(Some)
+            Some(self.build_seatbelt_prefix())
         }
 
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -247,7 +244,7 @@ impl ProcessSandboxConfig {
                 "Host-level sandboxing is not supported on this OS. \
                  MCP server will run unsandboxed."
             );
-            Ok(None)
+            None
         }
     }
 
@@ -280,15 +277,10 @@ impl ProcessSandboxConfig {
             ]);
         }
 
-        // Additional read-only paths (explicit, though --ro-bind / / covers most)
-        for path in &self.extra_read_paths {
-            let s = path.to_string_lossy().to_string();
-            args.extend([
-                OsString::from("--ro-bind"),
-                OsString::from(&s),
-                OsString::from(&s),
-            ]);
-        }
+        // extra_read_paths are not emitted on Linux because `--ro-bind / /`
+        // already grants read access to all host paths. Hidden paths override
+        // via tmpfs below. On macOS, extra_read_paths are added to the
+        // Seatbelt allow-list because the default policy is deny-all.
 
         // Disposable tmpfs for /tmp
         args.extend(["--tmpfs", "/tmp"].map(OsString::from));
@@ -320,7 +312,7 @@ impl ProcessSandboxConfig {
     }
 
     #[cfg(target_os = "macos")]
-    fn build_seatbelt_prefix(&self) -> io::Result<SandboxPrefix> {
+    fn build_seatbelt_prefix(&self) -> SandboxPrefix {
         let writable_root_str = self.writable_root.to_string_lossy().to_string();
 
         // Build the network rule conditionally
@@ -343,6 +335,20 @@ impl ProcessSandboxConfig {
             .extra_write_paths
             .iter()
             .map(|p| format!("    (subpath \"{}\")", p.to_string_lossy()))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Build deny rules for hidden paths (e.g. ~/.astrid/)
+        let hidden_deny_rules: String = self
+            .hidden_paths
+            .iter()
+            .map(|p| {
+                let s = p.to_string_lossy();
+                format!(
+                    "(deny file-read* (subpath \"{s}\"))\n\
+                     (deny file-write* (subpath \"{s}\"))"
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -373,21 +379,17 @@ impl ProcessSandboxConfig {
     (subpath "/var/folders")
     (literal "/dev/null")
 {extra_write_rules}
-)"#
+)
+{hidden_deny_rules}"#
         );
 
-        // Write profile to a temp file
-        let profile_path =
-            std::env::temp_dir().join(format!("astrid_sandbox_{}.sb", uuid::Uuid::new_v4()));
-        std::fs::write(&profile_path, profile)
-            .map_err(|e| io::Error::other(format!("Failed to write seatbelt profile: {e}")))?;
+        // Pass profile inline via -p to avoid temp file leak.
+        let args = vec![OsString::from("-p"), OsString::from(&profile)];
 
-        let args = vec![OsString::from("-f"), OsString::from(&profile_path)];
-
-        Ok(SandboxPrefix {
+        SandboxPrefix {
             program: OsString::from("sandbox-exec"),
             args,
-        })
+        }
     }
 }
 
@@ -514,7 +516,7 @@ mod tests {
             .map(|a| a.to_string_lossy().to_string())
             .collect();
 
-        // Extra writable path
+        // Extra writable path should have --bind
         let bind_positions: Vec<usize> = args_str
             .iter()
             .enumerate()
@@ -526,59 +528,50 @@ mod tests {
             .any(|&i| args_str.get(i + 1) == Some(&"/output".to_string()));
         assert!(has_output_bind, "should have --bind for extra write path");
 
-        // Extra read-only path
+        // extra_read_paths are NOT emitted as --ro-bind on Linux because
+        // `--ro-bind / /` already covers all host paths. Verify they are
+        // NOT redundantly added.
         let ro_positions: Vec<usize> = args_str
             .iter()
             .enumerate()
             .filter(|(_, a)| *a == "--ro-bind")
             .map(|(i, _)| i)
             .collect();
-        let has_data_ro = ro_positions
+        let has_data_explicit = ro_positions
             .iter()
             .any(|&i| args_str.get(i + 1) == Some(&"/data".to_string()));
-        assert!(has_data_ro, "should have --ro-bind for extra read path");
+        assert!(
+            !has_data_explicit,
+            "extra_read_paths should NOT produce --ro-bind on Linux (covered by --ro-bind / /)"
+        );
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn test_seatbelt_prefix_basic() {
         let config = ProcessSandboxConfig::new("/project");
-        let prefix = config
-            .build_seatbelt_prefix()
-            .expect("should build profile");
+        let prefix = config.build_seatbelt_prefix();
 
         assert_eq!(prefix.program, OsString::from("sandbox-exec"));
-        assert_eq!(prefix.args[0], OsString::from("-f"));
+        assert_eq!(prefix.args[0], OsString::from("-p"));
 
-        // Read the generated profile
-        let profile_path = &prefix.args[1];
-        let profile =
-            std::fs::read_to_string(Path::new(profile_path)).expect("should read profile");
+        // Profile is passed inline as the second arg
+        let profile = prefix.args[1].to_string_lossy().to_string();
 
         assert!(profile.contains("(deny default)"));
         assert!(profile.contains("(allow network*)"));
         assert!(profile.contains(r#"(subpath "/project")"#));
         assert!(profile.contains("(allow process-exec*)"));
-
-        // Clean up
-        let _ = std::fs::remove_file(Path::new(profile_path));
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn test_seatbelt_prefix_no_network() {
         let config = ProcessSandboxConfig::new("/project").with_network(false);
-        let prefix = config
-            .build_seatbelt_prefix()
-            .expect("should build profile");
+        let prefix = config.build_seatbelt_prefix();
 
-        let profile_path = &prefix.args[1];
-        let profile =
-            std::fs::read_to_string(Path::new(profile_path)).expect("should read profile");
-
+        let profile = prefix.args[1].to_string_lossy().to_string();
         assert!(!profile.contains("(allow network*)"));
-
-        let _ = std::fs::remove_file(Path::new(profile_path));
     }
 
     #[cfg(target_os = "macos")]
@@ -587,17 +580,27 @@ mod tests {
         let config = ProcessSandboxConfig::new("/project")
             .with_extra_read("/data")
             .with_extra_write("/output");
-        let prefix = config
-            .build_seatbelt_prefix()
-            .expect("should build profile");
+        let prefix = config.build_seatbelt_prefix();
 
-        let profile_path = &prefix.args[1];
-        let profile =
-            std::fs::read_to_string(Path::new(profile_path)).expect("should read profile");
-
+        let profile = prefix.args[1].to_string_lossy().to_string();
         assert!(profile.contains(r#"(subpath "/data")"#));
         assert!(profile.contains(r#"(subpath "/output")"#));
+    }
 
-        let _ = std::fs::remove_file(Path::new(profile_path));
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_seatbelt_prefix_hidden_paths() {
+        let config = ProcessSandboxConfig::new("/project").with_hidden("/Users/testuser/.astrid");
+        let prefix = config.build_seatbelt_prefix();
+
+        let profile = prefix.args[1].to_string_lossy().to_string();
+        assert!(
+            profile.contains(r#"(deny file-read* (subpath "/Users/testuser/.astrid"))"#),
+            "should deny file-read for hidden path"
+        );
+        assert!(
+            profile.contains(r#"(deny file-write* (subpath "/Users/testuser/.astrid"))"#),
+            "should deny file-write for hidden path"
+        );
     }
 }

@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::error::{McpError, McpResult};
+
 fn default_true() -> bool {
     true
 }
-
-use crate::error::{McpError, McpResult};
 
 /// Transport type for MCP servers.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

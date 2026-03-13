@@ -364,12 +364,12 @@ impl ServerManager {
     ) -> McpResult<tokio::process::Command> {
         use astrid_workspace::ProcessSandboxConfig;
 
-        // Determine writable root: config.cwd > workspace_root > temp_dir
+        // Determine writable root: config.cwd > workspace_root > temp_dir/astrid-mcp/<name>
         let writable_root = config
             .cwd
             .clone()
             .or_else(|| self.workspace_root.clone())
-            .unwrap_or_else(std::env::temp_dir);
+            .unwrap_or_else(|| std::env::temp_dir().join("astrid-mcp").join(name));
 
         // Resolve ~/.astrid/ path - this is mandatory for untrusted servers.
         let astrid_home = Self::resolve_astrid_home()?;
@@ -379,11 +379,24 @@ impl ServerManager {
             .with_network(config.allow_network)
             .with_hidden(astrid_home);
 
-        // Add config-specified extra paths
+        // Add config-specified extra paths (must be absolute to avoid
+        // ambiguity about which directory they resolve relative to).
         for path in &config.allowed_read_paths {
+            if !path.is_absolute() {
+                return Err(McpError::ConfigError(format!(
+                    "allowed_read_paths must be absolute, got: {}",
+                    path.display()
+                )));
+            }
             sandbox_config = sandbox_config.with_extra_read(path);
         }
         for path in &config.allowed_write_paths {
+            if !path.is_absolute() {
+                return Err(McpError::ConfigError(format!(
+                    "allowed_write_paths must be absolute, got: {}",
+                    path.display()
+                )));
+            }
             sandbox_config = sandbox_config.with_extra_write(path);
         }
 
@@ -399,13 +412,7 @@ impl ServerManager {
         }
 
         // Get sandbox prefix (bwrap/sandbox-exec args)
-        let sandbox_prefix =
-            sandbox_config
-                .sandbox_prefix()
-                .map_err(|e| McpError::ServerStartFailed {
-                    name: name.to_string(),
-                    reason: format!("sandbox setup failed: {e}"),
-                })?;
+        let sandbox_prefix = sandbox_config.sandbox_prefix();
 
         // Build the command
         let mut cmd = if let Some(prefix) = sandbox_prefix {
@@ -417,17 +424,24 @@ impl ServerManager {
             cmd.args(&config.args);
             cmd
         } else {
-            // Unsupported platform - run unsandboxed with warning
+            warn!(
+                server = name,
+                "Sandboxing not available on this platform; \
+                 untrusted MCP server will run without OS-level isolation"
+            );
             let mut cmd = tokio::process::Command::new(command);
             cmd.args(&config.args);
             cmd
         };
 
-        // Environment scrubbing: clear inherited env, re-add safe vars
+        // Environment scrubbing: clear inherited env, re-add safe vars.
         cmd.env_clear();
 
-        // Re-add minimal safe environment variables
-        for var in &["PATH", "HOME", "USER", "SHELL", "TERM", "LANG"] {
+        // Use a fixed PATH so the parent process can't influence binary
+        // resolution inside the sandbox. HOME/USER/SHELL/TERM/LANG are
+        // identity/locale vars that are safe to forward from the parent.
+        cmd.env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+        for var in &["HOME", "USER", "SHELL", "TERM", "LANG"] {
             if let Ok(val) = std::env::var(var) {
                 cmd.env(var, val);
             }
@@ -1058,8 +1072,6 @@ mod tests {
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build command");
 
-        // The command should have env_clear applied + safe vars + config vars.
-        // We verify by checking that SAFE_VAR is set (config env passed through).
         let envs: Vec<_> = cmd
             .as_std()
             .get_envs()
@@ -1073,8 +1085,29 @@ mod tests {
             })
             .collect();
 
+        // Config env vars should be passed through
         let has_safe_var = envs.iter().any(|(k, v)| k == "SAFE_VAR" && v == "value");
         assert!(has_safe_var, "config env vars should be passed through");
+
+        // PATH should be the fixed value, not inherited from parent
+        let path_val = envs
+            .iter()
+            .find(|(k, _)| k == "PATH")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            path_val,
+            Some("/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"),
+            "PATH should be the fixed sandbox path, not inherited"
+        );
+
+        // Vars not in the safe list or config should not be present
+        let has_random_env = envs
+            .iter()
+            .any(|(k, _)| k == "CARGO_HOME" || k == "RUSTUP_HOME");
+        assert!(
+            !has_random_env,
+            "env_clear should have removed non-allowlisted vars"
+        );
     }
 
     #[test]
@@ -1120,30 +1153,22 @@ mod tests {
         let mut config = ServerConfig::stdio("test", "echo");
         config.cwd = Some(std::path::PathBuf::from("/custom-cwd"));
 
-        // The command should use /custom-cwd as writable root (config.cwd wins)
         let cmd = manager
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build command");
 
-        // On Linux, verify the bwrap args contain /custom-cwd as a --bind target
-        #[cfg(target_os = "linux")]
-        {
-            let args: Vec<String> = cmd
-                .as_std()
-                .get_args()
-                .map(|a| a.to_string_lossy().to_string())
-                .collect();
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let args_joined = args.join(" ");
 
-            let bind_idx = args
-                .iter()
-                .position(|a| a == "--bind")
-                .expect("should have --bind");
-            assert_eq!(args[bind_idx + 1], "/custom-cwd");
-        }
-
-        // Suppress unused variable warning on non-Linux
-        #[cfg(not(target_os = "linux"))]
-        let _ = cmd;
+        // config.cwd should win over workspace_root
+        assert!(
+            args_joined.contains("/custom-cwd"),
+            "writable root should be /custom-cwd (config.cwd wins), got args: {args_joined}"
+        );
     }
 
     #[test]
@@ -1159,23 +1184,17 @@ mod tests {
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build command");
 
-        #[cfg(target_os = "linux")]
-        {
-            let args: Vec<String> = cmd
-                .as_std()
-                .get_args()
-                .map(|a| a.to_string_lossy().to_string())
-                .collect();
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let args_joined = args.join(" ");
 
-            let bind_idx = args
-                .iter()
-                .position(|a| a == "--bind")
-                .expect("should have --bind");
-            assert_eq!(args[bind_idx + 1], "/workspace");
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        let _ = cmd;
+        assert!(
+            args_joined.contains("/workspace"),
+            "writable root should be /workspace (workspace_root fallback), got args: {args_joined}"
+        );
     }
 
     #[test]
@@ -1188,6 +1207,31 @@ mod tests {
         assert!(
             path.to_string_lossy().contains(".astrid") || path.to_string_lossy().contains("astrid"),
             "path should reference astrid home"
+        );
+    }
+
+    #[test]
+    fn test_relative_allowed_paths_rejected() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo")
+            .with_read_path(std::path::PathBuf::from("relative/path"));
+
+        let result = manager.build_sandboxed_command("test", "echo", &config);
+        assert!(
+            matches!(result, Err(McpError::ConfigError(_))),
+            "relative allowed_read_paths should be rejected"
+        );
+
+        let config = ServerConfig::stdio("test", "echo")
+            .with_write_path(std::path::PathBuf::from("another/relative"));
+
+        let result = manager.build_sandboxed_command("test", "echo", &config);
+        assert!(
+            matches!(result, Err(McpError::ConfigError(_))),
+            "relative allowed_write_paths should be rejected"
         );
     }
 
