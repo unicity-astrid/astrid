@@ -487,18 +487,14 @@ version = "0.1.0"
 
     #[test]
     fn load_manifest_accepts_satisfied_astrid_version() {
-        let toml = format!(
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=0.1.0\""
-        );
-        assert!(load_from_toml(&toml).is_ok());
+        let toml = "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=0.1.0\"";
+        assert!(load_from_toml(toml).is_ok());
     }
 
     #[test]
     fn load_manifest_rejects_unsatisfied_astrid_version() {
-        let toml = format!(
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=99.0.0\""
-        );
-        let err = load_from_toml(&toml).unwrap_err();
+        let toml = "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \">=99.0.0\"";
+        let err = load_from_toml(toml).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("astrid-version") && msg.contains("99.0.0"),
@@ -508,10 +504,9 @@ version = "0.1.0"
 
     #[test]
     fn load_manifest_rejects_invalid_astrid_version() {
-        let toml = format!(
-            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \"not-semver\""
-        );
-        let err = load_from_toml(&toml).unwrap_err();
+        let toml =
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nastrid-version = \"not-semver\"";
+        let err = load_from_toml(toml).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("invalid astrid-version"),

@@ -212,7 +212,7 @@ pub enum IpcPayload {
     /// Deserialization of unknown `type` tags produces this variant instead
     /// of failing, so capsules compiled against an older SDK gracefully
     /// ignore new payload types. This variant should never be intentionally
-    /// published — it exists solely as a deserialization catch-all.
+    /// published - it exists solely as a deserialization catch-all.
     #[serde(other)]
     Unknown,
 }

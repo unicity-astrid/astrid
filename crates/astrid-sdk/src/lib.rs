@@ -375,6 +375,9 @@ pub mod kv {
         key: impl AsRef<[u8]>,
         current_version: u32,
     ) -> Result<Versioned<T>, SysError> {
+        // The host function `astrid_kv_get` returns an empty slice when the
+        // key is absent. A present key written via set_json/set_versioned
+        // always has at least the JSON envelope bytes, so empty = not found.
         let bytes = get_bytes(&key)?;
         if bytes.is_empty() {
             return Ok(Versioned::NotFound);
@@ -383,11 +386,15 @@ pub mod kv {
         let value: serde_json::Value = serde_json::from_slice(&bytes)?;
 
         // Detect envelope by checking for __sv (u64) + data fields.
+        // If __sv is present but malformed (not a number, or missing data),
+        // return an error rather than silently treating as unversioned.
+        let has_sv_field = value.get("__sv").is_some();
         let envelope_version = value.get("__sv").and_then(|v| v.as_u64());
         let data_field = value.get("data");
 
-        match (envelope_version, data_field) {
-            (Some(v), Some(data)) => {
+        match (has_sv_field, envelope_version, data_field) {
+            // Valid envelope: __sv is a u64 and data is present.
+            (_, Some(v), Some(data)) => {
                 let v = u32::try_from(v)
                     .map_err(|_| SysError::ApiError("schema version exceeds u32::MAX".into()))?;
                 if v == current_version {
@@ -405,7 +412,14 @@ pub mod kv {
                     )))
                 }
             },
-            _ => Ok(Versioned::Unversioned(value)),
+            // Malformed envelope: __sv present but data missing or __sv not a number.
+            (true, _, _) => Err(SysError::ApiError(
+                "malformed versioned envelope: __sv field present but \
+                 data field missing or __sv is not a number"
+                    .into(),
+            )),
+            // No __sv field at all: plain unversioned data.
+            (false, _, _) => Ok(Versioned::Unversioned(value)),
         }
     }
 
@@ -415,8 +429,11 @@ pub mod kv {
     /// return a `T` at `current_version`. The migrated value is automatically
     /// saved back to KV.
     ///
-    /// **Warning:** The original data is overwritten after migration.
-    /// Ensure `migrate_fn` is correct - there is no rollback.
+    /// **Warning:** The original data is overwritten after a successful
+    /// migration. If the write-back fails, the original data is preserved
+    /// and the migration will be re-attempted on the next call. Ensure
+    /// `migrate_fn` is idempotent and correct - there is no rollback
+    /// after a successful write.
     ///
     /// For [`Versioned::Unversioned`] data, `migrate_fn` is called with
     /// version 0. For [`Versioned::NotFound`], returns `None`.
@@ -512,25 +529,29 @@ pub mod kv {
         }
 
         #[test]
-        fn envelope_detection_rejects_partial_envelope() {
-            // Has __sv but no data field.
+        fn partial_envelope_detected_as_malformed() {
+            // __sv present but no data field - the match logic treats this
+            // as a malformed envelope (has_sv_field=true, data_field=None).
             let json = r#"{"__sv":1,"payload":"something"}"#;
             let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            let sv = value.get("__sv").and_then(|v| v.as_u64());
-            let has_data = value.get("data").is_some();
-            assert!(sv.is_some());
+            assert!(value.get("__sv").is_some(), "__sv should be present");
             assert!(
-                !has_data,
-                "__sv without data should be treated as unversioned"
+                value.get("data").is_none(),
+                "data should be absent - this is a malformed envelope"
             );
         }
 
         #[test]
-        fn envelope_detection_rejects_non_numeric_sv() {
+        fn non_numeric_sv_detected_as_malformed() {
+            // __sv present but not a number - the match logic treats this
+            // as malformed (has_sv_field=true, envelope_version=None).
             let json = r#"{"__sv":"one","data":{}}"#;
             let value: serde_json::Value = serde_json::from_str(json).unwrap();
-            let sv = value.get("__sv").and_then(|v| v.as_u64());
-            assert!(sv.is_none(), "string __sv should not match");
+            assert!(value.get("__sv").is_some(), "__sv field exists");
+            assert!(
+                value.get("__sv").unwrap().as_u64().is_none(),
+                "string __sv should not parse as u64"
+            );
         }
     }
 }
