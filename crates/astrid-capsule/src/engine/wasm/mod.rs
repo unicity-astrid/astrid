@@ -319,6 +319,13 @@ impl ExecutionEngine for WasmEngine {
                 // supported by dispatcher::topic_matches, not by
                 // EventReceiver::matches, so they would silently never fire.
                 for interceptor in &manifest.interceptors {
+                    if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "Interceptor event '{}' has invalid segment structure \
+                             (empty segments, leading/trailing dots, or empty string)",
+                            interceptor.event
+                        )));
+                    }
                     let segments: Vec<&str> = interceptor.event.split('.').collect();
                     if let Some(wc_pos) = segments.iter().position(|s| *s == "*")
                         && wc_pos + 1 < segments.len()

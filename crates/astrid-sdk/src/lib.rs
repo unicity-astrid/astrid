@@ -622,14 +622,19 @@ pub mod interceptors {
 
     /// Poll all interceptor subscriptions and dispatch pending events.
     ///
-    /// For each binding, polls its subscription handle. If messages are
-    /// available, calls `handler(action, envelope_bytes)` for each one.
-    /// The envelope bytes are the raw IPC poll response (JSON with
-    /// `messages`, `dropped`, `lagged` fields).
+    /// For each binding with pending messages, calls
+    /// `handler(action, envelope_bytes)` once with the full batch envelope
+    /// (JSON with `messages` array, `dropped`, and `lagged` fields).
+    /// Bindings with no pending messages are skipped.
     pub fn poll(
         bindings: &[InterceptorBinding],
         mut handler: impl FnMut(&str, &[u8]),
     ) -> Result<(), SysError> {
+        #[derive(serde::Deserialize)]
+        struct PollEnvelope {
+            messages: Vec<serde_json::Value>,
+        }
+
         for binding in bindings {
             let handle = binding.handle_bytes();
             let envelope = ipc::poll_bytes(&handle)?;
@@ -637,10 +642,6 @@ pub mod interceptors {
             // poll_bytes always returns a JSON envelope like
             // `{"messages":[],"dropped":0,"lagged":0}`. Check the
             // messages array before calling the handler.
-            #[derive(serde::Deserialize)]
-            struct PollEnvelope {
-                messages: Vec<serde_json::Value>,
-            }
             let parsed: PollEnvelope = serde_json::from_slice(&envelope)?;
             if !parsed.messages.is_empty() {
                 handler(&binding.action, &envelope);
