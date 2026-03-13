@@ -59,7 +59,13 @@ fn sanitize_action_for_glob(action: &str) -> String {
 fn create_allowance_from_decision(store: &AllowanceStore, action: &str, decision: &str) {
     let session_only = match decision {
         "approve_session" => true,
+        // FIXME(#382): `approve_always` sets `session_only: false` but the
+        // signing key is ephemeral. Treat as session-scoped until the kernel
+        // runtime key is threaded through HostState for proper signatures.
         "approve_always" => false,
+        // "approve" (once) intentionally creates no allowance. The next
+        // identical call will re-prompt. Only "approve_session" and
+        // "approve_always" persist across calls.
         _ => return,
     };
 
@@ -383,5 +389,15 @@ mod tests {
         assert_eq!(store.count(), 1);
         // Pattern " *" matches nothing useful
         assert!(!check_allowance(&store, "git push"));
+    }
+
+    #[test]
+    fn approve_once_does_not_create_allowance() {
+        // "approve" (one-time) should NOT create an allowance. The next
+        // identical call will re-prompt the user.
+        let store = AllowanceStore::new();
+        create_allowance_from_decision(&store, "git push", "approve");
+        assert_eq!(store.count(), 0);
+        assert!(!check_allowance(&store, "git push origin main"));
     }
 }
