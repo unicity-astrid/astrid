@@ -135,14 +135,14 @@ impl IdentityBuilder {
 
         // Load project instructions (AGENTS.md or ASTRID.md)
         let agents_path = format!("{workspace_root}/AGENTS.md");
-        if let Ok(content) = fs::read_string(&agents_path) {
+        if let Ok(content) = fs::read_to_string(&agents_path) {
             if !content.trim().is_empty() {
                 prompt.push_str("\n\n# Agents Guidelines\n\n");
                 prompt.push_str(&content);
             }
         } else {
             let astrid_path = format!("{workspace_root}/ASTRID.md");
-            if let Ok(content) = fs::read_string(&astrid_path) {
+            if let Ok(content) = fs::read_to_string(&astrid_path) {
                 if !content.trim().is_empty() {
                     prompt.push_str("\n\n# Project Instructions\n\n");
                     prompt.push_str(&content);
@@ -152,7 +152,7 @@ impl IdentityBuilder {
 
         // Load .astridignore workspace bounds
         let ignore_path = format!("{workspace_root}/.astridignore");
-        if let Ok(content) = fs::read_string(&ignore_path) {
+        if let Ok(content) = fs::read_to_string(&ignore_path) {
             if !content.trim().is_empty() {
                 prompt.push_str("\n\n# Workspace Bounds (.astridignore)\n\n");
                 prompt.push_str(&content);

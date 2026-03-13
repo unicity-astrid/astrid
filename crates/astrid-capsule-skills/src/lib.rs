@@ -73,7 +73,7 @@ impl SkillsLoader {
 
         // Try workspace first — only fall back to global if the file is absent.
         // Permission errors or other I/O failures are surfaced immediately.
-        match fs::read_string(&skill_path) {
+        match fs::read_to_string(&skill_path) {
             Ok(content) => return Ok(content),
             Err(e) => {
                 if !is_not_found_error(&e) {
@@ -88,10 +88,10 @@ impl SkillsLoader {
         // Workspace file absent — fall back to global
         let global_skill_path =
             resolve_skill_path(&format!("global://{bare_dir}"), &args.skill_id)?;
-        match fs::read_string(&global_skill_path) {
+        match fs::read_to_string(&global_skill_path) {
             Ok(content) => Ok(content),
             Err(e) => {
-                let _ = sys::log(
+                let _ = log::log(
                     "warn",
                     format!("failed to read skill '{}': {}", args.skill_id, e),
                 );
@@ -176,11 +176,11 @@ fn collect_skills_from(
     skills: &mut Vec<SkillInfo>,
     seen_ids: &mut std::collections::HashSet<String>,
 ) {
-    let bytes = match fs::readdir(dir) {
+    let bytes = match fs::read_dir(dir) {
         Ok(b) => b,
         Err(e) => {
             if !is_not_found_error(&e) {
-                let _ = sys::log("warn", format!("readdir failed for {dir}: {e}"));
+                let _ = log::warn(format!("readdir failed for {dir}: {e}"));
             }
             return;
         },
@@ -189,7 +189,7 @@ fn collect_skills_from(
     let entry_names: Vec<String> = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = sys::log("warn", format!("parse dir entries failed for {dir}: {e}"));
+            let _ = log::warn(format!("parse dir entries failed for {dir}: {e}"));
             return;
         },
     };
@@ -199,7 +199,7 @@ fn collect_skills_from(
             continue;
         }
         let skill_path = format!("{}/{}/SKILL.md", dir, name);
-        if let Ok(content) = fs::read_string(&skill_path) {
+        if let Ok(content) = fs::read_to_string(&skill_path) {
             // Reserve the ID when SKILL.md exists — even if frontmatter is
             // invalid — so a broken workspace skill blocks the global version
             // (workspace wins). Directories without SKILL.md are not skills.
@@ -211,7 +211,7 @@ fn collect_skills_from(
                     description: fm.description,
                 });
             } else {
-                let _ = sys::log(
+                let _ = log::log(
                     "warn",
                     format!("skipping {dir}/{name}: invalid frontmatter"),
                 );

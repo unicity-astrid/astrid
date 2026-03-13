@@ -1,8 +1,35 @@
-//! Safe Rust wrappers around the Astrid OS System API (The Airlocks).
+//! Safe Rust SDK for building User-Space Capsules on Astrid OS.
 //!
-//! This crate provides the idiomatic, safe Developer Experience for building
-//! Pure WASM Capsules for the Astrid Microkernel. It wraps the raw, purely binary
-//! FFI imports found in `astrid-sys` and provides zero-friction serialization.
+//! # Design Intent
+//!
+//! This SDK is meant to feel like using `std`. Module names, function
+//! signatures, and type patterns follow Rust standard library conventions so
+//! that a Rust developer's instinct for "where would I find X?" gives the
+//! right answer without reading docs. When Astrid adds a concept that has no
+//! `std` counterpart (IPC, capabilities, interceptors), the API still follows
+//! the same style: typed handles, `Result`-based errors, and `impl AsRef`
+//! parameters.
+//!
+//! See `docs/sdk-ergonomics.md` for the full design rationale.
+//!
+//! # Module Layout (mirrors `std` where applicable)
+//!
+//! | Module          | std equivalent   | Purpose                                |
+//! |-----------------|------------------|----------------------------------------|
+//! | [`fs`]          | `std::fs`        | Virtual filesystem                     |
+//! | [`net`]         | `std::net`       | Unix domain sockets                    |
+//! | [`process`]     | `std::process`   | Host process execution                 |
+//! | [`env`]         | `std::env`       | Capsule configuration / env vars       |
+//! | [`time`]        | `std::time`      | Wall-clock access                      |
+//! | [`log`]         | `log` crate      | Structured logging                     |
+//! | [`runtime`]     | N/A              | OS signaling and caller context        |
+//! | [`ipc`]         | N/A              | Event bus messaging                    |
+//! | [`kv`]          | N/A              | Persistent key-value storage           |
+//! | [`http`]        | N/A              | Outbound HTTP requests                 |
+//! | [`cron`]        | N/A              | Scheduled background tasks             |
+//! | [`uplink`]      | N/A              | Direct frontend messaging              |
+//! | [`hooks`]       | N/A              | User middleware triggers               |
+//! | [`elicit`]      | N/A              | Interactive install/upgrade prompts    |
 
 #![allow(unsafe_code)]
 #![allow(missing_docs)]
@@ -13,7 +40,11 @@
 
 use astrid_sys::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+// Re-exported for the #[capsule] macro's generated code. Not part of the
+// public API - capsule authors should never need to import these directly.
+#[doc(hidden)]
 pub use extism_pdk;
+#[doc(hidden)]
 pub use schemars;
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -35,58 +66,83 @@ pub enum SysError {
     ApiError(String),
 }
 
-/// The VFS Airlock — Interacting with the Virtual File System
+/// Virtual filesystem (mirrors `std::fs` naming).
 pub mod fs {
     use super::*;
 
+    /// Check if a path exists. Like `std::fs::exists` (nightly).
     pub fn exists(path: impl AsRef<[u8]>) -> Result<bool, SysError> {
         let result = unsafe { astrid_fs_exists(path.as_ref().to_vec())? };
         Ok(!result.is_empty() && result[0] != 0)
     }
 
-    pub fn read_bytes(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
+    /// Read the entire contents of a file as bytes. Like `std::fs::read`.
+    pub fn read(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
         let result = unsafe { astrid_read_file(path.as_ref().to_vec())? };
         Ok(result)
     }
 
-    pub fn read_string(path: impl AsRef<[u8]>) -> Result<String, SysError> {
-        let bytes = read_bytes(path)?;
+    /// Read the entire contents of a file as a string. Like `std::fs::read_to_string`.
+    pub fn read_to_string(path: impl AsRef<[u8]>) -> Result<String, SysError> {
+        let bytes = read(path)?;
         String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
     }
 
-    pub fn write_bytes(path: impl AsRef<[u8]>, content: &[u8]) -> Result<(), SysError> {
-        unsafe { astrid_write_file(path.as_ref().to_vec(), content.to_vec())? };
+    /// Write bytes to a file. Like `std::fs::write`.
+    pub fn write(path: impl AsRef<[u8]>, contents: impl AsRef<[u8]>) -> Result<(), SysError> {
+        unsafe { astrid_write_file(path.as_ref().to_vec(), contents.as_ref().to_vec())? };
         Ok(())
     }
 
-    pub fn write_string(path: impl AsRef<[u8]>, content: &str) -> Result<(), SysError> {
-        write_bytes(path, content.as_bytes())
-    }
-
-    pub fn mkdir(path: impl AsRef<[u8]>) -> Result<(), SysError> {
+    /// Create a directory. Like `std::fs::create_dir`.
+    pub fn create_dir(path: impl AsRef<[u8]>) -> Result<(), SysError> {
         unsafe { astrid_fs_mkdir(path.as_ref().to_vec())? };
         Ok(())
     }
 
-    pub fn readdir(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
+    /// Read directory entries. Like `std::fs::read_dir`.
+    pub fn read_dir(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
         let result = unsafe { astrid_fs_readdir(path.as_ref().to_vec())? };
         Ok(result)
     }
 
-    pub fn stat(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
+    /// Get file metadata. Like `std::fs::metadata`.
+    pub fn metadata(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
         let result = unsafe { astrid_fs_stat(path.as_ref().to_vec())? };
         Ok(result)
     }
 
-    pub fn unlink(path: impl AsRef<[u8]>) -> Result<(), SysError> {
+    /// Remove a file. Like `std::fs::remove_file`.
+    pub fn remove_file(path: impl AsRef<[u8]>) -> Result<(), SysError> {
         unsafe { astrid_fs_unlink(path.as_ref().to_vec())? };
         Ok(())
     }
 }
 
-/// The IPC Airlock — Communicating with the Event Bus
+/// Event bus messaging (like `std::sync::mpsc` but topic-based).
 pub mod ipc {
     use super::*;
+
+    /// An active subscription to an IPC topic. Returned by [`subscribe`].
+    ///
+    /// Follows the typed-handle pattern used by [`crate::net::ListenerHandle`].
+    #[derive(Debug, Clone)]
+    pub struct SubscriptionHandle(pub(crate) Vec<u8>);
+
+    impl SubscriptionHandle {
+        /// Raw handle bytes for interop with lower-level APIs.
+        #[must_use]
+        pub fn as_bytes(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
+    // Allow existing code using `impl AsRef<[u8]>` to pass a SubscriptionHandle.
+    impl AsRef<[u8]> for SubscriptionHandle {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
 
     pub fn publish_bytes(topic: impl AsRef<[u8]>, payload: &[u8]) -> Result<(), SysError> {
         unsafe { astrid_ipc_publish(topic.as_ref().to_vec(), payload.to_vec())? };
@@ -109,18 +165,19 @@ pub mod ipc {
         publish_bytes(topic, &bytes)
     }
 
-    pub fn subscribe(topic: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
+    /// Subscribe to an IPC topic. Returns a typed handle for polling/receiving.
+    pub fn subscribe(topic: impl AsRef<[u8]>) -> Result<SubscriptionHandle, SysError> {
         let handle_bytes = unsafe { astrid_ipc_subscribe(topic.as_ref().to_vec())? };
-        Ok(handle_bytes)
+        Ok(SubscriptionHandle(handle_bytes))
     }
 
-    pub fn unsubscribe(handle: impl AsRef<[u8]>) -> Result<(), SysError> {
-        unsafe { astrid_ipc_unsubscribe(handle.as_ref().to_vec())? };
+    pub fn unsubscribe(handle: &SubscriptionHandle) -> Result<(), SysError> {
+        unsafe { astrid_ipc_unsubscribe(handle.0.clone())? };
         Ok(())
     }
 
-    pub fn poll_bytes(handle: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        let message_bytes = unsafe { astrid_ipc_poll(handle.as_ref().to_vec())? };
+    pub fn poll_bytes(handle: &SubscriptionHandle) -> Result<Vec<u8>, SysError> {
+        let message_bytes = unsafe { astrid_ipc_poll(handle.0.clone())? };
         Ok(message_bytes)
     }
 
@@ -129,23 +186,41 @@ pub mod ipc {
     /// Returns the message envelope (same format as `poll_bytes`), or an
     /// empty-messages envelope if the timeout expires with no messages.
     /// Max timeout is capped at 60 000 ms by the host.
-    pub fn recv_bytes(handle: impl AsRef<[u8]>, timeout_ms: u64) -> Result<Vec<u8>, SysError> {
+    pub fn recv_bytes(handle: &SubscriptionHandle, timeout_ms: u64) -> Result<Vec<u8>, SysError> {
         let timeout_str = timeout_ms.to_string();
-        let message_bytes =
-            unsafe { astrid_ipc_recv(handle.as_ref().to_vec(), timeout_str.into_bytes())? };
+        let message_bytes = unsafe { astrid_ipc_recv(handle.0.clone(), timeout_str.into_bytes())? };
         Ok(message_bytes)
     }
 }
 
-/// The Uplink Airlock — Direct Frontend Messaging
+/// Direct frontend messaging (uplinks to CLI, Telegram, etc.).
 pub mod uplink {
     use super::*;
 
+    /// An opaque uplink connection identifier. Returned by [`register`].
+    #[derive(Debug, Clone)]
+    pub struct UplinkId(pub(crate) Vec<u8>);
+
+    impl UplinkId {
+        /// Raw ID bytes for interop with lower-level APIs.
+        #[must_use]
+        pub fn as_bytes(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
+    impl AsRef<[u8]> for UplinkId {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
+    /// Register a new uplink connection. Returns a typed [`UplinkId`].
     pub fn register(
         name: impl AsRef<[u8]>,
         platform: impl AsRef<[u8]>,
         profile: impl AsRef<[u8]>,
-    ) -> Result<Vec<u8>, SysError> {
+    ) -> Result<UplinkId, SysError> {
         let id_bytes = unsafe {
             astrid_uplink_register(
                 name.as_ref().to_vec(),
@@ -153,17 +228,18 @@ pub mod uplink {
                 profile.as_ref().to_vec(),
             )?
         };
-        Ok(id_bytes)
+        Ok(UplinkId(id_bytes))
     }
 
+    /// Send bytes to a user via an uplink.
     pub fn send_bytes(
-        uplink_id: impl AsRef<[u8]>,
+        uplink_id: &UplinkId,
         platform_user_id: impl AsRef<[u8]>,
         content: &[u8],
     ) -> Result<Vec<u8>, SysError> {
         let result = unsafe {
             astrid_uplink_send(
-                uplink_id.as_ref().to_vec(),
+                uplink_id.0.clone(),
                 platform_user_id.as_ref().to_vec(),
                 content.to_vec(),
             )?
@@ -278,60 +354,82 @@ pub mod cron {
     }
 }
 
-/// The Sys Airlock — System logging and configuration
 pub mod types;
 
-pub mod sys {
+/// Capsule configuration (like `std::env`).
+///
+/// In the Astrid model, capsule config entries are the equivalent of
+/// environment variables. The kernel injects them at load time.
+pub mod env {
     use super::*;
 
     /// Well-known config key for the kernel's Unix domain socket path.
-    ///
-    /// Injected automatically by the kernel into every capsule's config.
-    /// Capsules that need to accept CLI connections should use
-    /// [`socket_path()`] instead of hardcoding paths.
     pub const CONFIG_SOCKET_PATH: &str = "ASTRID_SOCKET_PATH";
 
+    /// Read a config value as raw bytes. Like `std::env::var_os`.
+    pub fn var_bytes(key: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
+        let result = unsafe { astrid_get_config(key.as_ref().to_vec())? };
+        Ok(result)
+    }
+
+    /// Read a config value as a UTF-8 string. Like `std::env::var`.
+    pub fn var(key: impl AsRef<[u8]>) -> Result<String, SysError> {
+        let bytes = var_bytes(key)?;
+        String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
+    }
+}
+
+/// Wall-clock access (like `std::time`).
+pub mod time {
+    use super::*;
+
+    /// Returns the current wall-clock time as milliseconds since the UNIX epoch.
+    ///
+    /// This is a host call - the WASM guest has no direct access to system time.
+    /// Returns 0 if the host clock is unavailable.
+    pub fn now_ms() -> Result<u64, SysError> {
+        let bytes = unsafe { astrid_clock_ms()? };
+        let s = String::from_utf8_lossy(&bytes);
+        s.trim()
+            .parse::<u64>()
+            .map_err(|e| SysError::ApiError(format!("clock_ms parse error: {e}")))
+    }
+}
+
+/// Structured logging.
+pub mod log {
+    use super::*;
+
+    /// Log a message at the given level.
     pub fn log(level: impl AsRef<[u8]>, message: impl AsRef<[u8]>) -> Result<(), SysError> {
         unsafe { astrid_log(level.as_ref().to_vec(), message.as_ref().to_vec())? };
         Ok(())
     }
 
-    pub fn get_config_bytes(key: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        let result = unsafe { astrid_get_config(key.as_ref().to_vec())? };
-        Ok(result)
+    /// Log at DEBUG level.
+    pub fn debug(message: impl AsRef<[u8]>) -> Result<(), SysError> {
+        log("debug", message)
     }
 
-    pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
-        let bytes = get_config_bytes(key)?;
-        String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))
+    /// Log at INFO level.
+    pub fn info(message: impl AsRef<[u8]>) -> Result<(), SysError> {
+        log("info", message)
     }
 
-    /// Returns the kernel's Unix domain socket path.
-    ///
-    /// Reads from the well-known `ASTRID_SOCKET_PATH` config key that the
-    /// kernel injects into every capsule at load time.
-    pub fn socket_path() -> Result<String, SysError> {
-        let raw = get_config_string(CONFIG_SOCKET_PATH)?;
-        // get_config_string returns JSON-encoded values (quoted strings).
-        // Use proper JSON parsing to handle escape sequences correctly.
-        let path = serde_json::from_str::<String>(raw.trim()).or_else(|_| {
-            // Fallback: if the value isn't valid JSON, use it raw.
-            if raw.is_empty() {
-                Err(SysError::ApiError(
-                    "ASTRID_SOCKET_PATH config key is empty".to_string(),
-                ))
-            } else {
-                Ok(raw)
-            }
-        })?;
-        // Reject paths with null bytes — they would silently truncate at the OS level.
-        if path.contains('\0') {
-            return Err(SysError::ApiError(
-                "ASTRID_SOCKET_PATH contains null byte".to_string(),
-            ));
-        }
-        Ok(path)
+    /// Log at WARN level.
+    pub fn warn(message: impl AsRef<[u8]>) -> Result<(), SysError> {
+        log("warn", message)
     }
+
+    /// Log at ERROR level.
+    pub fn error(message: impl AsRef<[u8]>) -> Result<(), SysError> {
+        log("error", message)
+    }
+}
+
+/// OS runtime introspection and signaling.
+pub mod runtime {
+    use super::*;
 
     /// Signal that the capsule's run loop is ready.
     ///
@@ -344,22 +442,37 @@ pub mod sys {
     }
 
     /// Retrieves the caller context (User ID and Session ID) for the current execution.
-    pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
+    pub fn caller() -> Result<crate::types::CallerContext, SysError> {
         let bytes = unsafe { astrid_get_caller()? };
         serde_json::from_slice(&bytes)
-            .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {}", e)))
+            .map_err(|e| SysError::ApiError(format!("failed to parse caller context: {e}")))
     }
 
-    /// Returns the current wall-clock time as milliseconds since the UNIX epoch.
+    /// Returns the kernel's Unix domain socket path.
     ///
-    /// This is a host call - the WASM guest has no direct access to system time.
-    /// Returns 0 if the host clock is unavailable.
-    pub fn clock_ms() -> Result<u64, SysError> {
-        let bytes = unsafe { astrid_clock_ms()? };
-        let s = String::from_utf8_lossy(&bytes);
-        s.trim()
-            .parse::<u64>()
-            .map_err(|e| SysError::ApiError(format!("clock_ms parse error: {e}")))
+    /// Reads from the well-known `ASTRID_SOCKET_PATH` config key that the
+    /// kernel injects into every capsule at load time.
+    pub fn socket_path() -> Result<String, SysError> {
+        let raw = crate::env::var(crate::env::CONFIG_SOCKET_PATH)?;
+        // var() returns JSON-encoded values (quoted strings).
+        // Use proper JSON parsing to handle escape sequences correctly.
+        let path = serde_json::from_str::<String>(raw.trim()).or_else(|_| {
+            // Fallback: if the value isn't valid JSON, use it raw.
+            if raw.is_empty() {
+                Err(SysError::ApiError(
+                    "ASTRID_SOCKET_PATH config key is empty".to_string(),
+                ))
+            } else {
+                Ok(raw)
+            }
+        })?;
+        // Reject paths with null bytes - they would silently truncate at the OS level.
+        if path.contains('\0') {
+            return Err(SysError::ApiError(
+                "ASTRID_SOCKET_PATH contains null byte".to_string(),
+            ));
+        }
+        Ok(path)
     }
 }
 
@@ -603,7 +716,13 @@ pub mod interceptors {
     }
 
     impl InterceptorBinding {
-        /// Return the handle ID as a string (for passing to `ipc::poll_bytes` / `ipc::recv_bytes`).
+        /// Return a subscription handle for use with `ipc::poll_bytes` / `ipc::recv_bytes`.
+        #[must_use]
+        pub fn subscription_handle(&self) -> ipc::SubscriptionHandle {
+            ipc::SubscriptionHandle(self.handle_id.to_string().into_bytes())
+        }
+
+        /// Return the raw handle ID bytes (for lower-level interop).
         #[must_use]
         pub fn handle_bytes(&self) -> Vec<u8> {
             self.handle_id.to_string().into_bytes()
@@ -639,7 +758,7 @@ pub mod interceptors {
         }
 
         for binding in bindings {
-            let handle = binding.handle_bytes();
+            let handle = binding.subscription_handle();
             let envelope = ipc::poll_bytes(&handle)?;
 
             // poll_bytes always returns a JSON envelope like
@@ -656,9 +775,25 @@ pub mod interceptors {
 
 pub mod prelude {
     pub use crate::{
-        SysError, cron, elicit, fs, hooks, http, interceptors, ipc, kv, process, sys, uplink,
+        SysError,
+        // Astrid-specific modules
+        cron,
+        elicit,
+        // std-mirrored modules
+        env,
+        fs,
+        hooks,
+        http,
+        interceptors,
+        ipc,
+        kv,
+        log,
+        net,
+        process,
+        runtime,
+        time,
+        uplink,
     };
-    pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]
     pub use astrid_sdk_macros::capsule;

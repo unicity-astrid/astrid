@@ -23,7 +23,6 @@
 //! 4. `appendSystemContext` — concatenated in order, appended to system prompt
 
 use astrid_sdk::prelude::*;
-use extism_pdk::FnResult;
 use serde::{Deserialize, Serialize};
 
 /// Runtime configuration loaded from capsule config at startup.
@@ -35,7 +34,7 @@ struct Config {
 impl Config {
     /// Load configuration from the capsule's config store, falling back to defaults.
     fn load() -> Self {
-        let hook_timeout_ms = sys::get_config_string("hook_timeout_ms")
+        let hook_timeout_ms = env::var("hook_timeout_ms")
             .ok()
             .and_then(|s| s.trim().trim_matches('"').parse::<u64>().ok())
             .unwrap_or(DEFAULT_HOOK_POLL_TIMEOUT_MS);
@@ -259,7 +258,7 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
     let sub = match ipc::subscribe(&response_topic) {
         Ok(h) => h,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to subscribe to hook response topic: {e}"),
             );
@@ -277,7 +276,7 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
     };
 
     if let Err(e) = ipc::publish_json("prompt_builder.v1.hook.before_build", &payload) {
-        let _ = sys::log(
+        let _ = log::log(
             "error",
             format!("Failed to publish prompt_builder.v1.hook.before_build event: {e}"),
         );
@@ -311,7 +310,7 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
 
     let _ = ipc::unsubscribe(&sub);
 
-    let _ = sys::log(
+    let _ = log::log(
         "info",
         format!(
             "Collected {} hook responses for request {}",
@@ -328,7 +327,7 @@ fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<SourcedHookResponse>> {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("failed to deserialize hook response envelope: {e}"),
             );
@@ -402,7 +401,7 @@ fn handle_assemble(payload: &serde_json::Value, config: &Config) {
     let request: AssembleRequest = match serde_json::from_value(request_value.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to parse assemble request: {e}"),
             );
@@ -463,7 +462,7 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Event bus dropped {dropped} messages in prompt builder poll"),
         );
@@ -492,52 +491,55 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     }
 }
 
-#[plugin_fn]
-pub fn run() -> FnResult<()> {
-    let _ = sys::log("info", "Prompt Builder capsule starting");
+#[derive(Default)]
+struct PromptBuilder;
 
-    let config = Config::load();
-    let _ = sys::log(
-        "info",
-        format!("Hook timeout: {}ms", config.hook_timeout_ms),
-    );
+#[capsule]
+impl PromptBuilder {
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        let _ = log::info("Prompt Builder capsule starting");
 
-    let sub = ipc::subscribe("prompt_builder.v1.*")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let config = Config::load();
+        let _ = log::info(format!("Hook timeout: {}ms", config.hook_timeout_ms));
 
-    // Also subscribe to our own hook topics so we can filter them out.
-    let hook_sub = ipc::subscribe("prompt_builder.v1.hook.before_build")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-    let after_sub = ipc::subscribe("prompt_builder.v1.hook.after_build")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let sub = ipc::subscribe("prompt_builder.v1.*")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Signal readiness so the kernel can proceed with loading dependent capsules.
-    // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = sys::signal_ready();
+        // Also subscribe to our own hook topics so we can filter them out.
+        let hook_sub = ipc::subscribe("prompt_builder.v1.hook.before_build")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
+        let after_sub = ipc::subscribe("prompt_builder.v1.hook.after_build")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    let _ = sys::log("info", "Prompt Builder capsule ready");
+        // Signal readiness so the kernel can proceed with loading dependent capsules.
+        // Best-effort: failure means the host mutex is poisoned (unrecoverable).
+        let _ = runtime::signal_ready();
 
-    loop {
-        // Block until a message arrives (up to 60s), eliminating busy-spin polling.
-        match ipc::recv_bytes(&sub, 60_000) {
-            Ok(bytes) => {
-                if !bytes.is_empty() {
-                    handle_poll_envelope(&bytes, &config);
-                }
-            },
-            Err(_) => break,
+        let _ = log::info("Prompt Builder capsule ready");
+
+        loop {
+            // Block until a message arrives (up to 60s), eliminating busy-spin polling.
+            match ipc::recv_bytes(&sub, 60_000) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        handle_poll_envelope(&bytes, &config);
+                    }
+                },
+                Err(_) => break,
+            }
+
+            // Drain hook/after topics to prevent backpressure.
+            let _ = ipc::poll_bytes(&hook_sub);
+            let _ = ipc::poll_bytes(&after_sub);
         }
 
-        // Drain hook/after topics to prevent backpressure.
-        let _ = ipc::poll_bytes(&hook_sub);
-        let _ = ipc::poll_bytes(&after_sub);
+        let _ = ipc::unsubscribe(&sub);
+        let _ = ipc::unsubscribe(&hook_sub);
+        let _ = ipc::unsubscribe(&after_sub);
+
+        Ok(())
     }
-
-    let _ = ipc::unsubscribe(&sub);
-    let _ = ipc::unsubscribe(&hook_sub);
-    let _ = ipc::unsubscribe(&after_sub);
-
-    Ok(())
 }
 
 #[cfg(test)]

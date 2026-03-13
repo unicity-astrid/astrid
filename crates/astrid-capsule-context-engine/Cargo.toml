@@ -12,4 +12,4 @@ crate-type = ["cdylib"]
 astrid-sdk = { path = "../astrid-sdk", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-extism-pdk = "1.4.1"
+extism-pdk = "1.4.1"  # required by #[capsule] macro-generated code

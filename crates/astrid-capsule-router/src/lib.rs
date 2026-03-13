@@ -42,7 +42,7 @@ impl ToolRouter {
                 .chars()
                 .any(|c| !c.is_alphanumeric() && c != '-' && c != '_' && c != ':')
         {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("Rejected invalid tool name: {tool_name}"),
             );
@@ -54,7 +54,7 @@ impl ToolRouter {
 
         let forward_topic = format!("tool.v1.execute.{tool_name}");
 
-        let _ = sys::log("info", format!("Routing tool request: {tool_name} -> {forward_topic}"));
+        let _ = log::info(format!("Routing tool request: {tool_name} -> {forward_topic}"));
 
         let forward_payload = IpcPayload::ToolExecuteRequest {
             call_id: call_id.clone(),
@@ -63,7 +63,7 @@ impl ToolRouter {
         };
 
         if let Err(e) = ipc::publish_json(&forward_topic, &forward_payload) {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to forward tool request for {tool_name}: {e}"),
             );
@@ -86,7 +86,7 @@ impl ToolRouter {
             _ => return Ok(()),
         };
 
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Routing tool result for call_id: {call_id}"),
         );

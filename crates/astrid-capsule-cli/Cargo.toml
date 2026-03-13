@@ -14,4 +14,4 @@ astrid-sdk = { workspace = true, features = ["derive"] }
 astrid-events = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
-extism-pdk = "1.4.1"
+extism-pdk = "1.4.1"  # required by #[capsule] macro-generated code

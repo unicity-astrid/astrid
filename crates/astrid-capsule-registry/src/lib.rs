@@ -26,7 +26,6 @@ use astrid_events::kernel_api::{
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 use astrid_sdk::prelude::*;
-use extism_pdk::FnResult;
 use serde::{Deserialize, Serialize};
 
 /// A resolved LLM provider with its IPC routing topics.
@@ -146,7 +145,7 @@ fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
         // Verify the message came from the kernel router (system session)
         let source = msg.get("source_id").and_then(|s| s.as_str()).unwrap_or("");
         if source != SYSTEM_SESSION_UUID {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("Ignoring metadata response from untrusted source: {source}"),
             );
@@ -222,7 +221,7 @@ fn handle_get_providers() {
         state.providers = providers;
         save_state(&state);
     } else if state.providers.is_empty() {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             "Provider discovery returned empty and no cached providers exist",
         );
@@ -299,7 +298,7 @@ fn clear_stale_active_model(state: &mut RegistryState) {
     if let Some(ref id) = state.active_model_id
         && !state.providers.iter().any(|p| &p.id == id)
     {
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Active model '{id}' no longer available after reload, clearing"),
         );
@@ -315,118 +314,124 @@ fn auto_select_if_single(state: &mut RegistryState) {
         state.active_model_id = Some(provider.id.clone());
         save_state(state);
         publish_model_changed(&provider);
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Auto-selected sole LLM provider: {}", provider.id),
         );
     }
 }
 
-#[plugin_fn]
-pub fn run() -> FnResult<()> {
-    let _ = sys::log("info", "Registry capsule starting");
+#[derive(Default)]
+struct Registry;
 
-    let sub = ipc::subscribe("registry.v1.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+#[capsule]
+impl Registry {
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        let _ = log::info("Registry capsule starting");
 
-    // Subscribe to CLI command execution so we can handle `/models`.
-    let cmd_sub =
-        ipc::subscribe("cli.v1.command.execute").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let sub = ipc::subscribe("registry.v1.*").map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Subscribe to model selection callbacks from the TUI picker.
-    let selection_sub = ipc::subscribe("registry.v1.selection.callback")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        // Subscribe to CLI command execution so we can handle `/models`.
+        let cmd_sub =
+            ipc::subscribe("cli.v1.command.execute").map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Signal readiness so the kernel can proceed with loading dependent capsules.
-    // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = sys::signal_ready();
+        // Subscribe to model selection callbacks from the TUI picker.
+        let selection_sub = ipc::subscribe("registry.v1.selection.callback")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Single subscription for kernel.capsules_loaded — used for both initial
-    // readiness wait AND reload re-discovery in the event loop. Avoids the
-    // race window of unsubscribe + resubscribe where a message could be missed.
-    let capsules_loaded_sub = ipc::subscribe("astrid.v1.capsules_loaded")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        // Signal readiness so the kernel can proceed with loading dependent capsules.
+        // Best-effort: failure means the host mutex is poisoned (unrecoverable).
+        let _ = runtime::signal_ready();
 
-    // Wait for the kernel to signal that all capsules have been loaded.
-    let mut capsules_ready = false;
-    if let Ok(bytes) = ipc::recv_bytes(&capsules_loaded_sub, 5000)
-        && !bytes.is_empty()
-        && is_from_kernel(&bytes)
-    {
-        capsules_ready = true;
-    }
+        // Single subscription for kernel.capsules_loaded - used for both initial
+        // readiness wait AND reload re-discovery in the event loop. Avoids the
+        // race window of unsubscribe + resubscribe where a message could be missed.
+        let capsules_loaded_sub = ipc::subscribe("astrid.v1.capsules_loaded")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    if !capsules_ready {
-        let _ = sys::log(
-            "warn",
-            "Timed out waiting for astrid.v1.capsules_loaded — proceeding with discovery anyway",
-        );
-    }
-
-    // Now that all capsules are loaded, discover providers.
-    let providers = discover_providers();
-    let mut state = load_state();
-    if !providers.is_empty() {
-        state.providers = providers;
-        save_state(&state);
-    } else if state.providers.is_empty() {
-        let _ = sys::log(
-            "warn",
-            "Initial provider discovery returned empty and no cached providers exist",
-        );
-    }
-    clear_stale_active_model(&mut state);
-    auto_select_if_single(&mut state);
-
-    // Event loop — blocks on the primary subscription, then drains auxiliary subscriptions.
-    loop {
-        // Block until a registry message arrives (up to 5s), then drain others.
-        match ipc::recv_bytes(&sub, 5000) {
-            Ok(bytes) => {
-                if !bytes.is_empty() {
-                    handle_poll_envelope(&bytes);
-                }
-            },
-            Err(_) => break,
-        }
-
-        // Drain CLI command execution messages (non-blocking).
-        if let Ok(bytes) = ipc::poll_bytes(&cmd_sub)
-            && !bytes.is_empty()
-        {
-            handle_command_envelope(&bytes);
-        }
-
-        // Drain model selection callbacks from the TUI picker.
-        if let Ok(bytes) = ipc::poll_bytes(&selection_sub)
-            && !bytes.is_empty()
-        {
-            handle_selection_envelope(&bytes);
-        }
-
-        // Check for capsule reload events — re-discover providers when
-        // the kernel signals that capsules were reloaded (e.g. after /refresh).
-        if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
+        // Wait for the kernel to signal that all capsules have been loaded.
+        let mut capsules_ready = false;
+        if let Ok(bytes) = ipc::recv_bytes(&capsules_loaded_sub, 5000)
             && !bytes.is_empty()
             && is_from_kernel(&bytes)
         {
-            let _ = sys::log("info", "Capsules reloaded — re-discovering providers");
-            let providers = discover_providers();
-            let mut state = load_state();
-            if !providers.is_empty() {
-                state.providers = providers;
-                save_state(&state);
-                clear_stale_active_model(&mut state);
-                auto_select_if_single(&mut state);
+            capsules_ready = true;
+        }
+
+        if !capsules_ready {
+            let _ = log::log(
+                "warn",
+                "Timed out waiting for astrid.v1.capsules_loaded - proceeding with discovery anyway",
+            );
+        }
+
+        // Now that all capsules are loaded, discover providers.
+        let providers = discover_providers();
+        let mut state = load_state();
+        if !providers.is_empty() {
+            state.providers = providers;
+            save_state(&state);
+        } else if state.providers.is_empty() {
+            let _ = log::log(
+                "warn",
+                "Initial provider discovery returned empty and no cached providers exist",
+            );
+        }
+        clear_stale_active_model(&mut state);
+        auto_select_if_single(&mut state);
+
+        // Event loop - blocks on the primary subscription, then drains auxiliary subscriptions.
+        loop {
+            // Block until a registry message arrives (up to 5s), then drain others.
+            match ipc::recv_bytes(&sub, 5000) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        handle_poll_envelope(&bytes);
+                    }
+                },
+                Err(_) => break,
+            }
+
+            // Drain CLI command execution messages (non-blocking).
+            if let Ok(bytes) = ipc::poll_bytes(&cmd_sub)
+                && !bytes.is_empty()
+            {
+                handle_command_envelope(&bytes);
+            }
+
+            // Drain model selection callbacks from the TUI picker.
+            if let Ok(bytes) = ipc::poll_bytes(&selection_sub)
+                && !bytes.is_empty()
+            {
+                handle_selection_envelope(&bytes);
+            }
+
+            // Check for capsule reload events - re-discover providers when
+            // the kernel signals that capsules were reloaded (e.g. after /refresh).
+            if let Ok(bytes) = ipc::poll_bytes(&capsules_loaded_sub)
+                && !bytes.is_empty()
+                && is_from_kernel(&bytes)
+            {
+                let _ = log::info("Capsules reloaded - re-discovering providers");
+                let providers = discover_providers();
+                let mut state = load_state();
+                if !providers.is_empty() {
+                    state.providers = providers;
+                    save_state(&state);
+                    clear_stale_active_model(&mut state);
+                    auto_select_if_single(&mut state);
+                }
             }
         }
+
+        let _ = ipc::unsubscribe(&sub);
+        let _ = ipc::unsubscribe(&cmd_sub);
+        let _ = ipc::unsubscribe(&selection_sub);
+        let _ = ipc::unsubscribe(&capsules_loaded_sub);
+
+        Ok(())
     }
-
-    let _ = ipc::unsubscribe(&sub);
-    let _ = ipc::unsubscribe(&cmd_sub);
-    let _ = ipc::unsubscribe(&selection_sub);
-    let _ = ipc::unsubscribe(&capsules_loaded_sub);
-
-    Ok(())
 }
 
 /// Parse the poll envelope and dispatch individual messages.
@@ -439,7 +444,7 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Event bus dropped {dropped} messages in registry poll"),
         );
@@ -576,7 +581,7 @@ fn emit_model_selection() {
     }
 
     if state.providers.is_empty() {
-        let _ = sys::log("warn", "No LLM providers found for /models selection");
+        let _ = log::warn("No LLM providers found for /models selection");
         return;
     }
 

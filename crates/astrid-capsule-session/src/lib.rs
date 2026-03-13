@@ -90,7 +90,7 @@ impl SessionData {
     fn load(session_id: &str) -> Self {
         let key = session_key(session_id);
         let data = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to load session data, starting fresh: {e}"),
             );
@@ -104,7 +104,7 @@ impl SessionData {
                 // usable and re-save will be attempted on next modification.
                 if needs_save {
                     if let Err(e) = migrated.save(session_id) {
-                        let _ = sys::log(
+                        let _ = log::log(
                             "warn",
                             format!("Failed to re-save session after migration: {e}"),
                         );
@@ -113,7 +113,7 @@ impl SessionData {
                 migrated
             },
             Err(fresh) => {
-                let _ = sys::log(
+                let _ = log::log(
                     "error",
                     format!(
                         "Session '{session_id}' has unknown schema version \
@@ -267,7 +267,7 @@ impl Session {
         };
         new_data.save(&new_session_id)?;
 
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!(
                 "Session cleared: '{old_session_id}' -> '{new_session_id}' \

@@ -95,10 +95,10 @@ impl TestCapsule {
     fn handle_test_log(&self, args: TestLogArgs) -> Result<ToolOutput, SysError> {
         let message = args.message.unwrap_or_else(|| "test".to_string());
 
-        sys::log("debug", format!("debug: {message}"))?;
-        sys::log("info", format!("info: {message}"))?;
-        sys::log("warn", format!("warn: {message}"))?;
-        sys::log("error", format!("error: {message}"))?;
+        log::debug(format!("debug: {message}"))?;
+        log::info(format!("info: {message}"))?;
+        log::warn(format!("warn: {message}"))?;
+        log::error(format!("error: {message}"))?;
 
         Ok(ToolOutput {
             content: format!("logged at all levels: {message}"),
@@ -109,7 +109,7 @@ impl TestCapsule {
     #[astrid::tool("test-malicious-log")]
     fn handle_test_malicious_log(&self, _args: EmptyArgs) -> Result<ToolOutput, SysError> {
         let huge_message = "A".repeat(65 * 1024);
-        sys::log("info", huge_message)?;
+        log::info(huge_message)?;
         Ok(ToolOutput {
             content: "log succeeded unexpectedly".to_string(),
             is_error: false,
@@ -149,7 +149,7 @@ impl TestCapsule {
     #[astrid::tool("test-config")]
     fn handle_test_config(&self, args: TestConfigArgs) -> Result<ToolOutput, SysError> {
         let key = args.key.unwrap_or_default();
-        let value = sys::get_config_string(&key)?;
+        let value = env::var(&key)?;
 
         let result = if value.is_empty() {
             serde_json::json!({ "found": false, "key": key, "value": null })
@@ -192,7 +192,7 @@ impl TestCapsule {
         let path = args.path.unwrap_or_default();
         let content = args.content.unwrap_or_default();
 
-        fs::write_string(&path, &content)?;
+        fs::write(&path, &content)?;
 
         let result = serde_json::json!({ "written": true, "path": path });
         Ok(ToolOutput {
@@ -205,7 +205,7 @@ impl TestCapsule {
     fn handle_test_file_read(&self, args: TestFileReadArgs) -> Result<ToolOutput, SysError> {
         let path = args.path.unwrap_or_default();
 
-        let content = fs::read_string(&path)?;
+        let content = fs::read_to_string(&path)?;
 
         let result = serde_json::json!({ "path": path, "content": content });
         Ok(ToolOutput {
@@ -238,7 +238,7 @@ impl TestCapsule {
         let profile = args.profile.unwrap_or_else(|| "chat".to_string());
 
         let uplink_id_bytes = uplink::register(&name, &platform, &profile)?;
-        let uplink_id = String::from_utf8_lossy(&uplink_id_bytes).to_string();
+        let uplink_id = String::from_utf8_lossy(uplink_id_bytes.as_bytes()).to_string();
 
         let result = serde_json::json!({
             "registered": true,
@@ -270,7 +270,7 @@ impl TestCapsule {
             serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
 
         let result = serde_json::json!({
-            "uplink_id": String::from_utf8_lossy(&uplink_id_bytes).to_string(),
+            "uplink_id": String::from_utf8_lossy(uplink_id_bytes.as_bytes()).to_string(),
             "send_result": send_parsed,
             "user_id": user_id,
             "message": message
@@ -296,7 +296,7 @@ impl TestCapsule {
         let result = serde_json::json!({
             "topic": topic,
             "payload": payload,
-            "subscription_handle": String::from_utf8_lossy(&handle_bytes).to_string(),
+            "subscription_handle": String::from_utf8_lossy(handle_bytes.as_bytes()).to_string(),
             "unsubscribed": true
         });
 

@@ -40,7 +40,7 @@ impl AnthropicProvider {
         } = req
         {
             if let Err(e) = Self::execute_request(request_id, &messages, &tools, &system) {
-                let _ = sys::log("error", format!("LLM request failed: {e}"));
+                let _ = log::error(format!("LLM request failed: {e}"));
                 let _ = ipc::publish_json(
                     "llm.v1.stream.anthropic",
                     &IpcPayload::LlmStreamEvent {
@@ -94,8 +94,8 @@ impl AnthropicProvider {
             request_body["tools"] = Value::Array(api_tools);
         }
 
-        let api_key = sys::get_config_string("anthropic_api_key")
-            .or_else(|_| sys::get_config_string("api_key"))
+        let api_key = env::var("anthropic_api_key")
+            .or_else(|_| env::var("api_key"))
             .unwrap_or_default();
 
         if api_key.is_empty() {
