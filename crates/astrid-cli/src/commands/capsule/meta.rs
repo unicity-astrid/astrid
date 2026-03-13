@@ -143,14 +143,27 @@ fn scan_dir(
     let entries = std::fs::read_dir(dir)
         .with_context(|| format!("failed to read directory {}", dir.display()))?;
 
-    for entry in entries {
-        let entry = entry?;
-        let ft = entry.file_type()?;
+    for entry_result in entries {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(dir = %dir.display(), error = %e, "failed to read directory entry, skipping");
+                continue;
+            },
+        };
+        let path = entry.path();
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "failed to get file type, skipping");
+                continue;
+            },
+        };
         if !ft.is_dir() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let meta = read_meta(&entry.path());
+        let meta = read_meta(&path);
         out.push(InstalledCapsule {
             name,
             meta,
