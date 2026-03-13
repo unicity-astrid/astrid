@@ -139,6 +139,13 @@ impl SocketClient {
     }
 }
 
+/// Timeout for individual handshake read/write operations (client-side).
+/// Slightly longer than the server-side timeout to account for daemon load.
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Maximum allowed size of a handshake response payload (bytes).
+const MAX_HANDSHAKE_RESPONSE_SIZE: usize = 4096;
+
 /// Send the authentication handshake to the daemon and validate the response.
 async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
     // Read the session token from disk (fresh on every connect, no caching).
@@ -162,7 +169,7 @@ async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
         serde_json::to_vec(&request).context("Failed to serialize handshake request")?;
     let len = u32::try_from(request_bytes.len()).context("Handshake request too large")?;
 
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
         stream.write_all(&len.to_be_bytes()).await?;
         stream.write_all(&request_bytes).await?;
         stream.flush().await?;
@@ -174,27 +181,21 @@ async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
 
     // Read the response.
     let mut len_buf = [0u8; 4];
-    tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        stream.read_exact(&mut len_buf),
-    )
-    .await
-    .context("Handshake response timed out")?
-    .context("Failed to read handshake response length")?;
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut len_buf))
+        .await
+        .context("Handshake response timed out")?
+        .context("Failed to read handshake response length")?;
 
     let resp_len = u32::from_be_bytes(len_buf) as usize;
-    if resp_len > 4096 {
+    if resp_len > MAX_HANDSHAKE_RESPONSE_SIZE {
         anyhow::bail!("Handshake response too large: {resp_len} bytes");
     }
 
     let mut resp_payload = vec![0u8; resp_len];
-    tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        stream.read_exact(&mut resp_payload),
-    )
-    .await
-    .context("Handshake response payload timed out")?
-    .context("Failed to read handshake response payload")?;
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut resp_payload))
+        .await
+        .context("Handshake response payload timed out")?
+        .context("Failed to read handshake response payload")?;
 
     let response: HandshakeResponse =
         serde_json::from_slice(&resp_payload).context("Failed to parse handshake response")?;

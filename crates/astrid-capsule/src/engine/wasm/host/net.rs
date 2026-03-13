@@ -325,6 +325,12 @@ pub(crate) fn astrid_net_write_impl(
 // Handshake helpers
 // ---------------------------------------------------------------------------
 
+/// Timeout for individual handshake read/write operations (server-side).
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Maximum allowed size of a handshake request payload (bytes).
+const MAX_HANDSHAKE_SIZE: usize = 4096;
+
 /// Validate the client handshake: read the `HandshakeRequest`, verify the token
 /// and protocol version, then send back a `HandshakeResponse`.
 ///
@@ -338,27 +344,21 @@ async fn validate_handshake(
 
     // 1. Read the handshake request (length-prefixed JSON, same wire format).
     let mut len_buf = [0u8; 4];
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        stream.read_exact(&mut len_buf),
-    )
-    .await
-    .map_err(|_| "handshake timed out (5s)".to_string())?
-    .map_err(|e| format!("handshake read error: {e}"))?;
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut len_buf))
+        .await
+        .map_err(|_| "handshake timed out (5s)".to_string())?
+        .map_err(|e| format!("handshake read error: {e}"))?;
 
     let len = u32::from_be_bytes(len_buf) as usize;
-    if len > 4096 {
+    if len > MAX_HANDSHAKE_SIZE {
         return Err(format!("handshake too large: {len} bytes"));
     }
 
     let mut payload = vec![0u8; len];
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        stream.read_exact(&mut payload),
-    )
-    .await
-    .map_err(|_| "handshake payload timed out".to_string())?
-    .map_err(|e| format!("handshake payload read error: {e}"))?;
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut payload))
+        .await
+        .map_err(|_| "handshake payload timed out".to_string())?
+        .map_err(|e| format!("handshake payload read error: {e}"))?;
 
     let request: HandshakeRequest =
         serde_json::from_slice(&payload).map_err(|e| format!("invalid handshake JSON: {e}"))?;
@@ -433,12 +433,9 @@ async fn send_handshake_response_timed(
     stream: &mut tokio::net::UnixStream,
     response: &HandshakeResponse,
 ) -> Result<(), std::io::Error> {
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        send_handshake_response(stream, response),
-    )
-    .await
-    .map_err(|_| std::io::Error::other("handshake response write timed out (5s)"))?
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, send_handshake_response(stream, response))
+        .await
+        .map_err(|_| std::io::Error::other("handshake response write timed out (5s)"))?
 }
 
 /// Send a length-prefixed JSON handshake response.
