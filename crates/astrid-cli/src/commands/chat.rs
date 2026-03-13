@@ -123,9 +123,9 @@ async fn run_json_chat(
                     );
                     // Nothing subscribes to the `user.v1.approval` IPC topic - the
                     // previous publish here was silently dropped. Approvals are routed
-                    // through the `ApprovalHandler` trait, not IPC. When the kernel
-                    // integrates `ApprovalManager`, JSON REPL should register an
-                    // `AutoDenyHandler` via that trait instead.
+                    // through the `ApprovalHandler` trait, not IPC.
+                    // TODO: When the kernel integrates `ApprovalManager`, JSON REPL
+                    // should register an `AutoDenyHandler` via that trait instead.
                     warn!(
                         %action, %resource, %reason,
                         "approval requested in JSON REPL mode (not supported)"
