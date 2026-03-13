@@ -6,6 +6,7 @@
 
 use astrid_core::SessionId;
 use colored::Colorize;
+use tracing::warn;
 
 use crate::formatter::{OutputFormat, OutputFormatter, create_formatter};
 use crate::repl::ReadlineEvent;
@@ -120,17 +121,15 @@ async fn run_json_chat(
                             "Approval required: {action} on {resource} ({reason})"
                         ))
                     );
-                    // TUI handles this correctly, JSON mode auto-aborts for safety unless headless approvals are enabled
-                    client
-                        .send_message(astrid_events::ipc::IpcMessage::new(
-                            "user.v1.approval",
-                            astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
-                                "approved": false,
-                                "reason": "Approval not supported in JSON REPL mode"
-                            })),
-                            session_id.0,
-                        ))
-                        .await?;
+                    // Nothing subscribes to the `user.v1.approval` IPC topic - the
+                    // previous publish here was silently dropped. Approvals are routed
+                    // through the `ApprovalHandler` trait, not IPC. When the kernel
+                    // integrates `ApprovalManager`, JSON REPL should register an
+                    // `AutoDenyHandler` via that trait instead.
+                    warn!(
+                        %action, %resource, %reason,
+                        "approval requested in JSON REPL mode (not supported)"
+                    );
                 },
                 _ => {}, // Ignore other IPC payloads for now
             }
