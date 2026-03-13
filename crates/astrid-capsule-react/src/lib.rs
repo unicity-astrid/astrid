@@ -519,7 +519,7 @@ impl ReactLoop {
 
             Err(SysError::ApiError(format!(
                 "Session clear response contained no usable messages \
-                 (session_id={old_session_id})"
+                 (session_id={old_session_id}, correlation_id={correlation_id})"
             )))
         })();
 
@@ -1350,7 +1350,7 @@ impl ReactLoop {
 
             Err(SysError::ApiError(format!(
                 "Session response envelope contained no usable messages \
-                 (session_id={session_id})"
+                 (session_id={session_id}, correlation_id={correlation_id})"
             )))
         })();
 
