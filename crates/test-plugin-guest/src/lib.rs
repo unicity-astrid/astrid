@@ -95,10 +95,10 @@ impl TestCapsule {
     fn handle_test_log(&self, args: TestLogArgs) -> Result<ToolOutput, SysError> {
         let message = args.message.unwrap_or_else(|| "test".to_string());
 
-        log::log("debug", format!("debug: {message}"))?;
-        log::log("info", format!("info: {message}"))?;
-        log::log("warn", format!("warn: {message}"))?;
-        log::log("error", format!("error: {message}"))?;
+        log::debug(format!("debug: {message}"))?;
+        log::info(format!("info: {message}"))?;
+        log::warn(format!("warn: {message}"))?;
+        log::error(format!("error: {message}"))?;
 
         Ok(ToolOutput {
             content: format!("logged at all levels: {message}"),
@@ -109,7 +109,7 @@ impl TestCapsule {
     #[astrid::tool("test-malicious-log")]
     fn handle_test_malicious_log(&self, _args: EmptyArgs) -> Result<ToolOutput, SysError> {
         let huge_message = "A".repeat(65 * 1024);
-        log::log("info", huge_message)?;
+        log::info(huge_message)?;
         Ok(ToolOutput {
             content: "log succeeded unexpectedly".to_string(),
             is_error: false,

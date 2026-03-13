@@ -1197,8 +1197,10 @@ mod tests {
             "Stateful run should load state via get_json, got:\n{output}"
         );
         // Run loops are infinite - should NOT auto-save state
-        // Count occurrences of set_json - there should be none in the run export
-        let run_pos = output.find("fn run").expect("run export missing");
+        // Find the generated extern export, not the user's method in the re-emitted impl.
+        let run_pos = output
+            .find("extern \"C\" fn run")
+            .expect("run export missing");
         let after_run = &output[run_pos..];
         assert!(
             !after_run.contains("set_json"),
@@ -1300,5 +1302,71 @@ mod tests {
             "Should generate install export"
         );
         assert!(output.contains("fn run"), "Should generate run export");
+    }
+
+    /// Stateful capsule with both tools and run - verify tool dispatch calls
+    /// set_json (stateful persist) but the run export does NOT.
+    #[test]
+    fn stateful_run_with_tools_separates_state_persistence() {
+        let attr = quote::quote! { state };
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("search")]
+                fn search(&self, args: SearchArgs) -> Result<SearchResult, Error> {
+                    todo!()
+                }
+
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        // Tool dispatch must persist state (stateful capsule)
+        let tool_pos = output
+            .find("astrid_tool_call")
+            .expect("tool export missing");
+        let tool_section = &output[tool_pos..];
+        assert!(
+            tool_section.contains("set_json"),
+            "Stateful tool dispatch should call set_json"
+        );
+        // Run export must NOT persist state (run loops are infinite)
+        let run_pos = output
+            .find("extern \"C\" fn run")
+            .expect("run export missing");
+        let run_section = &output[run_pos..];
+        assert!(
+            !run_section.contains("set_json"),
+            "Stateful run should NOT call set_json even when tools exist"
+        );
+    }
+
+    /// Method named something other than "run" still generates extern "C" fn run.
+    #[test]
+    fn run_with_different_method_name() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn event_loop(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        // The WASM export must always be named "run" regardless of method name
+        assert!(
+            output.contains("extern \"C\" fn run"),
+            "Should generate extern fn run even when method is event_loop"
+        );
+        // The generated body should call the user's method by its original name
+        assert!(
+            output.contains("event_loop"),
+            "Should call user's event_loop method"
+        );
     }
 }

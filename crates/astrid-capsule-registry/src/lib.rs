@@ -324,7 +324,7 @@ fn auto_select_if_single(state: &mut RegistryState) {
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    let _ = log::log("info", "Registry capsule starting");
+    let _ = log::info("Registry capsule starting");
 
     let sub = ipc::subscribe("registry.v1.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
@@ -409,7 +409,7 @@ pub fn run() -> FnResult<()> {
             && !bytes.is_empty()
             && is_from_kernel(&bytes)
         {
-            let _ = log::log("info", "Capsules reloaded — re-discovering providers");
+            let _ = log::info("Capsules reloaded — re-discovering providers");
             let providers = discover_providers();
             let mut state = load_state();
             if !providers.is_empty() {
@@ -576,7 +576,7 @@ fn emit_model_selection() {
     }
 
     if state.providers.is_empty() {
-        let _ = log::log("warn", "No LLM providers found for /models selection");
+        let _ = log::warn("No LLM providers found for /models selection");
         return;
     }
 

@@ -494,13 +494,10 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    let _ = log::log("info", "Prompt Builder capsule starting");
+    let _ = log::info("Prompt Builder capsule starting");
 
     let config = Config::load();
-    let _ = log::log(
-        "info",
-        format!("Hook timeout: {}ms", config.hook_timeout_ms),
-    );
+    let _ = log::info(format!("Hook timeout: {}ms", config.hook_timeout_ms));
 
     let sub = ipc::subscribe("prompt_builder.v1.*")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
@@ -515,7 +512,7 @@ pub fn run() -> FnResult<()> {
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
     let _ = runtime::signal_ready();
 
-    let _ = log::log("info", "Prompt Builder capsule ready");
+    let _ = log::info("Prompt Builder capsule ready");
 
     loop {
         // Block until a message arrives (up to 60s), eliminating busy-spin polling.

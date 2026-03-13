@@ -184,16 +184,13 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    let _ = log::log("info", "Context Engine capsule starting");
+    let _ = log::info("Context Engine capsule starting");
 
     let config = Config::load();
-    let _ = log::log(
-        "info",
-        format!(
-            "Hook timeout: {}ms, keep_recent: {}",
-            config.hook_timeout_ms, config.keep_recent
-        ),
-    );
+    let _ = log::info(format!(
+        "Hook timeout: {}ms, keep_recent: {}",
+        config.hook_timeout_ms, config.keep_recent
+    ));
 
     let sub = ipc::subscribe("context_engine.v1.*")
         .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
@@ -208,7 +205,7 @@ pub fn run() -> FnResult<()> {
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
     let _ = runtime::signal_ready();
 
-    let _ = log::log("info", "Context Engine capsule ready");
+    let _ = log::info("Context Engine capsule ready");
 
     loop {
         // Block until a message arrives (up to 60s), eliminating busy-spin polling.
@@ -311,7 +308,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
     let request: CompactRequest = match serde_json::from_value(payload.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let _ = log::log("error", format!("Failed to parse compact request: {e}"));
+            let _ = log::error(format!("Failed to parse compact request: {e}"));
             let _ = ipc::publish_json(
                 "context_engine.v1.response.compact",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
@@ -395,7 +392,7 @@ fn handle_estimate_tokens(payload: &serde_json::Value) {
     let request: EstimateRequest = match serde_json::from_value(payload.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let _ = log::log("error", format!("Failed to parse estimate_tokens request: {e}"));
+            let _ = log::error(format!("Failed to parse estimate_tokens request: {e}"));
             let _ = ipc::publish_json(
                 "context_engine.v1.response.estimate_tokens",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),

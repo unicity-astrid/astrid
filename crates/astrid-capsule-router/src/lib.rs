@@ -54,7 +54,7 @@ impl ToolRouter {
 
         let forward_topic = format!("tool.v1.execute.{tool_name}");
 
-        let _ = log::log("info", format!("Routing tool request: {tool_name} -> {forward_topic}"));
+        let _ = log::info(format!("Routing tool request: {tool_name} -> {forward_topic}"));
 
         let forward_payload = IpcPayload::ToolExecuteRequest {
             call_id: call_id.clone(),

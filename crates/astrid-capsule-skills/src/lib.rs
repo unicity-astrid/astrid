@@ -180,7 +180,7 @@ fn collect_skills_from(
         Ok(b) => b,
         Err(e) => {
             if !is_not_found_error(&e) {
-                let _ = log::log("warn", format!("readdir failed for {dir}: {e}"));
+                let _ = log::warn(format!("readdir failed for {dir}: {e}"));
             }
             return;
         },
@@ -189,7 +189,7 @@ fn collect_skills_from(
     let entry_names: Vec<String> = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = log::log("warn", format!("parse dir entries failed for {dir}: {e}"));
+            let _ = log::warn(format!("parse dir entries failed for {dir}: {e}"));
             return;
         },
     };

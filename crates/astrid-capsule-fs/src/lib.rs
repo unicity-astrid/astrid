@@ -148,7 +148,7 @@ fn walk_and_grep(
     let entries_bytes = match fs::read_dir(dir) {
         Ok(b) => b,
         Err(e) => {
-            let _ = log::log("debug", &format!("failed to read directory '{dir}': {e}"));
+            let _ = log::debug(&format!("failed to read directory '{dir}': {e}"));
             return;
         }
     };
@@ -156,10 +156,7 @@ fn walk_and_grep(
     let entry_names: Vec<String> = match serde_json::from_slice(&entries_bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = log::log(
-                "warn",
-                &format!("failed to parse directory entries for '{dir}': {e}"),
-            );
+            let _ = log::warn(&format!("failed to parse directory entries for '{dir}': {e}"));
             return;
         }
     };
@@ -177,7 +174,7 @@ fn walk_and_grep(
         let stat_bytes = match fs::metadata(&path) {
             Ok(b) => b,
             Err(e) => {
-                let _ = log::log("debug", &format!("failed to stat path '{path}': {e}"));
+                let _ = log::debug(&format!("failed to stat path '{path}': {e}"));
                 continue;
             }
         };
@@ -202,7 +199,7 @@ fn grep_file(path: &str, pattern: &str, matches: &mut Vec<String>) {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            let _ = log::log("debug", &format!("skipping unreadable file '{path}': {e}"));
+            let _ = log::debug(&format!("skipping unreadable file '{path}': {e}"));
             return;
         }
     };

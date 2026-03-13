@@ -40,7 +40,7 @@ impl AnthropicProvider {
         } = req
         {
             if let Err(e) = Self::execute_request(request_id, &messages, &tools, &system) {
-                let _ = log::log("error", format!("LLM request failed: {e}"));
+                let _ = log::error(format!("LLM request failed: {e}"));
                 let _ = ipc::publish_json(
                     "llm.v1.stream.anthropic",
                     &IpcPayload::LlmStreamEvent {

@@ -100,7 +100,7 @@ fn lookup_session_by_call(call_id: &str) -> Option<String> {
 fn delete_request_session(request_id: &Uuid) {
     let key = format!("{REQUEST_SESSION_PREFIX}.{request_id}");
     if let Err(e) = kv::delete(&key) {
-        let _ = log::log("warn", format!("Failed to delete req2sess key '{key}': {e}"));
+        let _ = log::warn(format!("Failed to delete req2sess key '{key}': {e}"));
     }
 }
 
@@ -109,7 +109,7 @@ fn delete_call_sessions(call_ids: &[String]) {
     for call_id in call_ids {
         let key = format!("{CALL_SESSION_PREFIX}.{call_id}");
         if let Err(e) = kv::delete(&key) {
-            let _ = log::log("warn", format!("Failed to delete call2sess key '{key}': {e}"));
+            let _ = log::warn(format!("Failed to delete call2sess key '{key}': {e}"));
         }
     }
 }
@@ -117,10 +117,7 @@ fn delete_call_sessions(call_ids: &[String]) {
 /// Load the set of active session IDs from KV.
 fn load_active_sessions() -> Vec<String> {
     kv::get_json::<Vec<String>>(ACTIVE_SESSIONS_KEY).unwrap_or_else(|e| {
-        let _ = log::log(
-            "warn",
-            format!("Failed to load active sessions from KV, defaulting to empty: {e}"),
-        );
+        let _ = log::warn(format!("Failed to load active sessions from KV, defaulting to empty: {e}"));
         Vec::new()
     })
 }
@@ -131,10 +128,7 @@ fn register_active_session(session_id: &str) {
     if !sessions.iter().any(|s| s == session_id) {
         sessions.push(session_id.to_string());
         if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
-            let _ = log::log(
-                "error",
-                format!("Failed to register active session '{session_id}': {e}"),
-            );
+            let _ = log::error(format!("Failed to register active session '{session_id}': {e}"));
         }
     }
 }
@@ -151,16 +145,16 @@ fn clear_ephemeral_keys() {
     ] {
         match kv::clear_prefix(prefix) {
             Ok(n) if n > 0 => {
-                let _ = log::log("info", format!("Cleared {n} ephemeral keys with prefix '{prefix}'"));
+                let _ = log::info(format!("Cleared {n} ephemeral keys with prefix '{prefix}'"));
             },
             Err(e) => {
-                let _ = log::log("warn", format!("Failed to clear ephemeral keys '{prefix}': {e}"));
+                let _ = log::warn(format!("Failed to clear ephemeral keys '{prefix}': {e}"));
             },
             _ => {},
         }
     }
     if let Err(e) = kv::delete(ACTIVE_SESSIONS_KEY) {
-        let _ = log::log("warn", format!("Failed to clear active sessions key: {e}"));
+        let _ = log::warn(format!("Failed to clear active sessions key: {e}"));
     }
 }
 
@@ -442,7 +436,7 @@ impl ReactLoop {
     /// sessions) to prevent stale state from a previous incarnation.
     #[astrid::interceptor("handle_lifecycle_restart")]
     pub fn handle_lifecycle_restart(&self, _payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = log::log("info", "Lifecycle restart: clearing ephemeral keys");
+        let _ = log::info("Lifecycle restart: clearing ephemeral keys");
         clear_ephemeral_keys();
         Ok(())
     }
@@ -534,7 +528,7 @@ impl ReactLoop {
         // Delete the old session's turn state - the session is done.
         let old_key = turn_key(old_session_id);
         if let Err(e) = kv::delete(&old_key) {
-            let _ = log::log("warn", format!("Failed to delete old turn state key '{old_key}': {e}"));
+            let _ = log::warn(format!("Failed to delete old turn state key '{old_key}': {e}"));
         }
         unregister_active_session(old_session_id);
 
@@ -862,7 +856,7 @@ impl ReactLoop {
                 return Self::handle_stream_done(&mut state);
             },
             StreamEvent::Error(err) => {
-                let _ = log::log("error", format!("LLM stream error: {err}"));
+                let _ = log::error(format!("LLM stream error: {err}"));
                 let _ = ipc::publish_json(
                     "agent.v1.response",
                     &IpcPayload::AgentResponse {
@@ -1198,7 +1192,7 @@ impl ReactLoop {
         if state.phase == Phase::Idle {
             return Ok(());
         }
-        let _ = log::log("info", format!("Cancelling turn for session {session_id}"));
+        let _ = log::info(format!("Cancelling turn for session {session_id}"));
         Self::cleanup_inflight_mappings(&state);
         state.reset_conversation_turn();
         state.set_phase(Phase::Idle);
