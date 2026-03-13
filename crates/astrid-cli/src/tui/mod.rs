@@ -463,8 +463,12 @@ async fn handle_pending_actions(
                 };
                 let msg =
                     astrid_events::ipc::IpcMessage::new(response_topic, response, session_id.0);
-                let _ = client.send_message(msg).await;
-                app.push_notice(&format!("Action approved ({decision_str})."));
+                if client.send_message(msg).await.is_err() {
+                    tracing::warn!("Failed to send approval response to daemon");
+                    app.push_notice("Warning: failed to send approval to daemon (will timeout).");
+                } else {
+                    app.push_notice(&format!("Action approved ({decision_str})."));
+                }
             },
             PendingAction::Deny { request_id, reason } => {
                 let response_topic = format!("astrid.v1.approval.response.{request_id}");
@@ -475,8 +479,12 @@ async fn handle_pending_actions(
                 };
                 let msg =
                     astrid_events::ipc::IpcMessage::new(response_topic, response, session_id.0);
-                let _ = client.send_message(msg).await;
-                app.push_notice("Action denied.");
+                if client.send_message(msg).await.is_err() {
+                    tracing::warn!("Failed to send denial response to daemon");
+                    app.push_notice("Warning: failed to send denial to daemon (will timeout).");
+                } else {
+                    app.push_notice("Action denied.");
+                }
             },
             PendingAction::CancelTurn => {
                 // Send an empty UserInput with a special __cancel__ context

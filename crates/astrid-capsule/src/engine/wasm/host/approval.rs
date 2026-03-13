@@ -136,12 +136,7 @@ pub(crate) fn astrid_request_approval_impl(
     let response_topic = format!("astrid.v1.approval.response.{request_id}");
 
     // Subscribe BEFORE publishing to prevent a race.
-    let mut receiver = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        state.event_bus.subscribe_topic(&response_topic)
-    };
+    let mut receiver = event_bus.subscribe_topic(&response_topic);
 
     let request_payload = IpcPayload::ApprovalRequired {
         request_id: request_id.clone(),
@@ -187,7 +182,10 @@ pub(crate) fn astrid_request_approval_impl(
                     IpcPayload::ApprovalResponse {
                         decision, reason, ..
                     } => {
-                        let approved = decision != "deny";
+                        let approved = matches!(
+                            decision.as_str(),
+                            "approve" | "approve_session" | "approve_always"
+                        );
 
                         // Create allowance for session/always decisions.
                         if approved && let Some(ref store) = allowance_store {
@@ -309,5 +307,39 @@ mod tests {
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "git push", "deny");
         assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn create_allowance_garbage_decision_does_nothing() {
+        let store = AllowanceStore::new();
+        create_allowance_from_decision(&store, "git push", "garbage");
+        assert_eq!(store.count(), 0);
+        create_allowance_from_decision(&store, "git push", "");
+        assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn check_allowance_with_special_characters() {
+        let store = AllowanceStore::new();
+        let keypair = KeyPair::generate();
+        let allowance = Allowance {
+            id: AllowanceId::new(),
+            action_pattern: AllowancePattern::CommandPattern {
+                command: "git push *".into(),
+            },
+            created_at: Timestamp::now(),
+            expires_at: None,
+            max_uses: None,
+            uses_remaining: None,
+            session_only: true,
+            workspace_root: None,
+            signature: keypair.sign(b"test"),
+        };
+        store.add_allowance(allowance).unwrap();
+
+        // Semicolon-injected command should NOT match "git push *"
+        assert!(!check_allowance(&store, "git status; rm -rf /"));
+        // Normal match still works
+        assert!(check_allowance(&store, "git push --force origin main"));
     }
 }

@@ -72,6 +72,10 @@ impl ShellTools {
     /// error without executing.
     #[astrid::tool("run_shell_command")]
     pub fn run_shell_command(&self, args: RunShellArgs) -> Result<String, SysError> {
+        if args.command.trim().is_empty() {
+            return Err(SysError::ApiError("Command cannot be empty".into()));
+        }
+
         let (program, subcommand) = parse_command(&args.command);
         let action = approval_action(program, subcommand);
 
