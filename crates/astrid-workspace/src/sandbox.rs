@@ -681,6 +681,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_wrap_rejects_null_byte_path() {
+        let bad_path = Path::new("/tmp/evil\0null/workspace");
+        let cmd = Command::new("echo");
+        let result = SandboxCommand::wrap(cmd, bad_path);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("forbidden characters"),
+            "error should mention forbidden chars: {err_msg}"
+        );
+    }
+
     // Validation tests are NOT gated by platform - sandbox_prefix() validates
     // on all platforms for API contract consistency.
 
