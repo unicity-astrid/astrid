@@ -247,8 +247,11 @@ pub(crate) fn astrid_net_read_impl(
 
             Ok(payload)
         });
-    // Cancellation returns empty bytes - same as the prior timeout/cancel
-    // behaviour, signalling "no data yet" to the WASM capsule.
+    // Cancellation returns empty bytes (not Err) - intentionally different
+    // from net_accept/net_write which return Err("capsule unloading"). The
+    // WASM guest's read loop treats empty as "no data yet, poll again", so
+    // returning empty lets it notice the shutdown via its own loop condition
+    // rather than hitting an unexpected error mid-message.
     let result = match result {
         Some(r) => r,
         None => Ok(Vec::new()),
