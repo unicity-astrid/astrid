@@ -470,9 +470,11 @@ impl ServerManager {
             cmd.env(key, value);
         }
 
-        if let Some(cwd) = &config.cwd {
-            cmd.current_dir(cwd);
-        }
+        // Always set CWD to the writable_root. If config.cwd was set, it was
+        // used as writable_root (highest priority). Otherwise, the fallback
+        // (workspace or temp dir) is used. This ensures the process CWD is
+        // always a directory that exists and is accessible inside the sandbox.
+        cmd.current_dir(&writable_root);
 
         info!(
             server = name,
