@@ -286,11 +286,11 @@ impl ExecutionEngine for WasmEngine {
 
             let has_run = plugin.function_exists("run");
             if has_run != has_run_export {
-                tracing::error!(
-                    has_run,
-                    has_run_export,
-                    "pre-scan/post-build run() export mismatch: timeout may be applied incorrectly"
-                );
+                return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                    "pre-scan/post-build run() export mismatch \
+                     (pre-scan: {has_run_export}, post-build: {has_run}). \
+                     Cannot safely determine timeout."
+                )));
             }
 
             // Only allocate the watch channel for run-loop capsules.
@@ -605,20 +605,14 @@ fn wasm_exports_contain_run(wasm_bytes: &[u8]) -> bool {
     for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
         match payload {
             Ok(wasmparser::Payload::ExportSection(reader)) => {
-                for export in reader {
-                    match export {
-                        Ok(e) if e.name == "run" && e.kind == wasmparser::ExternalKind::Func => {
-                            return true;
-                        },
-                        Ok(_) => {},
-                        Err(e) => {
-                            tracing::warn!("failed to parse WASM export entry: {e}");
-                            return true; // safe default: skip timeout
-                        },
-                    }
-                }
-                // Only one export section per module; no need to keep scanning.
-                return false;
+                // Only one export section per module; return immediately.
+                return reader.into_iter().any(|export| match export {
+                    Ok(e) => e.name == "run" && e.kind == wasmparser::ExternalKind::Func,
+                    Err(e) => {
+                        tracing::warn!("failed to parse WASM export entry: {e}");
+                        true // safe default: skip timeout
+                    },
+                });
             },
             Err(e) => {
                 tracing::warn!("failed to pre-scan WASM binary: {e}");
