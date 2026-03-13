@@ -314,26 +314,13 @@ impl ExecutionEngine for WasmEngine {
                     )));
                 }
 
-                // Validate interceptor event patterns against EventReceiver
-                // semantics. Mid-segment wildcards like `a.*.b` are only
-                // supported by dispatcher::topic_matches, not by
-                // EventReceiver::matches, so they would silently never fire.
+                // Validate interceptor event patterns have well-formed segments
+                // (no empty segments, leading/trailing dots, or empty strings).
                 for interceptor in &manifest.interceptors {
                     if !crate::dispatcher::has_valid_segments(&interceptor.event) {
                         return Err(CapsuleError::UnsupportedEntryPoint(format!(
                             "Interceptor event '{}' has invalid segment structure \
                              (empty segments, leading/trailing dots, or empty string)",
-                            interceptor.event
-                        )));
-                    }
-                    let segments: Vec<&str> = interceptor.event.split('.').collect();
-                    if let Some(wc_pos) = segments.iter().position(|s| *s == "*")
-                        && wc_pos + 1 < segments.len()
-                    {
-                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                            "Interceptor event '{}' uses a mid-segment wildcard, \
-                             which is not supported by auto-subscribe (EventBus \
-                             only supports trailing wildcards like `foo.bar.*`)",
                             interceptor.event
                         )));
                     }
