@@ -303,8 +303,8 @@ pub fn validate_server_name(name: &str) -> McpResult<()> {
         )));
     }
     if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.'))
     {
         return Err(McpError::ConfigError(format!(
             "server name contains invalid characters \
