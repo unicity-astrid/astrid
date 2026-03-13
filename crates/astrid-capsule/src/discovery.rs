@@ -139,26 +139,24 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
 
     // Enforce astrid-version (MSRV for Astrid, like rust-version in Cargo.toml).
     // If the capsule requires a newer runtime than we are, reject it.
+    // CARGO_PKG_VERSION is a compile-time constant; parse is trivially cheap.
     if let Some(ref constraint) = manifest.package.astrid_version {
         let runtime = semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("valid semver");
-        match semver::VersionReq::parse(constraint) {
-            Ok(req) if !req.matches(&runtime) => {
-                return Err(CapsuleError::ManifestParseError {
-                    path: path.to_path_buf(),
-                    message: format!(
-                        "capsule requires astrid-version {constraint}, \
-                         but this runtime is {}",
-                        runtime
-                    ),
-                });
-            },
-            Err(e) => {
-                return Err(CapsuleError::ManifestParseError {
-                    path: path.to_path_buf(),
-                    message: format!("invalid astrid-version '{constraint}' - {e}"),
-                });
-            },
-            _ => {},
+        let req = semver::VersionReq::parse(constraint).map_err(|e| {
+            CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!("invalid astrid-version '{constraint}' - {e}"),
+            }
+        })?;
+
+        if !req.matches(&runtime) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "capsule requires astrid-version {constraint}, \
+                     but this runtime is {runtime}"
+                ),
+            });
         }
     }
 

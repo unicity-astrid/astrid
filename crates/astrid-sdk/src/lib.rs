@@ -383,26 +383,32 @@ pub mod kv {
             return Ok(Versioned::NotFound);
         }
 
-        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
 
         // Detect envelope by checking for __sv (u64) + data fields.
         // If __sv is present but malformed (not a number, or missing data),
         // return an error rather than silently treating as unversioned.
-        let has_sv_field = value.get("__sv").is_some();
-        let envelope_version = value.get("__sv").and_then(|v| v.as_u64());
-        let data_field = value.get("data");
+        let sv_field = value.get("__sv");
+        let has_sv = sv_field.is_some();
+        let envelope_version = sv_field.and_then(|v| v.as_u64());
+        let has_data = value.get("data").is_some();
 
-        match (has_sv_field, envelope_version, data_field) {
+        match (has_sv, envelope_version, has_data) {
             // Valid envelope: __sv is a u64 and data is present.
-            (_, Some(v), Some(data)) => {
+            // Take ownership of the data field via remove() to avoid cloning.
+            (_, Some(v), true) => {
                 let v = u32::try_from(v)
                     .map_err(|_| SysError::ApiError("schema version exceeds u32::MAX".into()))?;
+                let data = value
+                    .as_object_mut()
+                    .and_then(|m| m.remove("data"))
+                    .unwrap_or(serde_json::Value::Null);
                 if v == current_version {
-                    let parsed: T = serde_json::from_value(data.clone())?;
+                    let parsed: T = serde_json::from_value(data)?;
                     Ok(Versioned::Current(parsed))
                 } else if v < current_version {
                     Ok(Versioned::NeedsMigration {
-                        raw: data.clone(),
+                        raw: data,
                         stored_version: v,
                     })
                 } else {
@@ -442,21 +448,21 @@ pub mod kv {
         current_version: u32,
         migrate_fn: impl FnOnce(serde_json::Value, u32) -> Result<T, SysError>,
     ) -> Result<Option<T>, SysError> {
-        let key_bytes: Vec<u8> = key.as_ref().to_vec();
+        let key = key.as_ref();
 
-        match get_versioned::<T>(&key_bytes, current_version)? {
+        match get_versioned::<T>(key, current_version)? {
             Versioned::Current(data) => Ok(Some(data)),
             Versioned::NeedsMigration {
                 raw,
                 stored_version,
             } => {
                 let migrated = migrate_fn(raw, stored_version)?;
-                set_versioned(&key_bytes, &migrated, current_version)?;
+                set_versioned(key, &migrated, current_version)?;
                 Ok(Some(migrated))
             },
             Versioned::Unversioned(raw) => {
                 let migrated = migrate_fn(raw, 0)?;
-                set_versioned(&key_bytes, &migrated, current_version)?;
+                set_versioned(key, &migrated, current_version)?;
                 Ok(Some(migrated))
             },
             Versioned::NotFound => Ok(None),
