@@ -178,10 +178,33 @@ impl Session {
         data.save(session_id)
     }
 
+    /// Extracts and validates `correlation_id` from a request payload.
+    ///
+    /// The correlation_id is interpolated into per-request scoped reply
+    /// topics as a single dot-separated segment. Rejects empty values and
+    /// values containing dots (which would add extra segments, breaking
+    /// the ACL pattern match).
+    fn require_correlation_id<'a>(
+        payload: &'a serde_json::Value,
+        request_name: &str,
+    ) -> Result<&'a str, SysError> {
+        payload
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && !s.contains('.'))
+            .ok_or_else(|| {
+                SysError::ApiError(format!(
+                    "{request_name} request missing or invalid correlation_id \
+                     (must be non-empty, no dots)"
+                ))
+            })
+    }
+
     /// Handles `session.request.get_messages` events.
     ///
-    /// Returns the conversation history to the requester via
-    /// `session.response.get_messages`, echoing the correlation ID.
+    /// Returns the conversation history to the requester via a per-request
+    /// scoped reply topic (`session.v1.response.get_messages.<correlation_id>`).
+    /// This prevents cross-instance response theft under concurrent load.
     ///
     /// Supports an optional `append_before_read` field containing messages
     /// to append atomically before returning the history. This eliminates
@@ -193,16 +216,7 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
-        let correlation_id = match payload.get("correlation_id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => {
-                let _ = sys::log(
-                    "warn",
-                    "get_messages request missing correlation_id - response may not be routable",
-                );
-                ""
-            },
-        };
+        let correlation_id = Self::require_correlation_id(&payload, "get_messages")?;
 
         let mut data = SessionData::load(session_id);
 
@@ -217,8 +231,11 @@ impl Session {
             }
         }
 
+        // correlation_id is redundant with the scoped topic but retained
+        // in the payload for observability (log inspection, debugging).
+        let reply_topic = format!("session.v1.response.get_messages.{correlation_id}");
         ipc::publish_json(
-            "session.v1.response.get_messages",
+            &reply_topic,
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "messages": data.messages,
@@ -230,7 +247,8 @@ impl Session {
     ///
     /// Creates a new session with `parent_session_id` pointing to the
     /// old one. The old session's data is left intact in KV for history
-    /// traversal. Returns the new session ID via `session.v1.response.clear`.
+    /// traversal. Returns the new session ID via a per-request scoped
+    /// reply topic (`session.v1.response.clear.<correlation_id>`).
     #[astrid::interceptor("handle_clear")]
     pub fn handle_clear(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let old_session_id = payload
@@ -238,10 +256,7 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
-        let correlation_id = payload
-            .get("correlation_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let correlation_id = Self::require_correlation_id(&payload, "clear")?;
 
         let new_session_id = Uuid::new_v4().to_string();
 
@@ -260,8 +275,9 @@ impl Session {
             ),
         );
 
+        let reply_topic = format!("session.v1.response.clear.{correlation_id}");
         ipc::publish_json(
-            "session.v1.response.clear",
+            &reply_topic,
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "new_session_id": new_session_id,
@@ -376,5 +392,36 @@ mod tests {
         let data: SessionData = serde_json::from_str(v0_json).unwrap();
         let (migrated, _) = data.migrate().expect("v0 should migrate");
         assert_eq!(migrated.parent_session_id.as_deref(), Some("parent-abc"));
+    }
+
+    // -- correlation_id validation (scoped reply topic safety) --
+    // Tests exercise Session::require_correlation_id directly.
+
+    #[test]
+    fn test_correlation_id_rejects_empty() {
+        let payload = serde_json::json!({ "correlation_id": "" });
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
+    }
+
+    #[test]
+    fn test_correlation_id_rejects_missing() {
+        let payload = serde_json::json!({});
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
+    }
+
+    #[test]
+    fn test_correlation_id_rejects_dots() {
+        let payload = serde_json::json!({ "correlation_id": "abc.def" });
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
+    }
+
+    #[test]
+    fn test_correlation_id_accepts_uuid() {
+        let payload =
+            serde_json::json!({ "correlation_id": "550e8400-e29b-41d4-a716-446655440000" });
+        assert_eq!(
+            Session::require_correlation_id(&payload, "test").unwrap(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
     }
 }

@@ -510,8 +510,11 @@ mod tests {
     #[test]
     fn react_requires_satisfied_by_identity_and_session() {
         // Verify that the react capsule's [dependencies].requires are
-        // actually satisfiable by the identity and session capsules'
-        // auto-derived provides (from their ipc_publish).
+        // satisfiable by the identity capsule's auto-derived provides
+        // and the session capsule's explicit provides. Session uses
+        // explicit provides because its ipc_publish uses wildcards for
+        // per-request scoped reply topics, which would break auto-derivation
+        // (wildcard segment count differs from react's requires).
         let identity = {
             let (mut m, p) = manifest_bare("astrid-capsule-identity");
             m.capabilities = CapabilitiesDef {
@@ -522,8 +525,15 @@ mod tests {
         };
         let session = {
             let (mut m, p) = manifest_bare("astrid-capsule-session");
+            m.dependencies.provides = vec![
+                "topic:session.v1.response.get_messages".into(),
+                "topic:session.v1.response.clear".into(),
+            ];
             m.capabilities = CapabilitiesDef {
-                ipc_publish: vec!["session.v1.response.get_messages".into()],
+                ipc_publish: vec![
+                    "session.v1.response.get_messages.*".into(),
+                    "session.v1.response.clear.*".into(),
+                ],
                 ..Default::default()
             };
             (m, p)
