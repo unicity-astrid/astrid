@@ -233,6 +233,7 @@ impl ServerManager {
     /// Returns an error if the server is already running.
     pub async fn add_server(&self, name: &str, config: ServerConfig) -> McpResult<()> {
         crate::config::validate_server_name(name)?;
+        crate::config::validate_server_name(&config.name)?;
 
         let mut running = self.running.write().await;
         if running.contains_key(name) {

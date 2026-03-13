@@ -266,6 +266,9 @@ impl ServerConfig {
 /// Maximum length for a server name.
 const MAX_SERVER_NAME_LEN: usize = 128;
 
+/// Maximum length of a server name shown in error messages (prevents log poisoning).
+const MAX_NAME_DISPLAY_LEN: usize = 40;
+
 /// Validate that a server name is safe for use in filesystem paths and keys.
 ///
 /// Allowed: ASCII alphanumeric, hyphens, underscores, colons, dots (not leading).
@@ -280,8 +283,11 @@ const MAX_SERVER_NAME_LEN: usize = 128;
 pub fn validate_server_name(name: &str) -> McpResult<()> {
     // Truncate the displayed name in error messages to prevent log poisoning
     // from attacker-controlled input.
-    let display_name: std::borrow::Cow<'_, str> = if name.len() > 40 {
-        std::borrow::Cow::Owned(format!("{}...", &name[..name.floor_char_boundary(40)]))
+    let display_name: std::borrow::Cow<'_, str> = if name.len() > MAX_NAME_DISPLAY_LEN {
+        std::borrow::Cow::Owned(format!(
+            "{}...",
+            &name[..name.floor_char_boundary(MAX_NAME_DISPLAY_LEN)]
+        ))
     } else {
         std::borrow::Cow::Borrowed(name)
     };
