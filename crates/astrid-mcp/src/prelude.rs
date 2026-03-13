@@ -14,7 +14,7 @@
 //!     ServerConfig::stdio("filesystem", "npx")
 //!         .with_args(["-y", "@anthropics/mcp-server-filesystem", "/tmp"])
 //!         .auto_start()
-//! );
+//! )?;
 //!
 //! // Create client and connect
 //! let client = McpClient::with_config(config);

@@ -25,7 +25,7 @@
 //!     ServerConfig::stdio("filesystem", "npx")
 //!         .with_args(["-y", "@anthropics/mcp-server-filesystem", "/tmp"])
 //!         .auto_start()
-//! );
+//! )?;
 //!
 //! // Create client
 //! let client = McpClient::with_config(config);
@@ -73,7 +73,7 @@ mod server;
 mod types;
 
 pub use client::McpClient;
-pub use config::{RestartPolicy, ServerConfig, ServersConfig, Transport};
+pub use config::{RestartPolicy, ServerConfig, ServersConfig, Transport, validate_server_name};
 pub use error::{McpError, McpResult};
 pub use secure::{SecureMcpClient, ToolAuthorization};
 pub use server::ServerManager;

@@ -9,22 +9,28 @@ use std::process::Command;
 /// which can break or bypass sandbox profile syntax.
 fn validate_sandbox_str<'a>(path: &'a Path, label: &str) -> io::Result<&'a str> {
     if !path.is_absolute() {
-        return Err(io::Error::other(format!(
-            "sandbox {label} must be an absolute path, got: {}",
-            path.display()
-        )));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "sandbox {label} must be an absolute path, got: {}",
+                path.display()
+            ),
+        ));
     }
     let s = path.to_str().ok_or_else(|| {
-        io::Error::other(format!(
-            "sandbox {label} is not valid UTF-8: {}",
-            path.display()
-        ))
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("sandbox {label} is not valid UTF-8: {}", path.display()),
+        )
     })?;
-    if s.contains('"') || s.contains('\0') {
-        return Err(io::Error::other(format!(
-            "sandbox {label} contains forbidden characters (double-quote or null): {}",
-            path.display()
-        )));
+    if s.contains(['"', '\0']) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "sandbox {label} contains forbidden characters (double-quote or null): {}",
+                path.display()
+            ),
+        ));
     }
     Ok(s)
 }

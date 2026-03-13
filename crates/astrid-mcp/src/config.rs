@@ -263,6 +263,63 @@ impl ServerConfig {
     }
 }
 
+/// Maximum length for a server name.
+const MAX_SERVER_NAME_LEN: usize = 128;
+
+/// Maximum length of a server name shown in error messages (prevents log poisoning).
+const MAX_NAME_DISPLAY_LEN: usize = 40;
+
+/// Validate that a server name is safe for use in filesystem paths and keys.
+///
+/// Allowed: ASCII alphanumeric, hyphens, underscores, colons, dots (not leading).
+/// Must be non-empty and at most 128 bytes (equal to chars for the ASCII-only
+/// allowlist). Rejects path separators, null bytes, shell metacharacters,
+/// leading dots, and Unicode lookalikes.
+///
+/// # Errors
+///
+/// Returns [`McpError::ConfigError`] if the name is empty, too long, starts with
+/// a dot, or contains characters outside the allowed set.
+pub fn validate_server_name(name: &str) -> McpResult<()> {
+    // Truncate the displayed name in error messages to prevent log poisoning
+    // from attacker-controlled input.
+    let display_name: std::borrow::Cow<'_, str> = if name.len() > MAX_NAME_DISPLAY_LEN {
+        std::borrow::Cow::Owned(format!(
+            "{}...",
+            &name[..name.floor_char_boundary(MAX_NAME_DISPLAY_LEN)]
+        ))
+    } else {
+        std::borrow::Cow::Borrowed(name)
+    };
+
+    if name.is_empty() {
+        return Err(McpError::ConfigError(
+            "server name must not be empty".into(),
+        ));
+    }
+    if name.len() > MAX_SERVER_NAME_LEN {
+        return Err(McpError::ConfigError(format!(
+            "server name too long ({} bytes, max {MAX_SERVER_NAME_LEN}): {display_name}",
+            name.len()
+        )));
+    }
+    if name.starts_with('.') {
+        return Err(McpError::ConfigError(format!(
+            "server name must not start with '.': {display_name}"
+        )));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.'))
+    {
+        return Err(McpError::ConfigError(format!(
+            "server name contains invalid characters \
+             (allowed: ASCII alphanumeric, '-', '_', ':', '.'): {display_name}"
+        )));
+    }
+    Ok(())
+}
+
 /// Configuration file for all MCP servers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServersConfig {
@@ -289,8 +346,9 @@ impl ServersConfig {
         let mut config: Self = toml::from_str(&content)
             .map_err(|e| McpError::ConfigError(format!("Invalid config: {e}")))?;
 
-        // Set names from keys
+        // Validate and set names from keys
         for (name, server) in &mut config.servers {
+            validate_server_name(name)?;
             server.name.clone_from(name);
         }
 
@@ -351,8 +409,14 @@ impl ServersConfig {
     }
 
     /// Add a server config.
-    pub fn add(&mut self, config: ServerConfig) {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server name contains invalid characters.
+    pub fn add(&mut self, config: ServerConfig) -> McpResult<()> {
+        validate_server_name(&config.name)?;
         self.servers.insert(config.name.clone(), config);
+        Ok(())
     }
 
     /// Remove a server config.
@@ -421,8 +485,10 @@ args = ["-y", "@anthropics/mcp-server-memory"]
     #[test]
     fn test_auto_start_servers() {
         let mut config = ServersConfig::default();
-        config.add(ServerConfig::stdio("server1", "cmd1").auto_start());
-        config.add(ServerConfig::stdio("server2", "cmd2"));
+        config
+            .add(ServerConfig::stdio("server1", "cmd1").auto_start())
+            .unwrap();
+        config.add(ServerConfig::stdio("server2", "cmd2")).unwrap();
 
         let auto_start = config.auto_start_servers();
         assert_eq!(auto_start.len(), 1);
@@ -518,5 +584,110 @@ command = "cmd4"
             config.servers["default"].restart_policy,
             RestartPolicy::Never
         );
+    }
+
+    #[test]
+    fn validate_server_name_accepts_valid_names() {
+        let valid = [
+            "my-server",
+            "capsule:react-agent",
+            "com.example.server",
+            "a",
+            "server_1",
+            "A-Z_0-9",
+            "capsule:my.plugin-v2",
+        ];
+        for name in valid {
+            assert!(
+                validate_server_name(name).is_ok(),
+                "expected valid: {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_server_name_rejects_empty() {
+        let err = validate_server_name("").unwrap_err();
+        assert!(err.to_string().contains("must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn validate_server_name_rejects_path_traversal() {
+        // ../../etc is rejected by leading-dot check; foo/bar and a\b by charset.
+        for name in ["../../etc", "foo/bar", "a\\b"] {
+            assert!(
+                validate_server_name(name).is_err(),
+                "expected rejection for {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_server_name_rejects_leading_dot() {
+        let err = validate_server_name(".hidden").unwrap_err();
+        assert!(err.to_string().contains("start with '.'"), "{err}");
+
+        let err = validate_server_name("..").unwrap_err();
+        assert!(err.to_string().contains("start with '.'"), "{err}");
+    }
+
+    #[test]
+    fn validate_server_name_rejects_too_long() {
+        let long = "a".repeat(129);
+        let err = validate_server_name(&long).unwrap_err();
+        assert!(err.to_string().contains("too long"), "{err}");
+
+        // Exactly 128 is fine.
+        let max = "a".repeat(128);
+        assert!(validate_server_name(&max).is_ok());
+    }
+
+    #[test]
+    fn validate_server_name_rejects_special_chars() {
+        for name in ["server name", "srv;rm", "srv|cat", "srv$HOME", "srv`id`"] {
+            assert!(
+                validate_server_name(name).is_err(),
+                "expected rejection for {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_server_name_rejects_null_byte() {
+        assert!(validate_server_name("srv\0name").is_err());
+    }
+
+    #[test]
+    fn validate_server_name_rejects_unicode_lookalikes() {
+        // Cyrillic 'а' (U+0430) looks like Latin 'a' but is not ASCII.
+        assert!(validate_server_name("s\u{0435}rver").is_err());
+    }
+
+    #[test]
+    fn load_rejects_traversal_name_in_toml() {
+        use std::io::Write;
+
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            r#"
+[servers."../../etc"]
+command = "evil"
+"#
+        )
+        .unwrap();
+
+        let result = ServersConfig::load(f.path());
+        assert!(
+            result.is_err(),
+            "expected path traversal rejection in TOML config"
+        );
+    }
+
+    #[test]
+    fn add_rejects_traversal_name() {
+        let mut config = ServersConfig::default();
+        let result = config.add(ServerConfig::stdio("../escape", "cmd"));
+        assert!(result.is_err());
     }
 }
