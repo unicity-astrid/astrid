@@ -224,8 +224,8 @@ impl ProcessSandboxConfig {
 
     /// Build the sandbox wrapper prefix for this configuration.
     ///
-    /// Returns `Ok(Some(prefix))` on supported platforms, `Ok(None)` on
-    /// unsupported platforms (Windows).
+    /// Returns `Some(prefix)` on supported platforms (Linux, macOS), `None` on
+    /// unsupported platforms (e.g., Windows).
     #[must_use]
     pub fn sandbox_prefix(&self) -> Option<SandboxPrefix> {
         #[cfg(target_os = "linux")]

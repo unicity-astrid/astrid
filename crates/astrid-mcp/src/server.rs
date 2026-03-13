@@ -364,12 +364,23 @@ impl ServerManager {
     ) -> McpResult<tokio::process::Command> {
         use astrid_workspace::ProcessSandboxConfig;
 
-        // Determine writable root: config.cwd > workspace_root > temp_dir/astrid-mcp/<name>
+        // config.cwd doubles as both the sandbox writable root and the process CWD.
+        // When set, the sandboxed process can write to its own working directory.
+        // Fallback order: config.cwd > workspace_root > temp_dir/astrid-mcp/<name>
         let writable_root = config
             .cwd
             .clone()
             .or_else(|| self.workspace_root.clone())
             .unwrap_or_else(|| std::env::temp_dir().join("astrid-mcp").join(name));
+
+        // Ensure the writable root exists before bwrap tries to bind-mount it.
+        std::fs::create_dir_all(&writable_root).map_err(|e| McpError::ServerStartFailed {
+            name: name.to_string(),
+            reason: format!(
+                "Failed to create writable root {}: {e}",
+                writable_root.display()
+            ),
+        })?;
 
         // Resolve ~/.astrid/ path - this is mandatory for untrusted servers.
         let astrid_home = Self::resolve_astrid_home()?;
@@ -379,24 +390,15 @@ impl ServerManager {
             .with_network(config.allow_network)
             .with_hidden(astrid_home);
 
-        // Add config-specified extra paths (must be absolute to avoid
-        // ambiguity about which directory they resolve relative to).
+        // Add config-specified extra paths. Validated for:
+        // 1. Absolute (avoid ambiguity about which directory they resolve relative to)
+        // 2. No double-quotes (prevent SBPL profile injection on macOS)
         for path in &config.allowed_read_paths {
-            if !path.is_absolute() {
-                return Err(McpError::ConfigError(format!(
-                    "allowed_read_paths must be absolute, got: {}",
-                    path.display()
-                )));
-            }
+            Self::validate_sandbox_path(path, "allowed_read_paths")?;
             sandbox_config = sandbox_config.with_extra_read(path);
         }
         for path in &config.allowed_write_paths {
-            if !path.is_absolute() {
-                return Err(McpError::ConfigError(format!(
-                    "allowed_write_paths must be absolute, got: {}",
-                    path.display()
-                )));
-            }
+            Self::validate_sandbox_path(path, "allowed_write_paths")?;
             sandbox_config = sandbox_config.with_extra_write(path);
         }
 
@@ -472,6 +474,26 @@ impl ServerManager {
         );
 
         Ok(cmd)
+    }
+
+    /// Validate a path for use in sandbox configuration.
+    ///
+    /// Rejects relative paths and paths containing double-quote characters
+    /// (which would break macOS Seatbelt SBPL profile syntax).
+    fn validate_sandbox_path(path: &std::path::Path, field: &str) -> McpResult<()> {
+        if !path.is_absolute() {
+            return Err(McpError::ConfigError(format!(
+                "{field} must be absolute, got: {}",
+                path.display()
+            )));
+        }
+        if path.to_string_lossy().contains('"') {
+            return Err(McpError::ConfigError(format!(
+                "{field} must not contain double-quote characters, got: {}",
+                path.display()
+            )));
+        }
+        Ok(())
     }
 
     /// Resolve the `~/.astrid/` directory path.
@@ -1027,7 +1049,7 @@ mod tests {
     fn test_build_sandboxed_command_adds_sandbox_prefix() {
         let configs = ServersConfig::default();
         let manager = ServerManager::new(configs)
-            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
 
         let config = ServerConfig::stdio("test", "echo").with_args(["hello"]);
 
@@ -1064,7 +1086,7 @@ mod tests {
     fn test_sandboxed_command_clears_env() {
         let configs = ServersConfig::default();
         let manager = ServerManager::new(configs)
-            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
 
         let config = ServerConfig::stdio("test", "echo").with_env("SAFE_VAR", "value");
 
@@ -1114,7 +1136,7 @@ mod tests {
     fn test_sandboxed_command_blocks_dangerous_env() {
         let configs = ServersConfig::default();
         let manager = ServerManager::new(configs)
-            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
 
         let config = ServerConfig::stdio("test", "echo")
             .with_env("LD_PRELOAD", "/evil.so")
@@ -1146,12 +1168,14 @@ mod tests {
 
     #[test]
     fn test_writable_root_priority_cwd_first() {
+        let cwd_dir = std::env::temp_dir().join("astrid-test-cwd");
+        let ws_dir = std::env::temp_dir().join("astrid-test-ws");
+
         let configs = ServersConfig::default();
-        let manager =
-            ServerManager::new(configs).with_workspace_root(std::path::PathBuf::from("/workspace"));
+        let manager = ServerManager::new(configs).with_workspace_root(ws_dir.clone());
 
         let mut config = ServerConfig::stdio("test", "echo");
-        config.cwd = Some(std::path::PathBuf::from("/custom-cwd"));
+        config.cwd = Some(cwd_dir.clone());
 
         let cmd = manager
             .build_sandboxed_command("test", "echo", &config)
@@ -1164,18 +1188,19 @@ mod tests {
             .collect();
         let args_joined = args.join(" ");
 
-        // config.cwd should win over workspace_root
+        let cwd_str = cwd_dir.to_string_lossy().to_string();
         assert!(
-            args_joined.contains("/custom-cwd"),
-            "writable root should be /custom-cwd (config.cwd wins), got args: {args_joined}"
+            args_joined.contains(&cwd_str),
+            "writable root should be {cwd_str} (config.cwd wins), got args: {args_joined}"
         );
     }
 
     #[test]
     fn test_writable_root_priority_workspace_second() {
+        let ws_dir = std::env::temp_dir().join("astrid-test-ws2");
+
         let configs = ServersConfig::default();
-        let manager =
-            ServerManager::new(configs).with_workspace_root(std::path::PathBuf::from("/workspace"));
+        let manager = ServerManager::new(configs).with_workspace_root(ws_dir.clone());
 
         let config = ServerConfig::stdio("test", "echo");
         // No cwd set, should fall back to workspace_root
@@ -1191,9 +1216,10 @@ mod tests {
             .collect();
         let args_joined = args.join(" ");
 
+        let ws_str = ws_dir.to_string_lossy().to_string();
         assert!(
-            args_joined.contains("/workspace"),
-            "writable root should be /workspace (workspace_root fallback), got args: {args_joined}"
+            args_joined.contains(&ws_str),
+            "writable root should be {ws_str} (workspace_root fallback), got args: {args_joined}"
         );
     }
 
@@ -1205,8 +1231,9 @@ mod tests {
 
         let path = result.expect("already checked");
         assert!(
-            path.to_string_lossy().contains(".astrid") || path.to_string_lossy().contains("astrid"),
-            "path should reference astrid home"
+            path.to_string_lossy().ends_with(".astrid"),
+            "path should end with .astrid, got: {}",
+            path.display()
         );
     }
 
@@ -1214,7 +1241,7 @@ mod tests {
     fn test_relative_allowed_paths_rejected() {
         let configs = ServersConfig::default();
         let manager = ServerManager::new(configs)
-            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
 
         let config = ServerConfig::stdio("test", "echo")
             .with_read_path(std::path::PathBuf::from("relative/path"));
@@ -1232,6 +1259,31 @@ mod tests {
         assert!(
             matches!(result, Err(McpError::ConfigError(_))),
             "relative allowed_write_paths should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_double_quote_in_paths_rejected() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo")
+            .with_read_path(std::path::PathBuf::from("/data/tricky\"path"));
+
+        let result = manager.build_sandboxed_command("test", "echo", &config);
+        assert!(
+            matches!(result, Err(McpError::ConfigError(_))),
+            "paths with double-quotes should be rejected to prevent SBPL injection"
+        );
+
+        let config = ServerConfig::stdio("test", "echo")
+            .with_write_path(std::path::PathBuf::from("/output/also\"bad"));
+
+        let result = manager.build_sandboxed_command("test", "echo", &config);
+        assert!(
+            matches!(result, Err(McpError::ConfigError(_))),
+            "write paths with double-quotes should also be rejected"
         );
     }
 
