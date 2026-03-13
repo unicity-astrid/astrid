@@ -409,10 +409,12 @@ pub mod kv {
             (_, Some(v), true) => {
                 let v = u32::try_from(v)
                     .map_err(|_| SysError::ApiError("schema version exceeds u32::MAX".into()))?;
+                // Safety: the match guard confirmed has_data=true, so
+                // value is an object with a "data" key. This is infallible.
                 let data = value
                     .as_object_mut()
                     .and_then(|m| m.remove("data"))
-                    .unwrap_or(serde_json::Value::Null);
+                    .expect("data field guaranteed by match condition");
                 if v == current_version {
                     let parsed: T = serde_json::from_value(data)?;
                     Ok(Versioned::Current(parsed))
