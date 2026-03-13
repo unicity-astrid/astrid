@@ -21,7 +21,7 @@ pub(crate) fn validate_sandbox_path(path: &Path) -> io::Result<()> {
             format!("sandbox path is not valid UTF-8: {}", path.display()),
         )
     })?;
-    if s.contains('"') || s.contains('\\') || s.contains('\0') {
+    if s.contains(['"', '\\', '\0']) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
