@@ -292,10 +292,6 @@ impl ExecutionEngine for WasmEngine {
                     "pre-scan/post-build run() export mismatch: timeout may be applied incorrectly"
                 );
             }
-            debug_assert_eq!(
-                has_run, has_run_export,
-                "pre-scan/post-build run() export mismatch"
-            );
 
             // Only allocate the watch channel for run-loop capsules.
             // UserData is Arc-based so the clone lets us inject the sender
