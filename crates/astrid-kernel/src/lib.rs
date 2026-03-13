@@ -106,9 +106,11 @@ impl Kernel {
         // capsules cannot access keys, databases, or capsule .env files.
         let global_root = Some(home.shared_dir());
 
-        // 1. Initialize MCP process manager with security layer
+        // 1. Initialize MCP process manager with security layer.
+        //    Set workspace_root so sandboxed MCP servers have a writable directory.
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
-        let mcp_manager = ServerManager::new(mcp_config);
+        let mcp_manager =
+            ServerManager::new(mcp_config).with_workspace_root(workspace_root.clone());
         let mcp_client = McpClient::new(mcp_manager);
 
         // 2. Bootstrap capability store and persistent audit log.

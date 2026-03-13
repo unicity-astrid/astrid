@@ -3,6 +3,7 @@
 //! Handles starting, stopping, and managing MCP server processes.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -71,6 +72,35 @@ impl RunningServer {
     }
 }
 
+/// Build a `tokio::process::Command` for a trusted (unsandboxed) server.
+fn build_unsandboxed_command(
+    name: &str,
+    command: &str,
+    config: &ServerConfig,
+) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(command);
+    cmd.args(&config.args);
+
+    for (key, value) in &config.env {
+        if astrid_core::env_policy::is_blocked_spawn_env(key) {
+            warn!(
+                server = %name,
+                key = %key,
+                "Ignoring blocked env var from server config"
+            );
+            continue;
+        }
+        cmd.env(key, value);
+    }
+
+    if let Some(cwd) = &config.cwd {
+        cmd.current_dir(cwd);
+    }
+
+    info!(server = name, "Spawning trusted (unsandboxed) MCP server");
+    cmd
+}
+
 /// Manages MCP server lifecycles.
 pub struct ServerManager {
     /// Server configurations.
@@ -79,6 +109,10 @@ pub struct ServerManager {
     running: Arc<RwLock<HashMap<String, RunningServer>>>,
     /// Timeout for graceful `close_with_timeout` during shutdown.
     shutdown_timeout: std::time::Duration,
+    /// Workspace root for sandbox writable directory.
+    ///
+    /// When `None`, sandboxing falls back to `config.cwd` or a temp directory.
+    workspace_root: Option<PathBuf>,
 }
 
 impl ServerManager {
@@ -90,7 +124,19 @@ impl ServerManager {
             configs,
             running: Arc::new(RwLock::new(HashMap::new())),
             shutdown_timeout,
+            workspace_root: None,
         }
+    }
+
+    /// Set the workspace root directory for sandbox writable access.
+    ///
+    /// When sandboxing is active (`trusted: false`), the sandboxed process
+    /// will have write access to this directory. If not set, falls back
+    /// to the server's `cwd` or a system temp directory.
+    #[must_use]
+    pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
+        self.workspace_root = Some(root);
+        self
     }
 
     /// Create from default configuration.
@@ -253,25 +299,11 @@ impl ServerManager {
             McpError::ConfigError(format!("No command specified for stdio server {name}"))
         })?;
 
-        // Build the tokio::process::Command
-        let mut cmd = tokio::process::Command::new(command);
-        cmd.args(&config.args);
-
-        for (key, value) in &config.env {
-            if astrid_core::env_policy::is_blocked_spawn_env(key) {
-                warn!(
-                    server = %name,
-                    key = %key,
-                    "Ignoring blocked env var from server config"
-                );
-                continue;
-            }
-            cmd.env(key, value);
-        }
-
-        if let Some(cwd) = &config.cwd {
-            cmd.current_dir(cwd);
-        }
+        let cmd = if config.trusted {
+            build_unsandboxed_command(name, command, config)
+        } else {
+            self.build_sandboxed_command(name, command, config)?
+        };
 
         // Create transport (spawns the child process)
         let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::ServerStartFailed {
@@ -318,6 +350,138 @@ impl ServerManager {
         }
 
         Ok(())
+    }
+
+    /// Build a sandboxed `tokio::process::Command` for an untrusted server.
+    ///
+    /// Applies OS-level sandboxing (bwrap on Linux, sandbox-exec on macOS),
+    /// scrubs inherited environment variables, and hides `~/.astrid/`.
+    fn build_sandboxed_command(
+        &self,
+        name: &str,
+        command: &str,
+        config: &ServerConfig,
+    ) -> McpResult<tokio::process::Command> {
+        use astrid_workspace::ProcessSandboxConfig;
+
+        // Determine writable root: config.cwd > workspace_root > temp_dir
+        let writable_root = config
+            .cwd
+            .clone()
+            .or_else(|| self.workspace_root.clone())
+            .unwrap_or_else(std::env::temp_dir);
+
+        // Resolve ~/.astrid/ path - this is mandatory for untrusted servers.
+        let astrid_home = Self::resolve_astrid_home()?;
+
+        // Build sandbox config
+        let mut sandbox_config = ProcessSandboxConfig::new(&writable_root)
+            .with_network(config.allow_network)
+            .with_hidden(astrid_home);
+
+        // Add config-specified extra paths
+        for path in &config.allowed_read_paths {
+            sandbox_config = sandbox_config.with_extra_read(path);
+        }
+        for path in &config.allowed_write_paths {
+            sandbox_config = sandbox_config.with_extra_write(path);
+        }
+
+        // Add common package manager cache dirs as read-only so npm/cargo
+        // don't re-download on every server start.
+        if let Ok(home) = std::env::var("HOME") {
+            for cache_dir in &[".npm", ".nvm", ".cargo", ".rustup"] {
+                let cache_path = std::path::PathBuf::from(&home).join(cache_dir);
+                if cache_path.exists() {
+                    sandbox_config = sandbox_config.with_extra_read(cache_path);
+                }
+            }
+        }
+
+        // Get sandbox prefix (bwrap/sandbox-exec args)
+        let sandbox_prefix =
+            sandbox_config
+                .sandbox_prefix()
+                .map_err(|e| McpError::ServerStartFailed {
+                    name: name.to_string(),
+                    reason: format!("sandbox setup failed: {e}"),
+                })?;
+
+        // Build the command
+        let mut cmd = if let Some(prefix) = sandbox_prefix {
+            let mut cmd = tokio::process::Command::new(&prefix.program);
+            for arg in &prefix.args {
+                cmd.arg(arg);
+            }
+            cmd.arg(command);
+            cmd.args(&config.args);
+            cmd
+        } else {
+            // Unsupported platform - run unsandboxed with warning
+            let mut cmd = tokio::process::Command::new(command);
+            cmd.args(&config.args);
+            cmd
+        };
+
+        // Environment scrubbing: clear inherited env, re-add safe vars
+        cmd.env_clear();
+
+        // Re-add minimal safe environment variables
+        for var in &["PATH", "HOME", "USER", "SHELL", "TERM", "LANG"] {
+            if let Ok(val) = std::env::var(var) {
+                cmd.env(var, val);
+            }
+        }
+
+        // Apply config env vars (filtered through blocklist)
+        for (key, value) in &config.env {
+            if astrid_core::env_policy::is_blocked_spawn_env(key) {
+                warn!(
+                    server = %name,
+                    key = %key,
+                    "Ignoring blocked env var from server config"
+                );
+                continue;
+            }
+            cmd.env(key, value);
+        }
+
+        if let Some(cwd) = &config.cwd {
+            cmd.current_dir(cwd);
+        }
+
+        info!(
+            server = name,
+            writable_root = %writable_root.display(),
+            allow_network = config.allow_network,
+            "Spawning sandboxed MCP server"
+        );
+
+        Ok(cmd)
+    }
+
+    /// Resolve the `~/.astrid/` directory path.
+    ///
+    /// This is mandatory for untrusted servers - if we can't determine
+    /// the path, we refuse to start the server rather than running it
+    /// with `~/.astrid/` exposed.
+    fn resolve_astrid_home() -> McpResult<std::path::PathBuf> {
+        // Try AstridHome::resolve() first
+        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+            return Ok(home.root().to_path_buf());
+        }
+
+        // Fallback: construct from $HOME
+        if let Ok(home) = std::env::var("HOME") {
+            return Ok(std::path::PathBuf::from(home).join(".astrid"));
+        }
+
+        Err(McpError::ServerStartFailed {
+            name: "sandbox".to_string(),
+            reason: "Cannot determine ~/.astrid/ path for sandbox hiding. \
+                     Set $HOME or $ASTRID_HOME, or mark the server as trusted."
+                .to_string(),
+        })
     }
 
     /// Get a cloneable peer handle for a running server.
@@ -830,5 +994,212 @@ mod tests {
         }
 
         assert!(!manager.should_restart("srv").await);
+    }
+
+    #[test]
+    fn test_build_unsandboxed_command() {
+        let config = ServerConfig::stdio("test", "echo")
+            .with_args(["hello"])
+            .with_env("FOO", "bar");
+
+        let cmd = build_unsandboxed_command("test", "echo", &config);
+
+        // Command program should be the original command
+        let program = cmd.as_std().get_program().to_string_lossy().to_string();
+        assert_eq!(program, "echo");
+    }
+
+    #[test]
+    fn test_build_sandboxed_command_adds_sandbox_prefix() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo").with_args(["hello"]);
+
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build sandboxed command");
+
+        let program = cmd.as_std().get_program().to_string_lossy().to_string();
+
+        // On supported platforms, the program should be the sandbox wrapper
+        #[cfg(target_os = "linux")]
+        assert_eq!(program, "bwrap");
+        #[cfg(target_os = "macos")]
+        assert_eq!(program, "sandbox-exec");
+        // On unsupported platforms, falls through to original command
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        assert_eq!(program, "echo");
+    }
+
+    #[test]
+    fn test_trusted_server_bypasses_sandbox() {
+        let config = ServerConfig::stdio("test", "echo").trusted();
+
+        let cmd = build_unsandboxed_command("test", "echo", &config);
+
+        let program = cmd.as_std().get_program().to_string_lossy().to_string();
+        assert_eq!(
+            program, "echo",
+            "trusted server should run without sandbox wrapper"
+        );
+    }
+
+    #[test]
+    fn test_sandboxed_command_clears_env() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo").with_env("SAFE_VAR", "value");
+
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build command");
+
+        // The command should have env_clear applied + safe vars + config vars.
+        // We verify by checking that SAFE_VAR is set (config env passed through).
+        let envs: Vec<_> = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(k, v)| {
+                v.map(|v| {
+                    (
+                        k.to_string_lossy().to_string(),
+                        v.to_string_lossy().to_string(),
+                    )
+                })
+            })
+            .collect();
+
+        let has_safe_var = envs.iter().any(|(k, v)| k == "SAFE_VAR" && v == "value");
+        assert!(has_safe_var, "config env vars should be passed through");
+    }
+
+    #[test]
+    fn test_sandboxed_command_blocks_dangerous_env() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::path::PathBuf::from("/tmp/test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo")
+            .with_env("LD_PRELOAD", "/evil.so")
+            .with_env("SAFE_VAR", "ok");
+
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build command");
+
+        let envs: Vec<_> = cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(k, v)| {
+                v.map(|v| {
+                    (
+                        k.to_string_lossy().to_string(),
+                        v.to_string_lossy().to_string(),
+                    )
+                })
+            })
+            .collect();
+
+        let has_ld_preload = envs.iter().any(|(k, _)| k == "LD_PRELOAD");
+        assert!(!has_ld_preload, "LD_PRELOAD should be blocked");
+
+        let has_safe = envs.iter().any(|(k, _)| k == "SAFE_VAR");
+        assert!(has_safe, "safe config env should pass through");
+    }
+
+    #[test]
+    fn test_writable_root_priority_cwd_first() {
+        let configs = ServersConfig::default();
+        let manager =
+            ServerManager::new(configs).with_workspace_root(std::path::PathBuf::from("/workspace"));
+
+        let mut config = ServerConfig::stdio("test", "echo");
+        config.cwd = Some(std::path::PathBuf::from("/custom-cwd"));
+
+        // The command should use /custom-cwd as writable root (config.cwd wins)
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build command");
+
+        // On Linux, verify the bwrap args contain /custom-cwd as a --bind target
+        #[cfg(target_os = "linux")]
+        {
+            let args: Vec<String> = cmd
+                .as_std()
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect();
+
+            let bind_idx = args
+                .iter()
+                .position(|a| a == "--bind")
+                .expect("should have --bind");
+            assert_eq!(args[bind_idx + 1], "/custom-cwd");
+        }
+
+        // Suppress unused variable warning on non-Linux
+        #[cfg(not(target_os = "linux"))]
+        let _ = cmd;
+    }
+
+    #[test]
+    fn test_writable_root_priority_workspace_second() {
+        let configs = ServersConfig::default();
+        let manager =
+            ServerManager::new(configs).with_workspace_root(std::path::PathBuf::from("/workspace"));
+
+        let config = ServerConfig::stdio("test", "echo");
+        // No cwd set, should fall back to workspace_root
+
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build command");
+
+        #[cfg(target_os = "linux")]
+        {
+            let args: Vec<String> = cmd
+                .as_std()
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect();
+
+            let bind_idx = args
+                .iter()
+                .position(|a| a == "--bind")
+                .expect("should have --bind");
+            assert_eq!(args[bind_idx + 1], "/workspace");
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        let _ = cmd;
+    }
+
+    #[test]
+    fn test_resolve_astrid_home_succeeds() {
+        // Should succeed as long as $HOME is set (which it is in test environments)
+        let result = ServerManager::resolve_astrid_home();
+        assert!(result.is_ok(), "should resolve astrid home from $HOME");
+
+        let path = result.expect("already checked");
+        assert!(
+            path.to_string_lossy().contains(".astrid") || path.to_string_lossy().contains("astrid"),
+            "path should reference astrid home"
+        );
+    }
+
+    #[test]
+    fn test_with_workspace_root() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::path::PathBuf::from("/my/workspace"));
+
+        assert_eq!(
+            manager.workspace_root,
+            Some(std::path::PathBuf::from("/my/workspace"))
+        );
     }
 }

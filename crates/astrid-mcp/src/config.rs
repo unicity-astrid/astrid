@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+fn default_true() -> bool {
+    true
+}
+
 use crate::error::{McpError, McpResult};
 
 /// Transport type for MCP servers.
@@ -79,8 +83,28 @@ pub struct ServerConfig {
     /// Description for users.
     pub description: Option<String>,
     /// Whether this server is trusted (runs natively vs WASM sandbox).
+    ///
+    /// When `false` (default), the server process is wrapped in an OS-level
+    /// sandbox (bwrap on Linux, sandbox-exec on macOS) that restricts
+    /// filesystem and optionally network access.
     #[serde(default)]
     pub trusted: bool,
+    /// Whether to allow network access when sandboxed.
+    ///
+    /// Only relevant when `trusted` is `false`. Default: `true` because
+    /// MCP servers commonly need network access (npm packages, API calls).
+    #[serde(default = "default_true")]
+    pub allow_network: bool,
+    /// Additional paths the server can read (beyond OS defaults).
+    ///
+    /// Only relevant when `trusted` is `false`.
+    #[serde(default)]
+    pub allowed_read_paths: Vec<PathBuf>,
+    /// Additional paths the server can write to (beyond its workspace root).
+    ///
+    /// Only relevant when `trusted` is `false`.
+    #[serde(default)]
+    pub allowed_write_paths: Vec<PathBuf>,
     /// Restart policy when the server process dies.
     #[serde(default)]
     pub restart_policy: RestartPolicy,
@@ -102,6 +126,9 @@ impl ServerConfig {
             auto_start: false,
             description: None,
             trusted: false,
+            allow_network: true,
+            allowed_read_paths: Vec::new(),
+            allowed_write_paths: Vec::new(),
             restart_policy: RestartPolicy::Never,
         }
     }
@@ -121,6 +148,9 @@ impl ServerConfig {
             auto_start: false,
             description: None,
             trusted: false,
+            allow_network: true,
+            allowed_read_paths: Vec::new(),
+            allowed_write_paths: Vec::new(),
             restart_policy: RestartPolicy::Never,
         }
     }
@@ -171,6 +201,27 @@ impl ServerConfig {
     #[must_use]
     pub fn with_restart_policy(mut self, policy: RestartPolicy) -> Self {
         self.restart_policy = policy;
+        self
+    }
+
+    /// Set whether network access is allowed when sandboxed.
+    #[must_use]
+    pub fn with_network(mut self, allow: bool) -> Self {
+        self.allow_network = allow;
+        self
+    }
+
+    /// Add an additional readable path for sandboxed execution.
+    #[must_use]
+    pub fn with_read_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.allowed_read_paths.push(path.into());
+        self
+    }
+
+    /// Add an additional writable path for sandboxed execution.
+    #[must_use]
+    pub fn with_write_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.allowed_write_paths.push(path.into());
         self
     }
 
@@ -376,6 +427,60 @@ args = ["-y", "@anthropics/mcp-server-memory"]
         let auto_start = config.auto_start_servers();
         assert_eq!(auto_start.len(), 1);
         assert_eq!(auto_start[0].name, "server1");
+    }
+
+    #[test]
+    fn test_sandbox_config_defaults() {
+        let config = ServerConfig::stdio("test", "cmd");
+        assert!(config.allow_network, "allow_network should default to true");
+        assert!(config.allowed_read_paths.is_empty());
+        assert!(config.allowed_write_paths.is_empty());
+        assert!(!config.trusted);
+    }
+
+    #[test]
+    fn test_sandbox_fields_parse_from_toml() {
+        let toml = r#"
+[servers.sandboxed]
+command = "npx"
+args = ["-y", "@anthropics/mcp-server-filesystem", "/tmp"]
+allow_network = false
+allowed_read_paths = ["/data/shared"]
+allowed_write_paths = ["/data/output"]
+
+[servers.minimal]
+command = "echo"
+"#;
+
+        let config: ServersConfig = toml::from_str(toml).unwrap();
+        let sandboxed = &config.servers["sandboxed"];
+        assert!(!sandboxed.allow_network);
+        assert_eq!(
+            sandboxed.allowed_read_paths,
+            vec![PathBuf::from("/data/shared")]
+        );
+        assert_eq!(
+            sandboxed.allowed_write_paths,
+            vec![PathBuf::from("/data/output")]
+        );
+
+        // Minimal config should have defaults
+        let minimal = &config.servers["minimal"];
+        assert!(minimal.allow_network);
+        assert!(minimal.allowed_read_paths.is_empty());
+        assert!(minimal.allowed_write_paths.is_empty());
+    }
+
+    #[test]
+    fn test_sandbox_builder_methods() {
+        let config = ServerConfig::stdio("test", "cmd")
+            .with_network(false)
+            .with_read_path("/data")
+            .with_write_path("/output");
+
+        assert!(!config.allow_network);
+        assert_eq!(config.allowed_read_paths, vec![PathBuf::from("/data")]);
+        assert_eq!(config.allowed_write_paths, vec![PathBuf::from("/output")]);
     }
 
     #[test]
