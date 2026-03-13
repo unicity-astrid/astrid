@@ -280,10 +280,10 @@ const MAX_SERVER_NAME_LEN: usize = 128;
 pub fn validate_server_name(name: &str) -> McpResult<()> {
     // Truncate the displayed name in error messages to prevent log poisoning
     // from attacker-controlled input.
-    let display_name = if name.len() > 40 {
-        format!("{}...", &name[..name.floor_char_boundary(40)])
+    let display_name: std::borrow::Cow<'_, str> = if name.len() > 40 {
+        std::borrow::Cow::Owned(format!("{}...", &name[..name.floor_char_boundary(40)]))
     } else {
-        name.to_string()
+        std::borrow::Cow::Borrowed(name)
     };
 
     if name.is_empty() {
