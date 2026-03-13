@@ -8,7 +8,7 @@ use super::meta::{InstalledCapsule, scan_installed_capsules};
 use crate::theme::Theme;
 
 // ---------------------------------------------------------------------------
-// Graph data types (testable core) - zero-alloc borrowed strings
+// Graph data types (testable core) - borrowed string slices
 // ---------------------------------------------------------------------------
 
 /// A single satisfied requirement edge.
@@ -47,7 +47,7 @@ struct Unsatisfied<'a> {
 /// the requirement via [`capability_matches`]. Returns the per-capsule deps
 /// and any requirements that no installed capsule satisfies.
 ///
-/// All strings are borrowed from the input slice - zero allocations.
+/// All string data is borrowed from the input slice to avoid string allocations.
 fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps<'_>>, Vec<Unsatisfied<'_>>) {
     let mut all_deps = Vec::new();
     let mut unsatisfied = Vec::new();
