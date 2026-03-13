@@ -308,6 +308,10 @@ pub(crate) fn astrid_net_write_impl(
     };
 
     use tokio::io::AsyncWriteExt;
+    // Cancel safety: write_all is not cancel-safe, so cancellation mid-write
+    // may leave a partial frame on the socket. This is acceptable because the
+    // capsule is unloading - the socket will be closed by Drop on
+    // active_streams and the client will see a hard EOF / connection reset.
     let result =
         util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
             let mut stream = stream_arc.lock().await;
