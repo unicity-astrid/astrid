@@ -40,15 +40,21 @@ fn check_allowance(store: &AllowanceStore, resource: &str) -> bool {
     store.find_matching(&action, None).is_some()
 }
 
-/// Strip glob metacharacters from a guest-supplied action string.
+/// Escape glob metacharacters in a guest-supplied action string.
 ///
 /// Without this, a malicious capsule could set `action = "*"` to produce
-/// the pattern `"* *"`, which matches any two-token command.
-fn sanitize_action_for_glob(action: &str) -> String {
-    action
-        .chars()
-        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.' | '/'))
-        .collect()
+/// the pattern `"* *"`, which matches any two-token command. Escaping
+/// preserves legitimate characters like `@` (npm scoped packages) while
+/// neutralising glob wildcards.
+fn escape_glob_metacharacters(action: &str) -> String {
+    let mut escaped = String::with_capacity(action.len());
+    for c in action.chars() {
+        if matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
 }
 
 /// Create a session-scoped allowance from an approval decision.
@@ -69,7 +75,7 @@ fn create_allowance_from_decision(store: &AllowanceStore, action: &str, decision
         _ => return,
     };
 
-    let sanitized = sanitize_action_for_glob(action);
+    let sanitized = escape_glob_metacharacters(action);
     let pattern = AllowancePattern::CommandPattern {
         command: format!("{sanitized} *"),
     };
@@ -377,23 +383,30 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_strips_glob_metacharacters() {
-        assert_eq!(sanitize_action_for_glob("git push"), "git push");
-        assert_eq!(sanitize_action_for_glob("*"), "");
-        assert_eq!(sanitize_action_for_glob("git *"), "git ");
-        assert_eq!(sanitize_action_for_glob("git[status]"), "gitstatus");
-        assert_eq!(sanitize_action_for_glob("cmd?"), "cmd");
-        assert_eq!(sanitize_action_for_glob("my-tool_v2.0"), "my-tool_v2.0");
+    fn escape_glob_metacharacters_preserves_normal_chars() {
+        assert_eq!(escape_glob_metacharacters("git push"), "git push");
+        assert_eq!(
+            escape_glob_metacharacters("npm install @types/react"),
+            "npm install @types/react"
+        );
+        assert_eq!(escape_glob_metacharacters("my-tool_v2.0"), "my-tool_v2.0");
+    }
+
+    #[test]
+    fn escape_glob_metacharacters_escapes_wildcards() {
+        assert_eq!(escape_glob_metacharacters("*"), "\\*");
+        assert_eq!(escape_glob_metacharacters("git *"), "git \\*");
+        assert_eq!(escape_glob_metacharacters("git[status]"), "git\\[status\\]");
+        assert_eq!(escape_glob_metacharacters("cmd?"), "cmd\\?");
     }
 
     #[test]
     fn create_allowance_with_wildcard_in_action_is_not_overly_broad() {
         let store = AllowanceStore::new();
         // A malicious capsule sends action = "*" hoping to get pattern "* *"
+        // After escaping, pattern becomes "\* *" which won't match normal commands.
         create_allowance_from_decision(&store, "*", "approve_session");
         assert_eq!(store.count(), 1);
-        // The sanitized pattern is " *" (empty prefix + wildcard), which
-        // should NOT match normal commands
         assert!(!check_allowance(&store, "git push origin main"));
     }
 
