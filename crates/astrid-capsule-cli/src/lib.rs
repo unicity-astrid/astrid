@@ -27,15 +27,15 @@ pub fn run() -> FnResult<()> {
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = sys::signal_ready();
+    let _ = runtime::signal_ready();
 
     // 2. Resolve the socket path from the kernel-injected config.
     // bind_unix is a no-op on the host side (the kernel pre-binds the socket),
     // but the path is used for logging and future diagnostics.
-    let path = sys::socket_path()
+    let path = runtime::socket_path()
         .map_err(|e| extism_pdk::Error::msg(format!("Failed to resolve socket path: {e}")))?;
 
-    let _ = sys::log(
+    let _ = log::log(
         "info",
         format!("CLI Proxy: accepting connections on {path}"),
     );
@@ -50,12 +50,12 @@ pub fn run() -> FnResult<()> {
         let stream = match accept(&listener) {
             Ok(s) => s,
             Err(e) => {
-                let _ = sys::log("warn", format!("Accept error: {e:?}, backing off"));
+                let _ = log::log("warn", format!("Accept error: {e:?}, backing off"));
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 continue;
             },
         };
-        let _ = sys::log("info", "CLI client connected to proxy");
+        let _ = log::log("info", "CLI client connected to proxy");
 
         // Inner loop to read messages from the client
         'inner: loop {
@@ -76,13 +76,13 @@ pub fn run() -> FnResult<()> {
                                 // CLI-originated topics.
                                 if is_allowed_ingress_topic(topic) {
                                     if let Err(e) = ipc::publish_json(topic, payload) {
-                                        let _ = sys::log(
+                                        let _ = log::log(
                                             "error",
                                             format!("Failed to publish IPC: {:?}", e),
                                         );
                                     }
                                 } else {
-                                    let _ = sys::log(
+                                    let _ = log::log(
                                         "warn",
                                         format!(
                                             "Dropped ingress message to blocked topic: {topic}"
@@ -91,12 +91,12 @@ pub fn run() -> FnResult<()> {
                                 }
                             }
                         } else {
-                            let _ = sys::log("warn", "Received malformed IPC payload from socket");
+                            let _ = log::log("warn", "Received malformed IPC payload from socket");
                         }
                     }
                 },
                 Err(e) => {
-                    let _ = sys::log("error", format!("Socket read error: {:?}", e));
+                    let _ = log::log("error", format!("Socket read error: {:?}", e));
                     break;
                 },
             }
@@ -130,7 +130,7 @@ fn forward_poll_messages(
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
         Err(_) => {
-            let _ = sys::log("warn", "Failed to parse poll envelope");
+            let _ = log::log("warn", "Failed to parse poll envelope");
             return Ok(());
         },
     };
@@ -140,7 +140,7 @@ fn forward_poll_messages(
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Event bus dropped {dropped} messages — TUI may be stale"),
         );
@@ -157,7 +157,7 @@ fn forward_poll_messages(
             Err(_) => continue,
         };
         if let Err(e) = write(stream, &msg_bytes) {
-            let _ = sys::log("error", format!("Socket write error: {e:?}"));
+            let _ = log::log("error", format!("Socket write error: {e:?}"));
             return Err(());
         }
     }

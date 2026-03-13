@@ -238,7 +238,7 @@ impl TestCapsule {
         let profile = args.profile.unwrap_or_else(|| "chat".to_string());
 
         let uplink_id_bytes = uplink::register(&name, &platform, &profile)?;
-        let uplink_id = String::from_utf8_lossy(&uplink_id_bytes).to_string();
+        let uplink_id = String::from_utf8_lossy(uplink_id_bytes.as_bytes()).to_string();
 
         let result = serde_json::json!({
             "registered": true,
@@ -270,7 +270,7 @@ impl TestCapsule {
             serde_json::from_str(&send_result).unwrap_or(serde_json::json!({"raw": send_result}));
 
         let result = serde_json::json!({
-            "uplink_id": String::from_utf8_lossy(&uplink_id_bytes).to_string(),
+            "uplink_id": String::from_utf8_lossy(uplink_id_bytes.as_bytes()).to_string(),
             "send_result": send_parsed,
             "user_id": user_id,
             "message": message
@@ -296,7 +296,7 @@ impl TestCapsule {
         let result = serde_json::json!({
             "topic": topic,
             "payload": payload,
-            "subscription_handle": String::from_utf8_lossy(&handle_bytes).to_string(),
+            "subscription_handle": String::from_utf8_lossy(handle_bytes.as_bytes()).to_string(),
             "unsubscribed": true
         });
 

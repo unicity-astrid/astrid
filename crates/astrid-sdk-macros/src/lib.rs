@@ -46,6 +46,7 @@ fn capsule_impl(
     let mut schema_arms = Vec::new();
     let mut install_method: Option<syn::Ident> = None;
     let mut upgrade_method: Option<syn::Ident> = None;
+    let mut run_method: Option<syn::Ident> = None;
 
     for item in &mut input.items {
         if let ImplItem::Fn(method) = item {
@@ -85,12 +86,14 @@ fn capsule_impl(
                 let attr_name = &attr.path().segments[1].ident;
 
                 // ---------------------------------------------------------------
-                // Lifecycle hooks: install / upgrade
+                // Lifecycle hooks: install / upgrade / run
                 // ---------------------------------------------------------------
-                if (attr_name == "install" || attr_name == "upgrade") && is_mutable {
+                if (attr_name == "install" || attr_name == "upgrade" || attr_name == "run")
+                    && is_mutable
+                {
                     return syn::Error::new_spanned(
                         attr,
-                        "#[astrid::mutable] cannot be used on lifecycle hooks",
+                        "#[astrid::mutable] cannot be used on lifecycle hooks or #[astrid::run]",
                     )
                     .into_compile_error();
                 }
@@ -140,6 +143,26 @@ fn capsule_impl(
                         .into_compile_error();
                     }
                     upgrade_method = Some(method_name.clone());
+                    continue;
+                }
+
+                if attr_name == "run" {
+                    if run_method.is_some() {
+                        return syn::Error::new_spanned(
+                            attr,
+                            "only one #[astrid::run] method is allowed per capsule",
+                        )
+                        .into_compile_error();
+                    }
+                    // Validate: no extra typed args (only &self)
+                    if arg_type.is_some() {
+                        return syn::Error::new_spanned(
+                            &method.sig,
+                            "#[astrid::run] must have signature: fn(&self) -> Result<(), SysError>",
+                        )
+                        .into_compile_error();
+                    }
+                    run_method = Some(method_name.clone());
                     continue;
                 }
 
@@ -332,8 +355,7 @@ fn capsule_impl(
                 let mut instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
                     Ok(state) => state,
                     Err(e @ ::astrid_sdk::SysError::JsonError(_)) => {
-                        let _ = ::astrid_sdk::prelude::sys::log(
-                            "warn",
+                        let _ = ::astrid_sdk::log::warn(
                             &format!("failed to deserialize state, falling back to default: {}", e),
                         );
                         Default::default()
@@ -367,6 +389,53 @@ fn capsule_impl(
                     let ok = ::serde_json::to_vec(&::serde_json::json!({"ok": true}))
                         .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
                     Ok(ok)
+                }
+                let input = ::extism_pdk::unwrap!(::extism_pdk::input());
+                let output = match inner(input) {
+                    core::result::Result::Ok(x) => x,
+                    core::result::Result::Err(rc) => {
+                        let err = format!("{:?}", rc.0);
+                        if let Ok(mut mem) = ::extism_pdk::Memory::from_bytes(&err) {
+                            unsafe { ::extism_pdk::extism::error_set(mem.offset()); }
+                        }
+                        return rc.1;
+                    }
+                };
+                ::extism_pdk::unwrap!(::extism_pdk::output(&output));
+                0
+            }
+        }
+    });
+
+    // Generate the run-loop export (like #[plugin_fn] pub fn run() but inside
+    // the capsule impl block). For stateful capsules, state is loaded at start
+    // but NOT auto-saved - run loops are long-lived and manage their own
+    // persistence. For stateless capsules, delegates to the static instance.
+    let run_export = run_method.map(|method_name| {
+        let body = if is_stateful {
+            quote! {
+                let instance: #struct_name = match ::astrid_sdk::prelude::kv::get_json("__state") {
+                    Ok(state) => state,
+                    Err(::astrid_sdk::SysError::JsonError(_)) => Default::default(),
+                    Err(e) => return Err(::extism_pdk::Error::msg(format!("failed to load state: {}", e))),
+                };
+                instance.#method_name()
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        } else {
+            quote! {
+                get_instance().#method_name()
+                    .map_err(|e| ::extism_pdk::Error::msg(e.to_string()))?;
+            }
+        };
+        quote! {
+            /// WASM ABI: Long-lived run loop for event-driven capsules.
+            /// Generated by `#[astrid::run]` - replaces the old `#[plugin_fn] pub fn run()` pattern.
+            #[unsafe(no_mangle)]
+            pub extern "C" fn run() -> i32 {
+                fn inner(_input: Vec<u8>) -> ::extism_pdk::FnResult<Vec<u8>> {
+                    #body
+                    Ok(vec![])
                 }
                 let input = ::extism_pdk::unwrap!(::extism_pdk::input());
                 let output = match inner(input) {
@@ -545,6 +614,7 @@ fn capsule_impl(
 
         #install_export
         #upgrade_export
+        #run_export
     };
 
     expanded
@@ -1060,5 +1130,175 @@ mod tests {
             output.contains("json ! (true)"),
             "write_file should have json!(true), got:\n{output}"
         );
+    }
+
+    // ---------------------------------------------------------------
+    // #[astrid::run] tests
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn run_generates_export() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("fn run"),
+            "Expected run export, got:\n{output}"
+        );
+        // Should NOT generate lifecycle exports
+        assert!(
+            !output.contains("astrid_install"),
+            "Should not generate astrid_install without #[astrid::install]"
+        );
+    }
+
+    #[test]
+    fn run_stateless_uses_get_instance() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("get_instance"),
+            "Stateless run should use get_instance(), got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn run_stateful_loads_state() {
+        let attr = quote::quote! { state };
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("get_json"),
+            "Stateful run should load state via get_json, got:\n{output}"
+        );
+        // Run loops are infinite - should NOT auto-save state
+        // Count occurrences of set_json - there should be none in the run export
+        let run_pos = output.find("fn run").expect("run export missing");
+        let after_run = &output[run_pos..];
+        assert!(
+            !after_run.contains("set_json"),
+            "Stateful run should NOT auto-save state (run loops are infinite), got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn duplicate_run_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+                #[astrid::run]
+                fn run2(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Duplicate #[astrid::run] should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn run_with_args_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::run]
+                fn run(&self, args: RunArgs) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Run with args should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn mutable_on_run_is_compile_error() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::mutable]
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("compile_error"),
+            "Mutable on run should produce compile_error, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn run_with_tools_and_install() {
+        let attr = quote::quote! {};
+        let input = quote::quote! {
+            impl MyCapsule {
+                #[astrid::tool("search")]
+                fn search(&self, args: SearchArgs) -> Result<SearchResult, Error> {
+                    todo!()
+                }
+
+                #[astrid::install]
+                fn install(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+
+                #[astrid::run]
+                fn run(&self) -> Result<(), SysError> {
+                    todo!()
+                }
+            }
+        };
+
+        let output = capsule_impl(attr, input).to_string();
+        assert!(
+            output.contains("astrid_tool_call"),
+            "Should generate tool dispatch"
+        );
+        assert!(
+            output.contains("astrid_install"),
+            "Should generate install export"
+        );
+        assert!(output.contains("fn run"), "Should generate run export");
     }
 }
