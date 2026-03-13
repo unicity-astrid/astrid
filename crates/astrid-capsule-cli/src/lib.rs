@@ -1,7 +1,7 @@
 use astrid_sdk::net::{accept, bind_unix, read, write};
 use astrid_sdk::prelude::*;
 
-use extism_pdk::FnResult;
+use extism_pdk::{FnResult, plugin_fn};
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {

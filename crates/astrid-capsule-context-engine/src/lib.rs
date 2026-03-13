@@ -32,7 +32,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use astrid_sdk::prelude::*;
-use extism_pdk::FnResult;
+use extism_pdk::{plugin_fn, FnResult};
 use serde::{Deserialize, Serialize};
 
 // ── IPC payload types ───────────────────────────────────────────────
@@ -149,12 +149,12 @@ struct Config {
 
 impl Config {
     fn load() -> Self {
-        let hook_timeout_ms = sys::get_config_string("hook_timeout_ms")
+        let hook_timeout_ms = env::var("hook_timeout_ms")
             .ok()
             .and_then(|s| s.trim().trim_matches('"').parse::<u64>().ok())
             .unwrap_or(DEFAULT_HOOK_POLL_TIMEOUT_MS);
 
-        let keep_recent = sys::get_config_string("keep_recent")
+        let keep_recent = env::var("keep_recent")
             .ok()
             .and_then(|s| s.trim().trim_matches('"').parse::<usize>().ok())
             .unwrap_or(DEFAULT_KEEP_RECENT);
@@ -184,10 +184,10 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    let _ = sys::log("info", "Context Engine capsule starting");
+    let _ = log::log("info", "Context Engine capsule starting");
 
     let config = Config::load();
-    let _ = sys::log(
+    let _ = log::log(
         "info",
         format!(
             "Hook timeout: {}ms, keep_recent: {}",
@@ -206,9 +206,9 @@ pub fn run() -> FnResult<()> {
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = sys::signal_ready();
+    let _ = runtime::signal_ready();
 
-    let _ = sys::log("info", "Context Engine capsule ready");
+    let _ = log::log("info", "Context Engine capsule ready");
 
     loop {
         // Block until a message arrives (up to 60s), eliminating busy-spin polling.
@@ -248,7 +248,7 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("failed to deserialize IPC poll envelope: {e}"),
             );
@@ -259,7 +259,7 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Event bus dropped {dropped} messages in context engine poll"),
         );
@@ -311,7 +311,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
     let request: CompactRequest = match serde_json::from_value(payload.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let _ = sys::log("error", format!("Failed to parse compact request: {e}"));
+            let _ = log::log("error", format!("Failed to parse compact request: {e}"));
             let _ = ipc::publish_json(
                 "context_engine.v1.response.compact",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
@@ -331,7 +331,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
 
     // If any plugin says skip, return messages unchanged.
     if merged.skip {
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Compaction skipped by plugin for session {}", request.session_id),
         );
@@ -378,7 +378,7 @@ fn handle_compact(payload: &serde_json::Value, config: &Config) {
     };
     let _ = ipc::publish_json("context_engine.v1.response.compact", &response);
 
-    let _ = sys::log(
+    let _ = log::log(
         "info",
         format!(
             "Compaction completed: session={}, removed={messages_removed}, \
@@ -395,7 +395,7 @@ fn handle_estimate_tokens(payload: &serde_json::Value) {
     let request: EstimateRequest = match serde_json::from_value(payload.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let _ = sys::log("error", format!("Failed to parse estimate_tokens request: {e}"));
+            let _ = log::log("error", format!("Failed to parse estimate_tokens request: {e}"));
             let _ = ipc::publish_json(
                 "context_engine.v1.response.estimate_tokens",
                 &serde_json::json!({"error": format!("invalid request: {e}")}),
@@ -445,7 +445,7 @@ fn fire_before_compaction(
     let sub = match ipc::subscribe(&response_topic) {
         Ok(h) => h,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to subscribe to hook response topic: {e}"),
             );
@@ -466,7 +466,7 @@ fn fire_before_compaction(
     };
 
     if let Err(e) = ipc::publish_json("context_engine.v1.hook.before_compaction", &payload) {
-        let _ = sys::log(
+        let _ = log::log(
             "error",
             format!("Failed to publish context_engine.v1.hook.before_compaction event: {e}"),
         );
@@ -504,7 +504,7 @@ fn fire_before_compaction(
     let _ = ipc::unsubscribe(&sub);
 
     if !responses.is_empty() {
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Collected {} context_engine.v1.hook.before_compaction responses", responses.len()),
         );
@@ -518,7 +518,7 @@ fn parse_hook_responses(poll_bytes: &[u8]) -> Option<Vec<BeforeCompactionHookRes
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("failed to deserialize compaction response envelope: {e}"),
             );

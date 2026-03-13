@@ -117,56 +117,6 @@ pub mod fs {
         unsafe { astrid_fs_unlink(path.as_ref().to_vec())? };
         Ok(())
     }
-
-    // Backward-compat aliases (deprecated, will be removed)
-
-    /// Deprecated: use [`read`] instead.
-    #[deprecated(note = "renamed to fs::read() to match std::fs")]
-    pub fn read_bytes(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        read(path)
-    }
-
-    /// Deprecated: use [`read_to_string`] instead.
-    #[deprecated(note = "renamed to fs::read_to_string() to match std::fs")]
-    pub fn read_string(path: impl AsRef<[u8]>) -> Result<String, SysError> {
-        read_to_string(path)
-    }
-
-    /// Deprecated: use [`write`] instead.
-    #[deprecated(note = "renamed to fs::write() to match std::fs")]
-    pub fn write_bytes(path: impl AsRef<[u8]>, content: &[u8]) -> Result<(), SysError> {
-        write(path, content)
-    }
-
-    /// Deprecated: use [`write`] instead (accepts any `AsRef<[u8]>` including `&str`).
-    #[deprecated(note = "use fs::write() instead, it accepts &str via AsRef<[u8]>")]
-    pub fn write_string(path: impl AsRef<[u8]>, content: &str) -> Result<(), SysError> {
-        write(path, content)
-    }
-
-    /// Deprecated: use [`create_dir`] instead.
-    #[deprecated(note = "renamed to fs::create_dir() to match std::fs")]
-    pub fn mkdir(path: impl AsRef<[u8]>) -> Result<(), SysError> {
-        create_dir(path)
-    }
-
-    /// Deprecated: use [`read_dir`] instead.
-    #[deprecated(note = "renamed to fs::read_dir() to match std::fs")]
-    pub fn readdir(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        read_dir(path)
-    }
-
-    /// Deprecated: use [`metadata`] instead.
-    #[deprecated(note = "renamed to fs::metadata() to match std::fs")]
-    pub fn stat(path: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        metadata(path)
-    }
-
-    /// Deprecated: use [`remove_file`] instead.
-    #[deprecated(note = "renamed to fs::remove_file() to match std::fs")]
-    pub fn unlink(path: impl AsRef<[u8]>) -> Result<(), SysError> {
-        remove_file(path)
-    }
 }
 
 /// Event bus messaging (like `std::sync::mpsc` but topic-based).
@@ -526,44 +476,6 @@ pub mod runtime {
     }
 }
 
-/// Backward-compat facade. Delegates to [`env`], [`time`], [`log`], [`runtime`].
-///
-/// Deprecated: use the new purpose-specific modules directly.
-#[deprecated(note = "use env, time, log, and runtime modules instead")]
-pub mod sys {
-    use super::*;
-
-    pub const CONFIG_SOCKET_PATH: &str = crate::env::CONFIG_SOCKET_PATH;
-
-    pub fn log(level: impl AsRef<[u8]>, message: impl AsRef<[u8]>) -> Result<(), SysError> {
-        crate::log::log(level, message)
-    }
-
-    pub fn get_config_bytes(key: impl AsRef<[u8]>) -> Result<Vec<u8>, SysError> {
-        crate::env::var_bytes(key)
-    }
-
-    pub fn get_config_string(key: impl AsRef<[u8]>) -> Result<String, SysError> {
-        crate::env::var(key)
-    }
-
-    pub fn socket_path() -> Result<String, SysError> {
-        crate::runtime::socket_path()
-    }
-
-    pub fn signal_ready() -> Result<(), SysError> {
-        crate::runtime::signal_ready()
-    }
-
-    pub fn get_caller() -> Result<crate::types::CallerContext, SysError> {
-        crate::runtime::caller()
-    }
-
-    pub fn clock_ms() -> Result<u64, SysError> {
-        crate::time::now_ms()
-    }
-}
-
 /// The Hooks Airlock — Executing User Middleware
 pub mod hooks {
     use super::*;
@@ -784,7 +696,6 @@ pub mod elicit {
 }
 
 pub mod prelude {
-    #[allow(deprecated)]
     pub use crate::{
         SysError,
         // Astrid-specific modules
@@ -801,16 +712,9 @@ pub mod prelude {
         net,
         process,
         runtime,
-        // Backward compat (deprecated)
-        sys,
         time,
         uplink,
     };
-
-    // Kept for backward compat with existing `#[plugin_fn] pub fn run()`.
-    // New code should use `#[astrid::run]` inside the capsule impl block.
-    #[doc(hidden)]
-    pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]
     pub use astrid_sdk_macros::capsule;

@@ -100,7 +100,7 @@ fn lookup_session_by_call(call_id: &str) -> Option<String> {
 fn delete_request_session(request_id: &Uuid) {
     let key = format!("{REQUEST_SESSION_PREFIX}.{request_id}");
     if let Err(e) = kv::delete(&key) {
-        let _ = sys::log("warn", format!("Failed to delete req2sess key '{key}': {e}"));
+        let _ = log::log("warn", format!("Failed to delete req2sess key '{key}': {e}"));
     }
 }
 
@@ -109,7 +109,7 @@ fn delete_call_sessions(call_ids: &[String]) {
     for call_id in call_ids {
         let key = format!("{CALL_SESSION_PREFIX}.{call_id}");
         if let Err(e) = kv::delete(&key) {
-            let _ = sys::log("warn", format!("Failed to delete call2sess key '{key}': {e}"));
+            let _ = log::log("warn", format!("Failed to delete call2sess key '{key}': {e}"));
         }
     }
 }
@@ -117,7 +117,7 @@ fn delete_call_sessions(call_ids: &[String]) {
 /// Load the set of active session IDs from KV.
 fn load_active_sessions() -> Vec<String> {
     kv::get_json::<Vec<String>>(ACTIVE_SESSIONS_KEY).unwrap_or_else(|e| {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Failed to load active sessions from KV, defaulting to empty: {e}"),
         );
@@ -131,7 +131,7 @@ fn register_active_session(session_id: &str) {
     if !sessions.iter().any(|s| s == session_id) {
         sessions.push(session_id.to_string());
         if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to register active session '{session_id}': {e}"),
             );
@@ -151,16 +151,16 @@ fn clear_ephemeral_keys() {
     ] {
         match kv::clear_prefix(prefix) {
             Ok(n) if n > 0 => {
-                let _ = sys::log("info", format!("Cleared {n} ephemeral keys with prefix '{prefix}'"));
+                let _ = log::log("info", format!("Cleared {n} ephemeral keys with prefix '{prefix}'"));
             },
             Err(e) => {
-                let _ = sys::log("warn", format!("Failed to clear ephemeral keys '{prefix}': {e}"));
+                let _ = log::log("warn", format!("Failed to clear ephemeral keys '{prefix}': {e}"));
             },
             _ => {},
         }
     }
     if let Err(e) = kv::delete(ACTIVE_SESSIONS_KEY) {
-        let _ = sys::log("warn", format!("Failed to clear active sessions key: {e}"));
+        let _ = log::log("warn", format!("Failed to clear active sessions key: {e}"));
     }
 }
 
@@ -170,7 +170,7 @@ fn unregister_active_session(session_id: &str) {
     if let Some(pos) = sessions.iter().position(|s| s == session_id) {
         sessions.swap_remove(pos);
         if let Err(e) = kv::set_json(ACTIVE_SESSIONS_KEY, &sessions) {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to unregister active session '{session_id}': {e}"),
             );
@@ -180,11 +180,11 @@ fn unregister_active_session(session_id: &str) {
 
 /// Read a `u64` config value from capsule config, with warning on parse failure.
 fn get_config_u64(key: &str, default: u64) -> u64 {
-    match sys::get_config_string(key) {
+    match env::var(key) {
         Ok(s) => match s.trim().trim_matches('"').parse::<u64>() {
             Ok(v) => v,
             Err(e) => {
-                let _ = sys::log(
+                let _ = log::log(
                     "warn",
                     format!("Invalid config for '{key}': \"{s}\", using default {default}. Error: {e}"),
                 );
@@ -316,7 +316,7 @@ impl TurnState {
     fn load(session_id: &str) -> Self {
         let key = turn_key(session_id);
         let mut state = kv::get_json::<Self>(&key).unwrap_or_else(|e| {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Failed to load turn state, resetting: {e}"),
             );
@@ -324,7 +324,7 @@ impl TurnState {
         });
 
         if !matches!(state.schema_version, 0 | 1) {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!(
                     "TurnState has unknown schema version {}, resetting to default",
@@ -369,7 +369,7 @@ impl TurnState {
     /// from the active sessions set so the watchdog stops checking it.
     fn set_phase(&mut self, phase: Phase) {
         self.phase = phase;
-        self.phase_entered_at_ms = sys::clock_ms().unwrap_or(0);
+        self.phase_entered_at_ms = time::now_ms().unwrap_or(0);
         if phase == Phase::Idle {
             unregister_active_session(&self.session_id);
         }
@@ -384,9 +384,9 @@ impl TurnState {
         if self.phase == Phase::Idle {
             return Ok(false);
         }
-        let now = sys::clock_ms().unwrap_or(0);
+        let now = time::now_ms().unwrap_or(0);
         if now == 0 || self.phase_entered_at_ms == 0 {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 "clock_ms unavailable or phase timestamp missing - phase timeouts disabled for this check",
             );
@@ -406,7 +406,7 @@ impl TurnState {
 
         if elapsed_secs >= timeout {
             let phase_name = format!("{:?}", self.phase);
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("Phase {phase_name} timed out after {elapsed_secs}s"),
             );
@@ -442,7 +442,7 @@ impl ReactLoop {
     /// sessions) to prevent stale state from a previous incarnation.
     #[astrid::interceptor("handle_lifecycle_restart")]
     pub fn handle_lifecycle_restart(&self, _payload: serde_json::Value) -> Result<(), SysError> {
-        let _ = sys::log("info", "Lifecycle restart: clearing ephemeral keys");
+        let _ = log::log("info", "Lifecycle restart: clearing ephemeral keys");
         clear_ephemeral_keys();
         Ok(())
     }
@@ -534,7 +534,7 @@ impl ReactLoop {
         // Delete the old session's turn state - the session is done.
         let old_key = turn_key(old_session_id);
         if let Err(e) = kv::delete(&old_key) {
-            let _ = sys::log("warn", format!("Failed to delete old turn state key '{old_key}': {e}"));
+            let _ = log::log("warn", format!("Failed to delete old turn state key '{old_key}': {e}"));
         }
         unregister_active_session(old_session_id);
 
@@ -544,7 +544,7 @@ impl ReactLoop {
         let key = turn_key(&new_session_id);
         kv::set_json(&key, &new_state)?;
 
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!(
                 "Session cleared: '{old_session_id}' -> '{new_session_id}'"
@@ -572,7 +572,7 @@ impl ReactLoop {
         for session_id in load_active_sessions() {
             let mut state = TurnState::load(&session_id);
             if let Err(e) = Self::check_timeout_with_cleanup(&mut state) {
-                let _ = sys::log(
+                let _ = log::log(
                     "error",
                     format!("Watchdog timeout check failed for session '{session_id}': {e}"),
                 );
@@ -594,7 +594,7 @@ impl ReactLoop {
         for session_id in load_active_sessions() {
             let state = TurnState::load(&session_id);
             if state.phase == Phase::AwaitingTools {
-                let _ = sys::log(
+                let _ = log::log(
                     "warn",
                     format!(
                         "Event bus lagged while session '{session_id}' awaits tool results - watchdog will recover if results were lost"
@@ -635,7 +635,7 @@ impl ReactLoop {
         // Warn when using the default session ID - may indicate an
         // unpatched frontend that doesn't send session_id yet.
         if session_id == DEFAULT_SESSION_ID {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 "UserInput using default session_id - frontend may not be sending session_id",
             );
@@ -669,7 +669,7 @@ impl ReactLoop {
         ipc::publish_json(
             "identity.v1.request.build",
             &serde_json::json!({
-                "workspace_root": sys::get_config_string("workspace_root").unwrap_or_default(),
+                "workspace_root": env::var("workspace_root").unwrap_or_default(),
                 "session_id": state.session_id,
             }),
         )?;
@@ -720,7 +720,7 @@ impl ReactLoop {
         state.save()?;
 
         let model =
-            sys::get_config_string("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
+            env::var("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
 
         // Derive the active provider from the registry's LLM topic.
         let llm_topic = Self::active_llm_topic();
@@ -862,7 +862,7 @@ impl ReactLoop {
                 return Self::handle_stream_done(&mut state);
             },
             StreamEvent::Error(err) => {
-                let _ = sys::log("error", format!("LLM stream error: {err}"));
+                let _ = log::log("error", format!("LLM stream error: {err}"));
                 let _ = ipc::publish_json(
                     "agent.v1.response",
                     &IpcPayload::AgentResponse {
@@ -920,7 +920,7 @@ impl ReactLoop {
         // Verify turn_request_id matches to reject stale results from a previous turn.
         if let Some(tc) = state.dispatched_tools.iter_mut().find(|t| t.id == call_id) {
             if !tc.turn_request_id.is_nil() && tc.turn_request_id != state.request_id {
-                let _ = sys::log(
+                let _ = log::log(
                     "warn",
                     format!(
                         "Dropping stale tool result for {}: turn_request_id mismatch",
@@ -954,7 +954,7 @@ impl ReactLoop {
         let call_ids: Vec<String> = state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
 
         if state.iteration_count >= max_iterations {
-            let _ = sys::log(
+            let _ = log::log(
                 "error",
                 format!("ReAct loop exceeded {max_iterations} iterations, forcing stop"),
             );
@@ -1023,7 +1023,7 @@ impl ReactLoop {
         if let IpcPayload::Custom { data } = payload {
             if let Some(topic) = data.get("request_topic").and_then(|t| t.as_str()) {
                 if !topic.starts_with("llm.v1.request.generate.") {
-                    let _ = sys::log(
+                    let _ = log::log(
                         "warn",
                         format!("Rejected model change with invalid topic: {topic}"),
                     );
@@ -1032,7 +1032,7 @@ impl ReactLoop {
                 kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
             }
         } else {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 "handle_model_changed: unexpected payload type, ignoring",
             );
@@ -1083,7 +1083,7 @@ impl ReactLoop {
                 let arguments: serde_json::Value = match serde_json::from_str(&tc.args_json) {
                     Ok(args) => args,
                     Err(e) => {
-                        let _ = sys::log(
+                        let _ = log::log(
                             "warn",
                             format!(
                                 "Failed to parse tool arguments for {}: {e}. Defaulting to empty object.",
@@ -1127,7 +1127,7 @@ impl ReactLoop {
                         arguments: tc.arguments.clone(),
                     },
                 ) {
-                    let _ = sys::log(
+                    let _ = log::log(
                         "error",
                         format!("Failed to dispatch tool {}: {e}", tc.name),
                     );
@@ -1198,7 +1198,7 @@ impl ReactLoop {
         if state.phase == Phase::Idle {
             return Ok(());
         }
-        let _ = sys::log("info", format!("Cancelling turn for session {session_id}"));
+        let _ = log::log("info", format!("Cancelling turn for session {session_id}"));
         Self::cleanup_inflight_mappings(&state);
         state.reset_conversation_turn();
         state.set_phase(Phase::Idle);
@@ -1208,7 +1208,7 @@ impl ReactLoop {
     /// Publish an LLM generation request to the provider capsule.
     fn publish_llm_request(state: &TurnState, messages: &[Message]) -> Result<(), SysError> {
         let model =
-            sys::get_config_string("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
+            env::var("model").unwrap_or_else(|_| "claude-sonnet-4-20250514".into());
 
         let tools = Self::load_tool_schemas();
         let llm_topic = Self::active_llm_topic();
@@ -1331,7 +1331,7 @@ impl ReactLoop {
                 let data = match msg.get("payload").and_then(|p| p.get("data")) {
                     Some(d) => d,
                     None => {
-                        let _ = sys::log(
+                        let _ = log::log(
                             "debug",
                             "Skipping IPC message with no payload.data (not Custom type)",
                         );
@@ -1380,7 +1380,7 @@ impl ReactLoop {
             .and_then(|b| String::from_utf8(b).ok())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| {
-                sys::get_config_string("llm_provider_topic")
+                env::var("llm_provider_topic")
                     .unwrap_or_else(|_| "llm.v1.request.generate.anthropic".into())
             })
     }

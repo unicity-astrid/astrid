@@ -54,8 +54,8 @@ impl FsTools {
     #[astrid::tool("read_file")]
     pub fn read_file(&self, args: ReadFileArgs) -> Result<String, SysError> {
         // Use the VFS Airlock to read the file
-        // Note: SDK does not currently have read_string with lines, we can just use read_string and parse lines manually for now.
-        let content = fs::read_string(&args.file_path)?;
+        // Note: SDK does not currently have read_to_string with lines, we can just use read_to_string and parse lines manually for now.
+        let content = fs::read_to_string(&args.file_path)?;
 
         let lines: Vec<&str> = content.lines().collect();
         let start = args.start_line.unwrap_or(1).saturating_sub(1);
@@ -71,13 +71,13 @@ impl FsTools {
 
     #[astrid::tool("write_file")]
     pub fn write_file(&self, args: WriteFileArgs) -> Result<String, SysError> {
-        fs::write_string(&args.file_path, &args.content)?;
+        fs::write(&args.file_path, &args.content)?;
         Ok(format!("Successfully wrote to {}", args.file_path))
     }
 
     #[astrid::tool("replace_in_file")]
     pub fn replace_in_file(&self, args: ReplaceInFileArgs) -> Result<String, SysError> {
-        let content = fs::read_string(&args.file_path)?;
+        let content = fs::read_to_string(&args.file_path)?;
 
         let count = content.matches(&args.old_string).count();
         if count == 0 {
@@ -88,14 +88,14 @@ impl FsTools {
         }
 
         let new_content = content.replace(&args.old_string, &args.new_string);
-        fs::write_string(&args.file_path, &new_content)?;
+        fs::write(&args.file_path, &new_content)?;
 
         Ok(format!("Successfully replaced text in {}", args.file_path))
     }
 
     #[astrid::tool("list_directory")]
     pub fn list_directory(&self, args: ListDirectoryArgs) -> Result<String, SysError> {
-        let bytes = fs::readdir(&args.dir_path)?;
+        let bytes = fs::read_dir(&args.dir_path)?;
         // Currently assuming it returns JSON array of entries. Let's just return raw string for now
         // if we haven't typed it in SDK.
         let result = String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))?;
@@ -145,10 +145,10 @@ fn walk_and_grep(
         return;
     }
 
-    let entries_bytes = match fs::readdir(dir) {
+    let entries_bytes = match fs::read_dir(dir) {
         Ok(b) => b,
         Err(e) => {
-            let _ = sys::log("debug", &format!("failed to read directory '{dir}': {e}"));
+            let _ = log::log("debug", &format!("failed to read directory '{dir}': {e}"));
             return;
         }
     };
@@ -156,7 +156,7 @@ fn walk_and_grep(
     let entry_names: Vec<String> = match serde_json::from_slice(&entries_bytes) {
         Ok(v) => v,
         Err(e) => {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 &format!("failed to parse directory entries for '{dir}': {e}"),
             );
@@ -174,10 +174,10 @@ fn walk_and_grep(
             .to_string_lossy()
             .into_owned();
 
-        let stat_bytes = match fs::stat(&path) {
+        let stat_bytes = match fs::metadata(&path) {
             Ok(b) => b,
             Err(e) => {
-                let _ = sys::log("debug", &format!("failed to stat path '{path}': {e}"));
+                let _ = log::log("debug", &format!("failed to stat path '{path}': {e}"));
                 continue;
             }
         };
@@ -199,10 +199,10 @@ fn walk_and_grep(
 /// Searches a single file for lines containing `pattern`, appending
 /// `path:line_number:content` to `matches`.
 fn grep_file(path: &str, pattern: &str, matches: &mut Vec<String>) {
-    let content = match fs::read_string(path) {
+    let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            let _ = sys::log("debug", &format!("skipping unreadable file '{path}': {e}"));
+            let _ = log::log("debug", &format!("skipping unreadable file '{path}': {e}"));
             return;
         }
     };

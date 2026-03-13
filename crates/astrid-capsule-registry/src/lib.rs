@@ -26,7 +26,7 @@ use astrid_events::kernel_api::{
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 use astrid_sdk::prelude::*;
-use extism_pdk::FnResult;
+use extism_pdk::{plugin_fn, FnResult};
 use serde::{Deserialize, Serialize};
 
 /// A resolved LLM provider with its IPC routing topics.
@@ -146,7 +146,7 @@ fn parse_metadata_response(poll_bytes: &[u8]) -> Vec<ProviderEntry> {
         // Verify the message came from the kernel router (system session)
         let source = msg.get("source_id").and_then(|s| s.as_str()).unwrap_or("");
         if source != SYSTEM_SESSION_UUID {
-            let _ = sys::log(
+            let _ = log::log(
                 "warn",
                 format!("Ignoring metadata response from untrusted source: {source}"),
             );
@@ -222,7 +222,7 @@ fn handle_get_providers() {
         state.providers = providers;
         save_state(&state);
     } else if state.providers.is_empty() {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             "Provider discovery returned empty and no cached providers exist",
         );
@@ -299,7 +299,7 @@ fn clear_stale_active_model(state: &mut RegistryState) {
     if let Some(ref id) = state.active_model_id
         && !state.providers.iter().any(|p| &p.id == id)
     {
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Active model '{id}' no longer available after reload, clearing"),
         );
@@ -315,7 +315,7 @@ fn auto_select_if_single(state: &mut RegistryState) {
         state.active_model_id = Some(provider.id.clone());
         save_state(state);
         publish_model_changed(&provider);
-        let _ = sys::log(
+        let _ = log::log(
             "info",
             format!("Auto-selected sole LLM provider: {}", provider.id),
         );
@@ -324,7 +324,7 @@ fn auto_select_if_single(state: &mut RegistryState) {
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    let _ = sys::log("info", "Registry capsule starting");
+    let _ = log::log("info", "Registry capsule starting");
 
     let sub = ipc::subscribe("registry.v1.*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
 
@@ -338,7 +338,7 @@ pub fn run() -> FnResult<()> {
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = sys::signal_ready();
+    let _ = runtime::signal_ready();
 
     // Single subscription for kernel.capsules_loaded — used for both initial
     // readiness wait AND reload re-discovery in the event loop. Avoids the
@@ -356,7 +356,7 @@ pub fn run() -> FnResult<()> {
     }
 
     if !capsules_ready {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             "Timed out waiting for astrid.v1.capsules_loaded — proceeding with discovery anyway",
         );
@@ -369,7 +369,7 @@ pub fn run() -> FnResult<()> {
         state.providers = providers;
         save_state(&state);
     } else if state.providers.is_empty() {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             "Initial provider discovery returned empty and no cached providers exist",
         );
@@ -409,7 +409,7 @@ pub fn run() -> FnResult<()> {
             && !bytes.is_empty()
             && is_from_kernel(&bytes)
         {
-            let _ = sys::log("info", "Capsules reloaded — re-discovering providers");
+            let _ = log::log("info", "Capsules reloaded — re-discovering providers");
             let providers = discover_providers();
             let mut state = load_state();
             if !providers.is_empty() {
@@ -439,7 +439,7 @@ fn handle_poll_envelope(poll_bytes: &[u8]) {
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
-        let _ = sys::log(
+        let _ = log::log(
             "warn",
             format!("Event bus dropped {dropped} messages in registry poll"),
         );
@@ -576,7 +576,7 @@ fn emit_model_selection() {
     }
 
     if state.providers.is_empty() {
-        let _ = sys::log("warn", "No LLM providers found for /models selection");
+        let _ = log::log("warn", "No LLM providers found for /models selection");
         return;
     }
 
