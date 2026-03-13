@@ -304,6 +304,14 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
+        WasmHostFunction::GetInterceptorHandles => {
+            crate::engine::wasm::host::ipc::astrid_get_interceptor_handles_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

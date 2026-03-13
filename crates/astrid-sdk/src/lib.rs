@@ -582,8 +582,82 @@ pub mod elicit {
     }
 }
 
+/// Auto-subscribed interceptor bindings for run-loop capsules.
+///
+/// When a capsule declares both `run()` and `[[interceptor]]`, the runtime
+/// auto-subscribes to each interceptor's topic and delivers events through
+/// the IPC channel the run loop already reads from. This module provides
+/// helpers to query the subscription mappings and dispatch events by action.
+pub mod interceptors {
+    use super::*;
+
+    /// A single interceptor subscription binding.
+    #[derive(Debug, serde::Deserialize)]
+    pub struct InterceptorBinding {
+        /// The IPC subscription handle ID (as bytes for use with `ipc::poll_bytes`/`ipc::recv_bytes`).
+        pub handle_id: u64,
+        /// The interceptor action name from the manifest.
+        pub action: String,
+        /// The event topic this interceptor subscribes to.
+        pub topic: String,
+    }
+
+    impl InterceptorBinding {
+        /// Return the handle ID as a string (for passing to `ipc::poll_bytes` / `ipc::recv_bytes`).
+        #[must_use]
+        pub fn handle_bytes(&self) -> Vec<u8> {
+            self.handle_id.to_string().into_bytes()
+        }
+    }
+
+    /// Query the runtime for auto-subscribed interceptor handles.
+    ///
+    /// Returns an empty vec if this capsule has no auto-subscribed interceptors
+    /// (i.e. it does not have both `run()` and `[[interceptor]]`).
+    pub fn bindings() -> Result<Vec<InterceptorBinding>, SysError> {
+        // SAFETY: FFI call to Extism host function. The host serializes
+        // `HostState.interceptor_handles` to JSON and returns valid UTF-8 bytes.
+        // Errors are propagated via the `?` operator.
+        let bytes = unsafe { astrid_get_interceptor_handles()? };
+        let bindings: Vec<InterceptorBinding> = serde_json::from_slice(&bytes)?;
+        Ok(bindings)
+    }
+
+    /// Poll all interceptor subscriptions and dispatch pending events.
+    ///
+    /// For each binding with pending messages, calls
+    /// `handler(action, envelope_bytes)` once with the full batch envelope
+    /// (JSON with `messages` array, `dropped`, and `lagged` fields).
+    /// Bindings with no pending messages are skipped.
+    pub fn poll(
+        bindings: &[InterceptorBinding],
+        mut handler: impl FnMut(&str, &[u8]),
+    ) -> Result<(), SysError> {
+        #[derive(serde::Deserialize)]
+        struct PollEnvelope {
+            messages: Vec<serde_json::Value>,
+        }
+
+        for binding in bindings {
+            let handle = binding.handle_bytes();
+            let envelope = ipc::poll_bytes(&handle)?;
+
+            // poll_bytes always returns a JSON envelope like
+            // `{"messages":[],"dropped":0,"lagged":0}`. Check the
+            // messages array before calling the handler.
+            let parsed: PollEnvelope = serde_json::from_slice(&envelope)?;
+            if !parsed.messages.is_empty() {
+                handler(&binding.action, &envelope);
+            }
+        }
+        Ok(())
+    }
+}
+
 pub mod prelude {
-    pub use crate::{SysError, cron, elicit, fs, hooks, http, ipc, kv, process, sys, uplink};
+    pub use crate::{
+        SysError, cron, elicit, fs, hooks, http, interceptors, ipc, kv, process, sys, uplink,
+    };
     pub use extism_pdk::plugin_fn;
 
     #[cfg(feature = "derive")]

@@ -53,6 +53,9 @@ const BLOCKED_SPAWN_ENV: &[&str] = &[
     "HTTPS_PROXY",
     "ALL_PROXY",
     "NO_PROXY",
+    // Socket access (prevents child processes from connecting to the daemon)
+    "ASTRID_SOCKET_PATH",
+    "ASTRID_SESSION_TOKEN",
 ];
 
 /// Prefixes that are blocked entirely (case-insensitive).
@@ -114,6 +117,8 @@ mod tests {
         assert!(is_blocked_spawn_env("_JAVA_OPTIONS"));
         assert!(is_blocked_spawn_env("JDK_JAVA_OPTIONS"));
         assert!(is_blocked_spawn_env("DYLD_FRAMEWORK_PATH"));
+        assert!(is_blocked_spawn_env("ASTRID_SOCKET_PATH"));
+        assert!(is_blocked_spawn_env("ASTRID_SESSION_TOKEN"));
     }
 
     #[test]

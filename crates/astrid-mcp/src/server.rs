@@ -93,6 +93,11 @@ fn build_unsandboxed_command(
         cmd.env(key, value);
     }
 
+    // Prevent leaking runtime-internal vars to child processes.
+    cmd.env_remove("ASTRID_SOCKET_PATH");
+    cmd.env_remove("ASTRID_SESSION_TOKEN");
+    cmd.env_remove("ASTRID_HOME");
+
     if let Some(cwd) = &config.cwd {
         cmd.current_dir(cwd);
     }

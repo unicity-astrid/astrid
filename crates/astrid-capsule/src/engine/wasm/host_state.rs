@@ -28,6 +28,21 @@ pub enum LifecyclePhase {
     Upgrade,
 }
 
+/// A pre-registered interceptor subscription for run-loop capsules.
+///
+/// Created during `WasmEngine::load()` when a capsule declares both
+/// `run()` and `[[interceptor]]`. Maps a subscription handle ID (stored
+/// in `HostState.subscriptions`) to the interceptor action name and topic.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InterceptorHandle {
+    /// The subscription handle ID (key in `HostState.subscriptions`).
+    pub handle_id: u64,
+    /// The interceptor action name from the manifest.
+    pub action: String,
+    /// The event topic this interceptor subscribes to.
+    pub topic: String,
+}
+
 use crate::security::CapsuleSecurityGate;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
@@ -127,6 +142,15 @@ pub struct HostState {
     /// Triggered during capsule unload to unblock `ipc_recv`, `elicit`, and
     /// `net_accept`/`net_read` host functions that may be waiting on I/O.
     pub cancel_token: CancellationToken,
+    /// Session token for authenticating CLI socket connections. Only set for
+    /// the CLI proxy capsule (which has `net_bind` capability).
+    pub session_token: Option<std::sync::Arc<astrid_core::session_token::SessionToken>>,
+    /// Pre-registered interceptor subscription handles for run-loop capsules.
+    ///
+    /// Populated during `WasmEngine::load()` when a capsule declares both
+    /// `run()` and `[[interceptor]]`. Each entry maps a subscription handle
+    /// (in `self.subscriptions`) to the interceptor action name.
+    pub interceptor_handles: Vec<InterceptorHandle>,
 }
 
 impl HostState {
@@ -247,6 +271,8 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
         };
 
         let debug = format!("{state:?}");
@@ -304,6 +330,8 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
         };
 
         assert!(state.uplinks().is_empty());
@@ -366,6 +394,8 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
         };
 
         assert!(state.inbound_tx.is_none());
@@ -424,6 +454,8 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -498,6 +530,8 @@ mod tests {
             ready_tx: None,
             host_semaphore: Arc::new(Semaphore::new(2)),
             cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

@@ -43,7 +43,7 @@ impl std::error::Error for CycleError {}
 /// - `topic:llm.stream.*` matches `topic:llm.stream.anthropic`
 /// - `topic:foo` does NOT match `tool:foo` (type prefix mismatch)
 /// - `topic:a.b` does NOT match `topic:a.b.c` (segment count mismatch)
-pub(crate) fn capability_matches(requirement: &str, provided: &str) -> bool {
+pub fn capability_matches(requirement: &str, provided: &str) -> bool {
     let (req_type, req_body) = requirement.split_once(':').unwrap_or(("", requirement));
     let (prov_type, prov_body) = provided.split_once(':').unwrap_or(("", provided));
     if req_type != prov_type {

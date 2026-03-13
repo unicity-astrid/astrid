@@ -29,12 +29,17 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+wasmparser = { workspace = true }
 async-trait = { workspace = true }
 astrid-workspace.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
 
 [dev-dependencies]
 astrid-audit = { workspace = true }
 astrid-crypto = { workspace = true }
+wasm-encoder = { workspace = true }
 # Enable test-support feature for tests (merges with the [dependencies] entry)
 astrid-mcp = { workspace = true, features = ["test-support"] }
 

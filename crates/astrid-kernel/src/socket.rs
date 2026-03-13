@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+
+use astrid_core::session_token::SessionToken;
 use tokio::net::UnixListener;
 use tracing::warn;
 
@@ -35,7 +37,48 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
                 parent.display()
             ))
         })?;
+
+        // Enforce 0o700 on the sessions directory. AstridHome::ensure() does
+        // this at boot, but if the directory was just created by create_dir_all
+        // it inherits the process umask (commonly 0o755, making the socket
+        // listable by other users).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+        }
     }
 
     UnixListener::bind(&path)
+}
+
+/// Generate a random session token and write it to the token file.
+///
+/// Returns both the token and the path it was written to. The caller should
+/// store the path so that the exact same path is used for cleanup at shutdown
+/// (avoids fallback mismatch if the env changes between boot and shutdown).
+///
+/// The token is written with 0o600 permissions so only the owning user
+/// can read it. The CLI reads this token at connect time and sends it
+/// as part of the handshake.
+///
+/// # Errors
+/// Returns an error if `ASTRID_HOME` cannot be resolved or the token file
+/// cannot be written. Unlike socket/CLI paths, there is no `/tmp` fallback
+/// because writing a secret token under a world-listable directory would
+/// undermine the authentication it provides.
+pub(crate) fn generate_session_token() -> Result<(SessionToken, PathBuf), std::io::Error> {
+    use astrid_core::dirs::AstridHome;
+
+    let token = SessionToken::generate();
+
+    let home = AstridHome::resolve().map_err(|e| {
+        std::io::Error::other(format!(
+            "Cannot generate session token: failed to resolve ASTRID_HOME: {e}"
+        ))
+    })?;
+
+    let path = home.token_path();
+    token.write_to_file(&path)?;
+    Ok((token, path))
 }

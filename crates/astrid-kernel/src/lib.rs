@@ -64,6 +64,12 @@ pub struct Kernel {
     pub audit_log: Arc<AuditLog>,
     /// Number of active client connections (CLI sessions).
     pub active_connections: AtomicUsize,
+    /// Session token for socket authentication. Generated at boot, written to
+    /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
+    pub session_token: Arc<astrid_core::session_token::SessionToken>,
+    /// Path where the session token was written at boot. Stored so shutdown
+    /// uses the exact same path (avoids fallback mismatch if env changes).
+    token_path: PathBuf,
 }
 
 impl Kernel {
@@ -147,8 +153,12 @@ impl Kernel {
         // 5. Wrap in copy-on-write OverlayVfs
         let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
 
-        // 6. Bind the secure Unix socket natively
+        // 6. Bind the secure Unix socket and generate session token.
+        // The socket is bound here, but not yet listened on. The token is
+        // generated before any capsule can accept connections, preventing
+        // a race where a client connects before the token file exists.
         let listener = socket::bind_session_socket()?;
+        let (session_token, token_path) = socket::generate_session_token()?;
 
         let kv_path = home.state_db_path();
         let kv = Arc::new(
@@ -172,6 +182,8 @@ impl Kernel {
             kv,
             audit_log,
             active_connections: AtomicUsize::new(0),
+            session_token: Arc::new(session_token),
+            token_path,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -234,7 +246,8 @@ impl Kernel {
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
         )
-        .with_registry(Arc::clone(&self.capsules));
+        .with_registry(Arc::clone(&self.capsules))
+        .with_session_token(Arc::clone(&self.session_token));
 
         capsule.load(&ctx).await?;
 
@@ -522,13 +535,15 @@ impl Kernel {
             tracing::warn!(error = %e, "Failed to flush KV store during shutdown");
         }
 
-        // 4. Remove the socket file so stale-socket detection works on next boot.
+        // 4. Remove the socket and token files so stale-socket detection works
+        // on next boot and the auth token doesn't persist on disk after shutdown.
         // This runs AFTER capsule unload, which is the correct order: MCP child
         // processes communicate via stdio pipes (not this Unix socket), so they
         // are already terminated by step 2. The socket is only used for
         // CLI-to-kernel IPC.
         let socket_path = crate::socket::kernel_socket_path();
         let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_file(&self.token_path);
 
         tracing::info!("Kernel shutdown complete");
     }

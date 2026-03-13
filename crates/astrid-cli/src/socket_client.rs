@@ -1,4 +1,7 @@
 use astrid_core::SessionId;
+use astrid_core::session_token::{
+    HandshakeRequest, HandshakeResponse, PROTOCOL_VERSION, SessionToken,
+};
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use astrid_events::{AstridEvent, EventMetadata};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,6 +23,18 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
     }
 }
 
+/// Path to the session authentication token file.
+///
+/// # Errors
+/// Returns an error if `ASTRID_HOME` cannot be resolved. No `/tmp` fallback
+/// is used because the server explicitly refuses to write tokens there.
+fn token_path() -> anyhow::Result<std::path::PathBuf> {
+    use astrid_core::dirs::AstridHome;
+    let home = AstridHome::resolve()
+        .map_err(|e| anyhow::anyhow!("Failed to resolve ASTRID_HOME for token path: {e}"))?;
+    Ok(home.token_path())
+}
+
 /// A client connection to the Kernel's Unix Domain Socket.
 pub struct SocketClient {
     read_half: tokio::net::unix::OwnedReadHalf,
@@ -31,8 +46,14 @@ pub struct SocketClient {
 impl SocketClient {
     /// Attempt to connect to an existing session socket.
     ///
+    /// Performs the authentication handshake: reads the session token from
+    /// disk and sends a `HandshakeRequest` with the token and protocol
+    /// version. The daemon validates the token and responds with a
+    /// `HandshakeResponse`.
+    ///
     /// # Errors
-    /// Returns an error if the socket file does not exist or connection fails.
+    /// Returns an error if the socket file does not exist, connection fails,
+    /// or the handshake is rejected.
     pub async fn connect(session_id: SessionId) -> Result<Self> {
         let path = proxy_socket_path();
 
@@ -40,9 +61,13 @@ impl SocketClient {
             anyhow::bail!("Global OS Socket not found at {}", path.display());
         }
 
-        let stream = UnixStream::connect(&path)
+        let mut stream = UnixStream::connect(&path)
             .await
             .context("Failed to connect to IPC socket")?;
+
+        // Perform authenticated handshake before splitting the stream.
+        perform_handshake(&mut stream).await?;
+
         let (read_half, write_half) = stream.into_split();
 
         Ok(Self {
@@ -112,4 +137,75 @@ impl SocketClient {
         self.write_half.flush().await?;
         Ok(())
     }
+}
+
+/// Timeout for individual handshake read/write operations (client-side).
+/// Slightly longer than the server-side timeout to account for daemon load.
+const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Maximum allowed size of a handshake response payload (bytes).
+const MAX_HANDSHAKE_RESPONSE_SIZE: usize = 4096;
+
+/// Send the authentication handshake to the daemon and validate the response.
+async fn perform_handshake(stream: &mut UnixStream) -> Result<()> {
+    // Read the session token from disk (fresh on every connect, no caching).
+    let tok_path = token_path()?;
+    let token = SessionToken::read_from_file(&tok_path).with_context(|| {
+        format!(
+            "Failed to read session token from {}. Is the daemon running?",
+            tok_path.display()
+        )
+    })?;
+
+    let request = HandshakeRequest {
+        token: token.to_hex(),
+        protocol_version: PROTOCOL_VERSION,
+        client_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+
+    // Send as length-prefixed JSON (same wire format as IpcMessage).
+    // Write timeout prevents indefinite stall if the daemon stops reading.
+    let request_bytes =
+        serde_json::to_vec(&request).context("Failed to serialize handshake request")?;
+    let len = u32::try_from(request_bytes.len()).context("Handshake request too large")?;
+
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+        stream.write_all(&len.to_be_bytes()).await?;
+        stream.write_all(&request_bytes).await?;
+        stream.flush().await?;
+        Ok::<(), std::io::Error>(())
+    })
+    .await
+    .context("Handshake request write timed out")?
+    .context("Failed to send handshake request")?;
+
+    // Read the response.
+    let mut len_buf = [0u8; 4];
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut len_buf))
+        .await
+        .context("Handshake response timed out")?
+        .context("Failed to read handshake response length")?;
+
+    let resp_len = u32::from_be_bytes(len_buf) as usize;
+    if resp_len > MAX_HANDSHAKE_RESPONSE_SIZE {
+        anyhow::bail!("Handshake response too large: {resp_len} bytes");
+    }
+
+    let mut resp_payload = vec![0u8; resp_len];
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.read_exact(&mut resp_payload))
+        .await
+        .context("Handshake response payload timed out")?
+        .context("Failed to read handshake response payload")?;
+
+    let response: HandshakeResponse =
+        serde_json::from_slice(&resp_payload).context("Failed to parse handshake response")?;
+
+    if !response.is_ok() {
+        let reason = response
+            .reason
+            .unwrap_or_else(|| "unknown error".to_string());
+        anyhow::bail!("Daemon rejected connection: {reason}");
+    }
+
+    Ok(())
 }

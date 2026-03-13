@@ -25,6 +25,7 @@ uuid = { workspace = true }
 
 # Cryptography
 rand = { workspace = true }
+subtle = { workspace = true }
 
 # Encoding
 base64 = { workspace = true }

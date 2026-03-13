@@ -5,10 +5,10 @@ use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, bail};
-use serde::{Deserialize, Serialize};
-
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
+
+use super::meta::{CapsuleMeta, read_meta, write_meta};
 
 /// Result of checking a remote source for a newer capsule version.
 enum UpdateCheck {
@@ -573,43 +573,6 @@ fn unpack_and_install(
     }
 
     install_from_local_path_inner(unpack_dir, workspace, home, original_source)
-}
-
-/// Capsule installation metadata, persisted as `meta.json` alongside `Capsule.toml`.
-#[derive(Debug, Serialize, Deserialize)]
-struct CapsuleMeta {
-    /// The currently installed version.
-    version: String,
-    /// When the capsule was first installed.
-    installed_at: String,
-    /// When the capsule was last updated.
-    updated_at: String,
-    /// The original install source (local path, GitHub URL, openclaw: prefix, etc.).
-    /// Used by `astrid capsule update` to re-fetch from the same source.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    source: Option<String>,
-    /// Resolved capabilities this capsule provides (baked from `effective_provides()`
-    /// at install time so registries and tooling can read them without running Rust).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    provides: Vec<String>,
-    /// Capabilities this capsule requires from other capsules.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    requires: Vec<String>,
-}
-
-/// Read existing `meta.json` from a capsule's install directory (if present).
-fn read_meta(target_dir: &Path) -> Option<CapsuleMeta> {
-    let meta_path = target_dir.join("meta.json");
-    let data = std::fs::read_to_string(&meta_path).ok()?;
-    serde_json::from_str(&data).ok()
-}
-
-/// Write `meta.json` to the capsule's install directory.
-fn write_meta(target_dir: &Path, meta: &CapsuleMeta) -> anyhow::Result<()> {
-    let meta_path = target_dir.join("meta.json");
-    let json = serde_json::to_string_pretty(meta).context("failed to serialize meta.json")?;
-    std::fs::write(&meta_path, json)
-        .with_context(|| format!("failed to write {}", meta_path.display()))
 }
 
 pub(crate) fn install_from_local_path(

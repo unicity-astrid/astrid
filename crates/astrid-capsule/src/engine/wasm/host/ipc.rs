@@ -614,6 +614,32 @@ mod tests {
     }
 }
 
+/// Return the pre-registered interceptor handle mappings for run-loop capsules.
+///
+/// Called by the WASM guest at startup to discover which IPC subscription
+/// handles correspond to interceptor actions. Returns a JSON array of
+/// `InterceptorHandle` objects, or an empty array if no interceptors are
+/// auto-subscribed.
+#[expect(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_get_interceptor_handles_impl(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    let json = serde_json::to_string(&state.interceptor_handles)
+        .map_err(|e| Error::msg(format!("failed to serialize interceptor handles: {e}")))?;
+
+    let mem = plugin.memory_new(&json)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
 #[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_ipc_unsubscribe_impl(
     plugin: &mut CurrentPlugin,
