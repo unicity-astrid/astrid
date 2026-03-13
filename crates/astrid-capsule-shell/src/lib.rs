@@ -107,6 +107,130 @@ fn get_safe_depth(tokens: &[&str]) -> usize {
     0
 }
 
+/// System-critical paths that must never be targets of destructive commands
+/// from an AI agent. Relative paths and workspace-local paths are fine.
+const PROTECTED_PATHS: &[&str] = &[
+    "/",
+    "/*",
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/var",
+    "/boot",
+    "/lib",
+    "/lib64",
+    "/opt",
+    "/root",
+    "/home",
+    "/proc",
+    "/sys",
+    "/dev",
+    // macOS
+    "/System",
+    "/Library",
+    "/Applications",
+    "/Users",
+];
+
+/// Commands that are unconditionally blocked regardless of arguments.
+const BLOCKED_COMMANDS: &[&str] = &[
+    "mkfs",
+    "mkfs.ext4",
+    "mkfs.xfs",
+    "mkfs.btrfs",
+    "mkfs.vfat",
+    "shutdown",
+    "reboot",
+    "halt",
+    "poweroff",
+    "init",
+];
+
+/// Check if a command is catastrophic and should be hard-denied before
+/// reaching the approval prompt.
+///
+/// Returns `Some(reason)` if the command is blocked, `None` if safe to proceed.
+fn check_catastrophic(command: &str) -> Option<&'static str> {
+    let tokens: Vec<&str> = command.split_whitespace().collect();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let program = tokens[0];
+
+    // Unconditionally blocked commands
+    if BLOCKED_COMMANDS.contains(&program) {
+        return Some(
+            "This command is blocked for safety. It can cause irreversible system damage.",
+        );
+    }
+
+    // Fork bomb patterns
+    if command.contains(":(){ :|:&") || command.contains(":(){:|:&") {
+        return Some("Fork bombs are blocked.");
+    }
+
+    // dd targeting block devices
+    if program == "dd" && tokens.iter().any(|t| t.starts_with("of=/dev/")) {
+        return Some("Writing directly to block devices via dd is blocked.");
+    }
+
+    // chmod/chown -R on system paths
+    if matches!(program, "chmod" | "chown")
+        && tokens.iter().any(|t| *t == "-R" || t.starts_with("-R"))
+        && tokens.iter().any(|t| is_protected_path(t))
+    {
+        return Some("Recursive permission changes on system paths are blocked.");
+    }
+
+    // rm targeting protected paths (rm -rf /tmp/foo is fine, rm -rf / is not)
+    if program == "rm" {
+        for token in &tokens[1..] {
+            if token.starts_with('-') {
+                continue;
+            }
+            if is_protected_path(token) {
+                return Some(
+                    "Removing system-critical paths is blocked. \
+                     Workspace-relative and /tmp paths are allowed.",
+                );
+            }
+        }
+    }
+
+    None
+}
+
+/// Check if a path is a protected system path.
+///
+/// Matches exact paths and paths directly under protected roots.
+/// Does NOT block subdirectories of allowed workspace paths.
+fn is_protected_path(path: &str) -> bool {
+    // Exact match against protected paths
+    if PROTECTED_PATHS.contains(&path) {
+        return true;
+    }
+    // Home directory shortcuts
+    if path == "~" || path == "$HOME" || path == "${HOME}" {
+        return true;
+    }
+    // One level under protected roots: /usr/local is protected, /tmp/build is not
+    for root in PROTECTED_PATHS {
+        if *root == "/" || *root == "/*" {
+            continue;
+        }
+        if let Some(rest) = path.strip_prefix(root) {
+            // /usr -> blocked, /usr/ -> blocked, /usr/local -> blocked
+            // But /usrfoo -> not blocked (not a real subdirectory)
+            if rest.is_empty() || rest.starts_with('/') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Extract the approval action from a shell command string.
 ///
 /// Uses an exhaustive whitelist to determine how many subcommand tokens
@@ -165,6 +289,11 @@ impl ShellTools {
         let trimmed = args.command.trim();
         if trimmed.is_empty() {
             return Err(SysError::ApiError("Command cannot be empty".into()));
+        }
+
+        // Hard-deny catastrophic commands before they reach the approval prompt.
+        if let Some(reason) = check_catastrophic(trimmed) {
+            return Err(SysError::ApiError(format!("Command blocked: {reason}")));
         }
 
         let action = extract_action(trimmed);
@@ -296,5 +425,75 @@ mod tests {
     #[test]
     fn action_only_flags() {
         assert_eq!(extract_action("--help"), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // Catastrophic command blocking
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn catastrophic_rm_root() {
+        assert!(check_catastrophic("rm -rf /").is_some());
+        assert!(check_catastrophic("rm -rf /*").is_some());
+        assert!(check_catastrophic("rm /").is_some());
+    }
+
+    #[test]
+    fn catastrophic_rm_system_paths() {
+        assert!(check_catastrophic("rm -rf /etc").is_some());
+        assert!(check_catastrophic("rm -rf /usr").is_some());
+        assert!(check_catastrophic("rm -rf /usr/local").is_some());
+        assert!(check_catastrophic("rm -rf /home").is_some());
+        assert!(check_catastrophic("rm -rf ~").is_some());
+        assert!(check_catastrophic("rm -rf $HOME").is_some());
+    }
+
+    #[test]
+    fn catastrophic_rm_safe_paths_allowed() {
+        // Workspace-relative and /tmp paths are fine
+        assert!(check_catastrophic("rm -rf ./build").is_none());
+        assert!(check_catastrophic("rm -rf /tmp/build").is_none());
+        assert!(check_catastrophic("rm -rf target/debug").is_none());
+        assert!(check_catastrophic("rm foo.txt").is_none());
+    }
+
+    #[test]
+    fn catastrophic_blocked_commands() {
+        assert!(check_catastrophic("mkfs /dev/sda1").is_some());
+        assert!(check_catastrophic("mkfs.ext4 /dev/sda1").is_some());
+        assert!(check_catastrophic("shutdown -h now").is_some());
+        assert!(check_catastrophic("reboot").is_some());
+        assert!(check_catastrophic("halt").is_some());
+        assert!(check_catastrophic("init 0").is_some());
+    }
+
+    #[test]
+    fn catastrophic_dd_block_device() {
+        assert!(check_catastrophic("dd if=/dev/zero of=/dev/sda").is_some());
+        assert!(check_catastrophic("dd if=/dev/zero of=/dev/disk0").is_some());
+        // dd to a file is fine
+        assert!(check_catastrophic("dd if=/dev/zero of=./test.img bs=1M count=10").is_none());
+    }
+
+    #[test]
+    fn catastrophic_chmod_system() {
+        assert!(check_catastrophic("chmod -R 777 /").is_some());
+        assert!(check_catastrophic("chown -R root:root /usr").is_some());
+        // chmod on workspace files is fine
+        assert!(check_catastrophic("chmod -R 755 ./dist").is_none());
+        assert!(check_catastrophic("chmod 644 foo.txt").is_none());
+    }
+
+    #[test]
+    fn catastrophic_fork_bomb() {
+        assert!(check_catastrophic(":(){ :|:& };:").is_some());
+    }
+
+    #[test]
+    fn catastrophic_normal_commands_pass() {
+        assert!(check_catastrophic("git push origin main").is_none());
+        assert!(check_catastrophic("cargo build --release").is_none());
+        assert!(check_catastrophic("ls -la").is_none());
+        assert!(check_catastrophic("cat /etc/hosts").is_none());
     }
 }
