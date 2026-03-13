@@ -254,15 +254,26 @@ impl ExecutionEngine for WasmEngine {
             let user_data = UserData::new(host_state);
             let user_data_ref = user_data.clone();
 
+            // Pre-scan WASM exports to detect run() before plugin build.
+            // The Extism timeout must be set on the Manifest before build,
+            // but function_exists() requires a built plugin, so we parse
+            // the raw binary's export section instead.
+            //
+            // On parse failure, default to true (no timeout) - the safe
+            // direction. A truly corrupt binary will fail Extism build
+            // moments later anyway.
+            let has_run_export = wasm_exports_contain_run(&wasm_bytes);
+
             let extism_wasm = Wasm::data(wasm_bytes);
             let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
 
-            // Long-lived capsules (uplinks, cron, daemons) must not have a wall-clock
-            // timeout. Short-lived tool capsules get a 10-second safety timeout.
+            // Long-lived capsules (uplinks, cron, run-loop daemons) must not
+            // have a wall-clock timeout. Short-lived tool capsules get a
+            // 10-second safety timeout.
             let is_daemon = !manifest.uplinks.is_empty()
                 || !manifest.cron_jobs.is_empty()
                 || manifest.capabilities.uplink;
-            if !is_daemon {
+            if !is_daemon && !has_run_export {
                 extism_manifest = extism_manifest.with_timeout(std::time::Duration::from_secs(10));
             }
 
@@ -274,6 +285,10 @@ impl ExecutionEngine for WasmEngine {
             })?;
 
             let has_run = plugin.function_exists("run");
+            debug_assert_eq!(
+                has_run, has_run_export,
+                "pre-scan/post-build run() export mismatch"
+            );
 
             // Only allocate the watch channel for run-loop capsules.
             // UserData is Arc-based so the clone lets us inject the sender
@@ -576,6 +591,42 @@ pub fn run_lifecycle(
     Ok(())
 }
 
+/// Pre-scans a WASM binary's export section to check whether it exports a
+/// function named `run`. This is used to decide whether to apply the
+/// short-lived tool timeout *before* building the Extism plugin (which is
+/// the only point at which `function_exists` becomes available).
+///
+/// On any parse error, returns `true` (no timeout) - the safe direction.
+/// A truly corrupt binary will fail the subsequent Extism build anyway.
+fn wasm_exports_contain_run(wasm_bytes: &[u8]) -> bool {
+    for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
+        match payload {
+            Ok(wasmparser::Payload::ExportSection(reader)) => {
+                for export in reader {
+                    match export {
+                        Ok(e) if e.name == "run" && e.kind == wasmparser::ExternalKind::Func => {
+                            return true;
+                        },
+                        Ok(_) => {},
+                        Err(e) => {
+                            tracing::warn!("failed to parse WASM export entry: {e}");
+                            return true; // safe default: skip timeout
+                        },
+                    }
+                }
+                // Only one export section per module; no need to keep scanning.
+                return false;
+            },
+            Err(e) => {
+                tracing::warn!("failed to pre-scan WASM binary: {e}");
+                return true; // safe default: skip timeout
+            },
+            _ => {},
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,5 +872,126 @@ mod tests {
         });
         let status = wait_ready_from_rx(&rx_mutex, std::time::Duration::from_millis(500)).await;
         assert_eq!(status, crate::capsule::ReadyStatus::Ready);
+    }
+
+    // --- wasm_exports_contain_run pre-scan tests ---
+
+    /// Build a minimal valid WASM module with specified function exports.
+    fn build_wasm_module(export_names: &[&str]) -> Vec<u8> {
+        use wasm_encoder::{
+            CodeSection, ExportKind, ExportSection, Function, FunctionSection, Module, TypeSection,
+        };
+
+        let mut module = Module::new();
+
+        // Type section: one function type () -> ()
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+
+        // Function section: one function per export, all using type 0
+        let mut functions = FunctionSection::new();
+        for _ in export_names {
+            functions.function(0);
+        }
+        module.section(&functions);
+
+        // Export section
+        let mut exports = ExportSection::new();
+        for (i, name) in export_names.iter().enumerate() {
+            exports.export(*name, ExportKind::Func, i as u32);
+        }
+        module.section(&exports);
+
+        // Code section: one no-op body per function
+        let mut code = CodeSection::new();
+        for _ in export_names {
+            let mut f = Function::new(vec![]);
+            f.instruction(&wasm_encoder::Instruction::End);
+            code.function(&f);
+        }
+        module.section(&code);
+
+        module.finish()
+    }
+
+    #[test]
+    fn prescan_detects_run_export() {
+        let wasm = build_wasm_module(&["run"]);
+        assert!(wasm_exports_contain_run(&wasm), "should detect run export");
+    }
+
+    #[test]
+    fn prescan_returns_false_without_run() {
+        let wasm = build_wasm_module(&["tool_call", "install"]);
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "should not detect run when absent"
+        );
+    }
+
+    #[test]
+    fn prescan_detects_run_among_multiple_exports() {
+        let wasm = build_wasm_module(&["install", "run", "tool_call"]);
+        assert!(
+            wasm_exports_contain_run(&wasm),
+            "should detect run among multiple exports"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_false_for_empty_module() {
+        // Minimal valid WASM module with no exports
+        let wasm = build_wasm_module(&[]);
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "empty module should not have run"
+        );
+    }
+
+    #[test]
+    fn prescan_returns_true_for_corrupt_binary() {
+        // Corrupt/invalid bytes - should default to true (safe direction)
+        let garbage = b"not a wasm module at all";
+        assert!(
+            wasm_exports_contain_run(garbage),
+            "corrupt binary should default to true (safe: no timeout)"
+        );
+    }
+
+    #[test]
+    fn prescan_ignores_non_func_run_export() {
+        use wasm_encoder::{
+            ExportKind, ExportSection, GlobalSection, GlobalType, Module, TypeSection, ValType,
+        };
+
+        let mut module = Module::new();
+
+        let mut types = TypeSection::new();
+        types.ty().function(vec![], vec![]);
+        module.section(&types);
+
+        // Global section: one i32 global named "run"
+        let mut globals = GlobalSection::new();
+        globals.global(
+            GlobalType {
+                val_type: ValType::I32,
+                mutable: false,
+                shared: false,
+            },
+            &wasm_encoder::ConstExpr::i32_const(42),
+        );
+        module.section(&globals);
+
+        // Export "run" as a global, not a function
+        let mut exports = ExportSection::new();
+        exports.export("run", ExportKind::Global, 0);
+        module.section(&exports);
+
+        let wasm = module.finish();
+        assert!(
+            !wasm_exports_contain_run(&wasm),
+            "global named 'run' should not be detected as a function export"
+        );
     }
 }
