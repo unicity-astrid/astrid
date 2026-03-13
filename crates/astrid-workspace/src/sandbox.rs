@@ -1,5 +1,4 @@
 use std::ffi::OsString;
-use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -366,38 +365,40 @@ impl ProcessSandboxConfig {
         };
 
         // Build extra read path rules
-        let mut extra_read_rules = String::new();
-        for p in &self.extra_read_paths {
-            let s = validate_sandbox_str(p, "extra read path")?;
-            if !extra_read_rules.is_empty() {
-                extra_read_rules.push('\n');
-            }
-            let _ = write!(extra_read_rules, "    (subpath \"{s}\")");
-        }
+        let extra_read_rules: String = self
+            .extra_read_paths
+            .iter()
+            .map(|p| {
+                validate_sandbox_str(p, "extra read path").map(|s| format!("    (subpath \"{s}\")"))
+            })
+            .collect::<io::Result<Vec<_>>>()?
+            .join("\n");
 
         // Build extra write path rules
-        let mut extra_write_rules = String::new();
-        for p in &self.extra_write_paths {
-            let s = validate_sandbox_str(p, "extra write path")?;
-            if !extra_write_rules.is_empty() {
-                extra_write_rules.push('\n');
-            }
-            let _ = write!(extra_write_rules, "    (subpath \"{s}\")");
-        }
+        let extra_write_rules: String = self
+            .extra_write_paths
+            .iter()
+            .map(|p| {
+                validate_sandbox_str(p, "extra write path")
+                    .map(|s| format!("    (subpath \"{s}\")"))
+            })
+            .collect::<io::Result<Vec<_>>>()?
+            .join("\n");
 
         // Build deny rules for hidden paths (e.g. ~/.astrid/)
-        let mut hidden_deny_rules = String::new();
-        for p in &self.hidden_paths {
-            let s = validate_sandbox_str(p, "hidden path")?;
-            if !hidden_deny_rules.is_empty() {
-                hidden_deny_rules.push('\n');
-            }
-            let _ = write!(
-                hidden_deny_rules,
-                "(deny file-read* (subpath \"{s}\"))\n\
-                 (deny file-write* (subpath \"{s}\"))"
-            );
-        }
+        let hidden_deny_rules: String = self
+            .hidden_paths
+            .iter()
+            .map(|p| {
+                validate_sandbox_str(p, "hidden path").map(|s| {
+                    format!(
+                        "(deny file-read* (subpath \"{s}\"))\n\
+                         (deny file-write* (subpath \"{s}\"))"
+                    )
+                })
+            })
+            .collect::<io::Result<Vec<_>>>()?
+            .join("\n");
 
         let profile = format!(
             r#"(version 1)
