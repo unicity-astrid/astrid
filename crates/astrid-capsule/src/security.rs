@@ -415,6 +415,7 @@ mod tests {
                 host_process: vec![],
                 uplink: false,
                 ipc_publish: vec![],
+                ipc_subscribe: vec![],
             },
             env: Default::default(),
             context_files: vec![],

@@ -219,6 +219,7 @@ impl ExecutionEngine for WasmEngine {
                 next_subscription_id,
                 config: wasm_config,
                 ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
+                ipc_subscribe_patterns: manifest.capabilities.ipc_subscribe.clone(),
                 // Only provide the CLI socket listener if the capsule declares net_bind.
                 // This prevents unauthorized capsules from even seeing the listener.
                 cli_socket_listener: if manifest.capabilities.net_bind.is_empty() {
@@ -350,6 +351,10 @@ impl ExecutionEngine for WasmEngine {
                 let mut state = ud.lock().map_err(|e| {
                     CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
                 })?;
+                // Interceptors are auto-subscribed without check_subscribe_acl.
+                // Their event patterns are declared in [[interceptor]] blocks in
+                // Capsule.toml (operator-controlled, same trust level as ipc_subscribe).
+                // Only guest-initiated ipc::subscribe() calls are ACL-checked.
                 for interceptor in &manifest.interceptors {
                     let receiver = state.event_bus.subscribe_topic(&interceptor.event);
                     let handle_id = state.next_subscription_id;
@@ -579,6 +584,7 @@ pub fn run_lifecycle(
         next_subscription_id: 1,
         config: cfg.config,
         ipc_publish_patterns: Vec::new(),
+        ipc_subscribe_patterns: Vec::new(),
         security: None,
         hook_manager: None,
         capsule_registry: None,
