@@ -217,6 +217,11 @@ impl IpcPayload {
     /// [`Custom`](Self::Custom). Without this check, a `#[serde(other)]`
     /// catch-all variant (e.g. `Unknown`) would silently swallow unrecognised
     /// type tags before the `Custom` fallback path is reached.
+    ///
+    /// `"custom"` must remain in this list because the [`Custom`](Self::Custom)
+    /// variant has a required `data` field that serde unwraps from the outer
+    /// JSON object. Routing `"custom"` through the short-circuit path would
+    /// produce a different data layout than callers expect.
     #[must_use]
     pub fn is_known_tag(tag: &str) -> bool {
         matches!(
@@ -238,6 +243,25 @@ impl IpcPayload {
                 | "disconnect"
                 | "custom"
         )
+    }
+
+    /// Deserialize a JSON [`Value`] into an `IpcPayload`, falling back to
+    /// [`Custom`](Self::Custom) for unrecognised or missing type tags.
+    ///
+    /// Pre-checks the `"type"` field against [`is_known_tag`](Self::is_known_tag)
+    /// so that a future `#[serde(other)]` catch-all variant cannot silently
+    /// absorb unknown tags before the `Custom` fallback fires.
+    pub fn from_json_value(data: Value) -> Self {
+        let is_known = data
+            .get("type")
+            .and_then(|v| v.as_str())
+            .is_some_and(Self::is_known_tag);
+
+        if is_known {
+            serde_json::from_value::<Self>(data.clone()).unwrap_or(Self::Custom { data })
+        } else {
+            Self::Custom { data }
+        }
     }
 }
 
@@ -639,7 +663,7 @@ mod tests {
     #[test]
     fn is_known_tag_covers_all_variants() {
         let representatives: Vec<IpcPayload> = vec![
-            IpcPayload::RawJson(Value::Null),
+            IpcPayload::RawJson(serde_json::json!({"key": "val"})),
             IpcPayload::UserInput {
                 text: String::new(),
                 session_id: "s".into(),
