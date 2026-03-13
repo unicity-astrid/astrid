@@ -180,8 +180,9 @@ impl Session {
 
     /// Handles `session.request.get_messages` events.
     ///
-    /// Returns the conversation history to the requester via
-    /// `session.response.get_messages`, echoing the correlation ID.
+    /// Returns the conversation history to the requester via a per-request
+    /// scoped reply topic (`session.v1.response.get_messages.<correlation_id>`).
+    /// This prevents cross-instance response theft under concurrent load.
     ///
     /// Supports an optional `append_before_read` field containing messages
     /// to append atomically before returning the history. This eliminates
@@ -193,16 +194,15 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
-        let correlation_id = match payload.get("correlation_id").and_then(|v| v.as_str()) {
-            Some(id) => id,
-            None => {
-                let _ = sys::log(
-                    "warn",
-                    "get_messages request missing correlation_id - response may not be routable",
-                );
-                ""
-            },
-        };
+        let correlation_id = payload
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                SysError::ApiError(
+                    "get_messages request missing correlation_id - cannot route response".into(),
+                )
+            })?;
 
         let mut data = SessionData::load(session_id);
 
@@ -217,8 +217,9 @@ impl Session {
             }
         }
 
+        let reply_topic = format!("session.v1.response.get_messages.{correlation_id}");
         ipc::publish_json(
-            "session.v1.response.get_messages",
+            &reply_topic,
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "messages": data.messages,
@@ -230,7 +231,8 @@ impl Session {
     ///
     /// Creates a new session with `parent_session_id` pointing to the
     /// old one. The old session's data is left intact in KV for history
-    /// traversal. Returns the new session ID via `session.v1.response.clear`.
+    /// traversal. Returns the new session ID via a per-request scoped
+    /// reply topic (`session.v1.response.clear.<correlation_id>`).
     #[astrid::interceptor("handle_clear")]
     pub fn handle_clear(&self, payload: serde_json::Value) -> Result<(), SysError> {
         let old_session_id = payload
@@ -241,7 +243,12 @@ impl Session {
         let correlation_id = payload
             .get("correlation_id")
             .and_then(|v| v.as_str())
-            .unwrap_or("");
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                SysError::ApiError(
+                    "clear request missing correlation_id - cannot route response".into(),
+                )
+            })?;
 
         let new_session_id = Uuid::new_v4().to_string();
 
@@ -260,8 +267,9 @@ impl Session {
             ),
         );
 
+        let reply_topic = format!("session.v1.response.clear.{correlation_id}");
         ipc::publish_json(
-            "session.v1.response.clear",
+            &reply_topic,
             &serde_json::json!({
                 "correlation_id": correlation_id,
                 "new_session_id": new_session_id,
