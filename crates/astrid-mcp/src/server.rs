@@ -1320,4 +1320,23 @@ mod tests {
             Some(std::path::PathBuf::from("/my/workspace"))
         );
     }
+
+    #[tokio::test]
+    async fn start_rejects_traversal_name() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs);
+
+        let result = manager.start("../evil").await;
+        assert!(result.is_err(), "expected rejection for traversal name");
+    }
+
+    #[tokio::test]
+    async fn add_server_rejects_traversal_name() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs);
+
+        let config = ServerConfig::stdio("../evil", "cmd");
+        let result = manager.add_server("../evil", config).await;
+        assert!(result.is_err(), "expected rejection for traversal name");
+    }
 }

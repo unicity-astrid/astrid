@@ -269,15 +269,23 @@ const MAX_SERVER_NAME_LEN: usize = 128;
 /// Validate that a server name is safe for use in filesystem paths and keys.
 ///
 /// Allowed: ASCII alphanumeric, hyphens, underscores, colons, dots (not leading).
-/// Must be non-empty and at most 128 characters.
-/// Rejects path separators, null bytes, shell metacharacters, leading dots,
-/// and Unicode lookalikes.
+/// Must be non-empty and at most 128 bytes (equal to chars for the ASCII-only
+/// allowlist). Rejects path separators, null bytes, shell metacharacters,
+/// leading dots, and Unicode lookalikes.
 ///
 /// # Errors
 ///
 /// Returns [`McpError::ConfigError`] if the name is empty, too long, starts with
 /// a dot, or contains characters outside the allowed set.
 pub fn validate_server_name(name: &str) -> McpResult<()> {
+    // Truncate the displayed name in error messages to prevent log poisoning
+    // from attacker-controlled input.
+    let display_name = if name.len() > 40 {
+        format!("{}...", &name[..name.floor_char_boundary(40)])
+    } else {
+        name.to_string()
+    };
+
     if name.is_empty() {
         return Err(McpError::ConfigError(
             "server name must not be empty".into(),
@@ -285,13 +293,13 @@ pub fn validate_server_name(name: &str) -> McpResult<()> {
     }
     if name.len() > MAX_SERVER_NAME_LEN {
         return Err(McpError::ConfigError(format!(
-            "server name too long ({} chars, max {MAX_SERVER_NAME_LEN}): {name}",
+            "server name too long ({} bytes, max {MAX_SERVER_NAME_LEN}): {display_name}",
             name.len()
         )));
     }
     if name.starts_with('.') {
         return Err(McpError::ConfigError(format!(
-            "server name must not start with '.': {name}"
+            "server name must not start with '.': {display_name}"
         )));
     }
     if !name
@@ -300,7 +308,7 @@ pub fn validate_server_name(name: &str) -> McpResult<()> {
     {
         return Err(McpError::ConfigError(format!(
             "server name contains invalid characters \
-             (allowed: ASCII alphanumeric, '-', '_', ':', '.'): {name}"
+             (allowed: ASCII alphanumeric, '-', '_', ':', '.'): {display_name}"
         )));
     }
     Ok(())
@@ -651,19 +659,19 @@ command = "cmd4"
 
     #[test]
     fn load_rejects_traversal_name_in_toml() {
-        // Simulate what ServersConfig::load does: parse then validate names.
-        let toml_str = r#"
+        use std::io::Write;
+
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            r#"
 [servers."../../etc"]
 command = "evil"
-"#;
-        let mut config: ServersConfig = toml::from_str(toml_str).unwrap();
-        let result: McpResult<()> = (|| {
-            for (name, server) in &mut config.servers {
-                validate_server_name(name)?;
-                server.name.clone_from(name);
-            }
-            Ok(())
-        })();
+"#
+        )
+        .unwrap();
+
+        let result = ServersConfig::load(f.path());
         assert!(
             result.is_err(),
             "expected path traversal rejection in TOML config"
