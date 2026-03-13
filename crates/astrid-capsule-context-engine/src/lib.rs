@@ -32,7 +32,6 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use astrid_sdk::prelude::*;
-use extism_pdk::{plugin_fn, FnResult};
 use serde::{Deserialize, Serialize};
 
 // ── IPC payload types ───────────────────────────────────────────────
@@ -182,52 +181,58 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ── Main entry point ────────────────────────────────────────────────
 
-#[plugin_fn]
-pub fn run() -> FnResult<()> {
-    let _ = log::info("Context Engine capsule starting");
+#[derive(Default)]
+struct ContextEngine;
 
-    let config = Config::load();
-    let _ = log::info(format!(
-        "Hook timeout: {}ms, keep_recent: {}",
-        config.hook_timeout_ms, config.keep_recent
-    ));
+#[capsule]
+impl ContextEngine {
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        let _ = log::info("Context Engine capsule starting");
 
-    let sub = ipc::subscribe("context_engine.v1.*")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let config = Config::load();
+        let _ = log::info(format!(
+            "Hook timeout: {}ms, keep_recent: {}",
+            config.hook_timeout_ms, config.keep_recent
+        ));
 
-    // Subscribe to our own hook topics so we can drain them.
-    let hook_sub = ipc::subscribe("context_engine.v1.hook.before_compaction")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-    let after_sub = ipc::subscribe("context_engine.v1.hook.after_compaction")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let sub = ipc::subscribe("context_engine.v1.*")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Signal readiness so the kernel can proceed with loading dependent capsules.
-    // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = runtime::signal_ready();
+        // Subscribe to our own hook topics so we can drain them.
+        let hook_sub = ipc::subscribe("context_engine.v1.hook.before_compaction")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
+        let after_sub = ipc::subscribe("context_engine.v1.hook.after_compaction")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    let _ = log::info("Context Engine capsule ready");
+        // Signal readiness so the kernel can proceed with loading dependent capsules.
+        // Best-effort: failure means the host mutex is poisoned (unrecoverable).
+        let _ = runtime::signal_ready();
 
-    loop {
-        // Block until a message arrives (up to 60s), eliminating busy-spin polling.
-        match ipc::recv_bytes(&sub, 60_000) {
-            Ok(bytes) => {
-                if !bytes.is_empty() {
-                    handle_poll_envelope(&bytes, &config);
-                }
-            },
-            Err(_) => break,
+        let _ = log::info("Context Engine capsule ready");
+
+        loop {
+            // Block until a message arrives (up to 60s), eliminating busy-spin polling.
+            match ipc::recv_bytes(&sub, 60_000) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        handle_poll_envelope(&bytes, &config);
+                    }
+                },
+                Err(_) => break,
+            }
+
+            // Drain hook topics to prevent backpressure.
+            let _ = ipc::poll_bytes(&hook_sub);
+            let _ = ipc::poll_bytes(&after_sub);
         }
 
-        // Drain hook topics to prevent backpressure.
-        let _ = ipc::poll_bytes(&hook_sub);
-        let _ = ipc::poll_bytes(&after_sub);
+        let _ = ipc::unsubscribe(&sub);
+        let _ = ipc::unsubscribe(&hook_sub);
+        let _ = ipc::unsubscribe(&after_sub);
+
+        Ok(())
     }
-
-    let _ = ipc::unsubscribe(&sub);
-    let _ = ipc::unsubscribe(&hook_sub);
-    let _ = ipc::unsubscribe(&after_sub);
-
-    Ok(())
 }
 
 // ── Envelope dispatch ───────────────────────────────────────────────

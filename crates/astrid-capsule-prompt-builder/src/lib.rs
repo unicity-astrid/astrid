@@ -23,7 +23,6 @@
 //! 4. `appendSystemContext` — concatenated in order, appended to system prompt
 
 use astrid_sdk::prelude::*;
-use extism_pdk::{plugin_fn, FnResult};
 use serde::{Deserialize, Serialize};
 
 /// Runtime configuration loaded from capsule config at startup.
@@ -492,49 +491,55 @@ fn handle_poll_envelope(poll_bytes: &[u8], config: &Config) {
     }
 }
 
-#[plugin_fn]
-pub fn run() -> FnResult<()> {
-    let _ = log::info("Prompt Builder capsule starting");
+#[derive(Default)]
+struct PromptBuilder;
 
-    let config = Config::load();
-    let _ = log::info(format!("Hook timeout: {}ms", config.hook_timeout_ms));
+#[capsule]
+impl PromptBuilder {
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        let _ = log::info("Prompt Builder capsule starting");
 
-    let sub = ipc::subscribe("prompt_builder.v1.*")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let config = Config::load();
+        let _ = log::info(format!("Hook timeout: {}ms", config.hook_timeout_ms));
 
-    // Also subscribe to our own hook topics so we can filter them out.
-    let hook_sub = ipc::subscribe("prompt_builder.v1.hook.before_build")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
-    let after_sub = ipc::subscribe("prompt_builder.v1.hook.after_build")
-        .map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+        let sub = ipc::subscribe("prompt_builder.v1.*")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    // Signal readiness so the kernel can proceed with loading dependent capsules.
-    // Best-effort: failure means the host mutex is poisoned (unrecoverable).
-    let _ = runtime::signal_ready();
+        // Also subscribe to our own hook topics so we can filter them out.
+        let hook_sub = ipc::subscribe("prompt_builder.v1.hook.before_build")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
+        let after_sub = ipc::subscribe("prompt_builder.v1.hook.after_build")
+            .map_err(|e| SysError::ApiError(e.to_string()))?;
 
-    let _ = log::info("Prompt Builder capsule ready");
+        // Signal readiness so the kernel can proceed with loading dependent capsules.
+        // Best-effort: failure means the host mutex is poisoned (unrecoverable).
+        let _ = runtime::signal_ready();
 
-    loop {
-        // Block until a message arrives (up to 60s), eliminating busy-spin polling.
-        match ipc::recv_bytes(&sub, 60_000) {
-            Ok(bytes) => {
-                if !bytes.is_empty() {
-                    handle_poll_envelope(&bytes, &config);
-                }
-            },
-            Err(_) => break,
+        let _ = log::info("Prompt Builder capsule ready");
+
+        loop {
+            // Block until a message arrives (up to 60s), eliminating busy-spin polling.
+            match ipc::recv_bytes(&sub, 60_000) {
+                Ok(bytes) => {
+                    if !bytes.is_empty() {
+                        handle_poll_envelope(&bytes, &config);
+                    }
+                },
+                Err(_) => break,
+            }
+
+            // Drain hook/after topics to prevent backpressure.
+            let _ = ipc::poll_bytes(&hook_sub);
+            let _ = ipc::poll_bytes(&after_sub);
         }
 
-        // Drain hook/after topics to prevent backpressure.
-        let _ = ipc::poll_bytes(&hook_sub);
-        let _ = ipc::poll_bytes(&after_sub);
+        let _ = ipc::unsubscribe(&sub);
+        let _ = ipc::unsubscribe(&hook_sub);
+        let _ = ipc::unsubscribe(&after_sub);
+
+        Ok(())
     }
-
-    let _ = ipc::unsubscribe(&sub);
-    let _ = ipc::unsubscribe(&hook_sub);
-    let _ = ipc::unsubscribe(&after_sub);
-
-    Ok(())
 }
 
 #[cfg(test)]
