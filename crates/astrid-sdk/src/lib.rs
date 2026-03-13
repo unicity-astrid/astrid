@@ -615,6 +615,9 @@ pub mod interceptors {
     /// Returns an empty vec if this capsule has no auto-subscribed interceptors
     /// (i.e. it does not have both `run()` and `[[interceptor]]`).
     pub fn bindings() -> Result<Vec<InterceptorBinding>, SysError> {
+        // SAFETY: FFI call to Extism host function. The host serializes
+        // `HostState.interceptor_handles` to JSON and returns valid UTF-8 bytes.
+        // Errors are propagated via the `?` operator.
         let bytes = unsafe { astrid_get_interceptor_handles()? };
         let bindings: Vec<InterceptorBinding> = serde_json::from_slice(&bytes)?;
         Ok(bindings)
