@@ -178,6 +178,28 @@ impl Session {
         data.save(session_id)
     }
 
+    /// Extracts and validates `correlation_id` from a request payload.
+    ///
+    /// The correlation_id is interpolated into per-request scoped reply
+    /// topics as a single dot-separated segment. Rejects empty values and
+    /// values containing dots (which would add extra segments, breaking
+    /// the ACL pattern match).
+    fn require_correlation_id<'a>(
+        payload: &'a serde_json::Value,
+        request_name: &str,
+    ) -> Result<&'a str, SysError> {
+        payload
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && !s.contains('.'))
+            .ok_or_else(|| {
+                SysError::ApiError(format!(
+                    "{request_name} request missing or invalid correlation_id \
+                     (must be non-empty, no dots)"
+                ))
+            })
+    }
+
     /// Handles `session.request.get_messages` events.
     ///
     /// Returns the conversation history to the requester via a per-request
@@ -194,20 +216,7 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
-        // correlation_id is interpolated into the reply topic as a single
-        // segment. Reject empty values and values containing dots (which would
-        // add extra segments, breaking the ACL pattern match).
-        let correlation_id = payload
-            .get("correlation_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty() && !s.contains('.'))
-            .ok_or_else(|| {
-                SysError::ApiError(
-                    "get_messages request missing or invalid correlation_id \
-                     (must be non-empty, no dots)"
-                        .into(),
-                )
-            })?;
+        let correlation_id = Self::require_correlation_id(&payload, "get_messages")?;
 
         let mut data = SessionData::load(session_id);
 
@@ -247,20 +256,7 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
-        // correlation_id is interpolated into the reply topic as a single
-        // segment. Reject empty values and values containing dots (which would
-        // add extra segments, breaking the ACL pattern match).
-        let correlation_id = payload
-            .get("correlation_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty() && !s.contains('.'))
-            .ok_or_else(|| {
-                SysError::ApiError(
-                    "clear request missing or invalid correlation_id \
-                     (must be non-empty, no dots)"
-                        .into(),
-                )
-            })?;
+        let correlation_id = Self::require_correlation_id(&payload, "clear")?;
 
         let new_session_id = Uuid::new_v4().to_string();
 
@@ -399,32 +395,24 @@ mod tests {
     }
 
     // -- correlation_id validation (scoped reply topic safety) --
-
-    /// Helper replicating the correlation_id validation predicate used in
-    /// `handle_get_messages` and `handle_clear`.
-    fn valid_correlation_id(payload: &serde_json::Value) -> Option<&str> {
-        payload
-            .get("correlation_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty() && !s.contains('.'))
-    }
+    // Tests exercise Session::require_correlation_id directly.
 
     #[test]
     fn test_correlation_id_rejects_empty() {
         let payload = serde_json::json!({ "correlation_id": "" });
-        assert!(valid_correlation_id(&payload).is_none());
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
     }
 
     #[test]
     fn test_correlation_id_rejects_missing() {
         let payload = serde_json::json!({});
-        assert!(valid_correlation_id(&payload).is_none());
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
     }
 
     #[test]
     fn test_correlation_id_rejects_dots() {
         let payload = serde_json::json!({ "correlation_id": "abc.def" });
-        assert!(valid_correlation_id(&payload).is_none());
+        assert!(Session::require_correlation_id(&payload, "test").is_err());
     }
 
     #[test]
@@ -432,8 +420,8 @@ mod tests {
         let payload =
             serde_json::json!({ "correlation_id": "550e8400-e29b-41d4-a716-446655440000" });
         assert_eq!(
-            valid_correlation_id(&payload),
-            Some("550e8400-e29b-41d4-a716-446655440000")
+            Session::require_correlation_id(&payload, "test").unwrap(),
+            "550e8400-e29b-41d4-a716-446655440000"
         );
     }
 }
