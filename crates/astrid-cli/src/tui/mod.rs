@@ -318,7 +318,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
             request_id,
             action,
             resource,
-            reason: _,
+            reason,
             risk_level,
         } = &message.payload
         {
@@ -336,6 +336,7 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                 details: vec![
                     ("Action".into(), action.clone()),
                     ("Resource".into(), resource.clone()),
+                    ("Reason".into(), reason.clone()),
                 ],
             };
             app.push_notice(&format!("Approval required: {action} on {resource}"));

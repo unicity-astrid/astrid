@@ -72,25 +72,25 @@ impl ShellTools {
     /// error without executing.
     #[astrid::tool("run_shell_command")]
     pub fn run_shell_command(&self, args: RunShellArgs) -> Result<String, SysError> {
-        if args.command.trim().is_empty() {
+        let trimmed = args.command.trim();
+        if trimmed.is_empty() {
             return Err(SysError::ApiError("Command cannot be empty".into()));
         }
 
-        let (program, subcommand) = parse_command(&args.command);
+        let (program, subcommand) = parse_command(trimmed);
         let action = approval_action(program, subcommand);
 
         // Request approval - blocks until the user responds or timeout.
-        let result = approval::request(&action, &args.command, "high")?;
+        let result = approval::request(&action, trimmed, "high")?;
         if !result.approved {
             return Err(SysError::ApiError(format!(
-                "Command '{}' was not approved by user",
-                args.command
+                "Command '{trimmed}' was not approved by user",
             )));
         }
 
         // Spawn the command via the SDK Process Airlock.
         // The core OS enforces the Capability and wraps it in bwrap/Seatbelt.
-        let result = process::spawn("bash", &["-c", &args.command])?;
+        let result = process::spawn("bash", &["-c", trimmed])?;
 
         // If the command fails, we return the stderr as an API error so the LLM knows it failed.
         if result.exit_code != 0 {

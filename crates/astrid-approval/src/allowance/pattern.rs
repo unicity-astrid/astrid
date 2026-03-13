@@ -227,7 +227,14 @@ impl AllowancePattern {
                 } else {
                     format!("{command} {}", args.join(" "))
                 };
-                matches_file_glob(pattern, &full_cmd)
+                let mut is_match = matches_file_glob(pattern, &full_cmd);
+                // Allow "cmd *" to also match "cmd" (no args). The glob "cmd *"
+                // requires at least one char after the space, so "cmd" alone
+                // wouldn't match without this fallback.
+                if !is_match && let Some(prefix) = pattern.strip_suffix(" *") {
+                    is_match = full_cmd == prefix;
+                }
+                is_match
             },
 
             // CapsuleCapability: match plugin actions with same capsule_id + derived capability

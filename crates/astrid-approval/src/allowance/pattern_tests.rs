@@ -401,6 +401,31 @@ fn test_command_pattern_wildcard_matches_with_args() {
 }
 
 #[test]
+fn test_command_pattern_wildcard_matches_exact_prefix() {
+    // "git status *" must also match "git status" (no args).
+    // This is the session allowance case: user approves "git status",
+    // pattern "git status *" is created, next "git status" must match.
+    let pattern = AllowancePattern::CommandPattern {
+        command: "git status *".to_string(),
+    };
+    assert!(pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "git status".to_string(),
+            args: vec![],
+        },
+        None
+    ));
+    // Still matches with args
+    assert!(pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "git status --short".to_string(),
+            args: vec![],
+        },
+        None
+    ));
+}
+
+#[test]
 fn test_command_pattern_full_command_string_matching() {
     // When command contains the full string (SDK approval pattern),
     // args is empty - the pattern matches against the full command.
