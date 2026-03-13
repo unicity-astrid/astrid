@@ -194,13 +194,18 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
+        // correlation_id is interpolated into the reply topic as a single
+        // segment. Reject empty values and values containing dots (which would
+        // add extra segments, breaking the ACL pattern match).
         let correlation_id = payload
             .get("correlation_id")
             .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
+            .filter(|s| !s.is_empty() && !s.contains('.'))
             .ok_or_else(|| {
                 SysError::ApiError(
-                    "get_messages request missing correlation_id - cannot route response".into(),
+                    "get_messages request missing or invalid correlation_id \
+                     (must be non-empty, no dots)"
+                        .into(),
                 )
             })?;
 
@@ -217,6 +222,8 @@ impl Session {
             }
         }
 
+        // correlation_id is redundant with the scoped topic but retained
+        // in the payload for observability (log inspection, debugging).
         let reply_topic = format!("session.v1.response.get_messages.{correlation_id}");
         ipc::publish_json(
             &reply_topic,
@@ -240,13 +247,18 @@ impl Session {
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_SESSION_ID);
 
+        // correlation_id is interpolated into the reply topic as a single
+        // segment. Reject empty values and values containing dots (which would
+        // add extra segments, breaking the ACL pattern match).
         let correlation_id = payload
             .get("correlation_id")
             .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
+            .filter(|s| !s.is_empty() && !s.contains('.'))
             .ok_or_else(|| {
                 SysError::ApiError(
-                    "clear request missing correlation_id - cannot route response".into(),
+                    "clear request missing or invalid correlation_id \
+                     (must be non-empty, no dots)"
+                        .into(),
                 )
             })?;
 

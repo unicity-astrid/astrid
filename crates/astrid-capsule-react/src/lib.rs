@@ -517,9 +517,10 @@ impl ReactLoop {
                 return Ok(new_session_id.to_string());
             }
 
-            Err(SysError::ApiError(
-                "Session clear response contained no usable messages".into(),
-            ))
+            Err(SysError::ApiError(format!(
+                "Session clear response contained no usable messages \
+                 (session_id={old_session_id})"
+            )))
         })();
 
         let _ = ipc::unsubscribe(&handle);
@@ -1347,9 +1348,10 @@ impl ReactLoop {
                 return Ok(messages);
             }
 
-            Err(SysError::ApiError(
-                "Session response envelope contained no usable messages".into(),
-            ))
+            Err(SysError::ApiError(format!(
+                "Session response envelope contained no usable messages \
+                 (session_id={session_id})"
+            )))
         })();
 
         // Always unsubscribe, regardless of success/failure
