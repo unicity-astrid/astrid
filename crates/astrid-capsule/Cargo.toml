@@ -32,6 +32,9 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 astrid-workspace.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
+
 [dev-dependencies]
 astrid-audit = { workspace = true }
 astrid-crypto = { workspace = true }

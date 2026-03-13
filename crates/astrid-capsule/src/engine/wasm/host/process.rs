@@ -58,6 +58,16 @@ pub(crate) fn astrid_spawn_host_impl(
     let mut inner_cmd = Command::new(req.cmd);
     inner_cmd.args(&req.args);
 
+    // Strip socket-related env vars inherited from the daemon process.
+    // WASM guests cannot inject env vars (ProcessRequest has no env field),
+    // but the daemon's own environment is inherited by child processes.
+    // With token auth, ASTRID_SOCKET_PATH alone is insufficient to connect,
+    // but belt-and-suspenders. ASTRID_SESSION_TOKEN is not currently set in
+    // the environment (token is on disk), but reserved for future use.
+    inner_cmd.env_remove("ASTRID_SOCKET_PATH");
+    inner_cmd.env_remove("ASTRID_SESSION_TOKEN");
+    inner_cmd.env_remove("ASTRID_HOME");
+
     let sandboxed_cmd = SandboxCommand::wrap(inner_cmd, &workspace_root)
         .map_err(|e| Error::msg(format!("failed to wrap command in sandbox: {e}")))?;
 

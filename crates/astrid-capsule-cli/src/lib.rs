@@ -5,8 +5,25 @@ use extism_pdk::FnResult;
 
 #[plugin_fn]
 pub fn run() -> FnResult<()> {
-    // 1. Subscribe to all IPC events
-    let sub_handle = ipc::subscribe("*").map_err(|e| extism_pdk::Error::msg(e.to_string()))?;
+    // 1. Subscribe to TUI-relevant IPC topics only.
+    // IMPORTANT: If a new event topic is consumed by the TUI, add it here.
+    // Internal pipeline events (LLM requests, tool dispatch, identity builds)
+    // must NOT be forwarded to the CLI socket.
+    let topics = [
+        "agent.v1.response",
+        "agent.v1.stream.delta",
+        "astrid.v1.onboarding.required",
+        "astrid.v1.elicit.*",
+        "astrid.v1.response.*",
+        "astrid.v1.capsules_loaded",
+        "registry.v1.response.*",
+        "registry.v1.active_model_changed",
+        "registry.v1.selection.*",
+    ];
+    let sub_handles: Vec<_> = topics
+        .iter()
+        .map(|t| ipc::subscribe(t).map_err(|e| extism_pdk::Error::msg(e.to_string())))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Signal readiness so the kernel can proceed with loading dependent capsules.
     // Best-effort: failure means the host mutex is poisoned (unrecoverable).
@@ -41,7 +58,7 @@ pub fn run() -> FnResult<()> {
         let _ = sys::log("info", "CLI client connected to proxy");
 
         // Inner loop to read messages from the client
-        loop {
+        'inner: loop {
             // 1. Read from socket (has 50ms timeout on the host side)
             match read(&stream) {
                 Ok(bytes) => {
@@ -51,10 +68,27 @@ pub fn run() -> FnResult<()> {
                             if let (Some(topic), Some(payload)) = (
                                 msg.get("topic").and_then(|t| t.as_str()),
                                 msg.get("payload"),
-                            ) && let Err(e) = ipc::publish_json(topic, payload)
-                            {
-                                let _ =
-                                    sys::log("error", format!("Failed to publish IPC: {:?}", e));
+                            ) {
+                                // Ingress topic allowlist: only publish to topics the
+                                // CLI legitimately needs. Prevents an authenticated
+                                // client from injecting into internal pipeline topics.
+                                // IMPORTANT: Update this list when adding new
+                                // CLI-originated topics.
+                                if is_allowed_ingress_topic(topic) {
+                                    if let Err(e) = ipc::publish_json(topic, payload) {
+                                        let _ = sys::log(
+                                            "error",
+                                            format!("Failed to publish IPC: {:?}", e),
+                                        );
+                                    }
+                                } else {
+                                    let _ = sys::log(
+                                        "warn",
+                                        format!(
+                                            "Dropped ingress message to blocked topic: {topic}"
+                                        ),
+                                    );
+                                }
                             }
                         } else {
                             let _ = sys::log("warn", "Received malformed IPC payload from socket");
@@ -67,21 +101,21 @@ pub fn run() -> FnResult<()> {
                 },
             }
 
-            // 2. Poll Event Bus — extract individual IpcMessages from the poll
-            //    envelope and forward each one to the CLI socket as a standalone
-            //    IpcMessage (the CLI client deserializes IpcMessage directly).
-            match ipc::poll_bytes(&sub_handle) {
-                Ok(bytes) => {
-                    if !bytes.is_empty()
-                        && let Err(()) = forward_poll_messages(&stream, &bytes)
-                    {
-                        break;
-                    }
-                },
-                Err(_) => {
-                    // Polling error or closed channel
-                    break;
-                },
+            // 2. Poll Event Bus — check each topic subscription and forward
+            //    individual IpcMessages to the CLI socket.
+            for handle in &sub_handles {
+                match ipc::poll_bytes(handle) {
+                    Ok(bytes) => {
+                        if !bytes.is_empty()
+                            && let Err(()) = forward_poll_messages(&stream, &bytes)
+                        {
+                            break 'inner;
+                        }
+                    },
+                    Err(_) => {
+                        break 'inner;
+                    },
+                }
             }
         }
     }
@@ -129,4 +163,26 @@ fn forward_poll_messages(
     }
 
     Ok(())
+}
+
+/// Exact topics the CLI is allowed to publish to the internal IPC bus.
+const ALLOWED_INGRESS_EXACT: &[&str] = &[
+    "user.v1.prompt",
+    "client.v1.disconnect",
+    "cli.v1.command.execute",
+];
+
+/// Topic prefixes the CLI is allowed to publish (suffix-routed topics).
+/// IMPORTANT: Update this list when adding new CLI-originated topic prefixes.
+const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
+    "astrid.v1.request.",
+    "astrid.v1.elicit.response.",
+    "registry.v1.selection.",
+];
+
+fn is_allowed_ingress_topic(topic: &str) -> bool {
+    ALLOWED_INGRESS_EXACT.contains(&topic)
+        || ALLOWED_INGRESS_PREFIXES
+            .iter()
+            .any(|p| topic.starts_with(p))
 }

@@ -240,6 +240,13 @@ impl ExecutionEngine for WasmEngine {
                 ready_tx: None,
                 host_semaphore,
                 cancel_token: cancel_token_for_state,
+                // Only provide the session token to capsules with net_bind
+                // (the CLI proxy). Other capsules have no use for it.
+                session_token: if manifest.capabilities.net_bind.is_empty() {
+                    None
+                } else {
+                    ctx.session_token.clone()
+                },
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -519,6 +526,7 @@ pub fn run_lifecycle(
         ready_tx: None,
         host_semaphore: HostState::default_host_semaphore(),
         cancel_token: tokio_util::sync::CancellationToken::new(),
+        session_token: None,
     };
 
     let user_data = UserData::new(host_state);

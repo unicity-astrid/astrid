@@ -269,6 +269,15 @@ impl ServerManager {
             cmd.env(key, value);
         }
 
+        // Strip socket-related env vars from inherited environment.
+        // The env_policy blocklist prevents config-injected vars, but these
+        // could still be inherited from the parent process. With token auth
+        // (D1), this is belt-and-suspenders - even if the MCP server knows
+        // the socket path, it cannot authenticate without the token.
+        cmd.env_remove("ASTRID_SOCKET_PATH");
+        cmd.env_remove("ASTRID_SESSION_TOKEN");
+        cmd.env_remove("ASTRID_HOME");
+
         if let Some(cwd) = &config.cwd {
             cmd.current_dir(cwd);
         }
