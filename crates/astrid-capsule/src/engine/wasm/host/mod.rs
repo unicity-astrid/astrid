@@ -63,10 +63,11 @@ pub(crate) enum WasmHostFunction {
     HasSecret,
     SignalReady,
     ClockMs,
+    GetInterceptorHandles,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 35] = [
+    pub(crate) const ALL: [Self; 36] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -102,6 +103,7 @@ impl WasmHostFunction {
         Self::HasSecret,
         Self::SignalReady,
         Self::ClockMs,
+        Self::GetInterceptorHandles,
     ];
 
     #[must_use]
@@ -147,6 +149,7 @@ impl WasmHostFunction {
             Self::HasSecret => "astrid_has_secret",
             Self::SignalReady => "astrid_signal_ready",
             Self::ClockMs => "astrid_clock_ms",
+            Self::GetInterceptorHandles => "astrid_get_interceptor_handles",
         }
     }
 
@@ -183,7 +186,7 @@ impl WasmHostFunction {
             | Self::Log
             | Self::NetWrite => 2,
             Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
-            Self::GetCaller | Self::SignalReady | Self::ClockMs => 0,
+            Self::GetCaller | Self::SignalReady | Self::ClockMs | Self::GetInterceptorHandles => 0,
         }
     }
 
@@ -225,7 +228,8 @@ impl WasmHostFunction {
             | Self::NetRead
             | Self::Elicit
             | Self::HasSecret
-            | Self::ClockMs => TYPE_I64,
+            | Self::ClockMs
+            | Self::GetInterceptorHandles => TYPE_I64,
         }
     }
 }
@@ -359,6 +363,13 @@ pub fn register_host_functions(
             WasmHostFunction::ClockMs => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_clock_ms_impl)
             },
+            WasmHostFunction::GetInterceptorHandles => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                ipc::astrid_get_interceptor_handles_impl,
+            ),
         };
     }
 

@@ -247,6 +247,7 @@ impl ExecutionEngine for WasmEngine {
                 } else {
                     ctx.session_token.clone()
                 },
+                interceptor_handles: Vec::new(),
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -293,6 +294,36 @@ impl ExecutionEngine for WasmEngine {
                 None
             };
 
+            // Auto-subscribe interceptor topics for run-loop capsules.
+            // Events arrive via the IPC channel the run loop already reads from,
+            // avoiding mutex contention (no external invoke_interceptor calls).
+            if has_run && !manifest.interceptors.is_empty() {
+                let ud = user_data_ref.get().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
+                })?;
+                let mut state = ud.lock().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
+                })?;
+                for interceptor in &manifest.interceptors {
+                    let receiver = state.event_bus.subscribe_topic(&interceptor.event);
+                    let handle_id = state.next_subscription_id;
+                    state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
+                    state.subscriptions.insert(handle_id, receiver);
+                    state
+                        .interceptor_handles
+                        .push(host_state::InterceptorHandle {
+                            handle_id,
+                            action: interceptor.action.clone(),
+                            topic: interceptor.event.clone(),
+                        });
+                }
+                tracing::info!(
+                    capsule = %manifest.package.name,
+                    count = manifest.interceptors.len(),
+                    "Auto-subscribed interceptors for run-loop capsule"
+                );
+            }
+
             Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
 
@@ -305,18 +336,8 @@ impl ExecutionEngine for WasmEngine {
             // The run loop holds the plugin mutex for its entire lifetime.
             // We must NOT store the plugin in self.plugin, because the
             // dispatcher's invoke_interceptor() would try to acquire the same
-            // mutex — causing a deadlock. Run-loop capsules handle events
-            // internally via ipc::subscribe, so they don't need host-side
-            // interceptor dispatch.
-            if !self.manifest.interceptors.is_empty() {
-                return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                    "Capsule '{}' declares both run() and [[interceptor]] entries. \
-                     The run loop holds the plugin mutex exclusively, making \
-                     interceptor dispatch impossible. Move event handling into \
-                     run() via ipc::subscribe.",
-                    self.manifest.package.name
-                )));
-            }
+            // mutex - causing a deadlock. Run-loop capsules with interceptors
+            // receive events via auto-subscribed IPC channels instead.
             let capsule_name = self.manifest.package.name.clone();
             // Must spawn on a worker thread (not spawn_blocking) because WASM
             // host functions (fs, http, kv, etc.) use block_in_place internally,
@@ -399,10 +420,11 @@ impl ExecutionEngine for WasmEngine {
     }
 
     fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
-        let plugin = self
-            .plugin
-            .as_ref()
-            .ok_or_else(|| CapsuleError::ExecutionFailed("plugin not loaded".into()))?;
+        let plugin = self.plugin.as_ref().ok_or_else(|| {
+            CapsuleError::NotSupported(
+                "plugin handles interceptors internally via IPC auto-subscribe".into(),
+            )
+        })?;
 
         // Build the same __AstridToolRequest the macro expects:
         // { "name": "<action>", "arguments": [<payload bytes>] }
@@ -527,6 +549,7 @@ pub fn run_lifecycle(
         host_semaphore: HostState::default_host_semaphore(),
         cancel_token: tokio_util::sync::CancellationToken::new(),
         session_token: None,
+        interceptor_handles: Vec::new(),
     };
 
     let user_data = UserData::new(host_state);
