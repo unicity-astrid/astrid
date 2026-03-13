@@ -113,7 +113,7 @@ pub(crate) fn astrid_request_approval_impl(
     let ud = user_data.get()?;
 
     // Extract what we need from HostState, then drop the lock before blocking.
-    let (allowance_store, event_bus, runtime_handle, capsule_id, cancel_token) = {
+    let (allowance_store, event_bus, runtime_handle, capsule_id, cancel_token, host_semaphore) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -123,8 +123,16 @@ pub(crate) fn astrid_request_approval_impl(
         let runtime_handle = state.runtime_handle.clone();
         let capsule_id = state.capsule_id.to_string();
         let cancel_token = state.cancel_token.clone();
+        let host_semaphore = state.host_semaphore.clone();
 
-        (store, event_bus, runtime_handle, capsule_id, cancel_token)
+        (
+            store,
+            event_bus,
+            runtime_handle,
+            capsule_id,
+            cancel_token,
+            host_semaphore,
+        )
     };
 
     // Fast path: check existing allowances.
@@ -182,16 +190,23 @@ pub(crate) fn astrid_request_approval_impl(
         "Published approval request, waiting for response"
     );
 
-    // Block until response, timeout, or cancellation.
-    let event = runtime_handle.block_on(async {
-        tokio::select! {
-            result = tokio::time::timeout(
+    // Block until response, timeout, or cancellation. Routed through the host
+    // semaphore to bound concurrent blocking operations across all capsules.
+    let event = util::bounded_block_on_cancellable(
+        &runtime_handle,
+        &host_semaphore,
+        &cancel_token,
+        async {
+            tokio::time::timeout(
                 std::time::Duration::from_millis(MAX_APPROVAL_TIMEOUT_MS),
                 receiver.recv(),
-            ) => result.ok().flatten(),
-            () = cancel_token.cancelled() => None,
-        }
-    });
+            )
+            .await
+            .ok()
+            .flatten()
+        },
+    )
+    .flatten();
 
     let response_json = match event {
         Some(event) => {
