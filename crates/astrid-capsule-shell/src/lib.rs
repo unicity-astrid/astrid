@@ -147,11 +147,54 @@ const BLOCKED_COMMANDS: &[&str] = &[
     "init",
 ];
 
+/// Shell operators that chain multiple commands. We split on these to check
+/// each sub-command independently for catastrophic patterns.
+const SHELL_CHAIN_OPERATORS: &[&str] = &["&&", "||", ";", "|"];
+
 /// Check if a command is catastrophic and should be hard-denied before
 /// reaching the approval prompt.
 ///
+/// Splits on shell chaining operators (`&&`, `||`, `;`, `|`) and checks
+/// each sub-command independently. `ls && rm -rf /` is caught even though
+/// the first command is benign.
+///
 /// Returns `Some(reason)` if the command is blocked, `None` if safe to proceed.
 fn check_catastrophic(command: &str) -> Option<&'static str> {
+    // Fork bomb patterns checked on the raw string before splitting
+    if command.contains(":(){ :|:&") || command.contains(":(){:|:&") {
+        return Some("Fork bombs are blocked.");
+    }
+
+    // Split on shell chaining operators and check each sub-command
+    for subcmd in split_on_shell_operators(command) {
+        if let Some(reason) = check_single_command_catastrophic(subcmd.trim()) {
+            return Some(reason);
+        }
+    }
+
+    None
+}
+
+/// Split a command string on shell chaining operators.
+fn split_on_shell_operators(command: &str) -> Vec<&str> {
+    // Replace multi-char operators with a single sentinel, then split.
+    // We need to handle &&, ||, ;, | - but | is a substring of ||,
+    // so we process longer operators first.
+    let mut result = vec![command];
+    for op in SHELL_CHAIN_OPERATORS {
+        let mut next = Vec::new();
+        for segment in result {
+            for part in segment.split(op) {
+                next.push(part);
+            }
+        }
+        result = next;
+    }
+    result
+}
+
+/// Check a single command (no shell operators) for catastrophic patterns.
+fn check_single_command_catastrophic(command: &str) -> Option<&'static str> {
     let tokens: Vec<&str> = command.split_whitespace().collect();
     if tokens.is_empty() {
         return None;
@@ -164,11 +207,6 @@ fn check_catastrophic(command: &str) -> Option<&'static str> {
         return Some(
             "This command is blocked for safety. It can cause irreversible system damage.",
         );
-    }
-
-    // Fork bomb patterns
-    if command.contains(":(){ :|:&") || command.contains(":(){:|:&") {
-        return Some("Fork bombs are blocked.");
     }
 
     // dd targeting block devices
@@ -487,6 +525,18 @@ mod tests {
     #[test]
     fn catastrophic_fork_bomb() {
         assert!(check_catastrophic(":(){ :|:& };:").is_some());
+    }
+
+    #[test]
+    fn catastrophic_chained_commands() {
+        // Dangerous command hidden after benign one
+        assert!(check_catastrophic("ls && rm -rf /").is_some());
+        assert!(check_catastrophic("echo hello; shutdown -h now").is_some());
+        assert!(check_catastrophic("cat /tmp/f || rm -rf /usr").is_some());
+        assert!(check_catastrophic("ls | dd if=/dev/zero of=/dev/sda").is_some());
+        // Both safe - should pass
+        assert!(check_catastrophic("ls && echo done").is_none());
+        assert!(check_catastrophic("cat foo; echo bar").is_none());
     }
 
     #[test]
