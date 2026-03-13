@@ -40,6 +40,8 @@ pub(crate) fn list_capsules(verbose: bool) -> anyhow::Result<()> {
 
 /// Compact: one line per capsule.
 fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
+    let max_name_len = capsules.iter().map(|c| c.name.len()).max().unwrap_or(30);
+
     for cap in capsules {
         let (version, provides_count, requires_count) = match &cap.meta {
             Some(meta) => (
@@ -55,7 +57,7 @@ fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
 
         // Pad the name before applying bold to avoid ANSI escape codes
         // distorting the column width calculation.
-        let padded_name = format!("{:<30}", cap.name);
+        let padded_name = format!("{:<width$}", cap.name, width = max_name_len);
         println!(
             "  {} {:<8} {:<13} {}",
             padded_name.bold(),
