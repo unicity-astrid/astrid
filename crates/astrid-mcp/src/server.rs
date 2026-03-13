@@ -1347,4 +1347,23 @@ mod tests {
         let result = ServerManager::validate_sandbox_path(good_path, "test_field");
         assert!(result.is_ok(), "valid UTF-8 path should be accepted");
     }
+
+    #[test]
+    fn test_build_sandboxed_command_rejects_non_utf8_workspace_root() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let bad_bytes: &[u8] = b"/tmp/\xff\xfe/workspace";
+        let bad_path = std::path::PathBuf::from(OsStr::from_bytes(bad_bytes));
+
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs).with_workspace_root(bad_path);
+
+        let config = ServerConfig::stdio("test", "echo");
+        let result = manager.build_sandboxed_command("test", "echo", &config);
+        assert!(
+            matches!(result, Err(McpError::ConfigError(_))),
+            "non-UTF-8 workspace root should be rejected through build_sandboxed_command, got: {result:?}"
+        );
+    }
 }

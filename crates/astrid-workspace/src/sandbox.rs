@@ -254,6 +254,12 @@ impl ProcessSandboxConfig {
     /// Returns an error if any configured path is not valid UTF-8 or contains
     /// characters that would break sandbox profile syntax (`"` or `\0`).
     pub fn sandbox_prefix(&self) -> io::Result<Option<SandboxPrefix>> {
+        // Validate all configured paths up front, regardless of platform.
+        // This ensures the doc contract ("returns Err for non-UTF-8 or
+        // forbidden chars") holds on every OS, not just macOS where SBPL
+        // interpolation makes it exploitable.
+        self.validate_all_paths()?;
+
         #[cfg(target_os = "linux")]
         {
             Ok(Some(self.build_bwrap_prefix()))
@@ -272,6 +278,21 @@ impl ProcessSandboxConfig {
             );
             Ok(None)
         }
+    }
+
+    /// Validate all configured paths for safe use in sandbox profiles.
+    fn validate_all_paths(&self) -> io::Result<()> {
+        validate_sandbox_str(&self.writable_root, "writable root")?;
+        for p in &self.extra_read_paths {
+            validate_sandbox_str(p, "extra read path")?;
+        }
+        for p in &self.extra_write_paths {
+            validate_sandbox_str(p, "extra write path")?;
+        }
+        for p in &self.hidden_paths {
+            validate_sandbox_str(p, "hidden path")?;
+        }
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -660,9 +681,11 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    // Validation tests are NOT gated by platform - sandbox_prefix() validates
+    // on all platforms for API contract consistency.
+
     #[test]
-    fn test_seatbelt_prefix_rejects_non_utf8_writable_root() {
+    fn test_sandbox_prefix_rejects_non_utf8_writable_root() {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
@@ -674,9 +697,8 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("not valid UTF-8"));
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn test_seatbelt_prefix_rejects_non_utf8_extra_paths() {
+    fn test_sandbox_prefix_rejects_non_utf8_extra_paths() {
         use std::ffi::OsStr;
         use std::os::unix::ffi::OsStrExt;
 
@@ -696,9 +718,8 @@ mod tests {
         assert!(config.sandbox_prefix().is_err());
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn test_seatbelt_prefix_rejects_double_quote_in_paths() {
+    fn test_sandbox_prefix_rejects_double_quote_in_paths() {
         // Double-quote in writable root
         let config = ProcessSandboxConfig::new("/project/evil\"dir");
         assert!(config.sandbox_prefix().is_err());
@@ -713,6 +734,21 @@ mod tests {
 
         // Double-quote in hidden path
         let config = ProcessSandboxConfig::new("/project").with_hidden("/hidden/evil\"path");
+        assert!(config.sandbox_prefix().is_err());
+    }
+
+    #[test]
+    fn test_sandbox_prefix_rejects_null_byte_in_paths() {
+        let config = ProcessSandboxConfig::new("/project/evil\0dir");
+        assert!(config.sandbox_prefix().is_err());
+
+        let config = ProcessSandboxConfig::new("/project").with_extra_read("/data/evil\0path");
+        assert!(config.sandbox_prefix().is_err());
+
+        let config = ProcessSandboxConfig::new("/project").with_extra_write("/output/evil\0path");
+        assert!(config.sandbox_prefix().is_err());
+
+        let config = ProcessSandboxConfig::new("/project").with_hidden("/hidden/evil\0path");
         assert!(config.sandbox_prefix().is_err());
     }
 }
