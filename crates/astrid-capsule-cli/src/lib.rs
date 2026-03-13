@@ -17,6 +17,7 @@ impl CliProxy {
             "agent.v1.stream.delta",
             "astrid.v1.onboarding.required",
             "astrid.v1.elicit.*",
+            "astrid.v1.approval",
             "astrid.v1.response.*",
             "astrid.v1.capsules_loaded",
             "registry.v1.response.*",
@@ -177,6 +178,7 @@ const ALLOWED_INGRESS_EXACT: &[&str] = &[
 const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
     "astrid.v1.request.",
     "astrid.v1.elicit.response.",
+    "astrid.v1.approval.response.",
     "registry.v1.selection.",
 ];
 

@@ -40,6 +40,17 @@ fn check_allowance(store: &AllowanceStore, resource: &str) -> bool {
     store.find_matching(&action, None).is_some()
 }
 
+/// Strip glob metacharacters from a guest-supplied action string.
+///
+/// Without this, a malicious capsule could set `action = "*"` to produce
+/// the pattern `"* *"`, which matches any two-token command.
+fn sanitize_action_for_glob(action: &str) -> String {
+    action
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.' | '/'))
+        .collect()
+}
+
 /// Create a session-scoped allowance from an approval decision.
 ///
 /// For `approve_session`, creates a `CommandPattern` with a subcommand-level
@@ -52,8 +63,9 @@ fn create_allowance_from_decision(store: &AllowanceStore, action: &str, decision
         _ => return,
     };
 
+    let sanitized = sanitize_action_for_glob(action);
     let pattern = AllowancePattern::CommandPattern {
-        command: format!("{action} *"),
+        command: format!("{sanitized} *"),
     };
 
     // Generate an ephemeral keypair for signing. Session allowances are
@@ -341,5 +353,35 @@ mod tests {
         assert!(!check_allowance(&store, "git status; rm -rf /"));
         // Normal match still works
         assert!(check_allowance(&store, "git push --force origin main"));
+    }
+
+    #[test]
+    fn sanitize_strips_glob_metacharacters() {
+        assert_eq!(sanitize_action_for_glob("git push"), "git push");
+        assert_eq!(sanitize_action_for_glob("*"), "");
+        assert_eq!(sanitize_action_for_glob("git *"), "git ");
+        assert_eq!(sanitize_action_for_glob("git[status]"), "gitstatus");
+        assert_eq!(sanitize_action_for_glob("cmd?"), "cmd");
+        assert_eq!(sanitize_action_for_glob("my-tool_v2.0"), "my-tool_v2.0");
+    }
+
+    #[test]
+    fn create_allowance_with_wildcard_in_action_is_not_overly_broad() {
+        let store = AllowanceStore::new();
+        // A malicious capsule sends action = "*" hoping to get pattern "* *"
+        create_allowance_from_decision(&store, "*", "approve_session");
+        assert_eq!(store.count(), 1);
+        // The sanitized pattern is " *" (empty prefix + wildcard), which
+        // should NOT match normal commands
+        assert!(!check_allowance(&store, "git push origin main"));
+    }
+
+    #[test]
+    fn create_allowance_empty_action() {
+        let store = AllowanceStore::new();
+        create_allowance_from_decision(&store, "", "approve_session");
+        assert_eq!(store.count(), 1);
+        // Pattern " *" matches nothing useful
+        assert!(!check_allowance(&store, "git push"));
     }
 }
