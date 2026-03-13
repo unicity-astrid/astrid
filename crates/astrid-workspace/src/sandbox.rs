@@ -3,6 +3,36 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Validates that a path is safe for interpolation into an SBPL profile string.
+///
+/// Rejects:
+/// - Non-UTF-8 paths (silent lossy coercion would misalign the SBPL rule with the real path)
+/// - Double-quote (`"`) - SBPL string delimiter; allows sandbox escape
+/// - Backslash (`\`) - SBPL escape character; silently reinterprets the path
+/// - Null byte (`\0`) - defense in depth
+///
+/// # Errors
+///
+/// Returns an error if the path is not valid UTF-8 or contains forbidden characters.
+pub(crate) fn validate_sandbox_path(path: &Path) -> io::Result<()> {
+    let s = path.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("sandbox path is not valid UTF-8: {}", path.display()),
+        )
+    })?;
+    if s.contains('"') || s.contains('\\') || s.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "sandbox path contains forbidden characters (double-quote, backslash, or null): {}",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Wraps a standard OS command in a native kernel sandbox (bwrap or Seatbelt).
 ///
 /// This ensures that even if an agent executes a native tool (like `bash`, `npm`, or `python`),
@@ -15,26 +45,30 @@ impl SandboxCommand {
     /// the provided `worktree_path`.
     ///
     /// - On Linux, this dynamically prepends `bwrap` with strict mount rules.
-    /// - On macOS, this dynamically generates a Seatbelt profile (`.sb`) and prepends `sandbox-exec`.
+    /// - On macOS, this dynamically generates a Seatbelt profile and prepends `sandbox-exec -p`.
     /// - On other platforms (Windows), this currently passes through the command unmodified (with a warning).
     ///
     /// # Errors
     ///
-    /// Returns an error if generating the macOS Seatbelt profile fails.
+    /// Returns an error if the worktree path is not valid UTF-8 or contains
+    /// characters unsafe for SBPL interpolation (double-quote, backslash, or null byte).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `validate_sandbox_path` passes but the path is not valid UTF-8.
+    /// This is unreachable because `validate_sandbox_path` rejects non-UTF-8 paths.
     #[expect(clippy::needless_pass_by_value)]
     pub fn wrap(inner_cmd: Command, worktree_path: &Path) -> io::Result<Command> {
-        let worktree_str = worktree_path.to_string_lossy().to_string();
-
         #[cfg(target_os = "linux")]
         {
-            // Bubblewrap implementation
+            // Bubblewrap implementation - paths are passed as separate argv entries (no injection).
             // The process can only read the root OS, but can only write to the worktree and /tmp.
             let mut bwrap = Command::new("bwrap");
             bwrap
                 .arg("--ro-bind").arg("/").arg("/") // Read-only access to host OS (for binaries like /usr/bin/node)
                 .arg("--dev").arg("/dev")           // Standard dev mounts
                 .arg("--proc").arg("/proc")         // Standard proc mounts
-                .arg("--bind").arg(&worktree_str).arg(&worktree_str) // Write access to the worktree
+                .arg("--bind").arg(worktree_path).arg(worktree_path) // Write access to the worktree
                 .arg("--tmpfs").arg("/tmp")         // Disposable tmpfs
                 .arg("--unshare-all")               // Drop namespaces (network, pid, etc.)
                 .arg("--share-net")                 // Re-enable network so npm/cargo can fetch
@@ -63,9 +97,15 @@ impl SandboxCommand {
 
         #[cfg(target_os = "macos")]
         {
+            // Validation needed because SBPL interpolates paths into a string format.
+            // Linux bwrap passes paths as separate argv entries (no injection risk there).
+            validate_sandbox_path(worktree_path)?;
+            // Safe: validate_sandbox_path confirmed valid UTF-8 above.
+            let worktree_str = worktree_path.to_str().expect("validated UTF-8");
+
             // macOS Seatbelt implementation
-            // We write a dynamic profile to /tmp that denies all writes except to the worktree and /tmp.
-            // We also restrict reads to system directories, the worktree, and tmp to protect user dotfiles.
+            // Deny all writes except to the worktree and /tmp.
+            // Restrict reads to system directories, the worktree, and tmp to protect user dotfiles.
             let profile = format!(
                 r#"(version 1)
 (deny default)
@@ -86,7 +126,7 @@ impl SandboxCommand {
     (subpath "/private/tmp")
     (subpath "/var/folders")
 )
-(allow file-write* 
+(allow file-write*
     (subpath "{worktree_str}")
     (subpath "/private/tmp")
     (subpath "/var/folders")
@@ -94,14 +134,9 @@ impl SandboxCommand {
 )"#
             );
 
-            // Create a temporary file for the profile
-            let profile_path =
-                std::env::temp_dir().join(format!("astrid_sandbox_{}.sb", uuid::Uuid::new_v4()));
-            std::fs::write(&profile_path, profile)
-                .map_err(|e| io::Error::other(format!("Failed to write seatbelt profile: {e}")))?;
-
+            // Pass profile inline via -p to avoid temp-file leaks and TOCTOU races.
             let mut sb_cmd = Command::new("sandbox-exec");
-            sb_cmd.arg("-f").arg(&profile_path);
+            sb_cmd.arg("-p").arg(&profile);
 
             // Extract original
             sb_cmd.arg(inner_cmd.get_program());
@@ -392,6 +427,110 @@ impl ProcessSandboxConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn validate_sandbox_path_accepts_normal_path() {
+        let path = PathBuf::from("/Users/agent/workspace/project");
+        assert!(validate_sandbox_path(&path).is_ok());
+    }
+
+    #[test]
+    fn validate_sandbox_path_accepts_path_with_spaces() {
+        let path = PathBuf::from("/Users/agent/my project/src");
+        assert!(validate_sandbox_path(&path).is_ok());
+    }
+
+    #[test]
+    fn validate_sandbox_path_rejects_double_quote() {
+        let path = PathBuf::from("/Users/agent/work\"inject");
+        let err = validate_sandbox_path(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_sandbox_path_rejects_sbpl_injection_payload() {
+        // Simulates an actual SBPL escape attempt.
+        let path = PathBuf::from(r#"/tmp/evil") (allow file-write* (subpath "/"))"#);
+        let err = validate_sandbox_path(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_sandbox_path_rejects_backslash() {
+        // Backslash is an SBPL escape character - would silently reinterpret the path.
+        let path = PathBuf::from("/tmp/work\\nspace");
+        let err = validate_sandbox_path(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_sandbox_path_rejects_null_byte() {
+        // Null byte (0x00) is valid UTF-8, so to_str() succeeds.
+        // The s.contains('\0') guard then catches it.
+        let path = PathBuf::from("/tmp/work\0space");
+        let err = validate_sandbox_path(&path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn wrap_rejects_path_with_backslash() {
+        let cmd = Command::new("echo");
+        let bad_path = PathBuf::from("/tmp/work\\nspace");
+        let err = SandboxCommand::wrap(cmd, &bad_path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn wrap_rejects_path_with_double_quote() {
+        let cmd = Command::new("echo");
+        let bad_path = PathBuf::from("/tmp/bad\"path");
+        let err = SandboxCommand::wrap(cmd, &bad_path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("forbidden characters"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn wrap_uses_inline_profile() {
+        let cmd = Command::new("echo");
+        let path = PathBuf::from("/tmp/safe-workspace");
+        let wrapped = SandboxCommand::wrap(cmd, &path).unwrap();
+        let args: Vec<_> = wrapped.get_args().collect();
+        // First arg should be "-p" (inline profile), not "-f" (file).
+        assert_eq!(args[0], "-p", "expected -p for inline profile delivery");
+        // Second arg is the profile content, which should contain the worktree path.
+        let profile = args[1].to_string_lossy();
+        assert!(
+            profile.contains("/tmp/safe-workspace"),
+            "profile should contain the worktree path"
+        );
+    }
 
     #[test]
     fn test_sandbox_config_builder() {
