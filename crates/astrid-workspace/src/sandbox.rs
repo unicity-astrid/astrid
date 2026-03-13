@@ -250,8 +250,6 @@ impl ProcessSandboxConfig {
 
     #[cfg(target_os = "linux")]
     fn build_bwrap_prefix(&self) -> SandboxPrefix {
-        let writable_root_str = self.writable_root.to_string_lossy().to_string();
-
         let mut args: Vec<OsString> = Vec::new();
 
         // Read-only access to host OS (for binaries like /usr/bin/node)
@@ -263,17 +261,16 @@ impl ProcessSandboxConfig {
         // Write access to the writable root
         args.extend([
             OsString::from("--bind"),
-            OsString::from(&writable_root_str),
-            OsString::from(&writable_root_str),
+            self.writable_root.as_os_str().into(),
+            self.writable_root.as_os_str().into(),
         ]);
 
         // Additional writable paths
         for path in &self.extra_write_paths {
-            let s = path.to_string_lossy().to_string();
             args.extend([
                 OsString::from("--bind"),
-                OsString::from(&s),
-                OsString::from(&s),
+                path.as_os_str().into(),
+                path.as_os_str().into(),
             ]);
         }
 
@@ -287,8 +284,7 @@ impl ProcessSandboxConfig {
 
         // Hidden paths: overlay with empty tmpfs
         for path in &self.hidden_paths {
-            let s = path.to_string_lossy().to_string();
-            args.extend([OsString::from("--tmpfs"), OsString::from(&s)]);
+            args.extend([OsString::from("--tmpfs"), path.as_os_str().into()]);
         }
 
         // Drop all namespaces

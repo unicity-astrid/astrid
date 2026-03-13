@@ -510,22 +510,14 @@ impl ServerManager {
     /// the path, we refuse to start the server rather than running it
     /// with `~/.astrid/` exposed.
     fn resolve_astrid_home() -> McpResult<std::path::PathBuf> {
-        // Try AstridHome::resolve() first
-        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-            return Ok(home.root().to_path_buf());
-        }
-
-        // Fallback: construct from $HOME
-        if let Ok(home) = std::env::var("HOME") {
-            return Ok(std::path::PathBuf::from(home).join(".astrid"));
-        }
-
-        Err(McpError::ServerStartFailed {
-            name: "sandbox".to_string(),
-            reason: "Cannot determine ~/.astrid/ path for sandbox hiding. \
-                     Set $HOME or $ASTRID_HOME, or mark the server as trusted."
-                .to_string(),
-        })
+        astrid_core::dirs::AstridHome::resolve()
+            .map(|home| home.root().to_path_buf())
+            .map_err(|_| McpError::ServerStartFailed {
+                name: "sandbox".to_string(),
+                reason: "Cannot determine ~/.astrid/ path for sandbox hiding. \
+                         Set $HOME or $ASTRID_HOME, or mark the server as trusted."
+                    .to_string(),
+            })
     }
 
     /// Get a cloneable peer handle for a running server.
