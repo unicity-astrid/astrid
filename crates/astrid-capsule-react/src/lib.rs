@@ -435,7 +435,7 @@ impl ReactLoop {
     /// all ephemeral KV keys (turn state, correlation mappings, active
     /// sessions) to prevent stale state from a previous incarnation.
     #[astrid::interceptor("handle_lifecycle_restart")]
-    pub fn handle_lifecycle_restart(&self, _payload: serde_json::Value) -> Result<(), SysError> {
+    pub fn handle_lifecycle_restart(&self) -> Result<(), SysError> {
         let _ = log::info("Lifecycle restart: clearing ephemeral keys");
         clear_ephemeral_keys();
         Ok(())
