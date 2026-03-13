@@ -373,6 +373,10 @@ impl ServerManager {
             .or_else(|| self.workspace_root.clone())
             .unwrap_or_else(|| std::env::temp_dir().join("astrid-mcp").join(name));
 
+        // Validate writable_root and astrid_home against double-quote injection
+        // (paths are interpolated into macOS Seatbelt SBPL profiles).
+        Self::validate_sandbox_path(&writable_root, "writable_root (cwd)")?;
+
         // Ensure the writable root exists before bwrap tries to bind-mount it.
         std::fs::create_dir_all(&writable_root).map_err(|e| McpError::ServerStartFailed {
             name: name.to_string(),
@@ -384,6 +388,7 @@ impl ServerManager {
 
         // Resolve ~/.astrid/ path - this is mandatory for untrusted servers.
         let astrid_home = Self::resolve_astrid_home()?;
+        Self::validate_sandbox_path(&astrid_home, "astrid_home")?;
 
         // Build sandbox config
         let mut sandbox_config = ProcessSandboxConfig::new(&writable_root)
