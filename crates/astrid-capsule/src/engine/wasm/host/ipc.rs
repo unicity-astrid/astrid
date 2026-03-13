@@ -351,6 +351,11 @@ pub(crate) fn astrid_ipc_recv_impl(
     // Block the WASM thread until a message arrives, timeout expires, or the
     // capsule is unloaded (cancellation). Routed through the host semaphore to
     // bound concurrent blocking operations across all capsules.
+    //
+    // Note: the helper uses a biased select that strictly prioritises
+    // cancellation over completion. If a message arrives in the same poll
+    // tick as cancellation, the message is discarded. This is acceptable
+    // during teardown and prevents delayed shutdown under high throughput.
     let event = util::bounded_block_on_cancellable(
         &runtime_handle,
         &host_semaphore,
@@ -377,8 +382,10 @@ pub(crate) fn astrid_ipc_recv_impl(
         drain.messages.insert(0, message.clone());
     }
 
-    // Re-insert the receiver after draining
-    {
+    // Re-insert the receiver after draining. During teardown (cancel token
+    // fired), skip re-insertion: the capsule is dying and the lock may be
+    // poisoned from concurrent cleanup, which would surface a misleading error.
+    if !cancel_token.is_cancelled() {
         let mut state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;

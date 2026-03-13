@@ -297,4 +297,40 @@ mod tests {
             "expected at least 1 concurrent execution, got {max}"
         );
     }
+
+    /// Cancellation must unblock a task waiting for a semaphore permit,
+    /// not just a task already executing inside one. This locks in the
+    /// invariant that the biased select in `bounded_block_on_cancellable`
+    /// fires cancel even when queued behind the permit acquisition.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn bounded_block_on_cancellable_cancel_while_queued_for_permit() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let handle = tokio::runtime::Handle::current();
+        let cancel_token = CancellationToken::new();
+
+        // Hold the only permit for the duration of the test.
+        let _permit = semaphore.acquire().await.unwrap();
+
+        let ct = cancel_token.clone();
+        let sem = semaphore.clone();
+        let h = handle.clone();
+
+        // Spawn a task that will block waiting for the permit.
+        let task =
+            tokio::task::spawn(
+                async move { bounded_block_on_cancellable(&h, &sem, &ct, async { 42 }) },
+            );
+
+        // Give the spawned task time to enter the permit-wait path.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Cancel while the task is still queued for the permit.
+        cancel_token.cancel();
+
+        let result = task.await.unwrap();
+        assert!(
+            result.is_none(),
+            "expected None (cancelled), got {result:?}"
+        );
+    }
 }

@@ -158,6 +158,11 @@ pub(crate) fn astrid_elicit_impl(
     // Block the WASM thread until a response arrives, timeout expires, or
     // the capsule is unloaded (cancellation). Routed through the host
     // semaphore to bound concurrent blocking operations across all capsules.
+    //
+    // Note: the helper uses a biased select that strictly prioritises
+    // cancellation over completion. If a response arrives in the same poll
+    // tick as cancellation, the response is discarded. This is acceptable
+    // during teardown and prevents delayed shutdown under high throughput.
     let event = util::bounded_block_on_cancellable(
         &runtime_handle,
         &host_semaphore,
