@@ -30,6 +30,7 @@
 //! | [`uplink`]      | N/A              | Direct frontend messaging              |
 //! | [`hooks`]       | N/A              | User middleware triggers               |
 //! | [`elicit`]      | N/A              | Interactive install/upgrade prompts    |
+//! | [`approval`]    | N/A              | Human approval for sensitive actions   |
 
 #![allow(unsafe_code)]
 #![allow(missing_docs)]
@@ -1091,10 +1092,87 @@ pub mod interceptors {
     }
 }
 
+/// Request human approval for sensitive actions from within a capsule.
+///
+/// Any capsule can call [`approval::request`] to block until the frontend
+/// user approves or denies an action. The host function checks the
+/// `AllowanceStore` for a matching pattern first (instant path), and only
+/// prompts the user when no allowance exists.
+///
+/// # Example
+///
+/// ```ignore
+/// use astrid_sdk::prelude::*;
+///
+/// let result = approval::request("git push", "git push origin main", "high")?;
+/// if !result.approved {
+///     return Err(SysError::ApiError("Action denied by user".into()));
+/// }
+/// ```
+pub mod approval {
+    use super::*;
+
+    /// The result of an approval request.
+    #[derive(Debug)]
+    pub struct ApprovalResult {
+        /// Whether the action was approved.
+        pub approved: bool,
+        /// The decision string: "approve", "approve_session",
+        /// "approve_always", "deny", or "allowance" (auto-approved).
+        pub decision: String,
+    }
+
+    /// Request human approval for a sensitive action.
+    ///
+    /// Blocks the capsule until the frontend user responds or the request
+    /// times out. If an existing allowance matches, returns immediately
+    /// without prompting.
+    ///
+    /// - `action` - short description of the action (e.g. "git push")
+    /// - `resource` - full resource identifier (e.g. "git push origin main")
+    /// - `risk_level` - one of "low", "medium", "high", "critical"
+    pub fn request(
+        action: &str,
+        resource: &str,
+        risk_level: &str,
+    ) -> Result<ApprovalResult, SysError> {
+        #[derive(Serialize)]
+        struct ApprovalRequest<'a> {
+            action: &'a str,
+            resource: &'a str,
+            risk_level: &'a str,
+        }
+
+        let req = ApprovalRequest {
+            action,
+            resource,
+            risk_level,
+        };
+        let req_bytes = serde_json::to_vec(&req)?;
+
+        // SAFETY: FFI call to Extism host function. The host checks the
+        // AllowanceStore, publishes ApprovalRequired if needed, blocks
+        // until a response arrives, and returns a JSON result.
+        let resp_bytes = unsafe { astrid_request_approval(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct ApprovalResp {
+            approved: bool,
+            decision: String,
+        }
+        let resp: ApprovalResp = serde_json::from_slice(&resp_bytes)?;
+        Ok(ApprovalResult {
+            approved: resp.approved,
+            decision: resp.decision,
+        })
+    }
+}
+
 pub mod prelude {
     pub use crate::{
         SysError,
         // Astrid-specific modules
+        approval,
         cron,
         elicit,
         // std-mirrored modules

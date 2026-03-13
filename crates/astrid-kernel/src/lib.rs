@@ -70,6 +70,11 @@ pub struct Kernel {
     /// Path where the session token was written at boot. Stored so shutdown
     /// uses the exact same path (avoids fallback mismatch if env changes).
     token_path: PathBuf,
+    /// Shared allowance store for capsule-level approval decisions.
+    ///
+    /// Capsules can check existing allowances and create new ones when
+    /// users approve actions with session/always scope.
+    pub allowance_store: Arc<astrid_approval::AllowanceStore>,
 }
 
 impl Kernel {
@@ -168,6 +173,8 @@ impl Kernel {
         // TODO: clear ephemeral keys (e: prefix) on boot when the key
         // lifecycle tier convention is established.
 
+        let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
+
         let kernel = Arc::new(Self {
             session_id,
             event_bus,
@@ -184,6 +191,7 @@ impl Kernel {
             active_connections: AtomicUsize::new(0),
             session_token: Arc::new(session_token),
             token_path,
+            allowance_store,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -247,7 +255,8 @@ impl Kernel {
             self.cli_socket_listener.clone(),
         )
         .with_registry(Arc::clone(&self.capsules))
-        .with_session_token(Arc::clone(&self.session_token));
+        .with_session_token(Arc::clone(&self.session_token))
+        .with_allowance_store(Arc::clone(&self.allowance_store));
 
         capsule.load(&ctx).await?;
 

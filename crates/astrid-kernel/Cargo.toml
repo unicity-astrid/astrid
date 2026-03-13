@@ -15,6 +15,7 @@ astrid-vfs.workspace = true
 astrid-mcp.workspace = true
 astrid-audit.workspace = true
 astrid-crypto.workspace = true
+astrid-approval.workspace = true
 
 tokio = { workspace = true, features = ["full", "signal"] }
 tracing.workspace = true

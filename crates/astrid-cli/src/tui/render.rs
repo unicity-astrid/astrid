@@ -1410,7 +1410,7 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
     let risk_color = match approval.risk_level {
         RiskLevel::Low => theme.success,
         RiskLevel::Medium => theme.warning,
-        RiskLevel::High => theme.error,
+        RiskLevel::High | RiskLevel::Critical => theme.error,
     };
 
     let mut lines = vec![

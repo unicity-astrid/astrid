@@ -100,6 +100,7 @@ mod tests {
             cli_socket_listener: None,
             capsule_registry: None,
             session_token: None,
+            allowance_store: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -158,6 +159,7 @@ mod tests {
             cli_socket_listener: None,
             capsule_registry: None,
             session_token: None,
+            allowance_store: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -213,6 +215,7 @@ mod tests {
             cli_socket_listener: None,
             capsule_registry: None,
             session_token: None,
+            allowance_store: None,
         };
 
         let result = engine.load(&ctx).await;

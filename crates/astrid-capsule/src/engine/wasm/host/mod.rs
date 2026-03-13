@@ -1,3 +1,5 @@
+/// Capsule-level approval requests.
+pub(crate) mod approval;
 /// Cron scheduling.
 pub(crate) mod cron;
 /// Elicit lifecycle API (install/upgrade user input collection).
@@ -64,10 +66,11 @@ pub(crate) enum WasmHostFunction {
     SignalReady,
     ClockMs,
     GetInterceptorHandles,
+    RequestApproval,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 36] = [
+    pub(crate) const ALL: [Self; 37] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -104,6 +107,7 @@ impl WasmHostFunction {
         Self::SignalReady,
         Self::ClockMs,
         Self::GetInterceptorHandles,
+        Self::RequestApproval,
     ];
 
     #[must_use]
@@ -150,6 +154,7 @@ impl WasmHostFunction {
             Self::SignalReady => "astrid_signal_ready",
             Self::ClockMs => "astrid_clock_ms",
             Self::GetInterceptorHandles => "astrid_get_interceptor_handles",
+            Self::RequestApproval => "astrid_request_approval",
         }
     }
 
@@ -178,7 +183,8 @@ impl WasmHostFunction {
             | Self::NetRead
             | Self::TriggerHook
             | Self::Elicit
-            | Self::HasSecret => 1,
+            | Self::HasSecret
+            | Self::RequestApproval => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -229,7 +235,8 @@ impl WasmHostFunction {
             | Self::Elicit
             | Self::HasSecret
             | Self::ClockMs
-            | Self::GetInterceptorHandles => TYPE_I64,
+            | Self::GetInterceptorHandles
+            | Self::RequestApproval => TYPE_I64,
         }
     }
 }
@@ -369,6 +376,13 @@ pub fn register_host_functions(
                 rets,
                 ud,
                 ipc::astrid_get_interceptor_handles_impl,
+            ),
+            WasmHostFunction::RequestApproval => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                approval::astrid_request_approval_impl,
             ),
         };
     }

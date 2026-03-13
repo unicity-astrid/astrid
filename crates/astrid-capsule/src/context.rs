@@ -39,6 +39,8 @@ pub struct CapsuleContext {
     /// Session token for authenticating CLI socket connections. Only set for
     /// capsules with `net_bind` capability (the CLI proxy capsule).
     pub session_token: Option<Arc<SessionToken>>,
+    /// Shared allowance store for capsule-level approval requests.
+    pub allowance_store: Option<Arc<astrid_approval::AllowanceStore>>,
 }
 
 impl CapsuleContext {
@@ -58,6 +60,7 @@ impl CapsuleContext {
             cli_socket_listener,
             capsule_registry: None,
             session_token: None,
+            allowance_store: None,
         }
     }
 
@@ -72,6 +75,13 @@ impl CapsuleContext {
     #[must_use]
     pub fn with_registry(mut self, registry: Arc<tokio::sync::RwLock<CapsuleRegistry>>) -> Self {
         self.capsule_registry = Some(registry);
+        self
+    }
+
+    /// Set the shared allowance store for capsule-level approval.
+    #[must_use]
+    pub fn with_allowance_store(mut self, store: Arc<astrid_approval::AllowanceStore>) -> Self {
+        self.allowance_store = Some(store);
         self
     }
 }

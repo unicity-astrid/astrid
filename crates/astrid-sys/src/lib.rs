@@ -127,6 +127,15 @@ extern "ExtismHost" {
     pub fn astrid_has_secret(request: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
+    // Approval (Capsule-Level Approval Requests)
+    // -----------------------------------------------------------------------
+    /// Request human approval for a sensitive action.
+    /// Takes JSON: `{"action":"...","resource":"...","risk_level":"..."}`.
+    /// Returns JSON: `{"approved":true/false,"decision":"..."}`.
+    /// Blocks the WASM guest until the frontend responds or timeout.
+    pub fn astrid_request_approval(request: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
     // Host Execution (The Escape Hatch)
     // -----------------------------------------------------------------------
     /// Spawn a native host process. Requires the `host_process` capability.

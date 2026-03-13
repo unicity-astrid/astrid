@@ -355,14 +355,69 @@ fn test_file_pattern_read_rejects_path_traversal() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_command_pattern_exact_match() {
+fn test_command_pattern_exact_match_no_args() {
+    // Exact pattern "cargo" matches command "cargo" with no args.
     let pattern = AllowancePattern::CommandPattern {
         command: "cargo".to_string(),
     };
     assert!(pattern.matches(
         &SensitiveAction::ExecuteCommand {
             command: "cargo".to_string(),
+            args: vec![],
+        },
+        None
+    ));
+}
+
+#[test]
+fn test_command_pattern_exact_no_match_with_args() {
+    // Exact pattern "cargo" does NOT match "cargo build" (full command).
+    // Use "cargo *" to match cargo with any args.
+    let pattern = AllowancePattern::CommandPattern {
+        command: "cargo".to_string(),
+    };
+    assert!(!pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "cargo".to_string(),
             args: vec!["build".to_string()],
+        },
+        None
+    ));
+}
+
+#[test]
+fn test_command_pattern_wildcard_matches_with_args() {
+    // "cargo *" matches "cargo build", "cargo test", etc.
+    let pattern = AllowancePattern::CommandPattern {
+        command: "cargo *".to_string(),
+    };
+    assert!(pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "cargo".to_string(),
+            args: vec!["build".to_string()],
+        },
+        None
+    ));
+}
+
+#[test]
+fn test_command_pattern_full_command_string_matching() {
+    // When command contains the full string (SDK approval pattern),
+    // args is empty - the pattern matches against the full command.
+    let pattern = AllowancePattern::CommandPattern {
+        command: "git push *".to_string(),
+    };
+    assert!(pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "git push origin main".to_string(),
+            args: vec![],
+        },
+        None
+    ));
+    assert!(!pattern.matches(
+        &SensitiveAction::ExecuteCommand {
+            command: "git status".to_string(),
+            args: vec![],
         },
         None
     ));

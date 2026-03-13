@@ -146,6 +146,7 @@ pub(crate) enum RiskLevel {
     Low,
     Medium,
     High,
+    Critical,
 }
 
 // ─── Pending Actions ─────────────────────────────────────────────

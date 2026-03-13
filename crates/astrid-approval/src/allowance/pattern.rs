@@ -214,11 +214,21 @@ impl AllowancePattern {
                 SensitiveAction::ExecuteCommand { command, .. },
             ) => workspace_root.is_some() && matches_file_glob(pattern, command),
 
-            // CommandPattern matches ExecuteCommand (no workspace check)
+            // CommandPattern matches ExecuteCommand by full command string
+            // (command + args joined). This allows "git push *" to match
+            // ExecuteCommand { command: "git push origin main", args: [] }
+            // as well as { command: "git", args: ["push", "origin", "main"] }.
             (
                 Self::CommandPattern { command: pattern },
-                SensitiveAction::ExecuteCommand { command, .. },
-            ) => matches_file_glob(pattern, command),
+                SensitiveAction::ExecuteCommand { command, args },
+            ) => {
+                let full_cmd = if args.is_empty() {
+                    command.clone()
+                } else {
+                    format!("{command} {}", args.join(" "))
+                };
+                matches_file_glob(pattern, &full_cmd)
+            },
 
             // CapsuleCapability: match plugin actions with same capsule_id + derived capability
             (

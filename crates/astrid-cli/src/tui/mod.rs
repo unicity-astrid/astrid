@@ -314,6 +314,35 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                     request_id: request_id.clone(),
                 };
             }
+        } else if let astrid_events::ipc::IpcPayload::ApprovalRequired {
+            request_id,
+            action,
+            resource,
+            reason: _,
+            risk_level,
+        } = &message.payload
+        {
+            let tui_risk = match risk_level.as_str() {
+                "low" => state::RiskLevel::Low,
+                "medium" => state::RiskLevel::Medium,
+                "critical" => state::RiskLevel::Critical,
+                _ => state::RiskLevel::High,
+            };
+            let approval = state::ApprovalRequest {
+                id: request_id.clone(),
+                tool_name: action.clone(),
+                description: resource.clone(),
+                risk_level: tui_risk,
+                details: vec![
+                    ("Action".into(), action.clone()),
+                    ("Resource".into(), resource.clone()),
+                ],
+            };
+            app.push_notice(&format!("Approval required: {action} on {resource}"));
+            app.pending_approvals.push(approval);
+            if !matches!(app.state, UiState::AwaitingApproval) {
+                app.state = UiState::AwaitingApproval;
+            }
         } else if let astrid_events::ipc::IpcPayload::RawJson(val) = &message.payload
             && let Ok(astrid_events::kernel_api::KernelResponse::Commands(cmds)) =
                 serde_json::from_value::<astrid_events::kernel_api::KernelResponse>(val.clone())
@@ -417,13 +446,37 @@ async fn handle_pending_actions(
 
     for action in actions {
         match action {
-            PendingAction::Approve { .. } => {
-                // TODO: Translate to KernelRequest::ApproveCapability
-                app.push_notice("Approval via UI is temporarily disabled in Microkernel mode.");
+            PendingAction::Approve {
+                request_id,
+                decision,
+            } => {
+                let decision_str = match decision {
+                    state::ApprovalDecisionKind::Once => "approve",
+                    state::ApprovalDecisionKind::Session => "approve_session",
+                    state::ApprovalDecisionKind::Always => "approve_always",
+                };
+                let response_topic = format!("astrid.v1.approval.response.{request_id}");
+                let response = astrid_events::ipc::IpcPayload::ApprovalResponse {
+                    request_id,
+                    decision: decision_str.into(),
+                    reason: None,
+                };
+                let msg =
+                    astrid_events::ipc::IpcMessage::new(response_topic, response, session_id.0);
+                let _ = client.send_message(msg).await;
+                app.push_notice(&format!("Action approved ({decision_str})."));
             },
-            PendingAction::Deny { .. } => {
-                // TODO: Translate to KernelRequest::ApproveCapability (deny)
-                app.push_notice("Denial via UI is temporarily disabled in Microkernel mode.");
+            PendingAction::Deny { request_id, reason } => {
+                let response_topic = format!("astrid.v1.approval.response.{request_id}");
+                let response = astrid_events::ipc::IpcPayload::ApprovalResponse {
+                    request_id,
+                    decision: "deny".into(),
+                    reason,
+                };
+                let msg =
+                    astrid_events::ipc::IpcMessage::new(response_topic, response, session_id.0);
+                let _ = client.send_message(msg).await;
+                app.push_notice("Action denied.");
             },
             PendingAction::CancelTurn => {
                 // Send an empty UserInput with a special __cancel__ context

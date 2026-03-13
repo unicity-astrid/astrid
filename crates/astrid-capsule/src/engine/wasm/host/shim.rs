@@ -312,6 +312,14 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::RequestApproval => {
+            crate::engine::wasm::host::approval::astrid_request_approval_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

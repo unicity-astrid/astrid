@@ -109,25 +109,28 @@ async fn run_json_chat(
                     formatter.format_tool_result(&call_id, &res_val, result.is_error);
                 },
                 astrid_events::ipc::IpcPayload::ApprovalRequired {
+                    request_id,
                     action,
                     resource,
                     reason,
+                    risk_level,
                 } => {
                     formatter.flush_markdown();
                     println!(
                         "{}",
                         Theme::warning(&format!(
-                            "Approval required: {action} on {resource} ({reason})"
+                            "Approval required [{risk_level}]: {action} on {resource} ({reason})"
                         ))
                     );
-                    // TUI handles this correctly, JSON mode auto-aborts for safety unless headless approvals are enabled
+                    // JSON REPL auto-denies - TUI handles interactive approval
                     client
                         .send_message(astrid_events::ipc::IpcMessage::new(
-                            "user.v1.approval",
-                            astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({
-                                "approved": false,
-                                "reason": "Approval not supported in JSON REPL mode"
-                            })),
+                            format!("astrid.v1.approval.response.{request_id}"),
+                            astrid_events::ipc::IpcPayload::ApprovalResponse {
+                                request_id,
+                                decision: "deny".into(),
+                                reason: Some("Approval not supported in JSON REPL mode".into()),
+                            },
                             session_id.0,
                         ))
                         .await?;

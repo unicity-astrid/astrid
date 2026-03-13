@@ -13,7 +13,8 @@ astrid-vfs = { workspace = true }
 astrid-capabilities = { workspace = true }
 astrid-events = { workspace = true, features = ["runtime"] }
 astrid-storage = { workspace = true, features = ["keychain"] }
-astrid-approval = { workspace = true, optional = true }
+astrid-approval = { workspace = true }
+astrid-crypto = { workspace = true }
 astrid-mcp = { workspace = true }
 extism = { workspace = true }
 uuid = { workspace = true }
@@ -48,5 +49,3 @@ astrid-mcp = { workspace = true, features = ["test-support"] }
 # test builds additionally enable "test-support".
 
 [features]
-default = ["approval"]
-approval = ["astrid-approval"]

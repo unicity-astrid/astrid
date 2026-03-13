@@ -79,14 +79,39 @@ pub enum IpcPayload {
         #[serde(default = "default_session_id")]
         session_id: String,
     },
-    /// An interceptor request for capability approval.
+    /// An interceptor or capsule request for capability approval.
+    ///
+    /// Published by the `astrid_request_approval` host function when a
+    /// capsule needs human consent for a sensitive action. The frontend
+    /// renders a prompt and publishes an
+    /// [`ApprovalResponse`](IpcPayload::ApprovalResponse) to
+    /// `astrid.v1.approval.response.{request_id}`.
     ApprovalRequired {
-        /// The action being requested.
+        /// Opaque correlation ID - the host function blocks until a
+        /// response with this ID arrives.
+        request_id: String,
+        /// The action being requested (e.g. "git push").
         action: String,
-        /// The resource target.
+        /// The resource target (e.g. full command string).
         resource: String,
         /// Justification.
         reason: String,
+        /// Risk classification: "low", "medium", "high", or "critical".
+        risk_level: String,
+    },
+    /// Response to an [`ApprovalRequired`](IpcPayload::ApprovalRequired).
+    ///
+    /// Published by the frontend after the user decides. The decision
+    /// string is one of: "approve", "`approve_session`", "`approve_always`",
+    /// or "deny".
+    ApprovalResponse {
+        /// Must match the `request_id` from the originating request.
+        request_id: String,
+        /// The user's decision.
+        decision: String,
+        /// Optional reason for the decision.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
     },
     /// A capsule needs environment variables to be provided by the user.
     ///
@@ -238,6 +263,7 @@ impl IpcPayload {
                 | "user_input"
                 | "agent_response"
                 | "approval_required"
+                | "approval_response"
                 | "onboarding_required"
                 | "llm_request"
                 | "llm_stream_event"
@@ -671,7 +697,7 @@ mod tests {
     #[test]
     fn is_known_tag_covers_all_variants() {
         // Bump this when adding a new IpcPayload variant.
-        const EXPECTED_VARIANT_COUNT: usize = 16;
+        const EXPECTED_VARIANT_COUNT: usize = 17;
 
         let representatives: Vec<IpcPayload> = vec![
             IpcPayload::RawJson(serde_json::json!({"key": "val"})),
@@ -686,9 +712,16 @@ mod tests {
                 session_id: "s".into(),
             },
             IpcPayload::ApprovalRequired {
+                request_id: "req-1".into(),
                 action: String::new(),
                 resource: String::new(),
                 reason: String::new(),
+                risk_level: "high".into(),
+            },
+            IpcPayload::ApprovalResponse {
+                request_id: "req-1".into(),
+                decision: "approve".into(),
+                reason: None,
             },
             IpcPayload::OnboardingRequired {
                 capsule_id: String::new(),
