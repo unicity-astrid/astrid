@@ -397,4 +397,43 @@ mod tests {
         let (migrated, _) = data.migrate().expect("v0 should migrate");
         assert_eq!(migrated.parent_session_id.as_deref(), Some("parent-abc"));
     }
+
+    // -- correlation_id validation (scoped reply topic safety) --
+
+    /// Helper replicating the correlation_id validation predicate used in
+    /// `handle_get_messages` and `handle_clear`.
+    fn valid_correlation_id(payload: &serde_json::Value) -> Option<&str> {
+        payload
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && !s.contains('.'))
+    }
+
+    #[test]
+    fn test_correlation_id_rejects_empty() {
+        let payload = serde_json::json!({ "correlation_id": "" });
+        assert!(valid_correlation_id(&payload).is_none());
+    }
+
+    #[test]
+    fn test_correlation_id_rejects_missing() {
+        let payload = serde_json::json!({});
+        assert!(valid_correlation_id(&payload).is_none());
+    }
+
+    #[test]
+    fn test_correlation_id_rejects_dots() {
+        let payload = serde_json::json!({ "correlation_id": "abc.def" });
+        assert!(valid_correlation_id(&payload).is_none());
+    }
+
+    #[test]
+    fn test_correlation_id_accepts_uuid() {
+        let payload =
+            serde_json::json!({ "correlation_id": "550e8400-e29b-41d4-a716-446655440000" });
+        assert_eq!(
+            valid_correlation_id(&payload),
+            Some("550e8400-e29b-41d4-a716-446655440000")
+        );
+    }
 }
