@@ -37,7 +37,18 @@ pub(crate) struct CapsuleMeta {
 /// Read existing `meta.json` from a capsule's install directory (if present).
 pub(crate) fn read_meta(target_dir: &Path) -> Option<CapsuleMeta> {
     let meta_path = target_dir.join("meta.json");
-    let data = std::fs::read_to_string(&meta_path).ok()?;
+    let data = match std::fs::read_to_string(&meta_path) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::warn!(
+                path = %meta_path.display(),
+                error = %e,
+                "failed to read meta.json, treating as missing"
+            );
+            return None;
+        },
+    };
     match serde_json::from_str::<CapsuleMeta>(&data) {
         Ok(m) => Some(m),
         Err(e) => {

@@ -8,37 +8,37 @@ use super::meta::{InstalledCapsule, scan_installed_capsules};
 use crate::theme::Theme;
 
 // ---------------------------------------------------------------------------
-// Graph data types (testable core)
+// Graph data types (testable core) - zero-alloc borrowed strings
 // ---------------------------------------------------------------------------
 
 /// A single satisfied requirement edge.
 #[derive(Debug)]
-struct ProviderMatch {
+struct ProviderMatch<'a> {
     /// Name of the capsule that provides the capability.
-    capsule_name: String,
+    capsule_name: &'a str,
     /// The specific capability string that matched.
-    matched_capability: String,
+    matched_capability: &'a str,
 }
 
 /// All dependency edges for one capsule.
 #[derive(Debug)]
-struct CapsuleDeps {
-    name: String,
-    edges: Vec<DepEdge>,
+struct CapsuleDeps<'a> {
+    name: &'a str,
+    edges: Vec<DepEdge<'a>>,
 }
 
 /// One requirement and its resolved providers.
 #[derive(Debug)]
-struct DepEdge {
-    requirement: String,
-    providers: Vec<ProviderMatch>,
+struct DepEdge<'a> {
+    requirement: &'a str,
+    providers: Vec<ProviderMatch<'a>>,
 }
 
 /// An unsatisfied requirement.
 #[derive(Debug)]
-struct Unsatisfied {
-    capsule_name: String,
-    requirement: String,
+struct Unsatisfied<'a> {
+    capsule_name: &'a str,
+    requirement: &'a str,
 }
 
 /// Build the dependency graph from installed capsule metadata.
@@ -46,7 +46,9 @@ struct Unsatisfied {
 /// For each capsule's `requires`, finds ALL capsules whose `provides` satisfy
 /// the requirement via [`capability_matches`]. Returns the per-capsule deps
 /// and any requirements that no installed capsule satisfies.
-fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps>, Vec<Unsatisfied>) {
+///
+/// All strings are borrowed from the input slice - zero allocations.
+fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps<'_>>, Vec<Unsatisfied<'_>>) {
     let mut all_deps = Vec::new();
     let mut unsatisfied = Vec::new();
 
@@ -70,8 +72,8 @@ fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps>, Vec<Unsa
                 for prov in offered {
                     if capability_matches(req, prov) {
                         providers.push(ProviderMatch {
-                            capsule_name: other.name.clone(),
-                            matched_capability: prov.clone(),
+                            capsule_name: &other.name,
+                            matched_capability: prov,
                         });
                     }
                 }
@@ -79,19 +81,19 @@ fn build_dep_graph(capsules: &[InstalledCapsule]) -> (Vec<CapsuleDeps>, Vec<Unsa
 
             if providers.is_empty() {
                 unsatisfied.push(Unsatisfied {
-                    capsule_name: cap.name.clone(),
-                    requirement: req.clone(),
+                    capsule_name: &cap.name,
+                    requirement: req,
                 });
             }
 
             edges.push(DepEdge {
-                requirement: req.clone(),
+                requirement: req,
                 providers,
             });
         }
 
         all_deps.push(CapsuleDeps {
-            name: cap.name.clone(),
+            name: &cap.name,
             edges,
         });
     }
@@ -262,7 +264,7 @@ mod tests {
         let provider_names: Vec<&str> = consumer_deps.edges[0]
             .providers
             .iter()
-            .map(|p| p.capsule_name.as_str())
+            .map(|p| p.capsule_name)
             .collect();
         assert!(provider_names.contains(&"anthropic"));
         assert!(provider_names.contains(&"openai"));
