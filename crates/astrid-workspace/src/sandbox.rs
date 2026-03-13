@@ -5,9 +5,15 @@ use std::process::Command;
 
 /// Validate a path for safe interpolation into sandbox profiles (SBPL/bwrap).
 ///
-/// Rejects non-UTF-8, double-quote, and null byte - all of which can break
-/// or bypass sandbox profile syntax.
+/// Rejects relative paths, non-UTF-8, double-quote, and null byte - all of
+/// which can break or bypass sandbox profile syntax.
 fn validate_sandbox_str<'a>(path: &'a Path, label: &str) -> io::Result<&'a str> {
+    if !path.is_absolute() {
+        return Err(io::Error::other(format!(
+            "sandbox {label} must be an absolute path, got: {}",
+            path.display()
+        )));
+    }
     let s = path.to_str().ok_or_else(|| {
         io::Error::other(format!(
             "sandbox {label} is not valid UTF-8: {}",
@@ -693,6 +699,25 @@ mod tests {
             err_msg.contains("forbidden characters"),
             "error should mention forbidden chars: {err_msg}"
         );
+    }
+
+    #[test]
+    fn test_wrap_rejects_relative_path() {
+        let bad_path = Path::new("relative/workspace");
+        let cmd = Command::new("echo");
+        let result = SandboxCommand::wrap(cmd, bad_path);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("absolute path"),
+            "error should mention absolute path: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_sandbox_prefix_rejects_relative_writable_root() {
+        let config = ProcessSandboxConfig::new("relative/project");
+        assert!(config.sandbox_prefix().is_err());
     }
 
     // Validation tests are NOT gated by platform - sandbox_prefix() validates
