@@ -116,14 +116,19 @@ pub(crate) fn astrid_kv_list_keys_impl(
         .map_err(|e| Error::msg(format!("kv_list_keys prefix is not valid UTF-8: {e}")))?;
 
     let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let (kv, runtime_handle, host_semaphore) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.kv.clone(),
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
+    };
 
-    let keys = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.kv.list_keys_with_prefix(&prefix).await })
+    let keys = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+        kv.list_keys_with_prefix(&prefix).await
     })
     .map_err(|e| Error::msg(format!("kv_list_keys failed: {e}")))?;
 
@@ -145,17 +150,19 @@ pub(crate) fn astrid_kv_clear_prefix_impl(
         .map_err(|e| Error::msg(format!("kv_clear_prefix prefix is not valid UTF-8: {e}")))?;
 
     let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    let (kv, runtime_handle, host_semaphore) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        (
+            state.kv.clone(),
+            state.runtime_handle.clone(),
+            state.host_semaphore.clone(),
+        )
+    };
 
-    // The HostState mutex is held across the deletion loop. This is
-    // acceptable: WASM interceptor calls within a capsule are serialized
-    // by the plugin mutex, so no concurrent access is possible.
-    let count = tokio::task::block_in_place(|| {
-        state
-            .runtime_handle
-            .block_on(async { state.kv.clear_prefix(&prefix).await })
+    let count = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+        kv.clear_prefix(&prefix).await
     })
     .map_err(|e| Error::msg(format!("kv_clear_prefix failed: {e}")))?;
 

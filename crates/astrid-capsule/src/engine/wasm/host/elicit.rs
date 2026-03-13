@@ -89,7 +89,15 @@ pub(crate) fn astrid_elicit_impl(
 
     // Lock state: verify lifecycle phase, subscribe to response topic, extract
     // what we need, then drop the lock before blocking.
-    let (mut receiver, runtime_handle, event_bus, capsule_id, secret_store, cancel_token) = {
+    let (
+        mut receiver,
+        runtime_handle,
+        event_bus,
+        capsule_id,
+        secret_store,
+        cancel_token,
+        host_semaphore,
+    ) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -110,6 +118,7 @@ pub(crate) fn astrid_elicit_impl(
         let capsule_id = state.capsule_id.to_string();
         let secret_store = state.secret_store.clone();
         let cancel_token = state.cancel_token.clone();
+        let host_semaphore = state.host_semaphore.clone();
 
         (
             receiver,
@@ -118,6 +127,7 @@ pub(crate) fn astrid_elicit_impl(
             capsule_id,
             secret_store,
             cancel_token,
+            host_semaphore,
         )
     };
 
@@ -146,16 +156,23 @@ pub(crate) fn astrid_elicit_impl(
     );
 
     // Block the WASM thread until a response arrives, timeout expires, or
-    // the capsule is unloaded (cancellation).
-    let event = runtime_handle.block_on(async {
-        tokio::select! {
-            result = tokio::time::timeout(
+    // the capsule is unloaded (cancellation). Routed through the host
+    // semaphore to bound concurrent blocking operations across all capsules.
+    let event = util::bounded_block_on_cancellable(
+        &runtime_handle,
+        &host_semaphore,
+        &cancel_token,
+        async {
+            tokio::time::timeout(
                 std::time::Duration::from_millis(MAX_ELICIT_TIMEOUT_MS),
                 receiver.recv(),
-            ) => result.ok().flatten(),
-            () = cancel_token.cancelled() => None,
-        }
-    });
+            )
+            .await
+            .ok()
+            .flatten()
+        },
+    )
+    .flatten();
 
     // Extract the response
     let response_json = match event {

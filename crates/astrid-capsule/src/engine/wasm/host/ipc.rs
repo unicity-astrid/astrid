@@ -334,7 +334,7 @@ pub(crate) fn astrid_ipc_recv_impl(
 
     // Temporarily remove the receiver from the map so we can drop the lock
     // before blocking. WASM is single-threaded so no concurrent access is possible.
-    let (mut receiver, runtime_handle, cancel_token) = {
+    let (mut receiver, runtime_handle, cancel_token, host_semaphore) = {
         let mut state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -344,21 +344,28 @@ pub(crate) fn astrid_ipc_recv_impl(
             .ok_or_else(|| Error::msg("Subscription handle not found"))?;
         let runtime_handle = state.runtime_handle.clone();
         let cancel_token = state.cancel_token.clone();
-        (receiver, runtime_handle, cancel_token)
+        let host_semaphore = state.host_semaphore.clone();
+        (receiver, runtime_handle, cancel_token, host_semaphore)
     };
 
     // Block the WASM thread until a message arrives, timeout expires, or the
-    // capsule is unloaded (cancellation). The WASM engine runs inside
-    // block_in_place, so blocking here is safe.
-    let event = runtime_handle.block_on(async {
-        tokio::select! {
-            result = tokio::time::timeout(
+    // capsule is unloaded (cancellation). Routed through the host semaphore to
+    // bound concurrent blocking operations across all capsules.
+    let event = util::bounded_block_on_cancellable(
+        &runtime_handle,
+        &host_semaphore,
+        &cancel_token,
+        async {
+            tokio::time::timeout(
                 std::time::Duration::from_millis(timeout_ms),
                 receiver.recv(),
-            ) => result.ok().flatten(),
-            () = cancel_token.cancelled() => None,
-        }
-    });
+            )
+            .await
+            .ok()
+            .flatten()
+        },
+    )
+    .flatten();
 
     // Collect the blocking-wake message (if any) plus drain remaining.
     let mut drain = drain_receiver(&mut receiver, util::MAX_GUEST_PAYLOAD_LEN as usize);
