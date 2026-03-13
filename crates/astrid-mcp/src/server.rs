@@ -428,7 +428,13 @@ impl ServerManager {
         }
 
         // Get sandbox prefix (bwrap/sandbox-exec args)
-        let sandbox_prefix = sandbox_config.sandbox_prefix();
+        let sandbox_prefix =
+            sandbox_config
+                .sandbox_prefix()
+                .map_err(|e| McpError::ServerStartFailed {
+                    name: name.to_string(),
+                    reason: format!("sandbox path validation failed: {e}"),
+                })?;
 
         // Build the command
         let mut cmd = if let Some(prefix) = sandbox_prefix {
