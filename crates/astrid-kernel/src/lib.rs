@@ -318,17 +318,23 @@ impl Kernel {
         // Signal the newly loaded capsule to clean up ephemeral state
         // from the previous incarnation. Capsules that don't implement
         // `handle_lifecycle_restart` will return an error, which is fine.
-        {
+        //
+        // Clone the capsule Arc under a brief read lock, then drop the
+        // guard before invoke_interceptor which calls block_in_place.
+        // Holding the RwLock across block_in_place parks the worker thread
+        // and starves registry writers (health monitor, capsule loading).
+        let capsule = {
             let registry = self.capsules.read().await;
-            if let Some(capsule) = registry.get(id)
-                && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[])
-            {
-                tracing::debug!(
-                    capsule_id = %id,
-                    error = %e,
-                    "Capsule does not handle lifecycle restart (optional)"
-                );
-            }
+            registry.get(id)
+        };
+        if let Some(capsule) = capsule
+            && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[])
+        {
+            tracing::debug!(
+                capsule_id = %id,
+                error = %e,
+                "Capsule does not handle lifecycle restart (optional)"
+            );
         }
 
         Ok(())
