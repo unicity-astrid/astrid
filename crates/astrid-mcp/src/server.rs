@@ -408,11 +408,14 @@ impl ServerManager {
         }
 
         // Add common package manager cache dirs as read-only so npm/cargo
-        // don't re-download on every server start.
+        // don't re-download on every server start. Validate each path for
+        // consistency (skip silently on failure - these are optional).
         if let Ok(home) = std::env::var("HOME") {
             for cache_dir in &[".npm", ".nvm", ".cargo", ".rustup"] {
                 let cache_path = std::path::PathBuf::from(&home).join(cache_dir);
-                if cache_path.exists() {
+                if cache_path.exists()
+                    && Self::validate_sandbox_path(&cache_path, "package manager cache").is_ok()
+                {
                     sandbox_config = sandbox_config.with_extra_read(cache_path);
                 }
             }
