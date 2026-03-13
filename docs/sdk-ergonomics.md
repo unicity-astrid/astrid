@@ -133,17 +133,8 @@ pub mod runtime {
 
 ### Backward Compatibility
 
-`sys` remains as a re-export facade during migration:
-
-```rust
-pub mod sys {
-    pub use crate::env::{var as get_config_string, var_bytes as get_config_bytes};
-    pub use crate::log::log;
-    pub use crate::runtime::{caller as get_caller, signal_ready, socket_path};
-    pub use crate::time::now_ms as clock_ms;
-    pub const CONFIG_SOCKET_PATH: &str = crate::env::CONFIG_SOCKET_PATH;
-}
-```
+The `sys` module was removed entirely (clean break). All consumer capsules
+were migrated in the same PR. No migration facade was shipped.
 
 ## Change 3: Typed Handles
 
@@ -220,7 +211,8 @@ pub mod prelude {
     pub use crate::{
         SysError,
         env, fs, http, ipc, kv, log, net, process, runtime, time,
-        cron, elicit, hooks, interceptors, uplink,
+        cron, elicit, hooks, uplink,
+        // interceptors: planned, on unmerged branch
     };
     #[cfg(feature = "derive")]
     pub use astrid_sdk_macros::capsule;
@@ -250,12 +242,11 @@ impl MyCapsule {
 
     #[astrid::run]
     fn run(&self) -> Result<(), SysError> {
-        let bindings = interceptors::bindings()?;
+        let sub = ipc::subscribe("my.topic")?;
         runtime::signal_ready()?;
         loop {
-            interceptors::poll(&bindings, |action, envelope| {
-                // dispatch
-            })?;
+            let envelope = ipc::recv_bytes(&sub, 5000)?;
+            // process envelope
         }
     }
 

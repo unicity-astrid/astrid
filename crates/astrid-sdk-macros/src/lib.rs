@@ -1150,7 +1150,7 @@ mod tests {
 
         let output = capsule_impl(attr, input).to_string();
         assert!(
-            output.contains("fn run"),
+            output.contains("extern \"C\" fn run"),
             "Expected run export, got:\n{output}"
         );
         // Should NOT generate lifecycle exports
@@ -1301,7 +1301,10 @@ mod tests {
             output.contains("astrid_install"),
             "Should generate install export"
         );
-        assert!(output.contains("fn run"), "Should generate run export");
+        assert!(
+            output.contains("extern \"C\" fn run"),
+            "Should generate run export"
+        );
     }
 
     /// Stateful capsule with both tools and run - verify tool dispatch calls
