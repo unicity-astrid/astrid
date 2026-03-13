@@ -14,6 +14,7 @@ use std::process::Command;
 /// # Errors
 ///
 /// Returns an error if the path is not valid UTF-8 or contains forbidden characters.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn validate_sandbox_path(path: &Path) -> io::Result<()> {
     let s = path.to_str().ok_or_else(|| {
         io::Error::new(
