@@ -8,10 +8,12 @@
 //! Provides the `run_shell_command` tool to agents, wrapping executions
 //! securely in the host-level Escape Hatch (Seatbelt/bwrap).
 //!
-//! Each command is parsed to extract an approval action from consecutive
-//! non-flag tokens (up to 3 deep). Approved commands create allowances
-//! at that granularity (e.g. "git push" approves all `git push` variants,
-//! "docker compose up" approves all `docker compose up` variants).
+//! Each command is parsed to extract an approval action: the program name
+//! plus subcommand tokens for known multi-command tools. Approved commands
+//! create allowances at that granularity (e.g. "git push" approves all
+//! `git push` variants, "docker compose up" approves all
+//! `docker compose up` variants). Unknown programs use program-name-only
+//! to avoid leaking positional arguments into allowance patterns.
 
 use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
@@ -28,17 +30,30 @@ pub struct RunShellArgs {
     pub command: String,
 }
 
-/// Maximum number of non-flag tokens to include in the approval action.
+/// Programs known to have meaningful subcommands for approval grouping.
 ///
-/// Covers sub-sub-commands like `docker compose up` (depth 3) without
-/// pulling in positional arguments like remote names or file paths.
-const MAX_ACTION_DEPTH: usize = 3;
+/// For listed programs, non-flag tokens after the program name are extracted
+/// as subcommands (up to 2 levels deep). For unlisted programs, only the
+/// program name is used as the action to avoid leaking positional arguments
+/// (e.g. file paths) into allowance patterns.
+const MULTI_COMMAND_PROGRAMS: &[&str] = &[
+    "git", "docker", "kubectl", "npm", "npx", "yarn", "pnpm", "cargo", "pip", "pip3", "poetry",
+    "systemctl", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "snap", "flatpak", "helm",
+    "terraform", "ansible", "vagrant", "make", "cmake", "go", "rustup", "bun", "deno", "uv",
+    "nix", "podman",
+];
+
+/// Maximum subcommand depth for known multi-command programs.
+///
+/// Covers sub-sub-commands like `docker compose up` (program + 2 subs)
+/// without pulling in positional arguments.
+const MAX_SUBCOMMAND_DEPTH: usize = 2;
 
 /// Extract the approval action from a shell command string.
 ///
-/// Collects consecutive non-flag tokens (up to [`MAX_ACTION_DEPTH`]),
-/// stopping at the first token that starts with `-`. No whitelist needed -
-/// all programs are treated uniformly.
+/// For known multi-command programs, collects the program name plus up to
+/// [`MAX_SUBCOMMAND_DEPTH`] non-flag subcommand tokens. For unknown
+/// programs, returns just the program name.
 ///
 /// ```text
 /// git push --force origin main      -> "git push"
@@ -47,15 +62,30 @@ const MAX_ACTION_DEPTH: usize = 3;
 /// ls -la /tmp                       -> "ls"
 /// cargo build --release             -> "cargo build"
 /// python -c "code"                  -> "python"
-/// cat /etc/passwd                   -> "cat /etc/passwd"
+/// cat /etc/passwd                   -> "cat"
+/// rm -rf /tmp/foo                   -> "rm"
+/// rm /tmp/foo                       -> "rm"
 /// ```
 fn extract_action(command: &str) -> String {
-    command
-        .split_whitespace()
-        .take(MAX_ACTION_DEPTH)
-        .take_while(|t| !t.starts_with('-'))
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut tokens = command.split_whitespace();
+    let program = match tokens.next() {
+        Some(p) if !p.starts_with('-') => p,
+        _ => return String::new(),
+    };
+
+    if !MULTI_COMMAND_PROGRAMS.contains(&program) {
+        return program.to_string();
+    }
+
+    // Known multi-command program: extract non-flag subcommands.
+    let mut parts = vec![program];
+    for token in tokens {
+        if token.starts_with('-') || parts.len() > MAX_SUBCOMMAND_DEPTH {
+            break;
+        }
+        parts.push(token);
+    }
+    parts.join(" ")
 }
 
 #[expect(missing_docs)]
@@ -144,12 +174,23 @@ mod tests {
         );
     }
 
-    // -- Depth cap (stops at 3 tokens) --
+    // -- Depth cap (stops at MAX_SUBCOMMAND_DEPTH + 1 tokens for known programs) --
 
     #[test]
-    fn action_depth_cap() {
-        // 4th non-flag token is NOT included
-        assert_eq!(extract_action("a b c d e"), "a b c");
+    fn action_depth_cap_known_program() {
+        // npm is in the whitelist; 3rd non-flag token is NOT included
+        assert_eq!(extract_action("npm run build dist"), "npm run build");
+    }
+
+    // -- Unknown programs return name only --
+
+    #[test]
+    fn action_unknown_program_returns_name_only() {
+        // Unknown programs never include arguments in the action
+        assert_eq!(extract_action("cat /etc/passwd"), "cat");
+        assert_eq!(extract_action("rm /tmp/foo"), "rm");
+        assert_eq!(extract_action("rm -rf /tmp/foo"), "rm");
+        assert_eq!(extract_action("a b c d e"), "a");
     }
 
     // -- Flag stops extraction --
@@ -162,13 +203,6 @@ mod tests {
     #[test]
     fn action_python_flag() {
         assert_eq!(extract_action("python -c 'print(1)'"), "python");
-    }
-
-    // -- Simple programs (no flags, bare args) --
-
-    #[test]
-    fn action_cat_with_path() {
-        assert_eq!(extract_action("cat /etc/passwd"), "cat /etc/passwd");
     }
 
     #[test]

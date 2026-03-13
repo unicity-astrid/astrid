@@ -28,16 +28,25 @@ struct GuestApprovalRequest {
     risk_level: String,
 }
 
-/// Check the allowance store for a matching pattern.
+/// Check the allowance store for a matching pattern, consuming limited-use
+/// allowances.
 ///
 /// Builds a `SensitiveAction::ExecuteCommand` from the full resource string
 /// so that `CommandPattern` glob matching works against the complete command.
-fn check_allowance(store: &AllowanceStore, resource: &str) -> bool {
+/// Uses `find_matching_and_consume` to correctly decrement `uses_remaining`
+/// on limited-use allowances.
+fn check_allowance(
+    store: &AllowanceStore,
+    resource: &str,
+    workspace_root: Option<&std::path::Path>,
+) -> bool {
     let action = SensitiveAction::ExecuteCommand {
         command: resource.to_owned(),
         args: vec![],
     };
-    store.find_matching(&action, None).is_some()
+    store
+        .find_matching_and_consume(&action, workspace_root)
+        .is_some()
 }
 
 /// Escape glob metacharacters in a guest-supplied action string.
@@ -62,7 +71,12 @@ fn escape_glob_metacharacters(action: &str) -> String {
 /// For `approve_session`, creates a `CommandPattern` with a subcommand-level
 /// glob (e.g. "git push" becomes "git push *"). For `approve_always`, uses
 /// the same pattern but with `session_only: false`.
-fn create_allowance_from_decision(store: &AllowanceStore, action: &str, decision: &str) {
+fn create_allowance_from_decision(
+    store: &AllowanceStore,
+    action: &str,
+    decision: &str,
+    workspace_root: Option<std::path::PathBuf>,
+) {
     let session_only = match decision {
         "approve_session" => true,
         // FIXME(#382): `approve_always` sets `session_only: false` but the
@@ -92,7 +106,7 @@ fn create_allowance_from_decision(store: &AllowanceStore, action: &str, decision
         max_uses: None,
         uses_remaining: None,
         session_only,
-        workspace_root: None,
+        workspace_root,
         signature: keypair.sign(b"capsule-approval"),
     };
 
@@ -119,7 +133,15 @@ pub(crate) fn astrid_request_approval_impl(
     let ud = user_data.get()?;
 
     // Extract what we need from HostState, then drop the lock before blocking.
-    let (allowance_store, event_bus, runtime_handle, capsule_id, cancel_token, host_semaphore) = {
+    let (
+        allowance_store,
+        event_bus,
+        runtime_handle,
+        capsule_id,
+        cancel_token,
+        host_semaphore,
+        workspace_root,
+    ) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -130,6 +152,7 @@ pub(crate) fn astrid_request_approval_impl(
         let capsule_id = state.capsule_id.to_string();
         let cancel_token = state.cancel_token.clone();
         let host_semaphore = state.host_semaphore.clone();
+        let workspace = state.workspace_root.clone();
 
         (
             store,
@@ -138,12 +161,15 @@ pub(crate) fn astrid_request_approval_impl(
             capsule_id,
             cancel_token,
             host_semaphore,
+            workspace,
         )
     };
 
+    let ws_path = Some(workspace_root.as_path());
+
     // Fast path: check existing allowances.
     if let Some(ref store) = allowance_store
-        && check_allowance(store, &guest_req.resource)
+        && check_allowance(store, &guest_req.resource, ws_path)
     {
         let response = serde_json::to_vec(&serde_json::json!({
             "approved": true,
@@ -228,7 +254,12 @@ pub(crate) fn astrid_request_approval_impl(
 
                         // Create allowance for session/always decisions.
                         if approved && let Some(ref store) = allowance_store {
-                            create_allowance_from_decision(store, &guest_req.action, decision);
+                            create_allowance_from_decision(
+                                store,
+                                &guest_req.action,
+                                decision,
+                                Some(workspace_root.clone()),
+                            );
                         }
 
                         tracing::info!(
@@ -307,53 +338,53 @@ mod tests {
         };
         store.add_allowance(allowance).unwrap();
 
-        assert!(check_allowance(&store, "git push origin main"));
-        assert!(!check_allowance(&store, "git status"));
+        assert!(check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(&store, "git status", None));
     }
 
     #[test]
     fn check_allowance_returns_false_on_empty_store() {
         let store = AllowanceStore::new();
-        assert!(!check_allowance(&store, "git push origin main"));
+        assert!(!check_allowance(&store, "git push origin main", None));
     }
 
     #[test]
     fn create_allowance_approve_session() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve_session");
+        create_allowance_from_decision(&store, "git push", "approve_session", None);
         assert_eq!(store.count(), 1);
         // The created pattern should match "git push origin main"
-        assert!(check_allowance(&store, "git push origin main"));
+        assert!(check_allowance(&store, "git push origin main", None));
     }
 
     #[test]
     fn create_allowance_approve_always() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "docker run", "approve_always");
+        create_allowance_from_decision(&store, "docker run", "approve_always", None);
         assert_eq!(store.count(), 1);
-        assert!(check_allowance(&store, "docker run my-image"));
+        assert!(check_allowance(&store, "docker run my-image", None));
     }
 
     #[test]
     fn create_allowance_simple_approve_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve");
+        create_allowance_from_decision(&store, "git push", "approve", None);
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_deny_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "deny");
+        create_allowance_from_decision(&store, "git push", "deny", None);
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_garbage_decision_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "garbage");
+        create_allowance_from_decision(&store, "git push", "garbage", None);
         assert_eq!(store.count(), 0);
-        create_allowance_from_decision(&store, "git push", "");
+        create_allowance_from_decision(&store, "git push", "", None);
         assert_eq!(store.count(), 0);
     }
 
@@ -377,9 +408,13 @@ mod tests {
         store.add_allowance(allowance).unwrap();
 
         // Semicolon-injected command should NOT match "git push *"
-        assert!(!check_allowance(&store, "git status; rm -rf /"));
+        assert!(!check_allowance(&store, "git status; rm -rf /", None));
         // Normal match still works
-        assert!(check_allowance(&store, "git push --force origin main"));
+        assert!(check_allowance(
+            &store,
+            "git push --force origin main",
+            None
+        ));
     }
 
     #[test]
@@ -405,18 +440,18 @@ mod tests {
         let store = AllowanceStore::new();
         // A malicious capsule sends action = "*" hoping to get pattern "* *"
         // After escaping, pattern becomes "\* *" which won't match normal commands.
-        create_allowance_from_decision(&store, "*", "approve_session");
+        create_allowance_from_decision(&store, "*", "approve_session", None);
         assert_eq!(store.count(), 1);
-        assert!(!check_allowance(&store, "git push origin main"));
+        assert!(!check_allowance(&store, "git push origin main", None));
     }
 
     #[test]
     fn create_allowance_empty_action() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "", "approve_session");
+        create_allowance_from_decision(&store, "", "approve_session", None);
         assert_eq!(store.count(), 1);
         // Pattern " *" matches nothing useful
-        assert!(!check_allowance(&store, "git push"));
+        assert!(!check_allowance(&store, "git push", None));
     }
 
     #[test]
@@ -424,8 +459,8 @@ mod tests {
         // "approve" (one-time) should NOT create an allowance. The next
         // identical call will re-prompt the user.
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve");
+        create_allowance_from_decision(&store, "git push", "approve", None);
         assert_eq!(store.count(), 0);
-        assert!(!check_allowance(&store, "git push origin main"));
+        assert!(!check_allowance(&store, "git push origin main", None));
     }
 }
