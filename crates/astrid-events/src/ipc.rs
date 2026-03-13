@@ -659,9 +659,12 @@ mod tests {
 
     /// Every variant's serialized `type` tag must be recognised by
     /// `is_known_tag`. If a new variant is added without updating the
-    /// match arm, this test fails.
+    /// match arm *and* the representatives list below, this test fails.
     #[test]
     fn is_known_tag_covers_all_variants() {
+        // Bump this when adding a new IpcPayload variant.
+        const EXPECTED_VARIANT_COUNT: usize = 16;
+
         let representatives: Vec<IpcPayload> = vec![
             IpcPayload::RawJson(serde_json::json!({"key": "val"})),
             IpcPayload::UserInput {
@@ -751,6 +754,13 @@ mod tests {
                 data: Value::Object(serde_json::Map::new()),
             },
         ];
+
+        assert_eq!(
+            representatives.len(),
+            EXPECTED_VARIANT_COUNT,
+            "IpcPayload variant count changed. Update the representatives list \
+             and bump EXPECTED_VARIANT_COUNT."
+        );
 
         for variant in &representatives {
             let json = serde_json::to_value(variant).unwrap();
