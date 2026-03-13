@@ -47,9 +47,10 @@ pub(crate) fn astrid_net_accept_impl(
 ) -> Result<(), Error> {
     let ud = user_data.get()?;
 
-    // We need to fetch the listener, runtime handle, cancel token, and session
-    // token out of the lock. Security gate was already enforced at bind time.
-    let (listener_arc, rt_handle, cancel_token, session_token) = {
+    // We need to fetch the listener, runtime handle, cancel token, session
+    // token, and host semaphore out of the lock. Security gate was already
+    // enforced at bind time.
+    let (listener_arc, rt_handle, cancel_token, session_token, host_semaphore) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -64,6 +65,7 @@ pub(crate) fn astrid_net_accept_impl(
             state.runtime_handle.clone(),
             state.cancel_token.clone(),
             state.session_token.clone(),
+            state.host_semaphore.clone(),
         )
     };
 
@@ -77,17 +79,18 @@ pub(crate) fn astrid_net_accept_impl(
         // The listener Mutex is held for the duration of accept(). This is
         // correct because this is a single-client design - only one WASM
         // capsule thread calls accept(), and no other code path contends.
-        let (stream, _addr) = rt_handle.block_on(async {
-            tokio::select! {
-                result = async {
-                    let l = listener_arc.lock().await;
-                    l.accept().await
-                } => result,
-                () = cancel_token.cancelled() => {
-                    Err(std::io::Error::other("capsule unloading"))
-                }
-            }
-        })?;
+        //
+        // Cancel safety: accept() is cancel-safe - dropping mid-accept is
+        // harmless, the listener remains valid for subsequent calls.
+        let accept_result =
+            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+                let l = listener_arc.lock().await;
+                l.accept().await
+            });
+        let (stream, _addr) = match accept_result {
+            Some(result) => result?,
+            None => return Err(Error::msg("capsule unloading")),
+        };
 
         // Peer credential verification - reject connections from different UIDs.
         // Runs before token handshake to prevent cross-UID DoS via the 5s timeout.
@@ -108,9 +111,16 @@ pub(crate) fn astrid_net_accept_impl(
         // holding the accept loop hostage.
         let mut stream = stream;
         if let Some(ref token) = session_token {
-            match rt_handle.block_on(validate_handshake(&mut stream, token)) {
-                Ok(()) => break stream,
-                Err(reason) => {
+            let handshake_result = util::bounded_block_on_cancellable(
+                &rt_handle,
+                &host_semaphore,
+                &cancel_token,
+                validate_handshake(&mut stream, token),
+            );
+            match handshake_result {
+                None => return Err(Error::msg("capsule unloading")),
+                Some(Ok(())) => break stream,
+                Some(Err(reason)) => {
                     tracing::warn!(
                         security_event = true,
                         reason = %reason,
@@ -177,7 +187,7 @@ pub(crate) fn astrid_net_read_impl(
         .map_err(|_| Error::msg("Invalid stream handle"))?;
 
     let ud = user_data.get()?;
-    let (stream_arc, rt_handle, cancel_token) = {
+    let (stream_arc, rt_handle, cancel_token, host_semaphore) = {
         let state = ud
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
@@ -190,57 +200,62 @@ pub(crate) fn astrid_net_read_impl(
             stream,
             state.runtime_handle.clone(),
             state.cancel_token.clone(),
+            state.host_semaphore.clone(),
         )
     };
 
-    // We don't want to block the thread *forever* if there is no data,
-    // otherwise the WASM execution will hang completely. So we need a timeout or a try_read,
-    // but the `accept()` loop in the capsule expects blocking `read()`. We will do a short timeout
-    // or rely on the capsule's timeout logic if they implement it.
-    // For now, let's just do a blocking read into a buffer, but timeout after 50ms so we don't
-    // lock the WASM engine if the CLI goes idle.
+    // Cancel safety: read_exact is not cancel-safe, so cancellation mid-read
+    // may leave a partial frame on the socket. This is acceptable because the
+    // capsule is unloading - the socket will be closed by Drop on
+    // active_streams and the client will see a hard EOF / connection reset.
     use tokio::io::AsyncReadExt;
 
-    let result = rt_handle.block_on(async {
-        let mut stream = stream_arc.lock().await;
-        let mut len_buf = [0u8; 4];
+    let result =
+        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+            let mut stream = stream_arc.lock().await;
+            let mut len_buf = [0u8; 4];
 
-        // Wait for exactly 4 bytes (the length prefix used by the IPC protocol).
-        // Distinguish between a genuine timeout (no data yet) and an I/O error
-        // (peer disconnect, broken pipe) to avoid spin-looping on dead connections.
-        // Also respect cancellation to unblock on capsule unload.
-        match tokio::select! {
-            result = tokio::time::timeout(
+            // Wait for exactly 4 bytes (the length prefix used by the IPC protocol).
+            // Distinguish between a genuine timeout (no data yet) and an I/O error
+            // (peer disconnect, broken pipe) to avoid spin-looping on dead connections.
+            match tokio::time::timeout(
                 std::time::Duration::from_millis(50),
                 stream.read_exact(&mut len_buf),
-            ) => result,
-            () = cancel_token.cancelled() => {
-                return Ok(Vec::new());
+            )
+            .await
+            {
+                Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
+                Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
+                Ok(Ok(_)) => {}, // Got the 4-byte length prefix
             }
-        } {
-            Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
-            Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
-            Ok(Ok(_)) => {}, // Got the 4-byte length prefix
-        }
 
-        let len = u32::from_be_bytes(len_buf) as usize;
-        if len > 10 * 1024 * 1024 {
-            return Err(Error::msg("Payload too large (max 10MB)"));
-        }
+            let len = u32::from_be_bytes(len_buf) as usize;
+            if len > 10 * 1024 * 1024 {
+                return Err(Error::msg("Payload too large (max 10MB)"));
+            }
 
-        let mut payload = vec![0u8; len];
-        // Timeout proportional to payload size: 5s base + 1s per MB.
-        let timeout_ms = 5000 + (len as u64 / 1024);
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            stream.read_exact(&mut payload),
-        )
-        .await
-        .map_err(|_| Error::msg("Payload read timed out"))?
-        .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
+            let mut payload = vec![0u8; len];
+            // Timeout proportional to payload size: 5s base + 1s per MB.
+            let timeout_ms = 5000 + (len as u64 / 1024);
+            tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                stream.read_exact(&mut payload),
+            )
+            .await
+            .map_err(|_| Error::msg("Payload read timed out"))?
+            .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
 
-        Ok(payload)
-    });
+            Ok(payload)
+        });
+    // Cancellation returns empty bytes (not Err) - intentionally different
+    // from net_accept/net_write which return Err("capsule unloading"). The
+    // WASM guest's read loop treats empty as "no data yet, poll again", so
+    // returning empty lets it notice the shutdown via its own loop condition
+    // rather than hitting an unexpected error mid-message.
+    let result = match result {
+        Some(r) => r,
+        None => Ok(Vec::new()),
+    };
 
     // If the socket read failed (connection closed, broken pipe), publish a
     // client.disconnect event so the idle monitor is notified even if the
