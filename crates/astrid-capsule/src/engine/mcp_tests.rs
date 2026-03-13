@@ -42,6 +42,7 @@ mod tests {
                 host_process: allowed_commands.into_iter().map(String::from).collect(),
                 uplink: false,
                 ipc_publish: vec![],
+                ipc_subscribe: vec![],
             },
             env: HashMap::new(),
             tools: vec![],

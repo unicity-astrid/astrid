@@ -82,8 +82,11 @@ pub struct HostState {
     /// Plugin configuration from the manifest.
     pub config: HashMap<String, serde_json::Value>,
     /// IPC topic patterns this capsule is allowed to publish to.
-    /// Empty means unrestricted (backwards-compatible default).
+    /// Empty means DENY ALL (fail-closed).
     pub ipc_publish_patterns: Vec<String>,
+    /// IPC topic patterns this capsule is allowed to subscribe to.
+    /// Empty means DENY ALL (fail-closed).
+    pub ipc_subscribe_patterns: Vec<String>,
     /// Optional security gate for gated operations (HTTP, file I/O).
     pub security: Option<Arc<dyn CapsuleSecurityGate>>,
     /// Hook manager for executing user scripts synchronously via airlock.
@@ -256,6 +259,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,
@@ -315,6 +319,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,
@@ -379,6 +384,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,
@@ -439,6 +445,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,
@@ -515,6 +522,7 @@ mod tests {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,

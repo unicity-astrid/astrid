@@ -16,3 +16,11 @@ ipc_publish = [
     "context_engine.v1.hook.before_compaction",
     "context_engine.v1.hook.after_compaction",
 ]
+ipc_subscribe = [
+    # 3-segment wildcard (covers context_engine.v1.{any_single_segment})
+    "context_engine.v1.*",
+    # 4-segment exact (topic_matches requires equal segment count)
+    "context_engine.v1.hook.before_compaction",
+    "context_engine.v1.hook.after_compaction",
+    "context_engine.v1.hook_response.*",
+]

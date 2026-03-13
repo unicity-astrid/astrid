@@ -224,6 +224,7 @@ impl WasmHandler {
             next_subscription_id: 1,
             config: HashMap::new(),
             ipc_publish_patterns: vec!["hook.v1.result.*".into()],
+            ipc_subscribe_patterns: Vec::new(),
             security: None,
             hook_manager: None,
             capsule_registry: None,

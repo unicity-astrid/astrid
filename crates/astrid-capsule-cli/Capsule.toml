@@ -20,3 +20,14 @@ ipc_publish = [
     "registry.v1.set_active_model",
     "registry.v1.selection.*",
 ]
+ipc_subscribe = [
+    "agent.v1.response",
+    "agent.v1.stream.delta",
+    "astrid.v1.onboarding.required",
+    "astrid.v1.elicit.*",
+    "astrid.v1.response.*",
+    "astrid.v1.capsules_loaded",
+    "registry.v1.response.*",
+    "registry.v1.active_model_changed",
+    "registry.v1.selection.*",
+]

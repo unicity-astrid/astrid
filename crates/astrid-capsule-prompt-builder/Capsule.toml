@@ -15,3 +15,11 @@ ipc_publish = [
     "prompt_builder.v1.hook.before_build",
     "prompt_builder.v1.hook.after_build",
 ]
+ipc_subscribe = [
+    # 3-segment wildcard (covers prompt_builder.v1.{any_single_segment})
+    "prompt_builder.v1.*",
+    # 4-segment exact (topic_matches requires equal segment count)
+    "prompt_builder.v1.hook.before_build",
+    "prompt_builder.v1.hook.after_build",
+    "prompt_builder.v1.hook_response.*",
+]

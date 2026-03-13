@@ -17,6 +17,15 @@ ipc_publish = [
     "astrid.v1.request.get_capsule_metadata",
     "registry.v1.selection.*",
 ]
+ipc_subscribe = [
+    "astrid.v1.response.get_capsule_metadata",
+    # 3-segment wildcard (covers registry.v1.{any_single_segment})
+    "registry.v1.*",
+    "cli.v1.command.execute",
+    # 4-segment exact (topic_matches requires equal segment count, so registry.v1.* does NOT cover this)
+    "registry.v1.selection.callback",
+    "astrid.v1.capsules_loaded",
+]
 
 [[command]]
 name = "models"

@@ -66,9 +66,9 @@ requires = [
     "topic:session.v1.response.get_messages",
 ]
 
-# Runtime subscriptions (no ACL enforcement yet):
-#   session.v1.response.get_messages.<correlation_id>
-#   session.v1.response.clear.<correlation_id>
+# Guest-initiated subscriptions (ACL-gated via ipc_subscribe below):
+#   session.v1.response.get_messages.<correlation_id>  <- covered by session.v1.response.get_messages.*
+#   session.v1.response.clear.<correlation_id>          <- covered by session.v1.response.clear.*
 
 [capabilities]
 ipc_publish = [
@@ -81,4 +81,8 @@ ipc_publish = [
     "llm.v1.request.generate.*",
     "session.v1.request.get_messages",
     "session.v1.request.clear",
+]
+ipc_subscribe = [
+    "session.v1.response.get_messages.*",
+    "session.v1.response.clear.*",
 ]

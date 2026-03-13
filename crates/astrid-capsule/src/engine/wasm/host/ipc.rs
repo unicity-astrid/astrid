@@ -8,6 +8,40 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 
 // ── Extracted testable core ─────────────────────────────────────────
 
+/// Check whether a subscription topic pattern is allowed by the capsule's
+/// declared `ipc_subscribe` ACL patterns. Returns `Ok(())` if allowed,
+/// or `Err(reason)` if denied.
+pub(crate) fn check_subscribe_acl(
+    capsule_id: &str,
+    topic_pattern: &str,
+    acl_patterns: &[String],
+) -> Result<(), String> {
+    if acl_patterns.is_empty() {
+        return Err(format!(
+            "Capsule '{capsule_id}' has no ipc_subscribe declarations - \
+             subscribing is denied. Add ipc_subscribe patterns to Capsule.toml [capabilities]"
+        ));
+    }
+
+    // NOTE: argument order is intentional. topic_matches(topic, pattern) checks
+    // whether `topic` (here: the subscription request) falls within `pattern`
+    // (here: the ACL entry). This means:
+    //   subscribe("foo.bar") vs ACL "foo.*" -> topic_matches("foo.bar", "foo.*") = true
+    //   subscribe("foo.*")   vs ACL "foo.bar" -> topic_matches("foo.*", "foo.bar") = false
+    // The second case correctly prevents scope escalation via wildcard subscriptions.
+    if !acl_patterns
+        .iter()
+        .any(|acl| crate::dispatcher::topic_matches(topic_pattern, acl))
+    {
+        return Err(format!(
+            "Capsule '{capsule_id}' is not allowed to subscribe to topic \
+             '{topic_pattern}' - declared ipc_subscribe patterns: {acl_patterns:?}"
+        ));
+    }
+
+    Ok(())
+}
+
 /// Result of draining IPC messages from an `EventReceiver`.
 #[cfg_attr(test, derive(Debug))]
 pub(crate) struct DrainResult {
@@ -239,6 +273,15 @@ pub(crate) fn astrid_ipc_subscribe_impl(
             "Topic pattern exceeds maximum allowed segments (8)",
         ));
     }
+
+    // Enforce IPC topic subscription restrictions from Capsule.toml.
+    // Fail-closed: capsules without ipc_subscribe declarations cannot subscribe.
+    check_subscribe_acl(
+        state.capsule_id.as_ref(),
+        &topic_pattern,
+        &state.ipc_subscribe_patterns,
+    )
+    .map_err(Error::msg)?;
 
     if state.subscriptions.len() >= 128 {
         return Err(Error::msg(
@@ -796,6 +839,84 @@ mod tests {
         assert!(
             result.unwrap_err().to_string().contains("not found"),
             "error should mention not found",
+        );
+    }
+
+    // ── subscribe ACL tests ────────────────────────────────────────
+
+    #[test]
+    fn subscribe_acl_empty_patterns_denies() {
+        let err = check_subscribe_acl("test-capsule", "any.topic", &[]).unwrap_err();
+        assert!(err.contains("no ipc_subscribe declarations"));
+    }
+
+    #[test]
+    fn subscribe_acl_exact_match_allows() {
+        let patterns = vec!["agent.v1.response".into()];
+        assert!(check_subscribe_acl("test", "agent.v1.response", &patterns).is_ok());
+    }
+
+    #[test]
+    fn subscribe_acl_wildcard_matches_concrete() {
+        let patterns = vec!["registry.v1.*".into()];
+        assert!(check_subscribe_acl("test", "registry.v1.providers", &patterns).is_ok());
+    }
+
+    #[test]
+    fn subscribe_acl_segment_count_mismatch_denies() {
+        // ACL has 3 segments, subscription has 4 - topic_matches requires equal count.
+        let patterns = vec!["registry.v1.*".into()];
+        let err =
+            check_subscribe_acl("test", "registry.v1.selection.callback", &patterns).unwrap_err();
+        assert!(err.contains("not allowed to subscribe"));
+    }
+
+    #[test]
+    fn subscribe_acl_wildcard_subscription_matches_wildcard_acl() {
+        // A capsule with ACL "foo.*" is explicitly authorizing a "foo.*" subscription
+        // (same pattern). The ACL check gates the subscription string, not individual
+        // messages.
+        let patterns = vec!["foo.*".into()];
+        assert!(check_subscribe_acl("test", "foo.*", &patterns).is_ok());
+    }
+
+    #[test]
+    fn subscribe_acl_wildcard_subscription_denied_by_exact_acl() {
+        // A capsule with ACL ["foo.bar"] must NOT be able to subscribe to "foo.*"
+        // which would receive all foo.* events, not just foo.bar. This is the
+        // primary scope-escalation prevention invariant.
+        let patterns = vec!["foo.bar".into()];
+        let result = check_subscribe_acl("test", "foo.*", &patterns);
+        assert!(
+            result.is_err(),
+            "wildcard subscription must be denied by exact ACL"
+        );
+    }
+
+    #[test]
+    fn subscribe_acl_unrelated_topic_denies() {
+        let patterns = vec!["agent.v1.*".into()];
+        let err = check_subscribe_acl("test", "session.v1.clear", &patterns).unwrap_err();
+        assert!(err.contains("not allowed to subscribe"));
+    }
+
+    #[test]
+    fn subscribe_acl_multiple_patterns_second_matches() {
+        let patterns = vec!["agent.v1.*".into(), "session.v1.response.*".into()];
+        assert!(check_subscribe_acl("test", "session.v1.response.abc", &patterns).is_ok());
+    }
+
+    #[test]
+    fn subscribe_acl_malformed_pattern_silently_denies() {
+        // A malformed ACL pattern (empty segments) causes topic_matches to
+        // return false via has_valid_segments, resulting in a silent deny.
+        // This is safe (fail-closed) but the error message is misleading.
+        // See #374 for load-time validation of ipc_subscribe patterns.
+        let patterns = vec!["foo..bar".into()];
+        let result = check_subscribe_acl("test", "foo.x.bar", &patterns);
+        assert!(
+            result.is_err(),
+            "malformed ACL pattern must not allow subscriptions"
         );
     }
 }
