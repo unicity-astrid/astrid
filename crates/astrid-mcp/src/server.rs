@@ -189,6 +189,8 @@ impl ServerManager {
     /// - The server configuration is not found
     /// - Binary verification fails
     pub async fn start(&self, name: &str) -> McpResult<()> {
+        crate::config::validate_server_name(name)?;
+
         // Check if already running
         {
             let running = self.running.read().await;
@@ -230,6 +232,8 @@ impl ServerManager {
     /// # Errors
     /// Returns an error if the server is already running.
     pub async fn add_server(&self, name: &str, config: ServerConfig) -> McpResult<()> {
+        crate::config::validate_server_name(name)?;
+
         let mut running = self.running.write().await;
         if running.contains_key(name) {
             return Err(McpError::ServerAlreadyRunning {
@@ -953,7 +957,9 @@ mod tests {
     #[tokio::test]
     async fn should_restart_never_policy() {
         let mut configs = ServersConfig::default();
-        configs.add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Never));
+        configs
+            .add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Never))
+            .unwrap();
         let manager = ServerManager::new(configs);
 
         assert!(!manager.should_restart("srv").await);
@@ -962,7 +968,9 @@ mod tests {
     #[tokio::test]
     async fn should_restart_always_policy_no_running_entry() {
         let mut configs = ServersConfig::default();
-        configs.add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always));
+        configs
+            .add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always))
+            .unwrap();
         let manager = ServerManager::new(configs);
 
         // No running entry and no last_restart_attempt → should allow.
@@ -972,7 +980,9 @@ mod tests {
     #[tokio::test]
     async fn should_restart_respects_backoff_cooldown() {
         let mut configs = ServersConfig::default();
-        configs.add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always));
+        configs
+            .add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always))
+            .unwrap();
         let manager = ServerManager::new(configs);
 
         // Manually insert a running server with a very recent last_restart_attempt
@@ -994,7 +1004,9 @@ mod tests {
     #[tokio::test]
     async fn should_restart_allows_after_cooldown_elapsed() {
         let mut configs = ServersConfig::default();
-        configs.add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always));
+        configs
+            .add(ServerConfig::stdio("srv", "cmd").with_restart_policy(RestartPolicy::Always))
+            .unwrap();
         let manager = ServerManager::new(configs);
 
         // Insert with a restart attempt far in the past.
@@ -1020,10 +1032,12 @@ mod tests {
     #[tokio::test]
     async fn should_restart_on_failure_respects_max_retries() {
         let mut configs = ServersConfig::default();
-        configs.add(
-            ServerConfig::stdio("srv", "cmd")
-                .with_restart_policy(RestartPolicy::OnFailure { max_retries: 2 }),
-        );
+        configs
+            .add(
+                ServerConfig::stdio("srv", "cmd")
+                    .with_restart_policy(RestartPolicy::OnFailure { max_retries: 2 }),
+            )
+            .unwrap();
         let manager = ServerManager::new(configs);
 
         // Insert with restart_count = 2 (already hit the limit).
