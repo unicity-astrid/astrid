@@ -273,6 +273,18 @@ pub struct CapabilitiesDef {
     /// An empty list means NO identity access (fail-closed).
     #[serde(default)]
     pub identity: Vec<String>,
+    /// Whether the capsule may override or modify the system prompt via the
+    /// prompt builder's hook pipeline.
+    ///
+    /// When `false` (default), hook responses from this capsule have their
+    /// `systemPrompt`, `prependSystemContext`, and `appendSystemContext`
+    /// fields stripped. Only `prependContext` (user-visible context) passes
+    /// through.
+    ///
+    /// This is a critical security boundary: unprivileged capsules cannot
+    /// inject arbitrary instructions into the LLM's system prompt.
+    #[serde(default)]
+    pub allow_prompt_injection: bool,
 }
 
 /// An environment variable required by the capsule.

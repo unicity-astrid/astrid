@@ -805,6 +805,31 @@ pub mod hooks {
     }
 }
 
+/// Cross-capsule capability queries.
+///
+/// Allows a capsule to check whether another capsule (identified by its
+/// IPC session UUID) has a specific manifest capability. Used by the
+/// prompt builder to enforce `allow_prompt_injection` gating.
+pub mod capabilities {
+    use super::*;
+
+    /// Check whether a capsule has a specific capability.
+    ///
+    /// Returns `true` if the capsule identified by `source_uuid` has the
+    /// given `capability` declared in its manifest. Returns `false` for
+    /// unknown UUIDs, unknown capabilities, or on any error (fail-closed).
+    pub fn check(source_uuid: &str, capability: &str) -> Result<bool, SysError> {
+        let request = serde_json::json!({
+            "source_uuid": source_uuid,
+            "capability": capability,
+        });
+        let request_bytes = serde_json::to_vec(&request)?;
+        let response_bytes = unsafe { astrid_check_capsule_capability(request_bytes)? };
+        let response: serde_json::Value = serde_json::from_slice(&response_bytes)?;
+        Ok(response["allowed"].as_bool().unwrap_or(false))
+    }
+}
+
 pub mod net;
 pub mod process {
     use super::*;
@@ -1435,6 +1460,7 @@ pub mod prelude {
         SysError,
         // Astrid-specific modules
         approval,
+        capabilities,
         cron,
         elicit,
         // std-mirrored modules

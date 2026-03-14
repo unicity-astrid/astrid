@@ -43,6 +43,7 @@ async fn test_mcp_host_engine_capability_validation() {
             ipc_publish: vec![],
             ipc_subscribe: vec![],
             identity: vec![],
+            allow_prompt_injection: false,
         },
         env: std::collections::HashMap::default(),
         context_files: vec![],

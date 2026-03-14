@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tracing::{debug, info};
+use uuid::Uuid;
 
 use astrid_core::{UplinkCapabilities, UplinkDescriptor, UplinkId};
 
@@ -20,6 +21,12 @@ use crate::error::{CapsuleError, CapsuleResult};
 pub struct CapsuleRegistry {
     capsules: HashMap<CapsuleId, Arc<dyn Capsule>>,
     uplinks: HashMap<UplinkId, (CapsuleId, UplinkDescriptor)>,
+    /// Reverse map from WASM session UUIDs to capsule IDs.
+    ///
+    /// Populated during capsule load so that host functions can resolve
+    /// an IPC `source_id` (a UUID stamped by the kernel) back to the
+    /// originating capsule for capability checks.
+    uuid_map: HashMap<Uuid, CapsuleId>,
 }
 
 impl CapsuleRegistry {
@@ -29,6 +36,7 @@ impl CapsuleRegistry {
         Self {
             capsules: HashMap::new(),
             uplinks: HashMap::new(),
+            uuid_map: HashMap::new(),
         }
     }
 
@@ -91,8 +99,37 @@ impl CapsuleRegistry {
         // Clean up the capsule's uplinks.
         self.unregister_capsule_uplinks(id);
 
+        // Clean up UUID mapping for this capsule.
+        self.uuid_map.retain(|_, cid| cid != id);
+
         info!(capsule_id = %id, "Unregistered capsule");
         Ok(capsule)
+    }
+
+    // -----------------------------------------------------------------
+    // UUID mapping
+    // -----------------------------------------------------------------
+
+    /// Register a session UUID for a capsule.
+    ///
+    /// Called during WASM capsule load so that host functions can resolve
+    /// IPC `source_id` UUIDs back to capsule identities.
+    ///
+    /// Silently overwrites on duplicate UUID. Each capsule load generates a
+    /// fresh v4 UUID, so collisions are not practically possible.
+    pub fn register_uuid(&mut self, uuid: Uuid, capsule_id: CapsuleId) {
+        debug!(
+            %uuid,
+            capsule_id = %capsule_id,
+            "Registered capsule UUID mapping"
+        );
+        self.uuid_map.insert(uuid, capsule_id);
+    }
+
+    /// Look up a capsule ID by its session UUID.
+    #[must_use]
+    pub fn find_by_uuid(&self, uuid: &Uuid) -> Option<&CapsuleId> {
+        self.uuid_map.get(uuid)
     }
 
     /// Get a shared reference to a capsule by ID.
@@ -203,6 +240,7 @@ impl CapsuleRegistry {
     /// Used during kernel shutdown to unload everything in one pass.
     pub fn drain(&mut self) -> Vec<Arc<dyn Capsule>> {
         self.uplinks.clear();
+        self.uuid_map.clear();
         self.capsules.drain().map(|(_, c)| c).collect()
     }
 }
@@ -222,4 +260,162 @@ impl std::fmt::Debug for CapsuleRegistry {
             .finish()
     }
 }
-// Tests removed for brevity during scaffolding
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::Path;
+    use std::time::Duration;
+
+    use async_trait::async_trait;
+    use tokio::sync::Semaphore;
+
+    use crate::capsule::{CapsuleState, ReadyStatus};
+    use crate::context::CapsuleContext;
+    use crate::error::CapsuleResult;
+    use crate::manifest::{CapabilitiesDef, CapsuleManifest, PackageDef};
+    use crate::tool::CapsuleTool;
+
+    struct MockCapsule {
+        id: CapsuleId,
+        manifest: CapsuleManifest,
+        semaphore: Arc<Semaphore>,
+    }
+
+    impl MockCapsule {
+        fn new(name: &str) -> Self {
+            Self {
+                id: CapsuleId::from_static(name),
+                manifest: CapsuleManifest {
+                    package: PackageDef {
+                        name: name.to_string(),
+                        version: "0.0.1".to_string(),
+                        description: None,
+                        authors: Vec::new(),
+                        repository: None,
+                        homepage: None,
+                        documentation: None,
+                        license: None,
+                        license_file: None,
+                        readme: None,
+                        keywords: Vec::new(),
+                        categories: Vec::new(),
+                        astrid_version: None,
+                        publish: None,
+                        include: None,
+                        exclude: None,
+                        metadata: None,
+                    },
+                    components: Vec::new(),
+                    dependencies: Default::default(),
+                    capabilities: CapabilitiesDef::default(),
+                    env: std::collections::HashMap::new(),
+                    context_files: Vec::new(),
+                    commands: Vec::new(),
+                    mcp_servers: Vec::new(),
+                    skills: Vec::new(),
+                    uplinks: Vec::new(),
+                    llm_providers: Vec::new(),
+                    interceptors: Vec::new(),
+                    cron_jobs: Vec::new(),
+                    tools: Vec::new(),
+                    topics: Vec::new(),
+                    effective_provides_cache: std::sync::OnceLock::new(),
+                },
+                semaphore: Arc::new(Semaphore::new(4)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::capsule::Capsule for MockCapsule {
+        fn id(&self) -> &CapsuleId {
+            &self.id
+        }
+        fn manifest(&self) -> &CapsuleManifest {
+            &self.manifest
+        }
+        fn state(&self) -> CapsuleState {
+            CapsuleState::Ready
+        }
+        async fn load(&mut self, _ctx: &CapsuleContext) -> CapsuleResult<()> {
+            Ok(())
+        }
+        async fn unload(&mut self) -> CapsuleResult<()> {
+            Ok(())
+        }
+        fn tools(&self) -> &[Arc<dyn CapsuleTool>] {
+            &[]
+        }
+        fn take_inbound_rx(
+            &mut self,
+        ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
+            None
+        }
+        async fn wait_ready(&self, _timeout: Duration) -> ReadyStatus {
+            ReadyStatus::Ready
+        }
+        fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+            Ok(Vec::new())
+        }
+        fn check_health(&self) -> CapsuleState {
+            CapsuleState::Ready
+        }
+        fn source_dir(&self) -> Option<&Path> {
+            None
+        }
+        fn interceptor_semaphore(&self) -> &Arc<Semaphore> {
+            &self.semaphore
+        }
+    }
+
+    #[test]
+    fn uuid_mapping_register_and_find() {
+        let mut registry = CapsuleRegistry::new();
+        let uuid = Uuid::new_v4();
+        let capsule_id = CapsuleId::from_static("test-capsule");
+        registry.register_uuid(uuid, capsule_id.clone());
+
+        assert_eq!(registry.find_by_uuid(&uuid), Some(&capsule_id));
+        assert_eq!(registry.find_by_uuid(&Uuid::new_v4()), None);
+    }
+
+    #[test]
+    fn uuid_mapping_overwrite_on_duplicate() {
+        let mut registry = CapsuleRegistry::new();
+        let uuid = Uuid::new_v4();
+        let first = CapsuleId::from_static("first");
+        let second = CapsuleId::from_static("second");
+
+        registry.register_uuid(uuid, first);
+        registry.register_uuid(uuid, second.clone());
+        assert_eq!(registry.find_by_uuid(&uuid), Some(&second));
+    }
+
+    #[test]
+    fn uuid_mapping_cleanup_on_unregister() {
+        let mut registry = CapsuleRegistry::new();
+        let uuid = Uuid::new_v4();
+        let capsule_id = CapsuleId::from_static("removable");
+
+        registry
+            .register(Box::new(MockCapsule::new("removable")))
+            .expect("register");
+        registry.register_uuid(uuid, capsule_id.clone());
+        assert!(registry.find_by_uuid(&uuid).is_some());
+
+        registry.unregister(&capsule_id).expect("unregister");
+        assert!(registry.find_by_uuid(&uuid).is_none());
+    }
+
+    #[test]
+    fn uuid_mapping_cleanup_on_drain() {
+        let mut registry = CapsuleRegistry::new();
+        let uuid = Uuid::new_v4();
+        registry.register_uuid(uuid, CapsuleId::from_static("test"));
+        assert!(registry.find_by_uuid(&uuid).is_some());
+
+        let _ = registry.drain();
+        assert!(registry.find_by_uuid(&uuid).is_none());
+    }
+}

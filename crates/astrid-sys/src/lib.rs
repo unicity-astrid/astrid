@@ -177,4 +177,12 @@ extern "ExtismHost" {
     /// Takes JSON: `{"astrid_user_id":"..."}`.
     /// Returns JSON: `{"ok":true/false,"links":[...]}`.
     pub fn astrid_identity_list_links(request: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
+    // Cross-Capsule Capability Checks
+    // -----------------------------------------------------------------------
+    /// Check whether a capsule (identified by session UUID) has a specific
+    /// manifest capability. Takes JSON: `{"source_uuid":"...","capability":"..."}`.
+    /// Returns JSON: `{"allowed":true/false}`.
+    pub fn astrid_check_capsule_capability(request: Vec<u8>) -> Vec<u8>;
 }
