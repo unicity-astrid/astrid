@@ -183,6 +183,8 @@ pub(crate) enum PendingAction {
         value: Option<String>,
         values: Option<Vec<String>>,
     },
+    /// Hydrate the TUI with session history from the session store.
+    HydrateSession,
 }
 
 /// What the user chose for approval.
@@ -252,9 +254,9 @@ pub(crate) struct App {
     pub elicit_request_id: Option<uuid::Uuid>,
 
     // ── Session Hydration ──
-    /// Correlation ID for the pending hydration request. Set on boot, cleared
-    /// after the first successful response to prevent double-hydration.
-    pub hydration_correlation_id: Option<String>,
+    /// Expected reply topic for the pending hydration request. Precomputed to
+    /// avoid per-event `format!` allocation. Cleared after the first response.
+    pub hydration_reply_topic: Option<String>,
 }
 
 impl App {
@@ -322,7 +324,7 @@ impl App {
 
             elicit_request_id: None,
 
-            hydration_correlation_id: None,
+            hydration_reply_topic: None,
         }
     }
 
