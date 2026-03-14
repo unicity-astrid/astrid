@@ -408,37 +408,31 @@ impl CapabilityStore {
     ///
     /// Returns an error if the token was already used or storage fails.
     pub fn mark_used(&self, token_id: &TokenId) -> CapabilityResult<()> {
-        // Check if already used
-        {
-            let used = self
-                .used_tokens
-                .read()
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-            if used.contains(token_id) {
-                return Err(CapabilityError::TokenAlreadyUsed {
-                    token_id: token_id.to_string(),
-                });
-            }
+        // Hold a single write lock across check, persist, and insert to
+        // prevent TOCTOU races where two concurrent callers both pass
+        // the "already used?" check before either inserts.
+        let mut used = self
+            .used_tokens
+            .write()
+            .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+
+        if used.contains(token_id) {
+            return Err(CapabilityError::TokenAlreadyUsed {
+                token_id: token_id.to_string(),
+            });
         }
 
         // Persist first so KV is the ground truth. If the daemon crashes
         // after this point, `load_used_tokens()` will still see it on
-        // restart.
+        // restart. Holding the write lock across `block_on` is safe
+        // because `block_on` spawns an OS thread and does not re-acquire
+        // any lock on this store.
         if let Some(store) = &self.persistent_store {
-            let key = token_id.0.to_string();
-            block_on(store.set(NS_USED, &key, vec![1u8]))
+            block_on(store.set(NS_USED, &token_id.0.to_string(), vec![1u8]))
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
         }
 
-        // Update in-memory state (rebuilt from KV on restart regardless).
-        {
-            let mut used = self
-                .used_tokens
-                .write()
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-            used.insert(token_id.clone());
-        }
-
+        used.insert(token_id.clone());
         Ok(())
     }
 
@@ -684,7 +678,6 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_persistent_store() {
-        let temp_dir = tempfile::tempdir().unwrap();
         // Use an in-memory KvStore for testing (avoids filesystem issues).
         let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
         let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
@@ -719,6 +712,7 @@ mod tests {
         // Note: SurrealKV holds an OS-level file lock, so we cannot drop-and-reopen
         // the same path in a single test. The in-memory `with_kv_store` test above
         // already validates the reload-from-backing-store pattern.
+        let temp_dir = tempfile::tempdir().unwrap();
         let disk_store = CapabilityStore::with_persistence(temp_dir.path().join("caps")).unwrap();
         let token2 = CapabilityToken::create(
             ResourcePattern::exact("mcp://test:tool2").unwrap(),
