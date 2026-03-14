@@ -320,4 +320,17 @@ mod tests {
             IpAddr::from_str("::ffff:169.254.169.254").unwrap()
         ));
     }
+
+    #[test]
+    fn blocks_ipv4_compatible_ipv6_bypass() {
+        // IPv4-compatible (deprecated RFC 4291, no ::ffff prefix).
+        // These exercise the explicit segment extraction that replaced
+        // the deprecated Ipv6Addr::to_ipv4().
+        assert!(!is_safe_ip(IpAddr::from_str("::127.0.0.1").unwrap()));
+        assert!(!is_safe_ip(IpAddr::from_str("::10.0.0.1").unwrap()));
+        assert!(!is_safe_ip(IpAddr::from_str("::169.254.169.254").unwrap()));
+        // ::1 is IPv6 loopback; after compatible-branch extraction it
+        // becomes 0.0.0.1, blocked by the 0.0.0.0/8 check (not loopback).
+        assert!(!is_safe_ip(IpAddr::from_str("::0.0.0.1").unwrap()));
+    }
 }

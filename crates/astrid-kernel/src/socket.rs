@@ -105,7 +105,12 @@ fn prepare_socket_path(path: &std::path::Path) -> Result<(), std::io::Error> {
 
     if path.is_symlink() {
         warn!(path = %path.display(), "Removing unexpected symlink at socket path");
-        let _ = std::fs::remove_file(path);
+        std::fs::remove_file(path).map_err(|e| {
+            std::io::Error::other(format!(
+                "Failed to remove symlink at socket path {}: {e}",
+                path.display()
+            ))
+        })?;
     } else if path.exists() {
         match std::os::unix::net::UnixStream::connect(path) {
             Ok(_stream) => {
