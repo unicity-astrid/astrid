@@ -697,14 +697,16 @@ pub(crate) fn astrid_kill_process_host_impl(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read as _;
-
     use super::*;
 
     #[test]
     fn buffer_cap_enforced() {
         let buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let data = vec![b'A'; MAX_BUFFER_BYTES + 500];
+        let mut data = vec![b'A'; MAX_BUFFER_BYTES + 500];
+        // Mark the first byte (should be dropped) and byte at index 500
+        // (should become the new first byte after drain).
+        data[0] = b'X';
+        data[500] = b'Y';
 
         // Simulate what the reader thread does: append then cap.
         {
@@ -719,7 +721,8 @@ mod tests {
         let locked = buf.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(locked.len(), MAX_BUFFER_BYTES);
         // The oldest 500 bytes should have been dropped.
-        assert_eq!(locked[0], b'A');
+        assert_eq!(locked[0], b'Y');
+        assert!(!locked.contains(&b'X'));
     }
 
     #[test]
@@ -873,25 +876,15 @@ mod tests {
             .expect("failed to spawn echo");
 
         let stdout_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let _stderr_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
 
-        // Read stdout into buffer (echo exits quickly).
-        if let Some(mut stdout) = child.stdout.take() {
-            let buf = Arc::clone(&stdout_buf);
-            let mut chunk = [0u8; 4096];
-            loop {
-                match stdout.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let mut locked = buf.lock().unwrap_or_else(|e| e.into_inner());
-                        locked.extend(&chunk[..n]);
-                    },
-                    Err(_) => break,
-                }
-            }
+        if let Some(stdout) = child.stdout.take() {
+            spawn_reader_thread(1, "test-stdout", stdout, Arc::clone(&stdout_buf));
         }
 
-        // Drain should return the output.
+        // Wait for process to exit and reader thread to capture output.
+        let _ = child.wait().expect("failed to wait for child");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
         let stdout = drain_buffer(&stdout_buf);
         assert!(
             stdout.contains("final output"),

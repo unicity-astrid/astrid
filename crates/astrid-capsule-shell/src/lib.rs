@@ -437,14 +437,15 @@ impl ShellTools {
                 "(Process has exited. Call kill_process to release the handle and free the slot.)\n",
             );
         }
+        use std::fmt::Write;
         if !logs.stdout.is_empty() {
-            output.push_str(&format!("--- stdout ---\n{}\n", logs.stdout));
+            let _ = write!(&mut output, "--- stdout ---\n{}\n", logs.stdout);
         }
         if !logs.stderr.is_empty() {
-            output.push_str(&format!("--- stderr ---\n{}\n", logs.stderr));
+            let _ = write!(&mut output, "--- stderr ---\n{}\n", logs.stderr);
         }
         if logs.stdout.is_empty() && logs.stderr.is_empty() {
-            output.push_str("(no new output)\n");
+            let _ = writeln!(&mut output, "(no new output)");
         }
 
         Ok(output)
@@ -464,11 +465,12 @@ impl ShellTools {
         };
 
         let mut output = format!("Process {} killed ({exit_info}).\n", args.id);
+        use std::fmt::Write;
         if !result.stdout.is_empty() {
-            output.push_str(&format!("--- final stdout ---\n{}\n", result.stdout));
+            let _ = write!(&mut output, "--- final stdout ---\n{}\n", result.stdout);
         }
         if !result.stderr.is_empty() {
-            output.push_str(&format!("--- final stderr ---\n{}\n", result.stderr));
+            let _ = write!(&mut output, "--- final stderr ---\n{}\n", result.stderr);
         }
 
         Ok(output)
