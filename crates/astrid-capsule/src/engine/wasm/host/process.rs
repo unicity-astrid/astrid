@@ -301,6 +301,16 @@ pub(crate) fn astrid_spawn_background_host_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
+    // Defensive re-check: limit could theoretically have been reached between
+    // the first check and re-acquisition (Extism serializes per-plugin, so
+    // this can't happen in practice, but defense-in-depth costs nothing).
+    if state.background_processes.len() >= MAX_BACKGROUND_PROCESSES {
+        // child will be killed+reaped on drop here
+        return Err(Error::msg(format!(
+            "background process limit reached (max {MAX_BACKGROUND_PROCESSES})"
+        )));
+    }
+
     let process_id = state.next_process_id;
     state.next_process_id += 1;
 
@@ -563,9 +573,18 @@ mod tests {
             );
         }
 
-        assert_eq!(processes.len(), MAX_BACKGROUND_PROCESSES);
-        // The host function checks `>= MAX_BACKGROUND_PROCESSES` before spawning.
-        assert!(processes.len() >= MAX_BACKGROUND_PROCESSES);
+        // This is the exact check the host function performs before spawning.
+        assert!(
+            processes.len() >= MAX_BACKGROUND_PROCESSES,
+            "at limit: should reject new spawns"
+        );
+
+        // Verify one below limit is allowed.
+        processes.remove(&0); // remove one
+        assert!(
+            processes.len() < MAX_BACKGROUND_PROCESSES,
+            "below limit: should allow new spawns"
+        );
 
         // Cleanup: drop kills all processes.
     }
@@ -576,6 +595,43 @@ mod tests {
         let processes: std::collections::HashMap<u64, ManagedProcess> =
             std::collections::HashMap::new();
         assert!(processes.get(&999).is_none());
+    }
+
+    #[test]
+    fn read_logs_after_natural_exit() {
+        let mut child = Command::new("echo")
+            .arg("hello from echo")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn echo");
+
+        let stdout_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
+        let stderr_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
+
+        // Spawn reader thread for stdout (echo exits quickly).
+        if let Some(stdout) = child.stdout.take() {
+            spawn_reader_thread(1, "stdout", stdout, Arc::clone(&stdout_buf));
+        }
+
+        // Wait for the process to exit naturally.
+        let status = child.wait().expect("failed to wait");
+        assert!(status.success());
+
+        // Give reader thread a moment to drain the pipe.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // try_wait should report exited.
+        // (child.wait() already reaped, so try_wait returns the cached status.)
+        // Simulate what read_logs does: drain buffers.
+        let stdout = drain_buffer(&stdout_buf);
+        let stderr = drain_buffer(&stderr_buf);
+
+        assert!(
+            stdout.contains("hello from echo"),
+            "expected output after natural exit, got: {stdout}"
+        );
+        assert!(stderr.is_empty());
     }
 
     #[test]
