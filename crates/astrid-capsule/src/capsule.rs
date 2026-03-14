@@ -411,6 +411,7 @@ mod tests {
             interceptors: Vec::new(),
             cron_jobs: Vec::new(),
             tools: Vec::new(),
+            topics: Vec::new(),
             effective_provides_cache: std::sync::OnceLock::new(),
         }
     }

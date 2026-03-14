@@ -427,6 +427,7 @@ mod tests {
             interceptors: vec![],
             cron_jobs: vec![],
             tools: vec![],
+            topics: vec![],
             effective_provides_cache: std::sync::OnceLock::new(),
         }
     }

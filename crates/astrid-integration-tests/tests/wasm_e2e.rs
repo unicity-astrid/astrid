@@ -85,6 +85,7 @@ async fn setup_test_capsule(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        topics: vec![],
         effective_provides_cache: std::sync::OnceLock::new(),
     };
 
@@ -193,6 +194,7 @@ async fn setup_test_capsule_with_global(
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        topics: vec![],
         effective_provides_cache: std::sync::OnceLock::new(),
     };
 

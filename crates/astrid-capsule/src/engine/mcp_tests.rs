@@ -60,6 +60,7 @@ mod tests {
             llm_providers: vec![],
             interceptors: vec![],
             cron_jobs: vec![],
+            topics: vec![],
             effective_provides_cache: std::sync::OnceLock::new(),
         }
     }
