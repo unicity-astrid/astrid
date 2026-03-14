@@ -417,6 +417,9 @@ impl ExecutionEngine for WasmEngine {
                                     capsule = %capsule_name,
                                     "Received tool cancel event, killing tracked processes"
                                 );
+                                // NOTE: ToolCancelRequest.call_ids is currently
+                                // ignored - all tracked processes are killed.
+                                // There is no call_id-to-PID mapping yet.
                                 tracker.cancel_all(&handle);
                             } else {
                                 // Channel closed.

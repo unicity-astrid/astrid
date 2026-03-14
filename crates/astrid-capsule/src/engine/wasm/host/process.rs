@@ -61,9 +61,12 @@ impl ProcessTracker {
 
     /// Send SIGINT to all tracked processes, then SIGKILL after a grace period.
     ///
-    /// Sandbox wrappers (`sandbox-exec`, `bwrap`) forward SIGINT to inner
-    /// commands, so signaling the wrapper PID is sufficient. The SIGKILL task
-    /// re-checks `active_pids` before signaling to avoid hitting reused PIDs.
+    /// On macOS, `sandbox-exec` replaces itself via `exec()`, so the tracked
+    /// PID IS the real inner command. On Linux, `bwrap` forwards signals to
+    /// the inner process. Known limitation: if a future sandbox wrapper forks
+    /// without forwarding signals, the inner process may survive SIGINT.
+    /// The SIGKILL task re-checks `active_pids` before signaling to avoid
+    /// hitting reused PIDs.
     pub fn cancel_all(&self, handle: &tokio::runtime::Handle) {
         let pids: Vec<u32> = self
             .active_pids
@@ -79,9 +82,14 @@ impl ProcessTracker {
 
         // SIGINT all tracked processes.
         for &pid in &pids {
-            let nix_pid = nix::unistd::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX));
-            // kill may fail with ESRCH if the process already exited - that's fine.
-            let _ = nix::sys::signal::kill(nix_pid, nix::sys::signal::Signal::SIGINT);
+            let Some(raw) = i32::try_from(pid).ok() else {
+                warn!(pid, "PID overflows i32, skipping signal");
+                continue;
+            };
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(raw),
+                nix::sys::signal::Signal::SIGINT,
+            );
         }
 
         // Spawn a task to SIGKILL survivors after a grace period.
@@ -95,8 +103,13 @@ impl ProcessTracker {
                 .copied()
                 .collect();
             for pid in still_active {
-                let nix_pid = nix::unistd::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX));
-                let _ = nix::sys::signal::kill(nix_pid, nix::sys::signal::Signal::SIGKILL);
+                let Some(raw) = i32::try_from(pid).ok() else {
+                    continue;
+                };
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(raw),
+                    nix::sys::signal::Signal::SIGKILL,
+                );
             }
         });
     }
@@ -177,20 +190,32 @@ pub(crate) fn astrid_spawn_host_impl(
                 .and_then(|r| r)
         });
 
-    process_tracker.unregister(pid);
-
     let result = match output_result {
-        Some(Ok(output)) => ProcessResult {
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            exit_code: output.status.code().unwrap_or(-1),
+        Some(Ok(output)) => {
+            process_tracker.unregister(pid);
+            ProcessResult {
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                exit_code: output.status.code().unwrap_or(-1),
+            }
         },
         Some(Err(e)) => {
+            process_tracker.unregister(pid);
             return Err(Error::msg(format!("failed to execute command: {e}")));
         },
         None => {
             // Cancelled (capsule unloading or tool cancellation).
+            // Send explicit SIGKILL to ensure the process dies even if it
+            // traps SIGINT. Keep the PID registered so the cancel_all SIGKILL
+            // grace-period task can also reach it (belt-and-suspenders).
             warn!(capsule_id, pid, "process cancelled");
+            if let Ok(raw) = i32::try_from(pid) {
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(raw),
+                    nix::sys::signal::Signal::SIGKILL,
+                );
+            }
+            process_tracker.unregister(pid);
             ProcessResult {
                 stdout: String::new(),
                 stderr: "process cancelled".to_owned(),
@@ -269,6 +294,84 @@ mod tests {
 
         // Process should have been killed by signal (not exit code 0).
         assert!(!output.status.success());
+        assert!(tracker.active_pids.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tracker_sigkill_fires_for_sigint_ignoring_process() {
+        let tracker = Arc::new(ProcessTracker::new());
+
+        // Spawn a process that traps SIGINT and ignores it.
+        let child = Command::new("sh")
+            .args(["-c", "trap '' INT; sleep 60"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sh");
+
+        let pid = child.id();
+        tracker.register(pid);
+
+        // Cancel - SIGINT is ignored, but SIGKILL fires after 2s grace period.
+        tracker.cancel_all(&tokio::runtime::Handle::current());
+
+        // Wait for the process to exit. Should be killed by SIGKILL within ~3s.
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || child.wait_with_output()),
+        )
+        .await
+        .expect("process was not killed within 5s")
+        .expect("join failed")
+        .expect("wait failed");
+
+        tracker.unregister(pid);
+
+        assert!(!output.status.success());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tracker_cancel_all_multiple_processes() {
+        let tracker = Arc::new(ProcessTracker::new());
+
+        let child1 = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep 1");
+
+        let child2 = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep 2");
+
+        let pid1 = child1.id();
+        let pid2 = child2.id();
+        tracker.register(pid1);
+        tracker.register(pid2);
+
+        assert_eq!(tracker.active_pids.lock().unwrap().len(), 2);
+
+        tracker.cancel_all(&tokio::runtime::Handle::current());
+
+        let out1 = tokio::task::spawn_blocking(move || child1.wait_with_output())
+            .await
+            .expect("join 1 failed")
+            .expect("wait 1 failed");
+
+        let out2 = tokio::task::spawn_blocking(move || child2.wait_with_output())
+            .await
+            .expect("join 2 failed")
+            .expect("wait 2 failed");
+
+        tracker.unregister(pid1);
+        tracker.unregister(pid2);
+
+        assert!(!out1.status.success());
+        assert!(!out2.status.success());
         assert!(tracker.active_pids.lock().unwrap().is_empty());
     }
 }
