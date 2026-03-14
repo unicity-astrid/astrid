@@ -207,6 +207,11 @@ impl IdentityStore for KvIdentityStore {
     async fn create_user(&self, display_name: Option<&str>) -> Result<AstridUserId, IdentityError> {
         let mut user = AstridUserId::new();
         if let Some(name) = display_name {
+            if name.contains('/') || name.contains('\0') {
+                return Err(IdentityError::InvalidInput(
+                    "display_name must not contain '/' or null bytes".into(),
+                ));
+            }
             user = user.with_display_name(name);
         }
 
@@ -215,15 +220,13 @@ impl IdentityStore for KvIdentityStore {
             .await
             .map_err(|e| IdentityError::Storage(e.to_string()))?;
 
-        // Index by display name if provided (skip if contains key-unsafe chars).
+        // Index by display name if provided.
         // Note: this overwrites any existing name index entry. The name index is
         // a best-effort lookup for config resolution, not a uniqueness constraint.
         // Last writer wins - the most recently created user with a given name
         // will be found by `get_user_by_name`.
         if let Some(name) = display_name
             && !name.trim().is_empty()
-            && !name.contains('/')
-            && !name.contains('\0')
         {
             self.kv
                 .set(
@@ -585,6 +588,13 @@ mod tests {
     async fn platform_user_id_with_null_rejected() {
         let store = make_store();
         let err = store.resolve("discord", "abc\0def").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn create_user_with_slash_in_name_rejected() {
+        let store = make_store();
+        let err = store.create_user(Some("admin/root")).await.unwrap_err();
         assert!(matches!(err, IdentityError::InvalidInput(_)));
     }
 

@@ -1178,8 +1178,11 @@ pub mod identity {
         }
         let resp: Resp = serde_json::from_slice(&resp_bytes)?;
         if resp.found {
+            let user_id = resp.user_id.ok_or_else(|| {
+                SysError::ApiError("host returned found=true but user_id was missing".into())
+            })?;
             Ok(Some(ResolvedUser {
-                user_id: resp.user_id.unwrap_or_default(),
+                user_id,
                 display_name: resp.display_name,
             }))
         } else if let Some(err) = resp.error {
