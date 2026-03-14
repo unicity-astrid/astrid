@@ -6,7 +6,7 @@
 //! Filesystem tools capsule for Astrid OS.
 //!
 //! Provides `read_file`, `write_file`, `replace_in_file`, `list_directory`,
-//! and `grep_search` tools to agents.
+//! `grep_search`, `create_directory`, `delete_file`, and `move_file` tools to agents.
 
 mod grep;
 
@@ -14,6 +14,9 @@ use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
 use grep::{GREP_MAX_DEPTH, GREP_MAX_FILES, GREP_MAX_MATCHES, grep_content};
 use serde::Deserialize;
+
+/// Maximum file size (10 MB) that `move_file` will transit through WASM guest memory.
+const MOVE_FILE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct FsTools;
@@ -47,6 +50,27 @@ pub struct ListDirectoryArgs {
 pub struct GrepSearchArgs {
     pub dir_path: Option<String>,
     pub pattern: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateDirectoryArgs {
+    pub dir_path: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct DeleteFileArgs {
+    /// The path to the file to delete.
+    /// Note: Currently only supports deleting files created during the current session. Attempting to delete existing workspace files will fail due to lack of whiteout support.
+    pub file_path: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct MoveFileArgs {
+    /// The source path of the file to move.
+    /// Note: Currently only supports moving files created during the current session. Attempting to move existing workspace files will fail due to lack of whiteout support.
+    pub source_path: String,
+    /// The destination path for the file.
+    pub destination_path: String,
 }
 
 #[capsule]
@@ -126,6 +150,111 @@ impl FsTools {
 
         Ok(matches.join("\n"))
     }
+
+    #[astrid::tool("create_directory")]
+    pub fn create_directory(&self, args: CreateDirectoryArgs) -> Result<String, SysError> {
+        fs::create_dir(&args.dir_path)?;
+        Ok(format!("Successfully created directory {}", args.dir_path))
+    }
+
+    #[astrid::tool("delete_file")]
+    pub fn delete_file(&self, args: DeleteFileArgs) -> Result<String, SysError> {
+        let stat = match file_stat(&args.file_path) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(SysError::ApiError(format!(
+                    "file does not exist: {}",
+                    args.file_path
+                )));
+            }
+        };
+        if stat.is_dir {
+            return Err(SysError::ApiError(format!(
+                "{} is a directory, not a file; delete_file only supports files",
+                args.file_path
+            )));
+        }
+        fs::remove_file(&args.file_path)?;
+        Ok(format!("Successfully deleted {}", args.file_path))
+    }
+
+    #[astrid::tool("move_file")]
+    pub fn move_file(&self, args: MoveFileArgs) -> Result<String, SysError> {
+        // Single stat covers both existence and directory checks.
+        let src_stat = match file_stat(&args.source_path) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(SysError::ApiError(format!(
+                    "source path does not exist: {}",
+                    args.source_path
+                )));
+            }
+        };
+        if src_stat.is_dir {
+            return Err(SysError::ApiError(format!(
+                "{} is a directory, not a file; move_file only supports files",
+                args.source_path
+            )));
+        }
+        if src_stat.size > MOVE_FILE_MAX_BYTES {
+            return Err(SysError::ApiError(format!(
+                "source file is too large to move ({} bytes, limit is {} bytes)",
+                src_stat.size, MOVE_FILE_MAX_BYTES
+            )));
+        }
+        if fs::exists(&args.destination_path)? {
+            return Err(SysError::ApiError(format!(
+                "destination already exists: {}",
+                args.destination_path
+            )));
+        }
+
+        let content = fs::read(&args.source_path)?;
+        fs::write(&args.destination_path, &content)?;
+
+        if let Err(e) = fs::remove_file(&args.source_path) {
+            // Destination was written; clean up to avoid a phantom copy.
+            let _ = fs::remove_file(&args.destination_path);
+            return Err(SysError::ApiError(format!(
+                "move failed: source could not be removed ({e}); destination write was rolled back"
+            )));
+        }
+
+        Ok(format!(
+            "Successfully moved {} to {}",
+            args.source_path, args.destination_path
+        ))
+    }
+}
+
+/// Parsed VFS metadata for a single path.
+struct FileStat {
+    is_dir: bool,
+    size: u64,
+}
+
+/// Returns parsed metadata for `path`, or a clear "not found" error.
+fn file_stat(path: &str) -> Result<FileStat, SysError> {
+    let stat_bytes = fs::metadata(path)?;
+    let val: serde_json::Value = serde_json::from_slice(&stat_bytes)
+        .map_err(|e| SysError::ApiError(format!("failed to parse metadata for {path}: {e}")))?;
+    let is_dir = val
+        .get("isDir")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| {
+            SysError::ApiError(format!(
+                "metadata for {path} is missing or has invalid 'isDir' field"
+            ))
+        })?;
+    let size = val
+        .get("size")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            SysError::ApiError(format!(
+                "metadata for {path} is missing or has invalid 'size' field"
+            ))
+        })?;
+    Ok(FileStat { is_dir, size })
 }
 
 /// Recursively walks `dir` and collects lines containing `pattern`.
