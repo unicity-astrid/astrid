@@ -483,8 +483,8 @@ impl Kernel {
         // Previous value was 1 -> now 0: last client disconnected.
         // Clear session-scoped allowances so they don't leak into the next session.
         if result == Ok(1) {
-            tracing::info!("last client disconnected, clearing session allowances");
             self.allowance_store.clear_session_allowances();
+            tracing::info!("last client disconnected, session allowances cleared");
         }
     }
 
