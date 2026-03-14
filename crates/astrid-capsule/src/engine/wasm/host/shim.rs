@@ -360,6 +360,14 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::CheckCapsuleCapability => {
+            crate::engine::wasm::host::sys::astrid_check_capsule_capability_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

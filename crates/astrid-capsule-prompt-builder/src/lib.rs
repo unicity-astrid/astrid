@@ -158,21 +158,39 @@ struct SourcedHookResponse {
 /// (user-visible context), while `systemPrompt`, `prependSystemContext`,
 /// and `appendSystemContext` are stripped.
 ///
-/// TODO: Query the kernel for per-capsule `allowPromptInjection` permission.
-/// Currently accepts all responses (no permission store available yet).
-fn filter_by_permission(sourced: Vec<SourcedHookResponse>) -> Vec<HookResponse> {
+/// The `has_permission` closure receives the `source_id` (if present) and
+/// returns whether the source capsule is allowed to mutate the system
+/// prompt. This closure is parameterized for testability - the production
+/// call site queries the kernel via `capabilities::check`.
+fn filter_by_permission(
+    sourced: Vec<SourcedHookResponse>,
+    has_permission: impl Fn(Option<&str>) -> bool,
+) -> Vec<HookResponse> {
     sourced
         .into_iter()
         .map(|s| {
-            // TODO: Check capsule capability via kernel query:
-            //   if !has_prompt_injection_permission(&s.source_id) {
-            //       return HookResponse {
-            //           prepend_context: s.response.prepend_context,
-            //           ..Default::default()
-            //       };
-            //   }
-            let _ = &s.source_id; // suppress unused warning until permission gating is wired
-            s.response
+            if has_permission(s.source_id.as_deref()) {
+                s.response
+            } else {
+                // Strip prompt-mutating fields; only user-visible context passes.
+                if s.response.system_prompt.is_some()
+                    || s.response.prepend_system_context.is_some()
+                    || s.response.append_system_context.is_some()
+                {
+                    let _ = log::log(
+                        "warn",
+                        &format!(
+                            "Stripped prompt-mutating fields from capsule {:?} \
+                             (missing allow_prompt_injection capability)",
+                            s.source_id
+                        ),
+                    );
+                }
+                HookResponse {
+                    prepend_context: s.response.prepend_context,
+                    ..Default::default()
+                }
+            }
         })
         .collect()
 }
@@ -319,7 +337,12 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
         ),
     );
 
-    filter_by_permission(sourced_responses)
+    filter_by_permission(sourced_responses, |source_id| {
+        let Some(uuid) = source_id else {
+            return false;
+        };
+        capabilities::check(uuid, "allow_prompt_injection").unwrap_or(false)
+    })
 }
 
 /// Parse the poll envelope and extract hook responses with source capsule IDs.

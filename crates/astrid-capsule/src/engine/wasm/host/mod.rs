@@ -74,10 +74,11 @@ pub(crate) enum WasmHostFunction {
     IdentityUnlink,
     IdentityCreateUser,
     IdentityListLinks,
+    CheckCapsuleCapability,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 42] = [
+    pub(crate) const ALL: [Self; 43] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -120,6 +121,7 @@ impl WasmHostFunction {
         Self::IdentityUnlink,
         Self::IdentityCreateUser,
         Self::IdentityListLinks,
+        Self::CheckCapsuleCapability,
     ];
 
     #[must_use]
@@ -172,6 +174,7 @@ impl WasmHostFunction {
             Self::IdentityUnlink => "astrid_identity_unlink",
             Self::IdentityCreateUser => "astrid_identity_create_user",
             Self::IdentityListLinks => "astrid_identity_list_links",
+            Self::CheckCapsuleCapability => "astrid_check_capsule_capability",
         }
     }
 
@@ -206,7 +209,8 @@ impl WasmHostFunction {
             | Self::IdentityLink
             | Self::IdentityUnlink
             | Self::IdentityCreateUser
-            | Self::IdentityListLinks => 1,
+            | Self::IdentityListLinks
+            | Self::CheckCapsuleCapability => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -263,7 +267,8 @@ impl WasmHostFunction {
             | Self::IdentityLink
             | Self::IdentityUnlink
             | Self::IdentityCreateUser
-            | Self::IdentityListLinks => TYPE_I64,
+            | Self::IdentityListLinks
+            | Self::CheckCapsuleCapability => TYPE_I64,
         }
     }
 }
@@ -445,6 +450,13 @@ pub fn register_host_functions(
                 rets,
                 ud,
                 identity::astrid_identity_list_links_impl,
+            ),
+            WasmHostFunction::CheckCapsuleCapability => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                sys::astrid_check_capsule_capability_impl,
             ),
         };
     }

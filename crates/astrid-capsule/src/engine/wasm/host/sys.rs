@@ -285,3 +285,83 @@ pub(crate) fn astrid_trigger_hook_impl(
     outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
+
+/// Request payload for cross-capsule capability checks.
+#[derive(serde::Deserialize)]
+struct CapabilityCheckRequest {
+    /// The UUID of the capsule whose capability is being queried.
+    source_uuid: String,
+    /// The capability to check (e.g. `"allow_prompt_injection"`).
+    capability: String,
+}
+
+/// Check whether a capsule (identified by its session UUID) has a specific
+/// manifest capability.
+///
+/// Input: JSON `{"source_uuid": "...", "capability": "allow_prompt_injection"}`
+/// Output: JSON `{"allowed": true/false}`
+///
+/// Returns `{"allowed": false}` for unknown UUIDs, unknown capabilities, or
+/// if the registry is unavailable (fail-closed).
+#[expect(clippy::needless_pass_by_value)]
+pub(crate) fn astrid_check_capsule_capability_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let request_bytes = util::get_safe_bytes(plugin, &inputs[0], 1024)?;
+    let request: CapabilityCheckRequest = serde_json::from_slice(&request_bytes)
+        .map_err(|e| Error::msg(format!("invalid capability check request: {e}")))?;
+
+    let ud = user_data.get()?;
+    let state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    let registry = state.capsule_registry.clone();
+    let rt_handle = state.runtime_handle.clone();
+    let host_semaphore = state.host_semaphore.clone();
+    drop(state);
+
+    let allowed = if let Some(registry) = registry {
+        let source_uuid = uuid::Uuid::parse_str(&request.source_uuid).map_err(|e| {
+            Error::msg(format!(
+                "invalid source UUID '{}': {e}",
+                request.source_uuid
+            ))
+        })?;
+
+        util::bounded_block_on(&rt_handle, &host_semaphore, async {
+            let reg = registry.read().await;
+            let Some(capsule_id) = reg.find_by_uuid(&source_uuid) else {
+                tracing::debug!(
+                    uuid = %source_uuid,
+                    capability = %request.capability,
+                    "UUID not found in registry, denying capability"
+                );
+                return false;
+            };
+            let Some(capsule) = reg.get(capsule_id) else {
+                return false;
+            };
+            match request.capability.as_str() {
+                "allow_prompt_injection" => capsule.manifest().capabilities.allow_prompt_injection,
+                other => {
+                    tracing::warn!(
+                        capability = %other,
+                        "Unknown capability requested, denying"
+                    );
+                    false
+                },
+            }
+        })
+    } else {
+        false
+    };
+
+    let result = serde_json::json!({"allowed": allowed}).to_string();
+    let mem = plugin.memory_new(&result)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}

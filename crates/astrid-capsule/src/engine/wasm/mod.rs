@@ -99,6 +99,10 @@ impl ExecutionEngine for WasmEngine {
             wasm_config.insert(key, serde_json::Value::String(val));
         }
 
+        // Pre-generate the session UUID so it can be registered in the
+        // capsule registry after the blocking plugin build completes.
+        let capsule_uuid = uuid::Uuid::new_v4();
+
         // Create shared concurrency controls before entering the blocking plugin build.
         let host_semaphore = HostState::default_host_semaphore();
         let cancel_token = tokio_util::sync::CancellationToken::new();
@@ -201,7 +205,7 @@ impl ExecutionEngine for WasmEngine {
             );
 
             let host_state = HostState {
-                capsule_uuid: uuid::Uuid::new_v4(),
+                capsule_uuid,
                 caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
                     .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
@@ -379,6 +383,17 @@ impl ExecutionEngine for WasmEngine {
 
             Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
         })?;
+
+        // Register UUID-to-CapsuleId mapping so host functions can resolve
+        // IPC source UUIDs back to capsule identities for capability checks.
+        if let Some(registry) = &ctx.capsule_registry {
+            let capsule_id = crate::capsule::CapsuleId::new(&self.manifest.package.name)
+                .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?;
+            registry
+                .write()
+                .await
+                .register_uuid(capsule_uuid, capsule_id);
+        }
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
         self.cancel_token = Some(cancel_token);

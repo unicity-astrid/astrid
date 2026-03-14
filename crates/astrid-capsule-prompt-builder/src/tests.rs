@@ -285,8 +285,8 @@ fn parse_hook_responses_from_ipc_envelope() {
         Some("You are a custom assistant.")
     );
 
-    // Now merge and verify full assembly.
-    let responses: Vec<HookResponse> = filter_by_permission(sourced);
+    // Now merge and verify full assembly (allow all for this test).
+    let responses: Vec<HookResponse> = filter_by_permission(sourced, |_| true);
     let merged = merge_hook_responses("Default prompt.", &responses);
     assert_eq!(
         merged.system_prompt,
@@ -317,33 +317,116 @@ fn parse_hook_responses_missing_payload() {
 }
 
 #[test]
-fn filter_by_permission_passes_all_currently() {
+fn filter_passes_all_with_permission() {
     let sourced = vec![
         SourcedHookResponse {
             source_id: Some("trusted-plugin".into()),
             response: make_response(Some("Context"), None, Some("Override"), None),
         },
         SourcedHookResponse {
-            source_id: Some("untrusted-plugin".into()),
+            source_id: Some("another-trusted".into()),
             response: make_response(None, Some("Suffix"), None, Some("User ctx")),
         },
-        SourcedHookResponse {
-            source_id: None,
-            response: make_response(Some("Anonymous"), None, None, None),
-        },
     ];
-    let filtered = filter_by_permission(sourced);
-    // Currently all responses pass through (permission gating is TODO).
-    assert_eq!(filtered.len(), 3);
+    let filtered = filter_by_permission(sourced, |_| true);
+    assert_eq!(filtered.len(), 2);
     assert_eq!(filtered[0].system_prompt.as_deref(), Some("Override"));
+    assert_eq!(
+        filtered[0].prepend_system_context.as_deref(),
+        Some("Context")
+    );
     assert_eq!(
         filtered[1].append_system_context.as_deref(),
         Some("Suffix")
     );
     assert_eq!(
-        filtered[2].prepend_system_context.as_deref(),
-        Some("Anonymous")
+        filtered[1].prepend_context.as_deref(),
+        Some("User ctx")
     );
+}
+
+#[test]
+fn filter_strips_prompt_fields_without_permission() {
+    let sourced = vec![SourcedHookResponse {
+        source_id: Some("malicious-plugin".into()),
+        response: make_response(
+            Some("Injected system context"),
+            Some("Appended system context"),
+            Some("Hijacked system prompt"),
+            Some("Harmless user context"),
+        ),
+    }];
+    let filtered = filter_by_permission(sourced, |_| false);
+    assert_eq!(filtered.len(), 1);
+    // Prompt-mutating fields stripped:
+    assert!(filtered[0].system_prompt.is_none());
+    assert!(filtered[0].prepend_system_context.is_none());
+    assert!(filtered[0].append_system_context.is_none());
+    // User-visible context preserved:
+    assert_eq!(
+        filtered[0].prepend_context.as_deref(),
+        Some("Harmless user context")
+    );
+}
+
+#[test]
+fn filter_strips_when_source_id_is_none() {
+    let sourced = vec![SourcedHookResponse {
+        source_id: None,
+        response: make_response(Some("Anonymous system ctx"), None, None, Some("User ctx")),
+    }];
+    // Closure receives None for source_id and denies.
+    let filtered = filter_by_permission(sourced, |id| id.is_some());
+    assert_eq!(filtered.len(), 1);
+    assert!(filtered[0].prepend_system_context.is_none());
+    assert_eq!(filtered[0].prepend_context.as_deref(), Some("User ctx"));
+}
+
+#[test]
+fn filter_preserves_prepend_context_without_permission() {
+    let sourced = vec![
+        SourcedHookResponse {
+            source_id: Some("plugin-a".into()),
+            response: make_response(None, None, None, Some("Context from A")),
+        },
+        SourcedHookResponse {
+            source_id: Some("plugin-b".into()),
+            response: make_response(None, None, None, Some("Context from B")),
+        },
+    ];
+    let filtered = filter_by_permission(sourced, |_| false);
+    assert_eq!(filtered.len(), 2);
+    assert_eq!(
+        filtered[0].prepend_context.as_deref(),
+        Some("Context from A")
+    );
+    assert_eq!(
+        filtered[1].prepend_context.as_deref(),
+        Some("Context from B")
+    );
+}
+
+#[test]
+fn filter_selective_permission() {
+    // Only "trusted" capsule gets permission; "untrusted" is denied.
+    let sourced = vec![
+        SourcedHookResponse {
+            source_id: Some("trusted".into()),
+            response: make_response(None, None, Some("Allowed override"), None),
+        },
+        SourcedHookResponse {
+            source_id: Some("untrusted".into()),
+            response: make_response(None, None, Some("Blocked override"), Some("Kept")),
+        },
+    ];
+    let filtered = filter_by_permission(sourced, |id| id == Some("trusted"));
+    assert_eq!(filtered.len(), 2);
+    assert_eq!(
+        filtered[0].system_prompt.as_deref(),
+        Some("Allowed override")
+    );
+    assert!(filtered[1].system_prompt.is_none());
+    assert_eq!(filtered[1].prepend_context.as_deref(), Some("Kept"));
 }
 
 #[test]

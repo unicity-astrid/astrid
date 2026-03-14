@@ -516,6 +516,7 @@ mod tests {
                 ipc_publish: vec![],
                 ipc_subscribe: vec![],
                 identity: vec![],
+                allow_prompt_injection: false,
             },
             env: Default::default(),
             context_files: vec![],

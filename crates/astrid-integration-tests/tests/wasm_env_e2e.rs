@@ -97,6 +97,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             ipc_publish: vec![],
             ipc_subscribe: vec![],
             identity: vec![],
+            allow_prompt_injection: false,
         },
         env,
         context_files: vec![],
