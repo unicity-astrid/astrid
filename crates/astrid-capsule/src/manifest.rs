@@ -420,7 +420,8 @@ impl fmt::Display for TopicDirection {
 /// are baked into `meta.json` at install time for tooling consumption.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopicDef {
-    /// The topic name or pattern (e.g. `"llm.v1.response.chunk.anthropic"`).
+    /// The concrete topic name (e.g. `"llm.v1.response.chunk.anthropic"`).
+    /// Wildcards are not permitted; topic declarations must be concrete API contracts.
     pub name: String,
     /// Whether the capsule publishes or subscribes to this topic.
     pub direction: TopicDirection,

@@ -749,8 +749,17 @@ fn bake_topics(
                 );
             }
 
-            // Check file size before reading.
-            let file_len = std::fs::metadata(&canonical)
+            // Open once and hold the descriptor to eliminate TOCTOU between
+            // size check and read (the file can't be swapped while open).
+            let mut file = std::fs::File::open(&canonical).with_context(|| {
+                format!(
+                    "failed to open schema file for topic '{}': '{}'",
+                    topic.name,
+                    canonical.display()
+                )
+            })?;
+            let file_len = file
+                .metadata()
                 .with_context(|| format!("failed to stat schema file: {}", canonical.display()))?
                 .len();
             if file_len > MAX_SCHEMA_FILE_SIZE {
@@ -762,8 +771,8 @@ fn bake_topics(
                     MAX_SCHEMA_FILE_SIZE
                 );
             }
-
-            let content = std::fs::read_to_string(&canonical).with_context(|| {
+            let mut content = String::new();
+            std::io::Read::read_to_string(&mut file, &mut content).with_context(|| {
                 format!(
                     "failed to read schema file for topic '{}': '{}'",
                     topic.name,
@@ -1512,8 +1521,8 @@ mod tests {
             .expect_err("install should fail with missing schema");
         let msg = format!("{err:#}");
         assert!(
-            msg.contains("not found") || msg.contains("No such file"),
-            "expected file-not-found error, got: {msg}"
+            msg.contains("schema file not found") || msg.contains("No such file"),
+            "expected schema-file-not-found error, got: {msg}"
         );
     }
 
