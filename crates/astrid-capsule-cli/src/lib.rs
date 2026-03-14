@@ -196,6 +196,10 @@ fn broadcast_poll_messages(streams: &[StreamHandle], poll_bytes: &[u8], dead: &m
         .collect();
 
     for (i, stream) in streams.iter().enumerate() {
+        // Skip streams already marked dead by a previous subscription's broadcast.
+        if dead.contains(&i) {
+            continue;
+        }
         for msg_bytes in &serialized {
             if let Err(e) = write(stream, msg_bytes) {
                 let _ = log::error(format!("Socket write error: {e:?}"));
