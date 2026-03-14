@@ -91,16 +91,26 @@ fn validate_url(url: &str) -> Result<(), &'static str> {
         return Err("URL cannot be empty");
     }
     // RFC 3986: scheme is case-insensitive, so accept HTTP:// and HTTPS://.
-    // Only lowercase the scheme portion for comparison - path/query are case-sensitive.
-    let scheme_lower = url
-        .as_bytes()
-        .iter()
-        .map(u8::to_ascii_lowercase)
-        .collect::<Vec<_>>();
-    if !scheme_lower.starts_with(b"http://") && !scheme_lower.starts_with(b"https://") {
+    // Only lowercase the scheme prefix (up to "://") for the check. The rest
+    // of the URL (path, query) is case-sensitive and must not be modified.
+    let scheme_end = url.find("://").map_or(0, |i| i + 3);
+    let scheme_lower: String = url[..scheme_end].to_ascii_lowercase();
+    if !scheme_lower.starts_with("http://") && !scheme_lower.starts_with("https://") {
         return Err("Only http:// and https:// URLs are supported");
     }
     Ok(())
+}
+
+/// Allowed HTTP methods. Matches the set supported by the host.
+const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+
+/// Validate an HTTP method against the allowed set.
+fn validate_method(method: &str) -> Result<(), String> {
+    if ALLOWED_METHODS.contains(&method) {
+        Ok(())
+    } else {
+        Err(format!("unsupported HTTP method: {method}"))
+    }
 }
 
 /// Truncate the body to `max_len` bytes at a valid UTF-8 boundary.
@@ -133,6 +143,7 @@ impl HttpTools {
         validate_url(url).map_err(|e| SysError::ApiError(e.into()))?;
 
         let method = args.method.as_deref().unwrap_or("GET").to_uppercase();
+        validate_method(&method).map_err(SysError::ApiError)?;
 
         let request = HostHttpRequest {
             url: url.to_string(),
@@ -236,6 +247,56 @@ mod tests {
     fn method_uppercased() {
         let method = Some("post".to_string());
         assert_eq!(method.as_deref().unwrap_or("GET").to_uppercase(), "POST");
+    }
+
+    // -- Method validation --
+
+    #[test]
+    fn validate_method_accepts_all_standard() {
+        for m in ALLOWED_METHODS {
+            assert!(validate_method(m).is_ok(), "should accept {m}");
+        }
+    }
+
+    #[test]
+    fn validate_method_rejects_trace() {
+        assert_eq!(
+            validate_method("TRACE"),
+            Err("unsupported HTTP method: TRACE".into())
+        );
+    }
+
+    #[test]
+    fn validate_method_rejects_arbitrary() {
+        assert!(validate_method("FROBNICATE").is_err());
+    }
+
+    // -- FetchResult serialization --
+
+    #[test]
+    fn fetch_result_preserves_error_status() {
+        let result = FetchResult {
+            status: 404,
+            headers: HashMap::new(),
+            body: "Not Found".to_string(),
+            truncated: false,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"status\":404"));
+        // truncated field omitted when false
+        assert!(!json.contains("truncated"));
+    }
+
+    #[test]
+    fn fetch_result_includes_truncated_when_true() {
+        let result = FetchResult {
+            status: 200,
+            headers: HashMap::new(),
+            body: "partial...".to_string(),
+            truncated: true,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"truncated\":true"));
     }
 
     // -- Body truncation --
