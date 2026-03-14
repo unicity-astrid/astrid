@@ -265,6 +265,8 @@ impl ExecutionEngine for WasmEngine {
                 interceptor_handles: Vec::new(),
                 allowance_store: ctx.allowance_store.clone(),
                 identity_store: ctx.identity_store.clone(),
+                background_processes: std::collections::HashMap::new(),
+                next_process_id: 1,
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -639,6 +641,8 @@ pub fn run_lifecycle(
         interceptor_handles: Vec::new(),
         allowance_store: None,
         identity_store: None,
+        background_processes: std::collections::HashMap::new(),
+        next_process_id: 1,
     };
 
     let user_data = UserData::new(host_state);

@@ -168,6 +168,15 @@ pub struct HostState {
     ///
     /// When `None`, identity host functions return an error.
     pub identity_store: Option<std::sync::Arc<dyn astrid_storage::IdentityStore>>,
+    /// Active background processes managed for this capsule.
+    ///
+    /// Keyed by opaque handle IDs (not OS PIDs). Processes are cleaned up
+    /// via `Drop for ManagedProcess` when removed or when the capsule unloads.
+    pub background_processes: HashMap<u64, crate::engine::wasm::host::process::ManagedProcess>,
+    /// Monotonic counter for background process handle IDs.
+    ///
+    /// Starts at 1 so handle 0 is never issued (reserved as sentinel).
+    pub next_process_id: u64,
 }
 
 impl HostState {
@@ -295,6 +304,8 @@ mod tests {
             interceptor_handles: Vec::new(),
             allowance_store: None,
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
 
         let debug = format!("{state:?}");
@@ -358,6 +369,8 @@ mod tests {
             interceptor_handles: Vec::new(),
             allowance_store: None,
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
 
         assert!(state.uplinks().is_empty());
@@ -426,6 +439,8 @@ mod tests {
             interceptor_handles: Vec::new(),
             allowance_store: None,
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -490,6 +505,8 @@ mod tests {
             interceptor_handles: Vec::new(),
             allowance_store: None,
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -570,6 +587,8 @@ mod tests {
             interceptor_handles: Vec::new(),
             allowance_store: None,
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

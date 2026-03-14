@@ -368,6 +368,30 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::SpawnBackgroundHost => {
+            crate::engine::wasm::host::process::astrid_spawn_background_host_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::ReadProcessLogsHost => {
+            crate::engine::wasm::host::process::astrid_read_process_logs_host_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::KillProcessHost => {
+            crate::engine::wasm::host::process::astrid_kill_process_host_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

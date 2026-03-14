@@ -75,10 +75,13 @@ pub(crate) enum WasmHostFunction {
     IdentityCreateUser,
     IdentityListLinks,
     CheckCapsuleCapability,
+    SpawnBackgroundHost,
+    ReadProcessLogsHost,
+    KillProcessHost,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 43] = [
+    pub(crate) const ALL: [Self; 46] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -122,6 +125,9 @@ impl WasmHostFunction {
         Self::IdentityCreateUser,
         Self::IdentityListLinks,
         Self::CheckCapsuleCapability,
+        Self::SpawnBackgroundHost,
+        Self::ReadProcessLogsHost,
+        Self::KillProcessHost,
     ];
 
     #[must_use]
@@ -175,6 +181,9 @@ impl WasmHostFunction {
             Self::IdentityCreateUser => "astrid_identity_create_user",
             Self::IdentityListLinks => "astrid_identity_list_links",
             Self::CheckCapsuleCapability => "astrid_check_capsule_capability",
+            Self::SpawnBackgroundHost => "astrid_spawn_background_host",
+            Self::ReadProcessLogsHost => "astrid_read_process_logs_host",
+            Self::KillProcessHost => "astrid_kill_process_host",
         }
     }
 
@@ -210,7 +219,10 @@ impl WasmHostFunction {
             | Self::IdentityUnlink
             | Self::IdentityCreateUser
             | Self::IdentityListLinks
-            | Self::CheckCapsuleCapability => 1,
+            | Self::CheckCapsuleCapability
+            | Self::SpawnBackgroundHost
+            | Self::ReadProcessLogsHost
+            | Self::KillProcessHost => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -268,7 +280,10 @@ impl WasmHostFunction {
             | Self::IdentityUnlink
             | Self::IdentityCreateUser
             | Self::IdentityListLinks
-            | Self::CheckCapsuleCapability => TYPE_I64,
+            | Self::CheckCapsuleCapability
+            | Self::SpawnBackgroundHost
+            | Self::ReadProcessLogsHost
+            | Self::KillProcessHost => TYPE_I64,
         }
     }
 }
@@ -457,6 +472,27 @@ pub fn register_host_functions(
                 rets,
                 ud,
                 sys::astrid_check_capsule_capability_impl,
+            ),
+            WasmHostFunction::SpawnBackgroundHost => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                process::astrid_spawn_background_host_impl,
+            ),
+            WasmHostFunction::ReadProcessLogsHost => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                process::astrid_read_process_logs_host_impl,
+            ),
+            WasmHostFunction::KillProcessHost => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                process::astrid_kill_process_host_impl,
             ),
         };
     }

@@ -850,13 +850,91 @@ pub mod process {
         pub exit_code: i32,
     }
 
-    /// Spawns a native host process.
+    /// Spawns a native host process (blocks until completion).
     /// The Capsule must have the `host_process` capability granted for this command.
     pub fn spawn(cmd: &str, args: &[&str]) -> Result<ProcessResult, SysError> {
         let req = ProcessRequest { cmd, args };
         let req_bytes = serde_json::to_vec(&req)?;
         let result_bytes = unsafe { astrid_spawn_host(req_bytes)? };
         let result: ProcessResult = serde_json::from_slice(&result_bytes)?;
+        Ok(result)
+    }
+
+    // -------------------------------------------------------------------
+    // Background process management
+    // -------------------------------------------------------------------
+
+    /// Handle returned when a background process is spawned.
+    #[derive(Debug, Deserialize)]
+    pub struct BackgroundProcessHandle {
+        /// Opaque handle ID (not an OS PID).
+        pub id: u64,
+    }
+
+    /// Buffered logs and status from a background process.
+    #[derive(Debug, Deserialize)]
+    pub struct ProcessLogs {
+        /// New stdout output since the last read.
+        pub stdout: String,
+        /// New stderr output since the last read.
+        pub stderr: String,
+        /// Whether the process is still running.
+        pub running: bool,
+        /// Exit code if the process has exited.
+        pub exit_code: Option<i32>,
+    }
+
+    /// Result from killing a background process.
+    #[derive(Debug, Deserialize)]
+    pub struct KillResult {
+        /// Whether the process was successfully killed.
+        pub killed: bool,
+        /// Exit code of the terminated process.
+        pub exit_code: Option<i32>,
+        /// Any remaining buffered stdout.
+        pub stdout: String,
+        /// Any remaining buffered stderr.
+        pub stderr: String,
+    }
+
+    /// Spawn a background host process.
+    ///
+    /// Returns an opaque handle that can be used with [`read_logs`] and
+    /// [`kill`]. The process runs sandboxed with piped stdout/stderr.
+    pub fn spawn_background(cmd: &str, args: &[&str]) -> Result<BackgroundProcessHandle, SysError> {
+        let req = ProcessRequest { cmd, args };
+        let req_bytes = serde_json::to_vec(&req)?;
+        let result_bytes = unsafe { astrid_spawn_background_host(req_bytes)? };
+        let result: BackgroundProcessHandle = serde_json::from_slice(&result_bytes)?;
+        Ok(result)
+    }
+
+    /// Read buffered output from a background process.
+    ///
+    /// Each call drains the buffer and returns only NEW output since the
+    /// last read. Also reports whether the process is still running.
+    pub fn read_logs(id: u64) -> Result<ProcessLogs, SysError> {
+        #[derive(Serialize)]
+        struct Req {
+            id: u64,
+        }
+        let req_bytes = serde_json::to_vec(&Req { id })?;
+        let result_bytes = unsafe { astrid_read_process_logs_host(req_bytes)? };
+        let result: ProcessLogs = serde_json::from_slice(&result_bytes)?;
+        Ok(result)
+    }
+
+    /// Kill a background process and release its resources.
+    ///
+    /// Returns any remaining buffered output along with the exit code.
+    pub fn kill(id: u64) -> Result<KillResult, SysError> {
+        #[derive(Serialize)]
+        struct Req {
+            id: u64,
+        }
+        let req_bytes = serde_json::to_vec(&Req { id })?;
+        let result_bytes = unsafe { astrid_kill_process_host(req_bytes)? };
+        let result: KillResult = serde_json::from_slice(&result_bytes)?;
         Ok(result)
     }
 }

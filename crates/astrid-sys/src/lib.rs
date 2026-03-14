@@ -185,4 +185,17 @@ extern "ExtismHost" {
     /// manifest capability. Takes JSON: `{"source_uuid":"...","capability":"..."}`.
     /// Returns JSON: `{"allowed":true/false}`.
     pub fn astrid_check_capsule_capability(request: Vec<u8>) -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
+    // Background Process Management
+    // -----------------------------------------------------------------------
+    /// Spawn a background host process. Returns JSON: `{"id": <handle>}`.
+    /// The process runs in the host sandbox with piped stdout/stderr.
+    pub fn astrid_spawn_background_host(request: Vec<u8>) -> Vec<u8>;
+    /// Read buffered stdout/stderr from a background process.
+    /// Returns JSON: `{"stdout":"...","stderr":"...","running":bool,"exit_code":int|null}`.
+    pub fn astrid_read_process_logs_host(request: Vec<u8>) -> Vec<u8>;
+    /// Terminate a background process and clean up resources.
+    /// Returns JSON: `{"killed":bool,"exit_code":int|null,"stdout":"...","stderr":"..."}`.
+    pub fn astrid_kill_process_host(request: Vec<u8>) -> Vec<u8>;
 }

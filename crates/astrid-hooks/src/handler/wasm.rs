@@ -248,6 +248,8 @@ impl WasmHandler {
             // do not receive the identity store. Identity resolution requires
             // a kernel-managed security gate which hooks don't have.
             identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
         };
         let user_data = UserData::new(host_state);
 

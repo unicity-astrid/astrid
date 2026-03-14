@@ -30,6 +30,27 @@ pub struct RunShellArgs {
     pub command: String,
 }
 
+/// Input arguments for the `spawn_background_process` tool.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct SpawnBackgroundArgs {
+    /// The exact bash command to run in the background.
+    pub command: String,
+}
+
+/// Input arguments for the `read_process_logs` tool.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct ReadProcessLogsArgs {
+    /// The process handle ID returned by `spawn_background_process`.
+    pub id: u64,
+}
+
+/// Input arguments for the `kill_process` tool.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct KillProcessArgs {
+    /// The process handle ID returned by `spawn_background_process`.
+    pub id: u64,
+}
+
 /// Determine the safe subcommand depth for a given program.
 fn get_safe_depth(tokens: &[&str]) -> usize {
     if tokens.is_empty() {
@@ -358,6 +379,94 @@ impl ShellTools {
 
         // Return stdout back to the LLM agent
         Ok(result.stdout)
+    }
+
+    /// Spawns a background process via the host sandbox escape hatch.
+    ///
+    /// Applies the same safety checks as `run_shell_command`: catastrophic
+    /// command blocking, action extraction, and human approval. Returns a
+    /// process handle ID that can be used with `read_process_logs` and
+    /// `kill_process`.
+    #[astrid::tool("spawn_background_process")]
+    pub fn spawn_background_process(&self, args: SpawnBackgroundArgs) -> Result<String, SysError> {
+        let trimmed = args.command.trim();
+        if trimmed.is_empty() {
+            return Err(SysError::ApiError("Command cannot be empty".into()));
+        }
+
+        if let Some(reason) = check_catastrophic(trimmed) {
+            return Err(SysError::ApiError(format!("Command blocked: {reason}")));
+        }
+
+        let action = extract_action(trimmed);
+
+        let result = approval::request(&action, trimmed, "high")?;
+        if !result.approved {
+            return Err(SysError::ApiError(format!(
+                "Command '{trimmed}' was not approved by user",
+            )));
+        }
+
+        let handle = process::spawn_background("bash", &["-c", trimmed])?;
+        Ok(format!(
+            "Background process started with id: {}. Use read_process_logs to check output and kill_process to stop it.",
+            handle.id
+        ))
+    }
+
+    /// Reads buffered stdout/stderr from a background process.
+    ///
+    /// Each call returns only the new output since the last read. Also
+    /// reports whether the process is still running and its exit code
+    /// if it has terminated.
+    #[astrid::tool("read_process_logs")]
+    pub fn read_process_logs(&self, args: ReadProcessLogsArgs) -> Result<String, SysError> {
+        let logs = process::read_logs(args.id)?;
+
+        let status = if logs.running {
+            "running".to_string()
+        } else if let Some(code) = logs.exit_code {
+            format!("exited with code {code}")
+        } else {
+            "exited (unknown code)".to_string()
+        };
+
+        let mut output = format!("Process {} status: {status}\n", args.id);
+        if !logs.stdout.is_empty() {
+            output.push_str(&format!("--- stdout ---\n{}\n", logs.stdout));
+        }
+        if !logs.stderr.is_empty() {
+            output.push_str(&format!("--- stderr ---\n{}\n", logs.stderr));
+        }
+        if logs.stdout.is_empty() && logs.stderr.is_empty() {
+            output.push_str("(no new output)\n");
+        }
+
+        Ok(output)
+    }
+
+    /// Terminates a background process and returns any remaining output.
+    ///
+    /// No additional approval is required since the process was already
+    /// approved at spawn time.
+    #[astrid::tool("kill_process")]
+    pub fn kill_process(&self, args: KillProcessArgs) -> Result<String, SysError> {
+        let result = process::kill(args.id)?;
+
+        let exit_info = match result.exit_code {
+            Some(code) => format!("exit code {code}"),
+            None => "unknown exit code".to_string(),
+        };
+
+        let mut output = format!("Process {} killed ({exit_info}).\n", args.id);
+        if !result.stdout.is_empty() {
+            output.push_str(&format!("--- final stdout ---\n{}\n", result.stdout));
+        }
+        if !result.stderr.is_empty() {
+            output.push_str(&format!("--- final stderr ---\n{}\n", result.stderr));
+        }
+
+        Ok(output)
     }
 }
 
