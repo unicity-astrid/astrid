@@ -27,6 +27,20 @@ const MAX_APPROVAL_TIMEOUT_MS: u64 = 60_000;
 /// compilation.
 const MAX_ACTION_LEN: usize = 256;
 
+/// Maximum length for resource strings from WASM guests.
+///
+/// Resources contain full command strings with arguments, so the limit is
+/// higher than [`MAX_ACTION_LEN`]. Strings exceeding this are truncated
+/// (not rejected) since resource is a display/audit field that does not
+/// drive glob pattern compilation.
+const MAX_RESOURCE_LEN: usize = 1024;
+
+/// Maximum length for risk-level labels from WASM guests.
+///
+/// Risk levels are short classification labels ("low", "high", "critical").
+/// 64 characters is generous for any reasonable label.
+const MAX_RISK_LEVEL_LEN: usize = 64;
+
 /// The wire format sent by the SDK's `approval::request` function.
 #[derive(Deserialize)]
 struct GuestApprovalRequest {
@@ -56,13 +70,39 @@ fn check_allowance(
         .is_some()
 }
 
-/// Strip control characters from a guest-supplied string in place.
+/// Sanitize a guest-supplied display field in place.
 ///
-/// Used for `resource` and `risk_level` fields that flow into IPC payloads
-/// and tracing logs. Prevents ANSI escape sequence injection into
-/// terminal-rendered approval prompts.
-fn strip_control_chars_inplace(s: &mut String) {
-    s.retain(|c| !c.is_control());
+/// Trims whitespace, strips control characters, and enforces a character-count
+/// length cap. Logs a warning (with capsule ID and field name) when control
+/// characters were stripped or the string was truncated.
+///
+/// Unlike [`sanitize_action_for_pattern`], this is a general-purpose sanitizer
+/// for fields that flow into IPC payloads and logs but do not participate in
+/// glob pattern matching.
+fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsule_id: &str) {
+    let trimmed = s.trim();
+    let sanitized: String = trimmed
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(max_len)
+        .collect();
+
+    // Only warn for control-char stripping or truncation, not whitespace trim.
+    // Use byte-length comparison for O(1) detection; compute char counts only
+    // inside the warning branch to avoid an O(N) scan on the full input.
+    if sanitized.len() != trimmed.len() {
+        let original_chars = trimmed.chars().count();
+        let sanitized_chars = sanitized.chars().count();
+        tracing::warn!(
+            capsule = %capsule_id,
+            field = field_name,
+            original_chars,
+            sanitized_chars,
+            "{field_name} sanitized: control characters stripped or length truncated"
+        );
+    }
+
+    *s = sanitized;
 }
 
 /// Sanitize a guest-supplied action string for safe use in glob patterns.
@@ -241,12 +281,23 @@ pub(crate) fn astrid_request_approval_impl(
     // chars, trims whitespace, and enforces length. Applied here so the
     // cleaned value flows through to IPC payloads and logs.
     guest_req.action = sanitize_action_for_pattern(&guest_req.action, &capsule_id);
-    // Strip control characters from resource and risk_level too - they are
-    // guest-controlled and flow into IPC payloads and tracing logs. A
-    // malicious capsule could embed ANSI escape sequences to spoof
-    // terminal-rendered approval prompts.
-    strip_control_chars_inplace(&mut guest_req.resource);
-    strip_control_chars_inplace(&mut guest_req.risk_level);
+    // Sanitize resource and risk_level: trim whitespace, strip control
+    // characters, and enforce length caps. These are guest-controlled and
+    // flow into IPC payloads, tracing logs, and terminal-rendered approval
+    // prompts. Without length caps, a 10 MB resource string (the upstream
+    // MAX_GUEST_PAYLOAD_LEN limit) would DoS IPC consumers and log sinks.
+    sanitize_guest_field(
+        &mut guest_req.resource,
+        MAX_RESOURCE_LEN,
+        "resource",
+        &capsule_id,
+    );
+    sanitize_guest_field(
+        &mut guest_req.risk_level,
+        MAX_RISK_LEVEL_LEN,
+        "risk_level",
+        &capsule_id,
+    );
 
     let ws_path = Some(workspace_root.as_path());
 
@@ -682,5 +733,78 @@ mod tests {
         assert!(!check_allowance(&store, "git push origin main", None));
         // Matches only literal "gitpush ..." which is not a real command.
         assert!(check_allowance(&store, "gitpush something", None));
+    }
+
+    // --- sanitize_guest_field tests ---
+
+    #[test]
+    fn sanitize_guest_field_strips_control_chars() {
+        let mut s = "git push\x1b[31m origin".to_string();
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s, "git push[31m origin");
+    }
+
+    #[test]
+    fn sanitize_guest_field_truncates_resource() {
+        let mut s = "a".repeat(2000);
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s.chars().count(), MAX_RESOURCE_LEN);
+    }
+
+    #[test]
+    fn sanitize_guest_field_resource_exact_limit() {
+        let original = "a".repeat(MAX_RESOURCE_LEN);
+        let mut s = original.clone();
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s, original);
+    }
+
+    #[test]
+    fn sanitize_guest_field_truncates_risk_level() {
+        let mut s = "x".repeat(200);
+        sanitize_guest_field(&mut s, MAX_RISK_LEVEL_LEN, "risk_level", "test");
+        assert_eq!(s.chars().count(), MAX_RISK_LEVEL_LEN);
+    }
+
+    #[test]
+    fn sanitize_guest_field_preserves_normal_risk_levels() {
+        for level in &["low", "medium", "high", "critical"] {
+            let mut s = level.to_string();
+            sanitize_guest_field(&mut s, MAX_RISK_LEVEL_LEN, "risk_level", "test");
+            assert_eq!(s, *level);
+        }
+    }
+
+    #[test]
+    fn sanitize_guest_field_truncates_multibyte() {
+        // 500 ASCII + 600 x U+0100 (2-byte) = 1100 chars, truncated to 1024.
+        let mut s = "a".repeat(500) + &"\u{0100}".repeat(600);
+        assert_eq!(s.chars().count(), 1100);
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s.chars().count(), MAX_RESOURCE_LEN);
+        assert!(s.starts_with(&"a".repeat(500)));
+    }
+
+    #[test]
+    fn sanitize_guest_field_trims_whitespace() {
+        let mut s = "  git push origin  ".to_string();
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s, "git push origin");
+    }
+
+    #[test]
+    fn sanitize_guest_field_combined_attack() {
+        // 2000 chars with embedded control chars and ANSI escapes.
+        let mut s = format!("{}\x1b[31m{}", "A".repeat(1000), "B".repeat(1000));
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert_eq!(s.chars().count(), MAX_RESOURCE_LEN);
+        assert!(s.chars().all(|c| !c.is_control()));
+    }
+
+    #[test]
+    fn sanitize_guest_field_empty_string() {
+        let mut s = String::new();
+        sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
+        assert!(s.is_empty());
     }
 }
