@@ -412,18 +412,22 @@ impl ExecutionEngine for WasmEngine {
                         biased;
                         () = ct.cancelled() => break,
                         event = receiver.recv() => {
-                            if event.is_some() {
-                                tracing::info!(
-                                    capsule = %capsule_name,
-                                    "Received tool cancel event, killing tracked processes"
-                                );
-                                // NOTE: ToolCancelRequest.call_ids is currently
-                                // ignored - all tracked processes are killed.
-                                // There is no call_id-to-PID mapping yet.
-                                tracker.cancel_all(&handle);
-                            } else {
-                                // Channel closed.
-                                break;
+                            match event.as_deref() {
+                                Some(astrid_events::AstridEvent::Ipc { message, .. }) => {
+                                    if let astrid_events::ipc::IpcPayload::ToolCancelRequest { call_ids } = &message.payload {
+                                        tracing::info!(
+                                            capsule = %capsule_name,
+                                            ?call_ids,
+                                            "Received tool cancel event, killing tracked processes"
+                                        );
+                                        // NOTE: call_ids are currently ignored -
+                                        // all tracked processes are killed. There
+                                        // is no call_id-to-PID mapping yet.
+                                        tracker.cancel_all(&handle);
+                                    }
+                                },
+                                Some(_) => {},  // Non-IPC event on this topic - ignore.
+                                None => break,  // Channel closed.
                             }
                         }
                     }
