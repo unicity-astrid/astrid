@@ -146,6 +146,7 @@ impl WasmHandler {
     }
 
     /// Get a cached plugin or load it from disk.
+    #[expect(clippy::too_many_lines)]
     fn get_or_load_plugin(
         &self,
         module_path: &str,
@@ -250,6 +251,9 @@ impl WasmHandler {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(
+                astrid_capsule::engine::wasm::host::process::ProcessTracker::new(),
+            ),
         };
         let user_data = UserData::new(host_state);
 

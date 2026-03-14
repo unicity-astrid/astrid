@@ -78,6 +78,7 @@ ipc_publish = [
     "agent.v1.response",
     "agent.v1.session_changed",
     "tool.v1.request.execute",
+    "tool.v1.request.cancel",
     "llm.v1.request.generate.*",
     "session.v1.request.get_messages",
     "session.v1.request.clear",

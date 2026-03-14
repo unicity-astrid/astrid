@@ -18,6 +18,9 @@ const NS_TOKENS: &str = "caps:tokens";
 const NS_REVOKED: &str = "caps:revoked";
 const NS_USED: &str = "caps:used";
 
+/// Tombstone value for presence-only KV entries (revoked/used markers).
+const PRESENCE_MARKER: &[u8] = &[1];
+
 /// Run an async future synchronously.
 ///
 /// Handles three cases:
@@ -351,7 +354,21 @@ impl CapabilityStore {
     ///
     /// Returns an error if storage operations fail.
     pub fn revoke(&self, token_id: &TokenId) -> CapabilityResult<()> {
-        // Add to revoked set
+        // Persist revocation first so KV is the ground truth. If the daemon
+        // crashes after this point, `load_revoked()` will still see it on
+        // restart.
+        if let Some(store) = &self.persistent_store {
+            let key = token_id.0.to_string();
+
+            block_on(store.set(NS_REVOKED, &key, PRESENCE_MARKER.to_vec()))
+                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+
+            if let Err(e) = block_on(store.delete(NS_TOKENS, &key)) {
+                tracing::warn!("failed to delete revoked token from caps:tokens: {e}");
+            }
+        }
+
+        // Update in-memory state (rebuilt from KV on restart regardless).
         {
             let mut revoked = self
                 .revoked
@@ -360,23 +377,12 @@ impl CapabilityStore {
             revoked.insert(token_id.clone());
         }
 
-        // Remove from session tokens
         {
             let mut tokens = self
                 .session_tokens
                 .write()
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
             tokens.remove(token_id);
-        }
-
-        // Add to persistent revoked list and remove from tokens
-        if let Some(store) = &self.persistent_store {
-            let key = token_id.0.to_string();
-
-            block_on(store.set(NS_REVOKED, &key, vec![1u8]))
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-
-            let _ = block_on(store.delete(NS_TOKENS, &key));
         }
 
         Ok(())
@@ -405,35 +411,31 @@ impl CapabilityStore {
     ///
     /// Returns an error if the token was already used or storage fails.
     pub fn mark_used(&self, token_id: &TokenId) -> CapabilityResult<()> {
-        // Check if already used
-        {
-            let used = self
-                .used_tokens
-                .read()
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-            if used.contains(token_id) {
-                return Err(CapabilityError::TokenAlreadyUsed {
-                    token_id: token_id.to_string(),
-                });
-            }
+        // Hold a single write lock across check, persist, and insert to
+        // prevent TOCTOU races where two concurrent callers both pass
+        // the "already used?" check before either inserts.
+        let mut used = self
+            .used_tokens
+            .write()
+            .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+
+        if used.contains(token_id) {
+            return Err(CapabilityError::TokenAlreadyUsed {
+                token_id: token_id.to_string(),
+            });
         }
 
-        // Add to used set
-        {
-            let mut used = self
-                .used_tokens
-                .write()
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-            used.insert(token_id.clone());
-        }
-
-        // Persist if we have a store
+        // Persist first so KV is the ground truth. If the daemon crashes
+        // after this point, `load_used_tokens()` will still see it on
+        // restart. Holding the write lock across `block_on` is safe
+        // because `block_on` spawns an OS thread and does not re-acquire
+        // any lock on this store.
         if let Some(store) = &self.persistent_store {
-            let key = token_id.0.to_string();
-            block_on(store.set(NS_USED, &key, vec![1u8]))
+            block_on(store.set(NS_USED, &token_id.0.to_string(), PRESENCE_MARKER.to_vec()))
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
         }
 
+        used.insert(token_id.clone());
         Ok(())
     }
 
@@ -677,9 +679,8 @@ mod tests {
         assert!(not_found.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_persistent_store() {
-        let temp_dir = tempfile::tempdir().unwrap();
         // Use an in-memory KvStore for testing (avoids filesystem issues).
         let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
         let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
@@ -703,11 +704,18 @@ mod tests {
         drop(store);
         let store2 = CapabilityStore::with_kv_store(kv).unwrap();
         assert!(store2.get(&token_id).unwrap().is_some());
+        // Verify find_capability (the production lookup path) also works after reload.
+        assert!(
+            store2
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_some()
+        );
 
         // Also test disk-backed store can open and store/retrieve.
         // Note: SurrealKV holds an OS-level file lock, so we cannot drop-and-reopen
         // the same path in a single test. The in-memory `with_kv_store` test above
         // already validates the reload-from-backing-store pattern.
+        let temp_dir = tempfile::tempdir().unwrap();
         let disk_store = CapabilityStore::with_persistence(temp_dir.path().join("caps")).unwrap();
         let token2 = CapabilityToken::create(
             ResourcePattern::exact("mcp://test:tool2").unwrap(),
@@ -721,6 +729,64 @@ mod tests {
         let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
         assert!(disk_store.get(&other_token_id).unwrap().is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_revocation_survives_restart() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+        store.revoke(&token_id).unwrap();
+
+        // Reload - revocation must survive.
+        drop(store);
+        let store2 = CapabilityStore::with_kv_store(kv).unwrap();
+        assert!(matches!(
+            store2.get(&token_id),
+            Err(CapabilityError::TokenRevoked { .. })
+        ));
+        assert!(!store2.has_capability("mcp://test:tool", Permission::Invoke));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_mark_used_survives_restart() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            true,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+        store.mark_used(&token_id).unwrap();
+
+        // Reload - used state must survive.
+        drop(store);
+        let store2 = CapabilityStore::with_kv_store(kv).unwrap();
+        assert!(store2.is_used(&token_id));
+        assert!(!store2.has_capability("mcp://test:tool", Permission::Invoke));
     }
 
     #[tokio::test]
@@ -762,7 +828,7 @@ mod tests {
         assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_find_capability_excludes_used_single_use_persistent() {
         let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
         let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();

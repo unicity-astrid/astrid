@@ -43,6 +43,7 @@ pub struct InterceptorHandle {
     pub topic: String,
 }
 
+use crate::engine::wasm::host::process::ProcessTracker;
 use crate::security::CapsuleSecurityGate;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
@@ -177,6 +178,12 @@ pub struct HostState {
     ///
     /// Starts at 1 so handle 0 is never issued (reserved as sentinel).
     pub next_process_id: u64,
+    /// Tracks active child process PIDs for cancellation.
+    ///
+    /// Shared with the cancel listener background task. The spawn host function
+    /// registers/unregisters PIDs; the listener calls `cancel_all()` when a
+    /// `tool.v1.request.cancel` event arrives.
+    pub process_tracker: Arc<ProcessTracker>,
 }
 
 impl HostState {
@@ -245,6 +252,7 @@ impl std::fmt::Debug for HostState {
             )
             .field("cancel_token_cancelled", &self.cancel_token.is_cancelled())
             .field("has_identity_store", &self.identity_store.is_some())
+            .field("process_tracker", &self.process_tracker)
             .finish_non_exhaustive()
     }
 }
@@ -306,6 +314,7 @@ mod tests {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
         };
 
         let debug = format!("{state:?}");
@@ -371,6 +380,7 @@ mod tests {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
         };
 
         assert!(state.uplinks().is_empty());
@@ -441,6 +451,7 @@ mod tests {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
         };
 
         assert!(state.inbound_tx.is_none());
@@ -507,6 +518,7 @@ mod tests {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -589,6 +601,7 @@ mod tests {
             identity_store: None,
             background_processes: HashMap::new(),
             next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

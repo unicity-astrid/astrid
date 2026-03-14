@@ -30,6 +30,9 @@ tokio = { workspace = true, features = ["rt"] }
 # Glob matching
 globset = { workspace = true }
 
+# Logging
+tracing = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tempfile = "3"
