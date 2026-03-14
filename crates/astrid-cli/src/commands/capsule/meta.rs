@@ -39,7 +39,7 @@ pub(crate) struct CapsuleMeta {
 }
 
 /// A topic API declaration baked into `meta.json` with inline schema content.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct BakedTopic {
     /// The topic name (e.g. `"llm.v1.response.chunk.anthropic"`).
     pub(crate) name: String,

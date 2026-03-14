@@ -151,7 +151,8 @@ fn print_topics(topics: &[super::meta::BakedTopic]) {
             Theme::dimmed(&desc_suffix),
         );
         if let Some(ref schema) = topic.schema {
-            let pretty = serde_json::to_string_pretty(schema).unwrap_or_default();
+            let pretty = serde_json::to_string_pretty(schema)
+                .unwrap_or_else(|e| format!("<schema serialization error: {e}>"));
             let lines: Vec<&str> = pretty.lines().collect();
             if lines.len() > MAX_SCHEMA_DISPLAY_LINES {
                 for line in &lines[..MAX_SCHEMA_DISPLAY_LINES] {

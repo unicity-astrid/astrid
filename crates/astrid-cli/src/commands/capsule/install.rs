@@ -658,7 +658,18 @@ pub(crate) fn install_from_local_path_inner(
     }
 
     // Bake topic declarations with inline schema content.
-    let baked_topics = bake_topics(&manifest, &target_dir)?;
+    let baked_topics = match bake_topics(&manifest, &target_dir) {
+        Ok(t) => t,
+        Err(e) => {
+            // Rollback: restore previous installation (lifecycle hook already ran
+            // and cannot be undone, but at least restore the directory state).
+            let _ = std::fs::remove_dir_all(&target_dir);
+            if let Some(ref backup) = backup_dir {
+                let _ = std::fs::rename(backup, &target_dir);
+            }
+            return Err(e);
+        },
+    };
 
     // Write meta.json on success
     let now = chrono::Utc::now().to_rfc3339();

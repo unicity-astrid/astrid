@@ -284,6 +284,18 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
                 });
             }
 
+            // Topic declarations are concrete API contracts - wildcards are not allowed.
+            if topic.name.split('.').any(|seg| seg == "*") {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "[[topic]] name '{}' must be a concrete topic name, not a pattern \
+                         (wildcards are not allowed in topic declarations)",
+                        topic.name
+                    ),
+                });
+            }
+
             // Schema path must not escape the capsule directory.
             if let Some(ref schema_path) = topic.schema {
                 if schema_path.is_absolute() {
@@ -678,6 +690,24 @@ version = "0.1.0"
             msg.contains("'..'"),
             "expected parent dir error, got: {msg}"
         );
+    }
+
+    #[test]
+    fn topic_rejects_wildcard_segment_name() {
+        for bad in &["llm.v1.*", "*.response", "a.*.b"] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{bad}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("wildcard"),
+                "expected wildcard error for name '{bad}', got: {msg}"
+            );
+        }
     }
 
     #[test]
