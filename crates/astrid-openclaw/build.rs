@@ -47,6 +47,7 @@ const SANDBOXED_ENV_ALLOWLIST: &[&str] = &[
     // Locale (avoid mojibake in build output)
     "LANG",
     "LC_ALL",
+    "LC_CTYPE",
     // TLS / proxy (required for git clone, npm install, wasi-sdk download)
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",
@@ -80,6 +81,19 @@ fn main() {
         .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
 
     if auto_build {
+        // Fail-fast: if hash enforcement is on but no hash is pinned, refuse to
+        // auto-build. This catches the issue before any network/disk I/O.
+        let require_hash = std::env::var("ASTRID_REQUIRE_KERNEL_HASH")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+        if require_hash && EXPECTED_KERNEL_HASH.is_none() {
+            eprintln!(
+                "\n  error: ASTRID_REQUIRE_KERNEL_HASH=1 but EXPECTED_KERNEL_HASH is None.\n  \
+                 Pin the kernel hash in build.rs before auto-building.\n  \
+                 See issue #278 for details.\n"
+            );
+            std::process::exit(1);
+        }
+
         println!("cargo:warning=QuickJS kernel not found — auto-build requested...");
         println!(
             "cargo:warning=  CAUTION: Auto-building from {JS_PDK_REPO} \
@@ -218,6 +232,7 @@ fn check_prerequisites() -> bool {
     target_cmd.args(["target", "list", "--installed"]);
     forward_env(&mut target_cmd, "RUSTUP_HOME");
     forward_env(&mut target_cmd, "CARGO_HOME");
+    forward_env(&mut target_cmd, "RUSTUP_TOOLCHAIN");
     let has_target = target_cmd
         .output()
         .as_ref()
@@ -228,6 +243,7 @@ fn check_prerequisites() -> bool {
         cmd.args(["target", "add", "wasm32-wasip1"]);
         forward_env(&mut cmd, "RUSTUP_HOME");
         forward_env(&mut cmd, "CARGO_HOME");
+        forward_env(&mut cmd, "RUSTUP_TOOLCHAIN");
         if !run_step("installing wasm32-wasip1 target", &mut cmd) {
             return false;
         }
@@ -311,6 +327,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
         .current_dir(&build_dir);
     forward_env(&mut cargo_cmd, "RUSTUP_HOME");
     forward_env(&mut cargo_cmd, "CARGO_HOME");
+    forward_env(&mut cargo_cmd, "RUSTUP_TOOLCHAIN");
     if !run_step("building QuickJS core (wasm32-wasip1)", &mut cargo_cmd) {
         return false;
     }
@@ -376,33 +393,12 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
         return false;
     }
 
-    // Write to OUT_DIR for the current build
-    if std::fs::write(kernel_dst, &wasm_bytes).is_err() {
-        println!("cargo:warning=  [auto-build] Failed to write kernel to OUT_DIR");
-        return false;
-    }
-
-    // Write to source tree so subsequent builds and CI cache find it.
-    //
-    // Three outcomes for the tmp file:
-    // 1. write succeeds + rename succeeds → tmp_path is gone (renamed to kernel_path)
-    // 2. write succeeds + rename fails   → copy as fallback, then remove tmp_path
-    // 3. write fails                     → tmp_path doesn't exist, nothing to clean up
-    std::fs::create_dir_all(kernel_dir).ok();
-    let kernel_path = kernel_dir.join("engine.wasm");
-    let tmp_path = kernel_dir.join("engine.wasm.tmp");
-    if std::fs::write(&tmp_path, &wasm_bytes).is_ok()
-        && std::fs::rename(&tmp_path, &kernel_path).is_err()
-    {
-        // rename can fail across filesystems — fall back to copy
-        let _ = std::fs::copy(&tmp_path, &kernel_path);
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-
-    // Compute and display blake3 hash for verification/pinning
+    // --- Validate hash BEFORE writing anything to disk ---
+    // This ordering is critical: if we wrote first, a failed hash check would
+    // leave the unverified kernel on disk where the next build would pick it up
+    // via install_existing_kernel, bypassing enforcement entirely.
     let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
 
-    // Verify against pinned hash if one is configured
     if let Some(expected) = EXPECTED_KERNEL_HASH {
         if hash != expected {
             println!(
@@ -413,21 +409,35 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
         }
         println!("cargo:warning=  [auto-build] blake3 hash verified against pinned value");
     } else {
-        // No pinned hash - check if enforcement is required (issue #278).
-        let require_hash = std::env::var("ASTRID_REQUIRE_KERNEL_HASH")
-            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
-        assert!(
-            !require_hash,
-            "\n\n  ASTRID_REQUIRE_KERNEL_HASH is set but EXPECTED_KERNEL_HASH is None.\n  \
-             The auto-built kernel cannot be verified against a pinned hash.\n\n  \
-             To fix: set EXPECTED_KERNEL_HASH in build.rs to:\n    \
-             Some(\"{hash}\")\n\n  \
-             This prevents silent supply-chain tampering of the QuickJS WASM kernel.\n"
-        );
         println!(
             "cargo:warning=  [auto-build] WARNING: EXPECTED_KERNEL_HASH is None - \
              kernel installed WITHOUT hash verification. Pin the hash for production use."
         );
+    }
+
+    // --- Hash OK (or unenforced) - now write to disk ---
+
+    // Write to OUT_DIR for the current build
+    if std::fs::write(kernel_dst, &wasm_bytes).is_err() {
+        println!("cargo:warning=  [auto-build] Failed to write kernel to OUT_DIR");
+        return false;
+    }
+
+    // Write to source tree so subsequent builds and CI cache find it.
+    //
+    // Three outcomes for the tmp file:
+    // 1. write succeeds + rename succeeds - tmp_path is gone (renamed to kernel_path)
+    // 2. write succeeds + rename fails   - copy as fallback, then remove tmp_path
+    // 3. write fails                     - tmp_path doesn't exist, nothing to clean up
+    std::fs::create_dir_all(kernel_dir).ok();
+    let kernel_path = kernel_dir.join("engine.wasm");
+    let tmp_path = kernel_dir.join("engine.wasm.tmp");
+    if std::fs::write(&tmp_path, &wasm_bytes).is_ok()
+        && std::fs::rename(&tmp_path, &kernel_path).is_err()
+    {
+        // rename can fail across filesystems - fall back to copy
+        let _ = std::fs::copy(&tmp_path, &kernel_path);
+        let _ = std::fs::remove_file(&tmp_path);
     }
 
     println!(
@@ -443,7 +453,7 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
     let hash_path = kernel_dir.join("engine.wasm.blake3");
     if hash_path.exists() {
         println!(
-            "cargo:warning=  [auto-build] blake3 hash file already exists — \
+            "cargo:warning=  [auto-build] blake3 hash file already exists - \
              not overwriting (delete it manually to update)"
         );
     } else {
