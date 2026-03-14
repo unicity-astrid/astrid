@@ -149,8 +149,10 @@ impl EventDispatcher {
         let topic = Arc::new(message.topic.clone());
         let registry = Arc::clone(&self.registry);
 
-        // Serialize payload eagerly so all interceptors share the same bytes.
-        let payload_bytes = match serde_json::to_vec(message) {
+        // Serialize only the guest-facing payload data, not the full IpcMessage
+        // envelope. Custom payloads are unwrapped to their inner data; structured
+        // variants keep their type tag for handler discrimination.
+        let payload_bytes = match message.payload.to_guest_bytes() {
             Ok(bytes) => Arc::new(bytes),
             Err(e) => {
                 warn!(topic = %topic, error = %e, "Failed to serialize IPC message for dispatch");

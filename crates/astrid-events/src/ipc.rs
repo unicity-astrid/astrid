@@ -307,6 +307,27 @@ impl IpcPayload {
             Self::Custom { data }
         }
     }
+
+    /// Serialize only the guest-facing payload data.
+    ///
+    /// [`Custom`](Self::Custom) payloads return the inner `data` value directly
+    /// (not wrapped in `{"type":"custom","data":...}`). Structured variants
+    /// return the full tagged serialization so handlers can discriminate on the
+    /// `type` field.
+    ///
+    /// This is used by the interceptor dispatcher to pass payload bytes to WASM
+    /// guests without leaking the outer [`IpcMessage`] envelope (topic,
+    /// signature, `source_id`, timestamp).
+    ///
+    /// # Errors
+    ///
+    /// Returns `serde_json::Error` if serialization fails.
+    pub fn to_guest_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        match self {
+            Self::Custom { data } => serde_json::to_vec(data),
+            other => serde_json::to_vec(other),
+        }
+    }
 }
 
 /// A single option in a `SelectionRequired` picker.
@@ -856,5 +877,67 @@ mod tests {
     fn unknown_variant_serializes_as_type_unknown() {
         let json = serde_json::to_string(&IpcPayload::Unknown).unwrap();
         assert_eq!(json, r#"{"type":"unknown"}"#);
+    }
+
+    #[test]
+    fn to_guest_bytes_custom_returns_inner_data() {
+        let data = serde_json::json!({"session_id": "abc", "messages": []});
+        let payload = IpcPayload::Custom { data: data.clone() };
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(roundtrip, data);
+        // Must NOT contain the "type":"custom" wrapper
+        assert!(roundtrip.get("type").is_none());
+    }
+
+    #[test]
+    fn to_guest_bytes_structured_preserves_type_tag() {
+        let payload = IpcPayload::UserInput {
+            text: "hello".into(),
+            session_id: "default".into(),
+            context: None,
+        };
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            roundtrip.get("type").and_then(|v| v.as_str()),
+            Some("user_input")
+        );
+        assert_eq!(
+            roundtrip.get("text").and_then(|v| v.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn to_guest_bytes_custom_null_data() {
+        let payload = IpcPayload::Custom { data: Value::Null };
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(roundtrip, Value::Null);
+    }
+
+    #[test]
+    fn to_guest_bytes_unknown_variant() {
+        let payload = IpcPayload::Unknown;
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            roundtrip.get("type").and_then(|v| v.as_str()),
+            Some("unknown")
+        );
+    }
+
+    #[test]
+    fn to_guest_bytes_raw_json() {
+        let inner = serde_json::json!({"key": "value"});
+        let payload = IpcPayload::RawJson(inner.clone());
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        // RawJson is a structured variant - keeps type tag
+        assert_eq!(
+            roundtrip.get("type").and_then(|v| v.as_str()),
+            Some("raw_json")
+        );
     }
 }

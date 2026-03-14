@@ -49,16 +49,7 @@ impl MemoryInjector {
         &self,
         payload: serde_json::Value,
     ) -> Result<(), SysError> {
-        // The dispatcher passes the full IpcMessage envelope to interceptors.
-        // The guest payload is nested at payload.data inside the IpcPayload::Custom
-        // wrapper. Fall back to the top-level value for forward compatibility if
-        // the envelope structure ever changes.
-        let inner = payload
-            .get("payload")
-            .and_then(|p| p.get("data"))
-            .unwrap_or(&payload);
-
-        let response_topic = inner
+        let response_topic = payload
             .get("response_topic")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
