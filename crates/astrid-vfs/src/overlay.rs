@@ -70,6 +70,12 @@ impl OverlayVfs {
     /// from the dirty set; on partial failure the remaining paths stay dirty
     /// so the caller can inspect or retry.
     ///
+    /// # Concurrency
+    ///
+    /// Callers must ensure no concurrent writes occur during commit. WASM
+    /// capsules are single-threaded, so this is naturally satisfied when
+    /// commit is called between tool invocations.
+    ///
     /// # Errors
     ///
     /// Returns the first `VfsError` encountered. Paths committed before the
@@ -181,6 +187,9 @@ impl OverlayVfs {
     }
 
     /// Recursively ensure a directory path exists in the upper VFS.
+    ///
+    /// Routes through [`Vfs::mkdir`](Self::mkdir) on `self` so that created
+    /// directories are tracked in `dirty_entries` for rollback.
     async fn ensure_upper_dirs(&self, handle: &DirHandle, path: &str) -> VfsResult<()> {
         if self.upper.exists(handle, path).await.unwrap_or(false) {
             return Ok(());
@@ -191,7 +200,9 @@ impl OverlayVfs {
                 Box::pin(self.ensure_upper_dirs(handle, &parent_str)).await?;
             }
         }
-        match self.upper.mkdir(handle, path).await {
+        // Use self.mkdir (the OverlayVfs impl) to track the dir as dirty.
+        // Suppress AlreadyExists since a concurrent writer may have created it.
+        match <Self as Vfs>::mkdir(self, handle, path).await {
             Ok(()) => Ok(()),
             Err(crate::VfsError::Io(ref e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 Ok(())
@@ -263,10 +274,10 @@ impl Vfs for OverlayVfs {
     }
 
     async fn mkdir(&self, handle: &DirHandle, path: &str) -> VfsResult<()> {
-        // Writes strictly to upper.
+        // Validate before mutation to avoid phantom dirs on SandboxViolation.
+        let normalized = Self::normalize_path(path)?;
         self.upper.mkdir(handle, path).await?;
-        self.dirty_entries
-            .insert(Self::normalize_path(path)?, DirtyKind::Dir);
+        self.dirty_entries.insert(normalized, DirtyKind::Dir);
         Ok(())
     }
 
@@ -297,7 +308,10 @@ impl Vfs for OverlayVfs {
         truncate: bool,
     ) -> VfsResult<FileHandle> {
         if write {
-            // Write operations strictly against upper.
+            // Validate before any filesystem mutation to avoid phantom files
+            // in upper on SandboxViolation.
+            let normalized = Self::normalize_path(path)?;
+
             // When the upper layer is a separate temp directory, parent dirs
             // may not exist yet. Ensure them before any write/copy-up.
             if let Some(parent) = std::path::Path::new(path).parent() {
@@ -311,10 +325,7 @@ impl Vfs for OverlayVfs {
                 && self.lower.exists(handle, path).await.unwrap_or(false);
 
             if needs_copy {
-                // Ensure only one task performs the copy-up for this path
-                let normalized_path = crate::path::resolve_path(std::path::Path::new("/"), path)
-                    .map_or_else(|_| path.to_string(), |p| p.to_string_lossy().to_string());
-                let lock_key = normalized_path;
+                let lock_key = format!("/{normalized}");
 
                 let path_lock = self
                     .copy_locks
@@ -368,8 +379,7 @@ impl Vfs for OverlayVfs {
                 }
             }
             // Track this path as dirty for commit/rollback.
-            self.dirty_entries
-                .insert(Self::normalize_path(path)?, DirtyKind::File);
+            self.dirty_entries.insert(normalized, DirtyKind::File);
             return self.upper.open(handle, path, write, truncate).await;
         }
 
@@ -728,5 +738,25 @@ mod tests {
             std::fs::read(lower_dir.path().join("src/main.rs")).unwrap(),
             b"fn main() {}"
         );
+    }
+
+    #[tokio::test]
+    async fn rollback_deep_path_removes_parent_dirs() {
+        let (overlay, handle, _lower_dir, upper_dir) = setup().await;
+
+        write_through_overlay(&overlay, &handle, "deep/nested/file.txt", b"x").await;
+
+        // Parent dirs created by ensure_upper_dirs should be in dirty_entries
+        let mut dirty = overlay.dirty_paths();
+        dirty.sort();
+        assert!(dirty.contains(&"deep".to_string()));
+        assert!(dirty.contains(&"deep/nested".to_string()));
+        assert!(dirty.contains(&"deep/nested/file.txt".to_string()));
+
+        overlay.rollback(&handle).await.unwrap();
+
+        assert!(overlay.dirty_paths().is_empty());
+        // The file should be gone from upper
+        assert!(!upper_dir.path().join("deep/nested/file.txt").exists());
     }
 }
