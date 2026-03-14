@@ -134,6 +134,10 @@ async fn run_json_chat(
                             session_id.0,
                         ))
                         .await?;
+                    println!(
+                        "{}",
+                        Theme::dimmed("Auto-denied: approvals not supported in JSON REPL mode",)
+                    );
                 },
                 _ => {}, // Ignore other IPC payloads for now
             }
