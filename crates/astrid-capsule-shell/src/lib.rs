@@ -432,6 +432,11 @@ impl ShellTools {
         };
 
         let mut output = format!("Process {} status: {status}\n", args.id);
+        if !logs.running {
+            output.push_str(
+                "(Process has exited. Call kill_process to release the handle and free the slot.)\n",
+            );
+        }
         if !logs.stdout.is_empty() {
             output.push_str(&format!("--- stdout ---\n{}\n", logs.stdout));
         }

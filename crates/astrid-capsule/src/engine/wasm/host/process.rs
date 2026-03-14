@@ -114,27 +114,37 @@ const MAX_BUFFER_BYTES: usize = 1024 * 1024;
 /// child's pipes close (after kill or natural exit). No `JoinHandle` storage
 /// is needed, avoiding hang risk in `Drop`.
 pub struct ManagedProcess {
-    child: std::process::Child,
+    /// The child process. Wrapped in `Option` so that explicit kill (or
+    /// `try_wait` reap) can `.take()` it, preventing `Drop` from sending
+    /// `killpg`/`kill` to a PID the OS may have already reused.
+    child: Option<std::process::Child>,
     stdout_buf: Arc<Mutex<VecDeque<u8>>>,
     stderr_buf: Arc<Mutex<VecDeque<u8>>>,
     command: String,
 }
 
+/// Kill and reap a child process, including its entire process group on Unix.
+/// Returns the exit code if available.
+fn kill_and_reap(child: &mut std::process::Child) -> Option<i32> {
+    #[cfg(unix)]
+    {
+        let raw_pid = child.id();
+        let pid = nix::unistd::Pid::from_raw(i32::try_from(raw_pid).unwrap_or(i32::MAX));
+        // Best-effort: process group may already be dead.
+        let _ = nix::sys::signal::killpg(pid, nix::sys::signal::Signal::SIGKILL);
+    }
+    let _ = child.kill(); // fallback / Windows
+    child.wait().ok().and_then(|s| s.code())
+}
+
 impl Drop for ManagedProcess {
     fn drop(&mut self) {
-        // Kill the entire process group to catch grandchildren (e.g.,
-        // npm -> node -> webpack). On Linux inside bwrap with
-        // --unshare-pid this is redundant (PID namespace cleanup), but
-        // on macOS (Seatbelt, no PID namespace) it prevents orphans.
-        #[cfg(unix)]
-        {
-            let raw_pid = self.child.id();
-            let pid = nix::unistd::Pid::from_raw(i32::try_from(raw_pid).unwrap_or(i32::MAX));
-            // Best-effort: process group may already be dead.
-            let _ = nix::sys::signal::killpg(pid, nix::sys::signal::Signal::SIGKILL);
+        // Only act if the child hasn't already been taken by explicit kill
+        // or reaped by try_wait. This prevents killpg on a PID the OS may
+        // have reused for an unrelated process.
+        if let Some(mut child) = self.child.take() {
+            kill_and_reap(&mut child);
         }
-        let _ = self.child.kill(); // fallback / Windows
-        let _ = self.child.wait(); // reap zombie
     }
 }
 
@@ -286,13 +296,22 @@ pub(crate) fn astrid_spawn_background_host_impl(
 
     let command_str = format!("{} {}", req.cmd, req.args.join(" "));
 
-    let mut child = sandboxed_cmd
+    let child = sandboxed_cmd
         .spawn()
         .map_err(|e| Error::msg(format!("failed to spawn background process: {e}")))?;
 
-    // Take pipe handles before storing the Child.
+    // Wrap immediately in ManagedProcess so that any early return (lock
+    // failure, limit exceeded) triggers Drop which kills + reaps the child.
+    // Without this, a bare `std::process::Child` drop just closes handles
+    // and leaves the process running as an orphan.
     let stdout_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
     let stderr_buf: Arc<Mutex<VecDeque<u8>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let mut managed = ManagedProcess {
+        child: Some(child),
+        stdout_buf: Arc::clone(&stdout_buf),
+        stderr_buf: Arc::clone(&stderr_buf),
+        command: command_str,
+    };
 
     // Re-lock HostState to get the handle ID BEFORE spawning threads,
     // so the thread name includes the correct ID.
@@ -304,8 +323,8 @@ pub(crate) fn astrid_spawn_background_host_impl(
     // Defensive re-check: limit could theoretically have been reached between
     // the first check and re-acquisition (Extism serializes per-plugin, so
     // this can't happen in practice, but defense-in-depth costs nothing).
+    // On early return, `managed` Drop kills + reaps the child.
     if state.background_processes.len() >= MAX_BACKGROUND_PROCESSES {
-        // child will be killed+reaped on drop here
         return Err(Error::msg(format!(
             "background process limit reached (max {MAX_BACKGROUND_PROCESSES})"
         )));
@@ -314,19 +333,14 @@ pub(crate) fn astrid_spawn_background_host_impl(
     let process_id = state.next_process_id;
     state.next_process_id += 1;
 
-    if let Some(stdout) = child.stdout.take() {
-        spawn_reader_thread(process_id, "stdout", stdout, Arc::clone(&stdout_buf));
+    if let Some(child) = managed.child.as_mut() {
+        if let Some(stdout) = child.stdout.take() {
+            spawn_reader_thread(process_id, "stdout", stdout, Arc::clone(&stdout_buf));
+        }
+        if let Some(stderr) = child.stderr.take() {
+            spawn_reader_thread(process_id, "stderr", stderr, Arc::clone(&stderr_buf));
+        }
     }
-    if let Some(stderr) = child.stderr.take() {
-        spawn_reader_thread(process_id, "stderr", stderr, Arc::clone(&stderr_buf));
-    }
-
-    let managed = ManagedProcess {
-        child,
-        stdout_buf,
-        stderr_buf,
-        command: command_str,
-    };
 
     tracing::info!(
         capsule_id = %capsule_id,
@@ -371,11 +385,25 @@ pub(crate) fn astrid_read_process_logs_host_impl(
         .get_mut(&req.id)
         .ok_or_else(|| Error::msg(format!("no background process with id {}", req.id)))?;
 
-    // try_wait is non-blocking (waitpid WNOHANG).
-    let (running, exit_code) = match proc.child.try_wait() {
-        Ok(Some(status)) => (false, status.code()),
-        Ok(None) => (true, None),
-        Err(_) => (false, Some(-1)),
+    // try_wait is non-blocking (waitpid WNOHANG). If it returns Some(status),
+    // the child has been reaped and the PID is free for OS reuse. We must
+    // .take() the child so Drop doesn't killpg a potentially-reused PID.
+    let (running, exit_code) = if let Some(child) = proc.child.as_mut() {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Child reaped - take it so Drop won't act on stale PID.
+                proc.child.take();
+                (false, status.code())
+            },
+            Ok(None) => (true, None),
+            Err(_) => {
+                proc.child.take();
+                (false, Some(-1))
+            },
+        }
+    } else {
+        // Child already taken (previously reaped). Still dead.
+        (false, None)
     };
 
     // Clone buffer Arcs so we can drain outside the HostState lock if needed.
@@ -431,15 +459,13 @@ pub(crate) fn astrid_kill_process_host_impl(
     let stdout = drain_buffer(&proc.stdout_buf);
     let stderr = drain_buffer(&proc.stderr_buf);
 
-    // Kill the process group, then the process directly, then reap.
-    #[cfg(unix)]
-    {
-        let raw_pid = proc.child.id();
-        let pid = nix::unistd::Pid::from_raw(i32::try_from(raw_pid).unwrap_or(i32::MAX));
-        let _ = nix::sys::signal::killpg(pid, nix::sys::signal::Signal::SIGKILL);
-    }
-    let _ = proc.child.kill();
-    let exit_code = proc.child.wait().ok().and_then(|s| s.code());
+    // Take the child so Drop won't double-kill on a potentially-reused PID.
+    let exit_code = if let Some(mut child) = proc.child.take() {
+        kill_and_reap(&mut child)
+    } else {
+        // Already reaped by a prior try_wait in read_logs.
+        None
+    };
 
     tracing::info!(
         capsule_id = %capsule_id,
@@ -528,7 +554,7 @@ mod tests {
         let raw_pid = child.id();
 
         let managed = ManagedProcess {
-            child,
+            child: Some(child),
             stdout_buf: Arc::new(Mutex::new(VecDeque::new())),
             stderr_buf: Arc::new(Mutex::new(VecDeque::new())),
             command: "sleep 60".to_string(),
@@ -565,7 +591,7 @@ mod tests {
             processes.insert(
                 i as u64,
                 ManagedProcess {
-                    child,
+                    child: Some(child),
                     stdout_buf: Arc::new(Mutex::new(VecDeque::new())),
                     stderr_buf: Arc::new(Mutex::new(VecDeque::new())),
                     command: "sleep 60".to_string(),
