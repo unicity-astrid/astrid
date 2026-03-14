@@ -162,9 +162,10 @@ impl AllowanceStore {
     ///
     /// Returns the number of allowances removed.
     pub fn cleanup_expired(&self) -> usize {
-        let Ok(mut store) = self.allowances.write() else {
-            return 0;
-        };
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore write lock poisoned in cleanup_expired, recovering");
+            e.into_inner()
+        });
         let before = store.len();
         store.retain(|_, a| !a.is_expired());
         before.saturating_sub(store.len())
@@ -174,9 +175,13 @@ impl AllowanceStore {
     ///
     /// Called when a session ends to clear temporary permissions.
     pub fn clear_session_allowances(&self) {
-        if let Ok(mut store) = self.allowances.write() {
-            store.retain(|_, a| !a.session_only);
-        }
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore write lock poisoned in clear_session_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store.retain(|_, a| !a.session_only);
     }
 
     /// Get the number of allowances in the store.
@@ -225,11 +230,13 @@ impl AllowanceStore {
     ///
     /// Used to restore session allowances from a persisted session.
     pub fn import_allowances(&self, allowances: Vec<Allowance>) {
-        if let Ok(mut store) = self.allowances.write() {
-            for allowance in allowances {
-                if allowance.is_valid() {
-                    store.insert(allowance.id.clone(), allowance);
-                }
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore write lock poisoned in import_allowances, recovering");
+            e.into_inner()
+        });
+        for allowance in allowances {
+            if allowance.is_valid() {
+                store.insert(allowance.id.clone(), allowance);
             }
         }
     }

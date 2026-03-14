@@ -114,7 +114,7 @@ impl SecurityInterceptor {
         // Step 1: Policy check (hard boundaries)
         let policy_result = self.policy.check(action);
         if let PolicyResult::Blocked { reason } = &policy_result {
-            self.audit_denied(action, reason);
+            self.audit_denied(action, reason)?;
             return Err(ApprovalError::PolicyBlocked {
                 tool: action.action_type().to_string(),
                 reason: reason.clone(),
@@ -132,12 +132,12 @@ impl SecurityInterceptor {
                         reservation = Some(res);
                     },
                     Err(e) => {
-                        self.audit_denied(action, &e.to_string());
+                        self.audit_denied(action, &e.to_string())?;
                         return Err(e);
                     },
                 }
             }
-            let audit_id = self.audit_allowed(action, &proof);
+            let audit_id = self.audit_allowed(action, &proof)?;
             if let Some(res) = reservation {
                 res.commit();
             }
@@ -158,7 +158,7 @@ impl SecurityInterceptor {
                     budget_reservation = Some(res);
                 },
                 Err(e) => {
-                    self.audit_denied(action, &e.to_string());
+                    self.audit_denied(action, &e.to_string())?;
                     return Err(e);
                 },
             }
@@ -167,7 +167,7 @@ impl SecurityInterceptor {
         // Step 4: Risk assessment / Approval
         if matches!(policy_result, PolicyResult::Allowed) {
             let proof = InterceptProof::PolicyAllowed;
-            let audit_id = self.audit_allowed(action, &proof);
+            let audit_id = self.audit_allowed(action, &proof)?;
             if let Some(res) = budget_reservation {
                 res.commit();
             }
@@ -211,7 +211,7 @@ impl SecurityInterceptor {
                                 },
                                 AuditOutcome::success(),
                             )
-                            .unwrap_or_default();
+                            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
                         return Ok(InterceptResult {
                             proof: InterceptProof::UserApproval {
                                 approval_audit_id: approval_audit_id.clone(),
@@ -233,7 +233,7 @@ impl SecurityInterceptor {
                                 },
                                 AuditOutcome::success(),
                             )
-                            .unwrap_or_default();
+                            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
                         let proof = self.allowance_validator.create_allowance_for_action(
                             action,
                             true,
@@ -258,7 +258,7 @@ impl SecurityInterceptor {
                                 },
                                 AuditOutcome::success(),
                             )
-                            .unwrap_or_default();
+                            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
                         let proof = self.allowance_validator.create_allowance_for_action(
                             action,
                             false,
@@ -283,7 +283,7 @@ impl SecurityInterceptor {
                                 },
                                 AuditOutcome::success(),
                             )
-                            .unwrap_or_default();
+                            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
 
                         let result = self
                             .capability_validator
@@ -306,7 +306,7 @@ impl SecurityInterceptor {
                         });
                     },
                 };
-                let audit_id = self.audit_allowed(action, &intercept_proof);
+                let audit_id = self.audit_allowed(action, &intercept_proof)?;
                 Ok(InterceptResult {
                     proof: intercept_proof,
                     audit_id,
@@ -314,7 +314,7 @@ impl SecurityInterceptor {
                 })
             },
             ApprovalOutcome::Denied { reason } => {
-                self.audit_denied(action, &reason);
+                self.audit_denied(action, &reason)?;
                 Err(ApprovalError::Denied { reason })
             },
             ApprovalOutcome::Deferred {
@@ -323,59 +323,76 @@ impl SecurityInterceptor {
             } => {
                 let reason =
                     format!("action deferred (resolution: {resolution_id}, fallback: {fallback})");
-                self.audit_deferred(action, &reason);
+                self.audit_deferred(action, &reason)?;
                 Err(ApprovalError::Deferred)
             },
         }
     }
 
-    /// Log an allowed action to the audit trail.
-    fn audit_allowed(&self, action: &SensitiveAction, proof: &InterceptProof) -> AuditEntryId {
+    /// Log an allowed action to the audit trail (fail-closed).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApprovalError::AuditFailed` if the audit entry cannot be
+    /// written. The caller must not proceed with the action.
+    fn audit_allowed(
+        &self,
+        action: &SensitiveAction,
+        proof: &InterceptProof,
+    ) -> ApprovalResult<AuditEntryId> {
         let audit_action = sensitive_action_to_audit(action);
         let auth_proof = intercept_proof_to_audit(proof, self.user_id);
 
-        match self.audit_log.append(
-            self.session_id.clone(),
-            audit_action,
-            auth_proof,
-            AuditOutcome::success(),
-        ) {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("failed to audit allowed action: {e}");
-                AuditEntryId::new()
-            },
-        }
+        self.audit_log
+            .append(
+                self.session_id.clone(),
+                audit_action,
+                auth_proof,
+                AuditOutcome::success(),
+            )
+            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))
     }
 
-    /// Log a denied action to the audit trail.
-    fn audit_denied(&self, action: &SensitiveAction, reason: &str) {
+    /// Log a denied action to the audit trail (fail-closed).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApprovalError::AuditFailed` if the audit entry cannot be
+    /// written.
+    fn audit_denied(&self, action: &SensitiveAction, reason: &str) -> ApprovalResult<()> {
         let audit_action = sensitive_action_to_audit(action);
-        if let Err(e) = self.audit_log.append(
-            self.session_id.clone(),
-            audit_action,
-            AuditAuthProof::Denied {
-                reason: reason.to_string(),
-            },
-            AuditOutcome::failure(reason),
-        ) {
-            tracing::error!("failed to audit denied action: {e}");
-        }
+        self.audit_log
+            .append(
+                self.session_id.clone(),
+                audit_action,
+                AuditAuthProof::Denied {
+                    reason: reason.to_string(),
+                },
+                AuditOutcome::failure(reason),
+            )
+            .map(|_| ())
+            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))
     }
 
-    /// Log a deferred action to the audit trail.
-    fn audit_deferred(&self, action: &SensitiveAction, reason: &str) {
+    /// Log a deferred action to the audit trail (fail-closed).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApprovalError::AuditFailed` if the audit entry cannot be
+    /// written.
+    fn audit_deferred(&self, action: &SensitiveAction, reason: &str) -> ApprovalResult<()> {
         let audit_action = sensitive_action_to_audit(action);
-        if let Err(e) = self.audit_log.append(
-            self.session_id.clone(),
-            audit_action,
-            AuditAuthProof::Denied {
-                reason: reason.to_string(),
-            },
-            AuditOutcome::failure(reason),
-        ) {
-            tracing::error!("failed to audit deferred action: {e}");
-        }
+        self.audit_log
+            .append(
+                self.session_id.clone(),
+                audit_action,
+                AuditAuthProof::Denied {
+                    reason: reason.to_string(),
+                },
+                AuditOutcome::failure(reason),
+            )
+            .map(|_| ())
+            .map_err(|e| ApprovalError::AuditFailed(e.to_string()))
     }
 
     /// Get a reference to the policy.
