@@ -71,8 +71,12 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ASTRID_AUTO_BUILD_KERNEL");
     println!("cargo:rerun-if-env-changed=ASTRID_REQUIRE_KERNEL_HASH");
 
+    // Parse enforcement flag once, pass to all paths that install kernels.
+    let require_hash = std::env::var("ASTRID_REQUIRE_KERNEL_HASH")
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+
     if kernel_src.exists() {
-        install_existing_kernel(&kernel_src, &kernel_dst, &manifest_dir);
+        install_existing_kernel(&kernel_src, &kernel_dst, &manifest_dir, require_hash);
         return;
     }
 
@@ -83,8 +87,6 @@ fn main() {
     if auto_build {
         // Fail-fast: if hash enforcement is on but no hash is pinned, refuse to
         // auto-build. This catches the issue before any network/disk I/O.
-        let require_hash = std::env::var("ASTRID_REQUIRE_KERNEL_HASH")
-            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
         if require_hash && EXPECTED_KERNEL_HASH.is_none() {
             eprintln!(
                 "\n  error: ASTRID_REQUIRE_KERNEL_HASH=1 but EXPECTED_KERNEL_HASH is None.\n  \
@@ -117,7 +119,15 @@ fn main() {
 }
 
 /// Copy an existing kernel to `OUT_DIR` with WASM validation and blake3 verification.
-fn install_existing_kernel(kernel_src: &Path, kernel_dst: &Path, manifest_dir: &str) {
+///
+/// When `require_hash` is true, the build fails if no verification mechanism
+/// is available (neither `EXPECTED_KERNEL_HASH` nor a `.blake3` hash file).
+fn install_existing_kernel(
+    kernel_src: &Path,
+    kernel_dst: &Path,
+    manifest_dir: &str,
+    require_hash: bool,
+) {
     let kernel_bytes = std::fs::read(kernel_src).expect("failed to read kernel/engine.wasm");
 
     // Validate WASM magic
@@ -128,6 +138,7 @@ fn install_existing_kernel(kernel_src: &Path, kernel_dst: &Path, manifest_dir: &
 
     // Verify blake3 hash if hash file exists
     let hash_file = Path::new(manifest_dir).join("kernel/engine.wasm.blake3");
+    let mut hash_verified = false;
     if hash_file.exists() {
         let hash_content =
             std::fs::read_to_string(&hash_file).expect("failed to read engine.wasm.blake3");
@@ -138,7 +149,18 @@ fn install_existing_kernel(kernel_src: &Path, kernel_dst: &Path, manifest_dir: &
                 "kernel blake3 hash mismatch!\n  expected: {expected_hash}\n  actual:   {actual_hash}\n\
                  Re-run: b3sum kernel/engine.wasm > kernel/engine.wasm.blake3"
             );
+            hash_verified = true;
         }
+    }
+
+    // If enforcement is on, require that the kernel was verified by some mechanism.
+    if require_hash && !hash_verified && EXPECTED_KERNEL_HASH.is_none() {
+        eprintln!(
+            "\n  error: ASTRID_REQUIRE_KERNEL_HASH=1 but no hash verification is available.\n  \
+             Neither EXPECTED_KERNEL_HASH nor kernel/engine.wasm.blake3 can verify this kernel.\n  \
+             Run: b3sum kernel/engine.wasm > kernel/engine.wasm.blake3\n"
+        );
+        std::process::exit(1);
     }
 
     std::fs::write(kernel_dst, &kernel_bytes).expect("failed to write kernel to OUT_DIR");
@@ -432,6 +454,8 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
     std::fs::create_dir_all(kernel_dir).ok();
     let kernel_path = kernel_dir.join("engine.wasm");
     let tmp_path = kernel_dir.join("engine.wasm.tmp");
+    // Remove stale tmp from a previous interrupted build
+    let _ = std::fs::remove_file(&tmp_path);
     if std::fs::write(&tmp_path, &wasm_bytes).is_ok()
         && std::fs::rename(&tmp_path, &kernel_path).is_err()
     {
