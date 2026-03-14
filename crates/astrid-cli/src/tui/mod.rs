@@ -98,6 +98,18 @@ pub(crate) async fn run(
         let _ = client.send_message(msg).await;
     }
 
+    // Hydrate conversation history from the session store.
+    let hydration_req = serde_json::json!({
+        "session_id": session_id.0.to_string(),
+        "correlation_id": uuid::Uuid::new_v4().to_string(),
+    });
+    let msg = astrid_events::ipc::IpcMessage::new(
+        "session.v1.request.get_messages",
+        astrid_events::ipc::IpcPayload::RawJson(hydration_req),
+        session_id.0,
+    );
+    let _ = client.send_message(msg).await;
+
     let result = run_loop(&mut terminal, &mut app, client, session_id).await;
 
     // Always restore terminal, even on error.
@@ -392,6 +404,35 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
         if message.topic == "astrid.v1.capsules_loaded" {
             app.pending_actions
                 .push(state::PendingAction::RefreshCommands);
+        }
+
+        // Session hydration: populate conversation history from the session store.
+        if message
+            .topic
+            .starts_with("session.v1.response.get_messages")
+            && let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
+            && let Some(messages) = data.get("messages")
+        {
+            match serde_json::from_value::<Vec<astrid_events::llm::Message>>(messages.clone()) {
+                Ok(history) => {
+                    for msg in &history {
+                        let role = match msg.role {
+                            astrid_events::llm::MessageRole::User => MessageRole::User,
+                            astrid_events::llm::MessageRole::Assistant => MessageRole::Assistant,
+                            // System and Tool messages are not rendered in the TUI.
+                            _ => continue,
+                        };
+                        let content = msg.text().unwrap_or_default().to_string();
+                        if !content.is_empty() {
+                            app.push_message(role, content);
+                        }
+                    }
+                    tracing::debug!(message_count = history.len(), "Hydrated session history");
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to parse session history: {e}");
+                },
+            }
         }
 
         // Registry responses

@@ -23,6 +23,7 @@ impl CliProxy {
             "registry.v1.response.*",
             "registry.v1.active_model_changed",
             "registry.v1.selection.*",
+            "session.v1.response.*",
         ];
         let sub_handles: Vec<_> = topics
             .iter()
@@ -180,6 +181,7 @@ const ALLOWED_INGRESS_PREFIXES: &[&str] = &[
     "astrid.v1.elicit.response.",
     "astrid.v1.approval.response.",
     "registry.v1.selection.",
+    "session.v1.request.",
 ];
 
 fn is_allowed_ingress_topic(topic: &str) -> bool {

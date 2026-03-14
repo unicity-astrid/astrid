@@ -20,6 +20,7 @@ ipc_publish = [
     "registry.v1.get_providers",
     "registry.v1.set_active_model",
     "registry.v1.selection.*",
+    "session.v1.request.*",
 ]
 ipc_subscribe = [
     "agent.v1.response",
@@ -32,4 +33,5 @@ ipc_subscribe = [
     "registry.v1.response.*",
     "registry.v1.active_model_changed",
     "registry.v1.selection.*",
+    "session.v1.response.*",
 ]
