@@ -111,8 +111,9 @@ where
                 // the worker thread to the runtime scheduler instead of
                 // spawning a new OS thread per storage operation.
                 // Nested block_in_place calls (e.g. WASM host -> interceptor
-                // -> audit append) are safe - tokio treats them as a no-op
-                // when the thread is already in a blocking context.
+                // -> audit append) are safe: tokio detects the thread is
+                // already in a blocking context and skips worker-thread
+                // migration, running the closure directly.
                 tokio::task::block_in_place(|| handle.block_on(f))
             } else {
                 // Single-threaded runtime (tests): block_in_place panics on
@@ -440,5 +441,45 @@ mod tests {
 
         let head = storage.get_chain_head(&session_id).unwrap().unwrap();
         assert_eq!(head, entry_id);
+    }
+
+    /// Concurrent stores from multiple tasks under a multi-threaded runtime.
+    /// Exercises the `block_in_place` path under the load pattern from #305.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_concurrent_stores_multi_thread() {
+        let storage = std::sync::Arc::new(SurrealKvAuditStorage::in_memory());
+        let mut handles = Vec::new();
+
+        for _ in 0..8 {
+            let s = std::sync::Arc::clone(&storage);
+            handles.push(tokio::task::spawn(async move {
+                let keypair = test_keypair();
+                let session_id = SessionId::new();
+                let entry = AuditEntry::create(
+                    session_id,
+                    AuditAction::SessionStarted {
+                        user_id: keypair.key_id(),
+                        platform: "cli".to_string(),
+                    },
+                    AuthorizationProof::System {
+                        reason: "test".to_string(),
+                    },
+                    AuditOutcome::success(),
+                    ContentHash::zero(),
+                    &keypair,
+                );
+                s.store(&entry).unwrap();
+                entry.id
+            }));
+        }
+
+        for h in handles {
+            let id = h.await.unwrap();
+            assert!(storage.get(&id).unwrap().is_some());
+        }
+
+        // All 8 sessions should be visible.
+        let sessions = storage.list_sessions().unwrap();
+        assert_eq!(sessions.len(), 8);
     }
 }
