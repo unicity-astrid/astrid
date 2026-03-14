@@ -136,25 +136,37 @@ fn install_existing_kernel(
         "kernel/engine.wasm is not a valid WASM module"
     );
 
-    // Verify blake3 hash if hash file exists
-    let hash_file = Path::new(manifest_dir).join("kernel/engine.wasm.blake3");
+    // Verify blake3 hash against all available sources.
+    // Priority: EXPECTED_KERNEL_HASH (compile-time constant) > .blake3 file.
     let mut hash_verified = false;
-    if hash_file.exists() {
-        let hash_content =
-            std::fs::read_to_string(&hash_file).expect("failed to read engine.wasm.blake3");
-        if let Some(expected_hash) = hash_content.split_whitespace().next() {
-            let actual_hash = blake3::hash(&kernel_bytes).to_hex().to_string();
-            assert!(
-                actual_hash == expected_hash,
-                "kernel blake3 hash mismatch!\n  expected: {expected_hash}\n  actual:   {actual_hash}\n\
-                 Re-run: b3sum kernel/engine.wasm > kernel/engine.wasm.blake3"
-            );
-            hash_verified = true;
+
+    if let Some(expected_hash) = EXPECTED_KERNEL_HASH {
+        let actual_hash = blake3::hash(&kernel_bytes).to_hex().to_string();
+        assert!(
+            actual_hash == expected_hash,
+            "kernel blake3 hash mismatch against EXPECTED_KERNEL_HASH!\n  \
+             expected: {expected_hash}\n  actual:   {actual_hash}"
+        );
+        hash_verified = true;
+    } else {
+        let hash_file = Path::new(manifest_dir).join("kernel/engine.wasm.blake3");
+        if hash_file.exists() {
+            let hash_content =
+                std::fs::read_to_string(&hash_file).expect("failed to read engine.wasm.blake3");
+            if let Some(expected_hash) = hash_content.split_whitespace().next() {
+                let actual_hash = blake3::hash(&kernel_bytes).to_hex().to_string();
+                assert!(
+                    actual_hash == expected_hash,
+                    "kernel blake3 hash mismatch!\n  expected: {expected_hash}\n  actual:   {actual_hash}\n\
+                     Re-run: b3sum kernel/engine.wasm > kernel/engine.wasm.blake3"
+                );
+                hash_verified = true;
+            }
         }
     }
 
     // If enforcement is on, require that the kernel was verified by some mechanism.
-    if require_hash && !hash_verified && EXPECTED_KERNEL_HASH.is_none() {
+    if require_hash && !hash_verified {
         eprintln!(
             "\n  error: ASTRID_REQUIRE_KERNEL_HASH=1 but no hash verification is available.\n  \
              Neither EXPECTED_KERNEL_HASH nor kernel/engine.wasm.blake3 can verify this kernel.\n  \
