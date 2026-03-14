@@ -771,7 +771,8 @@ fn bake_topics(
                     MAX_SCHEMA_FILE_SIZE
                 );
             }
-            let mut content = String::new();
+            let mut content =
+                String::with_capacity(usize::try_from(file_len).unwrap_or(usize::MAX));
             std::io::Read::read_to_string(&mut file, &mut content).with_context(|| {
                 format!(
                     "failed to read schema file for topic '{}': '{}'",
