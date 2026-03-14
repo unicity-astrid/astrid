@@ -7,6 +7,11 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Maximum file size (in bytes) that the overlay will copy between layers.
+/// Applies to both copy-up (lower-to-upper on first write) and commit
+/// (upper-to-lower on approval). Protects against OOM from large files.
+const MAX_OVERLAY_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 /// Tracks whether a dirty path is a file or a directory so that
 /// [`OverlayVfs::commit`] and [`OverlayVfs::rollback`] handle them correctly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +107,14 @@ impl OverlayVfs {
                         if !parent_str.is_empty() {
                             self.ensure_lower_dirs(handle, &parent_str).await?;
                         }
+                    }
+
+                    // Guard against OOM: reject files exceeding the overlay size limit.
+                    let meta = self.upper.stat(handle, path).await?;
+                    if meta.size > MAX_OVERLAY_FILE_SIZE {
+                        return Err(crate::VfsError::PermissionDenied(
+                            "File too large to commit (exceeds 50 MB overlay limit)".into(),
+                        ));
                     }
 
                     // Read content from upper
@@ -294,9 +307,9 @@ impl Vfs for OverlayVfs {
         // Remove from dirty set - the upper-only file is gone.
         // normalize_path cannot fail here because the path was already
         // validated when it was added to the dirty set via open(write=true).
-        if let Ok(normalized) = Self::normalize_path(path) {
-            self.dirty_entries.remove(&normalized);
-        }
+        let normalized = Self::normalize_path(path)
+            .expect("path previously validated on write should not fail normalization");
+        self.dirty_entries.remove(&normalized);
         Ok(())
     }
 
@@ -349,7 +362,7 @@ impl Vfs for OverlayVfs {
                     } else {
                         // Prevent OOM during copy-up by capping the size
                         let meta = self.lower.stat(handle, path).await?;
-                        if meta.size > 50 * 1024 * 1024 {
+                        if meta.size > MAX_OVERLAY_FILE_SIZE {
                             return Err(crate::VfsError::PermissionDenied(
                                 "File is too large for OverlayVfs copy-up (> 50MB)".into(),
                             ));
