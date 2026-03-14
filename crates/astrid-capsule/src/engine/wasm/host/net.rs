@@ -59,6 +59,19 @@ pub(crate) fn astrid_net_accept_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
+        // Pre-accept cap check: fast reject without blocking on accept().
+        let stream_count = state.active_streams.len();
+        if stream_count >= MAX_ACTIVE_STREAMS {
+            tracing::warn!(
+                max = MAX_ACTIVE_STREAMS,
+                current = stream_count,
+                "accept: connection cap reached, rejecting"
+            );
+            return Err(Error::msg(format!(
+                "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
+            )));
+        }
+
         let listener = state
             .cli_socket_listener
             .clone()
@@ -144,6 +157,22 @@ pub(crate) fn astrid_net_accept_impl(
     let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    // Defense-in-depth: re-check cap under lock before insertion.
+    // WASM is single-threaded so this should never fire, but the host
+    // must enforce the invariant regardless of guest behavior.
+    let stream_count = state.active_streams.len();
+    if stream_count >= MAX_ACTIVE_STREAMS {
+        tracing::warn!(
+            max = MAX_ACTIVE_STREAMS,
+            current = stream_count,
+            "accept: connection cap reached post-handshake, dropping authenticated stream"
+        );
+        drop(stream);
+        return Err(Error::msg(format!(
+            "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
+        )));
+    }
 
     // Use a monotonic counter to avoid handle ID reuse after stream removal.
     let handle_id = state.next_stream_id;
