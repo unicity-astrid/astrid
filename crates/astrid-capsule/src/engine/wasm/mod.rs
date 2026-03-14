@@ -420,10 +420,7 @@ impl ExecutionEngine for WasmEngine {
                                             ?call_ids,
                                             "Received tool cancel event, killing tracked processes"
                                         );
-                                        // NOTE: call_ids are currently ignored -
-                                        // all tracked processes are killed. There
-                                        // is no call_id-to-PID mapping yet.
-                                        tracker.cancel_all(&handle);
+                                        tracker.cancel_by_call_ids(call_ids, &handle);
                                     }
                                 },
                                 Some(_) => {},  // Non-IPC event on this topic - ignore.

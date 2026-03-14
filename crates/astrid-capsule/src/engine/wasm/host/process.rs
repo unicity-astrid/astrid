@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
@@ -24,13 +24,21 @@ struct ProcessResult {
     exit_code: i32,
 }
 
-/// Tracks active child process PIDs for cancellation.
+/// Tracks active child process PIDs for cancellation, with optional call_id
+/// association for multi-session scoping.
+///
+/// Each PID is mapped to an optional `call_id` (the tool call identifier from
+/// the React loop's `ToolExecuteRequest`). When a cancel event arrives with
+/// specific `call_ids`, only processes matching those IDs are killed. Processes
+/// with no call_id (None) are always included in targeted cancellation as a
+/// conservative fallback for code paths that haven't threaded call_id through.
 ///
 /// Shared between the spawn host function (registers/unregisters PIDs) and the
 /// cancel listener background task (sends SIGINT/SIGKILL on cancellation).
 #[derive(Debug, Default)]
 pub struct ProcessTracker {
-    active_pids: std::sync::Arc<Mutex<HashSet<u32>>>,
+    /// Maps PID -> optional call_id.
+    active_pids: std::sync::Arc<Mutex<HashMap<u32, Option<String>>>>,
 }
 
 impl ProcessTracker {
@@ -40,15 +48,16 @@ impl ProcessTracker {
         Self::default()
     }
 
-    /// Register a child process PID for cancellation tracking.
-    pub fn register(&self, pid: u32) {
+    /// Register a child process PID with an optional call_id for scoped
+    /// cancellation.
+    pub fn register(&self, pid: u32, call_id: Option<String>) {
         if pid == 0 {
             return; // Guard: PID 0 means "no process" on some platforms.
         }
         self.active_pids
             .lock()
             .expect("process tracker lock poisoned")
-            .insert(pid);
+            .insert(pid, call_id);
     }
 
     /// Unregister a child process PID (process has exited).
@@ -59,7 +68,52 @@ impl ProcessTracker {
             .remove(&pid);
     }
 
+    /// Cancel processes matching the given call_ids.
+    ///
+    /// Kills processes whose call_id matches one of the provided IDs, plus
+    /// any processes with no call_id (conservative fallback for code paths
+    /// that haven't threaded call_id through yet). Processes with a
+    /// *different* call_id are left untouched.
+    ///
+    /// Sends SIGINT first, then SIGKILL after a 2-second grace period. The
+    /// SIGKILL task re-checks `active_pids` before signaling to avoid
+    /// hitting reused PIDs.
+    pub fn cancel_by_call_ids(&self, call_ids: &[String], handle: &tokio::runtime::Handle) {
+        let pids: Vec<u32> = self
+            .active_pids
+            .lock()
+            .expect("process tracker lock poisoned")
+            .iter()
+            .filter_map(|(&pid, stored_call_id)| {
+                match stored_call_id {
+                    // No call_id stored: conservative fallback, always include.
+                    None => Some(pid),
+                    // Has call_id: only include if it matches one of the target IDs.
+                    Some(id) => call_ids.contains(id).then_some(pid),
+                }
+            })
+            .collect();
+
+        self.signal_pids(&pids, handle);
+    }
+
     /// Send SIGINT to all tracked processes, then SIGKILL after a grace period.
+    ///
+    /// Used for capsule-level shutdown (e.g. capsule unload). For session-scoped
+    /// cancellation, use [`cancel_by_call_ids`](Self::cancel_by_call_ids).
+    pub fn cancel_all(&self, handle: &tokio::runtime::Handle) {
+        let pids: Vec<u32> = self
+            .active_pids
+            .lock()
+            .expect("process tracker lock poisoned")
+            .keys()
+            .copied()
+            .collect();
+
+        self.signal_pids(&pids, handle);
+    }
+
+    /// Send SIGINT to the given PIDs, then SIGKILL survivors after 2 seconds.
     ///
     /// On macOS, `sandbox-exec` replaces itself via `exec()`, so the tracked
     /// PID IS the real inner command. On Linux, `bwrap` forwards signals to
@@ -67,21 +121,13 @@ impl ProcessTracker {
     /// without forwarding signals, the inner process may survive SIGINT.
     /// The SIGKILL task re-checks `active_pids` before signaling to avoid
     /// hitting reused PIDs.
-    pub fn cancel_all(&self, handle: &tokio::runtime::Handle) {
-        let pids: Vec<u32> = self
-            .active_pids
-            .lock()
-            .expect("process tracker lock poisoned")
-            .iter()
-            .copied()
-            .collect();
-
+    fn signal_pids(&self, pids: &[u32], handle: &tokio::runtime::Handle) {
         if pids.is_empty() {
             return;
         }
 
-        // SIGINT all tracked processes.
-        for &pid in &pids {
+        // SIGINT all targeted processes.
+        for &pid in pids {
             let Some(raw) = i32::try_from(pid).ok() else {
                 warn!(pid, "PID overflows i32, skipping signal");
                 continue;
@@ -94,15 +140,15 @@ impl ProcessTracker {
 
         // Spawn a task to SIGKILL survivors after a grace period.
         let tracker = self.active_pids.clone();
+        let target_pids: Vec<u32> = pids.to_vec();
         handle.spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let still_active: Vec<u32> = tracker
-                .lock()
-                .expect("process tracker lock poisoned")
-                .iter()
-                .copied()
-                .collect();
-            for pid in still_active {
+            let still_active = tracker.lock().expect("process tracker lock poisoned");
+            for pid in target_pids {
+                // Only signal PIDs still in the tracker (not yet unregistered).
+                if !still_active.contains_key(&pid) {
+                    continue;
+                }
                 let Some(raw) = i32::try_from(pid).ok() else {
                     continue;
                 };
@@ -138,6 +184,18 @@ pub(crate) fn astrid_spawn_host_impl(
     let semaphore = state.host_semaphore.clone();
     let cancel_token = state.cancel_token.clone();
     let process_tracker = state.process_tracker.clone();
+
+    // Extract call_id from the caller context (IPC message that triggered this
+    // invocation) for multi-session scoped cancellation. When the caller
+    // context is a ToolExecuteRequest, the call_id identifies which specific
+    // tool invocation this process belongs to.
+    let call_id = state.caller_context.as_ref().and_then(|msg| {
+        if let astrid_events::ipc::IpcPayload::ToolExecuteRequest { call_id, .. } = &msg.payload {
+            Some(call_id.clone())
+        } else {
+            None
+        }
+    });
     drop(state);
 
     if let Some(sec) = security {
@@ -178,7 +236,7 @@ pub(crate) fn astrid_spawn_host_impl(
         .map_err(|e| Error::msg(format!("failed to spawn command: {e}")))?;
 
     let pid = child.id();
-    process_tracker.register(pid);
+    process_tracker.register(pid, call_id);
 
     // Wait for the child on the blocking thread pool so tokio worker threads
     // remain free for the cancel listener and other async tasks.
@@ -241,18 +299,18 @@ mod tests {
     #[test]
     fn tracker_register_unregister() {
         let tracker = ProcessTracker::new();
-        tracker.register(1234);
-        tracker.register(5678);
+        tracker.register(1234, None);
+        tracker.register(5678, Some("call-a".into()));
         assert_eq!(tracker.active_pids.lock().unwrap().len(), 2);
         tracker.unregister(1234);
         assert_eq!(tracker.active_pids.lock().unwrap().len(), 1);
-        assert!(tracker.active_pids.lock().unwrap().contains(&5678));
+        assert!(tracker.active_pids.lock().unwrap().contains_key(&5678));
     }
 
     #[test]
     fn tracker_ignores_pid_zero() {
         let tracker = ProcessTracker::new();
-        tracker.register(0);
+        tracker.register(0, None);
         assert!(tracker.active_pids.lock().unwrap().is_empty());
     }
 
@@ -280,7 +338,7 @@ mod tests {
             .expect("failed to spawn sleep");
 
         let pid = child.id();
-        tracker.register(pid);
+        tracker.register(pid, None);
 
         // Cancel all tracked processes.
         tracker.cancel_all(&tokio::runtime::Handle::current());
@@ -311,7 +369,7 @@ mod tests {
             .expect("failed to spawn sh");
 
         let pid = child.id();
-        tracker.register(pid);
+        tracker.register(pid, None);
 
         // Cancel - SIGINT is ignored, but SIGKILL fires after 2s grace period.
         tracker.cancel_all(&tokio::runtime::Handle::current());
@@ -351,8 +409,8 @@ mod tests {
 
         let pid1 = child1.id();
         let pid2 = child2.id();
-        tracker.register(pid1);
-        tracker.register(pid2);
+        tracker.register(pid1, None);
+        tracker.register(pid2, None);
 
         assert_eq!(tracker.active_pids.lock().unwrap().len(), 2);
 
@@ -374,5 +432,81 @@ mod tests {
         assert!(!out1.status.success());
         assert!(!out2.status.success());
         assert!(tracker.active_pids.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tracker_cancel_by_call_ids_scoped() {
+        let tracker = Arc::new(ProcessTracker::new());
+
+        // Spawn two processes with different call_ids.
+        let child_a = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep a");
+
+        let child_b = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep b");
+
+        let pid_a = child_a.id();
+        let pid_b = child_b.id();
+        tracker.register(pid_a, Some("call-a".into()));
+        tracker.register(pid_b, Some("call-b".into()));
+
+        // Cancel only call-a.
+        tracker.cancel_by_call_ids(&["call-a".into()], &tokio::runtime::Handle::current());
+
+        // child_a should be killed.
+        let out_a = tokio::task::spawn_blocking(move || child_a.wait_with_output())
+            .await
+            .expect("join a failed")
+            .expect("wait a failed");
+        assert!(!out_a.status.success());
+
+        // child_b should still be tracked (alive).
+        assert!(tracker.active_pids.lock().unwrap().contains_key(&pid_b));
+
+        // Clean up child_b.
+        if let Some(raw) = i32::try_from(pid_b).ok() {
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(raw),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+        let _ = tokio::task::spawn_blocking(move || child_b.wait_with_output()).await;
+        tracker.unregister(pid_a);
+        tracker.unregister(pid_b);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tracker_cancel_by_call_ids_includes_none() {
+        let tracker = Arc::new(ProcessTracker::new());
+
+        // Process with no call_id (legacy/unthreaded path).
+        let child = Command::new("sleep")
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep");
+
+        let pid = child.id();
+        tracker.register(pid, None);
+
+        // cancel_by_call_ids should include None-call_id processes.
+        tracker.cancel_by_call_ids(&["any-id".into()], &tokio::runtime::Handle::current());
+
+        let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+            .await
+            .expect("join failed")
+            .expect("wait failed");
+
+        tracker.unregister(pid);
+        assert!(!output.status.success());
     }
 }
