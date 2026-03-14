@@ -103,6 +103,8 @@ impl ExecutionEngine for WasmEngine {
         let host_semaphore = HostState::default_host_semaphore();
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let cancel_token_for_state = cancel_token.clone();
+        let process_tracker = Arc::new(crate::engine::wasm::host::process::ProcessTracker::new());
+        let process_tracker_for_listener = process_tracker.clone();
 
         let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
@@ -261,6 +263,7 @@ impl ExecutionEngine for WasmEngine {
                 interceptor_handles: Vec::new(),
                 allowance_store: ctx.allowance_store.clone(),
                 identity_store: ctx.identity_store.clone(),
+                process_tracker: process_tracker.clone(),
             };
 
             // ready_tx starts as None; only set after plugin build if
@@ -391,7 +394,39 @@ impl ExecutionEngine for WasmEngine {
         })?;
 
         let plugin_arc = Arc::new(Mutex::new(plugin));
-        self.cancel_token = Some(cancel_token);
+        self.cancel_token = Some(cancel_token.clone());
+
+        // Spawn a background cancel listener for capsules that can spawn
+        // host processes. When `tool.v1.request.cancel` arrives, the listener
+        // sends SIGINT/SIGKILL to all tracked child processes.
+        if !self.manifest.capabilities.host_process.is_empty() {
+            let bus = ctx.event_bus.clone();
+            let tracker = process_tracker_for_listener;
+            let ct = cancel_token.clone();
+            let capsule_name = self.manifest.package.name.clone();
+            tokio::task::spawn(async move {
+                let mut receiver = bus.subscribe_topic("tool.v1.request.cancel");
+                let handle = tokio::runtime::Handle::current();
+                loop {
+                    tokio::select! {
+                        biased;
+                        () = ct.cancelled() => break,
+                        event = receiver.recv() => {
+                            if event.is_some() {
+                                tracing::info!(
+                                    capsule = %capsule_name,
+                                    "Received tool cancel event, killing tracked processes"
+                                );
+                                tracker.cancel_all(&handle);
+                            } else {
+                                // Channel closed.
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         if has_run {
             self.ready_rx = ready_rx.map(tokio::sync::Mutex::new);
@@ -617,6 +652,7 @@ pub fn run_lifecycle(
         interceptor_handles: Vec::new(),
         allowance_store: None,
         identity_store: None,
+        process_tracker: Arc::new(host::process::ProcessTracker::new()),
     };
 
     let user_data = UserData::new(host_state);

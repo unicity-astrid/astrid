@@ -248,6 +248,9 @@ impl WasmHandler {
             // do not receive the identity store. Identity resolution requires
             // a kernel-managed security gate which hooks don't have.
             identity_store: None,
+            process_tracker: Arc::new(
+                astrid_capsule::engine::wasm::host::process::ProcessTracker::new(),
+            ),
         };
         let user_data = UserData::new(host_state);
 

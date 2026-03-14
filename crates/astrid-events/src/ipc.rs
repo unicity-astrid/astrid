@@ -171,6 +171,15 @@ pub enum IpcPayload {
         /// The result of the execution.
         result: crate::llm::ToolCallResult,
     },
+    /// Request cancellation of in-flight tool executions.
+    ///
+    /// Published by the React loop when a turn is cancelled (e.g. Ctrl+C).
+    /// The host-level process tracker listens for this event and sends
+    /// SIGINT/SIGKILL to any spawned child processes.
+    ToolCancelRequest {
+        /// The call IDs of the tool invocations to cancel.
+        call_ids: Vec<String>,
+    },
     /// A capsule is requesting the user to select from a list of options.
     ///
     /// Frontends render a generic picker UI; the user's choice is published
@@ -270,6 +279,7 @@ impl IpcPayload {
                 | "llm_response"
                 | "tool_execute_request"
                 | "tool_execute_result"
+                | "tool_cancel_request"
                 | "selection_required"
                 | "elicit_request"
                 | "elicit_response"
