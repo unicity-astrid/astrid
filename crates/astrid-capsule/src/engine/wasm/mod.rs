@@ -386,6 +386,13 @@ impl ExecutionEngine for WasmEngine {
 
         // Register UUID-to-CapsuleId mapping so host functions can resolve
         // IPC source UUIDs back to capsule identities for capability checks.
+        //
+        // Ordering: this runs before the kernel's `registry.register(capsule)`.
+        // During the gap, `find_by_uuid` returns `Some(id)` but `get(id)`
+        // returns `None`, causing capability checks to deny (fail-closed).
+        // This is safe because the capsule cannot publish IPC (and thus
+        // cannot appear as a hook response `source_id`) until it is fully
+        // loaded and running.
         if let Some(registry) = &ctx.capsule_registry {
             let capsule_id = crate::capsule::CapsuleId::new(&self.manifest.package.name)
                 .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?;

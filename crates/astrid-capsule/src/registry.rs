@@ -114,6 +114,9 @@ impl CapsuleRegistry {
     ///
     /// Called during WASM capsule load so that host functions can resolve
     /// IPC `source_id` UUIDs back to capsule identities.
+    ///
+    /// Silently overwrites on duplicate UUID. Each capsule load generates a
+    /// fresh v4 UUID, so collisions are not practically possible.
     pub fn register_uuid(&mut self, uuid: Uuid, capsule_id: CapsuleId) {
         debug!(
             %uuid,

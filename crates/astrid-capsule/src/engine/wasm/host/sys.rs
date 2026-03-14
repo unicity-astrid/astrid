@@ -325,12 +325,16 @@ pub(crate) fn astrid_check_capsule_capability_impl(
     drop(state);
 
     let allowed = if let Some(registry) = registry {
-        let source_uuid = uuid::Uuid::parse_str(&request.source_uuid).map_err(|e| {
-            Error::msg(format!(
-                "invalid source UUID '{}': {e}",
-                request.source_uuid
-            ))
-        })?;
+        let Ok(source_uuid) = uuid::Uuid::parse_str(&request.source_uuid) else {
+            tracing::debug!(
+                uuid = %request.source_uuid,
+                "Malformed UUID in capability check, denying"
+            );
+            let result = serde_json::json!({"allowed": false}).to_string();
+            let mem = plugin.memory_new(&result)?;
+            outputs[0] = plugin.memory_to_val(mem);
+            return Ok(());
+        };
 
         util::bounded_block_on(&rt_handle, &host_semaphore, async {
             let reg = registry.read().await;

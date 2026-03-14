@@ -337,11 +337,23 @@ fn fire_before_prompt_build(request: &AssembleRequest, config: &Config) -> Vec<H
         ),
     );
 
+    // Cache capability results per-UUID to avoid redundant host function calls.
+    // Multiple hook responses can come from the same capsule.
+    let mut cache = std::collections::HashMap::<String, bool>::new();
     filter_by_permission(sourced_responses, |source_id| {
         let Some(uuid) = source_id else {
             return false;
         };
-        capabilities::check(uuid, "allow_prompt_injection").unwrap_or(false)
+        *cache.entry(uuid.to_string()).or_insert_with(|| {
+            capabilities::check(uuid, "allow_prompt_injection")
+                .inspect_err(|e| {
+                    let _ = log::log(
+                        "warn",
+                        &format!("capability check failed for {uuid}: {e}, denying"),
+                    );
+                })
+                .unwrap_or(false)
+        })
     })
 }
 
