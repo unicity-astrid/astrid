@@ -33,3 +33,23 @@ pub fn write(stream: &StreamHandle, data: &[u8]) -> Result<(), SysError> {
     unsafe { astrid_net_write(stream.0.as_bytes().to_vec(), data.to_vec())? };
     Ok(())
 }
+
+/// Close an open stream, releasing its resources on the host.
+///
+/// Idempotent - closing an already-closed handle is a no-op.
+pub fn close(stream: &StreamHandle) -> Result<(), SysError> {
+    unsafe { astrid_net_close_stream(stream.0.as_bytes().to_vec())? };
+    Ok(())
+}
+
+/// Non-blocking accept. Returns `Ok(Some(stream))` if a connection was
+/// pending, `Ok(None)` if no connection is ready yet, or `Err` on
+/// listener error.
+pub fn poll_accept(listener: &ListenerHandle) -> Result<Option<StreamHandle>, SysError> {
+    let bytes = unsafe { astrid_net_poll_accept(listener.0.as_bytes().to_vec())? };
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let handle_str = String::from_utf8(bytes).map_err(|e| SysError::ApiError(e.to_string()))?;
+    Ok(Some(StreamHandle(handle_str)))
+}

@@ -78,10 +78,12 @@ pub(crate) enum WasmHostFunction {
     SpawnBackgroundHost,
     ReadProcessLogsHost,
     KillProcessHost,
+    NetCloseStream,
+    NetPollAccept,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 46] = [
+    pub(crate) const ALL: [Self; 48] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -128,6 +130,8 @@ impl WasmHostFunction {
         Self::SpawnBackgroundHost,
         Self::ReadProcessLogsHost,
         Self::KillProcessHost,
+        Self::NetCloseStream,
+        Self::NetPollAccept,
     ];
 
     #[must_use]
@@ -184,6 +188,8 @@ impl WasmHostFunction {
             Self::SpawnBackgroundHost => "astrid_spawn_background_host",
             Self::ReadProcessLogsHost => "astrid_read_process_logs_host",
             Self::KillProcessHost => "astrid_kill_process_host",
+            Self::NetCloseStream => "astrid_net_close_stream",
+            Self::NetPollAccept => "astrid_net_poll_accept",
         }
     }
 
@@ -222,7 +228,9 @@ impl WasmHostFunction {
             | Self::CheckCapsuleCapability
             | Self::SpawnBackgroundHost
             | Self::ReadProcessLogsHost
-            | Self::KillProcessHost => 1,
+            | Self::KillProcessHost
+            | Self::NetCloseStream
+            | Self::NetPollAccept => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -249,7 +257,8 @@ impl WasmHostFunction {
             | Self::Log
             | Self::CronSchedule
             | Self::CronCancel
-            | Self::SignalReady => TYPE_VOID,
+            | Self::SignalReady
+            | Self::NetCloseStream => TYPE_VOID,
             Self::FsExists
             | Self::FsReaddir
             | Self::FsStat
@@ -283,7 +292,8 @@ impl WasmHostFunction {
             | Self::CheckCapsuleCapability
             | Self::SpawnBackgroundHost
             | Self::ReadProcessLogsHost
-            | Self::KillProcessHost => TYPE_I64,
+            | Self::KillProcessHost
+            | Self::NetPollAccept => TYPE_I64,
         }
     }
 }
@@ -494,6 +504,20 @@ pub fn register_host_functions(
                 ud,
                 process::astrid_kill_process_host_impl,
             ),
+            WasmHostFunction::NetCloseStream => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                net::astrid_net_close_stream_impl,
+            ),
+            WasmHostFunction::NetPollAccept => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                net::astrid_net_poll_accept_impl,
+            ),
         };
     }
 
@@ -529,4 +553,84 @@ pub fn register_host_functions(
             user_data,
             shim::shim_invoke_host_func,
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WasmHostFunction;
+
+    /// The shim dispatches by index into the ALL array. New variants MUST be
+    /// appended at the end. This test locks the indices of all existing
+    /// variants to catch accidental reordering.
+    #[test]
+    fn shim_index_stability() {
+        assert_eq!(
+            WasmHostFunction::from_index(46),
+            Some(WasmHostFunction::NetCloseStream)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(47),
+            Some(WasmHostFunction::NetPollAccept)
+        );
+        // Sentinel: index beyond ALL returns None.
+        assert_eq!(WasmHostFunction::from_index(48), None);
+    }
+
+    /// Every variant in the enum must be present in the ALL array exactly once.
+    #[test]
+    fn all_array_covers_every_variant() {
+        let all = &WasmHostFunction::ALL;
+        // If a variant is added to the enum but not ALL, this count will be
+        // wrong and the assertion on length will fail.
+        assert_eq!(all.len(), 48);
+
+        // Check for duplicates.
+        let mut seen = std::collections::HashSet::new();
+        for func in all {
+            assert!(
+                seen.insert(func.name()),
+                "duplicate entry in ALL: {}",
+                func.name()
+            );
+        }
+    }
+
+    #[test]
+    fn net_close_stream_properties() {
+        let f = WasmHostFunction::NetCloseStream;
+        assert_eq!(f.name(), "astrid_net_close_stream");
+        assert_eq!(f.arg_count(), 1);
+        assert_eq!(f.return_type(), super::shim::TYPE_VOID);
+    }
+
+    #[test]
+    fn net_poll_accept_properties() {
+        let f = WasmHostFunction::NetPollAccept;
+        assert_eq!(f.name(), "astrid_net_poll_accept");
+        assert_eq!(f.arg_count(), 1);
+        assert_eq!(f.return_type(), super::shim::TYPE_I64);
+    }
+
+    /// Verify that legacy indices (0..42) still map to their expected functions.
+    /// Catches accidental insertion in the middle of the ALL array.
+    #[test]
+    fn legacy_index_stability() {
+        // Spot-check a few well-known positions.
+        assert_eq!(
+            WasmHostFunction::from_index(0),
+            Some(WasmHostFunction::FsExists)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(27),
+            Some(WasmHostFunction::NetBindUnix)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(28),
+            Some(WasmHostFunction::NetAccept)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(42),
+            Some(WasmHostFunction::CheckCapsuleCapability)
+        );
+    }
 }

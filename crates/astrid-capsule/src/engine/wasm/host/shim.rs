@@ -392,6 +392,22 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::NetCloseStream => {
+            crate::engine::wasm::host::net::astrid_net_close_stream_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::NetPollAccept => {
+            crate::engine::wasm::host::net::astrid_net_poll_accept_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

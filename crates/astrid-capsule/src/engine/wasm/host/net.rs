@@ -6,6 +6,10 @@ use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use extism::{CurrentPlugin, Error, UserData, Val};
 
+/// Maximum concurrent socket connections per capsule.
+/// Prevents resource exhaustion from malicious or runaway clients.
+const MAX_ACTIVE_STREAMS: usize = 8;
+
 /// Gate `net_bind` capability once at bind time (session-scoped).
 ///
 /// The kernel pre-binds the socket and provides it via `HostState`. This
@@ -257,28 +261,11 @@ pub(crate) fn astrid_net_read_impl(
         None => Ok(Vec::new()),
     };
 
-    // If the socket read failed (connection closed, broken pipe), publish a
-    // client.disconnect event so the idle monitor is notified even if the
-    // WASM proxy capsule doesn't explicitly forward the Disconnect message.
-    if let Err(ref e) = result {
-        let err_str = e.to_string();
-        if (err_str.contains("socket read error") || err_str.contains("socket payload read error"))
-            && let Ok(state) = ud.lock()
-        {
-            let msg = astrid_events::ipc::IpcMessage::new(
-                "client.v1.disconnect",
-                astrid_events::ipc::IpcPayload::Disconnect {
-                    reason: Some("socket_closed".to_string()),
-                },
-                state.capsule_uuid,
-            );
-            let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
-                metadata: astrid_events::EventMetadata::new("net_read"),
-                message: msg,
-            });
-        }
-    }
-
+    // Note: disconnect events are NOT published here. The WASM guest is
+    // responsible for calling close() on dead streams, which publishes the
+    // client.v1.disconnect event and removes the active_streams entry.
+    // Publishing here would cause duplicate disconnect events since the
+    // guest always calls close() after a read error.
     let result = result?;
 
     if result.is_empty() {
@@ -342,6 +329,206 @@ pub(crate) fn astrid_net_write_impl(
         Some(inner) => inner?,
         None => return Err(Error::msg("capsule unloading")),
     }
+
+    Ok(())
+}
+
+pub(crate) fn astrid_net_close_stream_impl(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    _: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
+    let handle_id: u64 = handle_str
+        .parse()
+        .map_err(|_| Error::msg("Invalid stream handle"))?;
+
+    let ud = user_data.get()?;
+    let mut state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    // Idempotent: silently ignore if the handle was already removed.
+    if state.active_streams.remove(&handle_id).is_some() {
+        let msg = astrid_events::ipc::IpcMessage::new(
+            "client.v1.disconnect",
+            astrid_events::ipc::IpcPayload::Disconnect {
+                reason: Some("stream_closed".to_string()),
+            },
+            state.capsule_uuid,
+        );
+        let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
+            metadata: astrid_events::EventMetadata::new("net_close_stream"),
+            message: msg,
+        });
+    }
+
+    Ok(())
+}
+
+/// Non-blocking accept with a short timeout.
+///
+/// # Design note
+///
+/// The listener handle argument from the WASM guest is intentionally ignored.
+/// The kernel provisions exactly one pre-bound `UnixListener` per capsule via
+/// `HostState::cli_socket_listener`. This matches the existing `accept_impl`
+/// pattern. If multi-listener support is ever added, this must be revisited.
+pub(crate) fn astrid_net_poll_accept_impl(
+    plugin: &mut CurrentPlugin,
+    _: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostState>,
+) -> Result<(), Error> {
+    let ud = user_data.get()?;
+
+    let (listener_arc, rt_handle, cancel_token, session_token, host_semaphore, stream_count) = {
+        let state = ud
+            .lock()
+            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+        let listener = state
+            .cli_socket_listener
+            .clone()
+            .ok_or_else(|| Error::msg("No CLI Socket Listener available in HostState"))?;
+
+        (
+            listener,
+            state.runtime_handle.clone(),
+            state.cancel_token.clone(),
+            state.session_token.clone(),
+            state.host_semaphore.clone(),
+            state.active_streams.len(),
+        )
+    };
+
+    // Enforce connection cap at the host level.
+    if stream_count >= MAX_ACTIVE_STREAMS {
+        tracing::warn!(
+            max = MAX_ACTIVE_STREAMS,
+            current = stream_count,
+            "poll_accept: connection cap reached, rejecting"
+        );
+        let mem = plugin.memory_new("")?;
+        outputs[0] = plugin.memory_to_val(mem);
+        return Ok(());
+    }
+
+    // Non-blocking accept with a short timeout. The 10ms window is long
+    // enough to catch a pending connection without meaningfully stalling
+    // the WASM loop.
+    let accept_result =
+        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+            let l = listener_arc.lock().await;
+            tokio::time::timeout(std::time::Duration::from_millis(10), l.accept()).await
+        });
+
+    let (stream, _addr) = match accept_result {
+        // Cancellation: return empty (capsule unloading).
+        None => {
+            let mem = plugin.memory_new("")?;
+            outputs[0] = plugin.memory_to_val(mem);
+            return Ok(());
+        },
+        // Timeout: no pending connection.
+        Some(Err(_)) => {
+            let mem = plugin.memory_new("")?;
+            outputs[0] = plugin.memory_to_val(mem);
+            return Ok(());
+        },
+        // Accept error: propagate.
+        Some(Ok(Err(e))) => return Err(Error::msg(format!("accept error: {e}"))),
+        // Success: connection pending.
+        Some(Ok(Ok(pair))) => pair,
+    };
+
+    // Peer credential verification (same as accept_impl).
+    #[cfg(unix)]
+    if let Err(reason) = verify_peer_credentials(&stream) {
+        tracing::warn!(
+            security_event = true,
+            reason = %reason,
+            "poll_accept: rejected connection (peer credential check failed)"
+        );
+        drop(stream);
+        let mem = plugin.memory_new("")?;
+        outputs[0] = plugin.memory_to_val(mem);
+        return Ok(());
+    }
+
+    // Session token handshake. May block up to 5s in the worst case for
+    // a slow/malicious client. Bounded to one handshake per poll_accept
+    // call because the guest uses `if let` (not `while let`).
+    let mut stream = stream;
+    if let Some(ref token) = session_token {
+        let handshake_result = util::bounded_block_on_cancellable(
+            &rt_handle,
+            &host_semaphore,
+            &cancel_token,
+            validate_handshake(&mut stream, token),
+        );
+        match handshake_result {
+            None => {
+                let mem = plugin.memory_new("")?;
+                outputs[0] = plugin.memory_to_val(mem);
+                return Ok(());
+            },
+            Some(Err(reason)) => {
+                tracing::warn!(
+                    security_event = true,
+                    reason = %reason,
+                    "poll_accept: rejected connection (handshake failed)"
+                );
+                drop(stream);
+                let mem = plugin.memory_new("")?;
+                outputs[0] = plugin.memory_to_val(mem);
+                return Ok(());
+            },
+            Some(Ok(())) => {},
+        }
+    }
+
+    // Store the authenticated stream. Re-check cap under lock for defense
+    // in depth (WASM is single-threaded today, but the invariant should be
+    // self-contained at the insertion site).
+    let mut state = ud
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if state.active_streams.len() >= MAX_ACTIVE_STREAMS {
+        drop(stream);
+        let mem = plugin.memory_new("")?;
+        outputs[0] = plugin.memory_to_val(mem);
+        return Ok(());
+    }
+
+    let handle_id = state.next_stream_id;
+    state.next_stream_id = state
+        .next_stream_id
+        .checked_add(1)
+        .ok_or_else(|| Error::msg("stream handle ID space exhausted"))?;
+    debug_assert!(
+        !state.active_streams.contains_key(&handle_id),
+        "stream handle ID collision"
+    );
+    state.active_streams.insert(
+        handle_id,
+        std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
+    );
+
+    let connected_msg = astrid_events::ipc::IpcMessage::new(
+        "client.v1.connected",
+        astrid_events::ipc::IpcPayload::Connect,
+        state.capsule_uuid,
+    );
+    let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
+        metadata: astrid_events::EventMetadata::new("net_poll_accept"),
+        message: connected_msg,
+    });
+
+    let mem = plugin.memory_new(handle_id.to_string())?;
+    outputs[0] = plugin.memory_to_val(mem);
 
     Ok(())
 }
@@ -499,5 +686,17 @@ fn verify_peer_credentials(stream: &tokio::net::UnixStream) -> Result<(), String
             }
         },
         Err(e) => Err(format!("failed to check peer credentials: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_active_streams_pinned() {
+        // Changing MAX_ACTIVE_STREAMS requires explicit security review
+        // (resource exhaustion surface). Update this test deliberately.
+        assert_eq!(MAX_ACTIVE_STREAMS, 8);
     }
 }

@@ -92,6 +92,10 @@ extern "ExtismHost" {
     pub fn astrid_net_read(stream_handle: Vec<u8>) -> Vec<u8>;
     /// Write bytes to a stream handle.
     pub fn astrid_net_write(stream_handle: Vec<u8>, data: Vec<u8>);
+    /// Close a stream handle, releasing its resources on the host.
+    pub fn astrid_net_close_stream(stream_handle: Vec<u8>);
+    /// Non-blocking accept: returns a stream handle if a connection is pending, or empty bytes.
+    pub fn astrid_net_poll_accept(listener_handle: Vec<u8>) -> Vec<u8>;
 
     // -----------------------------------------------------------------------
     // General System (Network, Logging, & Scheduling)
