@@ -250,6 +250,11 @@ pub(crate) struct App {
     /// request. On completion, an `ElicitResponse` is published to the event
     /// bus instead of writing `.env.json`.
     pub elicit_request_id: Option<uuid::Uuid>,
+
+    // ── Session Hydration ──
+    /// Correlation ID for the pending hydration request. Set on boot, cleared
+    /// after the first successful response to prevent double-hydration.
+    pub hydration_correlation_id: Option<String>,
 }
 
 impl App {
@@ -316,6 +321,8 @@ impl App {
             status_message: None,
 
             elicit_request_id: None,
+
+            hydration_correlation_id: None,
         }
     }
 

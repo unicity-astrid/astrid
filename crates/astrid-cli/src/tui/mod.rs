@@ -99,9 +99,11 @@ pub(crate) async fn run(
     }
 
     // Hydrate conversation history from the session store.
+    let correlation_id = uuid::Uuid::new_v4().to_string();
+    app.hydration_correlation_id = Some(correlation_id.clone());
     let hydration_req = serde_json::json!({
         "session_id": session_id.0.to_string(),
-        "correlation_id": uuid::Uuid::new_v4().to_string(),
+        "correlation_id": correlation_id,
     });
     let msg = astrid_events::ipc::IpcMessage::new(
         "session.v1.request.get_messages",
@@ -407,12 +409,13 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
         }
 
         // Session hydration: populate conversation history from the session store.
-        if message
-            .topic
-            .starts_with("session.v1.response.get_messages")
+        // Only fires once per boot - correlation ID is cleared after the first response.
+        if let Some(cid) = &app.hydration_correlation_id
+            && message.topic == format!("session.v1.response.get_messages.{cid}")
             && let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
             && let Some(messages) = data.get("messages")
         {
+            app.hydration_correlation_id = None;
             match serde_json::from_value::<Vec<astrid_events::llm::Message>>(messages.clone()) {
                 Ok(history) => {
                     for msg in &history {
@@ -422,6 +425,8 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
                             // System and Tool messages are not rendered in the TUI.
                             _ => continue,
                         };
+                        // TODO: extract text from MultiPart content once TUI
+                        // supports rich rendering.
                         let content = msg.text().unwrap_or_default().to_string();
                         if !content.is_empty() {
                             app.push_message(role, content);
