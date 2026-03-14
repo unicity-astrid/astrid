@@ -1,9 +1,12 @@
 //! Rendering logic for the TUI — single-view Nexus layout.
 
 use super::state::{
-    App, MessageKind, MessageRole, NexusEntry, PALETTE_MAX_VISIBLE, RiskLevel, ToolStatusKind,
-    UiState,
+    App, InputSegment, MessageKind, MessageRole, NexusEntry, PALETTE_MAX_VISIBLE, RiskLevel,
+    ToolStatusKind, UiState,
 };
+
+/// Maximum number of paste block lines to show in the preview.
+const PASTE_PREVIEW_MAX: usize = 10;
 use super::theme::Theme;
 use astrid_core::truncate_to_boundary;
 use ratatui::{
@@ -359,14 +362,41 @@ fn onboarding_row_count(
 fn input_height(app: &App, frame_area: Rect) -> u16 {
     let prompt_len = 2u16;
     let avail = frame_area.width.saturating_sub(prompt_len + 1) as usize;
-    let display_text = if app.input.starts_with('/') {
-        &app.input[1..]
+
+    let mut total_lines = 0u16;
+    for (i, seg) in app.input_buf.segments.iter().enumerate() {
+        match seg {
+            InputSegment::Text(t) => {
+                let display = if i == 0 && t.starts_with('/') {
+                    &t[1..]
+                } else {
+                    t
+                };
+                #[expect(clippy::cast_possible_truncation)]
+                {
+                    total_lines =
+                        total_lines.saturating_add(wrapped_line_count(display, avail) as u16);
+                }
+            },
+            InputSegment::PasteBlock { line_count, .. } => {
+                let preview = (*line_count).min(PASTE_PREVIEW_MAX);
+                #[expect(clippy::cast_possible_truncation)]
+                {
+                    total_lines = total_lines.saturating_add(preview as u16);
+                }
+                if *line_count > PASTE_PREVIEW_MAX {
+                    total_lines = total_lines.saturating_add(1); // "... N more lines"
+                }
+            },
+        }
+    }
+
+    let max = if app.input_buf.has_paste_blocks() {
+        20
     } else {
-        &app.input
+        8
     };
-    #[expect(clippy::cast_possible_truncation)]
-    let text_lines = wrapped_line_count(display_text, avail) as u16;
-    let base = (1u16.saturating_add(text_lines)).clamp(3, 8);
+    let base = (1u16.saturating_add(total_lines)).clamp(3, max);
 
     if let UiState::Selection { options, .. } = &app.state {
         let n = options.len().saturating_add(1);
@@ -895,13 +925,13 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     ) || !is_idle
     {
         "  "
-    } else if app.input.starts_with('/') {
+    } else if app.input_buf.starts_with_slash() {
         "/ "
     } else {
         "> "
     };
 
-    if app.input.is_empty() && is_idle {
+    if app.input_buf.is_empty() && is_idle {
         // Placeholder text
         frame.render_widget(
             Paragraph::new(Line::from(vec![
@@ -915,12 +945,6 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             input_area,
         );
     } else {
-        let display_input = if app.input.starts_with('/') && is_idle {
-            &app.input[1..]
-        } else {
-            &app.input
-        };
-
         let mut is_secret = false;
         let mut is_enum = false;
         let mut field_placeholder: Option<&str> = None;
@@ -942,13 +966,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             field_placeholder = field.placeholder.as_deref();
         }
 
-        let display_str = if is_secret {
-            "*".repeat(display_input.len())
-        } else {
-            display_input.to_string()
-        };
-
-        // Hide cursor for enum fields — the picker handles selection.
+        // Hide cursor for enum fields - the picker handles selection.
         let cursor_str = if is_enum { "" } else { "█" };
         let cursor_color = if is_idle || matches!(app.state, UiState::Onboarding { .. }) {
             theme.cursor
@@ -956,23 +974,115 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             theme.border
         };
 
-        // Show placeholder hint in dim when the input is empty.
-        let show_placeholder = display_input.is_empty() && !is_secret && !is_enum;
-        let input_spans = if show_placeholder && let Some(ph) = field_placeholder {
-            vec![
-                Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-                Span::styled(ph, Style::default().fg(theme.border)),
-                Span::styled(cursor_str, Style::default().fg(cursor_color)),
-            ]
-        } else {
-            vec![
-                Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-                Span::styled(display_str, input_style),
-                Span::styled(cursor_str, Style::default().fg(cursor_color)),
-            ]
-        };
+        // Build lines from segments.
+        let mut lines: Vec<Line> = Vec::new();
+        let has_paste_blocks = app.input_buf.has_paste_blocks();
 
-        let para = Paragraph::new(Line::from(input_spans)).wrap(Wrap { trim: false });
+        if has_paste_blocks {
+            // Segment-aware rendering: each segment gets its own set of lines.
+            let (cursor_seg, cursor_off) = app.input_buf.cursor;
+
+            for (seg_idx, seg) in app.input_buf.segments.iter().enumerate() {
+                match seg {
+                    InputSegment::Text(t) => {
+                        let display = if seg_idx == 0 && t.starts_with('/') && is_idle {
+                            &t[1..]
+                        } else {
+                            t
+                        };
+                        let display_str = if is_secret {
+                            "*".repeat(display.len())
+                        } else {
+                            display.to_string()
+                        };
+
+                        let seg_prompt = if seg_idx == 0 { prompt } else { "  " };
+                        let is_cursor_here = seg_idx == cursor_seg && !is_enum;
+
+                        if is_cursor_here {
+                            // Split text at cursor for inline cursor rendering.
+                            let adj_off = if seg_idx == 0 && t.starts_with('/') && is_idle {
+                                cursor_off.saturating_sub(1)
+                            } else {
+                                cursor_off
+                            };
+                            let (before, after) =
+                                display_str.split_at(adj_off.min(display_str.len()));
+                            lines.push(Line::from(vec![
+                                Span::styled(
+                                    seg_prompt.to_string(),
+                                    input_style.add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(before.to_string(), input_style),
+                                Span::styled(
+                                    cursor_str.to_string(),
+                                    Style::default().fg(cursor_color),
+                                ),
+                                Span::styled(after.to_string(), input_style),
+                            ]));
+                        } else {
+                            lines.push(Line::from(vec![
+                                Span::styled(
+                                    seg_prompt.to_string(),
+                                    input_style.add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(display_str, input_style),
+                            ]));
+                        }
+                    },
+                    InputSegment::PasteBlock { raw, line_count } => {
+                        let paste_style = Style::default().fg(theme.diff_added);
+                        let raw_lines: Vec<&str> = raw.lines().collect();
+                        let show_count = (*line_count).min(PASTE_PREVIEW_MAX);
+                        for line in raw_lines.iter().take(show_count) {
+                            lines.push(Line::from(vec![
+                                Span::styled("     + ", paste_style),
+                                Span::styled((*line).to_string(), paste_style),
+                            ]));
+                        }
+                        if *line_count > PASTE_PREVIEW_MAX {
+                            let remaining = line_count.saturating_sub(PASTE_PREVIEW_MAX);
+                            lines.push(Line::from(Span::styled(
+                                format!("       ... +{remaining} more lines"),
+                                Style::default().fg(theme.muted),
+                            )));
+                        }
+                    },
+                }
+            }
+        } else {
+            // Simple flat rendering (no paste blocks) - original path.
+            let flat = app.input_buf.flat_text();
+            let display_input = if flat.starts_with('/') && is_idle {
+                &flat[1..]
+            } else {
+                &flat
+            };
+
+            let display_str = if is_secret {
+                "*".repeat(display_input.len())
+            } else {
+                display_input.to_string()
+            };
+
+            let show_placeholder = display_input.is_empty() && !is_secret && !is_enum;
+            let input_spans = if show_placeholder && let Some(ph) = field_placeholder {
+                vec![
+                    Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
+                    Span::styled(ph, Style::default().fg(theme.border)),
+                    Span::styled(cursor_str, Style::default().fg(cursor_color)),
+                ]
+            } else {
+                vec![
+                    Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
+                    Span::styled(display_str, input_style),
+                    Span::styled(cursor_str, Style::default().fg(cursor_color)),
+                ]
+            };
+            lines.push(Line::from(input_spans));
+        }
+
+        let para = Paragraph::new(lines).wrap(Wrap { trim: false });
         frame.render_widget(para, input_area);
     }
 

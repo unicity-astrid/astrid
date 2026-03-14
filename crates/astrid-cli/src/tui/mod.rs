@@ -13,7 +13,10 @@ use std::time::{Duration, Instant};
 use astrid_core::SessionId;
 use astrid_events::AstridEvent;
 use crossterm::{
-    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
+    event::{
+        DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute,
     terminal::{
         EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -44,10 +47,11 @@ fn init_terminal() -> io::Result<(Term, bool)> {
         execute!(
             stdout,
             EnterAlternateScreen,
+            EnableBracketedPaste,
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
     } else {
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
     }
 
     let backend = CrosstermBackend::new(stdout);
@@ -61,10 +65,15 @@ fn restore_terminal(terminal: &mut Term, keyboard_enhanced: bool) -> io::Result<
         execute!(
             terminal.backend_mut(),
             PopKeyboardEnhancementFlags,
+            DisableBracketedPaste,
             LeaveAlternateScreen
         )?;
     } else {
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(
+            terminal.backend_mut(),
+            DisableBracketedPaste,
+            LeaveAlternateScreen
+        )?;
     }
     terminal.show_cursor()?;
     Ok(())

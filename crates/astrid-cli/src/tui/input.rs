@@ -4,10 +4,13 @@ use super::state::{App, ApprovalDecisionKind, PALETTE_MAX_VISIBLE, PendingAction
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use std::io;
 
+/// Maximum length (in bytes) for a single multi-line paste.
+const MAX_PASTE_LEN: usize = 32_768;
+
 /// Handle input events.
 pub(crate) fn handle_input(app: &mut App) -> io::Result<()> {
-    if let Event::Key(key) = event::read()? {
-        match app.state {
+    match event::read()? {
+        Event::Key(key) => match app.state {
             UiState::Idle => handle_idle_input(app, key),
             UiState::AwaitingApproval => handle_approval_input(app, key),
             UiState::Thinking { .. } | UiState::Streaming { .. } | UiState::ToolRunning { .. } => {
@@ -18,9 +21,66 @@ pub(crate) fn handle_input(app: &mut App) -> io::Result<()> {
             UiState::Selection { .. } => handle_selection_input(app, key),
             UiState::Onboarding { .. } => handle_onboarding_input(app, key),
             UiState::Error { .. } => handle_error_input(app, key),
-        }
+        },
+        Event::Paste(ref text) => handle_paste(app, text),
+        _ => {},
     }
     Ok(())
+}
+
+/// Handle a bracketed paste event.
+fn handle_paste(app: &mut App, text: &str) {
+    // Only accept pastes in states that accept text input.
+    match &app.state {
+        UiState::Idle | UiState::Onboarding { .. } => {},
+        UiState::Interrupted => {
+            app.state = UiState::Idle;
+        },
+        _ => return,
+    }
+
+    if text.is_empty() {
+        return;
+    }
+
+    // Single-line paste: treat as typed text.
+    if !text.contains('\n') {
+        // Reject multi-line-less paste in slash command mode if it would exceed limits.
+        for c in text.chars() {
+            app.input_buf.insert_char(c);
+        }
+        app.quit_pending = false;
+        app.palette_reset();
+        return;
+    }
+
+    // Multi-line paste in slash command mode is not supported.
+    if app.input_buf.starts_with_slash() {
+        app.push_notice("Multi-line paste not supported in command mode.");
+        return;
+    }
+
+    // Sanitize: normalize line endings, strip null bytes.
+    let sanitized = text.replace("\r\n", "\n").replace('\0', "");
+
+    if sanitized.len() > MAX_PASTE_LEN {
+        app.push_notice(&format!(
+            "Paste too large ({} bytes, max {MAX_PASTE_LEN}). Truncated.",
+            sanitized.len()
+        ));
+        // Truncate at a char boundary.
+        let truncated = &sanitized[..sanitized
+            .char_indices()
+            .take_while(|(i, _)| *i < MAX_PASTE_LEN)
+            .last()
+            .map_or(0, |(i, c)| i.saturating_add(c.len_utf8()))];
+        app.input_buf.insert_paste(truncated.to_string());
+    } else {
+        app.input_buf.insert_paste(sanitized);
+    }
+
+    app.quit_pending = false;
+    app.palette_reset();
 }
 
 fn handle_selection_input(app: &mut App, key: KeyEvent) {
@@ -179,16 +239,14 @@ pub(crate) fn default_enum_position(field: &astrid_events::ipc::OnboardingField)
         .unwrap_or(0)
 }
 
-/// Set `app.input` and `app.cursor_pos` for a new onboarding field.
+/// Set the input buffer for a new onboarding field.
 /// Enum fields clear the input (the picker handles selection);
 /// text/secret fields pre-fill with the default value.
 pub(crate) fn prefill_field_input(app: &mut App, is_enum: bool, default: &str) {
     if is_enum {
-        app.input.clear();
-        app.cursor_pos = 0;
+        app.input_buf.clear();
     } else {
-        app.input = default.to_string();
-        app.cursor_pos = default.len();
+        app.input_buf.set_text(default.to_string());
     }
 }
 
@@ -233,8 +291,7 @@ fn finish_onboarding(app: &mut App) {
         }
     }
     app.state = UiState::Idle;
-    app.input.clear();
-    app.cursor_pos = 0;
+    app.input_buf.clear();
 }
 
 /// Handle text/secret field input during onboarding.
@@ -252,13 +309,11 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
             }
             app.push_notice("Onboarding cancelled by user.");
             app.state = UiState::Idle;
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.input_buf.clear();
         },
         KeyCode::Enter => {
-            let answer = app.input.clone();
-            app.input.clear();
-            app.cursor_pos = 0;
+            let answer = app.input_buf.flat_text();
+            app.input_buf.clear();
 
             if !answer.is_empty() && answer.len() > MAX_INPUT_LEN {
                 app.push_notice("Input too long (max 4096 bytes). Please shorten it.");
@@ -316,36 +371,16 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
             }
         },
         KeyCode::Char(c) => {
-            app.input.insert(app.cursor_pos, c);
-            app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
+            app.input_buf.insert_char(c);
         },
         KeyCode::Backspace => {
-            if app.cursor_pos > 0 {
-                let prev = app.input[..app.cursor_pos]
-                    .char_indices()
-                    .next_back()
-                    .map_or(0, |(i, _)| i);
-                app.input.remove(prev);
-                app.cursor_pos = prev;
-            }
+            app.input_buf.backspace();
         },
         KeyCode::Left => {
-            if app.cursor_pos > 0 {
-                let prev = app.input[..app.cursor_pos]
-                    .char_indices()
-                    .next_back()
-                    .map_or(0, |(i, _)| i);
-                app.cursor_pos = prev;
-            }
+            app.input_buf.move_left();
         },
         KeyCode::Right => {
-            if app.cursor_pos < app.input.len() {
-                let next = app.input[app.cursor_pos..]
-                    .char_indices()
-                    .nth(1)
-                    .map_or(app.input.len(), |(i, _)| app.cursor_pos.saturating_add(i));
-                app.cursor_pos = next;
-            }
+            app.input_buf.move_right();
         },
         _ => {},
     }
@@ -366,8 +401,7 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
             }
             app.push_notice("Onboarding cancelled by user.");
             app.state = UiState::Idle;
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.input_buf.clear();
         },
         KeyCode::Up => {
             if let UiState::Onboarding {
@@ -476,12 +510,11 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                         cmd.name.as_str(),
                         "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh"
                     ) {
-                        app.input = cmd.name.clone();
+                        app.input_buf.set_text(cmd.name.clone());
                         submit_immediately = true;
                     } else {
-                        app.input = format!("{} ", cmd.name);
+                        app.input_buf.set_text(format!("{} ", cmd.name));
                     }
-                    app.cursor_pos = app.input.len();
                     selected_from_palette = true;
                 }
                 app.palette_reset();
@@ -505,19 +538,17 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
                     cmd.name.as_str(),
                     "/help" | "/clear" | "/quit" | "/exit" | "/q" | "/refresh"
                 ) {
-                    app.input = cmd.name.clone();
+                    app.input_buf.set_text(cmd.name.clone());
                 } else {
-                    app.input = format!("{} ", cmd.name);
+                    app.input_buf.set_text(format!("{} ", cmd.name));
                 }
-                app.cursor_pos = app.input.len();
             }
             app.palette_reset();
         },
 
         // Esc: clear input and close palette
         (KeyCode::Esc, _) if palette_is_active => {
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.input_buf.clear();
             app.palette_reset();
         },
 
@@ -580,46 +611,25 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
 
         // ── Text editing ────────────────────────────────────────
         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-            app.input.insert(app.cursor_pos, c);
-            app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
+            app.input_buf.insert_char(c);
             app.scroll_offset = 0;
             app.palette_reset();
         },
         (KeyCode::Backspace, _) => {
-            if app.cursor_pos > 0 {
-                let prev = app.input[..app.cursor_pos]
-                    .char_indices()
-                    .next_back()
-                    .map_or(0, |(i, _)| i);
-                app.input.remove(prev);
-                app.cursor_pos = prev;
-            }
+            app.input_buf.backspace();
             app.palette_reset();
         },
         (KeyCode::Delete, _) => {
-            if app.cursor_pos < app.input.len() {
-                app.input.remove(app.cursor_pos);
-            }
+            app.input_buf.delete_forward();
             app.palette_reset();
         },
 
         // Cursor movement
         (KeyCode::Left, _) => {
-            if app.cursor_pos > 0 {
-                app.cursor_pos = app.input[..app.cursor_pos]
-                    .char_indices()
-                    .next_back()
-                    .map_or(0, |(i, _)| i);
-            }
+            app.input_buf.move_left();
         },
         (KeyCode::Right, _) => {
-            if app.cursor_pos < app.input.len() {
-                let (_, c) = app.input[app.cursor_pos..]
-                    .char_indices()
-                    .next()
-                    .expect("cursor_pos < len guarantees a char");
-                app.cursor_pos = app.cursor_pos.saturating_add(c.len_utf8());
-            }
+            app.input_buf.move_right();
         },
         (KeyCode::Home, _) if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.scroll_offset = usize::MAX;
@@ -627,8 +637,8 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::End, _) if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.scroll_offset = 0;
         },
-        (KeyCode::Home, _) => app.cursor_pos = 0,
-        (KeyCode::End, _) => app.cursor_pos = app.input.len(),
+        (KeyCode::Home, _) => app.input_buf.move_home(),
+        (KeyCode::End, _) => app.input_buf.move_end(),
 
         // Scrolling
         (KeyCode::PageUp, _) => {
@@ -637,17 +647,16 @@ fn handle_idle_input(app: &mut App, key: KeyEvent) {
         (KeyCode::PageDown, _) => {
             app.scroll_offset = app.scroll_offset.saturating_sub(10);
         },
-        (KeyCode::Up, _) if app.input.is_empty() => {
+        (KeyCode::Up, _) if app.input_buf.is_empty() => {
             app.scroll_offset = app.scroll_offset.saturating_add(1);
         },
-        (KeyCode::Down, _) if app.input.is_empty() => {
+        (KeyCode::Down, _) if app.input_buf.is_empty() => {
             app.scroll_offset = app.scroll_offset.saturating_sub(1);
         },
 
         // Clear line
         (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-            app.input.clear();
-            app.cursor_pos = 0;
+            app.input_buf.clear();
             app.palette_reset();
         },
 
@@ -742,8 +751,7 @@ fn handle_interrupted_input(app: &mut App, key: KeyEvent) {
         },
         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
             app.state = UiState::Idle;
-            app.input.push(c);
-            app.cursor_pos = app.input.len();
+            app.input_buf.insert_char(c);
         },
         _ => {
             app.state = UiState::Idle;
@@ -871,8 +879,7 @@ mod tests {
         set_onboarding_with_array(&mut app);
 
         // Type "wss://relay1" and press Enter
-        app.input = "wss://relay1".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("wss://relay1".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Should still be on the same field, item added
@@ -889,8 +896,7 @@ mod tests {
         }
 
         // Add a second item
-        app.input = "wss://relay2".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("wss://relay2".into());
         handle_onboarding_input(&mut app, enter_key());
 
         if let UiState::Onboarding {
@@ -910,8 +916,7 @@ mod tests {
         set_onboarding_with_array(&mut app);
 
         // Add one item
-        app.input = "wss://relay1".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("wss://relay1".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Press Enter on empty to finalize
@@ -963,8 +968,7 @@ mod tests {
         handle_onboarding_input(&mut app, enter_key());
 
         // Now on "name" (string type), type a value and press Enter
-        app.input = "my-name".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("my-name".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Should have submitted onboarding (both fields done)
@@ -987,13 +991,12 @@ mod tests {
         set_onboarding_with_array(&mut app);
 
         // Type a character but don't submit, then cancel
-        app.input = "item1".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("item1".into());
         handle_onboarding_input(&mut app, char_key('x'));
         handle_onboarding_input(&mut app, esc_key());
 
         assert!(matches!(app.state, UiState::Idle));
-        assert!(app.input.is_empty());
+        assert!(app.input_buf.is_empty());
     }
 
     #[test]
@@ -1002,12 +1005,10 @@ mod tests {
         set_onboarding_with_array(&mut app);
 
         // Add two items via Enter
-        app.input = "wss://relay1".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("wss://relay1".into());
         handle_onboarding_input(&mut app, enter_key());
 
-        app.input = "wss://relay2".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("wss://relay2".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Verify items accumulated
@@ -1049,8 +1050,7 @@ mod tests {
         }
 
         // Next item should be rejected
-        app.input = "one-too-many".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("one-too-many".into());
         handle_onboarding_input(&mut app, enter_key());
 
         if let UiState::Onboarding {
@@ -1088,12 +1088,10 @@ mod tests {
         set_onboarding_with_array(&mut app);
 
         // Add items with quotes and special characters
-        app.input = r#"value with "quotes""#.into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text(r#"value with "quotes""#.into());
         handle_onboarding_input(&mut app, enter_key());
 
-        app.input = "value,with,commas".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("value,with,commas".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Finalize
@@ -1143,8 +1141,7 @@ mod tests {
         app.terminal_height = 60;
 
         // Add items to first array
-        app.input = "relay1".into();
-        app.cursor_pos = app.input.len();
+        app.input_buf.set_text("relay1".into());
         handle_onboarding_input(&mut app, enter_key());
 
         // Finalize first array
@@ -1194,7 +1191,7 @@ mod tests {
 
         // Array fields should NOT have the default pre-filled in input
         assert!(
-            app.input.is_empty(),
+            app.input_buf.is_empty(),
             "array field should start with empty input, not pre-filled default"
         );
     }
