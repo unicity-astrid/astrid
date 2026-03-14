@@ -216,6 +216,7 @@ impl WasmHandler {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            overlay_vfs: None,
             upper_dir: None,
             kv,
             event_bus: astrid_events::EventBus::with_capacity(128),

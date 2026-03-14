@@ -30,6 +30,7 @@ dashmap = { workspace = true }
 cap-std = "3.4.1"
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]

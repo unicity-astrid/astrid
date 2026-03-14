@@ -122,13 +122,22 @@ impl ExecutionEngine for WasmEngine {
             let root_handle = astrid_capabilities::DirHandle::new();
             let global_root = ctx.global_root.clone();
 
+            // Upper layer uses a per-capsule temporary directory so writes
+            // are sandboxed until explicitly committed. The TempDir is kept
+            // alive in HostState.upper_dir for the capsule's lifetime.
+            let upper_temp = tempfile::TempDir::new().map_err(|e| {
+                CapsuleError::UnsupportedEntryPoint(format!(
+                    "Failed to create overlay temp dir: {e}"
+                ))
+            })?;
+
             tokio::runtime::Handle::current()
                 .block_on(async {
                     lower_vfs
                         .register_dir(root_handle.clone(), workspace_root.clone())
                         .await?;
                     upper_vfs
-                        .register_dir(root_handle.clone(), workspace_root.clone())
+                        .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
                         .await?;
                     Ok::<(), astrid_vfs::VfsError>(())
                 })
@@ -175,10 +184,10 @@ impl ExecutionEngine for WasmEngine {
                 (None, None)
             };
 
-            // TODO: OverlayVfs upper and lower layers currently share the same physical
-            // workspace root, meaning CoW semantics act as a direct pass-through.
-            // upper_vfs should point to a temporary session overlay directory.
-            let overlay_vfs = astrid_vfs::OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
+            let overlay_vfs = Arc::new(astrid_vfs::OverlayVfs::new(
+                Box::new(lower_vfs),
+                Box::new(upper_vfs),
+            ));
 
             let next_subscription_id = 1;
             // Only resolve global:// in the gate if we actually mounted the VFS.
@@ -206,12 +215,13 @@ impl ExecutionEngine for WasmEngine {
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
                     .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
                 workspace_root,
-                vfs: Arc::new(overlay_vfs),
+                vfs: Arc::clone(&overlay_vfs) as Arc<dyn astrid_vfs::Vfs>,
                 vfs_root_handle: root_handle,
                 global_root,
                 global_vfs,
                 global_vfs_root_handle,
-                upper_dir: None,
+                overlay_vfs: Some(overlay_vfs),
+                upper_dir: Some(Arc::new(upper_temp)),
                 kv,
                 event_bus,
                 ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
@@ -577,6 +587,7 @@ pub fn run_lifecycle(
         global_root: None,
         global_vfs: None,
         global_vfs_root_handle: None,
+        overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,
         event_bus: cfg.event_bus,
