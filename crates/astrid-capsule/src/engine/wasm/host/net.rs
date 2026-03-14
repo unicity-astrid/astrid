@@ -261,28 +261,11 @@ pub(crate) fn astrid_net_read_impl(
         None => Ok(Vec::new()),
     };
 
-    // If the socket read failed (connection closed, broken pipe), publish a
-    // client.disconnect event so the idle monitor is notified even if the
-    // WASM proxy capsule doesn't explicitly forward the Disconnect message.
-    if let Err(ref e) = result {
-        let err_str = e.to_string();
-        if (err_str.contains("socket read error") || err_str.contains("socket payload read error"))
-            && let Ok(state) = ud.lock()
-        {
-            let msg = astrid_events::ipc::IpcMessage::new(
-                "client.v1.disconnect",
-                astrid_events::ipc::IpcPayload::Disconnect {
-                    reason: Some("socket_closed".to_string()),
-                },
-                state.capsule_uuid,
-            );
-            let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
-                metadata: astrid_events::EventMetadata::new("net_read"),
-                message: msg,
-            });
-        }
-    }
-
+    // Note: disconnect events are NOT published here. The WASM guest is
+    // responsible for calling close() on dead streams, which publishes the
+    // client.v1.disconnect event and removes the active_streams entry.
+    // Publishing here would cause duplicate disconnect events since the
+    // guest always calls close() after a read error.
     let result = result?;
 
     if result.is_empty() {

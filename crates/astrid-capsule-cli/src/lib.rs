@@ -93,14 +93,17 @@ impl CliProxy {
             }
 
             // Remove dead streams in reverse order to preserve indices.
-            // Do NOT call close() here: net_read_impl already published
-            // client.v1.disconnect and the underlying fd is closed on read error.
+            // close() is required to release the host-side active_streams entry.
+            // Without it, active_streams.len() grows monotonically and poll_accept
+            // refuses new connections after MAX_ACTIVE_STREAMS cumulative disconnects.
             for &i in dead_indices.iter().rev() {
-                streams.remove(i);
+                let dead = streams.remove(i);
+                let _ = close(&dead);
                 let _ = log::info("CLI client disconnected from proxy");
             }
 
             // Phase D: poll IPC subscriptions and broadcast to all live streams.
+            // NOTE: broadcast_dead indices are into streams AFTER Phase C removals.
             let mut broadcast_dead: Vec<usize> = Vec::new();
             for handle in &sub_handles {
                 match ipc::poll_bytes(handle) {
