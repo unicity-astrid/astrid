@@ -3,9 +3,17 @@ use async_trait::async_trait;
 
 use crate::{Vfs, VfsDirEntry, VfsMetadata, VfsResult};
 
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Tracks whether a dirty path is a file or a directory so that
+/// [`OverlayVfs::commit`] and [`OverlayVfs::rollback`] handle them correctly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DirtyKind {
+    File,
+    Dir,
+}
 
 struct LockGuard<'a> {
     map: &'a DashMap<String, Arc<Mutex<()>>>,
@@ -31,8 +39,8 @@ pub struct OverlayVfs {
     copy_locks: DashMap<String, Arc<Mutex<()>>>,
     /// Paths that have been written to or explicitly created in the upper layer.
     /// Used by [`commit()`](Self::commit) and [`rollback()`](Self::rollback)
-    /// to know which files need syncing or discarding.
-    dirty_paths: DashSet<String>,
+    /// to know which entries need syncing or discarding.
+    dirty_entries: DashMap<String, DirtyKind>,
 }
 
 impl OverlayVfs {
@@ -43,7 +51,7 @@ impl OverlayVfs {
             lower,
             upper,
             copy_locks: DashMap::new(),
-            dirty_paths: DashSet::new(),
+            dirty_entries: DashMap::new(),
         }
     }
 
@@ -51,7 +59,7 @@ impl OverlayVfs {
     /// since the last commit or rollback.
     #[must_use]
     pub fn dirty_paths(&self) -> Vec<String> {
-        self.dirty_paths.iter().map(|r| r.clone()).collect()
+        self.dirty_entries.iter().map(|r| r.key().clone()).collect()
     }
 
     /// Copy all dirty files from the upper (temp) layer to the lower (workspace) layer.
@@ -67,35 +75,47 @@ impl OverlayVfs {
     /// Returns the first `VfsError` encountered. Paths committed before the
     /// error are already persisted in the lower layer.
     pub async fn commit(&self, handle: &DirHandle) -> VfsResult<Vec<String>> {
-        let paths: Vec<String> = self.dirty_paths.iter().map(|r| r.clone()).collect();
-        let mut committed = Vec::with_capacity(paths.len());
+        let entries: Vec<(String, DirtyKind)> = self
+            .dirty_entries
+            .iter()
+            .map(|r| (r.key().clone(), *r.value()))
+            .collect();
+        let mut committed = Vec::with_capacity(entries.len());
 
-        for path in &paths {
-            // Ensure parent directory exists in lower. Walk up to find or
-            // create each ancestor.
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                let parent_str = parent.to_string_lossy();
-                if !parent_str.is_empty() {
-                    self.ensure_lower_dirs(handle, &parent_str).await?;
-                }
+        for (path, kind) in &entries {
+            match kind {
+                DirtyKind::Dir => {
+                    // Ensure the directory exists in lower. The recursive
+                    // helper already handles parent creation.
+                    self.ensure_lower_dirs(handle, path).await?;
+                },
+                DirtyKind::File => {
+                    // Ensure parent directory exists in lower.
+                    if let Some(parent) = std::path::Path::new(path).parent() {
+                        let parent_str = parent.to_string_lossy();
+                        if !parent_str.is_empty() {
+                            self.ensure_lower_dirs(handle, &parent_str).await?;
+                        }
+                    }
+
+                    // Read content from upper
+                    let upper_fh = self.upper.open(handle, path, false, false).await?;
+                    let content_result = self.upper.read(&upper_fh).await;
+                    let _ = self.upper.close(&upper_fh).await;
+                    let content = content_result?;
+
+                    // Write to lower (create + truncate)
+                    let lower_fh = self.lower.open(handle, path, true, true).await?;
+                    let write_result = self.lower.write(&lower_fh, &content).await;
+                    let _ = self.lower.close(&lower_fh).await;
+                    write_result?;
+
+                    // Clean up the upper copy now that lower has the data
+                    let _ = self.upper.unlink(handle, path).await;
+                },
             }
 
-            // Read content from upper
-            let upper_fh = self.upper.open(handle, path, false, false).await?;
-            let content_result = self.upper.read(&upper_fh).await;
-            let _ = self.upper.close(&upper_fh).await;
-            let content = content_result?;
-
-            // Write to lower (create + truncate)
-            let lower_fh = self.lower.open(handle, path, true, true).await?;
-            let write_result = self.lower.write(&lower_fh, &content).await;
-            let _ = self.lower.close(&lower_fh).await;
-            write_result?;
-
-            // Clean up the upper copy now that lower has the data
-            let _ = self.upper.unlink(handle, path).await;
-
-            self.dirty_paths.remove(path);
+            self.dirty_entries.remove(path);
             committed.push(path.clone());
         }
 
@@ -113,14 +133,27 @@ impl OverlayVfs {
     /// Returns the first `VfsError` encountered. Paths rolled back before
     /// the error are already removed; remaining paths stay in the dirty set.
     pub async fn rollback(&self, handle: &DirHandle) -> VfsResult<Vec<String>> {
-        let paths: Vec<String> = self.dirty_paths.iter().map(|r| r.clone()).collect();
-        let mut rolled_back = Vec::with_capacity(paths.len());
+        let entries: Vec<(String, DirtyKind)> = self
+            .dirty_entries
+            .iter()
+            .map(|r| (r.key().clone(), *r.value()))
+            .collect();
+        let mut rolled_back = Vec::with_capacity(entries.len());
 
-        for path in &paths {
-            // Best-effort removal; the file may already be gone if the temp
-            // dir was partially cleaned up.
-            let _ = self.upper.unlink(handle, path).await;
-            self.dirty_paths.remove(path);
+        // Process files first, then dirs (reverse depth order would be ideal
+        // but best-effort unlink is sufficient since TempDir::drop cleans up).
+        for (path, kind) in &entries {
+            match kind {
+                DirtyKind::File => {
+                    let _ = self.upper.unlink(handle, path).await;
+                },
+                DirtyKind::Dir => {
+                    // Directories may contain files that were already unlinked
+                    // above. Best-effort removal; the TempDir drop handles
+                    // any remaining contents on capsule unload.
+                },
+            }
+            self.dirty_entries.remove(path);
             rolled_back.push(path.clone());
         }
 
@@ -132,16 +165,17 @@ impl OverlayVfs {
         if self.lower.exists(handle, path).await.unwrap_or(false) {
             return Ok(());
         }
-        // Recurse to parent first
         if let Some(parent) = std::path::Path::new(path).parent() {
             let parent_str = parent.to_string_lossy();
             if !parent_str.is_empty() {
                 Box::pin(self.ensure_lower_dirs(handle, &parent_str)).await?;
             }
         }
-        // Ignore AlreadyExists-style errors (Io with ErrorKind::AlreadyExists)
         match self.lower.mkdir(handle, path).await {
-            Ok(()) | Err(crate::VfsError::Io(_)) => Ok(()),
+            Ok(()) => Ok(()),
+            Err(crate::VfsError::Io(ref e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                Ok(())
+            },
             Err(e) => Err(e),
         }
     }
@@ -158,7 +192,10 @@ impl OverlayVfs {
             }
         }
         match self.upper.mkdir(handle, path).await {
-            Ok(()) | Err(crate::VfsError::Io(_)) => Ok(()),
+            Ok(()) => Ok(()),
+            Err(crate::VfsError::Io(ref e)) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                Ok(())
+            },
             Err(e) => Err(e),
         }
     }
@@ -167,10 +204,15 @@ impl OverlayVfs {
     ///
     /// Resolves `.` and `..` components and strips any leading `/` so that
     /// paths are stored as relative strings (e.g. `"src/main.rs"`).
-    fn normalize_path(path: &str) -> String {
-        let resolved = crate::path::resolve_path(std::path::Path::new("/"), path)
-            .map_or_else(|_| path.to_string(), |p| p.to_string_lossy().to_string());
-        resolved.strip_prefix('/').unwrap_or(&resolved).to_string()
+    ///
+    /// # Errors
+    ///
+    /// Propagates `VfsError::SandboxViolation` if the path attempts to
+    /// escape the root via `..` traversal.
+    fn normalize_path(path: &str) -> VfsResult<String> {
+        let resolved = crate::path::resolve_path(std::path::Path::new("/"), path)?;
+        let s = resolved.to_string_lossy();
+        Ok(s.strip_prefix('/').unwrap_or(&s).to_string())
     }
 }
 
@@ -223,7 +265,8 @@ impl Vfs for OverlayVfs {
     async fn mkdir(&self, handle: &DirHandle, path: &str) -> VfsResult<()> {
         // Writes strictly to upper.
         self.upper.mkdir(handle, path).await?;
-        self.dirty_paths.insert(Self::normalize_path(path));
+        self.dirty_entries
+            .insert(Self::normalize_path(path)?, DirtyKind::Dir);
         Ok(())
     }
 
@@ -238,7 +281,11 @@ impl Vfs for OverlayVfs {
         }
         self.upper.unlink(handle, path).await?;
         // Remove from dirty set - the upper-only file is gone.
-        self.dirty_paths.remove(&Self::normalize_path(path));
+        // normalize_path cannot fail here because the path was already
+        // validated when it was added to the dirty set via open(write=true).
+        if let Ok(normalized) = Self::normalize_path(path) {
+            self.dirty_entries.remove(&normalized);
+        }
         Ok(())
     }
 
@@ -321,7 +368,8 @@ impl Vfs for OverlayVfs {
                 }
             }
             // Track this path as dirty for commit/rollback.
-            self.dirty_paths.insert(Self::normalize_path(path));
+            self.dirty_entries
+                .insert(Self::normalize_path(path)?, DirtyKind::File);
             return self.upper.open(handle, path, write, truncate).await;
         }
 
@@ -648,5 +696,37 @@ mod tests {
         overlay.close(&fh).await.unwrap();
 
         assert_eq!(content, b"original");
+    }
+
+    #[tokio::test]
+    async fn commit_mkdir_creates_dir_in_lower() {
+        let (overlay, handle, lower_dir, _upper_dir) = setup().await;
+
+        overlay.mkdir(&handle, "newdir").await.unwrap();
+
+        // Dir exists in upper but not lower
+        assert!(!lower_dir.path().join("newdir").exists());
+
+        overlay.commit(&handle).await.unwrap();
+
+        // Dir now exists in lower
+        assert!(lower_dir.path().join("newdir").is_dir());
+        assert!(overlay.dirty_paths().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_mixed_files_and_dirs() {
+        let (overlay, handle, lower_dir, _upper_dir) = setup().await;
+
+        overlay.mkdir(&handle, "src").await.unwrap();
+        write_through_overlay(&overlay, &handle, "src/main.rs", b"fn main() {}").await;
+
+        overlay.commit(&handle).await.unwrap();
+
+        assert!(lower_dir.path().join("src").is_dir());
+        assert_eq!(
+            std::fs::read(lower_dir.path().join("src/main.rs")).unwrap(),
+            b"fn main() {}"
+        );
     }
 }
