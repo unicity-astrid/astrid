@@ -1,0 +1,20 @@
+[package]
+name = "astrid-capsule-memory"
+version = "0.1.0"
+description = "Injects cross-session memory into the system prompt via prompt builder hooks"
+authors = ["Astrid Core Team"]
+astrid-version = ">=0.1.0"
+
+[[component]]
+id = "memory"
+file = "astrid_capsule_memory.wasm"
+type = "executable"
+capabilities = { fs_read = ["workspace://"] }
+
+[capabilities]
+allow_prompt_injection = true
+ipc_publish = ["prompt_builder.v1.hook_response.*"]
+
+[[interceptor]]
+event = "prompt_builder.v1.hook.before_build"
+action = "on_before_prompt_build"
