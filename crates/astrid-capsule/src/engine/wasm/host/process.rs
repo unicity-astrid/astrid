@@ -205,9 +205,10 @@ pub(crate) fn astrid_spawn_host_impl(
         },
         None => {
             // Cancelled (capsule unloading or tool cancellation).
-            // Send explicit SIGKILL to ensure the process dies even if it
-            // traps SIGINT. Keep the PID registered so the cancel_all SIGKILL
-            // grace-period task can also reach it (belt-and-suspenders).
+            // Send explicit SIGKILL before unregistering: the process may trap
+            // SIGINT, and the cancel_all grace-period task only checks
+            // active_pids (which we clear below). This guarantees the process
+            // is dead regardless of its signal disposition.
             warn!(capsule_id, pid, "process cancelled");
             if let Ok(raw) = i32::try_from(pid) {
                 let _ = nix::sys::signal::kill(
