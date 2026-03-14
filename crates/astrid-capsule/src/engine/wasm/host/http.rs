@@ -68,19 +68,37 @@ impl reqwest::dns::Resolve for SafeDnsResolver {
 fn is_safe_ip(mut ip: std::net::IpAddr) -> bool {
     // Escape hatch for integration tests that need to spin up local servers
     if std::env::var("ASTRID_TEST_ALLOW_LOCAL_IP").is_ok() {
+        static WARN_TEST: std::sync::Once = std::sync::Once::new();
+        WARN_TEST.call_once(|| {
+            tracing::warn!(
+                "ASTRID_TEST_ALLOW_LOCAL_IP is set - SSRF protection disabled for ALL capsules"
+            );
+        });
         return true;
     }
 
     // Global escape hatch for deployments that require plugins to access internal network services
     if std::env::var("ASTRID_ALLOW_LOCAL_IPS").is_ok() {
+        static WARN_PROD: std::sync::Once = std::sync::Once::new();
+        WARN_PROD.call_once(|| {
+            tracing::warn!(
+                "ASTRID_ALLOW_LOCAL_IPS is set - SSRF protection disabled for ALL capsules. \
+                 Private/loopback IP ranges are reachable by every loaded capsule."
+            );
+        });
         return true;
     }
 
     if let std::net::IpAddr::V6(ipv6) = ip {
         if let Some(ipv4) = ipv6.to_ipv4_mapped() {
             ip = std::net::IpAddr::V4(ipv4);
-        } else if let Some(ipv4) = ipv6.to_ipv4() {
-            ip = std::net::IpAddr::V4(ipv4);
+        } else if ipv6.segments()[..6].iter().all(|&s| s == 0) {
+            // IPv4-compatible addresses (::x.x.x.x) are deprecated by RFC 4291
+            // but must still be blocked (e.g. ::127.0.0.1 is loopback).
+            let [.., hi, lo] = ipv6.segments();
+            let [a, b] = hi.to_be_bytes();
+            let [c, d] = lo.to_be_bytes();
+            ip = std::net::IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d));
         }
     }
 
