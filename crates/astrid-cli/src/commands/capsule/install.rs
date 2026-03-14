@@ -771,7 +771,8 @@ fn bake_topics(
                     MAX_SCHEMA_FILE_SIZE
                 );
             }
-            let capacity = usize::try_from(file_len).unwrap_or(usize::MAX);
+            let capacity = usize::try_from(file_len)
+                .expect("MAX_SCHEMA_FILE_SIZE is small enough to fit in usize");
             let mut content = String::with_capacity(capacity);
             // Read at most MAX_SCHEMA_FILE_SIZE + 1 bytes so we can detect growth.
             std::io::Read::read_to_string(
