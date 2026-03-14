@@ -110,6 +110,9 @@ where
                 // Multi-threaded runtime (production): block_in_place yields
                 // the worker thread to the runtime scheduler instead of
                 // spawning a new OS thread per storage operation.
+                // Nested block_in_place calls (e.g. WASM host -> interceptor
+                // -> audit append) are safe - tokio treats them as a no-op
+                // when the thread is already in a blocking context.
                 tokio::task::block_in_place(|| handle.block_on(f))
             } else {
                 // Single-threaded runtime (tests): block_in_place panics on
@@ -401,5 +404,41 @@ mod tests {
 
         let head = storage.get_chain_head(&session_id).unwrap().unwrap();
         assert_eq!(head, entry2.id);
+    }
+
+    /// Exercises the `block_in_place` branch that only fires under a
+    /// multi-threaded runtime (the production path fixed by #305).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_store_and_retrieve_multi_thread() {
+        let storage = SurrealKvAuditStorage::in_memory();
+        let keypair = test_keypair();
+        let session_id = SessionId::new();
+
+        let entry = AuditEntry::create(
+            session_id.clone(),
+            AuditAction::SessionStarted {
+                user_id: keypair.key_id(),
+                platform: "cli".to_string(),
+            },
+            AuthorizationProof::System {
+                reason: "test".to_string(),
+            },
+            AuditOutcome::success(),
+            ContentHash::zero(),
+            &keypair,
+        );
+
+        let entry_id = entry.id.clone();
+        storage.store(&entry).unwrap();
+
+        let retrieved = storage.get(&entry_id).unwrap().unwrap();
+        assert_eq!(retrieved.id, entry_id);
+
+        // Also verify session queries work through block_in_place.
+        let entries = storage.get_session_entries(&session_id).unwrap();
+        assert_eq!(entries.len(), 1);
+
+        let head = storage.get_chain_head(&session_id).unwrap().unwrap();
+        assert_eq!(head, entry_id);
     }
 }
