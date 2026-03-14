@@ -77,8 +77,26 @@ fn handle_paste(app: &mut App, text: &str) {
         return;
     }
 
-    // Sanitize: normalize line endings, strip null bytes.
-    let sanitized = text.replace("\r\n", "\n").replace('\0', "");
+    // Multi-line paste in secret onboarding fields would leak content in plaintext.
+    if let UiState::Onboarding {
+        fields,
+        current_idx,
+        ..
+    } = &app.state
+        && fields.get(*current_idx).is_some_and(|f| {
+            matches!(
+                f.field_type,
+                astrid_events::ipc::OnboardingFieldType::Secret
+            )
+        })
+    {
+        app.push_notice("Multi-line paste not supported in secret fields.");
+        app.quit_pending = false;
+        return;
+    }
+
+    // Sanitize: normalize line endings, strip bare CR, strip null bytes.
+    let sanitized = text.replace("\r\n", "\n").replace(['\r', '\0'], "");
 
     if sanitized.len() > MAX_PASTE_LEN {
         app.push_notice(&format!(
@@ -1298,6 +1316,40 @@ mod tests {
         handle_paste(&mut app, &big);
         assert!(app.input_buf.flat_text().len() <= MAX_PASTE_LEN);
         assert!(app.messages.iter().any(|m| m.content.contains("Truncated")),);
+    }
+
+    #[test]
+    fn paste_multi_line_strips_bare_cr() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "foo\r\nbar\rbaz\n");
+        // \r\n -> \n, bare \r removed
+        assert_eq!(app.input_buf.flat_text(), "foo\nbarbaz\n");
+    }
+
+    #[test]
+    fn paste_multi_line_rejected_in_secret_field() {
+        let mut app = make_app();
+        app.state = UiState::Onboarding {
+            capsule_id: "test".into(),
+            fields: vec![astrid_events::ipc::OnboardingField {
+                key: "api_key".into(),
+                prompt: "Enter API key".into(),
+                description: None,
+                field_type: astrid_events::ipc::OnboardingFieldType::Secret,
+                default: None,
+                placeholder: None,
+            }],
+            current_idx: 0,
+            answers: std::collections::HashMap::new(),
+            enum_selected: 0,
+            enum_scroll_offset: 0,
+            current_array_items: Vec::new(),
+        };
+        handle_paste(&mut app, "line1\nline2");
+        // Multi-line paste rejected, input unchanged.
+        assert!(app.input_buf.is_empty());
+        assert!(app.messages.iter().any(|m| m.content.contains("secret")),);
     }
 
     #[test]

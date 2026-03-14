@@ -258,6 +258,9 @@ impl InputBuffer {
             InputSegment::PasteBlock { .. } => {
                 // Skip over the paste block entirely.
                 if prev_idx == 0 {
+                    // Insert a leading Text segment so cursor has a typeable home.
+                    self.segments.insert(0, InputSegment::Text(String::new()));
+                    // All indices shifted by 1.
                     self.cursor = (0, 0);
                 } else {
                     let prev_prev = prev_idx.saturating_sub(1);
@@ -351,6 +354,9 @@ impl InputBuffer {
     /// Insert a paste block at the current cursor position. If the cursor is
     /// inside a Text segment, splits it around the cursor.
     pub(crate) fn insert_paste(&mut self, content: String) {
+        // Note: `str::lines()` does not yield a trailing empty line for content
+        // ending in `\n`. The render path also uses `raw.lines()`, so both are
+        // consistent.
         let line_count = content.lines().count().max(1);
         let block = InputSegment::PasteBlock {
             raw: content,
@@ -1508,6 +1514,20 @@ mod tests {
         buf.set_text(String::new());
         assert!(buf.is_empty());
         assert_eq!(buf.cursor, (0, 0));
+    }
+
+    #[test]
+    fn input_buffer_move_left_inserts_text_before_leading_paste() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("X\nY".to_string());
+        // Cursor is on trailing Text at (1, 0). Move left skips PasteBlock.
+        buf.move_left();
+        // Should have inserted a leading Text, cursor is at (0, 0) on that Text.
+        assert!(matches!(buf.segments[0], InputSegment::Text(_)));
+        assert_eq!(buf.cursor.0, 0);
+        // Typing should insert before the PasteBlock.
+        buf.insert_char('z');
+        assert_eq!(buf.flat_text(), "zX\nY");
     }
 
     #[test]
