@@ -124,20 +124,29 @@ impl Kernel {
         // capsules cannot access keys, databases, or capsule .env files.
         let global_root = Some(home.shared_dir());
 
-        // 1. Initialize MCP process manager with security layer.
+        // 1. Open the persistent KV store (needed by capability store below).
+        let kv_path = home.state_db_path();
+        let kv = Arc::new(
+            astrid_storage::SurrealKvStore::open(&kv_path)
+                .map_err(|e| std::io::Error::other(format!("Failed to open KV store: {e}")))?,
+        );
+        // TODO: clear ephemeral keys (e: prefix) on boot when the key
+        // lifecycle tier convention is established.
+
+        // 2. Initialize MCP process manager with security layer.
         //    Set workspace_root so sandboxed MCP servers have a writable directory.
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
         let mcp_manager =
             ServerManager::new(mcp_config).with_workspace_root(workspace_root.clone());
         let mcp_client = McpClient::new(mcp_manager);
 
-        // 2. Bootstrap capability store and persistent audit log.
-        // TODO: Wire CapabilityStore persistence. Currently in-memory only
-        // so capability tokens are lost on restart. The runtime signing key
-        // is now persisted via load_or_generate_runtime_key(), but a key
-        // rotation / migration strategy is needed before persisting tokens
-        // (a fresh key invalidates all tokens signed by the old one).
-        let capabilities = Arc::new(CapabilityStore::in_memory());
+        // 3. Bootstrap capability store (persistent) and audit log.
+        let capabilities = Arc::new(
+            CapabilityStore::with_kv_store(Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>)
+                .map_err(|e| {
+                    std::io::Error::other(format!("Failed to init capability store: {e}"))
+                })?,
+        );
         let audit_log = open_audit_log()?;
         let mcp = SecureMcpClient::new(
             mcp_client,
@@ -146,10 +155,10 @@ impl Kernel {
             session_id.clone(),
         );
 
-        // 3. Establish the physical security boundary (sandbox handle)
+        // 4. Establish the physical security boundary (sandbox handle)
         let root_handle = DirHandle::new();
 
-        // 4-5. Initialize sandboxed overlay VFS (lower=workspace, upper=temp)
+        // 5. Initialize sandboxed overlay VFS (lower=workspace, upper=temp)
         let (overlay_vfs, upper_temp) = init_overlay_vfs(&root_handle, &workspace_root).await?;
 
         // 6. Bind the secure Unix socket and generate session token.
@@ -158,14 +167,6 @@ impl Kernel {
         // a race where a client connects before the token file exists.
         let listener = socket::bind_session_socket()?;
         let (session_token, token_path) = socket::generate_session_token()?;
-
-        let kv_path = home.state_db_path();
-        let kv = Arc::new(
-            astrid_storage::SurrealKvStore::open(&kv_path)
-                .map_err(|e| std::io::Error::other(format!("Failed to open KV store: {e}")))?,
-        );
-        // TODO: clear ephemeral keys (e: prefix) on boot when the key
-        // lifecycle tier convention is established.
 
         let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
 

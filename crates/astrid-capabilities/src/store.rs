@@ -703,6 +703,12 @@ mod tests {
         drop(store);
         let store2 = CapabilityStore::with_kv_store(kv).unwrap();
         assert!(store2.get(&token_id).unwrap().is_some());
+        // Verify find_capability (the production lookup path) also works after reload.
+        assert!(
+            store2
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_some()
+        );
 
         // Also test disk-backed store can open and store/retrieve.
         // Note: SurrealKV holds an OS-level file lock, so we cannot drop-and-reopen
@@ -721,6 +727,36 @@ mod tests {
         let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
         assert!(disk_store.get(&other_token_id).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_revocation_survives_restart() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+        store.revoke(&token_id).unwrap();
+
+        // Reload - revocation must survive.
+        drop(store);
+        let store2 = CapabilityStore::with_kv_store(kv).unwrap();
+        assert!(matches!(
+            store2.get(&token_id),
+            Err(CapabilityError::TokenRevoked { .. })
+        ));
+        assert!(!store2.has_capability("mcp://test:tool", Permission::Invoke));
     }
 
     #[tokio::test]
