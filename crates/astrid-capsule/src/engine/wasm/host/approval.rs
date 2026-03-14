@@ -62,9 +62,7 @@ fn check_allowance(
 /// and tracing logs. Prevents ANSI escape sequence injection into
 /// terminal-rendered approval prompts.
 fn strip_control_chars_inplace(s: &mut String) {
-    if s.chars().any(|c| c.is_control()) {
-        *s = s.chars().filter(|c| !c.is_control()).collect();
-    }
+    s.retain(|c| !c.is_control());
 }
 
 /// Sanitize a guest-supplied action string for safe use in glob patterns.
@@ -147,16 +145,16 @@ fn create_allowance_from_decision(
     };
 
     // Layer 1: strip control characters, enforce length cap.
-    let sanitized = sanitize_action_for_pattern(action, capsule_id);
+    let sanitized_action = sanitize_action_for_pattern(action, capsule_id);
     // Empty action after sanitization produces pattern " *" which is
     // meaningless. Skip allowance creation rather than storing a useless entry.
-    if sanitized.is_empty() {
+    if sanitized_action.is_empty() {
         return;
     }
     // Layer 2: escape glob metacharacters so wildcards match literally.
-    let sanitized = escape_glob_metacharacters(&sanitized);
+    let escaped_action = escape_glob_metacharacters(&sanitized_action);
     let pattern = AllowancePattern::CommandPattern {
-        command: format!("{sanitized} *"),
+        command: format!("{escaped_action} *"),
     };
 
     // Generate an ephemeral keypair for signing. Session allowances are
