@@ -1,4 +1,4 @@
-use astrid_sdk::net::{accept, bind_unix, read, write};
+use astrid_sdk::net::{StreamHandle, accept, bind_unix, close, poll_accept, read, write};
 use astrid_sdk::prelude::*;
 
 #[derive(Default)]
@@ -46,125 +46,152 @@ impl CliProxy {
         );
         let listener = bind_unix(&path).map_err(|e| SysError::ApiError(e.to_string()))?;
 
-        // 4. Enter the blocking accept loop.
-        // NOTE: This is a single-client design - only one CLI connection is
-        // serviced at a time. A second `astrid chat` invocation will block at
-        // accept() until the first disconnects. Spawning a task per connection
-        // requires WASM threading or an async runtime, which is out of scope.
-        loop {
-            let stream = match accept(&listener) {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = log::warn(format!("Accept error: {e:?}, backing off"));
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    continue;
-                },
-            };
-            let _ = log::info("CLI client connected to proxy");
+        // 3. Multi-connection accept loop.
+        // Supports up to 8 concurrent CLI clients (enforced at host level).
+        // IPC events are broadcast to all connected clients. Any authenticated
+        // client can send prompts - the daemon is a single agent.
+        let mut streams: Vec<StreamHandle> = Vec::new();
 
-            // Inner loop to read messages from the client
-            'inner: loop {
-                // 1. Read from socket (has 50ms timeout on the host side)
-                match read(&stream) {
+        loop {
+            // Phase A: block until at least one client is connected.
+            if streams.is_empty() {
+                let stream = match accept(&listener) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = log::warn(format!("Accept error: {e:?}, backing off"));
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        continue;
+                    },
+                };
+                let _ = log::info("CLI client connected to proxy");
+                streams.push(stream);
+            }
+
+            // Phase B: poll for one additional connection (non-blocking).
+            // Max one per iteration to bound handshake stall to ~5s worst case.
+            if let Ok(Some(new_stream)) = poll_accept(&listener) {
+                let _ = log::info("Additional CLI client connected to proxy");
+                streams.push(new_stream);
+            }
+
+            // Phase C: read from all streams.
+            // NOTE: 50ms timeout per stream = linear scaling (N*50ms per iteration).
+            // Acceptable for CLI use (2-3 typical, 8 max = 400ms worst case).
+            let mut dead_indices: Vec<usize> = Vec::new();
+            for (i, stream) in streams.iter().enumerate() {
+                match read(stream) {
                     Ok(bytes) => {
                         if !bytes.is_empty() {
-                            // Parse the incoming JSON into an IpcMessage
-                            if let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                if let (Some(topic), Some(payload)) = (
-                                    msg.get("topic").and_then(|t| t.as_str()),
-                                    msg.get("payload"),
-                                ) {
-                                    // Ingress topic allowlist: only publish to topics the
-                                    // CLI legitimately needs. Prevents an authenticated
-                                    // client from injecting into internal pipeline topics.
-                                    // IMPORTANT: Update this list when adding new
-                                    // CLI-originated topics.
-                                    if is_allowed_ingress_topic(topic) {
-                                        if let Err(e) = ipc::publish_json(topic, payload) {
-                                            let _ = log::error(format!(
-                                                "Failed to publish IPC: {:?}",
-                                                e
-                                            ));
-                                        }
-                                    } else {
-                                        let _ = log::warn(format!(
-                                            "Dropped ingress message to blocked topic: {topic}"
-                                        ));
-                                    }
-                                }
-                            } else {
-                                let _ = log::warn("Received malformed IPC payload from socket");
-                            }
+                            handle_ingress(&bytes);
                         }
                     },
                     Err(e) => {
-                        let _ = log::error(format!("Socket read error: {:?}", e));
+                        let _ = log::error(format!("Socket read error: {e:?}"));
+                        dead_indices.push(i);
+                    },
+                }
+            }
+
+            // Remove dead streams in reverse order to preserve indices.
+            for &i in dead_indices.iter().rev() {
+                let dead = streams.remove(i);
+                let _ = close(&dead);
+                let _ = log::info("CLI client disconnected from proxy");
+            }
+
+            // Phase D: poll IPC subscriptions and broadcast to all live streams.
+            let mut broadcast_dead: Vec<usize> = Vec::new();
+            for handle in &sub_handles {
+                match ipc::poll_bytes(handle) {
+                    Ok(bytes) => {
+                        if !bytes.is_empty() {
+                            broadcast_poll_messages(&streams, &bytes, &mut broadcast_dead);
+                        }
+                    },
+                    Err(_) => {
+                        // Subscription error is fatal for the proxy.
                         break;
                     },
                 }
+            }
 
-                // 2. Poll Event Bus - check each topic subscription and forward
-                //    individual IpcMessages to the CLI socket.
-                for handle in &sub_handles {
-                    match ipc::poll_bytes(handle) {
-                        Ok(bytes) => {
-                            if !bytes.is_empty()
-                                && let Err(()) = forward_poll_messages(&stream, &bytes)
-                            {
-                                break 'inner;
-                            }
-                        },
-                        Err(_) => {
-                            break 'inner;
-                        },
-                    }
-                }
+            // Remove streams that failed during broadcast.
+            broadcast_dead.sort_unstable();
+            broadcast_dead.dedup();
+            for &i in broadcast_dead.iter().rev() {
+                let dead = streams.remove(i);
+                let _ = close(&dead);
+                let _ = log::info("CLI client disconnected during broadcast");
             }
         }
     }
 }
 
-/// Parse the poll envelope `{"messages": [...], "dropped": N}` and write
-/// each `IpcMessage` individually to the CLI socket.
-fn forward_poll_messages(
-    stream: &astrid_sdk::net::StreamHandle,
-    poll_bytes: &[u8],
-) -> Result<(), ()> {
+/// Parse an incoming client message and publish it to the IPC bus if the
+/// topic passes the ingress allowlist.
+fn handle_ingress(bytes: &[u8]) {
+    let msg = match serde_json::from_slice::<serde_json::Value>(bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            let _ = log::warn("Received malformed IPC payload from socket");
+            return;
+        },
+    };
+
+    let (Some(topic), Some(payload)) = (
+        msg.get("topic").and_then(|t| t.as_str()),
+        msg.get("payload"),
+    ) else {
+        return;
+    };
+
+    if is_allowed_ingress_topic(topic) {
+        if let Err(e) = ipc::publish_json(topic, payload) {
+            let _ = log::error(format!("Failed to publish IPC: {e:?}"));
+        }
+    } else {
+        let _ = log::warn(format!("Dropped ingress message to blocked topic: {topic}"));
+    }
+}
+
+/// Parse the poll envelope once, then broadcast each individual `IpcMessage`
+/// to every connected stream. Tracks failed stream indices in `dead`.
+fn broadcast_poll_messages(streams: &[StreamHandle], poll_bytes: &[u8], dead: &mut Vec<usize>) {
     let envelope: serde_json::Value = match serde_json::from_slice(poll_bytes) {
         Ok(v) => v,
         Err(_) => {
             let _ = log::warn("Failed to parse poll envelope");
-            return Ok(());
+            return;
         },
     };
 
-    // Warn if the event bus reports dropped messages — a dropped
-    // AgentResponse with is_final=true would leave the TUI stuck in Streaming.
     if let Some(dropped) = envelope.get("dropped").and_then(|d| d.as_u64())
         && dropped > 0
     {
         let _ = log::warn(format!(
-            "Event bus dropped {dropped} messages — TUI may be stale"
+            "Event bus dropped {dropped} messages - TUI may be stale"
         ));
     }
 
-    let messages = match envelope.get("messages").and_then(|m| m.as_array()) {
-        Some(arr) => arr,
-        None => return Ok(()),
+    let Some(messages) = envelope.get("messages").and_then(|m| m.as_array()) else {
+        return;
     };
 
-    for msg in messages {
-        let msg_bytes = match serde_json::to_vec(msg) {
-            Ok(b) => b,
-            Err(_) => continue,
-        };
-        if let Err(e) = write(stream, &msg_bytes) {
-            let _ = log::error(format!("Socket write error: {e:?}"));
-            return Err(());
+    // Pre-serialize each message once, then write to all streams.
+    let serialized: Vec<Vec<u8>> = messages
+        .iter()
+        .filter_map(|msg| serde_json::to_vec(msg).ok())
+        .collect();
+
+    for (i, stream) in streams.iter().enumerate() {
+        for msg_bytes in &serialized {
+            if let Err(e) = write(stream, msg_bytes) {
+                let _ = log::error(format!("Socket write error: {e:?}"));
+                dead.push(i);
+                break; // Skip remaining messages for this dead stream.
+            }
         }
     }
-
-    Ok(())
 }
 
 /// Exact topics the CLI is allowed to publish to the internal IPC bus.
