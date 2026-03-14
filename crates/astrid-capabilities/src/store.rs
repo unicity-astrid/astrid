@@ -242,26 +242,30 @@ impl CapabilityStore {
         Ok(None)
     }
 
+    /// Check if a single-use token has already been consumed.
+    ///
+    /// Returns `Ok(true)` if the token is single-use and already consumed.
+    /// Returns `Ok(false)` if the token is not single-use or has not been used.
+    /// Returns `Err(())` on lock poisoning, to support fail-closed callers.
+    fn is_consumed_single_use(&self, token: &CapabilityToken) -> Result<bool, ()> {
+        if !token.is_single_use() {
+            return Ok(false);
+        }
+        let used = self.used_tokens.read().map_err(|_| ())?;
+        Ok(used.contains(&token.id))
+    }
+
     /// Check if there's a capability for a resource and permission.
     pub fn has_capability(&self, resource: &str, permission: Permission) -> bool {
-        // Fail closed: if the used-tokens lock is poisoned, deny all capabilities.
-        if self.used_tokens.read().is_err() {
-            return false;
-        }
-
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    if token.is_single_use() {
-                        let Ok(used) = self.used_tokens.read() else {
-                            return false;
-                        };
-                        if used.contains(&token.id) {
-                            continue;
-                        }
+                    match self.is_consumed_single_use(token) {
+                        Ok(true) => {},
+                        Ok(false) => return true,
+                        Err(()) => return false,
                     }
-                    return true;
                 }
             }
         }
@@ -281,15 +285,11 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        if token.is_single_use() {
-                            let Ok(used) = self.used_tokens.read() else {
-                                return false;
-                            };
-                            if used.contains(&token.id) {
-                                continue;
-                            }
+                        match self.is_consumed_single_use(&token) {
+                            Ok(true) => {},
+                            Ok(false) => return true,
+                            Err(()) => return false,
                         }
-                        return true;
                     }
                 }
             }
@@ -304,24 +304,15 @@ impl CapabilityStore {
         resource: &str,
         permission: Permission,
     ) -> Option<CapabilityToken> {
-        // Fail closed: if the used-tokens lock is poisoned, deny all capabilities.
-        if self.used_tokens.read().is_err() {
-            return None;
-        }
-
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    if token.is_single_use() {
-                        let Ok(used) = self.used_tokens.read() else {
-                            return None;
-                        };
-                        if used.contains(&token.id) {
-                            continue;
-                        }
+                    match self.is_consumed_single_use(token) {
+                        Ok(true) => {},
+                        Ok(false) => return Some(token.clone()),
+                        Err(()) => return None,
                     }
-                    return Some(token.clone());
                 }
             }
         }
@@ -341,15 +332,11 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        if token.is_single_use() {
-                            let Ok(used) = self.used_tokens.read() else {
-                                return None;
-                            };
-                            if used.contains(&token.id) {
-                                continue;
-                            }
+                        match self.is_consumed_single_use(&token) {
+                            Ok(true) => {},
+                            Ok(false) => return Some(token),
+                            Err(()) => return None,
                         }
-                        return Some(token);
                     }
                 }
             }
