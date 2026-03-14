@@ -215,9 +215,15 @@ impl IdentityStore for KvIdentityStore {
             .await
             .map_err(|e| IdentityError::Storage(e.to_string()))?;
 
-        // Index by display name if provided.
+        // Index by display name if provided (skip if contains key-unsafe chars).
+        // Note: this overwrites any existing name index entry. The name index is
+        // a best-effort lookup for config resolution, not a uniqueness constraint.
+        // Last writer wins - the most recently created user with a given name
+        // will be found by `get_user_by_name`.
         if let Some(name) = display_name
             && !name.trim().is_empty()
+            && !name.contains('/')
+            && !name.contains('\0')
         {
             self.kv
                 .set(

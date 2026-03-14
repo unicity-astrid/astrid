@@ -218,8 +218,16 @@ pub(crate) fn astrid_identity_link_impl(
     let req: LinkRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid link request: {e}")))?;
 
-    let user_id = uuid::Uuid::parse_str(&req.astrid_user_id)
-        .map_err(|e| Error::msg(format!("invalid UUID: {e}")))?;
+    let user_id = match uuid::Uuid::parse_str(&req.astrid_user_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return write_json_response(
+                plugin,
+                outputs,
+                &OkResponse::fail(format!("invalid UUID: {e}")),
+            );
+        },
+    };
 
     let ctx = extract_identity_context(&user_data)?;
 
@@ -338,8 +346,16 @@ pub(crate) fn astrid_identity_list_links_impl(
     let req: ListLinksRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid list_links request: {e}")))?;
 
-    let user_id = uuid::Uuid::parse_str(&req.astrid_user_id)
-        .map_err(|e| Error::msg(format!("invalid UUID: {e}")))?;
+    let user_id = match uuid::Uuid::parse_str(&req.astrid_user_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return write_json_response(
+                plugin,
+                outputs,
+                &OkResponse::fail(format!("invalid UUID: {e}")),
+            );
+        },
+    };
 
     let ctx = extract_identity_context(&user_data)?;
 
