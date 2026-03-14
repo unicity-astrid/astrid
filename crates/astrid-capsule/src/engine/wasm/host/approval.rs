@@ -64,8 +64,9 @@ fn check_allowance(
 /// pattern. All printable characters are preserved - shell operators and
 /// glob wildcards are handled by downstream layers.
 ///
-/// Logs a warning if any characters were stripped or the string was
-/// truncated, identifying the capsule for audit purposes.
+/// Logs a warning if control characters were stripped or the string was
+/// truncated, identifying the capsule for audit purposes. Does NOT warn
+/// for whitespace trimming alone (that is normal, not suspicious).
 fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
     let trimmed = action.trim();
     let sanitized: String = trimmed
@@ -74,7 +75,10 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
         .take(MAX_ACTION_LEN)
         .collect();
 
-    if sanitized != trimmed {
+    // Only warn for control-char stripping or truncation, not whitespace trim.
+    // Compare against `trimmed` (whitespace already removed) so leading/trailing
+    // spaces don't trigger a false-positive audit warning.
+    if sanitized.len() != trimmed.len() {
         tracing::warn!(
             capsule = %capsule_id,
             original_len = trimmed.len(),
@@ -94,7 +98,8 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
 /// length. Layer 3 ([`contains_shell_operators`] in `pattern.rs`) rejects
 /// shell injection at match time.
 fn escape_glob_metacharacters(action: &str) -> String {
-    let mut escaped = String::with_capacity(action.len());
+    // Worst case: every char is a glob metacharacter needing a `\` prefix.
+    let mut escaped = String::with_capacity(action.len() * 2);
     for c in action.chars() {
         if matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | '\\') {
             escaped.push('\\');
@@ -173,10 +178,10 @@ pub(crate) fn astrid_request_approval_impl(
         .map_err(|e| Error::msg(format!("invalid approval request JSON: {e}")))?;
 
     // Validate and sanitize the action string at the entry point.
-    if guest_req.action.len() > MAX_ACTION_LEN {
+    let action_char_count = guest_req.action.chars().count();
+    if action_char_count > MAX_ACTION_LEN {
         return Err(Error::msg(format!(
-            "approval request action exceeds maximum length ({} > {MAX_ACTION_LEN})",
-            guest_req.action.len()
+            "approval request action exceeds maximum length ({action_char_count} > {MAX_ACTION_LEN})",
         )));
     }
     if guest_req.action.chars().any(|c| c.is_control()) {
@@ -590,7 +595,18 @@ mod tests {
     fn sanitize_action_truncates_long_strings() {
         let long_action = "a".repeat(500);
         let sanitized = sanitize_action_for_pattern(&long_action, "test");
-        assert_eq!(sanitized.len(), MAX_ACTION_LEN);
+        assert_eq!(sanitized.chars().count(), MAX_ACTION_LEN);
+    }
+
+    #[test]
+    fn sanitize_action_truncates_multibyte_chars() {
+        // 200 ASCII + 100 x U+0100 ("Ā", 2 bytes each) = 300 chars.
+        // Truncation should produce exactly 256 chars.
+        let action = "a".repeat(200) + &"\u{0100}".repeat(100);
+        assert_eq!(action.chars().count(), 300);
+        let sanitized = sanitize_action_for_pattern(&action, "test");
+        assert_eq!(sanitized.chars().count(), MAX_ACTION_LEN);
+        assert!(sanitized.starts_with(&"a".repeat(200)));
     }
 
     #[test]
@@ -599,6 +615,18 @@ mod tests {
             sanitize_action_for_pattern("  git push  ", "test"),
             "git push"
         );
+    }
+
+    #[test]
+    fn create_allowance_whitespace_padded_action() {
+        // Whitespace-padded action should flow through both layers and
+        // produce a working session allowance.
+        let store = AllowanceStore::new();
+        create_allowance_from_decision(&store, "  git push  ", "approve_session", None, "test");
+        assert_eq!(store.count(), 1);
+        // After trim: "git push", pattern: "git push *"
+        assert!(check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(&store, "git status", None));
     }
 
     #[test]
