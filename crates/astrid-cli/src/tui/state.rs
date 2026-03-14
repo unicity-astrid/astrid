@@ -431,11 +431,11 @@ impl InputBuffer {
             self.segments[self.cursor.0],
             InputSegment::PasteBlock { .. }
         ) {
-            // Insert a Text segment before the PasteBlock.
+            // Insert a Text segment after the PasteBlock so the user types after it.
+            let insert_idx = self.cursor.0.saturating_add(1);
             self.segments
-                .insert(self.cursor.0, InputSegment::Text(String::new()));
-            // Cursor now points at the new empty Text, offset 0.
-            self.cursor.1 = 0;
+                .insert(insert_idx, InputSegment::Text(String::new()));
+            self.cursor = (insert_idx, 0);
         }
     }
 
@@ -485,22 +485,20 @@ impl InputBuffer {
             if matches!(&self.segments[j], InputSegment::Text(t) if t.is_empty())
                 && self.segments.len() > 1
             {
-                // Keep empty Text segments at cursor when adjacent to a PasteBlock -
-                // they serve as insertion points for typing after paste blocks.
-                if self.cursor.0 == j && self.cursor.1 == 0 {
-                    let prev_is_paste = j > 0
-                        && matches!(
-                            self.segments.get(j.saturating_sub(1)),
-                            Some(InputSegment::PasteBlock { .. })
-                        );
-                    let next_is_paste = matches!(
-                        self.segments.get(j.saturating_add(1)),
+                // Keep empty Text segments adjacent to PasteBlocks - they serve as
+                // structural insertion points for typing around paste blocks.
+                let prev_is_paste = j > 0
+                    && matches!(
+                        self.segments.get(j.saturating_sub(1)),
                         Some(InputSegment::PasteBlock { .. })
                     );
-                    if prev_is_paste || next_is_paste {
-                        j = j.saturating_add(1);
-                        continue;
-                    }
+                let next_is_paste = matches!(
+                    self.segments.get(j.saturating_add(1)),
+                    Some(InputSegment::PasteBlock { .. })
+                );
+                if prev_is_paste || next_is_paste {
+                    j = j.saturating_add(1);
+                    continue;
                 }
 
                 self.segments.remove(j);
@@ -1465,5 +1463,46 @@ mod tests {
         assert!(buf.has_paste_blocks());
         assert!(buf.starts_with_slash());
         // palette_active on App would return false due to has_paste_blocks check.
+    }
+
+    #[test]
+    fn input_buffer_move_end_then_insert_char_on_trailing_paste() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.move_end();
+        buf.insert_char('z');
+        // 'z' must appear after the paste block, not before it.
+        assert_eq!(buf.flat_text(), "A\nBz");
+    }
+
+    #[test]
+    fn input_buffer_move_home_then_insert_char_on_leading_paste() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_char('x'); // after paste
+        buf.move_home();
+        buf.insert_char('z');
+        // 'z' must appear after the first paste block (ensure_text inserts after).
+        assert_eq!(buf.flat_text(), "A\nBzx");
+    }
+
+    #[test]
+    fn input_buffer_set_text_empty() {
+        let mut buf = InputBuffer::default();
+        buf.insert_char('x');
+        buf.insert_paste("A\nB".to_string());
+        buf.set_text(String::new());
+        assert!(buf.is_empty());
+        assert_eq!(buf.cursor, (0, 0));
+    }
+
+    #[test]
+    fn input_buffer_consecutive_paste_inserts() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_paste("C\nD".to_string());
+        // Both blocks should be present in order.
+        assert_eq!(buf.flat_text(), "A\nBC\nD");
+        assert_eq!(buf.paste_block_total_lines(), 4);
     }
 }

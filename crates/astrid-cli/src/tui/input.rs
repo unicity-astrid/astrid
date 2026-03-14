@@ -45,8 +45,21 @@ fn handle_paste(app: &mut App, text: &str) {
 
     // Single-line paste: treat as typed text.
     if !text.contains('\n') {
-        // Reject multi-line-less paste in slash command mode if it would exceed limits.
+        let limit = if text.len() > MAX_PASTE_LEN {
+            app.push_notice(&format!(
+                "Paste too large ({} bytes, max {MAX_PASTE_LEN}). Truncated.",
+                text.len()
+            ));
+            MAX_PASTE_LEN
+        } else {
+            text.len()
+        };
+        let mut bytes: usize = 0;
         for c in text.chars() {
+            bytes = bytes.saturating_add(c.len_utf8());
+            if bytes > limit {
+                break;
+            }
             app.input_buf.insert_char(c);
         }
         app.quit_pending = false;
@@ -57,6 +70,7 @@ fn handle_paste(app: &mut App, text: &str) {
     // Multi-line paste in slash command mode is not supported.
     if app.input_buf.starts_with_slash() {
         app.push_notice("Multi-line paste not supported in command mode.");
+        app.quit_pending = false;
         return;
     }
 
@@ -68,12 +82,13 @@ fn handle_paste(app: &mut App, text: &str) {
             "Paste too large ({} bytes, max {MAX_PASTE_LEN}). Truncated.",
             sanitized.len()
         ));
-        // Truncate at a char boundary.
-        let truncated = &sanitized[..sanitized
+        // Truncate at a char boundary without exceeding MAX_PASTE_LEN.
+        let end = sanitized
             .char_indices()
-            .take_while(|(i, _)| *i < MAX_PASTE_LEN)
+            .take_while(|(i, c)| i.saturating_add(c.len_utf8()) <= MAX_PASTE_LEN)
             .last()
-            .map_or(0, |(i, c)| i.saturating_add(c.len_utf8()))];
+            .map_or(0, |(i, c)| i.saturating_add(c.len_utf8()));
+        let truncated = &sanitized[..end];
         app.input_buf.insert_paste(truncated.to_string());
     } else {
         app.input_buf.insert_paste(sanitized);
