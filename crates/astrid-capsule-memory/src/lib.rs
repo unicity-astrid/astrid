@@ -49,6 +49,8 @@ impl MemoryInjector {
         &self,
         payload: serde_json::Value,
     ) -> Result<(), SysError> {
+        // The dispatcher unwraps IpcPayload::Custom before delivery, so
+        // fields like response_topic are at the top level of `payload`.
         let response_topic = payload
             .get("response_topic")
             .and_then(|v| v.as_str())
