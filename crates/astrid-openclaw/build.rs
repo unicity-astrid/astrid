@@ -138,23 +138,24 @@ fn install_existing_kernel(
 
     // Verify blake3 hash against all available sources.
     // Priority: EXPECTED_KERNEL_HASH (compile-time constant) > .blake3 file.
+    // Compute the hash once, only when at least one verification source exists.
+    let hash_file = Path::new(manifest_dir).join("kernel/engine.wasm.blake3");
     let mut hash_verified = false;
 
-    if let Some(expected_hash) = EXPECTED_KERNEL_HASH {
+    if EXPECTED_KERNEL_HASH.is_some() || hash_file.exists() {
         let actual_hash = blake3::hash(&kernel_bytes).to_hex().to_string();
-        assert!(
-            actual_hash == expected_hash,
-            "kernel blake3 hash mismatch against EXPECTED_KERNEL_HASH!\n  \
-             expected: {expected_hash}\n  actual:   {actual_hash}"
-        );
-        hash_verified = true;
-    } else {
-        let hash_file = Path::new(manifest_dir).join("kernel/engine.wasm.blake3");
-        if hash_file.exists() {
+
+        if let Some(expected_hash) = EXPECTED_KERNEL_HASH {
+            assert!(
+                actual_hash == expected_hash,
+                "kernel blake3 hash mismatch against EXPECTED_KERNEL_HASH!\n  \
+                 expected: {expected_hash}\n  actual:   {actual_hash}"
+            );
+            hash_verified = true;
+        } else {
             let hash_content =
                 std::fs::read_to_string(&hash_file).expect("failed to read engine.wasm.blake3");
             if let Some(expected_hash) = hash_content.split_whitespace().next() {
-                let actual_hash = blake3::hash(&kernel_bytes).to_hex().to_string();
                 assert!(
                     actual_hash == expected_hash,
                     "kernel blake3 hash mismatch!\n  expected: {expected_hash}\n  actual:   {actual_hash}\n\
