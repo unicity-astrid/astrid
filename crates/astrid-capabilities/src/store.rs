@@ -242,13 +242,30 @@ impl CapabilityStore {
         Ok(None)
     }
 
+    /// Check if a single-use token has already been consumed.
+    ///
+    /// Returns `Ok(true)` if the token is single-use and already consumed.
+    /// Returns `Ok(false)` if the token is not single-use or has not been used.
+    /// Returns `Err(())` on lock poisoning, to support fail-closed callers.
+    fn is_consumed_single_use(&self, token: &CapabilityToken) -> Result<bool, ()> {
+        if !token.is_single_use() {
+            return Ok(false);
+        }
+        let used = self.used_tokens.read().map_err(|_| ())?;
+        Ok(used.contains(&token.id))
+    }
+
     /// Check if there's a capability for a resource and permission.
     pub fn has_capability(&self, resource: &str, permission: Permission) -> bool {
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    return true;
+                    match self.is_consumed_single_use(token) {
+                        Ok(true) => {},
+                        Ok(false) => return true,
+                        Err(()) => return false,
+                    }
                 }
             }
         }
@@ -268,7 +285,11 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        return true;
+                        match self.is_consumed_single_use(&token) {
+                            Ok(true) => {},
+                            Ok(false) => return true,
+                            Err(()) => return false,
+                        }
                     }
                 }
             }
@@ -287,7 +308,11 @@ impl CapabilityStore {
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    return Some(token.clone());
+                    match self.is_consumed_single_use(token) {
+                        Ok(true) => {},
+                        Ok(false) => return Some(token.clone()),
+                        Err(()) => return None,
+                    }
                 }
             }
         }
@@ -307,7 +332,11 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        return Some(token);
+                        match self.is_consumed_single_use(&token) {
+                            Ok(true) => {},
+                            Ok(false) => return Some(token),
+                            Err(()) => return None,
+                        }
                     }
                 }
             }
@@ -692,5 +721,81 @@ mod tests {
         let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
         assert!(disk_store.get(&other_token_id).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_find_capability_excludes_used_single_use() {
+        let store = CapabilityStore::in_memory();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            true,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+
+        // Before marking used: both find_capability and has_capability return the token
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_some()
+        );
+        assert!(store.has_capability("mcp://test:tool", Permission::Invoke));
+
+        // Mark the single-use token as consumed
+        store.mark_used(&token_id).unwrap();
+
+        // After marking used: both must exclude the consumed token
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_none()
+        );
+        assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
+    }
+
+    #[tokio::test]
+    async fn test_find_capability_excludes_used_single_use_persistent() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            true,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_some()
+        );
+        assert!(store.has_capability("mcp://test:tool", Permission::Invoke));
+
+        store.mark_used(&token_id).unwrap();
+
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_none()
+        );
+        assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
     }
 }
