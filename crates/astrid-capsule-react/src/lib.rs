@@ -1186,13 +1186,28 @@ impl ReactLoop {
 
     /// Handle a cancel signal from the frontend.
     ///
-    /// Cleans up any in-flight KV mappings and resets the turn to Idle.
+    /// Publishes a `tool.v1.request.cancel` event so the host-level process
+    /// tracker can SIGINT/SIGKILL any spawned child processes, then cleans up
+    /// in-flight KV mappings and resets the turn to Idle.
     fn handle_cancel(session_id: &str) -> Result<(), SysError> {
         let mut state = TurnState::load(session_id);
         if state.phase == Phase::Idle {
             return Ok(());
         }
         let _ = log::info(format!("Cancelling turn for session {session_id}"));
+
+        // Notify tool capsules (host-level process tracker) before cleanup.
+        if state.phase == Phase::AwaitingTools && !state.dispatched_tools.is_empty() {
+            let call_ids: Vec<String> =
+                state.dispatched_tools.iter().map(|t| t.id.clone()).collect();
+            if let Err(e) = ipc::publish_json(
+                "tool.v1.request.cancel",
+                &IpcPayload::ToolCancelRequest { call_ids },
+            ) {
+                let _ = log::warn(format!("Failed to publish tool cancel event: {e}"));
+            }
+        }
+
         Self::cleanup_inflight_mappings(&state);
         state.reset_conversation_turn();
         state.set_phase(Phase::Idle);
