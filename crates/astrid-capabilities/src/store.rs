@@ -244,10 +244,18 @@ impl CapabilityStore {
 
     /// Check if there's a capability for a resource and permission.
     pub fn has_capability(&self, resource: &str, permission: Permission) -> bool {
+        let used = self.used_tokens.read().ok();
+
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
+                    if token.is_single_use()
+                        && let Some(ref used) = used
+                        && used.contains(&token.id)
+                    {
+                        continue;
+                    }
                     return true;
                 }
             }
@@ -268,6 +276,12 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
+                        if token.is_single_use()
+                            && let Some(ref used) = used
+                            && used.contains(&token.id)
+                        {
+                            continue;
+                        }
                         return true;
                     }
                 }
@@ -283,10 +297,18 @@ impl CapabilityStore {
         resource: &str,
         permission: Permission,
     ) -> Option<CapabilityToken> {
+        let used = self.used_tokens.read().ok();
+
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
+                    if token.is_single_use()
+                        && let Some(ref used) = used
+                        && used.contains(&token.id)
+                    {
+                        continue;
+                    }
                     return Some(token.clone());
                 }
             }
@@ -307,6 +329,12 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
+                        if token.is_single_use()
+                            && let Some(ref used) = used
+                            && used.contains(&token.id)
+                        {
+                            continue;
+                        }
                         return Some(token);
                     }
                 }
@@ -692,5 +720,44 @@ mod tests {
         let other_token_id = token2.id.clone();
         disk_store.add(token2).unwrap();
         assert!(disk_store.get(&other_token_id).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_find_capability_excludes_used_single_use() {
+        let store = CapabilityStore::in_memory();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            true,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+
+        // Before marking used: both find_capability and has_capability return the token
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_some()
+        );
+        assert!(store.has_capability("mcp://test:tool", Permission::Invoke));
+
+        // Mark the single-use token as consumed
+        store.mark_used(&token_id).unwrap();
+
+        // After marking used: both must exclude the consumed token
+        assert!(
+            store
+                .find_capability("mcp://test:tool", Permission::Invoke)
+                .is_none()
+        );
+        assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
     }
 }
