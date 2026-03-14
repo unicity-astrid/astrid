@@ -466,16 +466,26 @@ impl Kernel {
     ///
     /// Uses `fetch_update` for atomic saturating decrement - avoids the TOCTOU
     /// window where `fetch_sub` wraps to `usize::MAX` before a corrective store.
+    ///
+    /// When the last connection closes (counter reaches 0), clears all
+    /// session-scoped allowances so they don't leak into the next CLI session.
     pub fn connection_closed(&self) {
-        let _ = self
-            .active_connections
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                if n == 0 {
-                    None
-                } else {
-                    Some(n.saturating_sub(1))
-                }
-            });
+        let result =
+            self.active_connections
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                    if n == 0 {
+                        None
+                    } else {
+                        Some(n.saturating_sub(1))
+                    }
+                });
+
+        // Previous value was 1 -> now 0: last client disconnected.
+        // Clear session-scoped allowances so they don't leak into the next session.
+        if result == Ok(1) {
+            tracing::info!("last client disconnected, clearing session allowances");
+            self.allowance_store.clear_session_allowances();
+        }
     }
 
     /// Number of active client connections.
@@ -1179,6 +1189,91 @@ mod tests {
         // fetch_update returns Err(0) when the closure returns None (no-op).
         assert!(result.is_err());
         assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    /// Mirrors the `connection_closed()` logic: only `Ok(1)` (previous value 1,
+    /// now 0) triggers `clear_session_allowances`. Update this test if
+    /// `connection_closed()` is refactored.
+    #[test]
+    fn test_last_disconnect_clears_session_allowances() {
+        use astrid_approval::AllowanceStore;
+        use astrid_approval::allowance::{Allowance, AllowanceId, AllowancePattern};
+        use astrid_core::types::Timestamp;
+        use astrid_crypto::KeyPair;
+
+        let store = AllowanceStore::new();
+        let keypair = KeyPair::generate();
+
+        // Session-only allowance (should be cleared on last disconnect).
+        store
+            .add_allowance(Allowance {
+                id: AllowanceId::new(),
+                action_pattern: AllowancePattern::ServerTools {
+                    server: "session-server".to_string(),
+                },
+                created_at: Timestamp::now(),
+                expires_at: None,
+                max_uses: None,
+                uses_remaining: None,
+                session_only: true,
+                workspace_root: None,
+                signature: keypair.sign(b"test"),
+            })
+            .unwrap();
+
+        // Persistent allowance (should survive).
+        store
+            .add_allowance(Allowance {
+                id: AllowanceId::new(),
+                action_pattern: AllowancePattern::ServerTools {
+                    server: "persistent-server".to_string(),
+                },
+                created_at: Timestamp::now(),
+                expires_at: None,
+                max_uses: None,
+                uses_remaining: None,
+                session_only: false,
+                workspace_root: None,
+                signature: keypair.sign(b"test"),
+            })
+            .unwrap();
+
+        assert_eq!(store.count(), 2);
+
+        // Two connections active. First disconnect: 2 -> 1 (not last).
+        let counter = AtomicUsize::new(2);
+        let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            if n == 0 {
+                None
+            } else {
+                Some(n.saturating_sub(1))
+            }
+        });
+        if result == Ok(1) {
+            store.clear_session_allowances();
+        }
+        assert_eq!(
+            store.count(),
+            2,
+            "both allowances should survive non-final disconnect"
+        );
+
+        // Second disconnect: 1 -> 0 (last client gone).
+        let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            if n == 0 {
+                None
+            } else {
+                Some(n.saturating_sub(1))
+            }
+        });
+        if result == Ok(1) {
+            store.clear_session_allowances();
+        }
+        assert_eq!(
+            store.count(),
+            1,
+            "session allowance should be cleared on last disconnect"
+        );
     }
 
     #[cfg(unix)]
