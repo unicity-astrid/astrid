@@ -79,15 +79,26 @@ const NS_ENTRIES: &str = "audit:entries";
 const NS_SESSION_INDEX: &str = "audit:session_index";
 const NS_CHAIN_HEADS: &str = "audit:chain_heads";
 
-/// Run an async future synchronously.
+/// Run an async future synchronously, bridging the sync [`AuditStorage`] trait
+/// to the async [`KvStore`](astrid_storage::kv::KvStore) trait.
 ///
-/// `SurrealKV` operations are fast in-process (no network), so bridging
-/// the sync `AuditStorage` trait to the async `KvStore` trait is safe.
+/// `SurrealKV` operations are fast in-process (no network), so blocking is safe.
 ///
-/// Handles three cases:
-/// - Inside an async context: uses a scoped thread to avoid the
-///   "cannot `block_on` from within a runtime" panic.
-/// - Outside a runtime: creates a temporary runtime.
+/// Handles three runtime contexts:
+/// - **Multi-threaded tokio runtime** (production): uses `block_in_place` to
+///   avoid O(N) OS thread churn when `verify_all()` or concurrent writes hit
+///   this path repeatedly.
+/// - **Single-threaded tokio runtime** (unit tests): uses a scoped thread
+///   because `block_in_place` panics on `current_thread` runtimes.
+/// - **No runtime** (sync `#[test]` functions): creates a temporary runtime.
+///
+/// # Panics
+///
+/// Panics if the temporary runtime cannot be created (no-runtime path) or if
+/// the scoped thread panics (single-threaded runtime path).
+///
+/// Must NOT be called from a `spawn_blocking` thread - `block_in_place` will
+/// panic in that context. All production callers run on tokio worker threads.
 fn block_on<F>(f: F) -> F::Output
 where
     F: std::future::Future + Send,
@@ -95,15 +106,23 @@ where
 {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
-            // Inside a tokio runtime — use a scoped thread to avoid panic.
-            std::thread::scope(|s| {
-                s.spawn(|| handle.block_on(f))
-                    .join()
-                    .expect("async thread panicked")
-            })
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+                // Multi-threaded runtime (production): block_in_place yields
+                // the worker thread to the runtime scheduler instead of
+                // spawning a new OS thread per storage operation.
+                tokio::task::block_in_place(|| handle.block_on(f))
+            } else {
+                // Single-threaded runtime (tests): block_in_place panics on
+                // current_thread runtimes, so fall back to a scoped thread.
+                std::thread::scope(|s| {
+                    s.spawn(|| handle.block_on(f))
+                        .join()
+                        .expect("async thread panicked")
+                })
+            }
         },
         Err(_) => {
-            // No runtime — create a lightweight current-thread runtime.
+            // No runtime (sync tests) - create a temporary one.
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
