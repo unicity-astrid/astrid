@@ -361,7 +361,7 @@ impl CapabilityStore {
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
 
             if let Err(e) = block_on(store.delete(NS_TOKENS, &key)) {
-                eprintln!("warning: failed to delete revoked token from caps:tokens: {e}");
+                tracing::warn!("failed to delete revoked token from caps:tokens: {e}");
             }
         }
 
@@ -421,20 +421,22 @@ impl CapabilityStore {
             }
         }
 
-        // Add to used set
+        // Persist first so KV is the ground truth. If the daemon crashes
+        // after this point, `load_used_tokens()` will still see it on
+        // restart.
+        if let Some(store) = &self.persistent_store {
+            let key = token_id.0.to_string();
+            block_on(store.set(NS_USED, &key, vec![1u8]))
+                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+        }
+
+        // Update in-memory state (rebuilt from KV on restart regardless).
         {
             let mut used = self
                 .used_tokens
                 .write()
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
             used.insert(token_id.clone());
-        }
-
-        // Persist if we have a store
-        if let Some(store) = &self.persistent_store {
-            let key = token_id.0.to_string();
-            block_on(store.set(NS_USED, &key, vec![1u8]))
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
         }
 
         Ok(())
@@ -759,6 +761,34 @@ mod tests {
             store2.get(&token_id),
             Err(CapabilityError::TokenRevoked { .. })
         ));
+        assert!(!store2.has_capability("mcp://test:tool", Permission::Invoke));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_mark_used_survives_restart() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token = CapabilityToken::create_with_options(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            true,
+        );
+
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+        store.mark_used(&token_id).unwrap();
+
+        // Reload - used state must survive.
+        drop(store);
+        let store2 = CapabilityStore::with_kv_store(kv).unwrap();
+        assert!(store2.is_used(&token_id));
         assert!(!store2.has_capability("mcp://test:tool", Permission::Invoke));
     }
 
