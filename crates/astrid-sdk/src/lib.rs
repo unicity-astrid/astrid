@@ -1174,6 +1174,7 @@ pub mod identity {
             found: bool,
             user_id: Option<String>,
             display_name: Option<String>,
+            error: Option<String>,
         }
         let resp: Resp = serde_json::from_slice(&resp_bytes)?;
         if resp.found {
@@ -1181,6 +1182,8 @@ pub mod identity {
                 user_id: resp.user_id.unwrap_or_default(),
                 display_name: resp.display_name,
             }))
+        } else if let Some(err) = resp.error {
+            Err(SysError::ApiError(err))
         } else {
             Ok(None)
         }

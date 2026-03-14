@@ -6,8 +6,8 @@
 //!
 //! ## KV Key Scheme
 //!
-//! Keys use `/` as the separator (safe because `normalize_platform()`
-//! produces lowercase ASCII with no `/`):
+//! Keys use `/` as the separator. Both `platform` and `platform_user_id`
+//! are validated to reject `/` and `\0` before key construction:
 //!
 //! - `user/{uuid}` - JSON-serialized [`AstridUserId`]
 //! - `link/{platform}/{platform_user_id}` - JSON-serialized [`FrontendLink`]
@@ -173,6 +173,20 @@ impl KvIdentityStore {
         Ok(())
     }
 
+    /// Validate that a platform name is safe for use as a KV key component.
+    ///
+    /// Rejects empty strings and strings containing `/` or `\0`, which would
+    /// allow key-path injection in the `link/{platform}/{platform_user_id}` scheme.
+    fn validate_platform(value: &str) -> Result<(), IdentityError> {
+        Self::validate_non_empty(value, "platform")?;
+        if value.contains('/') || value.contains('\0') {
+            return Err(IdentityError::InvalidInput(
+                "platform must not contain '/' or null bytes".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Validate that a platform user ID is safe for use as a KV key component.
     ///
     /// Rejects empty strings and strings containing `/` or `\0`, which would
@@ -229,7 +243,7 @@ impl IdentityStore for KvIdentityStore {
         platform: &str,
         platform_user_id: &str,
     ) -> Result<Option<AstridUserId>, IdentityError> {
-        Self::validate_non_empty(platform, "platform")?;
+        Self::validate_platform(platform)?;
         Self::validate_platform_user_id(platform_user_id)?;
 
         let normalized = normalize_platform(platform);
@@ -254,7 +268,7 @@ impl IdentityStore for KvIdentityStore {
         astrid_user_id: Uuid,
         method: &str,
     ) -> Result<FrontendLink, IdentityError> {
-        Self::validate_non_empty(platform, "platform")?;
+        Self::validate_platform(platform)?;
         Self::validate_platform_user_id(platform_user_id)?;
         Self::validate_non_empty(method, "method")?;
 
@@ -283,7 +297,7 @@ impl IdentityStore for KvIdentityStore {
     }
 
     async fn unlink(&self, platform: &str, platform_user_id: &str) -> Result<bool, IdentityError> {
-        Self::validate_non_empty(platform, "platform")?;
+        Self::validate_platform(platform)?;
         Self::validate_platform_user_id(platform_user_id)?;
 
         let normalized = normalize_platform(platform);
@@ -565,6 +579,31 @@ mod tests {
     async fn platform_user_id_with_null_rejected() {
         let store = make_store();
         let err = store.resolve("discord", "abc\0def").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn platform_with_slash_rejected() {
+        let store = make_store();
+        let user = store.create_user(None).await.unwrap();
+
+        let err = store
+            .link("a/b", "123", user.id, "admin")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+
+        let err = store.resolve("x/y", "123").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+
+        let err = store.unlink("m/n", "123").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn platform_with_null_rejected() {
+        let store = make_store();
+        let err = store.resolve("disc\0rd", "123").await.unwrap_err();
         assert!(matches!(err, IdentityError::InvalidInput(_)));
     }
 }
