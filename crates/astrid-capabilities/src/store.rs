@@ -18,6 +18,9 @@ const NS_TOKENS: &str = "caps:tokens";
 const NS_REVOKED: &str = "caps:revoked";
 const NS_USED: &str = "caps:used";
 
+/// Tombstone value for presence-only KV entries (revoked/used markers).
+const PRESENCE_MARKER: &[u8] = &[1];
+
 /// Run an async future synchronously.
 ///
 /// Handles three cases:
@@ -357,7 +360,7 @@ impl CapabilityStore {
         if let Some(store) = &self.persistent_store {
             let key = token_id.0.to_string();
 
-            block_on(store.set(NS_REVOKED, &key, vec![1u8]))
+            block_on(store.set(NS_REVOKED, &key, PRESENCE_MARKER.to_vec()))
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
 
             if let Err(e) = block_on(store.delete(NS_TOKENS, &key)) {
@@ -428,7 +431,7 @@ impl CapabilityStore {
         // because `block_on` spawns an OS thread and does not re-acquire
         // any lock on this store.
         if let Some(store) = &self.persistent_store {
-            block_on(store.set(NS_USED, &token_id.0.to_string(), vec![1u8]))
+            block_on(store.set(NS_USED, &token_id.0.to_string(), PRESENCE_MARKER.to_vec()))
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
         }
 
