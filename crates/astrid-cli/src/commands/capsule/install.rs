@@ -749,9 +749,9 @@ fn bake_topics(
                 );
             }
 
-            // Open once and hold the descriptor to eliminate TOCTOU between
-            // size check and read (the file can't be swapped while open).
-            let mut file = std::fs::File::open(&canonical).with_context(|| {
+            // Open once and use .take() to enforce a hard ceiling on bytes read,
+            // preventing a concurrent append from bypassing the size limit.
+            let file = std::fs::File::open(&canonical).with_context(|| {
                 format!(
                     "failed to open schema file for topic '{}': '{}'",
                     topic.name,
@@ -771,15 +771,28 @@ fn bake_topics(
                     MAX_SCHEMA_FILE_SIZE
                 );
             }
-            let mut content =
-                String::with_capacity(usize::try_from(file_len).unwrap_or(usize::MAX));
-            std::io::Read::read_to_string(&mut file, &mut content).with_context(|| {
+            let capacity = usize::try_from(file_len).unwrap_or(usize::MAX);
+            let mut content = String::with_capacity(capacity);
+            // Read at most MAX_SCHEMA_FILE_SIZE + 1 bytes so we can detect growth.
+            std::io::Read::read_to_string(
+                &mut std::io::Read::take(file, MAX_SCHEMA_FILE_SIZE + 1),
+                &mut content,
+            )
+            .with_context(|| {
                 format!(
                     "failed to read schema file for topic '{}': '{}'",
                     topic.name,
                     canonical.display()
                 )
             })?;
+            if content.len() as u64 > MAX_SCHEMA_FILE_SIZE {
+                bail!(
+                    "[[topic]] '{}' schema file '{}' exceeded the {} byte limit during read",
+                    topic.name,
+                    schema_path.display(),
+                    MAX_SCHEMA_FILE_SIZE
+                );
+            }
             let value: serde_json::Value = serde_json::from_str(&content).with_context(|| {
                 format!(
                     "[[topic]] '{}' schema file '{}' contains invalid JSON",

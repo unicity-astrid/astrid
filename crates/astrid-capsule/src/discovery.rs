@@ -284,13 +284,29 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
                 });
             }
 
-            // Topic declarations are concrete API contracts - wildcards are not allowed.
-            if topic.name.split('.').any(|seg| seg == "*") {
+            // Topic names must contain only alphanumeric, hyphens, underscores, and dots.
+            // This implicitly rejects wildcards (*) and other special characters.
+            if !topic
+                .name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+            {
+                // Provide a specific message for wildcards since that's a common mistake.
+                if topic.name.contains('*') {
+                    return Err(CapsuleError::ManifestParseError {
+                        path: path.to_path_buf(),
+                        message: format!(
+                            "[[topic]] name '{}' must be a concrete topic name, not a pattern \
+                             (wildcards are not allowed in topic declarations)",
+                            topic.name
+                        ),
+                    });
+                }
                 return Err(CapsuleError::ManifestParseError {
                     path: path.to_path_buf(),
                     message: format!(
-                        "[[topic]] name '{}' must be a concrete topic name, not a pattern \
-                         (wildcards are not allowed in topic declarations)",
+                        "[[topic]] name '{}' contains invalid characters \
+                         (only alphanumeric, hyphens, underscores, and dots are allowed)",
                         topic.name
                     ),
                 });
@@ -706,6 +722,24 @@ version = "0.1.0"
             assert!(
                 msg.contains("wildcard"),
                 "expected wildcard error for name '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn topic_rejects_invalid_characters() {
+        for bad in &["llm response", "foo@bar", "a/b/c", "topic!bang"] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{bad}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("invalid characters"),
+                "expected invalid characters error for name '{bad}', got: {msg}"
             );
         }
     }
