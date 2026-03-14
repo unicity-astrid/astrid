@@ -23,6 +23,7 @@
 //! response secrets enter the LLM context window.
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
@@ -53,9 +54,9 @@ pub struct FetchUrlArgs {
 
 /// The request format expected by the host's `astrid_http_request`.
 #[derive(Serialize)]
-struct HostHttpRequest {
-    url: String,
-    method: String,
+struct HostHttpRequest<'a> {
+    url: &'a str,
+    method: &'a str,
     headers: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     body: Option<String>,
@@ -101,23 +102,58 @@ fn validate_url(url: &str) -> Result<(), &'static str> {
 }
 
 /// Allowed HTTP methods. Matches the set supported by the host.
-const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+///
+/// Parsing via `FromStr` handles case-insensitive matching and rejects
+/// unsupported methods (TRACE, CONNECT, etc.) at the type level.
+#[derive(Debug)]
+enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+    Head,
+    Options,
+}
 
-/// Validate an HTTP method against the allowed set.
-fn validate_method(method: &str) -> Result<(), String> {
-    if ALLOWED_METHODS.contains(&method) {
-        Ok(())
-    } else {
-        Err(format!("unsupported HTTP method: {method}"))
+impl HttpMethod {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Delete => "DELETE",
+            Self::Patch => "PATCH",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+        }
+    }
+}
+
+impl FromStr for HttpMethod {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "GET" => Ok(Self::Get),
+            "POST" => Ok(Self::Post),
+            "PUT" => Ok(Self::Put),
+            "DELETE" => Ok(Self::Delete),
+            "PATCH" => Ok(Self::Patch),
+            "HEAD" => Ok(Self::Head),
+            "OPTIONS" => Ok(Self::Options),
+            _ => Err(format!("unsupported HTTP method: {s}")),
+        }
     }
 }
 
 /// Truncate the body to `max_len` bytes at a valid UTF-8 boundary.
 ///
+/// Takes ownership to avoid cloning when the body fits within the limit.
 /// Returns `(body, was_truncated)`.
-fn truncate_body(body: &str, max_len: usize) -> (String, bool) {
+fn truncate_body(body: String, max_len: usize) -> (String, bool) {
     if body.len() <= max_len {
-        return (body.to_string(), false);
+        return (body, false);
     }
     let end = body.floor_char_boundary(max_len);
     let truncated = format!(
@@ -141,12 +177,16 @@ impl HttpTools {
         let url = args.url.trim();
         validate_url(url).map_err(|e| SysError::ApiError(e.into()))?;
 
-        let method = args.method.as_deref().unwrap_or("GET").to_uppercase();
-        validate_method(&method).map_err(SysError::ApiError)?;
+        let method: HttpMethod = args
+            .method
+            .as_deref()
+            .unwrap_or("GET")
+            .parse()
+            .map_err(SysError::ApiError)?;
 
         let request = HostHttpRequest {
-            url: url.to_string(),
-            method,
+            url,
+            method: method.as_str(),
             headers: args.headers.unwrap_or_default(),
             body: args.body,
         };
@@ -159,7 +199,7 @@ impl HttpTools {
         let response: HostHttpResponse = serde_json::from_slice(&response_bytes)
             .map_err(|e| SysError::ApiError(format!("failed to parse host response: {e}")))?;
 
-        let (body, truncated) = truncate_body(&response.body, MAX_RESPONSE_BODY_LEN);
+        let (body, truncated) = truncate_body(response.body, MAX_RESPONSE_BODY_LEN);
 
         let result = FetchResult {
             status: response.status,
@@ -234,40 +274,37 @@ mod tests {
         assert_eq!(validate_url("Http://example.com"), Ok(()));
     }
 
-    // -- Method normalization --
+    // -- HttpMethod parsing --
 
     #[test]
     fn method_defaults_to_get() {
         let method: Option<String> = None;
-        assert_eq!(method.as_deref().unwrap_or("GET").to_uppercase(), "GET");
+        let parsed: HttpMethod = method.as_deref().unwrap_or("GET").parse().unwrap();
+        assert_eq!(parsed.as_str(), "GET");
     }
 
     #[test]
-    fn method_uppercased() {
-        let method = Some("post".to_string());
-        assert_eq!(method.as_deref().unwrap_or("GET").to_uppercase(), "POST");
+    fn method_case_insensitive() {
+        assert_eq!("post".parse::<HttpMethod>().unwrap().as_str(), "POST");
+        assert_eq!("Get".parse::<HttpMethod>().unwrap().as_str(), "GET");
     }
 
-    // -- Method validation --
-
     #[test]
-    fn validate_method_accepts_all_standard() {
-        for m in ALLOWED_METHODS {
-            assert!(validate_method(m).is_ok(), "should accept {m}");
+    fn method_accepts_all_standard() {
+        for m in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] {
+            assert!(m.parse::<HttpMethod>().is_ok(), "should accept {m}");
         }
     }
 
     #[test]
-    fn validate_method_rejects_trace() {
-        assert_eq!(
-            validate_method("TRACE"),
-            Err("unsupported HTTP method: TRACE".into())
-        );
+    fn method_rejects_trace() {
+        let err = "TRACE".parse::<HttpMethod>().unwrap_err();
+        assert_eq!(err, "unsupported HTTP method: TRACE");
     }
 
     #[test]
-    fn validate_method_rejects_arbitrary() {
-        assert!(validate_method("FROBNICATE").is_err());
+    fn method_rejects_arbitrary() {
+        assert!("FROBNICATE".parse::<HttpMethod>().is_err());
     }
 
     // -- FetchResult serialization --
@@ -302,7 +339,7 @@ mod tests {
 
     #[test]
     fn truncate_short_body_unchanged() {
-        let (body, truncated) = truncate_body("hello", 100);
+        let (body, truncated) = truncate_body("hello".to_string(), 100);
         assert_eq!(body, "hello");
         assert!(!truncated);
     }
@@ -310,7 +347,7 @@ mod tests {
     #[test]
     fn truncate_exact_limit_unchanged() {
         let input = "a".repeat(200);
-        let (body, truncated) = truncate_body(&input, 200);
+        let (body, truncated) = truncate_body(input.clone(), 200);
         assert_eq!(body, input);
         assert!(!truncated);
     }
@@ -318,7 +355,7 @@ mod tests {
     #[test]
     fn truncate_long_body() {
         let input = "a".repeat(300);
-        let (body, truncated) = truncate_body(&input, 200);
+        let (body, truncated) = truncate_body(input, 200);
         assert!(truncated);
         assert!(body.contains("[...truncated, 300 bytes total]"));
         let prefix_end = body.find("\n\n[...truncated").expect("marker missing");
@@ -329,7 +366,7 @@ mod tests {
     fn truncate_at_multibyte_char_boundary() {
         // Each emoji is 4 bytes
         let input = "\u{1F600}".repeat(100); // 400 bytes
-        let (body, truncated) = truncate_body(&input, 10);
+        let (body, truncated) = truncate_body(input, 10);
         assert!(truncated);
         // floor_char_boundary(10) for 4-byte chars = 8, so 2 emoji chars
         let prefix_end = body.find("\n\n[...truncated").expect("marker missing");
