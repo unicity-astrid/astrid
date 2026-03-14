@@ -159,13 +159,16 @@ impl FsTools {
 
     #[astrid::tool("delete_file")]
     pub fn delete_file(&self, args: DeleteFileArgs) -> Result<String, SysError> {
-        if !fs::exists(&args.file_path)? {
-            return Err(SysError::ApiError(format!(
-                "file does not exist: {}",
-                args.file_path
-            )));
-        }
-        if file_stat(&args.file_path)?.is_dir {
+        let stat = match file_stat(&args.file_path) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(SysError::ApiError(format!(
+                    "file does not exist: {}",
+                    args.file_path
+                )));
+            }
+        };
+        if stat.is_dir {
             return Err(SysError::ApiError(format!(
                 "{} is a directory, not a file; delete_file only supports files",
                 args.file_path
@@ -235,8 +238,22 @@ fn file_stat(path: &str) -> Result<FileStat, SysError> {
     let stat_bytes = fs::metadata(path)?;
     let val: serde_json::Value = serde_json::from_slice(&stat_bytes)
         .map_err(|e| SysError::ApiError(format!("failed to parse metadata for {path}: {e}")))?;
-    let is_dir = val.get("isDir").and_then(|v| v.as_bool()).unwrap_or(false);
-    let size = val.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+    let is_dir = val
+        .get("isDir")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| {
+            SysError::ApiError(format!(
+                "metadata for {path} is missing or has invalid 'isDir' field"
+            ))
+        })?;
+    let size = val
+        .get("size")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            SysError::ApiError(format!(
+                "metadata for {path} is missing or has invalid 'size' field"
+            ))
+        })?;
     Ok(FileStat { is_dir, size })
 }
 
