@@ -161,6 +161,17 @@ impl InputBuffer {
             return;
         }
 
+        // If cursor is ON a non-leading PasteBlock, delete it directly.
+        if matches!(
+            self.segments.get(seg_idx),
+            Some(InputSegment::PasteBlock { .. })
+        ) {
+            self.segments.remove(seg_idx);
+            self.cursor.0 = seg_idx.saturating_sub(1);
+            self.normalize();
+            return;
+        }
+
         // Delete the previous segment if it's a PasteBlock, or the last char of the
         // previous Text segment.
         let prev_idx = seg_idx.saturating_sub(1);
@@ -426,9 +437,23 @@ impl InputBuffer {
                 }
             },
             InputSegment::PasteBlock { .. } => {
-                // Insert before the current PasteBlock.
+                // Insert before the current PasteBlock and add trailing Text
+                // so the cursor always has a typeable segment to land on.
                 self.segments.insert(seg_idx, block);
-                self.cursor = (seg_idx.saturating_add(1), 0);
+                let after_idx = seg_idx.saturating_add(1);
+                // Ensure there's a Text segment after the original PasteBlock.
+                let orig_paste_idx = after_idx;
+                let needs_trailing = !matches!(
+                    self.segments.get(orig_paste_idx.saturating_add(1)),
+                    Some(InputSegment::Text(_))
+                );
+                if needs_trailing {
+                    self.segments.insert(
+                        orig_paste_idx.saturating_add(1),
+                        InputSegment::Text(String::new()),
+                    );
+                }
+                self.cursor = (orig_paste_idx.saturating_add(1), 0);
             },
         }
 
@@ -1279,6 +1304,20 @@ mod tests {
         buf.backspace();
         assert!(!buf.has_paste_blocks());
         assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn input_buffer_backspace_non_leading_paste_block() {
+        let mut buf = InputBuffer::default();
+        buf.insert_char('x');
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_char('y');
+        // [Text("x"), PasteBlock("A\nB"), Text("y")], cursor at (2, 1)
+        buf.backspace(); // removes 'y'
+        assert_eq!(buf.flat_text(), "xA\nB");
+        buf.backspace(); // should remove PasteBlock, NOT 'x'
+        assert!(!buf.has_paste_blocks());
+        assert_eq!(buf.flat_text(), "x");
     }
 
     #[test]
