@@ -56,6 +56,9 @@ fn handle_paste(app: &mut App, text: &str) {
         };
         let mut bytes: usize = 0;
         for c in text.chars() {
+            if matches!(c, '\r' | '\0') {
+                continue;
+            }
             bytes = bytes.saturating_add(c.len_utf8());
             if bytes > limit {
                 break;
@@ -1179,6 +1182,122 @@ mod tests {
         } else {
             panic!("expected Onboarding state");
         }
+    }
+
+    // ─── handle_paste integration tests ───────────────────────────
+
+    #[test]
+    fn paste_single_line_inserts_as_text() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "hello world");
+        assert_eq!(app.input_buf.flat_text(), "hello world");
+        assert!(!app.input_buf.has_paste_blocks());
+    }
+
+    #[test]
+    fn paste_multi_line_creates_paste_block() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "line1\nline2\nline3");
+        assert!(app.input_buf.has_paste_blocks());
+        assert_eq!(app.input_buf.flat_text(), "line1\nline2\nline3");
+    }
+
+    #[test]
+    fn paste_normalizes_crlf_in_multi_line() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "line1\r\nline2\r\n");
+        assert_eq!(app.input_buf.flat_text(), "line1\nline2\n");
+    }
+
+    #[test]
+    fn paste_strips_null_bytes_in_multi_line() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "a\0b\nc\0d");
+        assert_eq!(app.input_buf.flat_text(), "ab\ncd");
+    }
+
+    #[test]
+    fn paste_single_line_strips_cr_and_null() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "foo\rbar\0baz");
+        assert_eq!(app.input_buf.flat_text(), "foobarbaz");
+    }
+
+    #[test]
+    fn paste_in_non_input_state_is_dropped() {
+        let mut app = make_app();
+        app.state = UiState::Thinking {
+            start_time: std::time::Instant::now(),
+            dots: 0,
+        };
+        handle_paste(&mut app, "should not appear");
+        assert!(app.input_buf.is_empty());
+    }
+
+    #[test]
+    fn paste_in_interrupted_transitions_to_idle() {
+        let mut app = make_app();
+        app.state = UiState::Interrupted;
+        handle_paste(&mut app, "after interrupt");
+        assert!(matches!(app.state, UiState::Idle));
+        assert_eq!(app.input_buf.flat_text(), "after interrupt");
+    }
+
+    #[test]
+    fn paste_resets_quit_pending() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        app.quit_pending = true;
+        handle_paste(&mut app, "text");
+        assert!(!app.quit_pending);
+    }
+
+    #[test]
+    fn paste_multi_line_rejected_in_slash_command() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        app.input_buf.set_text("/command".into());
+        handle_paste(&mut app, "line1\nline2");
+        // Should still be just the slash command text, paste rejected.
+        assert_eq!(app.input_buf.flat_text(), "/command");
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.content.contains("Multi-line paste not supported")),
+        );
+    }
+
+    #[test]
+    fn paste_empty_string_is_noop() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        handle_paste(&mut app, "");
+        assert!(app.input_buf.is_empty());
+    }
+
+    #[test]
+    fn paste_single_line_truncated_at_max() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        let big = "x".repeat(MAX_PASTE_LEN + 100);
+        handle_paste(&mut app, &big);
+        assert_eq!(app.input_buf.flat_text().len(), MAX_PASTE_LEN);
+        assert!(app.messages.iter().any(|m| m.content.contains("Truncated")),);
+    }
+
+    #[test]
+    fn paste_multi_line_truncated_at_max() {
+        let mut app = make_app();
+        app.state = UiState::Idle;
+        let big = "line\n".repeat(MAX_PASTE_LEN);
+        handle_paste(&mut app, &big);
+        assert!(app.input_buf.flat_text().len() <= MAX_PASTE_LEN);
+        assert!(app.messages.iter().any(|m| m.content.contains("Truncated")),);
     }
 
     #[test]

@@ -319,8 +319,19 @@ impl InputBuffer {
     }
 
     /// Move cursor to the start of the buffer.
+    ///
+    /// If the first segment is a `PasteBlock`, skips to the first Text
+    /// segment so the cursor remains visible and typeable.
     pub(crate) fn move_home(&mut self) {
         self.cursor = (0, 0);
+        if matches!(self.segments.first(), Some(InputSegment::PasteBlock { .. }))
+            && let Some(idx) = self
+                .segments
+                .iter()
+                .position(|s| matches!(s, InputSegment::Text(_)))
+        {
+            self.cursor = (idx, 0);
+        }
     }
 
     /// Move cursor to the end of the buffer.
@@ -1446,11 +1457,14 @@ mod tests {
     #[test]
     fn input_buffer_delete_forward_at_paste_block() {
         let mut buf = InputBuffer::default();
+        buf.insert_char('a');
         buf.insert_paste("X\nY".to_string());
-        buf.move_home();
-        // Cursor is at start, which is the PasteBlock.
+        // Cursor is on the trailing Text after the PasteBlock.
+        // Move to end of the first Text segment ("a"), right before the PasteBlock.
+        buf.cursor = (0, 1);
         buf.delete_forward();
         assert!(!buf.has_paste_blocks());
+        assert_eq!(buf.flat_text(), "a");
     }
 
     #[test]

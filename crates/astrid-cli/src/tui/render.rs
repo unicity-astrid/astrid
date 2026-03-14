@@ -5,9 +5,10 @@ use super::state::{
     ToolStatusKind, UiState,
 };
 
+use super::theme::Theme;
+
 /// Maximum number of paste block lines to show in the preview.
 const PASTE_PREVIEW_MAX: usize = 10;
-use super::theme::Theme;
 use astrid_core::truncate_to_boundary;
 use ratatui::{
     Frame,
