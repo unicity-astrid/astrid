@@ -410,6 +410,8 @@ fn handle_daemon_event(app: &mut App, event: AstridEvent) {
 
         // Session hydration: populate conversation history from the session store.
         // Only fires once per boot - correlation ID is cleared after the first response.
+        // The session capsule publishes raw JSON (no "type" tag), so the host
+        // wraps it as IpcPayload::Custom via IpcPayload::from_json_value.
         if let Some(cid) = &app.hydration_correlation_id
             && message.topic == format!("session.v1.response.get_messages.{cid}")
             && let astrid_events::ipc::IpcPayload::Custom { data } = &message.payload
