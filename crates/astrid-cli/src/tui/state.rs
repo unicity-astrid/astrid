@@ -266,7 +266,12 @@ impl InputBuffer {
                     let prev_prev = prev_idx.saturating_sub(1);
                     match &self.segments[prev_prev] {
                         InputSegment::Text(t) => self.cursor = (prev_prev, t.len()),
-                        InputSegment::PasteBlock { .. } => self.cursor = (prev_prev, 0),
+                        InputSegment::PasteBlock { .. } => {
+                            // Two consecutive PasteBlocks: insert a Text between them.
+                            self.segments
+                                .insert(prev_idx, InputSegment::Text(String::new()));
+                            self.cursor = (prev_idx, 0);
+                        },
                     }
                 }
             },
@@ -302,21 +307,17 @@ impl InputBuffer {
                 },
             }
 
-            // Move to next segment.
-            let next_idx = seg_idx.saturating_add(1);
-            if next_idx < self.segments.len() {
-                self.cursor = (next_idx, 0);
-                // If the next segment is also a PasteBlock, move past it too.
-                if matches!(self.segments[next_idx], InputSegment::PasteBlock { .. }) {
-                    let after = next_idx.saturating_add(1);
-                    if after < self.segments.len() {
-                        self.cursor = (after, 0);
-                    } else {
-                        // At end, stay on the PasteBlock at offset 0 (conceptually after it).
-                        self.cursor = (next_idx, 0);
-                    }
-                }
+            // Move to next segment, skipping over all consecutive PasteBlocks.
+            let mut target = seg_idx.saturating_add(1);
+            while target < self.segments.len()
+                && matches!(self.segments[target], InputSegment::PasteBlock { .. })
+            {
+                target = target.saturating_add(1);
             }
+            if target < self.segments.len() {
+                self.cursor = (target, 0);
+            }
+            // else: already at the end of the last segment - no-op.
             // else: already at the end of the last segment.
         }
     }
@@ -327,13 +328,18 @@ impl InputBuffer {
     /// segment so the cursor remains visible and typeable.
     pub(crate) fn move_home(&mut self) {
         self.cursor = (0, 0);
-        if matches!(self.segments.first(), Some(InputSegment::PasteBlock { .. }))
-            && let Some(idx) = self
+        if matches!(self.segments.first(), Some(InputSegment::PasteBlock { .. })) {
+            if let Some(idx) = self
                 .segments
                 .iter()
                 .position(|s| matches!(s, InputSegment::Text(_)))
-        {
-            self.cursor = (idx, 0);
+            {
+                self.cursor = (idx, 0);
+            } else {
+                // All segments are PasteBlocks: insert a leading Text.
+                self.segments.insert(0, InputSegment::Text(String::new()));
+                self.cursor = (0, 0);
+            }
         }
     }
 
@@ -1528,6 +1534,33 @@ mod tests {
         // Typing should insert before the PasteBlock.
         buf.insert_char('z');
         assert_eq!(buf.flat_text(), "zX\nY");
+    }
+
+    #[test]
+    fn input_buffer_move_left_through_consecutive_paste_blocks() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_paste("C\nD".to_string());
+        // cursor at trailing Text. Move left should skip PasteBlock(B).
+        buf.move_left();
+        assert!(matches!(buf.segments[buf.cursor.0], InputSegment::Text(_)));
+        // Move left again should skip PasteBlock(A) and insert leading Text.
+        buf.move_left();
+        assert!(matches!(buf.segments[buf.cursor.0], InputSegment::Text(_)));
+        buf.insert_char('z');
+        assert_eq!(buf.flat_text(), "zA\nBC\nD");
+    }
+
+    #[test]
+    fn input_buffer_move_right_through_consecutive_paste_blocks() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_paste("C\nD".to_string());
+        buf.insert_paste("E\nF".to_string());
+        buf.move_home();
+        // Right should skip all consecutive PasteBlocks and land on trailing Text.
+        buf.move_right();
+        assert!(matches!(buf.segments[buf.cursor.0], InputSegment::Text(_)));
     }
 
     #[test]

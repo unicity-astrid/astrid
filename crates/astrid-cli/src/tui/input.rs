@@ -77,7 +77,8 @@ fn handle_paste(app: &mut App, text: &str) {
         return;
     }
 
-    // Multi-line paste in secret onboarding fields would leak content in plaintext.
+    // Multi-line paste in secret/array onboarding fields is not supported.
+    // Secret: would leak content in plaintext. Array: each item is single-line.
     if let UiState::Onboarding {
         fields,
         current_idx,
@@ -87,10 +88,11 @@ fn handle_paste(app: &mut App, text: &str) {
             matches!(
                 f.field_type,
                 astrid_events::ipc::OnboardingFieldType::Secret
+                    | astrid_events::ipc::OnboardingFieldType::Array
             )
         })
     {
-        app.push_notice("Multi-line paste not supported in secret fields.");
+        app.push_notice("Multi-line paste not supported in this field type.");
         app.quit_pending = false;
         return;
     }
@@ -1349,7 +1351,24 @@ mod tests {
         handle_paste(&mut app, "line1\nline2");
         // Multi-line paste rejected, input unchanged.
         assert!(app.input_buf.is_empty());
-        assert!(app.messages.iter().any(|m| m.content.contains("secret")),);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.content.contains("not supported in this field type")),
+        );
+    }
+
+    #[test]
+    fn paste_multi_line_rejected_in_array_field() {
+        let mut app = make_app();
+        set_onboarding_with_array(&mut app);
+        handle_paste(&mut app, "url1\nurl2\nurl3");
+        assert!(app.input_buf.is_empty());
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.content.contains("not supported in this field type")),
+        );
     }
 
     #[test]

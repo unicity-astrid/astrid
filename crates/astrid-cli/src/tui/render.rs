@@ -6,9 +6,6 @@ use super::state::{
 };
 
 use super::theme::Theme;
-
-/// Maximum number of paste block lines to show in the preview.
-const PASTE_PREVIEW_MAX: usize = 10;
 use astrid_core::truncate_to_boundary;
 use ratatui::{
     Frame,
@@ -17,6 +14,9 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
+
+/// Maximum number of paste block lines to show in the preview.
+const PASTE_PREVIEW_MAX: usize = 10;
 
 // ─── Public Helpers ──────────────────────────────────────────────
 
@@ -1047,6 +1047,16 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                                 format!("       ... +{remaining} more lines"),
                                 Style::default().fg(theme.muted),
                             )));
+                        }
+                        // Defense-in-depth: render cursor if it somehow lands on a PasteBlock.
+                        if seg_idx == cursor_seg && !is_enum {
+                            lines.push(Line::from(vec![
+                                Span::styled("  ", input_style),
+                                Span::styled(
+                                    cursor_str.to_string(),
+                                    Style::default().fg(cursor_color),
+                                ),
+                            ]));
                         }
                     },
                 }
