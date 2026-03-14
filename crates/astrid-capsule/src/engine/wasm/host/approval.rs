@@ -88,14 +88,16 @@ fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsul
         .collect();
 
     // Only warn for control-char stripping or truncation, not whitespace trim.
-    let trimmed_chars = trimmed.chars().count();
-    let sanitized_chars = sanitized.chars().count();
-    if sanitized_chars != trimmed_chars {
+    // Use byte-length comparison for O(1) detection; compute char counts only
+    // inside the warning branch to avoid an O(N) scan on the full input.
+    if sanitized.len() != trimmed.len() {
+        let original_chars = trimmed.chars().count();
+        let sanitized_chars = sanitized.chars().count();
         tracing::warn!(
             capsule = %capsule_id,
             field = field_name,
-            original_chars = trimmed_chars,
-            sanitized_chars = sanitized_chars,
+            original_chars,
+            sanitized_chars,
             "{field_name} sanitized: control characters stripped or length truncated"
         );
     }
