@@ -20,6 +20,13 @@ use uuid::Uuid;
 /// Maximum timeout for approval requests (60 seconds).
 const MAX_APPROVAL_TIMEOUT_MS: u64 = 60_000;
 
+/// Maximum length for action strings from WASM guests.
+///
+/// Actions longer than this are rejected at the entry point and truncated
+/// in the sanitization layer. Prevents DoS via oversized glob pattern
+/// compilation.
+const MAX_ACTION_LEN: usize = 256;
+
 /// The wire format sent by the SDK's `approval::request` function.
 #[derive(Deserialize)]
 struct GuestApprovalRequest {
@@ -49,12 +56,43 @@ fn check_allowance(
         .is_some()
 }
 
+/// Sanitize a guest-supplied action string for safe use in glob patterns.
+///
+/// Defense layer 1: strips control characters and enforces a length cap.
+/// Runs BEFORE [`escape_glob_metacharacters`] (layer 2). Together they
+/// guarantee that no guest input can produce a dangerous or oversized glob
+/// pattern. All printable characters are preserved - shell operators and
+/// glob wildcards are handled by downstream layers.
+///
+/// Logs a warning if any characters were stripped or the string was
+/// truncated, identifying the capsule for audit purposes.
+fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
+    let trimmed = action.trim();
+    let sanitized: String = trimmed
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_ACTION_LEN)
+        .collect();
+
+    if sanitized != trimmed {
+        tracing::warn!(
+            capsule = %capsule_id,
+            original_len = trimmed.len(),
+            sanitized_len = sanitized.len(),
+            "Action string sanitized: control characters stripped or length truncated"
+        );
+    }
+
+    sanitized
+}
+
 /// Escape glob metacharacters in a guest-supplied action string.
 ///
-/// Without this, a malicious capsule could set `action = "*"` to produce
-/// the pattern `"* *"`, which matches any two-token command. Escaping
-/// preserves legitimate characters like `@` (npm scoped packages) while
-/// neutralising glob wildcards.
+/// Defense layer 2: escapes glob wildcards (`*`, `?`, `[`, `]`, `{`, `}`,
+/// `\`) so they are matched literally. Layer 1
+/// ([`sanitize_action_for_pattern`]) strips control characters and enforces
+/// length. Layer 3 ([`contains_shell_operators`] in `pattern.rs`) rejects
+/// shell injection at match time.
 fn escape_glob_metacharacters(action: &str) -> String {
     let mut escaped = String::with_capacity(action.len());
     for c in action.chars() {
@@ -76,6 +114,7 @@ fn create_allowance_from_decision(
     action: &str,
     decision: &str,
     workspace_root: Option<std::path::PathBuf>,
+    capsule_id: &str,
 ) {
     let session_only = match decision {
         "approve_session" => true,
@@ -89,7 +128,10 @@ fn create_allowance_from_decision(
         _ => return,
     };
 
-    let sanitized = escape_glob_metacharacters(action);
+    // Layer 1: strip control characters, enforce length cap.
+    let sanitized = sanitize_action_for_pattern(action, capsule_id);
+    // Layer 2: escape glob metacharacters so wildcards match literally.
+    let sanitized = escape_glob_metacharacters(&sanitized);
     let pattern = AllowancePattern::CommandPattern {
         command: format!("{sanitized} *"),
     };
@@ -127,8 +169,29 @@ pub(crate) fn astrid_request_approval_impl(
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
     let request_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
-    let guest_req: GuestApprovalRequest = serde_json::from_slice(&request_bytes)
+    let mut guest_req: GuestApprovalRequest = serde_json::from_slice(&request_bytes)
         .map_err(|e| Error::msg(format!("invalid approval request JSON: {e}")))?;
+
+    // Validate and sanitize the action string at the entry point.
+    if guest_req.action.len() > MAX_ACTION_LEN {
+        return Err(Error::msg(format!(
+            "approval request action exceeds maximum length ({} > {MAX_ACTION_LEN})",
+            guest_req.action.len()
+        )));
+    }
+    if guest_req.action.chars().any(|c| c.is_control()) {
+        let cleaned: String = guest_req
+            .action
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        tracing::warn!(
+            original_len = guest_req.action.len(),
+            cleaned_len = cleaned.len(),
+            "Approval action contained control characters, stripped"
+        );
+        guest_req.action = cleaned;
+    }
 
     let ud = user_data.get()?;
 
@@ -259,6 +322,7 @@ pub(crate) fn astrid_request_approval_impl(
                                 &guest_req.action,
                                 decision,
                                 Some(workspace_root.clone()),
+                                &capsule_id,
                             );
                         }
 
@@ -351,7 +415,7 @@ mod tests {
     #[test]
     fn create_allowance_approve_session() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve_session", None);
+        create_allowance_from_decision(&store, "git push", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
         // The created pattern should match "git push origin main"
         assert!(check_allowance(&store, "git push origin main", None));
@@ -360,7 +424,7 @@ mod tests {
     #[test]
     fn create_allowance_approve_always() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "docker run", "approve_always", None);
+        create_allowance_from_decision(&store, "docker run", "approve_always", None, "test");
         assert_eq!(store.count(), 1);
         assert!(check_allowance(&store, "docker run my-image", None));
     }
@@ -368,23 +432,23 @@ mod tests {
     #[test]
     fn create_allowance_simple_approve_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve", None);
+        create_allowance_from_decision(&store, "git push", "approve", None, "test");
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_deny_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "deny", None);
+        create_allowance_from_decision(&store, "git push", "deny", None, "test");
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_garbage_decision_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "garbage", None);
+        create_allowance_from_decision(&store, "git push", "garbage", None, "test");
         assert_eq!(store.count(), 0);
-        create_allowance_from_decision(&store, "git push", "", None);
+        create_allowance_from_decision(&store, "git push", "", None, "test");
         assert_eq!(store.count(), 0);
     }
 
@@ -440,7 +504,7 @@ mod tests {
         let store = AllowanceStore::new();
         // A malicious capsule sends action = "*" hoping to get pattern "* *"
         // After escaping, pattern becomes "\* *" which won't match normal commands.
-        create_allowance_from_decision(&store, "*", "approve_session", None);
+        create_allowance_from_decision(&store, "*", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
         assert!(!check_allowance(&store, "git push origin main", None));
     }
@@ -448,7 +512,7 @@ mod tests {
     #[test]
     fn create_allowance_empty_action() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "", "approve_session", None);
+        create_allowance_from_decision(&store, "", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
         // Pattern " *" matches nothing useful
         assert!(!check_allowance(&store, "git push", None));
@@ -459,8 +523,111 @@ mod tests {
         // "approve" (one-time) should NOT create an allowance. The next
         // identical call will re-prompt the user.
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve", None);
+        create_allowance_from_decision(&store, "git push", "approve", None, "test");
         assert_eq!(store.count(), 0);
         assert!(!check_allowance(&store, "git push origin main", None));
+    }
+
+    // --- sanitize_action_for_pattern tests ---
+
+    #[test]
+    fn sanitize_action_preserves_shell_fragments() {
+        // Legitimate commands with shell-like characters must pass through
+        // unchanged - they are handled by escape (layer 2) and
+        // contains_shell_operators (layer 3), not this layer.
+        assert_eq!(
+            sanitize_action_for_pattern("python -c 'print(\"hello\")'", "test"),
+            "python -c 'print(\"hello\")'"
+        );
+        assert_eq!(
+            sanitize_action_for_pattern("awk '{print $1}' file.txt", "test"),
+            "awk '{print $1}' file.txt"
+        );
+        assert_eq!(
+            sanitize_action_for_pattern("bash -c 'echo $HOME'", "test"),
+            "bash -c 'echo $HOME'"
+        );
+        assert_eq!(
+            sanitize_action_for_pattern("g++ main.cpp", "test"),
+            "g++ main.cpp"
+        );
+        assert_eq!(
+            sanitize_action_for_pattern("npm install @types/react", "test"),
+            "npm install @types/react"
+        );
+        assert_eq!(
+            sanitize_action_for_pattern("docker run ubuntu:latest", "test"),
+            "docker run ubuntu:latest"
+        );
+    }
+
+    #[test]
+    fn sanitize_action_preserves_glob_chars_for_escaping() {
+        // Glob metacharacters are printable and pass through this layer.
+        // They are neutralized by escape_glob_metacharacters (layer 2).
+        assert_eq!(sanitize_action_for_pattern("*", "test"), "*");
+        assert_eq!(sanitize_action_for_pattern("git *", "test"), "git *");
+        assert_eq!(sanitize_action_for_pattern("cmd?", "test"), "cmd?");
+        assert_eq!(
+            sanitize_action_for_pattern("git[status]", "test"),
+            "git[status]"
+        );
+    }
+
+    #[test]
+    fn sanitize_action_strips_control_characters() {
+        assert_eq!(sanitize_action_for_pattern("git\0push", "test"), "gitpush");
+        assert_eq!(sanitize_action_for_pattern("git\rpush", "test"), "gitpush");
+        assert_eq!(
+            sanitize_action_for_pattern("git\x1b[31mpush", "test"),
+            "git[31mpush"
+        );
+        assert_eq!(sanitize_action_for_pattern("git\tpush", "test"), "gitpush");
+        assert_eq!(sanitize_action_for_pattern("git\npush", "test"), "gitpush");
+    }
+
+    #[test]
+    fn sanitize_action_truncates_long_strings() {
+        let long_action = "a".repeat(500);
+        let sanitized = sanitize_action_for_pattern(&long_action, "test");
+        assert_eq!(sanitized.len(), MAX_ACTION_LEN);
+    }
+
+    #[test]
+    fn sanitize_action_trims_whitespace() {
+        assert_eq!(
+            sanitize_action_for_pattern("  git push  ", "test"),
+            "git push"
+        );
+    }
+
+    #[test]
+    fn create_allowance_combined_attack() {
+        // A malicious capsule sends action with control chars + glob wildcards.
+        // Layer 1 strips control chars, layer 2 escapes glob chars.
+        // The resulting pattern must NOT match unintended commands.
+        let store = AllowanceStore::new();
+        let attack = "git\0 *\x1b[31m";
+        create_allowance_from_decision(&store, attack, "approve_session", None, "test");
+        assert_eq!(store.count(), 1);
+        // After sanitization: "git *[31m" (control chars stripped)
+        // After escaping: "git \*\[31m" (glob chars escaped)
+        // Pattern: "git \*\[31m *"
+        // This should NOT match normal git commands.
+        assert!(!check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(&store, "git status", None));
+    }
+
+    #[test]
+    fn create_allowance_null_byte_attack() {
+        // Null bytes stripped, pattern still safe.
+        let store = AllowanceStore::new();
+        create_allowance_from_decision(&store, "git\0push", "approve_session", None, "test");
+        assert_eq!(store.count(), 1);
+        // After sanitization: "gitpush", pattern: "gitpush *"
+        // Does not match "git push" (different string).
+        assert!(!check_allowance(&store, "git push origin main", None));
+        // Matches only literal "gitpush ..." which is not a real command.
+        assert!(check_allowance(&store, "gitpush something", None));
     }
 }
