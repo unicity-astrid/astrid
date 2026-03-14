@@ -489,10 +489,19 @@ pub(crate) fn astrid_net_poll_accept_impl(
         }
     }
 
-    // Store the authenticated stream.
+    // Store the authenticated stream. Re-check cap under lock for defense
+    // in depth (WASM is single-threaded today, but the invariant should be
+    // self-contained at the insertion site).
     let mut state = ud
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+
+    if state.active_streams.len() >= MAX_ACTIVE_STREAMS {
+        drop(stream);
+        let mem = plugin.memory_new("")?;
+        outputs[0] = plugin.memory_to_val(mem);
+        return Ok(());
+    }
 
     let handle_id = state.next_stream_id;
     state.next_stream_id = state

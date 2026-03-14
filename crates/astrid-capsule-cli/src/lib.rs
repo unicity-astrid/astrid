@@ -207,11 +207,10 @@ fn broadcast_poll_messages(streams: &[StreamHandle], poll_bytes: &[u8], dead: &m
 }
 
 /// Exact topics the CLI is allowed to publish to the internal IPC bus.
-const ALLOWED_INGRESS_EXACT: &[&str] = &[
-    "user.v1.prompt",
-    "client.v1.disconnect",
-    "cli.v1.command.execute",
-];
+/// Note: `client.v1.disconnect` is NOT here - the authoritative disconnect
+/// event is published by `close()` (via `net_close_stream_impl`) to avoid
+/// double-counting in the idle monitor.
+const ALLOWED_INGRESS_EXACT: &[&str] = &["user.v1.prompt", "cli.v1.command.execute"];
 
 /// Topic prefixes the CLI is allowed to publish (suffix-routed topics).
 /// IMPORTANT: Update this list when adding new CLI-originated topic prefixes.
