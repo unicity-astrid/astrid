@@ -245,16 +245,21 @@ impl CapabilityStore {
     /// Check if there's a capability for a resource and permission.
     pub fn has_capability(&self, resource: &str, permission: Permission) -> bool {
         // Fail closed: if the used-tokens lock is poisoned, deny all capabilities.
-        let Ok(used) = self.used_tokens.read() else {
+        if self.used_tokens.read().is_err() {
             return false;
-        };
+        }
 
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    if token.is_single_use() && used.contains(&token.id) {
-                        continue;
+                    if token.is_single_use() {
+                        let Ok(used) = self.used_tokens.read() else {
+                            return false;
+                        };
+                        if used.contains(&token.id) {
+                            continue;
+                        }
                     }
                     return true;
                 }
@@ -276,8 +281,13 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        if token.is_single_use() && used.contains(&token.id) {
-                            continue;
+                        if token.is_single_use() {
+                            let Ok(used) = self.used_tokens.read() else {
+                                return false;
+                            };
+                            if used.contains(&token.id) {
+                                continue;
+                            }
                         }
                         return true;
                     }
@@ -295,16 +305,21 @@ impl CapabilityStore {
         permission: Permission,
     ) -> Option<CapabilityToken> {
         // Fail closed: if the used-tokens lock is poisoned, deny all capabilities.
-        let Ok(used) = self.used_tokens.read() else {
+        if self.used_tokens.read().is_err() {
             return None;
-        };
+        }
 
         // Check session tokens
         if let Ok(tokens) = self.session_tokens.read() {
             for token in tokens.values() {
                 if !token.is_expired() && token.grants(resource, permission) {
-                    if token.is_single_use() && used.contains(&token.id) {
-                        continue;
+                    if token.is_single_use() {
+                        let Ok(used) = self.used_tokens.read() else {
+                            return None;
+                        };
+                        if used.contains(&token.id) {
+                            continue;
+                        }
                     }
                     return Some(token.clone());
                 }
@@ -326,8 +341,13 @@ impl CapabilityStore {
                         continue;
                     }
                     if !token.is_expired() && token.grants(resource, permission) {
-                        if token.is_single_use() && used.contains(&token.id) {
-                            continue;
+                        if token.is_single_use() {
+                            let Ok(used) = self.used_tokens.read() else {
+                                return None;
+                            };
+                            if used.contains(&token.id) {
+                                continue;
+                            }
                         }
                         return Some(token);
                     }
