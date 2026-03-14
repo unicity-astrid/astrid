@@ -76,13 +76,15 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
         .collect();
 
     // Only warn for control-char stripping or truncation, not whitespace trim.
-    // Compare against `trimmed` (whitespace already removed) so leading/trailing
-    // spaces don't trigger a false-positive audit warning.
-    if sanitized.len() != trimmed.len() {
+    // Compare char counts (not byte lengths) so the log fields correlate with
+    // MAX_ACTION_LEN which is a char-count limit.
+    let trimmed_chars = trimmed.chars().count();
+    let sanitized_chars = sanitized.chars().count();
+    if sanitized_chars != trimmed_chars {
         tracing::warn!(
             capsule = %capsule_id,
-            original_len = trimmed.len(),
-            sanitized_len = sanitized.len(),
+            original_chars = trimmed_chars,
+            sanitized_chars = sanitized_chars,
             "Action string sanitized: control characters stripped or length truncated"
         );
     }
@@ -191,11 +193,18 @@ pub(crate) fn astrid_request_approval_impl(
             .filter(|c| !c.is_control())
             .collect();
         tracing::warn!(
-            original_len = guest_req.action.len(),
-            cleaned_len = cleaned.len(),
+            original_chars = action_char_count,
+            cleaned_chars = cleaned.chars().count(),
             "Approval action contained control characters, stripped"
         );
         guest_req.action = cleaned;
+    }
+    // Trim whitespace so the IPC payload and logs show the canonical form
+    // that matches the allowance pattern (sanitize_action_for_pattern also
+    // trims, but we want consistency across all downstream consumers).
+    let trimmed = guest_req.action.trim();
+    if trimmed.len() != guest_req.action.len() {
+        guest_req.action = trimmed.to_owned();
     }
 
     let ud = user_data.get()?;
@@ -595,6 +604,15 @@ mod tests {
     fn sanitize_action_truncates_long_strings() {
         let long_action = "a".repeat(500);
         let sanitized = sanitize_action_for_pattern(&long_action, "test");
+        assert_eq!(sanitized.chars().count(), MAX_ACTION_LEN);
+    }
+
+    #[test]
+    fn sanitize_action_exact_limit_no_change() {
+        // Exactly MAX_ACTION_LEN printable chars should pass through unchanged.
+        let action = "a".repeat(MAX_ACTION_LEN);
+        let sanitized = sanitize_action_for_pattern(&action, "test");
+        assert_eq!(sanitized, action);
         assert_eq!(sanitized.chars().count(), MAX_ACTION_LEN);
     }
 
