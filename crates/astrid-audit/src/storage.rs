@@ -96,9 +96,6 @@ const NS_CHAIN_HEADS: &str = "audit:chain_heads";
 ///
 /// Panics if the temporary runtime cannot be created (no-runtime path) or if
 /// the scoped thread panics (single-threaded runtime path).
-///
-/// Must NOT be called from a `spawn_blocking` thread - `block_in_place` will
-/// panic in that context. All production callers run on tokio worker threads.
 fn block_on<F>(f: F) -> F::Output
 where
     F: std::future::Future + Send,
