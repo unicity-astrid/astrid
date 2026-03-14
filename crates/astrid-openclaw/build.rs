@@ -7,6 +7,12 @@
 //!
 //! The compiler detects the placeholder at runtime via size check and errors with
 //! build instructions.
+//!
+//! ## Build isolation
+//!
+//! All subprocesses run with a sanitised environment (`env_clear()` + allowlist)
+//! to prevent CI secrets, Cargo flags, and other parent-process state from
+//! leaking into untrusted build steps. See [`sandboxed_command`].
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -19,7 +25,38 @@ const JS_PDK_TAG: &str = "v1.6.0";
 /// Set to `None` to skip hash verification (first build). After a successful
 /// build, pin the hash printed by the auto-builder here to detect supply-chain
 /// tampering on subsequent builds.
+///
+/// When `ASTRID_REQUIRE_KERNEL_HASH=1` (recommended for CI), the build will
+/// **fail** if this is `None` during auto-build, forcing the operator to pin
+/// a hash before shipping.
 const EXPECTED_KERNEL_HASH: Option<&str> = None;
+
+/// Environment variables forwarded to sandboxed subprocesses.
+///
+/// Everything else is stripped. This is intentionally conservative: if a
+/// subprocess needs an extra var, add it here with a comment explaining why.
+const SANDBOXED_ENV_ALLOWLIST: &[&str] = &[
+    // Core system
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "USER",
+    "LOGNAME",
+    // Locale (avoid mojibake in build output)
+    "LANG",
+    "LC_ALL",
+    // TLS / proxy (required for git clone, npm install, wasi-sdk download)
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "no_proxy",
+];
 
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -31,6 +68,7 @@ fn main() {
     println!("cargo:rerun-if-changed=kernel/engine.wasm");
     println!("cargo:rerun-if-changed=kernel/engine.wasm.blake3");
     println!("cargo:rerun-if-env-changed=ASTRID_AUTO_BUILD_KERNEL");
+    println!("cargo:rerun-if-env-changed=ASTRID_REQUIRE_KERNEL_HASH");
 
     if kernel_src.exists() {
         install_existing_kernel(&kernel_src, &kernel_dst, &manifest_dir);
@@ -106,7 +144,7 @@ fn write_placeholder(kernel_dst: &Path) {
 /// Check if a command exists on PATH.
 fn has_command(name: &str) -> bool {
     let lookup = if cfg!(windows) { "where" } else { "which" };
-    Command::new(lookup)
+    sandboxed_command(lookup)
         .arg(name)
         .output()
         .is_ok_and(|o| o.status.success())
@@ -115,7 +153,34 @@ fn has_command(name: &str) -> bool {
 /// Convert a path to a UTF-8 string, panicking with a clear message on non-UTF-8 paths.
 fn path_str(p: &Path) -> &str {
     p.to_str()
-        .expect("build path must be valid UTF-8 — non-UTF-8 paths are not supported")
+        .expect("build path must be valid UTF-8 - non-UTF-8 paths are not supported")
+}
+
+/// Create a [`Command`] with a sanitised environment.
+///
+/// Calls [`Command::env_clear`] then re-adds only the variables listed in
+/// [`SANDBOXED_ENV_ALLOWLIST`]. This prevents CI secrets, Cargo build flags,
+/// and other parent-process state from leaking into untrusted subprocesses
+/// (see issue #277).
+///
+/// Callers that need additional vars (e.g. `RUSTUP_HOME` for rustup) should
+/// call [`forward_env`] on the returned command.
+fn sandboxed_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.env_clear();
+    for key in SANDBOXED_ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+    cmd
+}
+
+/// Forward an environment variable from the parent process into `cmd`, if set.
+fn forward_env(cmd: &mut Command, key: &str) {
+    if let Ok(val) = std::env::var(key) {
+        cmd.env(key, val);
+    }
 }
 
 /// Run a command, returning true on success. Prints stderr on failure.
@@ -147,21 +212,25 @@ fn check_prerequisites() -> bool {
         }
     }
 
-    // Ensure wasm32-wasip1 target is available
-    let target_check = Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output();
-    let has_target = target_check
+    // Ensure wasm32-wasip1 target is available.
+    // Rustup needs RUSTUP_HOME and CARGO_HOME for toolchain discovery.
+    let mut target_cmd = sandboxed_command("rustup");
+    target_cmd.args(["target", "list", "--installed"]);
+    forward_env(&mut target_cmd, "RUSTUP_HOME");
+    forward_env(&mut target_cmd, "CARGO_HOME");
+    let has_target = target_cmd
+        .output()
         .as_ref()
         .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("wasm32-wasip1"));
 
-    if !has_target
-        && !run_step(
-            "installing wasm32-wasip1 target",
-            Command::new("rustup").args(["target", "add", "wasm32-wasip1"]),
-        )
-    {
-        return false;
+    if !has_target {
+        let mut cmd = sandboxed_command("rustup");
+        cmd.args(["target", "add", "wasm32-wasip1"]);
+        forward_env(&mut cmd, "RUSTUP_HOME");
+        forward_env(&mut cmd, "CARGO_HOME");
+        if !run_step("installing wasm32-wasip1 target", &mut cmd) {
+            return false;
+        }
     }
 
     true
@@ -185,7 +254,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
 
     if !run_step(
         &format!("cloning extism-js {JS_PDK_TAG}"),
-        Command::new("git").args([
+        sandboxed_command("git").args([
             "clone",
             "--depth",
             "1",
@@ -201,7 +270,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
     // Install wasi-sdk (required by rquickjs C bindings)
     if !run_step(
         "installing wasi-sdk",
-        Command::new("sh")
+        sandboxed_command("sh")
             .arg("install-wasi-sdk.sh")
             .current_dir(&build_dir),
     ) {
@@ -212,38 +281,37 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
     let prelude_dir = build_dir.join("crates/core/src/prelude");
     if !run_step(
         "npm install (JS prelude)",
-        Command::new("npm").arg("install").current_dir(&prelude_dir),
+        sandboxed_command("npm")
+            .arg("install")
+            .current_dir(&prelude_dir),
     ) {
         return false;
     }
     if !run_step(
         "npm run build (JS prelude)",
-        Command::new("npm")
+        sandboxed_command("npm")
             .args(["run", "build"])
             .current_dir(&prelude_dir),
     ) {
         return false;
     }
 
-    // Build QuickJS core to wasm32-wasip1
-    // Use a separate target dir and strip inherited Cargo env vars to avoid
-    // deadlocks on the parent's target directory lock and flag contamination.
-    if !run_step(
-        "building QuickJS core (wasm32-wasip1)",
-        Command::new("cargo")
-            .args([
-                "build",
-                "--release",
-                "--target=wasm32-wasip1",
-                "--target-dir",
-                path_str(&build_dir.join("cargo-target")),
-            ])
-            .env_remove("CARGO_TARGET_DIR")
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .env_remove("CARGO_MAKEFLAGS")
-            .env_remove("RUSTFLAGS")
-            .current_dir(&build_dir),
-    ) {
+    // Build QuickJS core to wasm32-wasip1.
+    // Uses sandboxed env (no inherited Cargo flags/target dir) with only the
+    // Rust toolchain vars needed for compilation forwarded back in.
+    let mut cargo_cmd = sandboxed_command("cargo");
+    cargo_cmd
+        .args([
+            "build",
+            "--release",
+            "--target=wasm32-wasip1",
+            "--target-dir",
+            path_str(&build_dir.join("cargo-target")),
+        ])
+        .current_dir(&build_dir);
+    forward_env(&mut cargo_cmd, "RUSTUP_HOME");
+    forward_env(&mut cargo_cmd, "CARGO_HOME");
+    if !run_step("building QuickJS core (wasm32-wasip1)", &mut cargo_cmd) {
         return false;
     }
 
@@ -262,7 +330,7 @@ fn auto_build_kernel(kernel_dst: &Path, kernel_dir: &Path, out_dir: &str) -> boo
         let optimized = built_wasm.with_extension("opt.wasm");
         if run_step(
             "optimizing with wasm-opt",
-            Command::new("wasm-opt").args([
+            sandboxed_command("wasm-opt").args([
                 "--enable-reference-types",
                 "--enable-bulk-memory",
                 "--strip",
@@ -344,6 +412,22 @@ fn install_built_kernel(built_wasm: &Path, kernel_dst: &Path, kernel_dir: &Path)
             return false;
         }
         println!("cargo:warning=  [auto-build] blake3 hash verified against pinned value");
+    } else {
+        // No pinned hash - check if enforcement is required (issue #278).
+        let require_hash = std::env::var("ASTRID_REQUIRE_KERNEL_HASH")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+        assert!(
+            !require_hash,
+            "\n\n  ASTRID_REQUIRE_KERNEL_HASH is set but EXPECTED_KERNEL_HASH is None.\n  \
+             The auto-built kernel cannot be verified against a pinned hash.\n\n  \
+             To fix: set EXPECTED_KERNEL_HASH in build.rs to:\n    \
+             Some(\"{hash}\")\n\n  \
+             This prevents silent supply-chain tampering of the QuickJS WASM kernel.\n"
+        );
+        println!(
+            "cargo:warning=  [auto-build] WARNING: EXPECTED_KERNEL_HASH is None - \
+             kernel installed WITHOUT hash verification. Pin the hash for production use."
+        );
     }
 
     println!(
