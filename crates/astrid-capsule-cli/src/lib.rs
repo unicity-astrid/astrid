@@ -52,7 +52,7 @@ impl CliProxy {
         // client can send prompts - the daemon is a single agent.
         let mut streams: Vec<StreamHandle> = Vec::new();
 
-        loop {
+        'proxy: loop {
             // Phase A: block until at least one client is connected.
             if streams.is_empty() {
                 let stream = match accept(&listener) {
@@ -93,9 +93,10 @@ impl CliProxy {
             }
 
             // Remove dead streams in reverse order to preserve indices.
+            // Do NOT call close() here: net_read_impl already published
+            // client.v1.disconnect and the underlying fd is closed on read error.
             for &i in dead_indices.iter().rev() {
-                let dead = streams.remove(i);
-                let _ = close(&dead);
+                streams.remove(i);
                 let _ = log::info("CLI client disconnected from proxy");
             }
 
@@ -109,13 +110,15 @@ impl CliProxy {
                         }
                     },
                     Err(_) => {
-                        // Subscription error is fatal for the proxy.
-                        break;
+                        let _ = log::error("IPC subscription error, proxy shutting down");
+                        break 'proxy;
                     },
                 }
             }
 
             // Remove streams that failed during broadcast.
+            // Multiple subscriptions may flag the same stream as dead in one
+            // iteration. sort + dedup before removal prevents double-removal panics.
             broadcast_dead.sort_unstable();
             broadcast_dead.dedup();
             for &i in broadcast_dead.iter().rev() {
@@ -124,6 +127,11 @@ impl CliProxy {
                 let _ = log::info("CLI client disconnected during broadcast");
             }
         }
+
+        // Reached only when an IPC subscription fails (break 'proxy above).
+        Err(SysError::ApiError(
+            "IPC subscription failed, proxy terminated".to_string(),
+        ))
     }
 }
 
@@ -142,6 +150,7 @@ fn handle_ingress(bytes: &[u8]) {
         msg.get("topic").and_then(|t| t.as_str()),
         msg.get("payload"),
     ) else {
+        let _ = log::warn("Dropped ingress message: missing topic or payload");
         return;
     };
 

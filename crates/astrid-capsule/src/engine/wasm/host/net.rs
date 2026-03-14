@@ -384,6 +384,14 @@ pub(crate) fn astrid_net_close_stream_impl(
     Ok(())
 }
 
+/// Non-blocking accept with a short timeout.
+///
+/// # Design note
+///
+/// The listener handle argument from the WASM guest is intentionally ignored.
+/// The kernel provisions exactly one pre-bound `UnixListener` per capsule via
+/// `HostState::cli_socket_listener`. This matches the existing `accept_impl`
+/// pattern. If multi-listener support is ever added, this must be revisited.
 pub(crate) fn astrid_net_poll_accept_impl(
     plugin: &mut CurrentPlugin,
     _: &[Val],
@@ -694,13 +702,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn max_active_streams_is_reasonable() {
-        // The constant must be positive and bounded. Too high = resource
-        // exhaustion risk; too low = usability issue for multi-terminal.
-        assert!(
-            MAX_ACTIVE_STREAMS >= 2,
-            "must support at least 2 connections"
-        );
-        assert!(MAX_ACTIVE_STREAMS <= 64, "must have a bounded upper limit");
+    fn max_active_streams_pinned() {
+        // Changing MAX_ACTIVE_STREAMS requires explicit security review
+        // (resource exhaustion surface). Update this test deliberately.
+        assert_eq!(MAX_ACTIVE_STREAMS, 8);
     }
 }
