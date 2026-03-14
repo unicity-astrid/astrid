@@ -34,15 +34,6 @@ pub enum IdentityError {
     #[error("user not found: {0}")]
     UserNotFound(Uuid),
 
-    /// A link already exists for this platform / `user_id` pair.
-    #[error("link already exists: {platform}:{platform_user_id}")]
-    LinkAlreadyExists {
-        /// The platform name.
-        platform: String,
-        /// The platform-specific user ID.
-        platform_user_id: String,
-    },
-
     /// The underlying storage operation failed.
     #[error("storage error: {0}")]
     Storage(String),
@@ -181,6 +172,20 @@ impl KvIdentityStore {
         }
         Ok(())
     }
+
+    /// Validate that a platform user ID is safe for use as a KV key component.
+    ///
+    /// Rejects empty strings and strings containing `/` or `\0`, which would
+    /// allow key-path injection in the `link/{platform}/{platform_user_id}` scheme.
+    fn validate_platform_user_id(value: &str) -> Result<(), IdentityError> {
+        Self::validate_non_empty(value, "platform_user_id")?;
+        if value.contains('/') || value.contains('\0') {
+            return Err(IdentityError::InvalidInput(
+                "platform_user_id must not contain '/' or null bytes".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -225,7 +230,7 @@ impl IdentityStore for KvIdentityStore {
         platform_user_id: &str,
     ) -> Result<Option<AstridUserId>, IdentityError> {
         Self::validate_non_empty(platform, "platform")?;
-        Self::validate_non_empty(platform_user_id, "platform_user_id")?;
+        Self::validate_platform_user_id(platform_user_id)?;
 
         let normalized = normalize_platform(platform);
         let key = Self::link_key(&normalized, platform_user_id);
@@ -250,7 +255,7 @@ impl IdentityStore for KvIdentityStore {
         method: &str,
     ) -> Result<FrontendLink, IdentityError> {
         Self::validate_non_empty(platform, "platform")?;
-        Self::validate_non_empty(platform_user_id, "platform_user_id")?;
+        Self::validate_platform_user_id(platform_user_id)?;
         Self::validate_non_empty(method, "method")?;
 
         // Verify the target user exists.
@@ -279,7 +284,7 @@ impl IdentityStore for KvIdentityStore {
 
     async fn unlink(&self, platform: &str, platform_user_id: &str) -> Result<bool, IdentityError> {
         Self::validate_non_empty(platform, "platform")?;
-        Self::validate_non_empty(platform_user_id, "platform_user_id")?;
+        Self::validate_platform_user_id(platform_user_id)?;
 
         let normalized = normalize_platform(platform);
         let key = Self::link_key(&normalized, platform_user_id);
@@ -532,6 +537,34 @@ mod tests {
         let store = make_store();
         let user = store.create_user(None).await.unwrap();
         let err = store.link("discord", "123", user.id, "").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn platform_user_id_with_slash_rejected() {
+        let store = make_store();
+        let user = store.create_user(None).await.unwrap();
+
+        // link rejects slash
+        let err = store
+            .link("discord", "123/../../user/456", user.id, "admin")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+
+        // resolve rejects slash
+        let err = store.resolve("discord", "a/b").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+
+        // unlink rejects slash
+        let err = store.unlink("discord", "x/y").await.unwrap_err();
+        assert!(matches!(err, IdentityError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn platform_user_id_with_null_rejected() {
+        let store = make_store();
+        let err = store.resolve("discord", "abc\0def").await.unwrap_err();
         assert!(matches!(err, IdentityError::InvalidInput(_)));
     }
 }

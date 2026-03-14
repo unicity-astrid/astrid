@@ -28,6 +28,8 @@ struct ResolveResponse {
     user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -163,7 +165,7 @@ pub(crate) fn astrid_identity_resolve_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let req: ResolveRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid resolve request: {e}")))?;
 
@@ -186,14 +188,19 @@ pub(crate) fn astrid_identity_resolve_impl(
             found: true,
             user_id: Some(user.id.to_string()),
             display_name: user.display_name,
+            error: None,
         },
         Ok(None) => ResolveResponse {
             found: false,
             user_id: None,
             display_name: None,
+            error: None,
         },
-        Err(e) => {
-            return Err(Error::msg(format!("identity_resolve failed: {e}")));
+        Err(e) => ResolveResponse {
+            found: false,
+            user_id: None,
+            display_name: None,
+            error: Some(e.to_string()),
         },
     };
 
@@ -207,7 +214,7 @@ pub(crate) fn astrid_identity_link_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let req: LinkRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid link request: {e}")))?;
 
@@ -253,7 +260,7 @@ pub(crate) fn astrid_identity_unlink_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let req: UnlinkRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid unlink request: {e}")))?;
 
@@ -290,7 +297,7 @@ pub(crate) fn astrid_identity_create_user_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let req: CreateUserRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid create_user request: {e}")))?;
 
@@ -327,7 +334,7 @@ pub(crate) fn astrid_identity_list_links_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
+    let req_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let req: ListLinksRequest = serde_json::from_slice(&req_bytes)
         .map_err(|e| Error::msg(format!("invalid list_links request: {e}")))?;
 

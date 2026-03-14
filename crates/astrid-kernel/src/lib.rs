@@ -1451,13 +1451,13 @@ async fn apply_single_identity_link(
 ) -> Result<(), astrid_storage::IdentityError> {
     // Resolve astrid_user: try UUID first, then name lookup, then create.
     let user_id = if let Ok(uuid) = uuid::Uuid::parse_str(&link_cfg.astrid_user) {
-        // Ensure user record exists.
+        // Ensure user record exists. If the UUID was explicitly specified in
+        // config but doesn't exist in the store, that's a configuration error
+        // - don't silently create a different user.
         if store.get_user(uuid).await?.is_none() {
-            let user = store.create_user(Some(&link_cfg.astrid_user)).await?;
-            user.id
-        } else {
-            uuid
+            return Err(astrid_storage::IdentityError::UserNotFound(uuid));
         }
+        uuid
     } else {
         // Try name lookup.
         if let Some(user) = store.get_user_by_name(&link_cfg.astrid_user).await? {
@@ -1478,6 +1478,21 @@ async fn apply_single_identity_link(
     } else {
         &link_cfg.method
     };
+
+    // Check if link already points to the correct user - skip if idempotent.
+    if let Some(existing) = store
+        .resolve(&link_cfg.platform, &link_cfg.platform_user_id)
+        .await?
+        && existing.id == user_id
+    {
+        tracing::debug!(
+            platform = %link_cfg.platform,
+            platform_user_id = %link_cfg.platform_user_id,
+            user_id = %user_id,
+            "Identity link from config already exists"
+        );
+        return Ok(());
+    }
 
     store
         .link(
