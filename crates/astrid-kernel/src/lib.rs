@@ -1240,18 +1240,22 @@ mod tests {
 
         assert_eq!(store.count(), 2);
 
-        // Two connections active. First disconnect: 2 -> 1 (not last).
         let counter = AtomicUsize::new(2);
-        let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-            if n == 0 {
-                None
-            } else {
-                Some(n.saturating_sub(1))
+        let simulate_disconnect = || {
+            let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                if n == 0 {
+                    None
+                } else {
+                    Some(n.saturating_sub(1))
+                }
+            });
+            if result == Ok(1) {
+                store.clear_session_allowances();
             }
-        });
-        if result == Ok(1) {
-            store.clear_session_allowances();
-        }
+        };
+
+        // Two connections active. First disconnect: 2 -> 1 (not last).
+        simulate_disconnect();
         assert_eq!(
             store.count(),
             2,
@@ -1259,16 +1263,7 @@ mod tests {
         );
 
         // Second disconnect: 1 -> 0 (last client gone).
-        let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-            if n == 0 {
-                None
-            } else {
-                Some(n.saturating_sub(1))
-            }
-        });
-        if result == Ok(1) {
-            store.clear_session_allowances();
-        }
+        simulate_disconnect();
         assert_eq!(
             store.count(),
             1,
