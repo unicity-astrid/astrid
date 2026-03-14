@@ -43,6 +43,11 @@ pub struct Kernel {
     pub capabilities: Arc<CapabilityStore>,
     /// The global Virtual File System mount.
     pub vfs: Arc<dyn Vfs>,
+    /// Concrete reference to the [`OverlayVfs`] for commit/rollback operations.
+    pub overlay_vfs: Arc<OverlayVfs>,
+    /// Ephemeral upper directory for the overlay VFS. Kept alive for the
+    /// kernel session lifetime; dropped on shutdown to discard uncommitted writes.
+    _upper_dir: Arc<tempfile::TempDir>,
     /// The global physical root handle (cap-std) for the VFS.
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
@@ -149,14 +154,20 @@ impl Kernel {
             .await
             .map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
 
+        // Upper layer uses a session-scoped temporary directory so writes
+        // are sandboxed until explicitly committed, matching the capsule
+        // engine pattern.
+        let upper_temp = tempfile::TempDir::new().map_err(|e| {
+            std::io::Error::other(format!("Failed to create overlay temp dir: {e}"))
+        })?;
         let upper_vfs = HostVfs::new();
         upper_vfs
-            .register_dir(root_handle.clone(), workspace_root.clone())
+            .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
             .await
             .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
 
         // 5. Wrap in copy-on-write OverlayVfs
-        let overlay_vfs = OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs));
+        let overlay_vfs = Arc::new(OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs)));
 
         // 6. Bind the secure Unix socket and generate session token.
         // The socket is bound here, but not yet listened on. The token is
@@ -181,7 +192,9 @@ impl Kernel {
             capsules,
             mcp,
             capabilities,
-            vfs: Arc::new(overlay_vfs),
+            vfs: Arc::clone(&overlay_vfs) as Arc<dyn Vfs>,
+            overlay_vfs,
+            _upper_dir: Arc::new(upper_temp),
             vfs_root_handle: root_handle,
             workspace_root,
             global_root,

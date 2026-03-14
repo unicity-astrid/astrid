@@ -24,9 +24,9 @@ uuid.workspace = true
 anyhow.workspace = true
 astrid-storage = { workspace = true, features = ["kv"] }
 astrid-core.workspace = true
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
 
 [lints]
 workspace = true
