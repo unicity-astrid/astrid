@@ -325,41 +325,40 @@ pub(crate) fn astrid_check_capsule_capability_impl(
     drop(state);
 
     let allowed = if let Some(registry) = registry {
-        let Ok(source_uuid) = uuid::Uuid::parse_str(&request.source_uuid) else {
+        if let Ok(source_uuid) = uuid::Uuid::parse_str(&request.source_uuid) {
+            util::bounded_block_on(&rt_handle, &host_semaphore, async {
+                let reg = registry.read().await;
+                let Some(capsule_id) = reg.find_by_uuid(&source_uuid) else {
+                    tracing::debug!(
+                        uuid = %source_uuid,
+                        capability = %request.capability,
+                        "UUID not found in registry, denying capability"
+                    );
+                    return false;
+                };
+                let Some(capsule) = reg.get(capsule_id) else {
+                    return false;
+                };
+                match request.capability.as_str() {
+                    "allow_prompt_injection" => {
+                        capsule.manifest().capabilities.allow_prompt_injection
+                    },
+                    other => {
+                        tracing::warn!(
+                            capability = %other,
+                            "Unknown capability requested, denying"
+                        );
+                        false
+                    },
+                }
+            })
+        } else {
             tracing::debug!(
                 uuid = %request.source_uuid,
                 "Malformed UUID in capability check, denying"
             );
-            let result = serde_json::json!({"allowed": false}).to_string();
-            let mem = plugin.memory_new(&result)?;
-            outputs[0] = plugin.memory_to_val(mem);
-            return Ok(());
-        };
-
-        util::bounded_block_on(&rt_handle, &host_semaphore, async {
-            let reg = registry.read().await;
-            let Some(capsule_id) = reg.find_by_uuid(&source_uuid) else {
-                tracing::debug!(
-                    uuid = %source_uuid,
-                    capability = %request.capability,
-                    "UUID not found in registry, denying capability"
-                );
-                return false;
-            };
-            let Some(capsule) = reg.get(capsule_id) else {
-                return false;
-            };
-            match request.capability.as_str() {
-                "allow_prompt_injection" => capsule.manifest().capabilities.allow_prompt_injection,
-                other => {
-                    tracing::warn!(
-                        capability = %other,
-                        "Unknown capability requested, denying"
-                    );
-                    false
-                },
-            }
-        })
+            false
+        }
     } else {
         false
     };
