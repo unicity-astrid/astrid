@@ -1,12 +1,13 @@
 //! # Astrid User Identity
 //!
 //! Provides [`AstridUserId`], the canonical internal user identity across all
-//! platforms.
+//! platforms, and [`FrontendLink`], a mapping from platform-specific identities
+//! to Astrid users.
 
 /// Core identity types.
-pub(crate) mod types;
+pub mod types;
 
-pub(crate) use types::normalize_platform;
+pub use types::{AstridUserId, FrontendLink, normalize_platform};
 
 #[cfg(test)]
 mod tests {

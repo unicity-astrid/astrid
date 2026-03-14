@@ -43,6 +43,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod error;
+pub mod identity;
 pub mod kv;
 pub mod secret;
 
@@ -50,6 +51,7 @@ pub mod secret;
 pub mod db;
 
 pub use error::{StorageError, StorageResult};
+pub use identity::{IdentityError, IdentityStore, KvIdentityStore};
 pub use kv::{KvEntry, KvStore, MemoryKvStore, ScopedKvStore};
 pub use secret::{KvSecretStore, SecretStore, SecretStoreError, build_secret_store};
 

@@ -160,6 +160,10 @@ pub struct HostState {
     /// existing allowances before prompting the user. Approvals with
     /// session/always scope create new allowances here.
     pub allowance_store: Option<std::sync::Arc<astrid_approval::AllowanceStore>>,
+    /// Shared identity store for resolving platform users to `AstridUserId`.
+    ///
+    /// When `None`, identity host functions return an error.
+    pub identity_store: Option<std::sync::Arc<dyn astrid_storage::IdentityStore>>,
 }
 
 impl HostState {
@@ -227,6 +231,7 @@ impl std::fmt::Debug for HostState {
                 &self.host_semaphore.available_permits(),
             )
             .field("cancel_token_cancelled", &self.cancel_token.is_cancelled())
+            .field("has_identity_store", &self.identity_store.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -284,6 +289,7 @@ mod tests {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
 
         let debug = format!("{state:?}");
@@ -345,6 +351,7 @@ mod tests {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
 
         assert!(state.uplinks().is_empty());
@@ -411,6 +418,7 @@ mod tests {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
 
         assert!(state.inbound_tx.is_none());
@@ -473,6 +481,7 @@ mod tests {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
 
         for i in 0..MAX_UPLINKS_PER_CAPSULE {
@@ -551,6 +560,7 @@ mod tests {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
 
         let desc1 = UplinkDescriptor::builder("my-conn", "discord")

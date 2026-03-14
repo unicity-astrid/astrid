@@ -9,6 +9,55 @@
 use crate::manifest::CapsuleManifest;
 use async_trait::async_trait;
 
+/// Identity operations that can be gated by the security gate.
+///
+/// Typed enum prevents string-matching bugs. Each variant maps to a
+/// required capability level in the manifest's `identity` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentityOperation {
+    /// Resolve a platform user to an AstridUserId (requires "resolve").
+    Resolve,
+    /// Create a platform link (requires "link").
+    Link,
+    /// Remove a platform link (requires "link").
+    Unlink,
+    /// List links for a user (requires "link").
+    ListLinks,
+    /// Create a new user (requires "admin").
+    CreateUser,
+}
+
+impl IdentityOperation {
+    /// Return the minimum capability level required for this operation.
+    ///
+    /// The hierarchy is: `admin > link > resolve`.
+    #[must_use]
+    pub fn required_capability(self) -> &'static str {
+        match self {
+            Self::Resolve => "resolve",
+            Self::Link | Self::Unlink | Self::ListLinks => "link",
+            Self::CreateUser => "admin",
+        }
+    }
+}
+
+/// Check whether a set of declared capability strings satisfies a required level.
+///
+/// The hierarchy is `admin > link > resolve`. Having `"admin"` implies
+/// `"link"` and `"resolve"`.
+fn identity_capability_satisfies(declared: &[String], required: &str) -> bool {
+    // Direct match.
+    if declared.iter().any(|d| d == required) {
+        return true;
+    }
+    // Hierarchy: admin implies everything, link implies resolve.
+    match required {
+        "resolve" => declared.iter().any(|d| d == "link" || d == "admin"),
+        "link" => declared.iter().any(|d| d == "admin"),
+        _ => false,
+    }
+}
+
 /// Security gate for capsule host function calls.
 ///
 /// Each method corresponds to a class of sensitive operation that a WASM
@@ -56,7 +105,7 @@ pub trait CapsuleSecurityGate: Send + Sync {
     /// RATIONALE: This has a permissive default (unlike the required file/HTTP
     /// methods) to maintain backward compatibility with existing
     /// `CapsuleSecurityGate` implementors. The `has_uplink_capability` flag
-    /// on `HostState` already gates access — this method adds operator-level
+    /// on `HostState` already gates access - this method adds operator-level
     /// policy on top.
     async fn check_uplink_register(
         &self,
@@ -65,6 +114,20 @@ pub trait CapsuleSecurityGate: Send + Sync {
         _platform: &str,
     ) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Check whether the capsule is allowed to perform an identity operation.
+    ///
+    /// Default implementation denies all identity operations (fail-closed).
+    async fn check_identity(
+        &self,
+        capsule_id: &str,
+        operation: IdentityOperation,
+    ) -> Result<(), String> {
+        Err(format!(
+            "capsule '{capsule_id}' denied: identity operation '{:?}' not permitted (default)",
+            operation
+        ))
     }
 }
 
@@ -106,6 +169,14 @@ impl CapsuleSecurityGate for AllowAllGate {
         _capsule_id: &str,
         _uplink_name: &str,
         _platform: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn check_identity(
+        &self,
+        _capsule_id: &str,
+        _operation: IdentityOperation,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -162,6 +233,17 @@ impl CapsuleSecurityGate for DenyAllGate {
     ) -> Result<(), String> {
         Err(format!(
             "capsule '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
+        ))
+    }
+
+    async fn check_identity(
+        &self,
+        capsule_id: &str,
+        operation: IdentityOperation,
+    ) -> Result<(), String> {
+        Err(format!(
+            "capsule '{capsule_id}' denied: identity {:?} (DenyAllGate)",
+            operation
         ))
     }
 }
@@ -376,6 +458,23 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
             ))
         }
     }
+
+    async fn check_identity(
+        &self,
+        capsule_id: &str,
+        operation: IdentityOperation,
+    ) -> Result<(), String> {
+        let required = operation.required_capability();
+        if identity_capability_satisfies(&self.manifest.capabilities.identity, required) {
+            Ok(())
+        } else {
+            Err(format!(
+                "capsule '{capsule_id}' denied: identity operation '{required}' \
+                 not declared in manifest (has: {:?})",
+                self.manifest.capabilities.identity
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -416,6 +515,7 @@ mod tests {
                 uplink: false,
                 ipc_publish: vec![],
                 ipc_subscribe: vec![],
+                identity: vec![],
             },
             env: Default::default(),
             context_files: vec![],
@@ -717,6 +817,107 @@ mod tests {
             gate.check_uplink_register("p", "my-conn", "discord")
                 .await
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_gate_deny_by_default() {
+        let manifest = make_manifest(vec![], vec![], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        assert!(
+            gate.check_identity("test", IdentityOperation::Resolve)
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::Link)
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::CreateUser)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_gate_resolve_only() {
+        let mut manifest = make_manifest(vec![], vec![], vec![]);
+        manifest.capabilities.identity = vec!["resolve".into()];
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        assert!(
+            gate.check_identity("test", IdentityOperation::Resolve)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::Link)
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::CreateUser)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_gate_link_implies_resolve() {
+        let mut manifest = make_manifest(vec![], vec![], vec![]);
+        manifest.capabilities.identity = vec!["link".into()];
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        assert!(
+            gate.check_identity("test", IdentityOperation::Resolve)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::Link)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::Unlink)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::ListLinks)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::CreateUser)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_gate_admin_implies_all() {
+        let mut manifest = make_manifest(vec![], vec![], vec![]);
+        manifest.capabilities.identity = vec!["admin".into()];
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        assert!(
+            gate.check_identity("test", IdentityOperation::Resolve)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::Link)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_identity("test", IdentityOperation::CreateUser)
+                .await
+                .is_ok()
         );
     }
 }

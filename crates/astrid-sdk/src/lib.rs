@@ -30,6 +30,7 @@
 //! | [`uplink`]      | N/A              | Direct frontend messaging              |
 //! | [`hooks`]       | N/A              | User middleware triggers               |
 //! | [`elicit`]      | N/A              | Interactive install/upgrade prompts    |
+//! | [`identity`]    | N/A              | Platform user identity resolution      |
 //! | [`approval`]    | N/A              | Human approval for sensitive actions   |
 
 #![allow(unsafe_code)]
@@ -1109,6 +1110,261 @@ pub mod interceptors {
 ///     return Err(SysError::ApiError("Action denied by user".into()));
 /// }
 /// ```
+/// Platform identity resolution and linking.
+///
+/// Capsules use this module to resolve platform-specific user identities
+/// (e.g. Discord user IDs, Twitch usernames) to Astrid-native user IDs,
+/// and to manage the links between them.
+///
+/// Requires the `identity` capability in `Capsule.toml`:
+/// - `["resolve"]` - resolve platform users
+/// - `["link"]` - resolve, link, unlink, and list links
+/// - `["admin"]` - all of the above plus create new users
+pub mod identity {
+    use super::*;
+
+    /// A resolved Astrid user returned by [`resolve`].
+    #[derive(Debug)]
+    pub struct ResolvedUser {
+        /// The Astrid-native user ID (UUID).
+        pub user_id: String,
+        /// Optional display name.
+        pub display_name: Option<String>,
+    }
+
+    /// A platform-to-Astrid identity link.
+    #[derive(Debug)]
+    pub struct Link {
+        /// Platform name (e.g. "discord", "twitch").
+        pub platform: String,
+        /// Platform-specific user identifier.
+        pub platform_user_id: String,
+        /// The Astrid user this is linked to.
+        pub astrid_user_id: String,
+        /// When the link was created (RFC 3339).
+        pub linked_at: String,
+        /// How the link was established (e.g. "system", "chat_command").
+        pub method: String,
+    }
+
+    /// Resolve a platform user to an Astrid user.
+    ///
+    /// Returns `Ok(Some(user))` if the platform identity is linked,
+    /// `Ok(None)` if not found. Requires `identity = ["resolve"]` or higher.
+    pub fn resolve(
+        platform: &str,
+        platform_user_id: &str,
+    ) -> Result<Option<ResolvedUser>, SysError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            platform: &'a str,
+            platform_user_id: &'a str,
+        }
+
+        let req_bytes = serde_json::to_vec(&Req {
+            platform,
+            platform_user_id,
+        })?;
+
+        // SAFETY: FFI call to Extism host function.
+        let resp_bytes = unsafe { astrid_identity_resolve(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct Resp {
+            found: bool,
+            user_id: Option<String>,
+            display_name: Option<String>,
+        }
+        let resp: Resp = serde_json::from_slice(&resp_bytes)?;
+        if resp.found {
+            Ok(Some(ResolvedUser {
+                user_id: resp.user_id.unwrap_or_default(),
+                display_name: resp.display_name,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Link a platform identity to an Astrid user.
+    ///
+    /// - `method` describes how the link was established (e.g. "chat_command", "system").
+    ///
+    /// Returns the created link on success. Requires `identity = ["link"]` or higher.
+    pub fn link(
+        platform: &str,
+        platform_user_id: &str,
+        astrid_user_id: &str,
+        method: &str,
+    ) -> Result<Link, SysError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            platform: &'a str,
+            platform_user_id: &'a str,
+            astrid_user_id: &'a str,
+            method: &'a str,
+        }
+
+        let req_bytes = serde_json::to_vec(&Req {
+            platform,
+            platform_user_id,
+            astrid_user_id,
+            method,
+        })?;
+
+        // SAFETY: FFI call to Extism host function.
+        let resp_bytes = unsafe { astrid_identity_link(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct LinkInfo {
+            platform: String,
+            platform_user_id: String,
+            astrid_user_id: String,
+            linked_at: String,
+            method: String,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            link: Option<LinkInfo>,
+        }
+        let resp: Resp = serde_json::from_slice(&resp_bytes)?;
+        if !resp.ok {
+            return Err(SysError::ApiError(
+                resp.error.unwrap_or_else(|| "identity link failed".into()),
+            ));
+        }
+        let l = resp
+            .link
+            .ok_or_else(|| SysError::ApiError("missing link in response".into()))?;
+        Ok(Link {
+            platform: l.platform,
+            platform_user_id: l.platform_user_id,
+            astrid_user_id: l.astrid_user_id,
+            linked_at: l.linked_at,
+            method: l.method,
+        })
+    }
+
+    /// Unlink a platform identity from its Astrid user.
+    ///
+    /// Returns `true` if a link was removed, `false` if none existed.
+    /// Requires `identity = ["link"]` or higher.
+    pub fn unlink(platform: &str, platform_user_id: &str) -> Result<bool, SysError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            platform: &'a str,
+            platform_user_id: &'a str,
+        }
+
+        let req_bytes = serde_json::to_vec(&Req {
+            platform,
+            platform_user_id,
+        })?;
+
+        // SAFETY: FFI call to Extism host function.
+        let resp_bytes = unsafe { astrid_identity_unlink(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            removed: Option<bool>,
+        }
+        let resp: Resp = serde_json::from_slice(&resp_bytes)?;
+        if !resp.ok {
+            return Err(SysError::ApiError(
+                resp.error
+                    .unwrap_or_else(|| "identity unlink failed".into()),
+            ));
+        }
+        Ok(resp.removed.unwrap_or(false))
+    }
+
+    /// Create a new Astrid user.
+    ///
+    /// Returns the UUID of the newly created user.
+    /// Requires `identity = ["admin"]`.
+    pub fn create_user(display_name: Option<&str>) -> Result<String, SysError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            display_name: Option<&'a str>,
+        }
+
+        let req_bytes = serde_json::to_vec(&Req { display_name })?;
+
+        // SAFETY: FFI call to Extism host function.
+        let resp_bytes = unsafe { astrid_identity_create_user(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            user_id: Option<String>,
+        }
+        let resp: Resp = serde_json::from_slice(&resp_bytes)?;
+        if !resp.ok {
+            return Err(SysError::ApiError(
+                resp.error
+                    .unwrap_or_else(|| "identity create_user failed".into()),
+            ));
+        }
+        resp.user_id
+            .ok_or_else(|| SysError::ApiError("missing user_id in response".into()))
+    }
+
+    /// List all platform links for an Astrid user.
+    ///
+    /// Returns all linked platform identities for the given user UUID.
+    /// Requires `identity = ["link"]` or higher.
+    pub fn list_links(astrid_user_id: &str) -> Result<Vec<Link>, SysError> {
+        #[derive(Serialize)]
+        struct Req<'a> {
+            astrid_user_id: &'a str,
+        }
+
+        let req_bytes = serde_json::to_vec(&Req { astrid_user_id })?;
+
+        // SAFETY: FFI call to Extism host function.
+        let resp_bytes = unsafe { astrid_identity_list_links(req_bytes)? };
+
+        #[derive(Deserialize)]
+        struct LinkInfo {
+            platform: String,
+            platform_user_id: String,
+            astrid_user_id: String,
+            linked_at: String,
+            method: String,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            ok: bool,
+            error: Option<String>,
+            links: Option<Vec<LinkInfo>>,
+        }
+        let resp: Resp = serde_json::from_slice(&resp_bytes)?;
+        if !resp.ok {
+            return Err(SysError::ApiError(
+                resp.error
+                    .unwrap_or_else(|| "identity list_links failed".into()),
+            ));
+        }
+        Ok(resp
+            .links
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| Link {
+                platform: l.platform,
+                platform_user_id: l.platform_user_id,
+                astrid_user_id: l.astrid_user_id,
+                linked_at: l.linked_at,
+                method: l.method,
+            })
+            .collect())
+    }
+}
+
 pub mod approval {
     use super::*;
 
@@ -1180,6 +1436,7 @@ pub mod prelude {
         fs,
         hooks,
         http,
+        identity,
         interceptors,
         ipc,
         kv,

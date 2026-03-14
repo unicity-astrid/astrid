@@ -153,4 +153,28 @@ extern "ExtismHost" {
     /// Query auto-subscribed interceptor handle mappings.
     /// Returns JSON array of `{handle_id, action, topic}` objects.
     pub fn astrid_get_interceptor_handles() -> Vec<u8>;
+
+    // -----------------------------------------------------------------------
+    // Identity (Platform User Resolution)
+    // -----------------------------------------------------------------------
+    /// Resolve a platform user to an Astrid user.
+    /// Takes JSON: `{"platform":"...","platform_user_id":"..."}`.
+    /// Returns JSON: `{"found":true/false,"user_id":"...","display_name":"..."}`.
+    pub fn astrid_identity_resolve(request: Vec<u8>) -> Vec<u8>;
+    /// Link a platform identity to an Astrid user.
+    /// Takes JSON: `{"platform":"...","platform_user_id":"...","astrid_user_id":"...","method":"..."}`.
+    /// Returns JSON: `{"ok":true/false,...}`.
+    pub fn astrid_identity_link(request: Vec<u8>) -> Vec<u8>;
+    /// Unlink a platform identity from its Astrid user.
+    /// Takes JSON: `{"platform":"...","platform_user_id":"..."}`.
+    /// Returns JSON: `{"ok":true/false,"removed":true/false}`.
+    pub fn astrid_identity_unlink(request: Vec<u8>) -> Vec<u8>;
+    /// Create a new Astrid user.
+    /// Takes JSON: `{"display_name":"..."}` (display_name is optional).
+    /// Returns JSON: `{"ok":true/false,"user_id":"..."}`.
+    pub fn astrid_identity_create_user(request: Vec<u8>) -> Vec<u8>;
+    /// List all platform links for an Astrid user.
+    /// Takes JSON: `{"astrid_user_id":"..."}`.
+    /// Returns JSON: `{"ok":true/false,"links":[...]}`.
+    pub fn astrid_identity_list_links(request: Vec<u8>) -> Vec<u8>;
 }

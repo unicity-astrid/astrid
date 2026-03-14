@@ -39,6 +39,9 @@ pub use types::{
 };
 pub use utils::truncate_to_boundary;
 
+// Identity types
+pub use identity::{AstridUserId, FrontendLink, normalize_platform};
+
 // Uplink types
 pub use uplink::{
     InboundMessage, MAX_UPLINKS_PER_CAPSULE, UplinkCapabilities, UplinkDescriptor, UplinkError,

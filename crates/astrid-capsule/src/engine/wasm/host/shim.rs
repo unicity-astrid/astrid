@@ -320,6 +320,46 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::IdentityResolve => {
+            crate::engine::wasm::host::identity::astrid_identity_resolve_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::IdentityLink => {
+            crate::engine::wasm::host::identity::astrid_identity_link_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::IdentityUnlink => {
+            crate::engine::wasm::host::identity::astrid_identity_unlink_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::IdentityCreateUser => {
+            crate::engine::wasm::host::identity::astrid_identity_create_user_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::IdentityListLinks => {
+            crate::engine::wasm::host::identity::astrid_identity_list_links_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {

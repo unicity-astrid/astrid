@@ -260,6 +260,15 @@ pub struct CapabilitiesDef {
     /// architecturally wrong for a broadcast bus.
     #[serde(default)]
     pub ipc_subscribe: Vec<String>,
+    /// Identity operations this capsule is allowed to perform.
+    ///
+    /// Valid values: `"resolve"` (read-only lookups), `"link"` (create/delete
+    /// links, list links), `"admin"` (create users). The hierarchy is
+    /// `admin > link > resolve` - higher levels imply all lower levels.
+    ///
+    /// An empty list means NO identity access (fail-closed).
+    #[serde(default)]
+    pub identity: Vec<String>,
 }
 
 /// An environment variable required by the capsule.

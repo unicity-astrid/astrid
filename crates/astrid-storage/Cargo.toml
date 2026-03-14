@@ -33,6 +33,11 @@ tracing = { workspace = true }
 # Error handling
 thiserror = { workspace = true }
 
+# Identity store types
+astrid-core = { path = "../astrid-core" }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
 # Storage backends (optional)
 surrealkv = { workspace = true, optional = true }
 surrealdb = { workspace = true, optional = true }

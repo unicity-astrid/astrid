@@ -75,6 +75,8 @@ pub struct Kernel {
     /// Capsules can check existing allowances and create new ones when
     /// users approve actions with session/always scope.
     pub allowance_store: Arc<astrid_approval::AllowanceStore>,
+    /// System-wide identity store for platform user resolution.
+    identity_store: Arc<dyn astrid_storage::IdentityStore>,
 }
 
 impl Kernel {
@@ -175,6 +177,25 @@ impl Kernel {
 
         let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
 
+        // Create system-wide identity store backed by the shared KV.
+        let identity_kv = astrid_storage::ScopedKvStore::new(
+            Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>,
+            "system:identity",
+        )
+        .map_err(|e| std::io::Error::other(format!("Failed to create identity KV: {e}")))?;
+        let identity_store: Arc<dyn astrid_storage::IdentityStore> =
+            Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
+
+        // Bootstrap the CLI root user (idempotent).
+        bootstrap_cli_root_user(&identity_store)
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Failed to bootstrap CLI root user: {e}"))
+            })?;
+
+        // Apply pre-configured identity links from config.
+        apply_identity_config(&identity_store, &workspace_root).await;
+
         let kernel = Arc::new(Self {
             session_id,
             event_bus,
@@ -192,6 +213,7 @@ impl Kernel {
             session_token: Arc::new(session_token),
             token_path,
             allowance_store,
+            identity_store,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -256,7 +278,8 @@ impl Kernel {
         )
         .with_registry(Arc::clone(&self.capsules))
         .with_session_token(Arc::clone(&self.session_token))
-        .with_allowance_store(Arc::clone(&self.allowance_store));
+        .with_allowance_store(Arc::clone(&self.allowance_store))
+        .with_identity_store(Arc::clone(&self.identity_store));
 
         capsule.load(&ctx).await?;
 
@@ -1357,4 +1380,120 @@ mod tests {
         tracker.last_attempt = std::time::Instant::now() - RestartTracker::MAX_BACKOFF;
         assert!(!tracker.should_restart());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Identity bootstrap helpers
+// ---------------------------------------------------------------------------
+
+/// Bootstrap the CLI root user identity at kernel boot.
+///
+/// Creates a deterministic root `AstridUserId` on first boot, or reloads it
+/// on subsequent boots. Auto-links with `platform="cli"`,
+/// `platform_user_id="local"`, `method="system"`.
+///
+/// Idempotent: skips creation if the root user already exists.
+async fn bootstrap_cli_root_user(
+    store: &Arc<dyn astrid_storage::IdentityStore>,
+) -> Result<(), astrid_storage::IdentityError> {
+    // Check if root user already exists by trying to resolve the CLI link.
+    if let Some(_user) = store.resolve("cli", "local").await? {
+        tracing::debug!("CLI root user already linked");
+        return Ok(());
+    }
+
+    // No CLI link exists. Create or find the root user.
+    let user = store.create_user(Some("root")).await?;
+    tracing::info!(user_id = %user.id, "Created CLI root user");
+
+    // Link the CLI platform identity.
+    store.link("cli", "local", user.id, "system").await?;
+    tracing::info!(user_id = %user.id, "Linked CLI root user (cli/local)");
+
+    Ok(())
+}
+
+/// Apply pre-configured identity links from the config file.
+///
+/// For each `[[identity.links]]` entry, resolves or creates the referenced
+/// Astrid user and links the platform identity. Logs warnings on failure
+/// but does not abort boot.
+async fn apply_identity_config(
+    store: &Arc<dyn astrid_storage::IdentityStore>,
+    workspace_root: &std::path::Path,
+) {
+    let config = match astrid_config::Config::load(Some(workspace_root)) {
+        Ok(resolved) => resolved.config,
+        Err(e) => {
+            tracing::debug!(error = %e, "No config loaded for identity links");
+            return;
+        },
+    };
+
+    for link_cfg in &config.identity.links {
+        let result = apply_single_identity_link(store, link_cfg).await;
+        if let Err(e) = result {
+            tracing::warn!(
+                platform = %link_cfg.platform,
+                platform_user_id = %link_cfg.platform_user_id,
+                astrid_user = %link_cfg.astrid_user,
+                error = %e,
+                "Failed to apply identity link from config"
+            );
+        }
+    }
+}
+
+/// Apply a single identity link from config.
+async fn apply_single_identity_link(
+    store: &Arc<dyn astrid_storage::IdentityStore>,
+    link_cfg: &astrid_config::types::IdentityLinkConfig,
+) -> Result<(), astrid_storage::IdentityError> {
+    // Resolve astrid_user: try UUID first, then name lookup, then create.
+    let user_id = if let Ok(uuid) = uuid::Uuid::parse_str(&link_cfg.astrid_user) {
+        // Ensure user record exists.
+        if store.get_user(uuid).await?.is_none() {
+            let user = store.create_user(Some(&link_cfg.astrid_user)).await?;
+            user.id
+        } else {
+            uuid
+        }
+    } else {
+        // Try name lookup.
+        if let Some(user) = store.get_user_by_name(&link_cfg.astrid_user).await? {
+            user.id
+        } else {
+            let user = store.create_user(Some(&link_cfg.astrid_user)).await?;
+            tracing::info!(
+                user_id = %user.id,
+                name = %link_cfg.astrid_user,
+                "Created user from config identity link"
+            );
+            user.id
+        }
+    };
+
+    let method = if link_cfg.method.is_empty() {
+        "admin"
+    } else {
+        &link_cfg.method
+    };
+
+    store
+        .link(
+            &link_cfg.platform,
+            &link_cfg.platform_user_id,
+            user_id,
+            method,
+        )
+        .await?;
+
+    tracing::info!(
+        platform = %link_cfg.platform,
+        platform_user_id = %link_cfg.platform_user_id,
+        user_id = %user_id,
+        "Applied identity link from config"
+    );
+
+    Ok(())
 }

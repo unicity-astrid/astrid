@@ -8,6 +8,8 @@ pub(crate) mod elicit;
 pub(crate) mod fs;
 /// HTTP network executions for plugins.
 pub mod http;
+/// Identity operations (resolve, link, create user).
+pub(crate) mod identity;
 /// Inter-Process Communication bus.
 pub(crate) mod ipc;
 /// Key-Value persistent storage primitives.
@@ -67,10 +69,15 @@ pub(crate) enum WasmHostFunction {
     ClockMs,
     GetInterceptorHandles,
     RequestApproval,
+    IdentityResolve,
+    IdentityLink,
+    IdentityUnlink,
+    IdentityCreateUser,
+    IdentityListLinks,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 37] = [
+    pub(crate) const ALL: [Self; 42] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -108,6 +115,11 @@ impl WasmHostFunction {
         Self::ClockMs,
         Self::GetInterceptorHandles,
         Self::RequestApproval,
+        Self::IdentityResolve,
+        Self::IdentityLink,
+        Self::IdentityUnlink,
+        Self::IdentityCreateUser,
+        Self::IdentityListLinks,
     ];
 
     #[must_use]
@@ -155,6 +167,11 @@ impl WasmHostFunction {
             Self::ClockMs => "astrid_clock_ms",
             Self::GetInterceptorHandles => "astrid_get_interceptor_handles",
             Self::RequestApproval => "astrid_request_approval",
+            Self::IdentityResolve => "astrid_identity_resolve",
+            Self::IdentityLink => "astrid_identity_link",
+            Self::IdentityUnlink => "astrid_identity_unlink",
+            Self::IdentityCreateUser => "astrid_identity_create_user",
+            Self::IdentityListLinks => "astrid_identity_list_links",
         }
     }
 
@@ -184,7 +201,12 @@ impl WasmHostFunction {
             | Self::TriggerHook
             | Self::Elicit
             | Self::HasSecret
-            | Self::RequestApproval => 1,
+            | Self::RequestApproval
+            | Self::IdentityResolve
+            | Self::IdentityLink
+            | Self::IdentityUnlink
+            | Self::IdentityCreateUser
+            | Self::IdentityListLinks => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -236,7 +258,12 @@ impl WasmHostFunction {
             | Self::HasSecret
             | Self::ClockMs
             | Self::GetInterceptorHandles
-            | Self::RequestApproval => TYPE_I64,
+            | Self::RequestApproval
+            | Self::IdentityResolve
+            | Self::IdentityLink
+            | Self::IdentityUnlink
+            | Self::IdentityCreateUser
+            | Self::IdentityListLinks => TYPE_I64,
         }
     }
 }
@@ -383,6 +410,41 @@ pub fn register_host_functions(
                 rets,
                 ud,
                 approval::astrid_request_approval_impl,
+            ),
+            WasmHostFunction::IdentityResolve => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                identity::astrid_identity_resolve_impl,
+            ),
+            WasmHostFunction::IdentityLink => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                identity::astrid_identity_link_impl,
+            ),
+            WasmHostFunction::IdentityUnlink => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                identity::astrid_identity_unlink_impl,
+            ),
+            WasmHostFunction::IdentityCreateUser => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                identity::astrid_identity_create_user_impl,
+            ),
+            WasmHostFunction::IdentityListLinks => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                identity::astrid_identity_list_links_impl,
             ),
         };
     }

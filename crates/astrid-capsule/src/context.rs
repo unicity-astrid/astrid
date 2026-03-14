@@ -41,6 +41,8 @@ pub struct CapsuleContext {
     pub session_token: Option<Arc<SessionToken>>,
     /// Shared allowance store for capsule-level approval requests.
     pub allowance_store: Option<Arc<astrid_approval::AllowanceStore>>,
+    /// Shared identity store for resolving platform users to `AstridUserId`.
+    pub identity_store: Option<Arc<dyn astrid_storage::IdentityStore>>,
 }
 
 impl CapsuleContext {
@@ -61,6 +63,7 @@ impl CapsuleContext {
             capsule_registry: None,
             session_token: None,
             allowance_store: None,
+            identity_store: None,
         }
     }
 
@@ -82,6 +85,13 @@ impl CapsuleContext {
     #[must_use]
     pub fn with_allowance_store(mut self, store: Arc<astrid_approval::AllowanceStore>) -> Self {
         self.allowance_store = Some(store);
+        self
+    }
+
+    /// Set the shared identity store for platform user resolution.
+    #[must_use]
+    pub fn with_identity_store(mut self, store: Arc<dyn astrid_storage::IdentityStore>) -> Self {
+        self.identity_store = Some(store);
         self
     }
 }

@@ -10,26 +10,25 @@ use uuid::Uuid;
 /// The same `AstridUserId` is used whether the user is on Discord,
 /// any platform (Discord, Telegram, etc.).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct AstridUserId {
-    /// Unique identifier (UUID)
-    pub(crate) id: Uuid,
-    /// Optional ed25519 public key for signing (32 bytes)
+pub struct AstridUserId {
+    /// Unique identifier (UUID).
+    pub id: Uuid,
+    /// Optional ed25519 public key for signing (32 bytes).
     #[serde(
         serialize_with = "serialize_optional_key",
         deserialize_with = "deserialize_optional_key"
     )]
-    pub(crate) public_key: Option<[u8; 32]>,
-    /// Display name
-    pub(crate) display_name: Option<String>,
-    /// When created
-    pub(crate) created_at: DateTime<Utc>,
+    pub public_key: Option<[u8; 32]>,
+    /// Display name.
+    pub display_name: Option<String>,
+    /// When created.
+    pub created_at: DateTime<Utc>,
 }
 
 impl AstridUserId {
-    /// Create a new Astrid user identity.
+    /// Create a new Astrid user identity with a random UUID.
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             id: Uuid::new_v4(),
             public_key: None,
@@ -40,8 +39,7 @@ impl AstridUserId {
 
     /// Create an identity with a display name.
     #[must_use]
-    #[allow(dead_code)]
-    pub(crate) fn with_display_name(mut self, name: impl Into<String>) -> Self {
+    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = Some(name.into());
         self
     }
@@ -63,12 +61,30 @@ impl fmt::Display for AstridUserId {
     }
 }
 
+/// A link between a platform-specific identity and an [`AstridUserId`].
+///
+/// Stored in the identity store with the composite key
+/// `link/{platform}/{platform_user_id}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrontendLink {
+    /// Normalized platform name (e.g. "discord", "telegram").
+    pub platform: String,
+    /// Platform-specific user identifier.
+    pub platform_user_id: String,
+    /// The canonical Astrid user this platform identity maps to.
+    pub astrid_user_id: Uuid,
+    /// When this link was created.
+    pub linked_at: DateTime<Utc>,
+    /// How this link was verified (e.g. "admin", "system").
+    pub method: String,
+}
+
 /// Normalize a platform name: trim whitespace, lowercase.
 ///
 /// This is the only normalization needed. Core doesn't know or care
 /// what platforms exist - that's the uplink's business.
 #[must_use]
-pub(crate) fn normalize_platform(name: impl Into<String>) -> String {
+pub fn normalize_platform(name: impl Into<String>) -> String {
     let s = name.into();
     s.trim().to_ascii_lowercase()
 }

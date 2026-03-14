@@ -243,6 +243,7 @@ impl WasmHandler {
             session_token: None,
             interceptor_handles: Vec::new(),
             allowance_store: None,
+            identity_store: None,
         };
         let user_data = UserData::new(host_state);
 

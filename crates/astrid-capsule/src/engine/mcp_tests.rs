@@ -43,6 +43,7 @@ mod tests {
                 uplink: false,
                 ipc_publish: vec![],
                 ipc_subscribe: vec![],
+                identity: vec![],
             },
             env: HashMap::new(),
             tools: vec![],
@@ -102,6 +103,7 @@ mod tests {
             capsule_registry: None,
             session_token: None,
             allowance_store: None,
+            identity_store: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -161,6 +163,7 @@ mod tests {
             capsule_registry: None,
             session_token: None,
             allowance_store: None,
+            identity_store: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -217,6 +220,7 @@ mod tests {
             capsule_registry: None,
             session_token: None,
             allowance_store: None,
+            identity_store: None,
         };
 
         let result = engine.load(&ctx).await;
