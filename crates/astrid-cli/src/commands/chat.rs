@@ -12,6 +12,9 @@ use crate::repl::ReadlineEvent;
 use crate::socket_client::SocketClient;
 use crate::theme::Theme;
 
+/// Reason sent (and displayed) when the JSON REPL auto-denies an approval request.
+const APPROVAL_UNSUPPORTED_REASON: &str = "approvals not supported in JSON REPL mode";
+
 /// Run interactive chat mode via the daemon.
 pub(crate) async fn run_chat(
     client: &mut SocketClient,
@@ -129,14 +132,14 @@ async fn run_json_chat(
                             astrid_events::ipc::IpcPayload::ApprovalResponse {
                                 request_id,
                                 decision: "deny".into(),
-                                reason: Some("Approval not supported in JSON REPL mode".into()),
+                                reason: Some(APPROVAL_UNSUPPORTED_REASON.into()),
                             },
                             session_id.0,
                         ))
                         .await?;
                     println!(
                         "{}",
-                        Theme::dimmed("Auto-denied: approvals not supported in JSON REPL mode",)
+                        Theme::dimmed(&format!("Auto-denied: {APPROVAL_UNSUPPORTED_REASON}"))
                     );
                 },
                 _ => {}, // Ignore other IPC payloads for now
