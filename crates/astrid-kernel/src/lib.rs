@@ -147,27 +147,8 @@ impl Kernel {
         // 3. Establish the physical security boundary (sandbox handle)
         let root_handle = DirHandle::new();
 
-        // 4. Initialize the physical filesystem layers
-        let lower_vfs = HostVfs::new();
-        lower_vfs
-            .register_dir(root_handle.clone(), workspace_root.clone())
-            .await
-            .map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
-
-        // Upper layer uses a session-scoped temporary directory so writes
-        // are sandboxed until explicitly committed, matching the capsule
-        // engine pattern.
-        let upper_temp = tempfile::TempDir::new().map_err(|e| {
-            std::io::Error::other(format!("Failed to create overlay temp dir: {e}"))
-        })?;
-        let upper_vfs = HostVfs::new();
-        upper_vfs
-            .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
-            .await
-            .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
-
-        // 5. Wrap in copy-on-write OverlayVfs
-        let overlay_vfs = Arc::new(OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs)));
+        // 4-5. Initialize sandboxed overlay VFS (lower=workspace, upper=temp)
+        let (overlay_vfs, upper_temp) = init_overlay_vfs(&root_handle, &workspace_root).await?;
 
         // 6. Bind the secure Unix socket and generate session token.
         // The socket is bound here, but not yet listened on. The token is
@@ -711,6 +692,33 @@ impl Kernel {
 
 /// Open (or create) the persistent audit log and verify historical chain integrity.
 ///
+/// Initialize the sandboxed overlay VFS.
+///
+/// Creates a lower (read-only workspace) and upper (session-scoped temp dir)
+/// layer, returning the overlay and the `TempDir` whose lifetime keeps the
+/// upper layer alive.
+async fn init_overlay_vfs(
+    root_handle: &DirHandle,
+    workspace_root: &Path,
+) -> Result<(Arc<OverlayVfs>, tempfile::TempDir), std::io::Error> {
+    let lower_vfs = HostVfs::new();
+    lower_vfs
+        .register_dir(root_handle.clone(), workspace_root.to_path_buf())
+        .await
+        .map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
+
+    let upper_temp = tempfile::TempDir::new()
+        .map_err(|e| std::io::Error::other(format!("Failed to create overlay temp dir: {e}")))?;
+    let upper_vfs = HostVfs::new();
+    upper_vfs
+        .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
+        .await
+        .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
+
+    let overlay = Arc::new(OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs)));
+    Ok((overlay, upper_temp))
+}
+
 /// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a
 /// new one if it doesn't exist. Opens the `SurrealKV`-backed audit database at
 /// `~/.astrid/audit.db` and runs `verify_all()` to detect any tampering of
