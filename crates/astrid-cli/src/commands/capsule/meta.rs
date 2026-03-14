@@ -10,6 +10,7 @@ use std::path::Path;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use astrid_capsule::manifest::TopicDirection;
 use astrid_core::dirs::AstridHome;
 
 /// Capsule installation metadata, persisted as `meta.json` alongside `Capsule.toml`.
@@ -32,6 +33,24 @@ pub(crate) struct CapsuleMeta {
     /// Capabilities this capsule requires from other capsules.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) requires: Vec<String>,
+    /// Topic API declarations with inline schema content, baked at install time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) topics: Vec<BakedTopic>,
+}
+
+/// A topic API declaration baked into `meta.json` with inline schema content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct BakedTopic {
+    /// The topic name (e.g. `"llm.v1.response.chunk.anthropic"`).
+    pub(crate) name: String,
+    /// Whether the capsule publishes or subscribes to this topic.
+    pub(crate) direction: TopicDirection,
+    /// Human-readable description of the topic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
+    /// Inline JSON Schema content (read from the schema file at install time).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<serde_json::Value>,
 }
 
 /// Read existing `meta.json` from a capsule's install directory (if present).
@@ -262,6 +281,72 @@ mod tests {
         assert!(
             results[0].meta.is_none(),
             "corrupt meta.json should be treated as missing"
+        );
+    }
+
+    #[test]
+    fn baked_topic_round_trip() {
+        let meta = CapsuleMeta {
+            version: "1.0.0".into(),
+            installed_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            source: None,
+            provides: vec![],
+            requires: vec![],
+            topics: vec![
+                BakedTopic {
+                    name: "llm.v1.chunk".into(),
+                    direction: TopicDirection::Publish,
+                    description: Some("Streaming chunk".into()),
+                    schema: Some(serde_json::json!({"type": "object"})),
+                },
+                BakedTopic {
+                    name: "llm.v1.request".into(),
+                    direction: TopicDirection::Subscribe,
+                    description: None,
+                    schema: None,
+                },
+            ],
+        };
+
+        let json = serde_json::to_string_pretty(&meta).expect("serialize");
+        let parsed: CapsuleMeta = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(parsed.topics.len(), 2);
+        assert_eq!(parsed.topics[0].name, "llm.v1.chunk");
+        assert_eq!(parsed.topics[0].direction, TopicDirection::Publish);
+        assert_eq!(
+            parsed.topics[0].description.as_deref(),
+            Some("Streaming chunk")
+        );
+        assert!(parsed.topics[0].schema.is_some());
+        assert_eq!(parsed.topics[1].direction, TopicDirection::Subscribe);
+        assert!(parsed.topics[1].schema.is_none());
+    }
+
+    #[test]
+    fn meta_without_topics_deserializes() {
+        // Existing meta.json files without a `topics` field must still parse.
+        let json = r#"{"version":"1.0.0","installed_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}"#;
+        let meta: CapsuleMeta = serde_json::from_str(json).expect("deserialize");
+        assert!(meta.topics.is_empty());
+    }
+
+    #[test]
+    fn baked_topic_omits_empty_topics_from_json() {
+        let meta = CapsuleMeta {
+            version: "1.0.0".into(),
+            installed_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            source: None,
+            provides: vec![],
+            requires: vec![],
+            topics: vec![],
+        };
+        let json = serde_json::to_string(&meta).expect("serialize");
+        assert!(
+            !json.contains("topics"),
+            "empty topics should be omitted from JSON"
         );
     }
 }

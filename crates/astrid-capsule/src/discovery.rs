@@ -3,12 +3,13 @@
 //! Scans well-known directories for `Capsule.toml` files, providing
 //! the entry point for the Manifest-First architecture.
 
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::path::{Component, Path, PathBuf};
 
 use tracing::{debug, info, warn};
 
 use crate::error::{CapsuleError, CapsuleResult};
-use crate::manifest::CapsuleManifest;
+use crate::manifest::{CapsuleManifest, TopicDirection};
 
 /// Standard capsule manifest file name.
 pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
@@ -267,6 +268,90 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         });
     }
 
+    // Validate [[topic]] declarations (structural only - no filesystem access).
+    {
+        let mut seen_topics: HashSet<(&str, TopicDirection)> = HashSet::new();
+        for topic in &manifest.topics {
+            // Topic name must have valid segments (no empty segments).
+            if !crate::dispatcher::has_valid_segments(&topic.name) {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "[[topic]] name '{}' contains empty segments \
+                         (consecutive dots, leading/trailing dots, or is empty)",
+                        topic.name
+                    ),
+                });
+            }
+
+            // Topic names must contain only alphanumeric, hyphens, underscores, and dots.
+            // This implicitly rejects wildcards (*) and other special characters.
+            if !topic
+                .name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+            {
+                // Provide a specific message for wildcards since that's a common mistake.
+                if topic.name.contains('*') {
+                    return Err(CapsuleError::ManifestParseError {
+                        path: path.to_path_buf(),
+                        message: format!(
+                            "[[topic]] name '{}' must be a concrete topic name, not a pattern \
+                             (wildcards are not allowed in topic declarations)",
+                            topic.name
+                        ),
+                    });
+                }
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "[[topic]] name '{}' contains invalid characters \
+                         (only alphanumeric, hyphens, underscores, and dots are allowed)",
+                        topic.name
+                    ),
+                });
+            }
+
+            // Schema path must not escape the capsule directory.
+            if let Some(ref schema_path) = topic.schema {
+                if schema_path.is_absolute() {
+                    return Err(CapsuleError::ManifestParseError {
+                        path: path.to_path_buf(),
+                        message: format!(
+                            "[[topic]] '{}' schema path must be relative, got absolute path '{}'",
+                            topic.name,
+                            schema_path.display()
+                        ),
+                    });
+                }
+                if schema_path
+                    .components()
+                    .any(|c| matches!(c, Component::ParentDir))
+                {
+                    return Err(CapsuleError::ManifestParseError {
+                        path: path.to_path_buf(),
+                        message: format!(
+                            "[[topic]] '{}' schema path must not contain '..' components: '{}'",
+                            topic.name,
+                            schema_path.display()
+                        ),
+                    });
+                }
+            }
+
+            // No duplicate (name, direction) pairs.
+            if !seen_topics.insert((&topic.name, topic.direction)) {
+                return Err(CapsuleError::ManifestParseError {
+                    path: path.to_path_buf(),
+                    message: format!(
+                        "[[topic]] duplicate declaration: '{}' with direction '{}'",
+                        topic.name, topic.direction
+                    ),
+                });
+            }
+        }
+    }
+
     Ok(manifest)
 }
 
@@ -516,5 +601,205 @@ version = "0.1.0"
     fn load_manifest_accepts_missing_astrid_version() {
         // No astrid-version field at all - should load fine.
         assert!(load_from_toml(VALID_HEADER).is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // [[topic]] validation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn topic_parses_valid_publish_and_subscribe() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"llm.v1.response.chunk\"\n\
+             direction = \"publish\"\n\
+             description = \"Streaming LLM response chunk\"\n\
+             \n\
+             [[topic]]\n\
+             name = \"llm.v1.request.generate\"\n\
+             direction = \"subscribe\"\n"
+        );
+        let manifest = load_from_toml(&toml).expect("valid topics");
+        assert_eq!(manifest.topics.len(), 2);
+        assert_eq!(manifest.topics[0].direction, TopicDirection::Publish);
+        assert_eq!(manifest.topics[1].direction, TopicDirection::Subscribe);
+    }
+
+    #[test]
+    fn topic_without_optional_fields() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"events.v1.notify\"\n\
+             direction = \"publish\"\n"
+        );
+        let manifest = load_from_toml(&toml).expect("valid topic without optionals");
+        assert_eq!(manifest.topics.len(), 1);
+        assert!(manifest.topics[0].description.is_none());
+        assert!(manifest.topics[0].schema.is_none());
+    }
+
+    #[test]
+    fn topic_rejects_invalid_direction() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"foo.bar\"\n\
+             direction = \"bidirectional\"\n"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("unknown variant"),
+            "expected serde enum error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn topic_rejects_empty_segment_name() {
+        for bad in &["a..b", ".a.b", "a.b.", "", "."] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{bad}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("empty segments"),
+                "expected 'empty segments' error for name '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn topic_rejects_absolute_schema_path() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"foo.bar\"\n\
+             direction = \"publish\"\n\
+             schema = \"/etc/passwd\"\n"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("must be relative"),
+            "expected relative path error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn topic_rejects_parent_dir_in_schema_path() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"foo.bar\"\n\
+             direction = \"publish\"\n\
+             schema = \"../escape.json\"\n"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("'..'"),
+            "expected parent dir error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn topic_rejects_wildcard_segment_name() {
+        for bad in &["llm.v1.*", "*.response", "a.*.b"] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{bad}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("wildcard"),
+                "expected wildcard error for name '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn topic_rejects_invalid_characters() {
+        for bad in &["llm response", "foo@bar", "a/b/c", "topic!bang"] {
+            let toml = format!(
+                "{VALID_HEADER}\n\
+                 [[topic]]\n\
+                 name = \"{bad}\"\n\
+                 direction = \"publish\"\n"
+            );
+            let err = load_from_toml(&toml).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("invalid characters"),
+                "expected invalid characters error for name '{bad}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn topic_rejects_duplicate_name_direction_pair() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"foo.bar\"\n\
+             direction = \"publish\"\n\
+             \n\
+             [[topic]]\n\
+             name = \"foo.bar\"\n\
+             direction = \"publish\"\n"
+        );
+        let err = load_from_toml(&toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("duplicate"),
+            "expected duplicate error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn topic_allows_same_name_different_direction() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"echo.v1\"\n\
+             direction = \"publish\"\n\
+             \n\
+             [[topic]]\n\
+             name = \"echo.v1\"\n\
+             direction = \"subscribe\"\n"
+        );
+        let manifest = load_from_toml(&toml).expect("same name different direction is valid");
+        assert_eq!(manifest.topics.len(), 2);
+    }
+
+    #[test]
+    fn topic_backwards_compat_no_topics_section() {
+        // Existing manifests without [[topic]] must still parse.
+        let manifest = load_from_toml(VALID_HEADER).expect("no topics section is fine");
+        assert!(manifest.topics.is_empty());
+    }
+
+    #[test]
+    fn topic_with_schema_path() {
+        let toml = format!(
+            "{VALID_HEADER}\n\
+             [[topic]]\n\
+             name = \"llm.v1.chunk\"\n\
+             direction = \"publish\"\n\
+             schema = \"schemas/chunk.json\"\n"
+        );
+        let manifest = load_from_toml(&toml).expect("schema path is valid");
+        assert_eq!(
+            manifest.topics[0].schema.as_deref(),
+            Some(std::path::Path::new("schemas/chunk.json"))
+        );
     }
 }

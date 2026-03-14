@@ -107,6 +107,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         interceptors: vec![],
         cron_jobs: vec![],
         tools,
+        topics: vec![],
         effective_provides_cache: std::sync::OnceLock::new(),
     };
 

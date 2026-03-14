@@ -8,7 +8,7 @@ use anyhow::{Context, bail};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
-use super::meta::{CapsuleMeta, read_meta, write_meta};
+use super::meta::{BakedTopic, CapsuleMeta, read_meta, write_meta};
 
 /// Result of checking a remote source for a newer capsule version.
 enum UpdateCheck {
@@ -657,6 +657,20 @@ pub(crate) fn install_from_local_path_inner(
         return Err(e);
     }
 
+    // Bake topic declarations with inline schema content.
+    let baked_topics = match bake_topics(&manifest, &target_dir) {
+        Ok(t) => t,
+        Err(e) => {
+            // Rollback: restore previous installation (lifecycle hook already ran
+            // and cannot be undone, but at least restore the directory state).
+            let _ = std::fs::remove_dir_all(&target_dir);
+            if let Some(ref backup) = backup_dir {
+                let _ = std::fs::rename(backup, &target_dir);
+            }
+            return Err(e);
+        },
+    };
+
     // Write meta.json on success
     let now = chrono::Utc::now().to_rfc3339();
     let meta = CapsuleMeta {
@@ -681,6 +695,7 @@ pub(crate) fn install_from_local_path_inner(
             .cloned()
             .collect(),
         requires: manifest.dependencies.requires.clone(),
+        topics: baked_topics,
     };
     write_meta(&target_dir, &meta)?;
 
@@ -690,6 +705,116 @@ pub(crate) fn install_from_local_path_inner(
     }
 
     Ok(())
+}
+
+/// Maximum schema file size (1 MB). Prevents oversized schemas from bloating `meta.json`.
+const MAX_SCHEMA_FILE_SIZE: u64 = 1024 * 1024;
+
+/// Read topic declarations from the manifest and bake schema file content inline.
+///
+/// For each `[[topic]]` entry with a `schema` path, reads the JSON file from
+/// `capsule_dir`, validates it as JSON, and embeds the parsed content in the
+/// returned `BakedTopic`. Fails if any schema file is missing, too large, not
+/// valid JSON, or escapes the capsule directory via symlinks.
+fn bake_topics(
+    manifest: &astrid_capsule::manifest::CapsuleManifest,
+    capsule_dir: &Path,
+) -> anyhow::Result<Vec<BakedTopic>> {
+    let mut baked = Vec::with_capacity(manifest.topics.len());
+
+    let canonical_capsule_dir = std::fs::canonicalize(capsule_dir).with_context(|| {
+        format!(
+            "failed to canonicalize capsule dir: {}",
+            capsule_dir.display()
+        )
+    })?;
+
+    for topic in &manifest.topics {
+        let schema = if let Some(ref schema_path) = topic.schema {
+            let full_path = capsule_dir.join(schema_path);
+
+            // Resolve symlinks and verify the canonical path stays within the capsule dir.
+            let canonical = std::fs::canonicalize(&full_path).with_context(|| {
+                format!(
+                    "[[topic]] '{}' schema file not found: '{}'",
+                    topic.name,
+                    full_path.display()
+                )
+            })?;
+            if !canonical.starts_with(&canonical_capsule_dir) {
+                bail!(
+                    "[[topic]] '{}' schema path '{}' resolves outside the capsule directory",
+                    topic.name,
+                    schema_path.display()
+                );
+            }
+
+            // Open once and use .take() to enforce a hard ceiling on bytes read,
+            // preventing a concurrent append from bypassing the size limit.
+            let file = std::fs::File::open(&canonical).with_context(|| {
+                format!(
+                    "failed to open schema file for topic '{}': '{}'",
+                    topic.name,
+                    canonical.display()
+                )
+            })?;
+            let file_len = file
+                .metadata()
+                .with_context(|| format!("failed to stat schema file: {}", canonical.display()))?
+                .len();
+            if file_len > MAX_SCHEMA_FILE_SIZE {
+                bail!(
+                    "[[topic]] '{}' schema file '{}' is {} bytes, exceeding the {} byte limit",
+                    topic.name,
+                    schema_path.display(),
+                    file_len,
+                    MAX_SCHEMA_FILE_SIZE
+                );
+            }
+            let capacity = usize::try_from(file_len)
+                .expect("MAX_SCHEMA_FILE_SIZE is small enough to fit in usize");
+            let mut content = String::with_capacity(capacity);
+            // Read at most MAX_SCHEMA_FILE_SIZE + 1 bytes so we can detect growth.
+            std::io::Read::read_to_string(
+                &mut std::io::Read::take(file, MAX_SCHEMA_FILE_SIZE + 1),
+                &mut content,
+            )
+            .with_context(|| {
+                format!(
+                    "failed to read schema file for topic '{}': '{}'",
+                    topic.name,
+                    canonical.display()
+                )
+            })?;
+            if content.len() as u64 > MAX_SCHEMA_FILE_SIZE {
+                bail!(
+                    "[[topic]] '{}' schema file '{}' exceeded the {} byte limit during read",
+                    topic.name,
+                    schema_path.display(),
+                    MAX_SCHEMA_FILE_SIZE
+                );
+            }
+            let value: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "[[topic]] '{}' schema file '{}' contains invalid JSON",
+                    topic.name,
+                    schema_path.display()
+                )
+            })?;
+            Some(value)
+        } else {
+            None
+        };
+
+        baked.push(BakedTopic {
+            name: topic.name.clone(),
+            direction: topic.direction,
+            description: topic.description.clone(),
+            schema,
+        });
+    }
+
+    Ok(baked)
 }
 
 /// Run lifecycle hooks if the capsule contains a WASM binary.
@@ -1148,6 +1273,7 @@ mod tests {
             source: Some("@org/my-capsule".into()),
             provides: vec!["tool:run_shell".into(), "topic:session.response.*".into()],
             requires: vec!["topic:identity.response.ready".into()],
+            topics: vec![],
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1169,6 +1295,7 @@ mod tests {
             source: None,
             provides: vec![],
             requires: vec![],
+            topics: vec![],
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1341,6 +1468,147 @@ mod tests {
         assert!(
             matches!(result, UpdateCheck::Skipped { reason } if reason.contains("local source"))
         );
+    }
+
+    #[test]
+    fn install_bakes_topic_schema_into_meta() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::create_dir_all(base.join("schemas")).unwrap();
+        std::fs::write(
+            base.join("schemas/chunk.json"),
+            r#"{"type":"object","properties":{"content":{"type":"string"}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"topic-test\"\nversion = \"1.0.0\"\n\n\
+             [[topic]]\nname = \"llm.v1.chunk\"\ndirection = \"publish\"\n\
+             description = \"Streaming chunk\"\nschema = \"schemas/chunk.json\"\n\n\
+             [[topic]]\nname = \"llm.v1.request\"\ndirection = \"subscribe\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        install_from_local_path(base, false, &home).expect("install should succeed");
+
+        let installed = home.capsules_dir().join("topic-test");
+        let meta = read_meta(&installed).expect("meta.json should exist");
+        assert_eq!(meta.topics.len(), 2);
+        assert_eq!(meta.topics[0].name, "llm.v1.chunk");
+        assert_eq!(
+            meta.topics[0].direction,
+            astrid_capsule::manifest::TopicDirection::Publish
+        );
+        assert_eq!(
+            meta.topics[0].description.as_deref(),
+            Some("Streaming chunk")
+        );
+        assert!(meta.topics[0].schema.is_some(), "schema should be baked");
+        let schema = meta.topics[0].schema.as_ref().unwrap();
+        assert_eq!(schema["type"], "object");
+
+        // Second topic has no schema
+        assert_eq!(meta.topics[1].name, "llm.v1.request");
+        assert_eq!(
+            meta.topics[1].direction,
+            astrid_capsule::manifest::TopicDirection::Subscribe
+        );
+        assert!(meta.topics[1].schema.is_none());
+    }
+
+    #[test]
+    fn install_fails_on_missing_schema_file() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"missing-schema\"\nversion = \"1.0.0\"\n\n\
+             [[topic]]\nname = \"foo.bar\"\ndirection = \"publish\"\n\
+             schema = \"schemas/nonexistent.json\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        let err = install_from_local_path(base, false, &home)
+            .expect_err("install should fail with missing schema");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("schema file not found") || msg.contains("No such file"),
+            "expected schema-file-not-found error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn install_fails_on_invalid_json_schema() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::write(base.join("bad.json"), "not valid json {{{").unwrap();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"bad-json\"\nversion = \"1.0.0\"\n\n\
+             [[topic]]\nname = \"foo.bar\"\ndirection = \"publish\"\n\
+             schema = \"bad.json\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        let err = install_from_local_path(base, false, &home)
+            .expect_err("install should fail with invalid JSON");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("invalid JSON"),
+            "expected invalid JSON error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn install_fails_on_oversized_schema() {
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        // Create a file just over 1 MB
+        let big = vec![b' '; (MAX_SCHEMA_FILE_SIZE as usize) + 1];
+        std::fs::write(base.join("big.json"), &big).unwrap();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"big-schema\"\nversion = \"1.0.0\"\n\n\
+             [[topic]]\nname = \"foo.bar\"\ndirection = \"publish\"\n\
+             schema = \"big.json\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        let err = install_from_local_path(base, false, &home)
+            .expect_err("install should fail with oversized schema");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("exceeding"),
+            "expected size limit error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn install_no_topics_backwards_compat() {
+        // Existing capsules without [[topic]] should still produce valid meta.json.
+        let capsule_dir = tempfile::tempdir().unwrap();
+        let base = capsule_dir.path();
+        std::fs::write(
+            base.join("Capsule.toml"),
+            "[package]\nname = \"no-topics\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+        install_from_local_path(base, false, &home).expect("install should succeed");
+
+        let installed = home.capsules_dir().join("no-topics");
+        let meta = read_meta(&installed).expect("meta.json should exist");
+        assert!(meta.topics.is_empty());
     }
 
     #[test]

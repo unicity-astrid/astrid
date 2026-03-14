@@ -5,6 +5,7 @@
 //! loaded from disk during capsule discovery.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -59,6 +60,9 @@ pub struct CapsuleManifest {
     /// Native tools this capsule provides to the LLM agent.
     #[serde(default, rename = "tool")]
     pub tools: Vec<ToolDef>,
+    /// Topic API declarations describing the payload shape of IPC topics.
+    #[serde(default, rename = "topic")]
+    pub topics: Vec<TopicDef>,
     /// Cached effective provides (computed lazily on first `effective_provides()` call).
     ///
     /// **Do not pre-populate.** Always initialize as `OnceLock::new()` in struct literals.
@@ -388,6 +392,43 @@ pub struct InterceptorDef {
     /// Name of the handler function inside the WASM guest
     /// (must match an `#[astrid::interceptor("...")]` annotation).
     pub action: String,
+}
+
+/// Direction a capsule interacts with an IPC topic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TopicDirection {
+    /// The capsule publishes messages to this topic.
+    Publish,
+    /// The capsule subscribes to messages on this topic.
+    Subscribe,
+}
+
+impl fmt::Display for TopicDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Publish => f.write_str("publish"),
+            Self::Subscribe => f.write_str("subscribe"),
+        }
+    }
+}
+
+/// A topic API declaration describing the payload shape of an IPC topic.
+///
+/// Capsules declare each published or subscribed topic with an optional
+/// JSON Schema file that describes the payload structure. Schema files
+/// are baked into `meta.json` at install time for tooling consumption.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicDef {
+    /// The concrete topic name (e.g. `"llm.v1.response.chunk.anthropic"`).
+    /// Wildcards are not permitted; topic declarations must be concrete API contracts.
+    pub name: String,
+    /// Whether the capsule publishes or subscribes to this topic.
+    pub direction: TopicDirection,
+    /// Human-readable description of the topic's purpose.
+    pub description: Option<String>,
+    /// Path to a JSON Schema file (relative to the capsule directory).
+    pub schema: Option<PathBuf>,
 }
 
 /// A scheduled background task (cron job) provided by the capsule.

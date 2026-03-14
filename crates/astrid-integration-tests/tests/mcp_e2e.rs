@@ -59,6 +59,7 @@ async fn test_mcp_host_engine_capability_validation() {
         interceptors: vec![],
         cron_jobs: vec![],
         tools: vec![],
+        topics: vec![],
         effective_provides_cache: std::sync::OnceLock::new(),
     };
 
