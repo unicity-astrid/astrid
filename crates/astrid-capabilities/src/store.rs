@@ -351,7 +351,21 @@ impl CapabilityStore {
     ///
     /// Returns an error if storage operations fail.
     pub fn revoke(&self, token_id: &TokenId) -> CapabilityResult<()> {
-        // Add to revoked set
+        // Persist revocation first so KV is the ground truth. If the daemon
+        // crashes after this point, `load_revoked()` will still see it on
+        // restart.
+        if let Some(store) = &self.persistent_store {
+            let key = token_id.0.to_string();
+
+            block_on(store.set(NS_REVOKED, &key, vec![1u8]))
+                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+
+            if let Err(e) = block_on(store.delete(NS_TOKENS, &key)) {
+                eprintln!("warning: failed to delete revoked token from caps:tokens: {e}");
+            }
+        }
+
+        // Update in-memory state (rebuilt from KV on restart regardless).
         {
             let mut revoked = self
                 .revoked
@@ -360,23 +374,12 @@ impl CapabilityStore {
             revoked.insert(token_id.clone());
         }
 
-        // Remove from session tokens
         {
             let mut tokens = self
                 .session_tokens
                 .write()
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
             tokens.remove(token_id);
-        }
-
-        // Add to persistent revoked list and remove from tokens
-        if let Some(store) = &self.persistent_store {
-            let key = token_id.0.to_string();
-
-            block_on(store.set(NS_REVOKED, &key, vec![1u8]))
-                .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-
-            let _ = block_on(store.delete(NS_TOKENS, &key));
         }
 
         Ok(())
@@ -677,7 +680,7 @@ mod tests {
         assert!(not_found.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_persistent_store() {
         let temp_dir = tempfile::tempdir().unwrap();
         // Use an in-memory KvStore for testing (avoids filesystem issues).
@@ -729,7 +732,7 @@ mod tests {
         assert!(disk_store.get(&other_token_id).unwrap().is_some());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_revocation_survives_restart() {
         let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
         let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
@@ -798,7 +801,7 @@ mod tests {
         assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_find_capability_excludes_used_single_use_persistent() {
         let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
         let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();

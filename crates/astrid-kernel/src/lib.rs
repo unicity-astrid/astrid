@@ -141,6 +141,10 @@ impl Kernel {
         let mcp_client = McpClient::new(mcp_manager);
 
         // 3. Bootstrap capability store (persistent) and audit log.
+        //    Tokens are signed by the runtime key (load_or_generate_runtime_key).
+        //    Key rotation invalidates all persisted tokens - they will fail
+        //    signature verification on retrieval, which is correct fail-secure
+        //    behavior. A migration strategy is not yet implemented.
         let capabilities = Arc::new(
             CapabilityStore::with_kv_store(Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>)
                 .map_err(|e| {
