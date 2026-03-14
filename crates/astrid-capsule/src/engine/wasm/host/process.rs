@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use extism::{CurrentPlugin, Error, UserData, Val};
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,9 @@ struct ProcessResult {
     stderr: String,
     exit_code: i32,
 }
+
+/// Grace period between SIGINT and SIGKILL when cancelling processes.
+const SIGKILL_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
 /// Tracks active child process PIDs for cancellation, with optional call_id
 /// association for multi-session scoping.
@@ -79,6 +83,11 @@ impl ProcessTracker {
     /// SIGKILL task re-checks `active_pids` before signaling to avoid
     /// hitting reused PIDs.
     pub fn cancel_by_call_ids(&self, call_ids: &[String], handle: &tokio::runtime::Handle) {
+        if call_ids.is_empty() {
+            return;
+        }
+        let call_id_set: HashSet<&String> = call_ids.iter().collect();
+
         let pids: Vec<u32> = self
             .active_pids
             .lock()
@@ -89,7 +98,7 @@ impl ProcessTracker {
                     // No call_id stored: conservative fallback, always include.
                     None => Some(pid),
                     // Has call_id: only include if it matches one of the target IDs.
-                    Some(id) => call_ids.contains(id).then_some(pid),
+                    Some(id) => call_id_set.contains(id).then_some(pid),
                 }
             })
             .collect();
@@ -142,7 +151,7 @@ impl ProcessTracker {
         let tracker = self.active_pids.clone();
         let target_pids: Vec<u32> = pids.to_vec();
         handle.spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(SIGKILL_GRACE_PERIOD).await;
             let still_active = tracker.lock().expect("process tracker lock poisoned");
             for pid in target_pids {
                 // Only signal PIDs still in the tracker (not yet unregistered).
