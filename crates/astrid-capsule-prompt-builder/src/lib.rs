@@ -164,7 +164,7 @@ struct SourcedHookResponse {
 /// call site queries the kernel via `capabilities::check`.
 fn filter_by_permission(
     sourced: Vec<SourcedHookResponse>,
-    has_permission: impl Fn(Option<&str>) -> bool,
+    mut has_permission: impl FnMut(Option<&str>) -> bool,
 ) -> Vec<HookResponse> {
     sourced
         .into_iter()

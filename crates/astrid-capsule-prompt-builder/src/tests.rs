@@ -435,6 +435,7 @@ fn assemble_response_serializes_correctly() {
         system_prompt: "Final prompt.".to_string(),
         user_context_prefix: "User ctx".to_string(),
         request_id: "req-1".to_string(),
+        session_id: None,
     };
     let json = serde_json::to_value(&resp).expect("should serialize");
     assert_eq!(json["system_prompt"], "Final prompt.");
