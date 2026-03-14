@@ -26,6 +26,7 @@ ipc_subscribe = [
     "agent.v1.stream.delta",
     "astrid.v1.onboarding.required",
     "astrid.v1.elicit.*",
+    "astrid.v1.approval",
     "astrid.v1.response.*",
     "astrid.v1.capsules_loaded",
     "registry.v1.response.*",
