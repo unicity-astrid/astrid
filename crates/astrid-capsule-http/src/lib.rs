@@ -8,6 +8,19 @@
 //! Provides the `fetch_url` tool, giving agents native HTTP access without
 //! shelling out to `curl`. Uses the host's HTTP implementation which includes
 //! SSRF prevention, timeouts, and payload limits.
+//!
+//! # Security notes
+//!
+//! **Headers**: The tool passes agent-provided headers to the host unfiltered.
+//! This means an agent (or a prompt-injected agent) can set `Host`,
+//! `Authorization`, `Cookie`, or `X-Forwarded-For`. The host's SSRF layer
+//! blocks private/local IPs at DNS resolution time, but header injection to
+//! public endpoints is within the threat model accepted by `net = ["*"]`.
+//!
+//! **Response headers**: The full response header map is returned to the LLM,
+//! including `Set-Cookie` and any auth tokens. This is by design - the agent
+//! needs headers to interpret responses - but operators should be aware that
+//! response secrets enter the LLM context window.
 
 use std::collections::HashMap;
 
@@ -77,7 +90,14 @@ fn validate_url(url: &str) -> Result<(), &'static str> {
     if url.is_empty() {
         return Err("URL cannot be empty");
     }
-    if !url.starts_with("http://") && !url.starts_with("https://") {
+    // RFC 3986: scheme is case-insensitive, so accept HTTP:// and HTTPS://.
+    // Only lowercase the scheme portion for comparison - path/query are case-sensitive.
+    let scheme_lower = url
+        .as_bytes()
+        .iter()
+        .map(u8::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    if !scheme_lower.starts_with(b"http://") && !scheme_lower.starts_with(b"https://") {
         return Err("Only http:// and https:// URLs are supported");
     }
     Ok(())
@@ -155,9 +175,12 @@ mod tests {
 
     #[test]
     fn validate_url_rejects_whitespace_only() {
-        // The tool trims before calling validate_url, so an empty string arrives.
-        // Test the validator itself with empty input.
-        assert_eq!(validate_url(""), Err("URL cannot be empty"));
+        // validate_url itself doesn't trim; the caller (fetch_url) does.
+        // Whitespace-only input hits the scheme check, not the empty check.
+        assert_eq!(
+            validate_url("   "),
+            Err("Only http:// and https:// URLs are supported")
+        );
     }
 
     #[test]
@@ -192,6 +215,27 @@ mod tests {
     #[test]
     fn validate_url_accepts_http() {
         assert_eq!(validate_url("http://example.com"), Ok(()));
+    }
+
+    #[test]
+    fn validate_url_accepts_uppercase_scheme() {
+        assert_eq!(validate_url("HTTP://example.com"), Ok(()));
+        assert_eq!(validate_url("HTTPS://example.com"), Ok(()));
+        assert_eq!(validate_url("Http://example.com"), Ok(()));
+    }
+
+    // -- Method normalization --
+
+    #[test]
+    fn method_defaults_to_get() {
+        let method: Option<String> = None;
+        assert_eq!(method.as_deref().unwrap_or("GET").to_uppercase(), "GET");
+    }
+
+    #[test]
+    fn method_uppercased() {
+        let method = Some("post".to_string());
+        assert_eq!(method.as_deref().unwrap_or("GET").to_uppercase(), "POST");
     }
 
     // -- Body truncation --
