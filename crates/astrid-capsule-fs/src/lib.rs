@@ -59,12 +59,17 @@ pub struct CreateDirectoryArgs {
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct DeleteFileArgs {
+    /// The path to the file to delete.
+    /// Note: Currently only supports deleting files created during the current session. Attempting to delete existing workspace files will fail due to lack of whiteout support.
     pub file_path: String,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct MoveFileArgs {
+    /// The source path of the file to move.
+    /// Note: Currently only supports moving files created during the current session. Attempting to move existing workspace files will fail due to lack of whiteout support.
     pub source_path: String,
+    /// The destination path for the file.
     pub destination_path: String,
 }
 
