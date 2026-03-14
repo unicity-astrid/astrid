@@ -91,11 +91,10 @@ fn validate_url(url: &str) -> Result<(), &'static str> {
         return Err("URL cannot be empty");
     }
     // RFC 3986: scheme is case-insensitive, so accept HTTP:// and HTTPS://.
-    // Only lowercase the scheme prefix (up to "://") for the check. The rest
-    // of the URL (path, query) is case-sensitive and must not be modified.
+    // Compare only the scheme prefix without allocating a lowercased copy.
     let scheme_end = url.find("://").map_or(0, |i| i + 3);
-    let scheme_lower: String = url[..scheme_end].to_ascii_lowercase();
-    if !scheme_lower.starts_with("http://") && !scheme_lower.starts_with("https://") {
+    let scheme = &url[..scheme_end];
+    if !scheme.eq_ignore_ascii_case("http://") && !scheme.eq_ignore_ascii_case("https://") {
         return Err("Only http:// and https:// URLs are supported");
     }
     Ok(())
