@@ -56,6 +56,17 @@ fn check_allowance(
         .is_some()
 }
 
+/// Strip control characters from a guest-supplied string in place.
+///
+/// Used for `resource` and `risk_level` fields that flow into IPC payloads
+/// and tracing logs. Prevents ANSI escape sequence injection into
+/// terminal-rendered approval prompts.
+fn strip_control_chars_inplace(s: &mut String) {
+    if s.chars().any(|c| c.is_control()) {
+        *s = s.chars().filter(|c| !c.is_control()).collect();
+    }
+}
+
 /// Sanitize a guest-supplied action string for safe use in glob patterns.
 ///
 /// Defense layer 1: strips control characters and enforces a length cap.
@@ -184,37 +195,10 @@ pub(crate) fn astrid_request_approval_impl(
     let mut guest_req: GuestApprovalRequest = serde_json::from_slice(&request_bytes)
         .map_err(|e| Error::msg(format!("invalid approval request JSON: {e}")))?;
 
-    // Validate and sanitize the action string at the entry point.
-    let action_char_count = guest_req.action.chars().count();
-    if action_char_count > MAX_ACTION_LEN {
-        return Err(Error::msg(format!(
-            "approval request action exceeds maximum length ({action_char_count} > {MAX_ACTION_LEN})",
-        )));
-    }
-    if guest_req.action.chars().any(|c| c.is_control()) {
-        let cleaned: String = guest_req
-            .action
-            .chars()
-            .filter(|c| !c.is_control())
-            .collect();
-        tracing::warn!(
-            original_chars = action_char_count,
-            cleaned_chars = cleaned.chars().count(),
-            "Approval action contained control characters, stripped"
-        );
-        guest_req.action = cleaned;
-    }
-    // Trim whitespace so the IPC payload and logs show the canonical form
-    // that matches the allowance pattern (sanitize_action_for_pattern also
-    // trims, but we want consistency across all downstream consumers).
-    let trimmed = guest_req.action.trim();
-    if trimmed != guest_req.action.as_str() {
-        guest_req.action = trimmed.to_owned();
-    }
-
     let ud = user_data.get()?;
 
     // Extract what we need from HostState, then drop the lock before blocking.
+    // Extracted early so capsule_id is available for sanitization logging.
     let (
         allowance_store,
         event_bus,
@@ -246,6 +230,25 @@ pub(crate) fn astrid_request_approval_impl(
             workspace,
         )
     };
+
+    // Validate and sanitize all guest-supplied strings at the entry point.
+    // This ensures IPC payloads and log messages contain clean values.
+    let action_char_count = guest_req.action.chars().count();
+    if action_char_count > MAX_ACTION_LEN {
+        return Err(Error::msg(format!(
+            "approval request action exceeds maximum length ({action_char_count} > {MAX_ACTION_LEN})",
+        )));
+    }
+    // Single source of truth: sanitize_action_for_pattern strips control
+    // chars, trims whitespace, and enforces length. Applied here so the
+    // cleaned value flows through to IPC payloads and logs.
+    guest_req.action = sanitize_action_for_pattern(&guest_req.action, &capsule_id);
+    // Strip control characters from resource and risk_level too - they are
+    // guest-controlled and flow into IPC payloads and tracing logs. A
+    // malicious capsule could embed ANSI escape sequences to spoof
+    // terminal-rendered approval prompts.
+    strip_control_chars_inplace(&mut guest_req.resource);
+    strip_control_chars_inplace(&mut guest_req.risk_level);
 
     let ws_path = Some(workspace_root.as_path());
 
