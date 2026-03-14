@@ -12,6 +12,11 @@
 //! The agent maintains this file using existing `write_file` /
 //! `replace_in_file` tools from `astrid-capsule-fs`. No new tools are
 //! needed - this capsule is read-only.
+//!
+//! **Note:** This capsule handles the read/inject side only. The agent
+//! needs instructions telling it to *write* to `.astrid/memory.md` in
+//! the first place. That will come via the capsule instruction channel
+//! (`AGENTS.md` per capsule) tracked in [#448].
 
 use astrid_sdk::prelude::*;
 
