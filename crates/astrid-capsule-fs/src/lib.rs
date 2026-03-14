@@ -6,7 +6,7 @@
 //! Filesystem tools capsule for Astrid OS.
 //!
 //! Provides `read_file`, `write_file`, `replace_in_file`, `list_directory`,
-//! and `grep_search` tools to agents.
+//! `grep_search`, `create_directory`, `delete_file`, and `move_file` tools to agents.
 
 mod grep;
 
@@ -47,6 +47,22 @@ pub struct ListDirectoryArgs {
 pub struct GrepSearchArgs {
     pub dir_path: Option<String>,
     pub pattern: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateDirectoryArgs {
+    pub dir_path: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct DeleteFileArgs {
+    pub file_path: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct MoveFileArgs {
+    pub source_path: String,
+    pub destination_path: String,
 }
 
 #[capsule]
@@ -126,6 +142,65 @@ impl FsTools {
 
         Ok(matches.join("\n"))
     }
+
+    #[astrid::tool("create_directory")]
+    pub fn create_directory(&self, args: CreateDirectoryArgs) -> Result<String, SysError> {
+        fs::create_dir(&args.dir_path)?;
+        Ok(format!("Successfully created directory {}", args.dir_path))
+    }
+
+    #[astrid::tool("delete_file")]
+    pub fn delete_file(&self, args: DeleteFileArgs) -> Result<String, SysError> {
+        if is_directory(&args.file_path)? {
+            return Err(SysError::ApiError(format!(
+                "{} is a directory, not a file; delete_file only supports files",
+                args.file_path
+            )));
+        }
+        fs::remove_file(&args.file_path)?;
+        Ok(format!("Successfully deleted {}", args.file_path))
+    }
+
+    #[astrid::tool("move_file")]
+    pub fn move_file(&self, args: MoveFileArgs) -> Result<String, SysError> {
+        if !fs::exists(&args.source_path)? {
+            return Err(SysError::ApiError(format!(
+                "source path does not exist: {}",
+                args.source_path
+            )));
+        }
+        if is_directory(&args.source_path)? {
+            return Err(SysError::ApiError(format!(
+                "{} is a directory, not a file; move_file only supports files",
+                args.source_path
+            )));
+        }
+        if fs::exists(&args.destination_path)? {
+            return Err(SysError::ApiError(format!(
+                "destination already exists: {}",
+                args.destination_path
+            )));
+        }
+
+        let content = fs::read(&args.source_path)?;
+        fs::write(&args.destination_path, &content)?;
+        fs::remove_file(&args.source_path)?;
+
+        Ok(format!(
+            "Successfully moved {} to {}",
+            args.source_path, args.destination_path
+        ))
+    }
+}
+
+/// Returns `true` if `path` refers to a directory according to VFS metadata.
+fn is_directory(path: &str) -> Result<bool, SysError> {
+    let stat_bytes = fs::metadata(path)?;
+    let is_dir = serde_json::from_slice::<serde_json::Value>(&stat_bytes)
+        .ok()
+        .and_then(|v| v.get("isDir")?.as_bool())
+        .unwrap_or(false);
+    Ok(is_dir)
 }
 
 /// Recursively walks `dir` and collects lines containing `pattern`.
