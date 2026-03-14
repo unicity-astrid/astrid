@@ -137,6 +137,11 @@ fn create_allowance_from_decision(
 
     // Layer 1: strip control characters, enforce length cap.
     let sanitized = sanitize_action_for_pattern(action, capsule_id);
+    // Empty action after sanitization produces pattern " *" which is
+    // meaningless. Skip allowance creation rather than storing a useless entry.
+    if sanitized.is_empty() {
+        return;
+    }
     // Layer 2: escape glob metacharacters so wildcards match literally.
     let sanitized = escape_glob_metacharacters(&sanitized);
     let pattern = AllowancePattern::CommandPattern {
@@ -203,7 +208,7 @@ pub(crate) fn astrid_request_approval_impl(
     // that matches the allowance pattern (sanitize_action_for_pattern also
     // trims, but we want consistency across all downstream consumers).
     let trimmed = guest_req.action.trim();
-    if trimmed.len() != guest_req.action.len() {
+    if trimmed != guest_req.action.as_str() {
         guest_req.action = trimmed.to_owned();
     }
 
@@ -525,10 +530,11 @@ mod tests {
 
     #[test]
     fn create_allowance_empty_action() {
+        // Empty action after sanitization produces no allowance - the pattern
+        // would be " *" which is meaningless.
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "", "approve_session", None, "test");
-        assert_eq!(store.count(), 1);
-        // Pattern " *" matches nothing useful
+        assert_eq!(store.count(), 0);
         assert!(!check_allowance(&store, "git push", None));
     }
 
