@@ -119,8 +119,17 @@ fn prepare_socket_path(path: &std::path::Path) -> Result<(), std::io::Error> {
                     path.display()
                 )));
             },
-            Err(_) => {
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                // No listener attached: stale socket, safe to remove.
                 let _ = std::fs::remove_file(path);
+            },
+            Err(e) => {
+                // Other errors (EACCES, etc.) may indicate a live kernel
+                // under a different user or transient issue. Don't delete.
+                return Err(std::io::Error::other(format!(
+                    "Failed to probe existing socket {}: {e}",
+                    path.display()
+                )));
             },
         }
     }
