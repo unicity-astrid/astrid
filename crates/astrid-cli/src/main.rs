@@ -248,6 +248,10 @@ async fn main() -> Result<()> {
                     .iter()
                     .any(|id| id.as_str() == "astrid-capsule-cli");
                 if !has_cli_proxy {
+                    tracing::error!(
+                        "CLI proxy capsule (astrid-capsule-cli) not found - \
+                         daemon cannot accept CLI connections"
+                    );
                     anyhow::bail!(
                         "CLI proxy capsule (astrid-capsule-cli) not found. \
                          Ensure it is installed in ~/.astrid/capsules/ or \
@@ -373,7 +377,7 @@ async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Chil
     // mistake a leftover from a crashed daemon for the new one.
     let _ = std::fs::remove_file(ready_path);
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .context("Failed to spawn background Kernel daemon")?;
 
@@ -390,6 +394,10 @@ async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Chil
         }
     }
     if !ready {
+        // Kill the child to prevent an orphan daemon that lingers
+        // until its idle timeout expires.
+        let _ = child.kill();
+        let _ = child.wait();
         let log_hint = astrid_core::dirs::AstridHome::resolve()
             .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
             .unwrap_or_default();
