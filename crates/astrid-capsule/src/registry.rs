@@ -370,6 +370,22 @@ mod tests {
     }
 
     #[test]
+    fn unregister_not_found_returns_not_found_error() {
+        let mut registry = CapsuleRegistry::new();
+        let id = CapsuleId::from_static("nonexistent");
+        match registry.unregister(&id) {
+            Err(CapsuleError::NotFound(msg)) => {
+                assert!(
+                    msg.contains("nonexistent"),
+                    "message should contain the id: {msg}"
+                );
+            }
+            Err(other) => panic!("expected NotFound, got: {other:?}"),
+            Ok(_) => panic!("expected error for nonexistent capsule"),
+        }
+    }
+
+    #[test]
     fn uuid_mapping_register_and_find() {
         let mut registry = CapsuleRegistry::new();
         let uuid = Uuid::new_v4();
