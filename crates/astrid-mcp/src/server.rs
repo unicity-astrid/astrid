@@ -454,9 +454,19 @@ impl ServerManager {
         // live under $HOME which isn't in the default allowlist.
         // Canonicalize to follow symlinks so the real target's directory is allowed,
         // not just the symlink's directory.
-        let canonical = resolved_command
-            .canonicalize()
-            .unwrap_or_else(|_| resolved_command.clone());
+        let canonical = match resolved_command.canonicalize() {
+            Ok(path) => path,
+            Err(e) => {
+                warn!(
+                    server = name,
+                    path = %resolved_command.display(),
+                    error = %e,
+                    "Failed to canonicalize binary path; \
+                     falling back to original. Sandbox may not have access to the binary."
+                );
+                resolved_command.clone()
+            },
+        };
         if let Some(bin_dir) = canonical.parent()
             && Self::validate_sandbox_path(bin_dir, "binary parent dir").is_ok()
         {
