@@ -1,33 +1,31 @@
 [package]
 name = "astrid-kernel"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
-description = "Astrid micro-kernel, the core of the Astrid OS"
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+description = "Astrid micro-kernel, the core of the Astrid OS"
 
 [dependencies]
-astrid-events.workspace = true
-astrid-capsule.workspace = true
-astrid-capabilities.workspace = true
-astrid-vfs.workspace = true
-astrid-mcp.workspace = true
-astrid-audit.workspace = true
-astrid-crypto.workspace = true
-astrid-approval.workspace = true
-
-tokio = { workspace = true, features = ["full", "signal"] }
-tracing.workspace = true
-serde_json.workspace = true
-uuid.workspace = true
-anyhow.workspace = true
+anyhow = { workspace = true }
+astrid-approval = { workspace = true }
+astrid-audit = { workspace = true }
+astrid-capabilities = { workspace = true }
+astrid-capsule = { workspace = true }
+astrid-config = { workspace = true }
+astrid-core = { workspace = true }
+astrid-crypto = { workspace = true }
+astrid-events = { workspace = true }
+astrid-mcp = { workspace = true }
 astrid-storage = { workspace = true, features = ["kv"] }
-astrid-config.workspace = true
-astrid-core.workspace = true
+astrid-vfs = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
-
-[dev-dependencies]
+tokio = { workspace = true, features = ["full", "signal"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

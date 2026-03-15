@@ -1,0 +1,35 @@
+name: Feature Request
+description: Propose a new feature or capability
+labels: ["feat"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What problem does this solve? What's the proposed solution?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this needed? What use cases does it support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Proposed Implementation
+      description: Technical approach, affected crates/modules, known trade-offs. Optional but helpful.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you considered and why this one is better.
+    validations:
+      required: false

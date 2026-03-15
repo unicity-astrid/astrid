@@ -42,14 +42,19 @@
 
 use astrid_sys::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use thiserror::Error;
+
+pub use borsh;
+pub use serde;
+pub use serde_json;
+
 // Re-exported for the #[capsule] macro's generated code. Not part of the
 // public API - capsule authors should never need to import these directly.
 #[doc(hidden)]
 pub use extism_pdk;
 #[doc(hidden)]
 pub use schemars;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use thiserror::Error;
 
 /// Core error type for SDK operations
 #[derive(Error, Debug)]

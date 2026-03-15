@@ -1,53 +1,37 @@
 [package]
 name = "astrid-storage"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Unified storage layer for Astrid — SurrealKV (raw KV) and SurrealDB (query engine)"
+description = "Unified storage layer for Astrid - SurrealKV (raw KV) and SurrealDB (query engine)"
 
 [features]
 default = []
-# Enable SurrealKV raw key-value store
 kv = ["dep:surrealkv"]
-# Enable SurrealDB full query engine (graph, document, SurrealQL)
 db = ["dep:surrealdb"]
-# Enable OS keychain secret storage via the `keyring` crate
 keychain = ["dep:keyring"]
-# Enable both kv and db
 full = ["kv", "db"]
 
 [dependencies]
-# Async
+astrid-core = { workspace = true }
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
-
-# Serialization
+chrono = { workspace = true }
+keyring = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Logging
-tracing = { workspace = true }
-
-# Error handling
-thiserror = { workspace = true }
-
-# Identity store types
-astrid-core = { path = "../astrid-core" }
-chrono = { workspace = true }
-uuid = { workspace = true }
-
-# Storage backends (optional)
 surrealkv = { workspace = true, optional = true }
 surrealdb = { workspace = true, optional = true }
-
-# OS keychain (optional)
-keyring = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tempfile = "3.10"
 
 [lints]
 workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "astrid-workspace"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,17 +9,17 @@ rust-version.workspace = true
 description = "Operational workspace boundaries for Astrid secure agent runtime"
 
 [dependencies]
-astrid-core.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-globset.workspace = true
-tracing.workspace = true
-chrono.workspace = true
-uuid.workspace = true
+astrid-core = { workspace = true }
+chrono = { workspace = true }
+globset = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.10"
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

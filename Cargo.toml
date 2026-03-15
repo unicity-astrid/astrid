@@ -1,233 +1,121 @@
 [workspace]
 resolver = "2"
 members = [
-    # Core
+    "crates/astrid-approval",
     "crates/astrid-audit",
     "crates/astrid-capabilities",
+    "crates/astrid-capsule",
+    "crates/astrid-cli",
+    "crates/astrid-config",
     "crates/astrid-core",
     "crates/astrid-crypto",
     "crates/astrid-events",
     "crates/astrid-hooks",
-
-    "crates/astrid-mcp",
-    "crates/astrid-telemetry",
-    "crates/astrid-test",
-    "crates/astrid-workspace",
-    "crates/astrid-prelude",
-
-    # Configuration
-    "crates/astrid-config",
-
-    # Plugins
-    "crates/astrid-openclaw",
-
-    # Phase 2
-    "crates/astrid-approval",
-    "crates/astrid-storage",
-
-    # Deferred to later phases
-    # "crates/astrid-sandbox",   # Phase 3
-    # "crates/astrid-skills",    # Phase 4
-    # "crates/astrid-memory",    # Phase 11
-
-    # Integration tests
     "crates/astrid-integration-tests",
-
-    # Gateway
     "crates/astrid-kernel",
-
-    # Frontends
-    "crates/astrid-cli",
-    # "crates/astrid-cli-mockup",  # UI/UX prototype
-
-    "crates/astrid-vfs",
-    "crates/astrid-sys",
+    "crates/astrid-mcp",
+    "crates/astrid-openclaw",
+    "crates/astrid-prelude",
     "crates/astrid-sdk",
     "crates/astrid-sdk-macros",
-    "crates/astrid-capsule",
-    # "crates/astrid-discord",  # Phase 7
-    # "crates/astrid-web",      # Phase 7
-
-    # Optional Integrations
-    # "crates/astrid-unicity",  # After research
-    ]
+    "crates/astrid-storage",
+    "crates/astrid-sys",
+    "crates/astrid-telemetry",
+    "crates/astrid-test",
+    "crates/astrid-vfs",
+    "crates/astrid-workspace",
+]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
+authors = ["Joshua J. Bouw <dev@joshuajbouw.com>", "Unicity Labs <info@unicity-labs.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/unicity-astrid/astrid"
 rust-version = "1.94"
 
 [workspace.dependencies]
-# Internal crates - Core (Phase 1)
-astrid-core = { path = "crates/astrid-core", version = "0.1.1" }
-astrid-crypto = { path = "crates/astrid-crypto", version = "0.1.1" }
-astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.1.1" }
-astrid-events = { path = "crates/astrid-events", version = "0.1.1", default-features = false }
-astrid-hooks = { path = "crates/astrid-hooks", version = "0.1.1" }
-astrid-mcp = { path = "crates/astrid-mcp", version = "0.1.1" }
-astrid-audit = { path = "crates/astrid-audit", version = "0.1.1" }
-
-astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.1.1" }
+astrid-approval = { path = "crates/astrid-approval", version = "0.2.0" }
+astrid-audit = { path = "crates/astrid-audit", version = "0.2.0" }
+astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.2.0" }
+astrid-capsule = { path = "crates/astrid-capsule", version = "0.2.0" }
+astrid-config = { path = "crates/astrid-config", version = "0.2.0" }
+astrid-core = { path = "crates/astrid-core", version = "0.2.0" }
+astrid-crypto = { path = "crates/astrid-crypto", version = "0.2.0" }
+astrid-events = { path = "crates/astrid-events", version = "0.2.0", default-features = false }
+astrid-hooks = { path = "crates/astrid-hooks", version = "0.2.0" }
+astrid-kernel = { path = "crates/astrid-kernel", version = "0.2.0" }
+astrid-mcp = { path = "crates/astrid-mcp", version = "0.2.0" }
+astrid-openclaw = { path = "crates/astrid-openclaw", version = "0.2.0" }
+astrid-prelude = { path = "crates/astrid-prelude", version = "0.2.0" }
+astrid-sdk = { path = "crates/astrid-sdk", version = "0.2.0" }
+astrid-sdk-macros = { path = "crates/astrid-sdk-macros", version = "0.2.0" }
+astrid-storage = { path = "crates/astrid-storage", version = "0.2.0" }
+astrid-sys = { path = "crates/astrid-sys", version = "0.2.0" }
+astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.2.0" }
 astrid-test = { path = "crates/astrid-test" }
-astrid-workspace = { path = "crates/astrid-workspace", version = "0.1.1" }
-
-astrid-prelude = { path = "crates/astrid-prelude", version = "0.1.1" }
-astrid-kernel = { path = "crates/astrid-kernel", version = "0.1.1" }
-astrid-vfs = { path = "crates/astrid-vfs", version = "0.1.1" }
-
-# Internal crates - Configuration
-astrid-config = { path = "crates/astrid-config", version = "0.1.1" }
-
-# Internal crates - Plugins
-astrid-openclaw = { path = "crates/astrid-openclaw", version = "0.1.1" }
-
-# Internal crates - Phase 4
-astrid-sys = { path = "crates/astrid-sys", version = "0.1.1" }
-astrid-sdk = { path = "crates/astrid-sdk", version = "0.1.1" }
-astrid-sdk-macros = { path = "crates/astrid-sdk-macros", version = "0.1.1" }
-astrid-capsule = { path = "crates/astrid-capsule", version = "0.1.1" }
-
-# Internal crates - Phase 2
-astrid-approval = { path = "crates/astrid-approval", version = "0.1.1" }
-astrid-storage = { path = "crates/astrid-storage", version = "0.1.1" }
-
-# Internal crates - Deferred phases
-# astrid-sandbox = { path = "crates/astrid-sandbox" }   # Phase 3
-# astrid-skills = { path = "crates/astrid-skills" }     # Phase 4
-# astrid-memory = { path = "crates/astrid-memory" }     # Phase 11
-
-# MCP - Official Rust SDK (2025-11-25 spec)
-# https://github.com/modelcontextprotocol/rust-sdk
-rmcp = { version = "0.15", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
-
-# Binary lookup
-which = "7"
-
-# JS/TS transpilation (OXC)
+astrid-vfs = { path = "crates/astrid-vfs", version = "0.2.0" }
+astrid-workspace = { path = "crates/astrid-workspace", version = "0.2.0" }
+anyhow = "1.0"
+arboard = "3"
+async-trait = "0.1"
+base64 = "0.22"
+blake3 = "1.5"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+colored = "2.1"
+crossterm = "0.28"
+dashmap = "6.1.0"
+dialoguer = "0.11"
+directories = "5.0"
+ed25519-dalek = { version = "2.1", features = ["rand_core", "zeroize", "serde"] }
+extism = "1"
+flate2 = "1.0"
+fs2 = "0.4"
+futures = "0.3"
+globset = "0.4"
+hex = "0.4"
+ignore = "0.4"
+indicatif = "0.17"
+jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
+keyring = { version = "3", features = ["async-secret-service", "crypto-rust"] }
+landlock = "0.4"
+nix = { version = "0.29", features = ["process", "signal", "user", "fs", "resource"] }
+notify = "7"
 oxc = { version = "0.112", features = ["transformer", "semantic", "codegen"] }
 oxc_allocator = "0.112"
-
-# WASM pre-initialization
-wizer = "10"
-
-# WASM binary manipulation
-wasmparser = "0.227"
-wasm-encoder = "0.227"
-
-# Temporary files
-tempfile = "3"
-
-# JSON-RPC over WebSocket (daemon ↔ CLI IPC)
-jsonrpsee = { version = "0.24", features = ["server", "client", "macros"] }
-
-# Async runtime
-tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util"] }
-
-# Serialization
+rand = "0.8"
+ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
+regex = "1.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
+rmcp = { version = "0.15", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
+rustyline = { version = "15", features = ["derive"] }
+semver = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-toml = "0.8"
-
-# Cryptography
-ed25519-dalek = { version = "2.1", features = ["rand_core", "zeroize", "serde"] }
-blake3 = "1.5"
-rand = "0.8"
-zeroize = { version = "1.8", features = ["derive"] }
-
-# Sandboxing (Linux)
-landlock = "0.4"
-nix = { version = "0.29", features = ["process", "signal", "user", "fs", "resource"] }
-
-# Error handling
-thiserror = "2.0"
-anyhow = "1.0"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-
-# CLI
-clap = { version = "4.5", features = ["derive", "env"] }
-colored = "2.1"
-dialoguer = "0.11"
-indicatif = "0.17"
-rustyline = { version = "15", features = ["derive"] }
-syntect = { version = "5", default-features = false, features = ["default-fancy"] }
-
-# TUI
-ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
-crossterm = "0.28"
-arboard = "3"
-
-# Database (persistent stores - Phase 2+)
-# SurrealDB: full query engine (graph, document, SurrealQL) for system stores
-surrealdb = { version = "3.0.0-beta.3", default-features = false, features = ["kv-surrealkv", "kv-mem"] }
-# SurrealKV: raw embedded KV for WASM guest storage (Phase 3)
-surrealkv = "0.18"
-
-# Time
-chrono = { version = "0.4", features = ["serde"] }
-
-# UUID
-uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
-
-# Glob matching
-globset = "0.4"
-ignore = "0.4"
-
-# Regex
-regex = "1.10"
-
-# Semantic versioning
-semver = "1"
-
-# DashMap
-dashmap = "6.1.0"
-
-# Telegram bot framework
-teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
-
-# WASM plugin runtime
-extism = "1"
-
-# HTTP client (optional, for plugin HTTP host functions)
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
-
-# OS keychain (secret storage)
-keyring = { version = "3", features = ["async-secret-service", "crypto-rust"] }
-
-# Async utilities
-async-trait = "0.1"
-futures = "0.3"
-tokio-util = "0.7"
-
-# Encoding
-base64 = "0.22"
-hex = "0.4"
-
-# Archive / compression
-flate2 = "1.0"
-tar = "0.4"
-
-# Hashing (SHA-2 family for npm SRI verification)
 sha2 = "0.10"
 subtle = "2"
-
-# File locking
-fs2 = "0.4"
-
-# Filesystem watching
-notify = "7"
-
-# URL parsing
+surrealkv = "0.18"
+surrealdb = { version = "3.0.0-beta.3", default-features = false, features = ["kv-surrealkv", "kv-mem"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+tar = "0.4"
+teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
+tempfile = "3"
+thiserror = "2.0"
+tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util"] }
+tokio-util = "0.7"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2"
-
-# Directory utilities
-directories = "5.0"
+uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
 walkdir = "2.5"
+wasm-encoder = "0.227"
+wasmparser = "0.227"
+which = "7"
+wizer = "10"
+zeroize = { version = "1.8", features = ["derive"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

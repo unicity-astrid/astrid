@@ -1,0 +1,264 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, labeled, synchronize]
+
+jobs:
+  template:
+    name: PR template filled in
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          ERRORS=""
+
+          # Check required sections exist and have content beyond the template placeholder
+          check_section() {
+            local section="$1"
+            local content
+            # Extract text between this section header and the next ## header
+            content=$(echo "$PR_BODY" | sed -n "/^## $section/,/^## /p" | sed '1d;$d' | sed '/^<!--.*-->$/d' | sed '/^\s*$/d')
+            if [ -z "$content" ]; then
+              ERRORS="${ERRORS}Missing or empty section: ## $section\n"
+            fi
+          }
+
+          check_section "Linked Issue"
+          check_section "Summary"
+          check_section "Changes"
+          check_section "Test Plan"
+
+          # Check that Linked Issue has an actual issue number, not just the placeholder
+          if ! echo "$PR_BODY" | grep -qE '#[0-9]+'; then
+            ERRORS="${ERRORS}Linked Issue must reference an issue number (#N)\n"
+          fi
+
+          if [ -n "$ERRORS" ]; then
+            echo "::error::PR template not fully completed:"
+            echo -e "$ERRORS" | while read -r line; do
+              [ -n "$line" ] && echo "::error::  - $line"
+            done
+            exit 1
+          fi
+
+          echo "PR template properly filled in."
+
+  contributor-gate:
+    name: Contributor tier check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check contributor tier and scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          CONTRIBUTORS_FILE=".github/contributors.yml"
+
+          # Security-critical crate paths
+          SECURITY_PATHS="crates/astrid-crypto crates/astrid-capabilities crates/astrid-audit crates/astrid-approval crates/astrid-vfs crates/astrid-storage crates/astrid-sys crates/astrid-core"
+
+          # Core crate paths (non-security but important)
+          CORE_PATHS="crates/astrid-kernel crates/astrid-events crates/astrid-hooks crates/astrid-config crates/astrid-mcp"
+
+          # Determine tier from contributors.yml
+          # Parse section by finding which block contains the username
+          TIER="new"
+          CURRENT_SECTION=""
+          while IFS= read -r line; do
+            case "$line" in
+              maintainers:*) CURRENT_SECTION="maintainer" ;;
+              core:*) CURRENT_SECTION="core" ;;
+              astrinauts:*) CURRENT_SECTION="astrinaut" ;;
+            esac
+            if echo "$line" | grep -q "username: $PR_AUTHOR"; then
+              TIER="$CURRENT_SECTION"
+              break
+            fi
+          done < "$CONTRIBUTORS_FILE"
+
+          echo "Author: $PR_AUTHOR"
+          echo "Tier: $TIER"
+
+          # Maintainers pass all checks
+          if [ "$TIER" = "maintainer" ]; then
+            echo "Maintainer - all paths allowed."
+            exit 0
+          fi
+
+          # Get changed files
+          CHANGED=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+
+          TOUCHES_SECURITY=false
+          TOUCHES_CORE=false
+
+          for file in $CHANGED; do
+            for path in $SECURITY_PATHS; do
+              if echo "$file" | grep -q "^$path/"; then
+                TOUCHES_SECURITY=true
+              fi
+            done
+            for path in $CORE_PATHS; do
+              if echo "$file" | grep -q "^$path/"; then
+                TOUCHES_CORE=true
+              fi
+            done
+          done
+
+          # New contributors: require approval label
+          if [ "$TIER" = "new" ]; then
+            LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' 2>/dev/null || echo "")
+            if echo "$LABELS" | grep -q "newcomer-approved"; then
+              echo "New contributor approved by a maintainer."
+            else
+              echo "::error::New contributors require a maintainer to add the 'newcomer-approved' label before CI proceeds."
+              exit 1
+            fi
+          fi
+
+          # Astrinauts cannot touch security or core paths
+          if [ "$TIER" = "astrinaut" ]; then
+            if [ "$TOUCHES_SECURITY" = true ]; then
+              echo "::error::Astrinauts cannot modify security-critical crates. Request a promotion to core or ask a maintainer."
+              exit 1
+            fi
+            if [ "$TOUCHES_CORE" = true ]; then
+              echo "::error::Astrinauts cannot modify core crates. Request a promotion to core or ask a maintainer."
+              exit 1
+            fi
+          fi
+
+          # Core contributors cannot touch security paths without maintainer
+          if [ "$TIER" = "core" ]; then
+            if [ "$TOUCHES_SECURITY" = true ]; then
+              echo "::warning::Core contributor touching security-critical paths. Maintainer co-review required."
+            fi
+          fi
+
+          echo "Contributor gate passed."
+
+  file-size:
+    name: File size check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed files under 1000 lines
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' 2>/dev/null || echo "")
+          if echo "$LABELS" | grep -q "large-file-ok"; then
+            echo "Large file override label present. Skipping check."
+            exit 0
+          fi
+
+          CHANGED=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          VIOLATIONS=""
+
+          for file in $CHANGED; do
+            if [ -f "$file" ]; then
+              LINES=$(wc -l < "$file" | tr -d ' ')
+              if [ "$LINES" -gt 1000 ]; then
+                # Check if file was already over 1000 lines on the base branch
+                BASE_LINES=$(git show "$PR_BASE:$file" 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$BASE_LINES" -le 1000 ]; then
+                  VIOLATIONS="${VIOLATIONS}  $file ($LINES lines, was $BASE_LINES)\n"
+                else
+                  echo "::notice::$file ($LINES lines) was already over 1000 lines ($BASE_LINES). Skipping."
+                fi
+              fi
+            fi
+          done
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Files pushed over 1000 lines by this PR:"
+            echo -e "$VIOLATIONS" | while read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            echo ""
+            echo "Split large files or add the 'large-file-ok' label if this is a maintainer refactor."
+            exit 1
+          fi
+
+          echo "All changed files within limits."
+
+  linked-issue:
+    name: Linked issue required
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if echo "$PR_BODY" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#[0-9]+'; then
+            echo "PR references an issue."
+            exit 0
+          fi
+
+          LINKED=$(gh api graphql -f query='
+            query {
+              repository(owner: "'"${REPO%%/*}"'", name: "'"${REPO##*/}"'") {
+                pullRequest(number: '"$PR_NUMBER"') {
+                  closingIssuesReferences(first: 1) {
+                    totalCount
+                  }
+                }
+              }
+            }' --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount' 2>/dev/null || echo "0")
+
+          if [ "$LINKED" -gt 0 ]; then
+            echo "PR has linked issues via GitHub UI."
+            exit 0
+          fi
+
+          echo "::error::Every PR must be linked to an issue. Use 'Closes #N' in the PR body or link via the GitHub sidebar."
+          exit 1
+
+  account-age:
+    name: Contributor account check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.author_association == 'NONE' || github.event.pull_request.author_association == 'FIRST_TIMER' || github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    steps:
+      - name: Check account age and activity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          CREATED=$(gh api "users/$PR_AUTHOR" --jq '.created_at')
+          CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CREATED" +%s 2>/dev/null)
+          NOW_TS=$(date +%s)
+          AGE_DAYS=$(( (NOW_TS - CREATED_TS) / 86400 ))
+
+          PUBLIC_REPOS=$(gh api "users/$PR_AUTHOR" --jq '.public_repos')
+          FOLLOWERS=$(gh api "users/$PR_AUTHOR" --jq '.followers')
+
+          echo "Account: $PR_AUTHOR"
+          echo "Age: $AGE_DAYS days"
+          echo "Public repos: $PUBLIC_REPOS"
+          echo "Followers: $FOLLOWERS"
+
+          if [ "$AGE_DAYS" -lt 30 ]; then
+            echo "::warning::New account ($AGE_DAYS days old). Requires maintainer review."
+          fi
+
+          if [ "$PUBLIC_REPOS" -eq 0 ] && [ "$FOLLOWERS" -eq 0 ]; then
+            echo "::warning::Account has no public repos and no followers. Possible spam account."
+          fi

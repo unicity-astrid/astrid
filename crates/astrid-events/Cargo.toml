@@ -1,6 +1,7 @@
 [package]
 name = "astrid-events"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -11,35 +12,24 @@ description = "Event bus for Astrid secure agent runtime"
 default = ["runtime"]
 runtime = [
     "dep:astrid-core",
-    "dep:tokio",
     "dep:async-trait",
-    "dep:dashmap",
-    "dep:tracing",
     "dep:chrono",
+    "dep:dashmap",
+    "dep:tokio",
+    "dep:tracing",
 ]
 
 [dependencies]
-# Internal (runtime only — not available in WASM builds)
 astrid-core = { workspace = true, optional = true }
-
-# Serialization (always available)
+async-trait = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+dashmap = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Error handling (always available)
 thiserror = { workspace = true }
-
-# Async (runtime only)
 tokio = { version = "1.49", features = ["sync", "rt"], optional = true }
-async-trait = { workspace = true, optional = true }
-
-# Time & IDs
-uuid = { workspace = true }
-
-# Runtime-only deps
-chrono = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
-dashmap = { workspace = true, optional = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

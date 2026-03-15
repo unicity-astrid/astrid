@@ -1,0 +1,20 @@
+name: Changelog
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Changelog updated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dangoslen/changelog-enforcer@v3
+        with:
+          changeLogPath: CHANGELOG.md
+          skipLabels: "skip-changelog"
+          missingUpdateErrorMessage: "Every PR must include a CHANGELOG.md entry under [Unreleased]."

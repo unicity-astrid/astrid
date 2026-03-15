@@ -1,6 +1,7 @@
 [package]
 name = "astrid-crypto"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,25 +9,18 @@ rust-version.workspace = true
 description = "Cryptographic primitives for Astrid secure agent runtime"
 
 [dependencies]
-# Cryptography
-ed25519-dalek = { workspace = true }
-blake3 = { workspace = true }
-rand = { workspace = true }
-zeroize = { workspace = true }
-
-# Serialization
-serde = { workspace = true }
-
-# Encoding
 base64 = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
 hex = { workspace = true }
-
-# Error handling
+rand = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tempfile = "3.10"
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

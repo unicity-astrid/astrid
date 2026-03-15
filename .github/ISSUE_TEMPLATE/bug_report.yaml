@@ -1,0 +1,54 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened? What did you expect to happen?
+      placeholder: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Exact steps, commands, or code to reproduce the behavior.
+      placeholder: |
+        1. Run `astrid chat`
+        2. Send message "..."
+        3. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, Astrid version, relevant plugins/capsules.
+      placeholder: |
+        - OS: macOS 15.4
+        - Rust: 1.94.0
+        - Astrid: 0.2.0
+        - Capsules: astrid-capsule-http 0.1.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Backtrace
+      description: Paste any error output, panic traces, or relevant logs. Run with `RUST_BACKTRACE=1` for backtraces.
+      render: text
+    validations:
+      required: false

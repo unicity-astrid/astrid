@@ -1,6 +1,7 @@
 [package]
 name = "astrid-hooks"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,29 +9,29 @@ rust-version.workspace = true
 description = "Hook system for Astrid secure agent runtime"
 
 [dependencies]
-astrid-core.workspace = true
-astrid-events.workspace = true
-astrid-capsule.workspace = true
-astrid-storage.workspace = true
-extism.workspace = true
-blake3.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
+astrid-capabilities = { workspace = true }
+astrid-capsule = { workspace = true }
+astrid-core = { workspace = true }
+astrid-events = { workspace = true }
+astrid-storage = { workspace = true }
+astrid-vfs = { workspace = true }
+blake3 = { workspace = true }
+chrono = { workspace = true }
+extism = { workspace = true }
+globset = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }
 tokio-util = { workspace = true }
-tracing.workspace = true
-chrono.workspace = true
-uuid.workspace = true
-regex.workspace = true
-globset.workspace = true
-toml.workspace = true
-astrid-vfs = { version = "0.1.1", path = "../astrid-vfs" }
-astrid-capabilities = { version = "0.1.1", path = "../astrid-capabilities" }
+toml = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
-tempfile = "3.10"
 
 [lints]
 workspace = true
