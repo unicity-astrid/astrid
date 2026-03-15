@@ -52,9 +52,16 @@ astrid-approval = { workspace = true }
 
 ```rust
 let interceptor = SecurityInterceptor::new(
-    capability_store, approval_manager, policy, budget_tracker,
-    audit_log, runtime_key, session_id, allowance_store,
-    Some(workspace_root), None,
+    capability_store,
+    approval_manager,
+    policy,
+    budget_tracker,
+    audit_log,
+    runtime_key,
+    session_id,
+    allowance_store,
+    Some(workspace_root),
+    None,
 );
 
 let action = SensitiveAction::FileDelete {

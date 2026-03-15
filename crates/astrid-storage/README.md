@@ -64,8 +64,8 @@ let store = Arc::new(MemoryKvStore::new());
 let scoped = ScopedKvStore::new(store, "wasm:my-plugin")?;
 
 scoped.set("config", b"{}".to_vec()).await?;
-scoped.set_json("prefs", &my_struct).await?;
-let loaded: MyStruct = scoped.get_json("prefs").await?.unwrap();
+scoped.set_json("prefs", &serde_json::json!({"key": "value"})).await?;
+let loaded: serde_json::Value = scoped.get_json("prefs").await?.unwrap();
 ```
 
 ## Development

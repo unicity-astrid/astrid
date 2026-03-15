@@ -54,8 +54,8 @@ let entry_id = log.append(
         args_hash: astrid_crypto::ContentHash::hash(b"..."),
     },
     AuthorizationProof::Capability {
-        token_id: my_token_id,
-        token_hash: my_token_hash,
+        token_id: astrid_core::TokenId::new(),
+        token_hash: astrid_crypto::ContentHash::hash(b"token data"),
     },
     AuditOutcome::success(),
 )?;
