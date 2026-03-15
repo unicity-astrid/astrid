@@ -15,6 +15,12 @@ use crate::theme::Theme;
 /// Reason sent (and displayed) when the JSON REPL auto-denies an approval request.
 const APPROVAL_UNSUPPORTED_REASON: &str = "approvals not supported in JSON REPL mode";
 
+/// Reason sent when the JSON REPL auto-skips a selection prompt.
+const SELECTION_UNSUPPORTED_REASON: &str = "interactive selection not supported in JSON REPL mode";
+
+/// Reason sent when the JSON REPL auto-skips an elicit (user input) prompt.
+const ELICIT_UNSUPPORTED_REASON: &str = "interactive input not supported in JSON REPL mode";
+
 /// Run interactive chat mode via the daemon.
 pub(crate) async fn run_chat(
     client: &mut SocketClient,
@@ -81,72 +87,216 @@ async fn run_json_chat(
 
         client.send_input(input.to_string()).await?;
 
-        loop {
-            let Some(event) = client.read_event().await? else {
-                eprintln!("{}", Theme::error("Connection to daemon lost"));
-                return Ok(());
-            };
-
-            let astrid_events::AstridEvent::Ipc { message, .. } = event else {
-                continue;
-            };
-
-            match message.payload {
-                astrid_events::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
-                    formatter.format_text(&text);
-                    if is_final {
-                        formatter.flush_markdown();
-                        break;
-                    }
-                },
-                astrid_events::ipc::IpcPayload::LlmStreamEvent {
-                    event: astrid_events::llm::StreamEvent::ToolCallStart { id, name },
-                    ..
-                } => {
-                    formatter.flush_markdown();
-                    formatter.format_tool_start(&id, &name, &serde_json::Value::Null);
-                },
-                astrid_events::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
-                    formatter.flush_markdown();
-                    let res_val = serde_json::to_string(&result.content).unwrap_or_default();
-                    formatter.format_tool_result(&call_id, &res_val, result.is_error);
-                },
-                astrid_events::ipc::IpcPayload::ApprovalRequired {
-                    request_id,
-                    action,
-                    resource,
-                    reason,
-                    risk_level,
-                } => {
-                    formatter.flush_markdown();
-                    println!(
-                        "{}",
-                        Theme::warning(&format!(
-                            "Approval required [{risk_level}]: {action} on {resource} ({reason})"
-                        ))
-                    );
-                    // JSON REPL auto-denies - TUI handles interactive approval
-                    client
-                        .send_message(astrid_events::ipc::IpcMessage::new(
-                            format!("astrid.v1.approval.response.{request_id}"),
-                            astrid_events::ipc::IpcPayload::ApprovalResponse {
-                                request_id,
-                                decision: "deny".into(),
-                                reason: Some(APPROVAL_UNSUPPORTED_REASON.into()),
-                            },
-                            session_id.0,
-                        ))
-                        .await?;
-                    println!(
-                        "{}",
-                        Theme::dimmed(&format!("Auto-denied: {APPROVAL_UNSUPPORTED_REASON}"))
-                    );
-                },
-                _ => {}, // Ignore other IPC payloads for now
-            }
+        if !drain_agent_response(client, session_id, &mut *formatter).await? {
+            return Ok(());
         }
     }
 
+    Ok(())
+}
+
+/// Read events until an `AgentResponse { is_final: true }` arrives.
+///
+/// Interactive payloads (`ApprovalRequired`, `SelectionRequired`, `ElicitRequest`)
+/// are auto-denied/cancelled because the JSON REPL has no interactive UI.
+///
+/// Returns `false` if the connection was lost (caller should exit the REPL).
+async fn drain_agent_response(
+    client: &mut SocketClient,
+    session_id: &SessionId,
+    formatter: &mut dyn OutputFormatter,
+) -> anyhow::Result<bool> {
+    loop {
+        let Some(event) = client.read_event().await? else {
+            eprintln!("{}", Theme::error("Connection to daemon lost"));
+            return Ok(false);
+        };
+
+        let astrid_events::AstridEvent::Ipc { message, .. } = event else {
+            continue;
+        };
+
+        match message.payload {
+            astrid_events::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
+                formatter.format_text(&text);
+                if is_final {
+                    formatter.flush_markdown();
+                    return Ok(true);
+                }
+            },
+            astrid_events::ipc::IpcPayload::LlmStreamEvent {
+                event: astrid_events::llm::StreamEvent::ToolCallStart { id, name },
+                ..
+            } => {
+                formatter.flush_markdown();
+                formatter.format_tool_start(&id, &name, &serde_json::Value::Null);
+            },
+            astrid_events::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
+                formatter.flush_markdown();
+                let res_val = serde_json::to_string(&result.content).unwrap_or_default();
+                formatter.format_tool_result(&call_id, &res_val, result.is_error);
+            },
+            astrid_events::ipc::IpcPayload::ApprovalRequired {
+                request_id,
+                action,
+                resource,
+                reason,
+                risk_level,
+            } => {
+                formatter.flush_markdown();
+                auto_deny_approval(
+                    client,
+                    session_id,
+                    &request_id,
+                    &action,
+                    &resource,
+                    &reason,
+                    &risk_level,
+                )
+                .await?;
+            },
+            astrid_events::ipc::IpcPayload::SelectionRequired {
+                request_id,
+                title,
+                options,
+                callback_topic,
+            } => {
+                formatter.flush_markdown();
+                auto_skip_selection(
+                    client,
+                    session_id,
+                    &request_id,
+                    &title,
+                    &options,
+                    &callback_topic,
+                )
+                .await?;
+            },
+            astrid_events::ipc::IpcPayload::ElicitRequest {
+                request_id,
+                capsule_id,
+                field,
+            } => {
+                formatter.flush_markdown();
+                auto_skip_elicit(client, session_id, request_id, &capsule_id, &field).await?;
+            },
+            _ => {
+                // Payloads like Connect, Disconnect, OnboardingRequired,
+                // LlmRequest, etc. are not actionable in JSON REPL mode.
+            },
+        }
+    }
+}
+
+/// Auto-deny an approval request and print a diagnostic.
+async fn auto_deny_approval(
+    client: &mut SocketClient,
+    session_id: &SessionId,
+    request_id: &str,
+    action: &str,
+    resource: &str,
+    reason: &str,
+    risk_level: &str,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::warning(&format!(
+            "Approval required [{risk_level}]: {action} on {resource} ({reason})"
+        ))
+    );
+    client
+        .send_message(astrid_events::ipc::IpcMessage::new(
+            format!("astrid.v1.approval.response.{request_id}"),
+            astrid_events::ipc::IpcPayload::ApprovalResponse {
+                request_id: request_id.to_owned(),
+                decision: "deny".into(),
+                reason: Some(APPROVAL_UNSUPPORTED_REASON.into()),
+            },
+            session_id.0,
+        ))
+        .await?;
+    println!(
+        "{}",
+        Theme::dimmed(&format!("Auto-denied: {APPROVAL_UNSUPPORTED_REASON}"))
+    );
+    Ok(())
+}
+
+/// Auto-skip a selection prompt by publishing an empty `selected_id`.
+///
+/// No formal cancel protocol exists for selections yet; an empty ID is
+/// handled gracefully by consumers (e.g. capsule-registry returns an error
+/// for unknown model IDs without crashing).
+async fn auto_skip_selection(
+    client: &mut SocketClient,
+    session_id: &SessionId,
+    request_id: &str,
+    title: &str,
+    options: &[astrid_events::ipc::SelectionOption],
+    callback_topic: &str,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::warning(&format!("Selection required: {title}"))
+    );
+    for opt in options {
+        println!(
+            "{}",
+            Theme::dimmed(&format!("  - [{}] {}", opt.id, opt.label))
+        );
+    }
+    client
+        .send_message(astrid_events::ipc::IpcMessage::new(
+            callback_topic.to_owned(),
+            astrid_events::ipc::IpcPayload::Custom {
+                data: serde_json::json!({
+                    "request_id": request_id,
+                    "selected_id": "",
+                }),
+            },
+            session_id.0,
+        ))
+        .await?;
+    println!(
+        "{}",
+        Theme::dimmed(&format!("Auto-skipped: {SELECTION_UNSUPPORTED_REASON}"))
+    );
+    Ok(())
+}
+
+/// Auto-cancel an elicit request by publishing `ElicitResponse` with `None` values.
+///
+/// The host function recognises `value: None, values: None` as user cancellation
+/// (`elicit.rs:189`) and returns `Err` to the WASM guest.
+async fn auto_skip_elicit(
+    client: &mut SocketClient,
+    session_id: &SessionId,
+    request_id: uuid::Uuid,
+    capsule_id: &str,
+    field: &astrid_events::ipc::OnboardingField,
+) -> anyhow::Result<()> {
+    println!(
+        "{}",
+        Theme::warning(&format!(
+            "Input required by capsule '{capsule_id}': {} ({})",
+            field.prompt, field.key
+        ))
+    );
+    client
+        .send_message(astrid_events::ipc::IpcMessage::new(
+            format!("astrid.v1.elicit.response.{request_id}"),
+            astrid_events::ipc::IpcPayload::ElicitResponse {
+                request_id,
+                value: None,
+                values: None,
+            },
+            session_id.0,
+        ))
+        .await?;
+    println!(
+        "{}",
+        Theme::dimmed(&format!("Auto-skipped: {ELICIT_UNSUPPORTED_REASON}"))
+    );
     Ok(())
 }
 
