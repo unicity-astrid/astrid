@@ -1,0 +1,20 @@
+# Contributor tiers for the Astrid project.
+#
+# Tiers:
+#   new         - Default. PRs gated until maintainer approves.
+#   contributor  - Can work on non-core crates, docs, tests, capsules.
+#   core        - Can work on core crates. Security paths need maintainer co-review.
+#   maintainer  - Full access. Refactors, security paths, releases.
+#
+# Scope labels (optional, for contributor/core tiers):
+#   capsules, docs, sdk, cli, tests, core, security
+#
+# Anyone not listed here is treated as "new".
+
+maintainers:
+  - username: joshuajbouw
+    since: 2024-01-01
+
+core: []
+
+contributors: []
