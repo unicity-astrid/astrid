@@ -71,12 +71,12 @@ jobs:
 
           # Determine tier from contributors.yml
           # Parse section by finding which block contains the username
-          TIER="cadet"
+          TIER="new"
           CURRENT_SECTION=""
           while IFS= read -r line; do
             case "$line" in
-              admirals:*) CURRENT_SECTION="admiral" ;;
-              commanders:*) CURRENT_SECTION="commander" ;;
+              maintainers:*) CURRENT_SECTION="maintainer" ;;
+              core:*) CURRENT_SECTION="core" ;;
               astrinauts:*) CURRENT_SECTION="astrinaut" ;;
             esac
             if echo "$line" | grep -q "username: $PR_AUTHOR"; then
@@ -88,9 +88,9 @@ jobs:
           echo "Author: $PR_AUTHOR"
           echo "Tier: $TIER"
 
-          # Admirals pass all checks
-          if [ "$TIER" = "admiral" ]; then
-            echo "Admiral - all paths allowed."
+          # Maintainers pass all checks
+          if [ "$TIER" = "maintainer" ]; then
+            echo "Maintainer - all paths allowed."
             exit 0
           fi
 
@@ -113,13 +113,13 @@ jobs:
             done
           done
 
-          # Cadets: require approval label
-          if [ "$TIER" = "cadet" ]; then
+          # New contributors: require approval label
+          if [ "$TIER" = "new" ]; then
             LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' 2>/dev/null || echo "")
-            if echo "$LABELS" | grep -q "cadet-approved"; then
-              echo "Cadet approved by an admiral."
+            if echo "$LABELS" | grep -q "newcomer-approved"; then
+              echo "New contributor approved by a maintainer."
             else
-              echo "::error::Cadets require an admiral to add the 'cadet-approved' label before CI proceeds."
+              echo "::error::New contributors require a maintainer to add the 'newcomer-approved' label before CI proceeds."
               exit 1
             fi
           fi
@@ -127,19 +127,19 @@ jobs:
           # Astrinauts cannot touch security or core paths
           if [ "$TIER" = "astrinaut" ]; then
             if [ "$TOUCHES_SECURITY" = true ]; then
-              echo "::error::Astrinauts cannot modify security-critical crates. Earn a promotion to commander or ask an admiral."
+              echo "::error::Astrinauts cannot modify security-critical crates. Request a promotion to core or ask a maintainer."
               exit 1
             fi
             if [ "$TOUCHES_CORE" = true ]; then
-              echo "::error::Astrinauts cannot modify core crates. Earn a promotion to commander or ask an admiral."
+              echo "::error::Astrinauts cannot modify core crates. Request a promotion to core or ask a maintainer."
               exit 1
             fi
           fi
 
-          # Commanders cannot touch security paths without admiral
-          if [ "$TIER" = "commander" ]; then
+          # Core contributors cannot touch security paths without maintainer
+          if [ "$TIER" = "core" ]; then
             if [ "$TOUCHES_SECURITY" = true ]; then
-              echo "::warning::Commander touching security-critical paths. Admiral co-review required."
+              echo "::warning::Core contributor touching security-critical paths. Maintainer co-review required."
             fi
           fi
 
