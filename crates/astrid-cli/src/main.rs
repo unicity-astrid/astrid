@@ -346,6 +346,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Build a hint string pointing the user to the daemon log directory.
+fn daemon_log_hint() -> String {
+    astrid_core::dirs::AstridHome::resolve()
+        .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
+        .unwrap_or_default()
+}
+
 /// The core Host wrapper logic.
 /// Spawn the daemon process and wait for it to signal readiness.
 ///
@@ -395,10 +402,7 @@ async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Chil
         // If the daemon has already exited, stop polling immediately
         // instead of waiting the full 10 seconds.
         if let Ok(Some(status)) = child.try_wait() {
-            let log_hint = astrid_core::dirs::AstridHome::resolve()
-                .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
-                .unwrap_or_default();
-            anyhow::bail!("Daemon exited prematurely ({status}).{log_hint}");
+            anyhow::bail!("Daemon exited prematurely ({status}).{}", daemon_log_hint());
         }
     }
     if !ready {
@@ -406,10 +410,10 @@ async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Chil
         // until its idle timeout expires.
         let _ = child.kill();
         let _ = child.wait();
-        let log_hint = astrid_core::dirs::AstridHome::resolve()
-            .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
-            .unwrap_or_default();
-        anyhow::bail!("Daemon failed to become ready within 10 seconds.{log_hint}");
+        anyhow::bail!(
+            "Daemon failed to become ready within 10 seconds.{}",
+            daemon_log_hint()
+        );
     }
     Ok(child)
 }
