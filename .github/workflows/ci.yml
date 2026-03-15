@@ -183,6 +183,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Generate lockfile
+        run: cargo generate-lockfile
+
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

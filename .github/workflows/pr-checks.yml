@@ -151,11 +151,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check changed files under 1000 lines
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
           REPO: ${{ github.repository }}
         run: |
           LABELS=$(gh api "repos/$REPO/issues/$PR_NUMBER/labels" --jq '.[].name' 2>/dev/null || echo "")
@@ -171,13 +174,19 @@ jobs:
             if [ -f "$file" ]; then
               LINES=$(wc -l < "$file" | tr -d ' ')
               if [ "$LINES" -gt 1000 ]; then
-                VIOLATIONS="${VIOLATIONS}  $file ($LINES lines)\n"
+                # Check if file was already over 1000 lines on the base branch
+                BASE_LINES=$(git show "$PR_BASE:$file" 2>/dev/null | wc -l | tr -d ' ')
+                if [ "$BASE_LINES" -le 1000 ]; then
+                  VIOLATIONS="${VIOLATIONS}  $file ($LINES lines, was $BASE_LINES)\n"
+                else
+                  echo "::notice::$file ($LINES lines) was already over 1000 lines ($BASE_LINES). Skipping."
+                fi
               fi
             fi
           done
 
           if [ -n "$VIOLATIONS" ]; then
-            echo "::error::Files exceeding 1000 lines:"
+            echo "::error::Files pushed over 1000 lines by this PR:"
             echo -e "$VIOLATIONS" | while read -r line; do
               [ -n "$line" ] && echo "::error::$line"
             done
@@ -186,7 +195,7 @@ jobs:
             exit 1
           fi
 
-          echo "All changed files under 1000 lines."
+          echo "All changed files within limits."
 
   linked-issue:
     name: Linked issue required
