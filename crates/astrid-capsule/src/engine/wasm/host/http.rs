@@ -65,27 +65,27 @@ impl reqwest::dns::Resolve for SafeDnsResolver {
 }
 
 /// Checks if an IP address is safe to connect to (not local, private, or multicast).
-fn is_safe_ip(mut ip: std::net::IpAddr) -> bool {
-    // Escape hatch for integration tests that need to spin up local servers
+/// Cached SSRF escape-hatch check. Evaluated once per process; logs a
+/// warning on first access if either env var is set.
+static SSRF_BYPASS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
     if std::env::var("ASTRID_TEST_ALLOW_LOCAL_IP").is_ok() {
-        static WARN_TEST: std::sync::Once = std::sync::Once::new();
-        WARN_TEST.call_once(|| {
-            tracing::warn!(
-                "ASTRID_TEST_ALLOW_LOCAL_IP is set - SSRF protection disabled for ALL capsules"
-            );
-        });
+        tracing::warn!(
+            "ASTRID_TEST_ALLOW_LOCAL_IP is set - SSRF protection disabled for ALL capsules"
+        );
         return true;
     }
-
-    // Global escape hatch for deployments that require plugins to access internal network services
     if std::env::var("ASTRID_ALLOW_LOCAL_IPS").is_ok() {
-        static WARN_PROD: std::sync::Once = std::sync::Once::new();
-        WARN_PROD.call_once(|| {
-            tracing::warn!(
-                "ASTRID_ALLOW_LOCAL_IPS is set - SSRF protection disabled for ALL capsules. \
-                 Private/loopback IP ranges are reachable by every loaded capsule."
-            );
-        });
+        tracing::warn!(
+            "ASTRID_ALLOW_LOCAL_IPS is set - SSRF protection disabled for ALL capsules. \
+             Private/loopback IP ranges are reachable by every loaded capsule."
+        );
+        return true;
+    }
+    false
+});
+
+fn is_safe_ip(mut ip: std::net::IpAddr) -> bool {
+    if *SSRF_BYPASS {
         return true;
     }
 

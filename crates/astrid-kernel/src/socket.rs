@@ -18,10 +18,10 @@ pub(crate) fn kernel_socket_path() -> PathBuf {
 }
 
 /// Maximum byte length for a Unix domain socket path.
-/// macOS `sockaddr_un.sun_path` is 104 bytes; Linux is 108.
-#[cfg(target_os = "macos")]
+/// macOS/FreeBSD/OpenBSD `sockaddr_un.sun_path` is 104 bytes; Linux is 108.
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd"))]
 const MAX_SOCKET_PATH_LEN: usize = 104;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd")))]
 const MAX_SOCKET_PATH_LEN: usize = 108;
 
 /// Binds a local Unix Domain Socket for the OS.
