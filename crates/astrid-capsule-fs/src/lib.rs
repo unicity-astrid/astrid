@@ -93,12 +93,14 @@ impl FsTools {
         Ok(slice.join("\n"))
     }
 
+    #[astrid::mutable]
     #[astrid::tool("write_file")]
     pub fn write_file(&self, args: WriteFileArgs) -> Result<String, SysError> {
         fs::write(&args.file_path, &args.content)?;
         Ok(format!("Successfully wrote to {}", args.file_path))
     }
 
+    #[astrid::mutable]
     #[astrid::tool("replace_in_file")]
     pub fn replace_in_file(&self, args: ReplaceInFileArgs) -> Result<String, SysError> {
         let content = fs::read_to_string(&args.file_path)?;
@@ -151,12 +153,14 @@ impl FsTools {
         Ok(matches.join("\n"))
     }
 
+    #[astrid::mutable]
     #[astrid::tool("create_directory")]
     pub fn create_directory(&self, args: CreateDirectoryArgs) -> Result<String, SysError> {
         fs::create_dir(&args.dir_path)?;
         Ok(format!("Successfully created directory {}", args.dir_path))
     }
 
+    #[astrid::mutable]
     #[astrid::tool("delete_file")]
     pub fn delete_file(&self, args: DeleteFileArgs) -> Result<String, SysError> {
         let stat = match file_stat(&args.file_path) {
@@ -178,6 +182,7 @@ impl FsTools {
         Ok(format!("Successfully deleted {}", args.file_path))
     }
 
+    #[astrid::mutable]
     #[astrid::tool("move_file")]
     pub fn move_file(&self, args: MoveFileArgs) -> Result<String, SysError> {
         // Single stat covers both existence and directory checks.

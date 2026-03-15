@@ -343,6 +343,7 @@ impl ShellTools {
     /// Before execution, extracts the approval action (consecutive non-flag
     /// tokens, up to 3 deep), then requests human approval. If denied,
     /// returns an error without executing.
+    #[astrid::mutable]
     #[astrid::tool("run_shell_command")]
     pub fn run_shell_command(&self, args: RunShellArgs) -> Result<String, SysError> {
         let trimmed = args.command.trim();
@@ -387,6 +388,7 @@ impl ShellTools {
     /// command blocking, action extraction, and human approval. Returns a
     /// process handle ID that can be used with `read_process_logs` and
     /// `kill_process`.
+    #[astrid::mutable]
     #[astrid::tool("spawn_background_process")]
     pub fn spawn_background_process(&self, args: SpawnBackgroundArgs) -> Result<String, SysError> {
         let trimmed = args.command.trim();
@@ -455,6 +457,7 @@ impl ShellTools {
     ///
     /// No additional approval is required since the process was already
     /// approved at spawn time.
+    #[astrid::mutable]
     #[astrid::tool("kill_process")]
     pub fn kill_process(&self, args: KillProcessArgs) -> Result<String, SysError> {
         let result = process::kill(args.id)?;
