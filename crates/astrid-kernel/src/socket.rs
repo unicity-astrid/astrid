@@ -121,7 +121,12 @@ fn prepare_socket_path(path: &std::path::Path) -> Result<(), std::io::Error> {
             },
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
                 // No listener attached: stale socket, safe to remove.
-                let _ = std::fs::remove_file(path);
+                std::fs::remove_file(path).map_err(|e| {
+                    std::io::Error::other(format!(
+                        "Failed to remove stale socket {}: {e}",
+                        path.display()
+                    ))
+                })?;
             },
             Err(e) => {
                 // Other errors (EACCES, etc.) may indicate a live kernel
