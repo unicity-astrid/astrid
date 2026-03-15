@@ -772,4 +772,16 @@ mod tests {
         // The file should be gone from upper
         assert!(!upper_dir.path().join("deep/nested/file.txt").exists());
     }
+
+    #[tokio::test]
+    async fn unlink_lower_layer_file_returns_not_supported() {
+        let (overlay, handle, lower_dir, _upper_dir) = setup().await;
+        seed_lower(lower_dir.path(), "lower_only.txt", b"x");
+
+        let err = overlay.unlink(&handle, "lower_only.txt").await.unwrap_err();
+        assert!(
+            matches!(err, crate::VfsError::NotSupported(_)),
+            "expected NotSupported, got: {err:?}"
+        );
+    }
 }

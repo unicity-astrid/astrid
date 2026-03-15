@@ -187,10 +187,11 @@ pub trait KvStore: Send + Sync {
 
     /// Delete all keys matching a prefix within a namespace.
     ///
-    /// Returns the number of keys deleted.
+    /// Returns the number of keys that matched the prefix.
     ///
-    /// Default implementation lists then deletes one-by-one.
-    /// Backends should override with an atomic implementation.
+    /// Default implementation lists then deletes one-by-one (non-atomic).
+    /// On error, some keys may already have been deleted. Backends should
+    /// override with an atomic implementation.
     async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
         let keys = self.list_keys_with_prefix(namespace, prefix).await?;
         let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
@@ -319,7 +320,7 @@ impl KvStore for MemoryKvStore {
             .filter(|k| k.starts_with(&full_prefix))
             .cloned()
             .collect();
-        let count = keys.len() as u64;
+        let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
         for key in keys {
             data.remove(&key);
         }
@@ -554,13 +555,15 @@ impl KvStore for SurrealKvStore {
             keys
         }; // iterator dropped — releases immutable borrow on tx
 
-        let count = keys_to_delete.len() as u64;
+        let count = u64::try_from(keys_to_delete.len()).unwrap_or(u64::MAX);
         for key in &keys_to_delete {
             tx.delete(key).map_err(|ref e| map_kv_err(e))?;
         }
         if count > 0 {
             tx.commit().await.map_err(|ref e| map_kv_err(e))?;
         }
+        // When count == 0, tx is dropped without commit. SurrealKV's MVCC
+        // model aborts uncommitted transactions on Drop (same as clear_namespace).
         Ok(count)
     }
 }
