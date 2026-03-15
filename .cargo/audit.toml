@@ -1,0 +1,18 @@
+# cargo-audit configuration
+# https://github.com/rustsec/rustsec/tree/main/cargo-audit
+
+[advisories]
+ignore = [
+    # rsa timing sidechannel - no fix, transitive via surrealdb -> jsonwebtoken
+    "RUSTSEC-2023-0071",
+    # wasmtime WASI resource exhaustion - waiting on extism to bump wasmtime
+    "RUSTSEC-2026-0020",
+    # wasmtime HTTP fields panic - waiting on extism to bump wasmtime
+    "RUSTSEC-2026-0021",
+    # wasmtime f64.copysign segfault - waiting on extism to bump wasmtime
+    "RUSTSEC-2026-0006",
+]
+informational_warnings = []
+
+[yanked]
+enabled = false
