@@ -21,7 +21,6 @@ jobs:
         id: changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Extract the section for this version from CHANGELOG.md
           BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found" CHANGELOG.md)
           if [ -z "$BODY" ]; then
             BODY="See [CHANGELOG.md](https://github.com/unicity-astrid/astrid/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details."
@@ -32,7 +31,42 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Compile Astrinauts for this release
+        id: contributors
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            AUTHORS=$(git log --format='%aN' | sort -u)
+          else
+            AUTHORS=$(git log --format='%aN' "$PREV_TAG"..HEAD | sort -u)
+          fi
+          ASTRINAUTS=""
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            # Try to resolve GitHub username from commit email
+            EMAIL=$(git log --format='%aE' --author="$name" -1)
+            USERNAME=$(gh api "search/users?q=$EMAIL+in:email" --jq '.items[0].login // empty' 2>/dev/null || true)
+            if [ -n "$USERNAME" ]; then
+              ASTRINAUTS="${ASTRINAUTS}\n- @${USERNAME}"
+            else
+              ASTRINAUTS="${ASTRINAUTS}\n- ${name}"
+            fi
+          done <<< "$AUTHORS"
+          {
+            echo "list<<EOF"
+            echo -e "$ASTRINAUTS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          body: ${{ steps.changelog.outputs.body }}
+          body: |
+            ${{ steps.changelog.outputs.body }}
+
+            ---
+
+            **With many thanks from the following Astrinauts** 🚀
+            ${{ steps.contributors.outputs.list }}
