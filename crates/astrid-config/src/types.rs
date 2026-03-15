@@ -484,8 +484,9 @@ pub struct KeysConfig {
 #[serde(default)]
 pub struct WorkspaceSection {
     /// Workspace mode: `"safe"` (default, ask for everything outside
-    /// workspace), `"guided"` (auto-allow reads, ask for writes), or
-    /// `"autonomous"` (no restrictions).
+    /// workspace), `"guided"` (auto-allow reads, ask for writes),
+    /// `"autonomous"` (no restrictions), or `"yolo"` (alias for autonomous,
+    /// for daring Astrinauts).
     pub mode: String,
     /// What to do when the agent tries to escape the workspace: `"ask"`
     /// (prompt the human), `"deny"` (always refuse), or `"allow"` (always

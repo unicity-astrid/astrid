@@ -1,46 +1,52 @@
 # astrid-capabilities
 
-[![Crates.io](https://img.shields.io/crates/v/astrid-capabilities)](https://crates.io/crates/astrid-capabilities)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-Cryptographically signed, glob-scoped authorization tokens for the Astrid secure agent runtime.
+**The agent cannot forge the token. It cannot replay an old one. It cannot talk its way past the check.**
 
-This crate implements the core capability-based security model for Astrid. Every action an agent takes - whether invoking an MCP tool or accessing the filesystem - must be backed by a signed `CapabilityToken` linked to the specific user approval event that created it. Authorization cannot be forged, escalated, or replayed.
+In the OS model, capability tokens are the kernel's access control mechanism. An agent that wants to call `mcp://filesystem:read_file` needs a signed token granting `Permission::Invoke` on a matching resource pattern. No token, no access. The token is Ed25519-signed by the runtime key, linked to the approval audit entry that created it, optionally time-bounded, and scoped to session or persistent storage. The agent has no way to mint, modify, or extend them.
 
-## Core Features
+## How tokens work
 
-- **Ed25519 signatures**: Every token is signed by the runtime's key pair. Post-issuance tampering is detectable and rejected.
-- **Glob-scoped resources**: Patterns like `mcp://filesystem:*` or `file:///home/user/**` use compiled glob matching. Exact URIs skip glob compilation entirely.
-- **Path traversal rejection**: `..` segments are rejected at pattern creation and at match time, even when a glob would otherwise match.
-- **Audit linkage**: Every token carries an `AuditEntryId` that references the approval event that authorized it.
-- **Dual-tier storage**: Session tokens live in memory; persistent tokens survive restarts via SurrealKV. Both tiers share the same revocation and single-use tracking.
-- **Replay protection**: Single-use tokens are marked consumed atomically on first use. Used-token state survives process restart.
-- **Revocation**: Tokens can be revoked at any time. Revocation is persisted before in-memory state is updated, so it survives crashes.
-- **Clock-skew tolerance**: Expiration checks accept a configurable skew window (default 30 seconds).
+When a human approves an action with "Allow Always", the security interceptor (`astrid-approval`) calls into this crate to mint a `CapabilityToken`. The token is signed, stored, and returned as proof. On subsequent calls, the interceptor finds the token and skips the approval prompt.
 
-## Quick Start
+`ResourcePattern` uses compiled glob matching via `globset`. Patterns like `mcp://filesystem:*` match any tool on that server. `file:///home/user/**` matches any file under that directory. Exact URIs skip glob compilation for speed. Path traversal (`..`) is rejected at pattern creation and again at match time. Defense in depth.
+
+**Dual-tier storage.** Session tokens live in memory via `RwLock<HashMap>`. Persistent tokens survive restarts via SurrealKV. Both tiers share revocation and single-use tracking. Revocation persists to KV before updating in-memory state, so a crash between the two cannot resurrect a revoked token.
+
+**Replay protection.** Single-use tokens are marked consumed atomically under a write lock. `mark_used` checks, persists, and inserts in one critical section to prevent TOCTOU races. State survives process restart via KV.
+
+**Tamper detection on read.** Persistent tokens are re-validated (expiry + signature) on every `get()`, `find_capability()`, and `has_capability()` call. A token tampered on disk fails signature verification and is silently skipped. Session tokens skip this check because they were validated at `add()` time and live in trusted memory.
+
+**Clock-skew tolerance.** Configurable window (default 30 seconds) via `validate_with_skew`. A token that expired 10 seconds ago still passes with the default tolerance.
+
+## Resource pattern examples
+
+| Pattern | Matches |
+|---|---|
+| `mcp://filesystem:read_file` | Exactly that one tool |
+| `mcp://filesystem:*` | Any tool on the `filesystem` server |
+| `mcp://*:read_*` | Any `read_` tool on any server |
+| `file:///home/user/**` | Any file under `/home/user` |
+
+## Usage
 
 ```toml
 [dependencies]
-astrid-capabilities = "0.2"
+astrid-capabilities = { workspace = true }
 ```
 
 ```rust
 use astrid_capabilities::{
-    CapabilityToken, CapabilityStore, ResourcePattern, TokenScope,
-    AuditEntryId, CapabilityValidator,
+    CapabilityToken, CapabilityStore, ResourcePattern, TokenScope, AuditEntryId,
 };
 use astrid_core::Permission;
 use astrid_crypto::KeyPair;
 
-// Runtime signing key
 let runtime_key = KeyPair::generate();
-
-// Scope the capability to all tools on the filesystem MCP server
 let pattern = ResourcePattern::new("mcp://filesystem:*").unwrap();
 
-// Create a signed session token linked to an approval audit entry
 let token = CapabilityToken::create(
     pattern,
     vec![Permission::Invoke],
@@ -48,43 +54,15 @@ let token = CapabilityToken::create(
     runtime_key.key_id(),
     AuditEntryId::new(),
     &runtime_key,
-    None, // no TTL - valid for the duration of the session
+    None, // no TTL
 );
 
-// Store and check
 let store = CapabilityStore::in_memory();
 store.add(token).unwrap();
-
-let validator = CapabilityValidator::new(&store);
-let result = validator.check("mcp://filesystem:read_file", Permission::Invoke);
-assert!(result.is_authorized());
+assert!(store.has_capability("mcp://filesystem:read_file", Permission::Invoke));
 ```
 
-## API Reference
-
-### Key Types
-
-- **`CapabilityToken`** - A signed authorization token. Fields include `resource`, `permissions`, `scope`, `issued_at`, `expires_at`, `approval_audit_id`, and `single_use`. Call `validate()` to verify expiration and signature together.
-- **`ResourcePattern`** - A URI pattern with glob support. Constructors: `new` (auto-detects glob), `exact`, `mcp_tool`, `mcp_server`, `file_dir`, `file_exact`. All constructors reject `..` path segments.
-- **`CapabilityStore`** - Thread-safe token store. `in_memory()` for session use; `with_persistence(path)` or `with_kv_store(arc)` for durable storage. Core methods: `add`, `get`, `revoke`, `mark_used`, `use_token`, `has_capability`, `find_capability`, `list_tokens`, `cleanup_expired`.
-- **`CapabilityValidator`** - Wraps a store and enforces issuer trust. `check(resource, permission)` returns `AuthorizationResult::Authorized { token }` or `RequiresApproval { resource, permission }`. Chain `trust_issuer(public_key)` to restrict accepted issuers.
-- **`AuthorizationResult`** - The result of a `CapabilityValidator::check` call. `is_authorized()` and `token()` are the primary access points.
-- **`AuditEntryId`** - A UUID wrapper linking a token to the approval event that created it.
-- **`TokenScope`** - `Session` (in-memory only) or `Persistent` (written to KV store).
-- **`DirHandle` / `FileHandle`** - UUID-based opaque handles for VFS directory and file references. Used to prevent guests from forging arbitrary paths.
-
-### Resource Pattern Examples
-
-| Pattern | Matches |
-|---|---|
-| `mcp://filesystem:read_file` | Exactly that one tool |
-| `mcp://filesystem:*` | Any tool on the `filesystem` server |
-| `mcp://*:read_*` | Any tool starting with `read_` on any server |
-| `file:///home/user/**` | Any file or directory under `/home/user` |
-
-### Persistence Behavior
-
-Persistent tokens are re-validated (expiry + signature) on every read from the KV store as a defense-in-depth measure against disk tampering. Revocation and single-use markers are written to the KV store before in-memory state is updated, so both survive a crash-restart cycle.
+This crate also defines `DirHandle` and `FileHandle`, the opaque UUID-based handles used by `astrid-vfs`. You cannot construct a path to a directory you have not been granted.
 
 ## Development
 
@@ -94,4 +72,4 @@ cargo test -p astrid-capabilities
 
 ## License
 
-Dual-licensed under [MIT](../../LICENSE-MIT) or [Apache-2.0](../../LICENSE-APACHE), at your option.
+Dual MIT/Apache-2.0. See [LICENSE-MIT](../../LICENSE-MIT) and [LICENSE-APACHE](../../LICENSE-APACHE).

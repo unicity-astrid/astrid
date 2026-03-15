@@ -132,7 +132,7 @@ pub(crate) fn get_profile(name: &str, root: impl Into<PathBuf>) -> Option<Worksp
     match name {
         "safe" => Some(WorkspaceProfile::safe(root)),
         "power_user" => Some(WorkspaceProfile::power_user(root)),
-        "autonomous" => Some(WorkspaceProfile::autonomous(root)),
+        "autonomous" | "yolo" => Some(WorkspaceProfile::autonomous(root)),
         "ci" => Some(WorkspaceProfile::ci(root)),
         _ => None,
     }
@@ -179,8 +179,15 @@ mod tests {
     }
 
     #[test]
+    fn test_yolo_alias() {
+        let profile = get_profile("yolo", "/project").expect("yolo should resolve");
+        assert_eq!(profile.config.mode, WorkspaceMode::Autonomous);
+    }
+
+    #[test]
     fn test_get_profile() {
         assert!(get_profile("safe", "/project").is_some());
+        assert!(get_profile("yolo", "/project").is_some());
         assert!(get_profile("unknown", "/project").is_none());
     }
 

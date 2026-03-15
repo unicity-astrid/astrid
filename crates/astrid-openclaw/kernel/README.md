@@ -1,69 +1,41 @@
-# QuickJS WASM Kernel
+# astrid-openclaw kernel
 
-The `engine.wasm` file is the QuickJS engine compiled to `wasm32-wasip1`, used by the
-astrid-openclaw compiler to embed JavaScript into WASM plugins via Wizer pre-initialization.
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../../LICENSE-MIT)
+[![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-**This file is NOT checked into git.** It is built from source and placed here by
-`scripts/build-quickjs-kernel.sh`. The `build.rs` generates a placeholder stub when the
-kernel is absent — compilation succeeds but the compiler will error at runtime with
-instructions to build the real kernel.
+**The QuickJS WASM engine that powers Tier 1 plugin compilation.**
 
-## Quick Start
+This directory holds `engine.wasm`, a QuickJS build targeting `wasm32-wasip1`. The `astrid-openclaw` crate embeds it via `include_bytes!` and feeds it to Wizer for pre-initialization. Without this file, Tier 1 compilation fails at runtime with build instructions.
+
+## Why it exists
+
+Tier 1 plugins compile TypeScript into a WASM module by pre-initializing a QuickJS engine with the plugin source. That engine is this file. It is compiled from source, not checked into git. The build produces a single `engine.wasm` plus a `engine.wasm.blake3` hash that `build.rs` verifies at compile time. Hash mismatch fails the build. This prevents silent use of a stale or tampered engine.
+
+When the engine is absent, `build.rs` generates a placeholder stub so workspace compilation succeeds. The stub errors at runtime, not compile time, pointing the developer at the build command.
+
+## Building
 
 ```bash
+# Option 1: manual build script (requires wasi-sdk + wasm32-wasip1 target)
 ./scripts/build-quickjs-kernel.sh
+
+# Option 2: auto-build during cargo build
+ASTRID_AUTO_BUILD_KERNEL=1 cargo build -p astrid-openclaw
 ```
 
-## Building Manually
-
-The kernel is built from [extism/js-pdk](https://github.com/extism/js-pdk)'s `core` crate
-(fork: [nicholasgasior/extism-js](https://github.com/nicholasgasior/extism-js) v1.6.0).
-
-### Prerequisites
-
-- Rust with `wasm32-wasip1` target: `rustup target add wasm32-wasip1`
-- [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (required by `rquickjs` C bindings)
-- Node.js + npm (for the JS prelude)
-- Optional: `wasm-opt` from [Binaryen](https://github.com/WebAssembly/binaryen) for size optimization
-
-### Build Steps
-
-```bash
-# Clone the js-pdk repository
-git clone https://github.com/nicholasgasior/extism-js.git
-cd extism-js
-
-# Install wasi-sdk (sets CC/AR for wasm32-wasip1)
-sh install-wasi-sdk.sh
-
-# Build the JS prelude
-cd crates/core/src/prelude
-npm install
-npm run build
-cd ../../../..
-
-# Build the core to wasm32-wasip1
-cargo build --release --target=wasm32-wasip1
-
-# Optional: optimize with wasm-opt
-wasm-opt --enable-reference-types --enable-bulk-memory --strip -O3 \
-  target/wasm32-wasip1/release/js_pdk_core.wasm \
-  -o target/wasm32-wasip1/release/js_pdk_core.wasm
-
-# Copy to this directory
-cp target/wasm32-wasip1/release/js_pdk_core.wasm /path/to/astrid/crates/astrid-openclaw/kernel/engine.wasm
-```
-
-### Updating the Hash
-
-After placing a new `engine.wasm`, update the blake3 hash:
+After placing a new `engine.wasm`, regenerate the hash:
 
 ```bash
 cd crates/astrid-openclaw/kernel
 b3sum engine.wasm > engine.wasm.blake3
 ```
 
-## Hash Verification
+## Development
 
-The `build.rs` verifies the kernel's blake3 hash against `engine.wasm.blake3` at compile
-time. If the hash doesn't match, the build fails with a clear error.
+```bash
+cargo test -p astrid-openclaw
+```
+
+## License
+
+Dual MIT/Apache-2.0. See [LICENSE-MIT](../../../LICENSE-MIT) and [LICENSE-APACHE](../../../LICENSE-APACHE).

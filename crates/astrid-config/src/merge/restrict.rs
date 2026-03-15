@@ -88,7 +88,7 @@ pub fn enforce_restrictions(
         workspace_layer,
         &["workspace", "mode"],
         "workspace.mode",
-        &["safe", "guided", "autonomous"],
+        &["safe", "guided", "autonomous", "yolo"],
     );
 
     // Escape policy: can only tighten (deny < ask < allow).

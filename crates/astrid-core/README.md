@@ -1,126 +1,45 @@
 # astrid-core
 
-[![Crates.io](https://img.shields.io/crates/v/astrid-core)](https://crates.io/crates/astrid-core)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-Core types and traits for the Astrid secure agent runtime.
+**The shared vocabulary.**
 
-`astrid-core` is the shared vocabulary of the entire Astrid workspace. Every other crate depends on it. It defines the identifiers, approval primitives, uplink abstractions, elicitation protocol types, capsule ABI types, session authentication, directory layout, and the environment variable security policy that all enforcement points must use.
+Every crate in the workspace depends on this one. It defines the identifiers, approval primitives, uplink abstractions, elicitation protocol, capsule ABI types, session authentication, directory layout, and environment variable security policy that all enforcement points agree on. If a type crosses crate boundaries, it lives here.
 
-## Core Features
+This crate exists because the kernel, the capsule runtime, the approval system, the CLI, and the SDK all need to agree on what a `SessionId` is, what an `ApprovalDecision` contains, and where `~/.astrid/` lives. Duplicating those definitions would create drift. Centralizing them here makes the type system enforce consistency.
 
-- **Stable identifier types** - `AgentId`, `SessionId`, `TokenId`, `UplinkId`, `AstridUserId`, and `Timestamp` with UUID backing, `Display` formatting, and full serde support.
-- **Cross-platform identity** - `AstridUserId` is the canonical user identity across all frontends (CLI, Discord, Telegram, etc.), linked to platform-specific IDs via `FrontendLink`. Optional ed25519 public key field with base64 serde encoding.
-- **Approval primitives** - `ApprovalRequest` / `ApprovalDecision` with five-tier `ApprovalOption` (once, session, workspace, always, deny) and `RiskLevel` ordering (`Low` < `Medium` < `High` < `Critical`). `Critical` risk additionally requires DM verification.
-- **Uplink abstraction** - `UplinkDescriptor` (builder pattern), `UplinkCapabilities` (flag struct with `full()`, `notify_only()`, `receive_only()` presets), `UplinkProfile` (chat, interactive, notify, bridge), `UplinkSource` (native, WASM, OpenClaw) with validated capsule IDs, and `InboundMessage` (builder pattern). Hard limit of 32 uplinks per capsule via `MAX_UPLINKS_PER_CAPSULE`.
-- **Elicitation protocol** - MCP server-initiated user input: `ElicitationRequest` / `ElicitationResponse` with text, secret, select, and confirm schemas. URL-mode elicitation (`UrlElicitationRequest` / `UrlElicitationResponse`) for OAuth and payment flows.
-- **Capsule ABI types** - Rust mirrors of the `astrid:capsule@0.1.0` WIT records: `CapsuleAbiContext`, `CapsuleAbiResult`, `ToolInput`, `ToolOutput`, `ToolDefinition`, `HttpResponse`, `LogLevel`, `KeyValuePair`.
-- **Session authentication** - `SessionToken`: 256-bit CSPRNG token, hex encode/decode, atomic write-then-rename to a 0o600 file, constant-time comparison via `subtle`. `HandshakeRequest` / `HandshakeResponse` for the Unix socket wire protocol.
-- **Directory layout** - `AstridHome` resolves `~/.astrid/` (or `$ASTRID_HOME`) and exposes typed path accessors for every subdirectory and database path. `WorkspaceDir` detects and manages the per-project `.astrid/` directory, including workspace UUID generation.
-- **Environment variable security policy** - `is_blocked_spawn_env` enforces a shared blocklist of vars (library injection, proxy interception, CA trust override, language-specific code injection, etc.) that must never be set by untrusted configuration on spawned child processes.
-- **Retry configuration** - `RetryConfig` with exponential backoff, configurable jitter, and named presets (`fast()`, `network()`, `api()`).
+## Identifiers
 
-## Quick Start
+`AgentId`, `SessionId`, `TokenId`, `UplinkId`, `AstridUserId`, `Timestamp`. All UUID-backed, serde-compatible, with `Display` formatting (`agent:<uuid>`, `session:<uuid>`). `SessionId::SYSTEM` is the well-known nil UUID used by the kernel for internal IPC messages.
 
-`astrid-core` is an internal workspace crate, consumed by other crates in the Astrid workspace.
+## Approval primitives
 
-```toml
-[dependencies]
-astrid-core = { workspace = true }
-```
+`ApprovalRequest` and `ApprovalDecision` with five-tier `ApprovalOption`: Once, Session, Workspace, Always, Deny. `RiskLevel` is ordered: `Low < Medium < High < Critical`. Critical risk requires DM verification. `ApprovalDecision::creates_capability()` returns true for `AllowAlways`, which triggers token minting in the security interceptor.
 
-Import the prelude for convenient access to the most commonly used types:
+## Uplinks
 
-```rust
-use astrid_core::prelude::*;
-```
+`UplinkDescriptor` (builder pattern) with `UplinkCapabilities` (flag struct: `full()`, `notify_only()`, `receive_only()` presets), `UplinkProfile` (chat, interactive, notify, bridge), and `UplinkSource` (native, WASM, OpenClaw). Hard limit of 32 uplinks per capsule, enforced at the type level.
 
-## API Reference
+## Elicitation
 
-### Key Types
+MCP server-initiated user input: `ElicitationRequest`/`ElicitationResponse` with text, secret, select, and confirm schemas. `UrlElicitationRequest` handles OAuth and payment flows.
 
-**Identifiers**
+## Capsule ABI types
 
-| Type | Description |
-|------|-------------|
-| `AgentId` | UUID-backed agent instance identifier, displayed as `agent:<uuid>` |
-| `SessionId` | UUID-backed session identifier; `SessionId::SYSTEM` is the kernel's well-known nil UUID |
-| `TokenId` | UUID-backed capability token identifier |
-| `UplinkId` | Opaque UUID for a registered uplink |
-| `AstridUserId` | Canonical cross-platform user identity with optional ed25519 public key |
-| `Timestamp` | `DateTime<Utc>` wrapper with `is_past()`, `is_future()`, and ISO 8601 display |
+Rust mirrors of the `astrid:capsule@0.1.0` WIT records: `CapsuleAbiContext`, `CapsuleAbiResult`, `ToolInput`, `ToolOutput`, `ToolDefinition`, `HttpResponse`, `LogLevel`. These types cross the WASM boundary as serialized bytes.
 
-**Approval and Risk**
+## Session authentication
 
-| Type | Description |
-|------|-------------|
-| `RiskLevel` | Ordered enum: `Low`, `Medium`, `High`, `Critical`; `High`+ requires approval |
-| `Permission` | `Read`, `Write`, `Execute`, `Delete`, `Invoke`, `List`, `Create` |
-| `ApprovalRequest` | Builder-style request with risk level, resource, and options |
-| `ApprovalOption` | `AllowOnce`, `AllowSession`, `AllowWorkspace`, `AllowAlways`, `Deny` |
-| `ApprovalDecision` | Response to an approval request; `creates_capability()` for `AllowAlways` decisions |
+`SessionToken`: 256-bit CSPRNG value. Hex encode/decode. Atomic 0o600 file write. Constant-time comparison via `subtle`. `Debug` is redacted (prints `SessionToken(***)`). `HandshakeRequest`/`HandshakeResponse` define the Unix socket wire protocol.
 
-**Uplink**
+## Directory layout
 
-| Type | Description |
-|------|-------------|
-| `UplinkDescriptor` | Immutable uplink registration (id, name, platform, source, capabilities, profile, metadata) |
-| `UplinkCapabilities` | Capability flags: `can_receive`, `can_send`, `can_approve`, `can_elicit`, `supports_rich_media`, `supports_threads`, `supports_buttons` |
-| `UplinkProfile` | `Chat`, `Interactive`, `Notify`, `Bridge` |
-| `UplinkSource` | `Native`, `Wasm { capsule_id }`, `OpenClaw { capsule_id }` - validated IDs on `new_wasm()` / `new_openclaw()` |
-| `InboundMessage` | Message arriving from a frontend uplink with platform, user, content, context, and optional thread ID |
-| `UplinkError` | `NotConnected`, `SendFailed`, `InvalidCapsuleId`, `UnsupportedOperation` |
+`AstridHome` resolves `~/.astrid/` (or `$ASTRID_HOME`) with typed accessors: `socket_path()`, `token_path()`, `ready_path()`, `state_db_path()`, `capsules_dir()`, `shared_dir()`, and more. `WorkspaceDir` detects per-project `.astrid/` directories.
 
-**Elicitation**
+## Environment security policy
 
-| Type | Description |
-|------|-------------|
-| `ElicitationRequest` | MCP server-initiated input request (text, secret, select, confirm) |
-| `ElicitationSchema` | `Text`, `Secret`, `Select { options, multiple }`, `Confirm { default }` |
-| `ElicitationResponse` | `Submit { value }`, `Cancel`, `Dismiss` |
-| `UrlElicitationRequest` | Redirect-based flow for OAuth, payments, credentials, generic external |
-| `UrlElicitationResponse` | Completion status and optional callback data |
-
-**Capsule ABI**
-
-| Type | Description |
-|------|-------------|
-| `CapsuleAbiContext` | Hook invocation context (event, session_id, user_id, data payload) |
-| `CapsuleAbiResult` | Hook result with action directive and optional data payload |
-| `ToolInput` / `ToolOutput` | Tool invocation arguments and results |
-| `ToolDefinition` | Tool metadata with name, description, and JSON Schema input spec |
-| `HttpResponse` | HTTP response from host (status, headers as `KeyValuePair`, body) |
-| `LogLevel` | `Trace`, `Debug`, `Info`, `Warn`, `Error` |
-
-**Session and Auth**
-
-| Type | Description |
-|------|-------------|
-| `SessionToken` | 256-bit CSPRNG token; atomic 0o600 file write; constant-time `ct_eq`; `Debug` is redacted |
-| `HandshakeRequest` / `HandshakeResponse` | Wire protocol types for Unix socket authentication |
-| `PROTOCOL_VERSION` | Current wire protocol version constant |
-
-**Directory Layout**
-
-| Type | Description |
-|------|-------------|
-| `AstridHome` | Resolves and manages `~/.astrid/` with typed accessors for all subdirectories and database paths |
-| `WorkspaceDir` | Detects (`.astrid/`, `.git`, `ASTRID.md` sentinel walk) and manages per-project `.astrid/` including workspace UUID |
-
-**Security and Retry**
-
-| Type / Function | Description |
-|-----------------|-------------|
-| `is_blocked_spawn_env(key)` | Returns `true` if the env var must not be set by untrusted config on spawned processes |
-| `RetryConfig` | Exponential backoff with jitter; presets `fast()`, `network()`, `api()` |
-
-**Identity**
-
-| Type / Function | Description |
-|-----------------|-------------|
-| `FrontendLink` | Maps a platform-specific user ID to an `AstridUserId`; stored as `link/{platform}/{platform_user_id}` |
-| `normalize_platform(name)` | Trim and lowercase a platform name - the canonical normalization for all uplinks |
+`is_blocked_spawn_env` enforces a blocklist of environment variables that must never be set on spawned child processes by untrusted config: library injection (`LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`), proxy interception (`HTTP_PROXY`), CA trust overrides (`SSL_CERT_FILE`).
 
 ## Development
 
@@ -130,4 +49,4 @@ cargo test -p astrid-core
 
 ## License
 
-Dual-licensed under either the [MIT License](../../LICENSE-MIT) or the [Apache License, Version 2.0](../../LICENSE-APACHE), at your option.
+Dual MIT/Apache-2.0. See [LICENSE-MIT](../../LICENSE-MIT) and [LICENSE-APACHE](../../LICENSE-APACHE).

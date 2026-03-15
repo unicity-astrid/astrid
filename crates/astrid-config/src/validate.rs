@@ -136,11 +136,11 @@ fn validate_budget(config: &Config) -> ConfigResult<()> {
 fn validate_workspace(config: &Config) -> ConfigResult<()> {
     let w = &config.workspace;
 
-    if !matches!(w.mode.as_str(), "safe" | "guided" | "autonomous") {
+    if !matches!(w.mode.as_str(), "safe" | "guided" | "autonomous" | "yolo") {
         return Err(ConfigError::ValidationError {
             field: "workspace.mode".to_owned(),
             message: format!(
-                "unsupported mode '{}'; expected one of: safe, guided, autonomous",
+                "unsupported mode '{}'; expected one of: safe, guided, autonomous, yolo",
                 w.mode
             ),
         });
@@ -360,9 +360,16 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_workspace_mode() {
+    fn test_yolo_workspace_mode() {
         let mut config = Config::default();
         config.workspace.mode = "yolo".to_owned();
+        assert!(validate(&config).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_workspace_mode() {
+        let mut config = Config::default();
+        config.workspace.mode = "turbo".to_owned();
         assert!(validate(&config).is_err());
     }
 
