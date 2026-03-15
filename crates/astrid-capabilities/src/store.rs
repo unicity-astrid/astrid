@@ -255,6 +255,22 @@ impl CapabilityStore {
     /// Returns `Ok(true)` if the token is single-use and already consumed.
     /// Returns `Ok(false)` if the token is not single-use or has not been used.
     /// Returns `Err(())` on lock poisoning, to support fail-closed callers.
+    /// Validate a persistent token's integrity (expiry + signature).
+    /// Returns `true` if valid, `false` if invalid (logged and should be skipped).
+    fn is_valid_persistent_token(token: &CapabilityToken) -> bool {
+        match token.validate() {
+            Ok(()) => true,
+            Err(CapabilityError::TokenExpired { .. }) => {
+                tracing::debug!(token_id = %token.id, "skipping expired persistent token");
+                false
+            },
+            Err(e) => {
+                tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                false
+            },
+        }
+    }
+
     fn is_consumed_single_use(&self, token: &CapabilityToken) -> Result<bool, ()> {
         if !token.is_single_use() {
             return Ok(false);
@@ -286,15 +302,7 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
-                    // Defense in depth: validate persistent tokens (expiry +
-                    // signature). Uses validate() for consistency with get()
-                    // so future checks (e.g. nbf) are applied uniformly.
-                    if let Err(e) = token.validate() {
-                        if matches!(e, CapabilityError::TokenExpired { .. }) {
-                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
-                        } else {
-                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
-                        }
+                    if !Self::is_valid_persistent_token(&token) {
                         continue;
                     }
                     // Check if not revoked
@@ -344,14 +352,7 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
-                    // Defense in depth: validate persistent tokens (expiry +
-                    // signature). Uses validate() for consistency with get().
-                    if let Err(e) = token.validate() {
-                        if matches!(e, CapabilityError::TokenExpired { .. }) {
-                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
-                        } else {
-                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
-                        }
+                    if !Self::is_valid_persistent_token(&token) {
                         continue;
                     }
                     // Check if not revoked
