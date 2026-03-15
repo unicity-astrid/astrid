@@ -94,7 +94,7 @@ impl CapsuleRegistry {
         let capsule = self
             .capsules
             .remove(id)
-            .ok_or_else(|| CapsuleError::UnsupportedEntryPoint(format!("Not found: {id}")))?;
+            .ok_or_else(|| CapsuleError::NotFound(format!("capsule {id}")))?;
 
         // Clean up the capsule's uplinks.
         self.unregister_capsule_uplinks(id);
