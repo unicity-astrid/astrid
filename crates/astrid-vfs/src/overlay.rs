@@ -299,7 +299,7 @@ impl Vfs for OverlayVfs {
         // Note: fully correct overlayfs requires recording a "whiteout" or tombstone
         // in the upper layer to hide a lower layer file. We omit whiteouts here for simplicity.
         if self.lower.exists(handle, path).await.unwrap_or(false) {
-            return Err(crate::VfsError::PermissionDenied(
+            return Err(crate::VfsError::NotSupported(
                 "Cannot delete read-only workspace file (whiteout support not implemented)".into(),
             ));
         }

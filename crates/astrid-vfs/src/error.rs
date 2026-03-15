@@ -22,6 +22,10 @@ pub enum VfsError {
     /// Insufficient permission.
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
+
+    /// Operation not supported by this filesystem layer.
+    #[error("Not supported: {0}")]
+    NotSupported(String),
 }
 
 /// Convenience result type for VFS operations.
