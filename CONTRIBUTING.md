@@ -9,13 +9,13 @@ contributor system to protect the project while welcoming new contributors who f
 
 | Tier | Who | What they can do |
 |------|-----|------------------|
-| **New** | Anyone not yet in `contributors.yml` | Must open an issue first, wait for assignment, and have a maintainer add the `first-contribution-approved` label to their PR |
-| **Contributor** | Added after a successful first contribution | Can self-claim issues and submit PRs to non-core crates (CLI, SDK, capsules, docs, tests) |
-| **Core** | Promoted after sustained quality contributions | Can work on core crates (kernel, events, hooks, config). Security-critical paths still require maintainer co-review |
-| **Maintainer** | Project leads | Full access including security paths, refactors, and releases |
+| **Cadet** | Anyone not yet in `contributors.yml` | Must open an issue first, wait for assignment, and have an admiral add the `cadet-approved` label to their PR |
+| **Astrinaut** | Promoted after a successful first contribution | Can self-claim issues and submit PRs to non-core crates (CLI, SDK, capsules, docs, tests) |
+| **Commander** | Promoted after sustained quality contributions | Can work on core crates (kernel, events, hooks, config). Security-critical paths still require admiral co-review |
+| **Admiral** | Project leads | Full access including security paths, refactors, and releases |
 
-Tier promotions happen at maintainer discretion based on the quality and consistency of your work.
-The contributor list lives in `.github/contributors.yml`.
+Tier promotions happen at admiral discretion based on the quality and consistency of your work.
+The crew roster lives in `.github/contributors.yml`.
 
 ## How to Contribute
 
@@ -29,43 +29,48 @@ Every PR must be linked to an issue. No exceptions.
 
 Do not open a PR for work nobody asked for. Unsolicited PRs will be closed.
 
-### 2. Fork and branch
+### 2. Get assigned
+
+Comment on the issue to claim it. An admiral will assign it to you. For cadets, this is also when
+an admiral evaluates whether the task is a good fit for a first contribution.
+
+### 3. Fork and branch
 
 - Fork the repository
 - Create a branch off `main` with a descriptive name: `feat/add-auth`, `fix/timeout-bug`
 - Keep your branch up to date with `main`
 
-### 3. Write your code
+### 4. Write your code
 
 - Follow existing code style and patterns
 - Individual files must not exceed 1000 lines. Split large files into modules
 - Run `cargo test --workspace` and `cargo clippy -- -D warnings` before submitting
 - Update `CHANGELOG.md` under the `[Unreleased]` section
 
-### 4. Open a pull request
+### 5. Open a pull request
 
 - Fill in the PR template completely. PRs with empty sections will be rejected by CI
 - Link your PR to the issue using `Closes #N`
-- First-time contributors: a maintainer will review and add the `first-contribution-approved` label
+- Cadets: an admiral will review and add the `cadet-approved` label
 
-### 5. Review
+### 6. Review
 
-All PRs require at least one maintainer review. Expect feedback - this is a security project and
+All PRs require at least one admiral review. Expect feedback - this is a security project and
 review is thorough. Address all comments before requesting re-review.
 
 ## What We Will Not Accept
 
 - **Drive-by PRs** with no linked issue or prior discussion
 - **AI-generated bulk submissions** that lack understanding of the codebase
-- **Refactors** from non-maintainers. If you see something that needs refactoring, open an issue
-- **Changes to security-critical crates** from contributors without the appropriate tier
+- **Refactors** from non-admirals. If you see something that needs refactoring, open an issue
+- **Changes to security-critical crates** without the appropriate tier
 
 ## Code Guidelines
 
-- **1000-line file limit.** No exceptions without the `large-file-ok` label from a maintainer
+- **1000-line file limit.** No exceptions without the `large-file-ok` label from an admiral
 - **Conventional Commits.** `feat(scope): description`, `fix(scope): description`, etc.
 - **Tests required.** New features need tests. Bug fixes need a regression test
-- **No unsafe code** without explicit justification and maintainer approval
+- **No unsafe code** without explicit justification and admiral approval
 
 ## Security-Critical Crates
 
@@ -80,7 +85,7 @@ The following crates form the security boundary and have restricted access:
 - `astrid-sys` - OS microkernel bindings
 - `astrid-core` - Foundation types and authorization interfaces
 
-Only core and maintainer tier contributors can modify these crates.
+Only commanders and admirals can modify these crates.
 
 ## Reporting Security Vulnerabilities
 
