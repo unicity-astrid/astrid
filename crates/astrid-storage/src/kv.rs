@@ -193,6 +193,11 @@ pub trait KvStore: Send + Sync {
     /// On error, some keys may already have been deleted. Backends should
     /// override with an atomic implementation.
     async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
+        if prefix.contains('\0') {
+            return Err(StorageError::InvalidKey(
+                "prefix must not contain null bytes".into(),
+            ));
+        }
         let keys = self.list_keys_with_prefix(namespace, prefix).await?;
         let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
         for key in &keys {
@@ -538,6 +543,11 @@ impl KvStore for SurrealKvStore {
 
     async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
         validate_namespace(namespace)?;
+        if prefix.contains('\0') {
+            return Err(StorageError::InvalidKey(
+                "prefix must not contain null bytes".into(),
+            ));
+        }
         let start = composite_key(namespace, prefix);
         let end = prefix_range_end(namespace, prefix);
 
