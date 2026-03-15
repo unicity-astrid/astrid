@@ -111,7 +111,10 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         })
     };
 
+    // Keep in sync with WasmHostFunction in astrid-capsule/src/engine/wasm/host/mod.rs.
+    // arg counts and return types are derived from arg_count() and return_type().
     vec![
+        // Filesystem
         dummy("astrid_fs_exists", 1, 1),
         dummy("astrid_fs_mkdir", 1, 0),
         dummy("astrid_fs_readdir", 1, 1),
@@ -119,25 +122,58 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         dummy("astrid_fs_unlink", 1, 0),
         dummy("astrid_read_file", 1, 1),
         dummy("astrid_write_file", 2, 0),
+        // IPC
         dummy("astrid_ipc_publish", 2, 0),
         dummy("astrid_ipc_subscribe", 1, 1),
         dummy("astrid_ipc_unsubscribe", 1, 0),
         dummy("astrid_ipc_poll", 1, 1),
+        dummy("astrid_ipc_recv", 2, 1),
+        // Uplink
         dummy("astrid_uplink_register", 3, 1),
         dummy("astrid_uplink_send", 3, 1),
+        // KV store
         dummy("astrid_kv_get", 1, 1),
         dummy("astrid_kv_set", 2, 0),
+        dummy("astrid_kv_delete", 1, 1),
+        dummy("astrid_kv_list_keys", 1, 1),
+        dummy("astrid_kv_clear_prefix", 1, 1),
+        // Config and HTTP
         dummy("astrid_get_config", 1, 1),
         dummy("astrid_http_request", 1, 1),
+        // Logging and hooks
         dummy("astrid_log", 2, 0),
+        dummy("astrid_trigger_hook", 1, 1),
+        // Cron
         dummy("astrid_cron_schedule", 3, 0),
         dummy("astrid_cron_cancel", 1, 0),
+        // Process spawning
         dummy("astrid_spawn_host", 1, 1),
+        dummy("astrid_spawn_background_host", 1, 1),
+        dummy("astrid_read_process_logs_host", 1, 1),
+        dummy("astrid_kill_process_host", 1, 1),
+        // Networking
         dummy("astrid_net_bind_unix", 1, 1),
         dummy("astrid_net_accept", 1, 1),
+        dummy("astrid_net_poll_accept", 1, 1),
         dummy("astrid_net_read", 1, 1),
         dummy("astrid_net_write", 2, 0),
+        dummy("astrid_net_close_stream", 1, 0),
+        // Identity
         dummy("astrid_get_caller", 0, 1),
+        dummy("astrid_identity_resolve", 1, 1),
+        dummy("astrid_identity_link", 1, 1),
+        dummy("astrid_identity_unlink", 1, 1),
+        dummy("astrid_identity_create_user", 1, 1),
+        dummy("astrid_identity_list_links", 1, 1),
+        // Runtime
+        dummy("astrid_signal_ready", 0, 0),
+        dummy("astrid_clock_ms", 0, 1),
+        dummy("astrid_get_interceptor_handles", 0, 1),
+        // Capabilities and approval
+        dummy("astrid_elicit", 1, 1),
+        dummy("astrid_has_secret", 1, 1),
+        dummy("astrid_request_approval", 1, 1),
+        dummy("astrid_check_capsule_capability", 1, 1),
     ]
 }
 
