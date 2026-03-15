@@ -38,7 +38,6 @@ members = [
 
     # Frontends
     "crates/astrid-cli",
-    "crates/astrid-capsule-cli",
     # "crates/astrid-cli-mockup",  # UI/UX prototype
 
     "crates/astrid-vfs",
@@ -46,17 +45,12 @@ members = [
     "crates/astrid-sdk",
     "crates/astrid-sdk-macros",
     "crates/astrid-capsule",
-    "crates/astrid-capsule-shell",
-    "crates/astrid-capsule-skills",
-    "crates/astrid-capsule-hook-bridge",
-    "crates/astrid-capsule-http",
     # "crates/astrid-discord",  # Phase 7
     # "crates/astrid-web",      # Phase 7
 
     # Optional Integrations
     # "crates/astrid-unicity",  # After research
     ]
-    exclude = ["tools/rustdoc-mcp", "tools/cargo-diag-mcp", "crates/test-plugin-guest", "crates/astrid-capsule-shell", "crates/astrid-capsule-fs", "crates/astrid-capsule-identity", "crates/astrid-capsule-anthropic", "crates/astrid-capsule-react", "crates/astrid-capsule-router", "crates/astrid-capsule-registry", "crates/astrid-capsule-prompt-builder", "crates/astrid-capsule-context-engine", "crates/astrid-capsule-session", "crates/astrid-capsule-memory"]
 
 [workspace.package]
 version = "0.1.1"
