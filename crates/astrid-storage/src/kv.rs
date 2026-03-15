@@ -184,6 +184,21 @@ pub trait KvStore: Send + Sync {
 
     /// Delete all keys in a namespace.
     async fn clear_namespace(&self, namespace: &str) -> StorageResult<u64>;
+
+    /// Delete all keys matching a prefix within a namespace.
+    ///
+    /// Returns the number of keys deleted.
+    ///
+    /// Default implementation lists then deletes one-by-one.
+    /// Backends should override with an atomic implementation.
+    async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
+        let keys = self.list_keys_with_prefix(namespace, prefix).await?;
+        let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
+        for key in &keys {
+            self.delete(namespace, key).await?;
+        }
+        Ok(count)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +299,24 @@ impl KvStore for MemoryKvStore {
         let keys: Vec<String> = data
             .keys()
             .filter(|k| k.starts_with(&prefix))
+            .cloned()
+            .collect();
+        let count = keys.len() as u64;
+        for key in keys {
+            data.remove(&key);
+        }
+        Ok(count)
+    }
+
+    async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
+        let mut data = self
+            .data
+            .write()
+            .map_err(|e| StorageError::Internal(e.to_string()))?;
+        let full_prefix = format!("{namespace}\0{prefix}");
+        let keys: Vec<String> = data
+            .keys()
+            .filter(|k| k.starts_with(&full_prefix))
             .cloned()
             .collect();
         let count = keys.len() as u64;
@@ -501,6 +534,35 @@ impl KvStore for SurrealKvStore {
         }
         Ok(count)
     }
+
+    async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
+        validate_namespace(namespace)?;
+        let start = composite_key(namespace, prefix);
+        let end = prefix_range_end(namespace, prefix);
+
+        let mut tx = self.tree.begin().map_err(|ref e| map_kv_err(e))?;
+
+        // Collect keys first, then delete (iterator borrows tx immutably).
+        let keys_to_delete = {
+            let mut iter = tx.range(&start, &end).map_err(|ref e| map_kv_err(e))?;
+            iter.seek_first().map_err(|ref e| map_kv_err(e))?;
+            let mut keys = Vec::new();
+            while iter.valid() {
+                keys.push(iter.key());
+                iter.next().map_err(|ref e| map_kv_err(e))?;
+            }
+            keys
+        }; // iterator dropped — releases immutable borrow on tx
+
+        let count = keys_to_delete.len() as u64;
+        for key in &keys_to_delete {
+            tx.delete(key).map_err(|ref e| map_kv_err(e))?;
+        }
+        if count > 0 {
+            tx.commit().await.map_err(|ref e| map_kv_err(e))?;
+        }
+        Ok(count)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -647,12 +709,7 @@ impl ScopedKvStore {
     ///
     /// Returns an error if the underlying store operation fails.
     pub async fn clear_prefix(&self, prefix: &str) -> StorageResult<u64> {
-        let keys = self.list_keys_with_prefix(prefix).await?;
-        let count = u64::try_from(keys.len()).unwrap_or(u64::MAX);
-        for key in &keys {
-            self.delete(key).await?;
-        }
-        Ok(count)
+        self.inner.clear_prefix(&self.namespace, prefix).await
     }
 
     // -- Typed convenience (JSON) --
