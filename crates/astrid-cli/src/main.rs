@@ -395,6 +395,7 @@ async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Chil
         // If the daemon has already exited, stop polling immediately
         // instead of waiting the full 10 seconds.
         if let Ok(Some(status)) = child.try_wait() {
+            let _ = child.wait(); // reap zombie
             let log_hint = astrid_core::dirs::AstridHome::resolve()
                 .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
                 .unwrap_or_default();

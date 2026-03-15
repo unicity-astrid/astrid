@@ -893,14 +893,11 @@ fn run_lifecycle_if_wasm(
     };
 
     let result = if let Some(rt) = &owned_rt {
-        // Enter the runtime context without nesting block_on calls.
-        // run_lifecycle internally calls Handle::current().block_on(),
-        // so wrapping in another block_on would panic with
-        // "Cannot start a runtime from within a runtime".
+        // Enter the runtime context so Handle::current() works inside
+        // run_lifecycle. Do NOT use block_in_place here - we are not a
+        // tokio worker thread, and block_in_place would panic.
         let _guard = rt.enter();
-        tokio::task::block_in_place(|| {
-            astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
-        })
+        astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
     } else {
         tokio::task::block_in_place(|| {
             astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
