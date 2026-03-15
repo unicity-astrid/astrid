@@ -6,6 +6,47 @@ on:
     types: [opened, edited, reopened]
 
 jobs:
+  template:
+    name: PR template filled in
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          ERRORS=""
+
+          # Check required sections exist and have content beyond the template placeholder
+          check_section() {
+            local section="$1"
+            local content
+            # Extract text between this section header and the next ## header
+            content=$(echo "$PR_BODY" | sed -n "/^## $section/,/^## /p" | sed '1d;$d' | sed '/^<!--.*-->$/d' | sed '/^\s*$/d')
+            if [ -z "$content" ]; then
+              ERRORS="${ERRORS}Missing or empty section: ## $section\n"
+            fi
+          }
+
+          check_section "Linked Issue"
+          check_section "Summary"
+          check_section "Changes"
+          check_section "Test Plan"
+
+          # Check that Linked Issue has an actual issue number, not just the placeholder
+          if ! echo "$PR_BODY" | grep -qE '#[0-9]+'; then
+            ERRORS="${ERRORS}Linked Issue must reference an issue number (#N)\n"
+          fi
+
+          if [ -n "$ERRORS" ]; then
+            echo "::error::PR template not fully completed:"
+            echo -e "$ERRORS" | while read -r line; do
+              [ -n "$line" ] && echo "::error::  - $line"
+            done
+            exit 1
+          fi
+
+          echo "PR template properly filled in."
+
   linked-issue:
     name: Linked issue required
     runs-on: ubuntu-latest
@@ -17,13 +58,11 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          # Check if PR body references an issue (Closes #N, Fixes #N, Resolves #N)
           if echo "$PR_BODY" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#[0-9]+'; then
             echo "PR references an issue."
             exit 0
           fi
 
-          # Check if PR has linked issues via GitHub API
           LINKED=$(gh api graphql -f query='
             query {
               repository(owner: "'"${REPO%%/*}"'", name: "'"${REPO##*/}"'") {
