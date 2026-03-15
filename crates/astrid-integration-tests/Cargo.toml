@@ -1,35 +1,37 @@
 [package]
 name = "astrid-integration-tests"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 publish = false
 
 [dependencies]
-astrid-core.workspace = true
-astrid-crypto.workspace = true
-astrid-capabilities.workspace = true
-astrid-audit.workspace = true
+astrid-approval = { workspace = true }
+astrid-audit = { workspace = true }
+astrid-capabilities = { workspace = true }
+astrid-capsule = { workspace = true }
+astrid-core = { workspace = true }
+astrid-crypto = { workspace = true }
+astrid-events = { workspace = true }
+astrid-hooks = { workspace = true }
 astrid-mcp = { workspace = true, features = ["test-support"] }
-
-astrid-approval.workspace = true
-astrid-workspace.workspace = true
-
-astrid-test.workspace = true
-astrid-capsule.workspace = true
-astrid-hooks.workspace = true
-astrid-storage.workspace = true
-astrid-events.workspace = true
-async-trait.workspace = true
+astrid-storage = { workspace = true }
+astrid-test = { workspace = true }
+astrid-workspace = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tempfile = "3"
-serde_json.workspace = true
-futures.workspace = true
-chrono.workspace = true
-uuid.workspace = true
+uuid = { workspace = true }
 
 [dev-dependencies]
-astrid-openclaw.workspace = true
-which.workspace = true
+astrid-openclaw = { workspace = true }
+which = { workspace = true }
 
 [lints]
 workspace = true

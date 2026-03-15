@@ -27,6 +27,7 @@ pub fn capsule(attr: TokenStream, item: TokenStream) -> TokenStream {
     capsule_impl(attr.into(), item.into()).into()
 }
 
+#[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 fn capsule_impl(
     attr: proc_macro2::TokenStream,
     item: proc_macro2::TokenStream,

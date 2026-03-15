@@ -16,6 +16,7 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[allow(clippy::wildcard_imports)]
 use extism_pdk::*;
 
 #[host_fn]

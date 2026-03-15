@@ -1,6 +1,7 @@
 [package]
 name = "astrid-cli"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,66 +13,40 @@ name = "astrid"
 path = "src/main.rs"
 
 [dependencies]
-# Internal
+anyhow = { workspace = true }
+arboard = { workspace = true }
+astrid-capsule = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
+astrid-events = { workspace = true, features = ["runtime"] }
 astrid-kernel = { workspace = true }
-astrid-capsule = { workspace = true }
+astrid-openclaw = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true }
-astrid-openclaw = { workspace = true }
-astrid-events = { workspace = true, features = ["runtime"] }
-
-# CLI
+cargo_metadata = "0.23.1"
+chrono = { workspace = true }
 clap = { workspace = true }
-dialoguer = { workspace = true }
-indicatif = { workspace = true }
 colored = { workspace = true }
+crossterm = { workspace = true }
+directories = { workspace = true }
+extism = { workspace = true }
+flate2 = { workspace = true }
+indicatif = { workspace = true }
+ratatui = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 rustyline = { workspace = true }
-syntect = { workspace = true }
-
-# Async
-tokio = { workspace = true }
-
-# Serialization
+semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-toml = { workspace = true }
-
-# Error handling
-thiserror = { workspace = true }
-anyhow = { workspace = true }
-
-# Time & IDs
-chrono = { workspace = true }
-uuid = { workspace = true }
-
-# Encoding
-hex = { workspace = true }
-
-# Tracing
-tracing = { workspace = true }
-
-# TUI
-ratatui = { workspace = true }
-crossterm = { workspace = true }
-arboard = { workspace = true }
-
-# Web browser
-webbrowser = "1.0"
-
-# Temp files (staging dirs for atomic installs)
+syntect = { workspace = true }
+tar = { workspace = true }
 tempfile = { workspace = true }
-
-# Directories
-directories = { workspace = true }
-tar.workspace = true
-flate2.workspace = true
-extism.workspace = true
-cargo_metadata = "0.23.1"
-reqwest = { workspace = true, features = ["json"] }
-semver = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
 toml_edit = "0.25.3"
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

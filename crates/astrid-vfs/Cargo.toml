@@ -1,6 +1,7 @@
 [package]
 name = "astrid-vfs"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,26 +9,15 @@ rust-version.workspace = true
 description = "Virtual File System and Capability sandbox for Astrid agent runtime"
 
 [dependencies]
-# Internal
 astrid-capabilities = { workspace = true }
-
-# Boundaries
-ignore = { workspace = true }
-
-# Error handling
-thiserror = { workspace = true }
-
-# Tracing
-tracing = { workspace = true }
-
-# Async
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["fs", "io-util", "sync", "rt"] }
-
-# Serialization
-serde = { workspace = true, features = ["derive"] }
-dashmap = { workspace = true }
 cap-std = "3.4.1"
+dashmap = { workspace = true }
+ignore = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "sync", "rt"] }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

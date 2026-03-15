@@ -1,6 +1,7 @@
 [package]
 name = "astrid-telemetry"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,25 +9,18 @@ rust-version.workspace = true
 description = "Telemetry and logging for Astrid secure agent runtime"
 
 [dependencies]
-# Serialization
+chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Error handling
 thiserror = { workspace = true }
-
-# Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
-
-# Time & IDs
-chrono = { workspace = true }
+tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tempfile = "3"
 
 [lints]
 workspace = true

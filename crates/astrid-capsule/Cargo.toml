@@ -1,6 +1,7 @@
 [package]
 name = "astrid-capsule"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,44 +9,42 @@ rust-version.workspace = true
 description = "Core runtime management for User-Space Capsules in Astrid OS"
 
 [dependencies]
-astrid-core = { workspace = true }
-astrid-vfs = { workspace = true }
-astrid-capabilities = { workspace = true }
-astrid-events = { workspace = true, features = ["runtime"] }
-astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-approval = { workspace = true }
+astrid-capabilities = { workspace = true }
+astrid-core = { workspace = true }
 astrid-crypto = { workspace = true }
+astrid-events = { workspace = true, features = ["runtime"] }
 astrid-mcp = { workspace = true }
-extism = { workspace = true }
-uuid = { workspace = true }
-tempfile = { workspace = true }
-reqwest = { workspace = true }
+astrid-storage = { workspace = true, features = ["keychain"] }
+astrid-vfs = { workspace = true }
+astrid-workspace = { workspace = true }
+async-trait = { workspace = true }
 blake3 = { workspace = true }
+extism = { workspace = true }
 notify = "7"
+reqwest = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-toml = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+toml = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 wasmparser = { workspace = true }
-async-trait = { workspace = true }
-astrid-workspace.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
 
 [dev-dependencies]
-astrid-audit = { workspace = true }
 astrid-crypto = { workspace = true }
-wasm-encoder = { workspace = true }
-# Enable test-support feature for tests (merges with the [dependencies] entry)
 astrid-mcp = { workspace = true, features = ["test-support"] }
+wasm-encoder = { workspace = true }
 
-# NOTE: astrid-mcp appears in both [dependencies] and [dev-dependencies].
-# Cargo merges the feature sets: production builds get no extra features,
-# test builds additionally enable "test-support".
+[lints.rust]
+unsafe_code = "deny"
 
-[features]
+[lints.clippy]
+all = { level = "warn", priority = -1 }

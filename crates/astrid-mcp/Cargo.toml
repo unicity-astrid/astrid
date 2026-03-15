@@ -1,6 +1,7 @@
 [package]
 name = "astrid-mcp"
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,37 +9,21 @@ rust-version.workspace = true
 description = "MCP client with server lifecycle management for Astrid"
 
 [dependencies]
-# Internal
+astrid-audit = { workspace = true }
+astrid-capabilities = { workspace = true }
 astrid-core = { workspace = true }
 astrid-crypto = { workspace = true }
-astrid-capabilities = { workspace = true }
-astrid-audit = { workspace = true }
 astrid-workspace = { workspace = true }
-
-# MCP
+async-trait = { workspace = true }
 rmcp = { workspace = true }
-
-# Binary lookup
-which = { workspace = true }
-
-# Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
-toml = { workspace = true }
-
-# Error handling
 thiserror = { workspace = true }
-
-# Async
 tokio = { workspace = true }
-async-trait = { workspace = true }
-
-# IDs
-uuid = { workspace = true }
-
-# Tracing
+toml = { workspace = true }
 tracing = { workspace = true }
-
+uuid = { workspace = true }
+which = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
