@@ -1023,6 +1023,11 @@ impl ReactLoop {
                 return Ok(());
             }
             kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
+        } else {
+            let _ = log::log(
+                "warn",
+                "handle_model_changed: payload missing 'request_topic', ignoring",
+            );
         }
         Ok(())
     }
