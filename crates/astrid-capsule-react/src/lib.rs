@@ -562,7 +562,7 @@ impl ReactLoop {
     /// Iterates all active sessions and checks if any phase has exceeded
     /// its timeout. This is the primary timeout enforcement mechanism.
     #[astrid::interceptor("handle_watchdog_tick")]
-    pub fn handle_watchdog_tick(&self, _payload: IpcPayload) -> Result<(), SysError> {
+    pub fn handle_watchdog_tick(&self) -> Result<(), SysError> {
         for session_id in load_active_sessions() {
             let mut state = TurnState::load(&session_id);
             if let Err(e) = Self::check_timeout_with_cleanup(&mut state) {
@@ -584,7 +584,7 @@ impl ReactLoop {
     /// Note: this notification itself may be lost if the bus is severely
     /// overloaded. The watchdog is the actual recovery mechanism.
     #[astrid::interceptor("handle_bus_lag")]
-    pub fn handle_bus_lag(&self, _payload: IpcPayload) -> Result<(), SysError> {
+    pub fn handle_bus_lag(&self) -> Result<(), SysError> {
         for session_id in load_active_sessions() {
             let state = TurnState::load(&session_id);
             if state.phase == Phase::AwaitingTools {
@@ -1013,23 +1013,16 @@ impl ReactLoop {
     /// route to the correct provider. Validates that the topic follows
     /// the expected `llm.request.generate.*` pattern as defense-in-depth.
     #[astrid::interceptor("handle_model_changed")]
-    pub fn handle_model_changed(&self, payload: IpcPayload) -> Result<(), SysError> {
-        if let IpcPayload::Custom { data } = payload {
-            if let Some(topic) = data.get("request_topic").and_then(|t| t.as_str()) {
-                if !topic.starts_with("llm.v1.request.generate.") {
-                    let _ = log::log(
-                        "warn",
-                        format!("Rejected model change with invalid topic: {topic}"),
-                    );
-                    return Ok(());
-                }
-                kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
+    pub fn handle_model_changed(&self, payload: serde_json::Value) -> Result<(), SysError> {
+        if let Some(topic) = payload.get("request_topic").and_then(|t| t.as_str()) {
+            if !topic.starts_with("llm.v1.request.generate.") {
+                let _ = log::log(
+                    "warn",
+                    format!("Rejected model change with invalid topic: {topic}"),
+                );
+                return Ok(());
             }
-        } else {
-            let _ = log::log(
-                "warn",
-                "handle_model_changed: unexpected payload type, ignoring",
-            );
+            kv::set_bytes("llm_provider_topic", topic.as_bytes())?;
         }
         Ok(())
     }
