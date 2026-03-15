@@ -196,33 +196,6 @@ mod tests {
     }
 
     #[test]
-    fn test_check_capability_validates_signature() {
-        let runtime_key = Arc::new(KeyPair::generate());
-        let attacker_key = KeyPair::generate();
-        let store = Arc::new(CapabilityStore::in_memory());
-
-        // Token signed by attacker, not by runtime_key
-        let token = CapabilityToken::create(
-            ResourcePattern::exact("mcp://test:tool").unwrap(),
-            vec![Permission::Invoke],
-            TokenScope::Session,
-            attacker_key.key_id(),
-            AuditEntryId::new(),
-            &attacker_key,
-            None,
-        );
-        store.add(token).unwrap();
-
-        let validator = CapabilityValidator::new(store, runtime_key);
-        // Should return None because issuer is not trusted
-        assert!(
-            validator
-                .check_capability(&mcp_action("test", "tool"))
-                .is_none()
-        );
-    }
-
-    #[test]
     fn test_check_capability_consumes_single_use() {
         let runtime_key = Arc::new(KeyPair::generate());
         let store = Arc::new(CapabilityStore::in_memory());

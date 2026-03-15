@@ -290,7 +290,11 @@ impl CapabilityStore {
                     // signature). Uses validate() for consistency with get()
                     // so future checks (e.g. nbf) are applied uniformly.
                     if let Err(e) = token.validate() {
-                        tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        if matches!(e, CapabilityError::TokenExpired { .. }) {
+                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
+                        } else {
+                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        }
                         continue;
                     }
                     // Check if not revoked
@@ -343,7 +347,11 @@ impl CapabilityStore {
                     // Defense in depth: validate persistent tokens (expiry +
                     // signature). Uses validate() for consistency with get().
                     if let Err(e) = token.validate() {
-                        tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        if matches!(e, CapabilityError::TokenExpired { .. }) {
+                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
+                        } else {
+                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        }
                         continue;
                     }
                     // Check if not revoked
