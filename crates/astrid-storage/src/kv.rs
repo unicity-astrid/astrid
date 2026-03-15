@@ -315,6 +315,11 @@ impl KvStore for MemoryKvStore {
     }
 
     async fn clear_prefix(&self, namespace: &str, prefix: &str) -> StorageResult<u64> {
+        if prefix.contains('\0') {
+            return Err(StorageError::InvalidKey(
+                "prefix must not contain null bytes".into(),
+            ));
+        }
         let mut data = self
             .data
             .write()
