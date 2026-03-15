@@ -561,6 +561,10 @@ mod tests {
             home.spark_path(),
             PathBuf::from("/tmp/test-astrid/spark.toml")
         );
+        assert_eq!(
+            home.ready_path(),
+            PathBuf::from("/tmp/test-astrid/sessions/system.ready")
+        );
     }
 
     #[test]

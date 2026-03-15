@@ -892,11 +892,14 @@ fn run_lifecycle_if_wasm(
         secret_store,
     };
 
-    let result = if owned_rt.is_some() {
-        handle.block_on(async {
-            tokio::task::block_in_place(|| {
-                astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
-            })
+    let result = if let Some(rt) = &owned_rt {
+        // Enter the runtime context without nesting block_on calls.
+        // run_lifecycle internally calls Handle::current().block_on(),
+        // so wrapping in another block_on would panic with
+        // "Cannot start a runtime from within a runtime".
+        let _guard = rt.enter();
+        tokio::task::block_in_place(|| {
+            astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
         })
     } else {
         tokio::task::block_in_place(|| {
