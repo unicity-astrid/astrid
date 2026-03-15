@@ -29,6 +29,13 @@ impl CapabilityValidator {
     /// Mirrors the MCP secure path: validates signature, checks issuer trust,
     /// and consumes single-use tokens atomically. Returns `None` (fall through
     /// to approval) on any validation failure.
+    ///
+    /// **Design trade-off:** Single-use tokens are consumed *before* the audit
+    /// write in `intercept()`. If audit subsequently fails (fail-closed), the
+    /// token is gone but the action is denied. This is the correct security
+    /// trade-off: consume-before-audit prevents replay attacks, and a transient
+    /// audit failure is recoverable (the user re-approves), whereas a replayed
+    /// single-use token is not.
     #[must_use]
     pub fn check_capability(&self, action: &SensitiveAction) -> Option<InterceptProof> {
         let (resource, permission) = action_to_resource_permission(action)?;
@@ -42,12 +49,14 @@ impl CapabilityValidator {
         let found_token = result.token()?;
 
         // Consume the token: validates signature + marks single-use as used
-        // atomically. This closes the replay window for single-use tokens.
+        // atomically. Narrows the replay window for single-use tokens to the
+        // interval between find_capability and use_token. Two concurrent
+        // callers can both pass validator.check(), but only one wins the
+        // mark_used write lock.
         match self.store.use_token(&found_token.id) {
             Ok(token) => {
                 // Re-verify issuer on the consumed token (TOCTOU defense).
                 // use_token checks expiry and signature but not issuer trust.
-                let trusted_key = self.runtime_key.export_public_key();
                 if token.issuer != trusted_key {
                     tracing::warn!(
                         token_id = %token.id,
@@ -68,6 +77,12 @@ impl CapabilityValidator {
                 );
                 None
             },
+            // Storage/crypto errors: log and fall through to approval.
+            // Note: secure.rs propagates these as hard errors. Here we return
+            // None because check_capability returns Option (not Result) and
+            // falling through to user approval is safe - the user can
+            // re-authorize. Changing the return type is deferred to avoid a
+            // larger interface change in this batch.
             Err(e) => {
                 tracing::error!(%resource, "capability validation failed: {e}");
                 None

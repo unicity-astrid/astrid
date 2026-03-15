@@ -187,7 +187,11 @@ impl AllowanceStore {
     /// Get the number of allowances in the store.
     #[must_use]
     pub fn count(&self) -> usize {
-        self.allowances.read().map(|s| s.len()).unwrap_or(0)
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore read lock poisoned in count, recovering");
+            e.into_inner()
+        });
+        store.len()
     }
 
     /// Export all session-scoped allowances for persistence.
@@ -196,16 +200,17 @@ impl AllowanceStore {
     /// These are the allowances that would be lost on restart without persistence.
     #[must_use]
     pub fn export_session_allowances(&self) -> Vec<Allowance> {
-        self.allowances
-            .read()
-            .map(|store| {
-                store
-                    .values()
-                    .filter(|a| a.session_only && a.is_valid())
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore read lock poisoned in export_session_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store
+            .values()
+            .filter(|a| a.session_only && a.is_valid())
+            .cloned()
+            .collect()
     }
 
     /// Export all workspace-scoped allowances for persistence.
@@ -214,16 +219,17 @@ impl AllowanceStore {
     /// These are the allowances that should be persisted in the workspace `state.db`.
     #[must_use]
     pub fn export_workspace_allowances(&self) -> Vec<Allowance> {
-        self.allowances
-            .read()
-            .map(|store| {
-                store
-                    .values()
-                    .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore read lock poisoned in export_workspace_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store
+            .values()
+            .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
+            .cloned()
+            .collect()
     }
 
     /// Import allowances into the store, merging with existing ones.

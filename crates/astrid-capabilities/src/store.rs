@@ -286,9 +286,11 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
-                    // Defense in depth: verify persistent token signature
-                    if let Err(e) = token.verify_signature() {
-                        tracing::warn!(token_id = %token.id, "skipping persistent token with invalid signature: {e}");
+                    // Defense in depth: validate persistent tokens (expiry +
+                    // signature). Uses validate() for consistency with get()
+                    // so future checks (e.g. nbf) are applied uniformly.
+                    if let Err(e) = token.validate() {
+                        tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
                         continue;
                     }
                     // Check if not revoked
@@ -297,7 +299,7 @@ impl CapabilityStore {
                     {
                         continue;
                     }
-                    if !token.is_expired() && token.grants(resource, permission) {
+                    if token.grants(resource, permission) {
                         match self.is_consumed_single_use(&token) {
                             Ok(true) => {},
                             Ok(false) => return true,
@@ -338,9 +340,10 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
-                    // Defense in depth: verify persistent token signature
-                    if let Err(e) = token.verify_signature() {
-                        tracing::warn!(token_id = %token.id, "skipping persistent token with invalid signature: {e}");
+                    // Defense in depth: validate persistent tokens (expiry +
+                    // signature). Uses validate() for consistency with get().
+                    if let Err(e) = token.validate() {
+                        tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
                         continue;
                     }
                     // Check if not revoked
@@ -349,7 +352,7 @@ impl CapabilityStore {
                     {
                         continue;
                     }
-                    if !token.is_expired() && token.grants(resource, permission) {
+                    if token.grants(resource, permission) {
                         match self.is_consumed_single_use(&token) {
                             Ok(true) => {},
                             Ok(false) => return Some(token),
