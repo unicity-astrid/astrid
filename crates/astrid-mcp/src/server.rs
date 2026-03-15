@@ -371,6 +371,7 @@ impl ServerManager {
     ///
     /// Applies OS-level sandboxing (bwrap on Linux, sandbox-exec on macOS),
     /// scrubs inherited environment variables, and hides `~/.astrid/`.
+    #[allow(clippy::too_many_lines)]
     fn build_sandboxed_command(
         &self,
         name: &str,
@@ -437,6 +438,31 @@ impl ServerManager {
             }
         }
 
+        // Resolve absolute binary path so the sandbox doesn't depend on PATH.
+        // The sandbox uses a fixed, minimal PATH that won't include nvm/pyenv/etc.
+        // Resolution happens before sandbox_prefix() so we can add the binary's
+        // parent directory to the sandbox read allowlist.
+        let resolved_command = which::which(command).map_err(|e| McpError::ServerStartFailed {
+            name: name.to_string(),
+            reason: format!("Cannot resolve binary '{command}': {e}"),
+        })?;
+        Self::validate_sandbox_path(&resolved_command, "resolved binary")?;
+
+        // Ensure the binary's parent directory is readable inside the sandbox.
+        // On Linux bwrap --ro-bind / / covers all host paths, but macOS Seatbelt
+        // only allows a fixed set of directories. Binaries from nvm/pyenv/etc.
+        // live under $HOME which isn't in the default allowlist.
+        // Canonicalize to follow symlinks so the real target's directory is allowed,
+        // not just the symlink's directory.
+        let canonical = resolved_command
+            .canonicalize()
+            .unwrap_or_else(|_| resolved_command.clone());
+        if let Some(bin_dir) = canonical.parent()
+            && Self::validate_sandbox_path(bin_dir, "binary parent dir").is_ok()
+        {
+            sandbox_config = sandbox_config.with_extra_read(bin_dir);
+        }
+
         // Get sandbox prefix (bwrap/sandbox-exec args)
         let sandbox_prefix =
             sandbox_config
@@ -452,7 +478,7 @@ impl ServerManager {
             for arg in &prefix.args {
                 cmd.arg(arg);
             }
-            cmd.arg(command);
+            cmd.arg(&resolved_command);
             cmd.args(&config.args);
             cmd
         } else {
@@ -461,7 +487,7 @@ impl ServerManager {
                 "Sandboxing not available on this platform; \
                  untrusted MCP server will run without OS-level isolation"
             );
-            let mut cmd = tokio::process::Command::new(command);
+            let mut cmd = tokio::process::Command::new(&resolved_command);
             cmd.args(&config.args);
             cmd
         };
@@ -1102,9 +1128,59 @@ mod tests {
         assert_eq!(program, "bwrap");
         #[cfg(target_os = "macos")]
         assert_eq!(program, "sandbox-exec");
-        // On unsupported platforms, falls through to original command
+        // On unsupported platforms, falls through to resolved absolute path
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        assert_eq!(program, "echo");
+        assert!(
+            std::path::Path::new(&program).is_absolute(),
+            "unsupported platform should still use resolved absolute path, got: {program}"
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn test_build_sandboxed_command_resolves_absolute_binary_path() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
+
+        let config = ServerConfig::stdio("test", "echo");
+
+        let cmd = manager
+            .build_sandboxed_command("test", "echo", &config)
+            .expect("should build sandboxed command");
+
+        // The resolved binary should appear as an absolute path in the args.
+        // Match against the expected which::which result rather than assuming
+        // a fixed position (args layout depends on sandbox prefix structure).
+        let expected = which::which("echo").expect("echo should be in PATH");
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(
+            args.iter().any(|a| std::path::Path::new(a) == expected),
+            "sandboxed command should contain resolved absolute path {}, got args: {args:?}",
+            expected.display()
+        );
+    }
+
+    #[test]
+    fn test_build_sandboxed_command_rejects_unresolvable_binary() {
+        let configs = ServersConfig::default();
+        let manager = ServerManager::new(configs)
+            .with_workspace_root(std::env::temp_dir().join("astrid-test-workspace"));
+
+        let config = ServerConfig::stdio("test", "nonexistent-binary-xyz-12345");
+
+        let result =
+            manager.build_sandboxed_command("test", "nonexistent-binary-xyz-12345", &config);
+        assert!(result.is_err(), "unresolvable binary should fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Cannot resolve binary"),
+            "error should mention resolution: {err}"
+        );
     }
 
     #[test]
