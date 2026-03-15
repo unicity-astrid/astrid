@@ -854,18 +854,15 @@ fn run_lifecycle_if_wasm(
     // Reuse the current tokio runtime if one exists (e.g. when called from
     // `#[tokio::main]`). Only create a new runtime for standalone/test contexts
     // where no runtime is active.
-    let owned_rt = match tokio::runtime::Handle::try_current() {
-        Ok(_) => None,
-        Err(_) => Some(
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .context("failed to build tokio runtime for lifecycle")?,
-        ),
-    };
-    let handle = match &owned_rt {
-        Some(rt) => rt.handle().clone(),
-        None => tokio::runtime::Handle::current(),
+    let (owned_rt, handle) = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        (None, handle)
+    } else {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("failed to build tokio runtime for lifecycle")?;
+        let handle = rt.handle().clone();
+        (Some(rt), handle)
     };
 
     // Spawn a CLI-inline elicit handler that prompts on stdin.
