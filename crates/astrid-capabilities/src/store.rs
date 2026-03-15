@@ -238,6 +238,11 @@ impl CapabilityStore {
             if let Some(bytes) = data {
                 let token: CapabilityToken = serde_json::from_slice(&bytes)
                     .map_err(|e| CapabilityError::SerializationError(e.to_string()))?;
+                // Defense in depth: re-verify persistent tokens on read.
+                // Session tokens were validated at add() time and live in
+                // trusted memory, but persistent tokens could be tampered on
+                // disk.
+                token.validate()?;
                 return Ok(Some(token));
             }
         }
@@ -281,13 +286,24 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
+                    // Defense in depth: validate persistent tokens (expiry +
+                    // signature). Uses validate() for consistency with get()
+                    // so future checks (e.g. nbf) are applied uniformly.
+                    if let Err(e) = token.validate() {
+                        if matches!(e, CapabilityError::TokenExpired { .. }) {
+                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
+                        } else {
+                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        }
+                        continue;
+                    }
                     // Check if not revoked
                     if let Ok(revoked) = self.revoked.read()
                         && revoked.contains(&token.id)
                     {
                         continue;
                     }
-                    if !token.is_expired() && token.grants(resource, permission) {
+                    if token.grants(resource, permission) {
                         match self.is_consumed_single_use(&token) {
                             Ok(true) => {},
                             Ok(false) => return true,
@@ -328,13 +344,23 @@ impl CapabilityStore {
                 if let Ok(Some(data)) = block_on(store.get(NS_TOKENS, &key))
                     && let Ok(token) = serde_json::from_slice::<CapabilityToken>(&data)
                 {
+                    // Defense in depth: validate persistent tokens (expiry +
+                    // signature). Uses validate() for consistency with get().
+                    if let Err(e) = token.validate() {
+                        if matches!(e, CapabilityError::TokenExpired { .. }) {
+                            tracing::debug!(token_id = %token.id, "skipping expired persistent token");
+                        } else {
+                            tracing::warn!(token_id = %token.id, "skipping invalid persistent token: {e}");
+                        }
+                        continue;
+                    }
                     // Check if not revoked
                     if let Ok(revoked) = self.revoked.read()
                         && revoked.contains(&token.id)
                     {
                         continue;
                     }
-                    if !token.is_expired() && token.grants(resource, permission) {
+                    if token.grants(resource, permission) {
                         match self.is_consumed_single_use(&token) {
                             Ok(true) => {},
                             Ok(false) => return Some(token),
@@ -826,6 +852,78 @@ mod tests {
                 .is_none()
         );
         assert!(!store.has_capability("mcp://test:tool", Permission::Invoke));
+    }
+
+    /// Helper: create a valid persistent token, serialize it, tamper a field,
+    /// and write the corrupted bytes directly to the KV store (bypassing
+    /// `CapabilityStore::add` which validates). Returns the token ID.
+    async fn inject_tampered_persistent_token(kv: &Arc<dyn KvStore>, keypair: &KeyPair) -> TokenId {
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://tampered:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Persistent,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            keypair,
+            None,
+        );
+        let token_id = token.id.clone();
+
+        // Serialize, tamper a field (add an extra permission), re-serialize.
+        // The signature was computed over the original data, so it will
+        // no longer verify after tampering.
+        let mut value: serde_json::Value = serde_json::to_value(&token).unwrap();
+        value["permissions"] = serde_json::json!(["invoke", "read", "write"]);
+        let tampered_bytes = serde_json::to_vec(&value).unwrap();
+
+        kv.set(NS_TOKENS, &token_id.0.to_string(), tampered_bytes)
+            .await
+            .unwrap();
+        token_id
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_get_rejects_tampered_persistent_token() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let token_id = inject_tampered_persistent_token(&kv, &keypair).await;
+
+        // get() should return an error for tampered tokens
+        let result = store.get(&token_id);
+        assert!(
+            matches!(result, Err(CapabilityError::InvalidSignature)),
+            "expected InvalidSignature, got {result:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_find_capability_skips_tampered_persistent_token() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let _token_id = inject_tampered_persistent_token(&kv, &keypair).await;
+
+        // find_capability should skip tampered tokens and return None
+        assert!(
+            store
+                .find_capability("mcp://tampered:tool", Permission::Invoke)
+                .is_none()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_has_capability_skips_tampered_persistent_token() {
+        let kv: Arc<dyn KvStore> = Arc::new(MemoryKvStore::new());
+        let store = CapabilityStore::with_kv_store(Arc::clone(&kv)).unwrap();
+        let keypair = test_keypair();
+
+        let _token_id = inject_tampered_persistent_token(&kv, &keypair).await;
+
+        // has_capability should skip tampered tokens and return false
+        assert!(!store.has_capability("mcp://tampered:tool", Permission::Invoke));
     }
 
     #[tokio::test(flavor = "multi_thread")]

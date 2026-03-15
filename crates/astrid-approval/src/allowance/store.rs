@@ -162,9 +162,10 @@ impl AllowanceStore {
     ///
     /// Returns the number of allowances removed.
     pub fn cleanup_expired(&self) -> usize {
-        let Ok(mut store) = self.allowances.write() else {
-            return 0;
-        };
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore write lock poisoned in cleanup_expired, recovering");
+            e.into_inner()
+        });
         let before = store.len();
         store.retain(|_, a| !a.is_expired());
         before.saturating_sub(store.len())
@@ -174,15 +175,23 @@ impl AllowanceStore {
     ///
     /// Called when a session ends to clear temporary permissions.
     pub fn clear_session_allowances(&self) {
-        if let Ok(mut store) = self.allowances.write() {
-            store.retain(|_, a| !a.session_only);
-        }
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore write lock poisoned in clear_session_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store.retain(|_, a| !a.session_only);
     }
 
     /// Get the number of allowances in the store.
     #[must_use]
     pub fn count(&self) -> usize {
-        self.allowances.read().map(|s| s.len()).unwrap_or(0)
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore read lock poisoned in count, recovering");
+            e.into_inner()
+        });
+        store.len()
     }
 
     /// Export all session-scoped allowances for persistence.
@@ -191,16 +200,17 @@ impl AllowanceStore {
     /// These are the allowances that would be lost on restart without persistence.
     #[must_use]
     pub fn export_session_allowances(&self) -> Vec<Allowance> {
-        self.allowances
-            .read()
-            .map(|store| {
-                store
-                    .values()
-                    .filter(|a| a.session_only && a.is_valid())
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore read lock poisoned in export_session_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store
+            .values()
+            .filter(|a| a.session_only && a.is_valid())
+            .cloned()
+            .collect()
     }
 
     /// Export all workspace-scoped allowances for persistence.
@@ -209,27 +219,30 @@ impl AllowanceStore {
     /// These are the allowances that should be persisted in the workspace `state.db`.
     #[must_use]
     pub fn export_workspace_allowances(&self) -> Vec<Allowance> {
-        self.allowances
-            .read()
-            .map(|store| {
-                store
-                    .values()
-                    .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore read lock poisoned in export_workspace_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        store
+            .values()
+            .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
+            .cloned()
+            .collect()
     }
 
     /// Import allowances into the store, merging with existing ones.
     ///
     /// Used to restore session allowances from a persisted session.
     pub fn import_allowances(&self, allowances: Vec<Allowance>) {
-        if let Ok(mut store) = self.allowances.write() {
-            for allowance in allowances {
-                if allowance.is_valid() {
-                    store.insert(allowance.id.clone(), allowance);
-                }
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore write lock poisoned in import_allowances, recovering");
+            e.into_inner()
+        });
+        for allowance in allowances {
+            if allowance.is_valid() {
+                store.insert(allowance.id.clone(), allowance);
             }
         }
     }

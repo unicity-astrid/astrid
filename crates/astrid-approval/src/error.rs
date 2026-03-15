@@ -35,6 +35,10 @@ pub enum ApprovalError {
     /// Internal approval system error.
     #[error("internal approval error: {0}")]
     Internal(String),
+
+    /// Audit logging failed - action denied to maintain audit trail integrity (fail-closed).
+    #[error("audit failed (fail-closed): {0}")]
+    AuditFailed(String),
 }
 
 /// Result type for approval operations.
