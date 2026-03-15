@@ -4,101 +4,173 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-High-performance, structured logging and distributed request correlation for the Astralis OS runtime.
+Structured logging and request correlation for the Astrid secure agent runtime.
 
-`astrid-telemetry` provides the foundational observability layer for Astralis components. It wraps the Rust `tracing` ecosystem into a strictly typed, configurable API that enforces consistent output formats and enables cross-component request correlation. Instead of manually configuring complex subscriber pipelines in every crate, this library provides a unified interface to handle file rotation, multi-format output, and precise per-crate log directives.
+`astrid-telemetry` wraps the `tracing` ecosystem into a typed, serializable configuration API. Rather than wiring up `tracing-subscriber` in every crate, components call `setup_logging` once and get consistent output format, file rotation, and per-target directive filtering. The `RequestContext` type propagates correlation IDs across component boundaries so distributed call chains remain traceable in any output format.
 
 ## Core Features
 
-* **Unified Configuration Pipeline**: Switch between JSON, pretty, compact, or full log formats through a simple builder or serializable configuration.
-* **Distributed Request Correlation**: The `RequestContext` system automatically tracks parent-child relationships, correlation IDs, and operational metadata across system boundaries.
-* **Flexible Output Routing**: Route traces to standard output, standard error, or rotating file appenders (daily, hourly, minutely, or never).
-* **Dynamic Directive Filtering**: Filter telemetry data at runtime using standard directive syntax (e.g., `astrid_mcp=debug,astrid_core=trace`).
-
-## Architecture
-
-`astrid-telemetry` abstracts the underlying complexities of `tracing-subscriber` to ensure reliable observability. 
-
-1. **Routing**: `LogTarget` dictates the physical destination (`Stdout`, `Stderr`, `File`).
-2. **Formatting**: Layers are dynamically applied via `tracing_subscriber::fmt` based on the chosen `LogFormat`.
-3. **Filtering**: `EnvFilter` is constructed from the base log level and the vector of directive overrides, resolving parse errors gracefully.
-
-By centralizing these concerns, all components within the Astralis ecosystem guarantee a uniform logging topology, preventing fragmented observability configurations across the codebase.
+- **Four output formats**: `Pretty` (ANSI-colored, human-readable), `Compact` (single-line), `Json` (machine-ingestible), `Full` (all span fields). Switch with a single enum variant.
+- **Three output targets**: stdout, stderr, or a rolling file appender. File output automatically disables ANSI codes.
+- **File rotation strategies**: daily, hourly, minutely, or never - backed by `tracing-appender`.
+- **Per-target directive overrides**: apply `astrid_mcp=debug,astrid_core=trace`-style filters on top of the base level via `with_directive`.
+- **Request correlation**: `RequestContext` carries `request_id`, `correlation_id`, `parent_id`, `session_id`, `user_id`, elapsed time, and arbitrary string metadata. Child contexts inherit correlation and session IDs while getting a fresh `request_id`.
+- **Serializable config**: `LogConfig` implements `serde::Serialize` / `Deserialize`, so it loads directly from any config file format the rest of the workspace uses.
+- **Prelude**: `use astrid_telemetry::prelude::*` imports all essential types in one line.
 
 ## Quick Start
 
-Initialize the basic telemetry system at the entry point of your application or agent.
+```toml
+[dependencies]
+astrid-telemetry = "0.2"
+```
+
+Initialize once at your entry point:
 
 ```rust
 use astrid_telemetry::{LogConfig, LogFormat, setup_logging};
 
 fn main() -> Result<(), astrid_telemetry::TelemetryError> {
-    // Configure human-readable output with specific module tracing
     let config = LogConfig::new("info")
         .with_format(LogFormat::Pretty)
         .with_directive("astrid_mcp=trace");
 
-    // Initialize the global subscriber
     setup_logging(&config)?;
 
-    tracing::info!("Telemetry subsystem initialized");
+    tracing::info!("runtime started");
     Ok(())
 }
 ```
 
-### Logging Configuration
+## API Reference
 
-The `LogConfig` struct uses a fluent builder pattern to define the output format and routing of telemetry data. It implements `Serialize` and `Deserialize`, making it trivial to load from a central configuration file.
+### Key Types
+
+#### `LogConfig`
+
+Builder-style configuration for the global tracing subscriber. All fields implement `Serialize` / `Deserialize`.
 
 ```rust
-use astrid_telemetry::{LogConfig, LogTarget, LogFormat, FileRotation};
+use astrid_telemetry::{LogConfig, LogFormat, LogTarget, FileRotation};
 
+// JSON to a daily-rotating file, with source locations included
 let config = LogConfig::new("warn")
-    // Use structured JSON for machine ingestion
     .with_format(LogFormat::Json)
-    // Route logs to a rotating file appender
-    .with_file_logging_rotation("/var/log/astralis", "agent", FileRotation::Daily)
-    // Inject file names and line numbers into the trace
+    .with_file_logging_rotation("/var/log/astrid", "agent", FileRotation::Daily)
     .with_file_info()
-    // Explicitly enable debug logs for the storage layer
     .with_directive("astrid_storage=debug");
 ```
 
-Supported formats:
-* `Pretty`: Human-readable format with ANSI colors (default).
-* `Compact`: Dense, single-line format optimized for terminal real estate.
-* `Json`: Structured JSON output designed for log aggregation systems.
-* `Full`: Exhaustive format including all available span and event fields.
+| Builder method | Effect |
+|---|---|
+| `with_format(LogFormat)` | Set output format |
+| `with_target(LogTarget)` | Set output target |
+| `with_file_logging(dir, prefix)` | Route to daily-rotating file |
+| `with_file_logging_rotation(dir, prefix, rotation)` | Route to file with explicit rotation |
+| `with_directive(str)` | Append a filter directive |
+| `with_file_info()` | Include file name and line number |
+| `with_span_events()` | Emit `NEW` and `CLOSE` span events |
+| `without_timestamps()` | Suppress timestamps |
+| `without_ansi()` | Disable ANSI color codes |
 
-### Request Correlation
+#### `LogFormat`
 
-In a distributed runtime, understanding how requests flow between components is critical. `RequestContext` generates and propagates correlation IDs.
+```rust
+pub enum LogFormat { Pretty, Compact, Json, Full }
+```
+
+Default is `Pretty`. `Json` is the right choice for log aggregation pipelines.
+
+#### `LogTarget`
+
+```rust
+pub enum LogTarget { Stdout, Stderr, File(PathBuf) }
+```
+
+Default is `Stderr`.
+
+#### `FileRotation`
+
+```rust
+pub enum FileRotation { Daily, Hourly, Minutely, Never }
+```
+
+Default is `Daily`. `Minutely` is useful in tests to observe rotation behavior without waiting.
+
+#### `FileLogConfig`
+
+Embedded in `LogConfig` when the target is `File`. Fields:
+
+| Field | Type | Default |
+|---|---|---|
+| `directory` | `PathBuf` | `"logs"` |
+| `prefix` | `String` | `"astrid"` |
+| `rotation` | `FileRotation` | `Daily` |
+| `max_files` | `usize` | `0` (unlimited) |
+
+#### `RequestContext`
+
+Carries correlation state across component and async boundaries.
 
 ```rust
 use astrid_telemetry::RequestContext;
 use uuid::Uuid;
 
-// 1. A new request enters the system
-let session_id = Uuid::new_v4();
-let root_ctx = RequestContext::new("api_gateway")
-    .with_operation("handle_client_request")
-    .with_session_id(session_id);
+// Root context for an incoming request
+let root = RequestContext::new("api_gateway")
+    .with_operation("handle_request")
+    .with_session_id(Uuid::new_v4());
 
-// 2. The request is passed to a subsystem
-// The child inherits the correlation ID and session ID, but receives a unique request ID
-let storage_ctx = root_ctx.child("storage_engine")
-    .with_operation("fetch_user_data");
+// Child inherits correlation_id and session_id; gets a new request_id and parent_id
+let child = root.child("storage")
+    .with_operation("fetch_record");
 
-// 3. Bind the context to the tracing span
-let span = storage_ctx.span();
+// Attach to a tracing span
+let span = child.span();
 let _guard = span.enter();
+tracing::info!("querying storage");
 
-tracing::info!("Executing storage lookup"); // Automatically tagged with correlation IDs
+// Elapsed time since context creation
+println!("{}ms", child.elapsed_ms());
 ```
 
-## Development
+Fields on `RequestContext`:
 
-This crate is a core component within the Astralis workspace. To run the isolated test suite:
+| Field | Type | Notes |
+|---|---|---|
+| `request_id` | `Uuid` | Unique per context |
+| `correlation_id` | `Uuid` | Shared across a request chain |
+| `parent_id` | `Option<Uuid>` | Set on child contexts |
+| `session_id` | `Option<Uuid>` | Inherited by children |
+| `user_id` | `Option<Uuid>` | Optional, not inherited |
+| `source` | `String` | Component that created the context |
+| `operation` | `Option<String>` | Name of the operation being performed |
+| `metadata` | `HashMap<String, String>` | Inherited by children |
+| `started_at` | `DateTime<Utc>` | Set at creation time |
+
+`RequestContext` implements `Serialize` / `Deserialize` and `Default` (source `"unknown"`).
+
+#### `TelemetryError`
+
+```rust
+pub enum TelemetryError {
+    ConfigError(String),   // invalid level string or directive syntax
+    InitError(String),     // subscriber already set or init failed
+    IoError(std::io::Error),
+}
+```
+
+`TelemetryResult<T>` is `Result<T, TelemetryError>`.
+
+### `setup_logging`
+
+```rust
+pub fn setup_logging(config: &LogConfig) -> TelemetryResult<()>
+```
+
+Installs the global `tracing` subscriber. Call once per process. Returns `TelemetryError::InitError` if a subscriber is already installed (which is normal in tests - use `try_init` semantics by ignoring the error where appropriate).
+
+## Development
 
 ```bash
 cargo test -p astrid-telemetry

@@ -4,104 +4,47 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-Core runtime management, manifest routing, and composite execution engines for Astralis OS user-space capsules.
+Core runtime management for User-Space Capsules in Astrid OS.
 
-`astrid-capsule` is the engine room of the Astralis extension ecosystem. Implementing the Phase 4 Manifest-First architecture, it acts as the definitive boundary between the core OS and user-provided code. Rather than forcing developers into a single execution paradigm, this crate utilizes a Composite Architecture. It parses declarative manifests (`Capsule.toml`) to seamlessly orchestrate WebAssembly sandboxes, legacy Model Context Protocol (MCP) host processes, and static context under a unified, secure lifecycle.
-
-If Astralis is the ship, `astrid-capsule` provides the standardized docking bays, lifecycle routing, and security airlocks for every extension that comes aboard.
+`astrid-capsule` implements the Manifest-First architecture for Astrid's extension ecosystem. It parses `Capsule.toml` manifests, routes execution to the appropriate runtime environment (WASM sandbox, legacy MCP host process, or static context), enforces capability-based security gates, and manages the full capsule lifecycle under a single unified abstraction.
 
 ## Core Features
 
-- **Manifest-First Routing**: Parses `Capsule.toml` manifests to automatically wire up capabilities, LLM tools, cron jobs, environment variables, and OS interceptors before a single line of user code executes.
-- **Composite Architecture**: A single capsule can encompass multiple execution engines. Run a secure WASM component alongside an "airlock override" legacy Node/Python MCP process, managed entirely as one logical unit.
-- **Pluggable Execution Engines**: Native support for `WasmEngine` (via Extism), `McpHostEngine` (legacy `stdio` binaries), and `StaticEngine` (declarative-only capsules).
-- **Hardened Security Gates**: Intercepts host calls (HTTP, File I/O, Connector Registration) via the `CapsuleSecurityGate` trait, integrating natively with `astrid-approval` for human-in-the-loop permission budgets.
-- **Zero-Friction Hot Reloading**: A built-in daemon (`watcher.rs`) monitors capsule source directories, debounces file events, `blake3`-hashes source trees, and emits precise invalidation events.
-
-## Architecture: The Composite Model
-
-Because a single manifest can define multiple distinct execution units, the OS uses an additive model rather than polymorphic variants. 
-
-The `CapsuleLoader` acts as the router. Upon reading a manifest, it instantiates a `CompositeCapsule` packed with the requested `ExecutionEngine` implementations. When the OS commands the capsule to `.load()`, the composite iterates through its engines—initializing WASM memory, spawning child processes, or parsing static context. If any single engine fails, the entire capsule safely rolls back its state.
-
-### The Execution Engines
-
-1. **WasmEngine**: Loads and executes compiled WebAssembly (or OpenClaw scripts) within a strictly sandboxed Extism runtime.
-2. **McpHostEngine**: The "airlock override." Spawns a native child process (e.g., `npx`, `python`) to communicate via standard MCP JSON-RPC over `stdio`.
-3. **StaticEngine**: Always attached. Handles the injection of context files, static commands, and predefined skills directly into OS memory without booting any VMs or secondary processes.
-
-## The Manifest (`Capsule.toml`)
-
-The manifest is the absolute source of truth. `astrid-capsule` translates this declarative configuration into strongly-typed structures (`CapsuleManifest`) to orchestrate the environment.
-
-```toml
-[package]
-name = "github-agent"
-version = "1.0.0"
-astrid-version = ">=0.1.0"
-
-# 1. The primary WASM logic
-[component]
-entrypoint = "bin/github_agent.wasm"
-
-# 2. OS Capabilities requested
-[capabilities]
-net = ["api.github.com"]
-fs_read = ["/home/user/.gitconfig"]
-
-# 3. Environment Variables elicited during docking
-[env.GITHUB_TOKEN]
-type = "secret"
-request = "Please provide a GitHub Personal Access Token"
-
-# 4. The Airlock Override: Legacy MCP stdio server
-[[mcp_server]]
-id = "local-git"
-type = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-git"]
-
-# 5. Scheduled Background Tasks (Cron)
-[[cron]]
-name = "sync-issues"
-schedule = "0 * * * *"
-action = "astrid.github.sync"
-
-# 6. eBPF-style Lifecycle Hooks
-[[interceptor]]
-event = "BeforeToolCall"
-
-# 7. LLM Provider (Agent Brain)
-[[llm_provider]]
-id = "claude-3-5-sonnet"
-description = "Anthropic Claude 3.5 Sonnet Provider"
-capabilities = ["text", "vision", "tools"]
-```
+- **Manifest-first routing**: `CapsuleLoader` reads a `Capsule.toml` and wires up the correct execution engines automatically. No code is required from a capsule author to register tools, interceptors, uplinks, or cron jobs - the manifest is the complete declaration.
+- **Composite execution model**: A single capsule can run a WASM component, a legacy stdio MCP process, and static context injection simultaneously, all managed under one `Capsule` lifecycle.
+- **Three built-in execution engines**: `WasmEngine` (Extism-based WASM sandbox), `McpHostEngine` (native stdio subprocess, the "airlock override"), and `StaticEngine` (context files, skills, and commands injected without booting any VM).
+- **Capability-based security gates**: The `CapsuleSecurityGate` trait intercepts every host call (HTTP, filesystem read/write, host process spawn, socket bind, identity operations). The `ManifestSecurityGate` implementation enforces declared capabilities from the manifest, with path traversal rejection and workspace-confined wildcard matching.
+- **Topological boot ordering**: `toposort_manifests` uses Kahn's algorithm to order capsule load sequences by capability dependency (`requires`/`provides`), supporting single-segment wildcard matching (`topic:llm.stream.*`).
+- **IPC event dispatch**: `EventDispatcher` subscribes to the `EventBus` and fans out IPC events and lifecycle events to matching capsule interceptors concurrently. Per-capsule semaphores (default 4 permits) bound concurrent interceptor invocations.
+- **Manifest validation**: `load_manifest` enforces semver versions, rejects empty IPC topic segments, validates dependency capability prefixes (`topic:`, `tool:`, `llm:`, `uplink:`), rejects wildcards in `provides`, and enforces `astrid-version` compatibility at load time.
 
 ## Quick Start
 
-For developers integrating this crate into the wider Astralis OS routing layer, loading a capsule from a manifest requires the `CapsuleLoader` and discovery system:
+```toml
+[dependencies]
+astrid-capsule = { workspace = true }
+```
+
+Discover and load capsules from `.astrid/capsules/`:
 
 ```rust
 use std::path::PathBuf;
 use astrid_capsule::discovery::discover_manifests;
 use astrid_capsule::loader::CapsuleLoader;
 use astrid_capsule::registry::CapsuleRegistry;
-use astrid_mcp::McpClient;
+use astrid_mcp::SecureMcpClient;
 
-async fn init_capsules(mcp_client: McpClient) {
+async fn init_capsules(mcp_client: SecureMcpClient) {
     let loader = CapsuleLoader::new(mcp_client);
     let mut registry = CapsuleRegistry::new();
-    
-    // 1. Discover manifests in `.astrid/plugins/`
+
+    // Scans .astrid/capsules/ for Capsule.toml files
     let found = discover_manifests(None);
-    
-    // 2. Route and build Composite Capsules
+
     for (manifest, dir) in found {
         match loader.create_capsule(manifest, dir) {
-            Ok(mut capsule) => {
-                // 3. Register and Load
-                registry.register(capsule);
+            Ok(capsule) => {
+                registry.register(capsule).expect("duplicate capsule id");
             }
             Err(e) => tracing::error!("Failed to build capsule: {e}"),
         }
@@ -109,16 +52,108 @@ async fn init_capsules(mcp_client: McpClient) {
 }
 ```
 
-## Security Integration
+## The Manifest (`Capsule.toml`)
 
-All engines are strictly bound by the `CapsuleSecurityGate` trait. By default, when `astrid-capsule` is compiled with the `approval` feature, this integrates directly with `astrid-approval`'s `SecurityInterceptor`.
+Every capsule is fully described by a `Capsule.toml`. The runtime reads this file and provisions the appropriate engines - no capsule author needs to write Rust.
 
-This ensures that any filesystem reads/writes and HTTP requests originating from within a capsule (regardless of the underlying engine) respect the system's global budget and policy constraints. Test implementations (`AllowAllGate`, `DenyAllGate`) are provided for isolated unit testing.
+```toml
+[package]
+name = "my-capsule"
+version = "1.0.0"
+astrid-version = ">=0.1.0"
+
+# WASM component (optional)
+[[component]]
+file = "bin/my_capsule.wasm"
+hash = "sha256:abc123..."  # optional integrity check
+
+# Capability declarations (fail-closed by default)
+[capabilities]
+net = ["api.example.com"]
+fs_read = ["workspace://src"]
+fs_write = ["workspace://out"]
+ipc_publish = ["my.v1.events.*"]
+ipc_subscribe = ["llm.v1.response.*"]
+
+# Environment variables elicited from the user during install
+[env.API_KEY]
+type = "secret"
+request = "Enter your API key"
+
+# Legacy stdio MCP server (airlock override)
+[[mcp_server]]
+id = "my-server"
+type = "stdio"
+command = "npx"
+args = ["-y", "@example/mcp-server"]
+
+# eBPF-style IPC interceptors
+[[interceptor]]
+event = "user.prompt"
+action = "handle_prompt"
+
+# Dependency ordering
+[dependencies]
+provides = ["topic:my.v1.events.ready"]
+requires = ["topic:llm.v1.response.*"]
+
+# Scheduled tasks
+[[cron]]
+name = "daily-sync"
+schedule = "0 0 * * *"
+action = "my.v1.sync"
+
+# IPC topic API declarations (schema-annotated)
+[[topic]]
+name = "my.v1.events.ready"
+direction = "publish"
+description = "Emitted when the capsule is ready"
+schema = "schemas/ready.json"
+```
+
+## API Reference
+
+### Key Types
+
+- `CapsuleManifest` - Deserialized `Capsule.toml`. The source of truth for all engine provisioning, capability checks, and dependency ordering.
+- `Capsule` (trait) - Unified interface for all capsule implementations. Provides `load`, `unload`, `tools`, `invoke_interceptor`, `wait_ready`, and `check_health`.
+- `CompositeCapsule` - The concrete implementation. Owns a `Vec<Box<dyn ExecutionEngine>>` and fans out lifecycle calls across all engines.
+- `CapsuleLoader` - Factory that translates a manifest into a `CompositeCapsule` populated with the correct engines.
+- `CapsuleRegistry` - In-memory store for loaded capsules, indexed by `CapsuleId`. Also tracks uplink descriptors and WASM session UUID mappings for IPC capability checks.
+- `CapsuleContext` - Execution context passed to engines during `load`: workspace root, KV store, event bus, CLI socket, registry, and optional identity/approval stores.
+- `CapsuleSecurityGate` (trait) - Gate for every sensitive host call. `ManifestSecurityGate` enforces the manifest's declared capabilities. `AllowAllGate` and `DenyAllGate` are provided for tests.
+- `EventDispatcher` - Subscribes to the `EventBus` and dispatches IPC events and lifecycle events to registered interceptors concurrently.
+- `CapsuleId` - Validated identifier (lowercase alphanumeric and hyphens only).
+- `CapsuleError` / `CapsuleResult<T>` - Error type and result alias for all capsule operations.
+- `toposort_manifests` - Kahn's algorithm for capability-based load ordering. Returns `CycleError` with the original manifest list on cycle detection.
+- `capability_matches` - Wildcard-aware capability matcher used by both toposort and dependency resolution.
+
+### Execution Engines (internal)
+
+- `WasmEngine` - Extism-based WASM sandbox with host functions for IPC, KV, VFS, HTTP, and identity operations.
+- `McpHostEngine` - Spawns a native stdio subprocess and bridges it via `SecureMcpClient`. Declared with `type = "stdio"` in the manifest.
+- `StaticEngine` - Injects `context_files`, `commands`, and `skills` into OS memory without booting any external process.
+
+## Security Model
+
+All capability checks are fail-closed. A capsule that declares no `net`, `fs_read`, `fs_write`, `ipc_publish`, `ipc_subscribe`, or `identity` capabilities gets none of them. The `ManifestSecurityGate`:
+
+- Rejects paths containing `..` components to prevent traversal attacks
+- Confines wildcard (`*`) file access to the canonical workspace root - paths outside (e.g. `~/.astrid/keys/`) are always denied
+- Resolves `workspace://` and `global://` scheme prefixes to physical paths at construction time
+- Enforces an identity capability hierarchy: `admin > link > resolve`
+- Denies `net_bind` and identity operations by default; capsules must explicitly declare them
+
+The `allow_prompt_injection` capability field is `false` by default. Capsules without it cannot modify the LLM system prompt, even if their interceptor returns one.
 
 ## Development
 
-This crate is a critical load-bearing component of Astralis OS. When adding new fields to `Capsule.toml`, ensure you update both the `CapsuleManifest` struct in `src/manifest.rs` and the routing logic in `src/loader.rs`. Any new execution paradigm must implement the `ExecutionEngine` trait in `src/engine/mod.rs`.
+```bash
+cargo test --workspace -- --quiet
+```
+
+When adding fields to `CapsuleManifest` in `src/manifest.rs`, update `src/loader.rs` if the new field affects engine selection, and update `src/toposort.rs` if it affects dependency ordering. New execution paradigms must implement the `ExecutionEngine` trait in `src/engine/mod.rs`.
 
 ## License
 
-This project is dual-licensed under either the [MIT License](../../LICENSE-MIT) or the [Apache License, Version 2.0](../../LICENSE-APACHE), at your option.
+Dual-licensed under [MIT](../../LICENSE-MIT) or [Apache-2.0](../../LICENSE-APACHE), at your option.

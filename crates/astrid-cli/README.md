@@ -1,117 +1,94 @@
 # astrid-cli
 
-[![Crates.io](https://img.shields.io/crates/v/astrid-cli)](https://crates.io/crates/astrid-cli)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
+[![CI](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml)
 
-The official command-line interface and terminal frontend for the Astralis secure agent runtime.
+Command-line interface for the Astrid secure agent runtime.
 
-`astrid-cli` provides the primary user experience for the Astralis ecosystem. Functioning as a high-performance thin client, it interfaces directly with the `astridd` background daemon to deliver a responsive, rich Terminal User Interface (TUI) without blocking the heavy-lifting of the underlying secure agent runtime.
+`astrid-cli` is a thin client: it auto-starts the background kernel daemon if one is not running, performs an authenticated handshake over a Unix Domain Socket, then renders streaming events in a ratatui TUI. All agent logic, LLM calls, MCP tool execution, and security policy enforcement live in the daemon. The CLI's only job is input, routing, and rendering.
 
 ## Core Features
 
-This crate focuses exclusively on the presentation layer, command parsing, and user interaction mechanics. The actual agent logic, security sandboxing, and session state are managed by the core runtime via the daemon.
-
-### 1. Robust Command Parsing
-Powered by `clap`, `astrid-cli` provides a structured, discoverable command surface. It parses user intents, loads local workspace configurations, and routes requests to the appropriate subsystems or daemon endpoints.
-
-### 2. Rich Terminal User Interface (TUI)
-Built on top of `ratatui` and `crossterm`, the CLI features a highly responsive, custom-rendered chat interface. It handles raw terminal event streams, smooth scrolling, and dynamic layout adjustments without flickering.
-
-### 3. Native Syntax Highlighting
-Code blocks in agent responses are rendered in real-time using `syntect`. The CLI supports 24-bit terminal colors, applying sophisticated themes to source code output before rendering it to the user.
-
-### 4. Seamless Clipboard Integration
-Integrating `arboard`, the TUI allows developers to instantly copy generated code snippets or full agent responses directly to the system clipboard, streamlining the workflow between the agent and the IDE.
-
-### 5. Asynchronous Daemon Bridge
-To decouple the UI from long-running LLM inferences and tool executions, `astrid-cli` communicates with `astridd` over JSON-RPC (`jsonrpsee`) WebSockets. This means you can close your terminal, reopen it, and immediately reconnect to an ongoing session.
-
-### 6. Strict "Pure Text" Theming
-The visual design enforces a strict professional aesthetic. There are zero emojis. All visual communication relies on ANSI color coding, custom ASCII/box-drawing characters for approval prompts, and minimalist animations (like the stellar spinner: `[✧, ✦, ✶, ✴, ✸, ✴, ✶, ✦]`).
-
-## Architecture: Client vs. Daemon
-
-When you run `astrid chat`, the CLI automatically ensures the `astridd` background process is running. 
-
-1. **`astrid` (Client)**: Spawns the TUI, reads keystrokes, highlights syntax, and sends JSON-RPC requests. It maintains zero persistent state.
-2. **`astridd` (Daemon)**: Manages MCP servers, executes LLM calls, enforces security policies, and streams events back to the client.
+- **ratatui TUI** - full-screen terminal interface with a ~60 fps render loop, bracketed paste, Kitty keyboard enhancement protocol, and animated thinking state
+- **Daemon auto-start** - spawns the kernel daemon as a subprocess, polls a readiness sentinel file, and connects automatically; cleans up orphan daemons on failure
+- **Authenticated IPC** - length-prefixed JSON over a Unix Domain Socket with a `SessionToken`-based handshake before any message traffic
+- **Approval gate UI** - renders `ApprovalRequired` payloads from the kernel as interactive risk-coloured prompts (Low / Medium / High / Critical); supports approve-once, approve-for-session, and deny
+- **Onboarding flow** - handles `OnboardingRequired` and `ElicitRequest` IPC payloads inline, writing capsule config to `~/.astrid/capsules/<id>/.env.json` with `0o600` permissions, then triggering a kernel reload
+- **Selection prompts** - interactive picker for `SelectionRequired` payloads (e.g. model selection)
+- **Session history hydration** - replays previous conversation turns from the session store on connect
+- **Dynamic slash command palette** - populated at runtime from `GetCommands` kernel API; built-in commands are `/help`, `/clear`, `/install`, `/refresh`, `/quit`
+- **Capsule management** - `install`, `update`, `list`, and `deps` subcommands manage the capsule lifecycle outside of a chat session
+- **Capsule builder** - `astrid build` auto-detects project type (Rust, TypeScript, MCP server) and packages a `.capsule` archive; accepts `--from-mcp-json` for legacy server migration
+- **JSON output mode** - `--format json` switches to NDJSON output for scripting; interactive prompts are auto-denied with diagnostic messages
+- **Syntax highlighting** - agent code blocks rendered via `syntect` with base16-ocean.dark theme and 24-bit terminal colour
 
 ## Quick Start
 
 ```bash
-# Install the CLI and daemon
+# Install from the workspace root
 cargo install --path crates/astrid-cli
 
-# Start a new interactive session (auto-starts the daemon if needed)
-astrid chat
-```
+# Initialize a workspace in the current directory
+astrid init
 
-### Interactive REPL
-
-Start a fresh conversation or resume an existing one:
-
-```bash
-# New session
+# Start an interactive session (auto-starts the daemon if needed)
 astrid chat
 
-# Resume a specific session by ID
-astrid chat --session <SESSION_ID>
+# Resume a specific session
+astrid chat --session <UUID>
 ```
 
-**TUI Shortcuts:**
-- `Up/Down`: Scroll through conversation history.
-- `Ctrl+C`: Exit the interface (the agent continues running in the background).
+## Commands
 
-### Session Management
+| Command | Description |
+|---|---|
+| `astrid` / `astrid chat` | Start or resume an interactive TUI session |
+| `astrid init` | Initialize `.astrid/` workspace directory with a config template |
+| `astrid build [path]` | Package a project as a `.capsule` archive |
+| `astrid capsule install <source>` | Install a capsule from a local path or GitHub URL |
+| `astrid capsule update [name]` | Update one or all installed capsules |
+| `astrid capsule list [-v]` | List installed capsules with capability metadata |
+| `astrid capsule deps` | Show the resolved capsule dependency graph |
+| `astrid session list` | List sessions by last-modified time |
+| `astrid session info <id>` | Show session ID and daemon status |
+| `astrid session delete <id>` | Delete a session directory |
+| `astrid daemon --session <uuid>` | Run the kernel daemon in the foreground for a session |
 
-```bash
-# List all active and historical sessions
-astrid sessions list
+### Global flags
 
-# View the full transcript of a specific session
-astrid sessions show <SESSION_ID>
-```
+- `-v` / `--verbose` - enable debug logging
+- `--format pretty|json` - output mode (default: `pretty`)
 
-### Server and Tool Introspection
+## Architecture
 
-Manage the external MCP servers your agent has access to:
+The CLI is intentionally stateless. On `astrid chat`:
 
-```bash
-# View configured vs. running servers
-astrid servers list
-astrid servers running
+1. Resolves (or creates) a session UUID
+2. Checks for an existing daemon socket at `~/.astrid/sessions/system.sock`
+3. If no socket exists, spawns `astrid daemon` as a subprocess and polls `~/.astrid/sessions/system.ready`
+4. Connects and performs the `SessionToken` handshake
+5. Sends a `GetCommands` request to populate the slash command palette
+6. Runs the ratatui event loop at ~60 fps, interleaving crossterm keyboard events with kernel IPC events
 
-# Inspect available tools across all active servers
-astrid servers tools
-```
-
-### Security and Auditing
-
-View the cryptographically verified log of agent actions:
-
-```bash
-# List all audit trails
-astrid audit list
-
-# View exact parameters of tool calls and capabilities used
-astrid audit show <SESSION_ID>
-```
+The daemon owns all state. The CLI never writes to the session store directly - it only writes capsule `.env.json` config files during onboarding.
 
 ## Development
 
-To work on the CLI specifically, ensure you are testing against a local daemon.
-
 ```bash
-# Run the daemon in the foreground for debugging
-cargo run -p astrid-cli --bin astridd -- run --foreground --ephemeral
-
-# In another terminal, run the CLI client with verbose logging
-cargo run -p astrid-cli --bin astrid -- -v chat
+cargo test --workspace -- --quiet
 ```
 
-See the root workspace documentation for broader architectural details.
+To run the CLI against a live daemon during development:
+
+```bash
+# Terminal 1: start the daemon bound to a test session
+cargo run -p astrid-cli -- daemon --session <UUID>
+
+# Terminal 2: connect
+cargo run -p astrid-cli -- chat --session <UUID>
+```
 
 ## License
 
-This project is dual-licensed under either the [MIT License](../../LICENSE-MIT) or the [Apache License, Version 2.0](../../LICENSE-APACHE), at your option.
+Dual-licensed under [MIT](../../LICENSE-MIT) or [Apache-2.0](../../LICENSE-APACHE) at your option.

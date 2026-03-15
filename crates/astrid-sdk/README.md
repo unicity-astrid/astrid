@@ -3,100 +3,173 @@
 [![Crates.io](https://img.shields.io/crates/v/astrid-sdk)](https://crates.io/crates/astrid-sdk)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
+[![CI](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml)
 
-The standard library and safe ABI wrapper for Astralis OS User-Space Capsules.
+The safe Rust SDK for building User-Space Capsules on Astrid OS.
 
-`astrid-sdk` bridges the gap between the raw, unsafe WebAssembly FFI boundary defined by `astrid-sys` and the developer-friendly Rust environment expected by capsule authors. It transforms low-level memory pointer manipulation into safe, idiomatic Rust functions with built-in, zero-friction serialization. If you are building a native Rust capsule for the Astralis microkernel, this is the primary crate you will depend on.
+`astrid-sdk` sits between the raw WebAssembly FFI defined by `astrid-sys` and the Rust code you actually want to write. It wraps every `unsafe` host call, serializes data transparently across the ABI boundary, and organizes system capabilities into modules whose names deliberately mirror the Rust standard library. If you are building a Capsule, this is the only crate you need.
 
-## The FFI Boundary Problem
+## Core Features
 
-The Astralis microkernel utilizes Extism to execute User-Space Capsules within an isolated WebAssembly sandbox. At the ABI level, the system interfaces exclusively through raw memory pointers and byte vectors (`Vec<u8>`). 
-
-Calling the kernel directly through `astrid-sys` requires `unsafe` blocks, manual pointer management, and explicit serialization of data types before they can traverse the boundary. 
-
-`astrid-sdk` abstracts this complexity entirely by providing:
-* **Zero-Cost Safety**: Encapsulates all `unsafe` FFI calls behind a deterministic and safe Rust API.
-* **Transparent Serialization**: Automatically encodes and decodes complex data structures to JSON, MessagePack, or Borsh during boundary traversal.
-* **Ergonomic Capability Modules**: Organizes system calls into logical namespaces (known as "Airlocks") functionally analogous to `std::fs` or `std::env`.
-* **Entrypoint Generation**: Re-exports the `#[capsule]` attribute macro to eliminate initialization boilerplate when defining WebAssembly entry functions.
+- **Safe ABI boundary** - all `unsafe` FFI calls are contained inside the crate; capsule code is fully safe Rust
+- **`std`-mirrored module names** - `fs`, `env`, `net`, `time`, `log`, and `process` follow standard library naming so the API is discoverable without reading docs
+- **Three serialization formats** - JSON (`serde_json`), MessagePack (`rmp-serde`), and Borsh are available on every relevant operation; choose based on your memory and interop constraints
+- **Versioned KV storage** - `kv::set_versioned` / `kv::get_versioned` / `kv::get_versioned_or_migrate` handle schema evolution with a fail-secure envelope format
+- **`#[capsule]` macro** - generates the required `extern "C"` WebAssembly exports, dispatches tool/command/interceptor/cron calls to annotated methods, and handles stateful or stateless operation modes
+- **Interactive install lifecycle** - `elicit::text`, `elicit::secret`, `elicit::select`, and `elicit::array` let capsules prompt the user during `#[astrid::install]` and `#[astrid::upgrade]` hooks
+- **Human approval gates** - `approval::request` blocks the capsule until a user approves or denies a sensitive action, with allowance-store fast-path for pre-approved patterns
+- **Platform identity resolution** - `identity::resolve`, `link`, `unlink`, and `list_links` map platform-specific user IDs (Discord, Twitch, etc.) to Astrid-native user UUIDs
 
 ## Quick Start
 
-The fastest way to initialize a capsule is to rely on the `prelude` module and the `#[capsule]` macro. The SDK abstracts the complexities of kernel communication so you can focus on system logic.
+Add the dependency to your capsule's `Cargo.toml`:
+
+```toml
+[dependencies]
+astrid-sdk = "0.2"
+serde = { version = "1", features = ["derive"] }
+```
+
+A minimal capsule using the `#[capsule]` macro:
 
 ```rust
 use astrid_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
-struct GreetingPayload {
-    message: String,
-}
+struct MyCapsule;
 
 #[capsule]
-fn run() -> Result<(), SysError> {
-    // 1. Retrieve configuration data from the host kernel
-    let name = sys::get_config_string("user_name")
-        .unwrap_or_else(|_| "Astrid".to_string());
-    
-    // 2. Dispatch logs natively to the Astralis system logger
-    sys::log("info", format!("Generating greeting for {}", name))?;
-    
-    // 3. Publish an event via IPC (auto-serialized to JSON across the ABI)
-    let payload = GreetingPayload { message: format!("Hello, {}!", name) };
-    ipc::publish_json("greetings.new", &payload)?;
-    
-    // 4. Persist state within the key-value store
-    kv::set_json("last_greeting", &payload)?;
+impl MyCapsule {
+    #[astrid::tool]
+    fn greet(&self, name: String) -> Result<String, SysError> {
+        log::info(format!("greeting {name}"))?;
+        kv::set_json("last_name", &name)?;
+        Ok(format!("Hello, {name}!"))
+    }
 
-    Ok(())
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        runtime::signal_ready()?;
+        // event loop driven by IPC subscriptions
+        Ok(())
+    }
 }
 ```
 
-## API Surface: The Airlocks
+## Modules
 
-The SDK organizes system capabilities into distinct modules that mirror the security capability definitions within the kernel. 
+The SDK mirrors `std` where applicable and adds Astrid-specific modules for everything else.
 
-* **`fs`** (Virtual File System): Isolated file operations within the capsule's sandbox bounds. Provides `exists`, `read_bytes`, `write_string`, `mkdir`, `stat`, and `unlink`.
-* **`ipc`** (Inter-Process Communication): Publish and subscribe access to the internal Astralis Event Bus. Supports raw bytes, JSON, and MessagePack formats natively (`publish_json`, `publish_msgpack`, `subscribe`, `poll_bytes`).
-* **`kv`** (Persistent Storage): Key-Value store operations equipped with transparent serialization logic. Includes `get_bytes`, `set_json`, `get_borsh`, and more.
-* **`uplink`** (Frontend Messaging): Mediated communication with connected platforms (e.g., Telegram, CLI) via `register` and `send_bytes`.
-* **`http`** (Network): Outbound HTTP request execution via `request_bytes`.
-* **`cron`** (Scheduling): Dynamic background job scheduling mechanisms utilizing `schedule` and `cancel`.
-* **`sys`** (System): Core operational routines including logging (`log`) and configuration retrieval (`get_config_string`, `get_config_bytes`).
+| Module | `std` equivalent | Purpose |
+|---|---|---|
+| `fs` | `std::fs` | Virtual filesystem (read, write, create_dir, metadata, remove_file) |
+| `env` | `std::env` | Capsule config values injected by the kernel at load time |
+| `net` | `std::net` | Unix domain socket bind, accept, read, write, poll_accept |
+| `time` | `std::time` | Wall-clock time via host call (`now_ms`) |
+| `log` | `log` crate | Structured logging at debug / info / warn / error levels |
+| `process` | `std::process` | Spawn foreground and background host processes |
+| `ipc` | N/A | Topic-based event bus (publish, subscribe, poll, blocking recv) |
+| `kv` | N/A | Persistent key-value store with JSON, Borsh, and versioned helpers |
+| `http` | N/A | Outbound HTTP requests via the kernel HTTP Airlock |
+| `cron` | N/A | Dynamic background job scheduling (schedule, cancel) |
+| `uplink` | N/A | Direct messaging to connected frontends (CLI, Telegram, etc.) |
+| `hooks` | N/A | Trigger user-defined middleware from within a capsule |
+| `elicit` | N/A | Interactive prompts during install/upgrade lifecycle |
+| `identity` | N/A | Platform user identity resolution and linking |
+| `approval` | N/A | Human-in-the-loop approval gates for sensitive actions |
+| `capabilities` | N/A | Cross-capsule manifest capability queries |
+| `interceptors` | N/A | Auto-subscribed interceptor bindings for run-loop capsules |
+| `runtime` | N/A | OS signaling (`signal_ready`) and caller context retrieval |
 
-## Serialization Flexibility
+## API Reference
 
-Because different capsules face varying memory limitations and performance constraints, the SDK abstains from forcing a unified data format. `astrid-sdk` integrates multiple serialization libraries specifically designed for cross-ABI communication. The `kv` and `ipc` modules, for example, natively expose:
+### `SysError`
 
-* `set_bytes` / `publish_bytes`: Direct, unadulterated byte access with minimal overhead.
-* `set_json` / `publish_json`: Powered by `serde_json`. Ideal for human-readable state, web payloads, or system debugging.
-* `set_borsh` / `get_borsh`: Powered by `borsh`. Optimized for high-performance, strictly structured, dense binary state.
-* `publish_msgpack`: Powered by `rmp-serde`. A lightweight binary alternative to JSON.
+The unified error type returned by every SDK function:
 
-## Error Handling Architecture
+```rust
+pub enum SysError {
+    HostError(extism_pdk::Error),
+    JsonError(serde_json::Error),
+    MsgPackEncodeError(rmp_serde::encode::Error),
+    MsgPackDecodeError(rmp_serde::decode::Error),
+    BorshError(std::io::Error),
+    ApiError(String),
+}
+```
 
-Every system call returns a deterministic `Result<T, SysError>`. The `SysError` type unifies underlying failures to provide clear visibility into ABI-related faults. 
+All variants implement `From` for their underlying error type, so `?` works directly without mapping.
 
-It specifically maps:
-* Host execution and WebAssembly faults (`extism_pdk::Error`)
-* Serialization boundary failures (`serde_json`, `rmp_serde`, `borsh`)
-* Logical API boundary errors
+### Key Types
 
-This unified architecture enables the use of the `?` operator for clean, idiomatic execution paths without the need to continuously map underlying framework errors.
+| Type | Module | Description |
+|---|---|---|
+| `SysError` | root | Unified error type for all SDK operations |
+| `SubscriptionHandle` | `ipc` | Typed handle returned by `ipc::subscribe` |
+| `UplinkId` | `uplink` | Opaque connection ID returned by `uplink::register` |
+| `ListenerHandle` | `net` | Bound Unix socket listener |
+| `StreamHandle` | `net` | Open Unix socket stream |
+| `Versioned<T>` | `kv` | Enum result of `kv::get_versioned`: `Current`, `NeedsMigration`, `Unversioned`, `NotFound` |
+| `CallerContext` | `types` | User ID and session ID for the current capsule execution |
+| `ApprovalResult` | `approval` | `approved: bool` and `decision: String` from an approval gate |
+| `ResolvedUser` | `identity` | Astrid-native `user_id` and optional `display_name` |
+| `Link` | `identity` | Platform-to-Astrid identity link record |
+| `ProcessResult` | `process` | `stdout`, `stderr`, `exit_code` from a completed process |
+| `BackgroundProcessHandle` | `process` | Opaque handle for a background process |
+| `InterceptorBinding` | `interceptors` | Runtime handle and topic for an auto-subscribed interceptor |
+
+### `#[capsule]` Macro
+
+The `capsule` attribute goes on an `impl` block. Methods inside are annotated with `#[astrid::<kind>]`:
+
+| Annotation | Signature requirement | Description |
+|---|---|---|
+| `#[astrid::tool]` | `fn(&self, args: T) -> Result<R, SysError>` | Exposed as an MCP tool; args deserialized from JSON |
+| `#[astrid::command]` | `fn(&self, args: T) -> Result<R, SysError>` | CLI command dispatch |
+| `#[astrid::interceptor]` | `fn(&self, payload: T) -> Result<R, SysError>` | IPC event interceptor |
+| `#[astrid::cron]` | `fn(&self) -> Result<(), SysError>` | Scheduled background task |
+| `#[astrid::install]` | `fn(&self) -> Result<(), SysError>` | One-time install lifecycle hook |
+| `#[astrid::upgrade]` | `fn(&self, prev_version: &str) -> Result<(), SysError>` | Upgrade lifecycle hook |
+| `#[astrid::run]` | `fn(&self) -> Result<(), SysError>` | Long-running event loop |
+| `#[astrid::mutable]` | Combined with tool/command/interceptor/cron | Loads and saves KV state around the call |
+
+Pass `#[capsule(state)]` to enable the stateful mode, which automatically loads the struct from `kv::get_json("__state")` before each dispatch and saves it back after.
+
+### Versioned KV
+
+```rust
+// Write with schema version 1
+kv::set_versioned("my_key", &my_data, 1)?;
+
+// Read back - returns Current, NeedsMigration, Unversioned, or NotFound
+match kv::get_versioned::<MyData>("my_key", 1)? {
+    Versioned::Current(data) => { /* use data */ },
+    Versioned::NeedsMigration { raw, stored_version } => { /* migrate */ },
+    Versioned::Unversioned(raw) => { /* handle legacy */ },
+    Versioned::NotFound => { /* key absent */ },
+}
+
+// Or let the SDK call your migration function and write back automatically
+let data = kv::get_versioned_or_migrate("my_key", 2, |raw, version| {
+    // return T at version 2
+})?;
+```
+
+Stored format is `{"__sv": <u32>, "data": <payload>}`. Reading data at a version newer than `current_version` returns an error rather than silently misinterpreting the schema.
 
 ## Feature Flags
 
-* **`derive`** (default): Enables the `#[capsule]` macro for entry point generation, provided internally by `astrid-sdk-macros`.
-* **`default`**: Inherits the `derive` feature flag.
+| Flag | Default | Description |
+|---|---|---|
+| `derive` | yes | Enables the `#[capsule]` macro via `astrid-sdk-macros` |
 
 ## Development
-
-This crate acts as the primary developer interface for Astralis capsules. Run tests via the workspace:
 
 ```bash
 cargo test -p astrid-sdk
 ```
+
+Capsules compile to `wasm32-wasip1`. The SDK itself does not require the WASM target for unit tests - the versioned KV logic and type serialization tests run on the host.
 
 ## License
 

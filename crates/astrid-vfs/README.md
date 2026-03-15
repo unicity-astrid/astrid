@@ -3,67 +3,143 @@
 [![Crates.io](https://img.shields.io/crates/v/astrid-vfs)](https://crates.io/crates/astrid-vfs)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
+[![CI](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml)
 
-Secure, capability-based virtual file system and sandboxing for Astralis OS.
+Virtual filesystem and capability sandbox for the Astrid agent runtime.
 
-`astrid-vfs` is the storage isolation engine for the Astralis OS runtime. It implements a secure virtual filesystem layer that translates abstract capabilities into safe host operations, completely isolating agent workloads from the underlying host filesystem. By utilizing `cap-std` for OS-level sandboxing and a strict capability-based access model, it ensures that path traversal, symlink escapes, and arbitrary file accesses are systematically impossible.
+`astrid-vfs` is the storage isolation layer for Astrid agents. It translates opaque capability handles from `astrid-capabilities` into safe, sandboxed host operations, ensuring agents cannot access paths they were not explicitly granted. Path traversal, absolute path injection, and symlink escape are blocked at two independent layers: a lexical path resolver that runs before any syscall, and `cap-std` ambient authority boundaries enforced by the OS. An overlay filesystem with explicit commit and rollback completes the picture, staging all agent writes in a temporary upper layer until the caller decides to persist or discard them.
 
 ## Core Features
 
-* **Capability-Based Security**: File operations require cryptographic handles (`DirHandle`, `FileHandle`) issued by `astrid-capabilities`. Raw paths alone grant zero access to the filesystem.
-* **Mathematical Path Isolation**: Lexical path resolution and `cap-std` ambient authority boundaries guarantee that workloads cannot traverse above their sandbox root using `..` or absolute path injection.
-* **Copy-on-Write (CoW) Overlay**: The stackable `OverlayVfs` implementation allows mounting read-only base directories with ephemeral read-write upper layers, enabling lightweight, discardable agent workspaces.
-* **Resource Quotas**: Built-in asynchronous semaphores prevent file descriptor exhaustion (capped at 64 concurrent open files per host VFS instance) and limit file sizes to prevent OOM attacks (50MB cap during memory reads and copy-ups).
-
-## Architecture
-
-The crate centers around the asynchronous `Vfs` trait, which defines a standard interface for sandboxed filesystem operations.
-
-### Host Filesystem (`HostVfs`)
-The `HostVfs` translates VFS operations into physical disk operations. It maintains a registry of active `DirHandle` and `FileHandle` instances. When a capability is registered via `register_dir`, it opens an ambient handle to the directory that strictly confines all subsequent operations, ensuring the operating system itself enforces the sandbox boundary.
-
-### Overlay Filesystem (`OverlayVfs`)
-The `OverlayVfs` composes two `Vfs` implementations (typically two `HostVfs` instances).
-* **Reads**: Attempted first in the upper layer, falling back to the lower layer if the file is absent.
-* **Writes**: Strictly confined to the upper layer. If an existing lower-layer file is opened for writing, the overlay performs a transparent copy-up to the upper layer before executing the write. Concurrency is managed via `DashMap` locks to prevent duplicate copy-ups across asynchronous tasks.
-
-### Path Resolution
-The `path::resolve_path` utility provides purely computational path evaluation. It strips malicious absolute path requests and blocks any attempt to navigate above the sandbox root, serving as the first line of defense before yielding to the `cap-std` boundary.
+- **Capability-based access control**: Every filesystem operation requires an opaque `DirHandle` or `FileHandle` issued by `astrid-capabilities`. Holding a path string alone grants nothing.
+- **Dual-layer path sandboxing**: `path::resolve_path` performs a purely lexical traversal check before any syscall. `cap-std` then enforces OS-level directory confinement so the kernel itself rejects escapes.
+- **Copy-on-write overlay**: `OverlayVfs` stacks a read-write upper layer over a read-only lower layer. Reads fall through to lower when absent in upper. Writes are confined to upper. An explicit `commit()` propagates changes to lower; `rollback()` discards them.
+- **Transparent copy-up**: When an agent opens a lower-layer file for writing, the overlay copies its content to the upper layer before the write, preserving the original until commit. Per-path mutex locks prevent duplicate copy-ups under concurrent access.
+- **Resource quotas**: `HostVfs` caps concurrent open file handles at 64 via a Tokio semaphore acquired before the OS call. Reads and copy-ups reject files larger than 50 MB to prevent OOM conditions.
+- **Dirty tracking**: `OverlayVfs` maintains a set of paths written to the upper layer, distinguishing files from directories. `dirty_paths()`, `commit()`, and `rollback()` operate on this set.
+- **`.astridignore` boundary** (internal): `WorktreeVfs` wraps `HostVfs` and denies any path matched by gitignore-syntax rules, protecting host secrets such as `.env` files from agent access even when they are physically present in the worktree.
+- **`#![deny(unsafe_code)]`**: The entire crate is safe Rust.
 
 ## Quick Start
 
-### Establishing a Host Sandbox
+Add `astrid-vfs` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+astrid-vfs = "0.2.0"
+```
+
+## API Reference
+
+### Key Types
+
+#### `Vfs` trait
+
+The central async trait. All filesystem operations are expressed through it. Implementations are `Send + Sync` and usable from any Tokio runtime.
 
 ```rust
-use astrid_vfs::{HostVfs, Vfs};
-use astrid_capabilities::{DirHandle, FileHandle};
-use std::path::PathBuf;
+#[async_trait]
+pub trait Vfs: Send + Sync {
+    async fn exists(&self, handle: &DirHandle, path: &str) -> VfsResult<bool>;
+    async fn readdir(&self, handle: &DirHandle, path: &str) -> VfsResult<Vec<VfsDirEntry>>;
+    async fn stat(&self, handle: &DirHandle, path: &str) -> VfsResult<VfsMetadata>;
+    async fn mkdir(&self, handle: &DirHandle, path: &str) -> VfsResult<()>;
+    async fn unlink(&self, handle: &DirHandle, path: &str) -> VfsResult<()>;
+    async fn open(&self, handle: &DirHandle, path: &str, write: bool, truncate: bool) -> VfsResult<FileHandle>;
+    async fn open_dir(&self, handle: &DirHandle, path: &str, new_handle: DirHandle) -> VfsResult<()>;
+    async fn close_dir(&self, handle: &DirHandle) -> VfsResult<()>;
+    async fn read(&self, handle: &FileHandle) -> VfsResult<Vec<u8>>;
+    async fn write(&self, handle: &FileHandle, content: &[u8]) -> VfsResult<()>;
+    async fn close(&self, handle: &FileHandle) -> VfsResult<()>;
+}
+```
 
-// Initialize the host VFS
+#### `HostVfs`
+
+Backed by the physical host filesystem via `cap-std`. Call `register_dir` to bind a `DirHandle` to a physical path; after that, all operations through that handle are OS-sandboxed to that directory tree.
+
+```rust
 let vfs = HostVfs::new();
 
-// The host daemon grants a capability to a specific physical path
+// The daemon grants a capability to a specific physical path.
 let root_handle = DirHandle::new();
-vfs.register_dir(root_handle.clone(), PathBuf::from("/var/astralis/sandbox/agent-1")).await.unwrap();
+vfs.register_dir(root_handle.clone(), PathBuf::from("/var/astrid/sandbox/agent-1"))
+    .await?;
 
-// Operations use the handle. Paths are strictly resolved within the boundary.
-let file_handle = vfs.open(&root_handle, "output.txt", true, false).await.unwrap();
-vfs.write(&file_handle, b"Data generated by sandbox").await.unwrap();
-vfs.close(&file_handle).await.unwrap();
+// Open a file for writing within the sandbox.
+let fh = vfs.open(&root_handle, "output.txt", true, false).await?;
+vfs.write(&fh, b"result").await?;
+vfs.close(&fh).await?;
 ```
 
-### Composing an Overlay
+#### `OverlayVfs`
+
+Composes two `Vfs` implementations into a copy-on-write stack. The lower layer is treated as read-only from the overlay's perspective; all mutations land in the upper layer.
 
 ```rust
-use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
-
-// Create lower (read-only base) and upper (read-write ephemeral) filesystems
-let lower = Box::new(HostVfs::new());
-let upper = Box::new(HostVfs::new());
-
-// Bind them together into an overlay workspace
+let lower = Box::new(HostVfs::new()); // read-only workspace
+let upper = Box::new(HostVfs::new()); // ephemeral temp dir
 let overlay = OverlayVfs::new(lower, upper);
+
+// Register handles on both underlying VFS instances before use.
+
+// All writes go to upper.
+let fh = overlay.open(&handle, "draft.txt", true, true).await?;
+overlay.write(&fh, b"changes").await?;
+overlay.close(&fh).await?;
+
+// Inspect what is staged.
+let staged: Vec<String> = overlay.dirty_paths();
+
+// Persist to lower.
+let committed: Vec<String> = overlay.commit(&handle).await?;
+
+// Or discard.
+let discarded: Vec<String> = overlay.rollback(&handle).await?;
 ```
+
+#### `VfsMetadata`
+
+Returned by `stat`. Fields: `is_dir: bool`, `is_file: bool`, `size: u64`, `mtime: u64` (seconds since Unix epoch). Implements `Serialize` and `Deserialize`.
+
+#### `VfsDirEntry`
+
+Returned by `readdir`. Fields: `name: String`, `is_dir: bool`. Implements `Serialize` and `Deserialize`.
+
+#### `VfsError`
+
+```rust
+pub enum VfsError {
+    SandboxViolation(String), // path traversal or absolute path rejected
+    InvalidHandle,            // unrecognized or already-closed handle
+    Io(std::io::Error),       // underlying OS error
+    NotFound(String),
+    PermissionDenied(String), // boundary rule, FD quota, or size limit
+    NotSupported(String),     // operation not implemented by this layer
+}
+```
+
+### `path::resolve_path`
+
+```rust
+pub fn resolve_path(base_root: &Path, request_path: &str) -> VfsResult<PathBuf>
+```
+
+Purely lexical traversal check. Rejects absolute paths and any `..` sequence that would climb above `base_root`. Does not touch the filesystem. Returns `VfsError::SandboxViolation` on any violation.
+
+## Architecture
+
+The crate has three concrete `Vfs` implementations, layered from lowest to highest trust:
+
+| Type | Visibility | Purpose |
+|------|-----------|---------|
+| `HostVfs` | `pub` | Physical disk, sandboxed by `cap-std` |
+| `OverlayVfs` | `pub` | CoW staging layer over any two `Vfs` impls |
+| `WorktreeVfs` | `pub(crate)` | `HostVfs` + `.astridignore` deny rules for git worktrees |
+
+`OverlayVfs::open_dir` eagerly creates the mirrored directory in the upper layer to maintain symmetric handle mappings across both layers, but does not record those structural directories as dirty. Only explicit `mkdir` calls and file writes reach the dirty set.
+
+Deleting a file that exists only in the lower layer returns `VfsError::NotSupported` because whiteout support is not implemented. Only upper-layer files can be unlinked.
 
 ## Development
 

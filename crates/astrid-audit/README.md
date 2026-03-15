@@ -4,82 +4,88 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-Cryptographically verified, chain-linked audit logging for the Astralis OS.
+Chain-linked cryptographic audit logging for Astrid.
 
-In a multi-agent operating system, trust is derived from transparency. `astrid-audit` is the system of record for Astralis OS. It provides an immutable, cryptographically signed, and chain-linked audit log of every security-relevant event—from LLM tool calls and file system operations to user approvals and capability issuance. 
-
-By weaving a continuous hash chain over Ed25519-signed entries, it guarantees tamper-evident historical integrity. If a process, sub-agent, or external actor attempts to modify the log, the chain breaks. This crate does not execute tasks; it serves as the universal, incorruptible observer.
+Every security-relevant event in the Astrid runtime - MCP tool calls, file writes, capability issuance, user approvals, sub-agent spawns - is recorded as an Ed25519-signed entry that links to the hash of the entry before it. Any modification to a historical entry breaks the chain and is detectable. This crate does not make policy decisions; it is the incorruptible observer that makes everything else auditable.
 
 ## Core Features
 
-* **Chain-Linked Integrity**: Every entry contains a BLAKE3 content hash of the previous entry in the session, creating an unbroken chain from genesis.
-* **Cryptographic Signatures**: The Astralis runtime signs every entry using its Ed25519 key, ensuring non-repudiation and proof of origin.
-* **Tamper Evidence**: Built-in verification mechanisms immediately detect broken links, invalid signatures, or unauthorized genesis entries.
-* **Persistent Storage**: Integrates with `SurrealKV` for durable, session-indexed storage and rapid retrieval.
-* **Rich Context Logging**: Captures granular telemetry including authorization proofs, action outcomes, and session lineage without exposing raw sensitive data (utilizing argument hashing).
-
-## Architecture
-
-`astrid-audit` operates as a foundational gear within the Astralis runtime.
-
-1. **The Entry**: Defined by `AuditEntry`, each record combines session metadata, the specific `AuditAction` (e.g., `McpToolCall`, `CapabilityCreated`), the `AuthorizationProof` (why the action was allowed), and the `AuditOutcome`.
-2. **The Chain**: Modeled as a directed acyclic graph grouped by `SessionId`. When an entry is appended via `AuditLog::append`, the system retrieves the current chain head from storage, computes the previous entry's BLAKE3 hash, signs the new entry payload, and updates the head.
-3. **The Storage**: Interacts with the workspace `astrid-storage` crate via an internal storage backend that maps `AuditEntryId` to serialized entries and maintains session indexes.
+- **Chain-linked integrity**: Every entry embeds a BLAKE3 hash of the preceding entry, creating a tamper-evident chain per session from genesis.
+- **Ed25519 signatures**: The runtime signs each entry at creation time. The signing public key is embedded in the entry itself, so verification works across key rotations.
+- **Tamper detection**: `verify_chain` checks three invariants - valid genesis, valid signatures, and unbroken hash links. Each failure is reported as a typed `ChainIssue`.
+- **Rich action coverage**: 25+ auditable action variants covering MCP tool calls, file I/O, capability lifecycle, approvals, LLM requests, session events, elicitation, and security violations.
+- **Privacy-preserving**: Tool call arguments are stored as BLAKE3 hashes, not raw content.
+- **SurrealKV persistence**: Durable, session-indexed storage via `astrid-storage`. An in-memory backend is available for tests.
 
 ## Quick Start
 
-Events are recorded by calling `AuditLog::append` directly. Every action must be accompanied by an `AuthorizationProof` and an `AuditOutcome`.
+```toml
+[dependencies]
+astrid-audit = "0.2.0"
+```
 
 ```rust
 use astrid_audit::{AuditLog, AuditAction, AuditOutcome, AuthorizationProof};
 use astrid_core::SessionId;
+use astrid_crypto::KeyPair;
 
-// Assuming `log` and `session_id` are already in scope...
+let runtime_key = KeyPair::generate();
+let log = AuditLog::in_memory(runtime_key);
+let session_id = SessionId::new();
+
+// Record an action
 let entry_id = log.append(
     session_id.clone(),
-    AuditAction::ContextSummarized {
-        evicted_count: 50,
-        tokens_freed: 12000,
+    AuditAction::McpToolCall {
+        server: "filesystem".to_string(),
+        tool: "read_file".to_string(),
+        args_hash: astrid_crypto::ContentHash::hash(b"..."),
     },
-    AuthorizationProof::System {
-        reason: "context window optimization".to_string(),
+    AuthorizationProof::Capability {
+        token_id: my_token_id,
+        token_hash: my_token_hash,
     },
     AuditOutcome::success(),
-).unwrap();
+)?;
+
+// Verify chain integrity
+let result = log.verify_chain(&session_id)?;
+assert!(result.valid);
 ```
 
-### Verifying Chain Integrity
+## API Reference
 
-The audit log's primary value is its provable integrity. You can verify a specific session's chain or the entire system log to ensure no historical tampering has occurred.
+### Key Types
 
-```rust
-// Verify a single session's integrity
-let verification = log.verify_chain(&session_id).unwrap();
+- `AuditLog` - main entry point; wraps storage and the runtime signing key. Open with `AuditLog::open(path, key)` for persistence or `AuditLog::in_memory(key)` for tests.
+- `AuditEntry` - a single record: action, authorization proof, outcome, previous hash, embedded public key, and Ed25519 signature.
+- `AuditAction` - enum of 25+ auditable event variants (`McpToolCall`, `FileWrite`, `CapabilityCreated`, `ApprovalGranted`, `SubAgentSpawned`, `SecurityViolation`, and more).
+- `AuthorizationProof` - how the action was authorized: `User`, `Capability`, `UserApproval`, `NotRequired`, `System`, or `Denied`.
+- `AuditOutcome` - `Success` or `Failure` with optional detail message.
+- `ApprovalScope` - `Once`, `Session`, `Workspace`, or `Always`.
+- `ChainVerificationResult` / `ChainIssue` - result of `verify_chain` or `verify_all`; issues are typed as `InvalidGenesis`, `InvalidSignature`, or `BrokenLink`.
 
-if verification.valid {
-    println!("Chain intact. Verified {} entries.", verification.entries_verified);
-} else {
-    for issue in verification.issues {
-        eprintln!("Integrity violation: {}", issue);
-    }
-}
-```
+### `AuditLog` Methods
 
-Verification enforces three rigid invariants:
-1. The genesis entry has a zeroed previous hash.
-2. Every signature is mathematically valid against the runtime's public key.
-3. Every entry's previous hash exactly matches the computed BLAKE3 content hash of the preceding entry in the sequence.
+| Method | Description |
+|---|---|
+| `append(session, action, proof, outcome)` | Sign and persist a new entry, updating the chain head. |
+| `verify_chain(session_id)` | Verify all three chain invariants for a session. |
+| `verify_all()` | Verify every session in the log. |
+| `get(id)` | Retrieve a single entry by ID. |
+| `get_session_entries(session_id)` | All entries for a session in order. |
+| `list_sessions()` | All session IDs with recorded entries. |
+| `count()` / `count_session(id)` | Entry counts across the whole log or one session. |
+| `flush()` | Explicit flush (no-op for SurrealKV, which commits per write). |
 
 ## Development
 
-To test this crate locally:
-
 ```bash
-cargo test -p astrid-audit --all-features
+cargo test -p astrid-audit -- --quiet
 ```
 
-As a core security component, changes to `astrid-audit` require strict scrutiny. Any modifications to `AuditEntry::signing_data` or `AuditAction` serialization must be backwards compatible or accompanied by a migration strategy, as changes will alter BLAKE3 outputs and invalidate historical chain signatures.
+Changes to `AuditEntry::signing_data` or `AuditAction` serialization alter BLAKE3 outputs and invalidate all existing chain signatures. Treat those surfaces as stable API.
 
 ## License
 
-This project is dual-licensed under either the [MIT License](../../LICENSE-MIT) or the [Apache License, Version 2.0](../../LICENSE-APACHE), at your option.
+Dual-licensed under [MIT](../../LICENSE-MIT) or [Apache-2.0](../../LICENSE-APACHE), at your option.

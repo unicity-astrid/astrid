@@ -3,42 +3,38 @@
 [![Crates.io](https://img.shields.io/crates/v/astrid-sdk-macros)](https://crates.io/crates/astrid-sdk-macros)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
+[![CI](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/astrid/actions/workflows/ci.yml)
 
-Procedural macros for the Astrid OS System SDK, providing the zero-boilerplate boundary between your Rust code and the Astrid OS kernel.
+Procedural macros for the Astrid OS System SDK — the zero-boilerplate bridge between idiomatic Rust and the Astrid Kernel's WebAssembly ABI.
 
-This crate is a core component of the Astralis workspace. It supplies the `#[capsule]` attribute macro, which automatically generates the required WebAssembly (`extern "C"`) exports, implements the Astrid OS Inbound ABI, and handles seamless JSON serialization across the host-guest boundary.
+This crate provides the `#[capsule]` attribute macro, which transforms a standard Rust `impl` block into a fully compliant Extism PDK plugin. It generates all required `extern "C"` WebAssembly exports (`astrid_tool_call`, `astrid_command_run`, `astrid_hook_trigger`, `astrid_cron_trigger`, `astrid_export_schemas`, `astrid_install`, `astrid_upgrade`, `run`), implements the Astrid OS Inbound ABI, and handles JSON serialization across the host-guest boundary — without any manual FFI or memory management.
 
 ## Core Features
 
-* **Declarative WASM Entrypoints:** Convert standard Rust `impl` blocks into Extism PDK plugins with a single attribute.
-* **Automated ABI Implementation:** Generates the precise `extern "C"` functions expected by the Astrid Kernel (`astrid_tool_call`, `astrid_command_run`, etc.).
-* **Zero-Boilerplate Serialization:** Automatically deserializes inbound JSON payloads into Rust types and serializes results back across the boundary.
-* **Transparent State Management:** Supports seamless persistence of capsule state using the Astrid OS Key-Value store across stateless WebAssembly invocations.
-
-## Architecture
-
-The `#[capsule]` macro acts as an ABI bridge. It parses your `impl` block and generates `#[extism_pdk::plugin_fn]` exports that strictly conform to the Astrid OS Inbound ABI.
-
-For example, annotating a method with `#[astrid::tool("foo")]` generates an `astrid_tool_call` Extism plugin function. When the Astrid kernel invokes this function with a JSON payload, the generated code performs the following pipeline:
-
-1. Deserializes the kernel's boundary type (`__AstridToolRequest`).
-2. Matches the request name against your defined routes.
-3. Deserializes the internal arguments byte array into your method's specific Rust type.
-4. Invokes your method.
-5. Serializes the `Result` and returns the bytes to the Extism host environment.
-
-This entirely abstracts away the complexities of WebAssembly memory management, pointer passing, and Extism PDK compliance, allowing developers to write idiomatic Rust functions that securely execute within the Astrid OS sandbox.
+- **Single-attribute ABI implementation.** One `#[capsule]` on an `impl` block generates every WASM export the kernel expects. No manual `#[no_mangle]` functions, no manual Extism PDK boilerplate.
+- **Declarative method routing.** Individual methods are wired to specific dispatch tables using inner attributes. The routing name and method name are independent; the name can also be inferred from the function name when no string argument is provided.
+- **Automatic JSON serialization.** Inbound kernel payloads are deserialized into the method's argument type via `serde_json`. Results are serialized back before returning to the host. Serialization errors propagate as kernel-visible error strings, not panics.
+- **Opt-in stateful persistence.** Pass `#[capsule(state)]` to enable automatic load-from-KV / save-to-KV around every dispatch, keyed under `"__state"`. Stateless capsules use a `OnceLock`-backed singleton instead.
+- **Per-tool mutability annotation.** Mark a tool `#[astrid::mutable]` to embed `"mutable": true` in its generated JSON Schema. Non-annotated tools get `"mutable": false`. The kernel uses this to gate approval workflows.
+- **Auto-generated JSON Schema export.** The macro generates an `astrid_export_schemas` ABI function that returns a `BTreeMap<String, RootSchema>` for every registered tool, allowing CLI builders and the kernel to introspect argument shapes at runtime without running the capsule.
+- **Lifecycle hooks.** Optional `#[astrid::install]` and `#[astrid::upgrade]` attributes generate dedicated ABI exports for first-install and version-upgrade events, with enforced signature contracts checked at compile time.
+- **Long-lived run loops.** `#[astrid::run]` generates a `run` export for event-driven capsules. For stateful capsules, state is loaded at startup but deliberately not auto-saved — run loops are expected to be long-lived and manage their own persistence.
+- **Compile-time contract enforcement.** Duplicate lifecycle hooks, wrong argument types on `#[astrid::upgrade]` (`String` instead of `&str`), args on `#[astrid::install]` or `#[astrid::run]`, and `#[astrid::mutable]` on lifecycle hooks all produce `compile_error!` at macro expansion time, not at link time or runtime.
 
 ## Quick Start
 
-This crate is an internal dependency of the Astralis SDK. You should not depend on it directly. Instead, use the re-exports provided by `astrid-sdk`:
+This crate is an internal dependency of `astrid-sdk`. Do not depend on it directly. Use the re-exports from `astrid-sdk`:
 
 ```toml
 [dependencies]
 astrid-sdk = { workspace = true }
 ```
 
-The primary entry point is the `#[capsule]` attribute, applied to an `impl` block for a struct that implements `std::default::Default`.
+## Usage
+
+### Stateless capsule
+
+The struct must implement `Default`. For stateless capsules the macro creates a `OnceLock`-backed singleton so you never call the constructor manually.
 
 ```rust
 use astrid_sdk::prelude::*;
@@ -61,15 +57,15 @@ impl MyCapsule {
     }
 
     #[astrid::command("ping")]
-    fn ping(&self, _args: ()) -> Result<String, SysError> {
+    fn ping(&self) -> Result<String, SysError> {
         Ok("pong".to_string())
     }
 }
 ```
 
-### Stateful Capsules
+### Stateful capsule
 
-WebAssembly execution in Astrid OS is fundamentally stateless. To maintain state between invocations, you can opt into automatic state persistence by passing the `state` argument:
+Add `state` to the macro argument. The struct must also implement `Serialize` and `Deserialize` so the macro can round-trip it through the Astrid KV store.
 
 ```rust
 use astrid_sdk::prelude::*;
@@ -83,32 +79,106 @@ pub struct CounterCapsule {
 #[capsule(state)]
 impl CounterCapsule {
     #[astrid::tool("increment")]
+    #[astrid::mutable]
     fn increment(&mut self, _args: ()) -> Result<i32, SysError> {
         self.count += 1;
+        Ok(self.count)
+    }
+
+    #[astrid::tool("get_count")]
+    fn get_count(&self, _args: ()) -> Result<i32, SysError> {
         Ok(self.count)
     }
 }
 ```
 
-When `#[capsule(state)]` is used, the generated WASM exports automatically:
-1. Load the struct instance from the Astrid KV store (under the key `"__state"`) before execution, falling back to `Default` if empty.
-2. Execute the requested method.
-3. Serialize and save the mutated struct back to the KV store before returning execution to the kernel.
+State is loaded from KV key `"__state"` before dispatch and saved back after. A `JsonError` (key not found or corrupt bytes) falls back to `Default::default()`. A `HostError` propagates hard — the macro deliberately avoids silently resetting state on infrastructure failures.
 
-### Routing Attributes
+### Lifecycle hooks
 
-Inside the `#[capsule]` block, individual methods are exposed to the kernel using routing attributes. The string argument defines the specific name the kernel will use to route requests to that method.
+```rust
+#[capsule(state)]
+impl MyCapsule {
+    /// Called once when the capsule is first installed.
+    /// Must have signature: fn(&self) -> Result<(), SysError>
+    #[astrid::install]
+    fn install(&self) -> Result<(), SysError> {
+        // seed initial state here
+        Ok(())
+    }
 
-* **`#[astrid::tool("name")]`**: Exposes the method to the LLM Agent via the OS Event Bus. Maps to the `astrid_tool_call` ABI export.
-* **`#[astrid::command("name")]`**: Exposes the method to human users via Uplink slash-commands (e.g., CLI, Telegram). Maps to the `astrid_command_run` ABI export.
-* **`#[astrid::interceptor("name")]`**: Executed synchronously by the Kernel during OS lifecycle events. Maps to the `astrid_hook_trigger` ABI export.
-* **`#[astrid::cron("name")]`**: Executed by the Kernel's scheduler for time-based tasks. Maps to the `astrid_cron_trigger` ABI export.
+    /// Called when upgrading from a previous version.
+    /// Must have signature: fn(&self, prev_version: &str) -> Result<(), SysError>
+    #[astrid::upgrade]
+    fn upgrade(&self, prev_version: &str) -> Result<(), SysError> {
+        // migrate data from prev_version
+        Ok(())
+    }
+}
+```
+
+### Run loop
+
+```rust
+#[capsule]
+impl MyCapsule {
+    /// Long-lived event-driven run loop.
+    /// Must have signature: fn(&self) -> Result<(), SysError>
+    #[astrid::run]
+    fn run(&self) -> Result<(), SysError> {
+        loop {
+            // block on IPC, handle events
+        }
+    }
+}
+```
+
+## API Reference
+
+### The `#[capsule]` macro
+
+`#[proc_macro_attribute]` applied to an `impl` block. Accepts an optional `state` argument.
+
+**Generated ABI exports** (always present):
+
+| Export | Dispatch attribute | Description |
+|---|---|---|
+| `astrid_tool_call` | `#[astrid::tool("name")]` | LLM agent tool calls via the OS Event Bus |
+| `astrid_command_run` | `#[astrid::command("name")]` | Human slash-commands via Uplink frontends |
+| `astrid_hook_trigger` | `#[astrid::interceptor("name")]` | Synchronous kernel lifecycle interceptors |
+| `astrid_cron_trigger` | `#[astrid::cron("name")]` | Scheduler-triggered time-based jobs |
+| `astrid_export_schemas` | (automatic) | JSON Schema map for all registered tools |
+
+**Generated ABI exports** (conditional):
+
+| Export | Trigger attribute |
+|---|---|
+| `astrid_install` | `#[astrid::install]` present |
+| `astrid_upgrade` | `#[astrid::upgrade]` present |
+| `run` | `#[astrid::run]` present |
+
+### Method attribute contracts enforced at compile time
+
+| Attribute | Required signature | Notes |
+|---|---|---|
+| `#[astrid::tool("name")]` | `fn(&self, args: T) -> Result<U, SysError>` | `args` may be omitted for parameterless tools |
+| `#[astrid::command("name")]` | `fn(&self, args: T) -> Result<U, SysError>` | Same as tool |
+| `#[astrid::interceptor("name")]` | `fn(&self, args: T) -> Result<U, SysError>` | Same as tool |
+| `#[astrid::cron("name")]` | `fn(&self, args: T) -> Result<U, SysError>` | Same as tool |
+| `#[astrid::install]` | `fn(&self) -> Result<(), SysError>` | No arguments. Compile error if args present. |
+| `#[astrid::upgrade]` | `fn(&self, prev_version: &str) -> Result<(), SysError>` | Must be `&str`, not `String`. |
+| `#[astrid::run]` | `fn(&self) -> Result<(), SysError>` | No arguments. |
+| `#[astrid::mutable]` | (modifier, no signature change) | Valid only on tool/command/interceptor/cron. |
+
+The `name` string argument is optional for dispatch attributes. When omitted, the Rust method name is used as the routing key.
 
 ## Development
 
 ```bash
 cargo test -p astrid-sdk-macros
 ```
+
+The test suite exercises the `capsule_impl` function directly via `proc_macro2::TokenStream`, covering mutable schema generation, stateful KV round-trips, lifecycle hook exports, compile-error paths, and run-loop state behavior.
 
 ## License
 

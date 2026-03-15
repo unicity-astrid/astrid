@@ -1,105 +1,114 @@
 # astrid-test
 
-[![Crates.io](https://img.shields.io/crates/v/astrid-test)](https://crates.io/crates/astrid-test)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-Shared test utilities, mocks, and fixtures for the Astralis OS workspace. 
+Shared test utilities, mocks, and fixtures for the Astrid workspace.
 
-`astrid-test` provides a robust, deterministic testing environment for the Astralis secure agent runtime. Instead of relying on live LLM APIs or manual user interactions, this crate exposes predictable mock implementations of core interfaces like `LlmProvider` and `Frontend`. It ensures that agent loops, tool-call flows, and security policies can be thoroughly verified in CI environments without external dependencies or side effects.
+`astrid-test` is an internal `dev-dependency` used across the Astrid workspace. It provides a small but consistent set of building blocks: pre-built fixtures for core domain types (`AgentId`, `SessionId`, `ApprovalRequest`, `ElicitationRequest`), a `MockEventBus` for capturing emitted events, and a `TestContext` harness that manages temporary directories and tracing setup. Every helper is designed to reduce test boilerplate without hiding what a test is actually asserting.
 
 ## Core Features
 
-* **Deterministic LLM Mocking**: Script and replay exact sequences of text responses, tool calls, or errors using `MockLlmProvider`.
-* **Frontend Simulation**: Automate user approvals, inputs, and elicitations with the queue-based `MockFrontend`.
-* **Event Capturing**: Intercept and assert on telemetry and system events via `MockEventBus`.
-* **Pre-built Fixtures**: Instantly generate realistic dummy data for `AgentId`, `SessionId`, `ApprovalRequest`, and `ElicitationRequest`.
-* **Test Harness Environment**: Safely manage temporary directories, files, and tracing loggers tailored for tests.
-
-## Architecture
-
-This crate is purely a `dev-dependency` mechanism for the rest of the Astralis workspace. It depends on core domain traits defined in `astrid-core` and `astrid-llm` and implements them using in-memory structures (`Arc<Mutex<VecDeque<T>>>`). This architecture allows test environments to instantiate an entire isolated Astralis runtime kernel where the environment, LLM, and user are completely synthesized.
+- **Pre-built fixtures**: Instantly construct realistic instances of `AgentId`, `SessionId`, `ApprovalRequest`, and `ElicitationRequest` with sensible defaults or parameterized values.
+- **Risk-level variants**: Dedicated helpers for medium-risk and high-risk approval fixtures, covering the common security test cases out of the box.
+- **Elicitation schema helpers**: Factory functions for all three `ElicitationSchema` variants - `Text`, `Secret`, and `Confirm`.
+- **Event capturing**: `MockEventBus` records emitted events in memory and exposes typed queries (`has_event`, `get_events_of_type`) for assertions without requiring a real event bus.
+- **Temporary filesystem harness**: `TestContext` owns a `TempDir` that is cleaned up on drop, plus helpers to create files and subdirectories within it.
+- **Tracing setup**: `setup_test_logging` and `setup_test_logging_default` initialize a `tracing-subscriber` scoped to the test writer, safe to call multiple times.
 
 ## Quick Start
 
-Because `astrid-test` is designed exclusively for testing, it should only be included as a `dev-dependency` within your crate.
+Add as a `dev-dependency` inside the workspace:
 
 ```toml
 [dev-dependencies]
 astrid-test = { workspace = true }
 ```
 
-### `MockLlmProvider`
+Then import the prelude in your test module:
 
-Testing agent flows often requires strict control over what the language model generates. `MockLlmProvider` allows you to preload a queue of `MockLlmTurn`s. Each time the provider is invoked by the runtime, it pops the next turn, seamlessly simulating streaming text, multiple tool calls, or network errors.
+```rust,ignore
+#[cfg(test)]
+mod tests {
+    use astrid_test::prelude::*;
 
-```rust
-use astrid_test::{MockLlmProvider, MockLlmTurn, MockToolCall};
-use serde_json::json;
-
-// Setup a scripted sequence of LLM responses
-let provider = MockLlmProvider::new(vec![
-    // First turn: The LLM decides to call a tool
-    MockLlmTurn::tool_calls(vec![
-        MockToolCall::new("read_file", json!({ "path": "/etc/config" }))
-    ]),
-    // Second turn: The LLM provides a text summary
-    MockLlmTurn::text("The configuration looks valid."),
-]);
-
-// The provider can now be injected into an agent context.
-// You can also inspect captured messages after execution:
-let history = provider.captured_messages();
-assert_eq!(provider.call_count(), 2);
-```
-
-### `MockFrontend`
-
-The `Frontend` trait governs how Astralis requests user permission or input. `MockFrontend` uses a thread-safe queue system (allowing both synchronous and asynchronous usage) to pre-approve operations or provide simulated user text.
-
-```rust
-use astrid_test::{MockFrontend, test_approval_request};
-use astrid_core::ApprovalOption;
-
-#[tokio::test]
-async fn test_approval_flow() {
-    // Configure the mock to automatically allow the next request
-    let frontend = MockFrontend::new()
-        .with_approval_response(ApprovalOption::AllowOnce);
-
-    // Generate a standardized dummy request
-    let request = test_approval_request();
-    
-    // Execute the trait method
-    let decision = frontend.request_approval(request).await.unwrap();
-
-    assert!(decision.is_approved());
-    assert_eq!(decision.decision, ApprovalOption::AllowOnce);
+    #[test]
+    fn test_approval_fixture() {
+        let req = test_approval_request();
+        assert_eq!(req.operation, "test_operation");
+    }
 }
 ```
 
-### Fixtures & Harnesses
+## API Reference
 
-Reduce boilerplate when setting up integration tests by utilizing the provided `TestContext` and fixture generators.
+### Key Types
 
-```rust
-use astrid_test::{TestContext, test_high_risk_approval, setup_test_logging};
+#### `TestContext`
 
-#[test]
-fn test_fs_operations() {
-    setup_test_logging("debug"); // Initializes tracing-subscriber
-    
-    // TestContext automatically manages temporary directories
-    let ctx = TestContext::new();
-    let file_path = ctx.create_file("dummy.txt", "Hello Astralis");
-    
-    assert!(file_path.exists());
-    
-    // Use pre-configured high-risk policies for security testing
-    let high_risk_req = test_high_risk_approval();
-    assert_eq!(high_risk_req.operation, "delete_files");
-}
+A test context that owns a temporary directory for the lifetime of the test. Dropped at end of scope, which deletes the directory.
+
+```rust,ignore
+let ctx = TestContext::new();
+
+// Create a file inside the temp dir
+let path = ctx.create_file("config.toml", "[section]\nkey = \"value\"");
+assert!(path.exists());
+
+// Create a subdirectory
+let dir = ctx.create_subdir("plugins");
+assert!(dir.is_dir());
+
+// Access the root path directly
+println!("{}", ctx.path().display());
 ```
+
+#### `MockEventBus`
+
+An in-memory event bus that records every emitted event. `Clone`-able and `Arc`-backed, so it can be shared across threads or async tasks.
+
+```rust,ignore
+let bus = MockEventBus::new();
+
+bus.emit("agent.started", serde_json::json!({ "agent_id": "abc" }));
+bus.emit("tool.called",   serde_json::json!({ "tool": "read_file" }));
+
+assert!(bus.has_event("agent.started"));
+
+let tool_events = bus.get_events_of_type("tool.called");
+assert_eq!(tool_events.len(), 1);
+
+bus.clear();
+assert!(!bus.has_event("agent.started"));
+```
+
+#### Fixture Functions
+
+| Function | Returns | Notes |
+|---|---|---|
+| `test_agent_id()` | `AgentId` | Fresh random ID each call |
+| `test_agent_id_from(uuid)` | `AgentId` | Deterministic from a known UUID |
+| `test_session_id()` | `SessionId` | Fresh random ID each call |
+| `test_session_id_from(uuid)` | `SessionId` | Deterministic from a known UUID |
+| `test_approval_request()` | `ApprovalRequest` | `"test_operation"`, `RiskLevel::Medium` |
+| `test_approval_request_for(op, desc)` | `ApprovalRequest` | Parameterized operation and description |
+| `test_high_risk_approval()` | `ApprovalRequest` | `"delete_files"`, `RiskLevel::High`, resource set |
+| `test_elicitation_request()` | `ElicitationRequest` | Default elicitation, no schema |
+| `test_text_elicitation(msg)` | `ElicitationRequest` | `ElicitationSchema::Text`, max 1000 chars |
+| `test_secret_elicitation(msg)` | `ElicitationRequest` | `ElicitationSchema::Secret` |
+| `test_confirm_elicitation(msg)` | `ElicitationRequest` | `ElicitationSchema::Confirm`, default `false` |
+
+#### Harness Functions
+
+| Function | Returns | Notes |
+|---|---|---|
+| `test_dir()` | `TempDir` | Auto-cleaned on drop |
+| `test_dir_with_prefix(prefix)` | `TempDir` | Named prefix for easier debugging |
+| `test_file(content)` | `NamedTempFile` | Auto-cleaned on drop |
+| `test_file_with_extension(content, ext)` | `NamedTempFile` | Useful when code checks extensions |
+| `test_file_in_dir(dir, name, content)` | `PathBuf` | Creates parent directories as needed |
+| `setup_test_logging(filter)` | `()` | Initializes tracing, safe to call multiple times |
+| `setup_test_logging_default()` | `()` | Equivalent to `setup_test_logging("warn")` |
 
 ## Development
 

@@ -4,94 +4,148 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-The daemon layer for the Astrid secure agent runtime, managing multi-agent lifecycles, JSON-RPC communication, and comprehensive system health.
+The micro-kernel for the Astrid secure agent runtime: boots WASM capsules, routes IPC between them, and manages session lifetime.
 
-`astrid-kernel` serves as the central nervous system of the Astralis OS. It acts as the long-running daemon that binds LLM interactions, tool execution, and plugin lifecycles to the outside world. It abstracts the complexity of MCP server management, plugin lifecycles, and agent orchestration behind a clean, event-driven JSON-RPC over WebSocket interface.
-
-Whether you are building a CLI, a web frontend, or a custom desktop client, `astrid-kernel` provides the stable, observable boundary that ensures your agents run continuously, securely, and predictably.
+`astrid-kernel` is a pure WASM runner with no business logic and no network servers. It instantiates an `EventBus`, loads `.capsule` files into the Extism sandbox, routes IPC bytes between capsules, and manages the system-wide security surfaces (capability store, audit log, overlay VFS, Unix domain socket) for a single agent session. All frontends - CLI, Discord, web - drive the same kernel instance over that Unix socket.
 
 ## Core Features
 
-* **JSON-RPC over WebSocket**: Provides a bi-directional communication channel using `jsonrpsee`, enabling real-time streaming of LLM tokens, tool execution states, and human-in-the-loop approval requests.
-* **Multi-Agent Management**: Spawns, pauses, and terminates multiple agent instances concurrently. Manages sub-agent pooling to optimize resource usage across complex, multi-turn tasks.
-* **Hot-Reloading Configuration**: Monitors configuration files (like `gateway.toml`) via the `notify` crate, applying changes to models, routing, and environment settings dynamically without requiring a daemon restart or dropping active sessions.
-* **Comprehensive Health Diagnostics**: Aggregates the operational status of MCP servers, agent pools, audit logs, and approval queues into a unified health state (Healthy, Degraded, Unhealthy).
-* **State Persistence**: Manages session checkpointing and ensures graceful shutdowns, preventing data loss during unexpected terminations.
-
-## Architecture
-
-The gateway operates strictly as a facade over the underlying orchestration layers. It adheres to the "Island Principle" of the Astralis architecture, keeping routing, health, and server mechanics tightly encapsulated.
-
-```text
-Client Application (CLI, Web, GUI)
-               │
-      [JSON-RPC / WebSocket]
-               │
-       astrid-kernel (Daemon)
-       ├── Configuration & Hot-Reload
-       ├── Multi-Agent Manager
-       ├── Message Router
-       └── Health Diagnostics
-               │
-       astrid-capsule (React + Session)
-       ├── astrid-llm (Provider Layer)
-       └── astrid-mcp (Tool Layer)
-```
-
-### Internal Module Structure
-
-* `server/`: Handles the WebSocket connection lifecycle, incoming routing, and daemon startup sequences.
-* `rpc.rs`: Defines the `jsonrpsee` server trait, wire types (`ToolInfo`, `DaemonStatus`, `SessionInfo`), and event serialization logic.
-* `manager.rs`: Implements `AgentManager` and `AgentHandle` for tracking state, uptime, and request counts across concurrent agents.
-* `health.rs`: Provides the `HealthStatus` aggregator, evaluating system thresholds (e.g., pending approval queues, MCP bridge connectivity, audit availability).
-* `router.rs`: Manages `ChannelBinding` and message propagation between the frontend clients and the internal runtime channels.
+- **Capsule lifecycle management**: Discovers capsules from `~/.astrid/capsules/`, topologically sorts by dependency, loads uplinks before non-uplinks, awaits readiness signals, and injects tool schemas into every capsule's KV namespace after load.
+- **Kernel management API**: Listens on `astrid.v1.request.*` topics on the `EventBus` and handles `ListCapsules`, `GetCommands`, `GetCapsuleMetadata`, `ReloadCapsules`, and `InstallCapsule` requests. Mutating operations are rate-limited with a sliding-window limiter (e.g. `ReloadCapsules` is capped at 5/min).
+- **Overlay VFS**: Mounts a copy-on-write filesystem over the workspace root. Writes land in a session-scoped `TempDir` that is discarded on shutdown; the lower layer (the real workspace) is never modified unless the caller explicitly commits.
+- **Chain-linked audit log**: Opens `~/.astrid/audit.db` at boot, verifies the ed25519-signed chain of every historical session, and logs violations at `error!` before continuing (fail-open for availability, loud for integrity).
+- **Unix socket + session token**: Binds `~/.astrid/sessions/system.sock` (0o700 parent directory) before any capsule loads. Generates a random `SessionToken`, writes it to `~/.astrid/sessions/system.token` (0o600), and clears it on shutdown so the secret does not persist.
+- **Idle auto-shutdown**: Dual-signal idle monitor tracks the explicit `active_connections` counter and the `EventBus` subscriber count. Takes the minimum of both to handle ungraceful CLI exits. Shuts down after `ASTRID_IDLE_TIMEOUT_SECS` (default 300) of zero effective connections and no daemon/cron capsules running.
+- **Capsule restart**: `restart_capsule` unregisters and explicitly unloads the old instance (preventing orphaned MCP child processes), reloads from disk, then dispatches `handle_lifecycle_restart` to the new instance.
+- **Identity bootstrap**: Creates a KV-backed identity store at boot and registers the CLI root user idempotently. Identity links from config are applied before capsules load.
 
 ## Quick Start
 
-The gateway is designed to be embedded as the primary execution loop of a host process.
+```toml
+[dependencies]
+astrid-kernel = "0.2"
+```
 
 ```rust
-use astrid_kernel::{GatewayConfig, GatewayRuntime};
+use astrid_kernel::Kernel;
+use astrid_core::SessionId;
+use std::path::PathBuf;
 
+// Requires a multi-threaded tokio runtime - block_in_place panics on current_thread.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load configuration, supporting hot-reload watch streams natively
-    let config = GatewayConfig::load("~/.astrid/gateway.toml")?;
-    
-    // Initialize the gateway daemon
-    let runtime = GatewayRuntime::new(config)?;
+    let session_id = SessionId::new();
+    let workspace = PathBuf::from("/path/to/workspace");
 
-    // Block the main thread and process incoming WebSocket connections
-    // and internal agent lifecycles until a shutdown signal is received.
-    runtime.run().await?;
+    // Boot: opens KV store, audit log, VFS, socket, token, spawns background tasks.
+    let kernel = Kernel::new(session_id, workspace).await?;
 
+    // Discover and load all capsules from ~/.astrid/capsules/.
+    kernel.load_all_capsules().await;
+
+    // Write the readiness sentinel so the CLI knows the daemon is accepting connections.
+    astrid_kernel::socket::write_readiness_file()?;
+
+    // Run until OS signal or idle timeout triggers shutdown.
+    kernel.shutdown(None).await;
     Ok(())
 }
 ```
 
-### Core RPC Methods
-* `createSession` / `resumeSession`: Initializes or restores a workspace-bound context.
-* `sendInput`: Dispatches user input to the active agent.
-* `approvalResponse` / `elicitationResponse`: Returns human-in-the-loop decisions back to the daemon.
-* `subscribeEvents`: Opens a streaming subscription for real-time runtime events.
+## API Reference
 
-### Streaming Events (`DaemonEvent`)
-Clients consuming the WebSocket stream receive real-time, granular telemetry:
-* `Text`: Streaming LLM tokens.
-* `ToolCallStart` / `ToolCallResult`: Telemetry for MCP and internal tool execution.
-* `ApprovalNeeded`: Halts execution and waits for client authorization based on security policies.
-* `Usage`: Token burn rate and context window tracking.
-* `CapsuleLoaded` / `CapsuleFailed`: Plugin lifecycle updates.
+### Key Types
+
+#### `Kernel`
+
+The central kernel struct. All fields are `pub` so frontends and capsule loaders can read them directly.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `session_id` | `SessionId` | Unique identifier for this boot session. |
+| `event_bus` | `Arc<EventBus>` | Global IPC message bus shared by all capsules. |
+| `capsules` | `Arc<RwLock<CapsuleRegistry>>` | Registry of all loaded WASM capsules. |
+| `mcp` | `SecureMcpClient` | Capability-gated MCP client with audit logging. |
+| `capabilities` | `Arc<CapabilityStore>` | Persistent, KV-backed capability store. |
+| `vfs` | `Arc<dyn Vfs>` | Overlay VFS (copy-on-write over workspace root). |
+| `overlay_vfs` | `Arc<OverlayVfs>` | Concrete overlay handle for commit/rollback. |
+| `vfs_root_handle` | `DirHandle` | cap-std physical security boundary for VFS access. |
+| `workspace_root` | `PathBuf` | Physical path the VFS is mounted to. |
+| `global_root` | `Option<PathBuf>` | `~/.astrid/shared/` - readable by capsules declaring `fs_read = ["global://"]`. |
+| `kv` | `Arc<SurrealKvStore>` | Shared persistent KV store backing all capsule namespaces. |
+| `audit_log` | `Arc<AuditLog>` | Chain-linked cryptographic audit log. |
+| `allowance_store` | `Arc<AllowanceStore>` | Capsule-level approval allowances (session and always scopes). |
+| `session_token` | `Arc<SessionToken>` | Random token generated at boot for CLI socket authentication. |
+| `active_connections` | `AtomicUsize` | Number of active CLI sessions. |
+
+#### Key Methods
+
+```rust
+// Boot a new kernel session.
+Kernel::new(session_id: SessionId, workspace_root: PathBuf) -> Result<Arc<Self>, io::Error>
+
+// Auto-discover and load all capsules in dependency order.
+kernel.load_all_capsules().await
+
+// Gracefully shut down: broadcasts KernelShutdown, drains capsules, flushes KV,
+// removes socket and token files.
+kernel.shutdown(reason: Option<String>).await
+
+// Load a single capsule from a directory containing Capsule.toml.
+kernel.load_capsule(dir: PathBuf) -> Result<(), anyhow::Error>  // pub(crate)
+
+// Restart a capsule: unload old, reload from disk, send lifecycle event.
+kernel.restart_capsule(id: &CapsuleId) -> Result<(), anyhow::Error>  // pub(crate)
+
+// Connection tracking (called by KernelRouter on IPC events).
+kernel.connection_opened()
+kernel.connection_closed()  // clears session allowances when count reaches 0
+kernel.connection_count() -> usize
+```
+
+### `kernel_router` module
+
+`spawn_kernel_router` is called internally during `Kernel::new`. It subscribes to `astrid.v1.request.*` on the event bus and dispatches `KernelRequest` variants. Responses are published on `astrid.v1.response.<suffix>`.
+
+Handled requests:
+
+| Request | Rate limit | Behavior |
+|---|---|---|
+| `ListCapsules` | None | Returns the list of registered capsule IDs. |
+| `GetCommands` | None | Returns all commands from all loaded capsule manifests. |
+| `GetCapsuleMetadata` | None | Returns name, LLM providers, and interceptor events per capsule. |
+| `ReloadCapsules` | 5/min | Drops capsules in `Failed` state, then calls `load_all_capsules`. |
+| `InstallCapsule` | 10/min | Not yet implemented; returns an error response. |
+| `ApproveCapability` | 10/min | Not yet implemented; returns an error response. |
+
+### `socket` module
+
+Unix socket and readiness file management. Key public items:
+
+```rust
+// Path to the kernel socket (~/.astrid/sessions/system.sock).
+socket::kernel_socket_path() -> PathBuf
+
+// Path to the readiness sentinel (~/.astrid/sessions/system.ready).
+socket::readiness_path() -> PathBuf
+
+// Write the sentinel file (0o600) signaling the daemon is ready for connections.
+// Call this after load_all_capsules() completes.
+socket::write_readiness_file() -> Result<(), io::Error>
+
+// Remove the sentinel file (best-effort, silent on error).
+socket::remove_readiness_file()
+```
+
+`bind_session_socket` (crate-private) validates the socket path length against the platform `sun_path` limit (104 bytes on macOS/FreeBSD/OpenBSD, 108 on Linux), removes stale sockets, and rejects paths where another kernel is already listening.
 
 ## Development
-
-When modifying the gateway, ensure you respect the closed-set enum architecture for wire types and events. Any new variant added to `DaemonEvent` must be comprehensively tested for Serde round-tripping, as it directly impacts all external frontends.
-
-To run the test suite for this crate:
 
 ```bash
 cargo test -p astrid-kernel -- --quiet
 ```
+
+The rate limiter and socket path validation have unit tests in their respective modules. Integration tests that boot a full `Kernel` require a multi-threaded runtime and a writable `$ASTRID_HOME` or `$HOME`.
 
 ## License
 

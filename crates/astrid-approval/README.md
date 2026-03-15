@@ -4,103 +4,97 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
 [![MSRV: 1.94](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
 
-> "Math, not hope." The deterministic security, budget, and enforcement engine for Astralis.
+Human-in-the-loop approval, budget enforcement, and security policy for the Astrid agent runtime.
 
-In the era of autonomous agents, prompt engineering is not a security boundary. `astrid-approval` provides a rigorous, intersection-based security model that evaluates every sensitive action an agent attempts to make. From MCP tool calls to filesystem writes and plugin executions, if an action is not explicitly permitted by a cryptographic capability, within budget, and allowed by the static workspace policy, it does not happen. Period.
+Every sensitive action an agent attempts passes through a single architectural choke point - `SecurityInterceptor` - which applies intersection semantics across four independent layers: hard-boundary policy, cryptographic capability tokens, session/workspace budget limits, and dynamic human approval. If any layer denies the action, it does not execute. Every decision is written to the audit trail before the caller receives an answer (fail-closed).
 
 ## Core Features
 
-*   **Unified Security Interceptor**: A single architectural choke point for all agent actions. Every request flows through a strict intersection check combining policies, budgets, capabilities, and dynamic human approval.
-*   **Dual-Layer Budget Tracking**: Precise, race-condition-free cost control tracking both isolated Session Budgets and cumulative Workspace Budgets via an atomic check-and-reserve pattern.
-*   **Cryptographic Allowances**: Fine-grained, pattern-based grants that give agents persistent or session-scoped access to specific MCP tools, file globs, network hosts, or isolated plugin capabilities.
-*   **Hard Boundaries**: Admin-configured static rules that supersede any LLM prompt or capability. Block dangerous commands, deny sensitive paths, or blacklist domains.
-*   **Deferred Resolutions**: When a human is required but offline, the system safely queues the action, allowing the agent to gracefully switch contexts rather than hanging indefinitely.
-
-## Architecture: Intersection Semantics
-
-The `SecurityInterceptor` is the strictly defined structural entrypoint of this crate. It evaluates actions using strict **intersection semantics**—multiple independent layers must agree before the runtime executes an action.
-
-1.  **Policy Check (Hard Boundaries)**: Is the tool explicitly blocked? Does it target a denied path, exceed argument size limits, or target a blocked plugin? If so, immediately deny.
-2.  **Capability Check (Grants)**: Does the agent possess a cryptographically valid capability or allowance for this exact action?
-3.  **Budget Check (Financials)**: Is there enough remaining session and workspace budget? The `BudgetTracker` atomically checks and reserves the estimated cost to prevent time-of-check to time-of-use (TOCTOU) vulnerabilities.
-4.  **Risk Assessment & Approval**: If the action inherently requires approval and lacks a capability, the interceptor pauses execution and delegates to the `ApprovalManager`.
-5.  **Audit Trail**: Every decision—whether allowed, denied, or deferred—is immutably written to the workspace audit log.
+- **Intersection-semantics interceptor**: Policy, capability, budget, and approval must all agree. One `No` stops the action regardless of what the others say.
+- **`SecurityPolicy` with hard boundaries**: Admin-configured rules that block dangerous commands (`sudo`, `rm -rf /`, `mkfs`), deny sensitive paths (`/etc/**`, `/proc/**`), enforce argument size limits, and maintain a blocked-capsules set. Checked before any dynamic logic runs.
+- **Atomic budget tracking**: `BudgetTracker` enforces per-action and per-session USD limits via `check_and_reserve` - a single write-lock operation that eliminates TOCTOU races. `WorkspaceBudgetTracker` applies the same guarantee across sessions for cumulative workspace spend. Budget reservations are dropped (refunded) automatically if the future is cancelled.
+- **Signed allowances**: When a user approves an action, the approval can create a cryptographically signed `Allowance` scoped to the session, workspace, or permanently. Subsequent identical actions match the stored allowance without re-prompting.
+- **`AllowancePattern` matching**: Eight pattern variants - `ExactTool`, `ServerTools`, `FilePattern`, `NetworkHost`, `CommandPattern`, `WorkspaceRelative`, `CapsuleCapability`, `CapsuleWildcard` - cover every `SensitiveAction` variant. Glob matching via `globset`. Path traversal sequences and shell operators are rejected at the pattern-match layer.
+- **`ApprovalHandler` trait**: Frontends (CLI, Discord, Web) implement this trait to present requests to the user. The manager routes requests to the registered handler with a configurable timeout (default 5 minutes).
+- **Deferred resolution queue**: When no handler is registered, the handler reports unavailable, or the request times out, the action is queued as a `DeferredResolution` with priority and fallback behavior rather than blocking the agent indefinitely.
+- **Fail-closed audit**: Every allow, deny, and defer writes an `AuditLog` entry. If the write fails, the action is blocked and `ApprovalError::AuditFailed` is returned.
 
 ## Quick Start
 
-`astrid-approval` is designed to be embedded directly into the Astralis execution pipeline.
+```toml
+[dependencies]
+astrid-approval = { workspace = true }
+```
 
 ```rust
-use astrid_approval::{SecurityInterceptor, SecurityPolicy};
-use astrid_approval::budget::BudgetTracker;
-use astrid_approval::action::SensitiveAction;
+use astrid_approval::{SecurityInterceptor, SecurityPolicy, SensitiveAction};
+use astrid_approval::budget::{BudgetConfig, BudgetTracker};
+use astrid_approval::manager::{ApprovalManager, ApprovalHandler};
+use astrid_approval::allowance::AllowanceStore;
+use astrid_approval::deferred::DeferredResolutionStore;
 use std::sync::Arc;
 
-// 1. Define hard boundaries (defaults block traversal and dangerous paths)
+// Hard-boundary defaults: blocks sudo, rm -rf /, /etc/**, /proc/**, 1 MB arg limit,
+// requires approval for deletes and network.
 let policy = SecurityPolicy::default();
 
-// 2. Initialize the interceptor (handled by the Astralis runtime)
+let budget = Arc::new(BudgetTracker::new(BudgetConfig::new(100.0, 10.0)));
+let allowance_store = Arc::new(AllowanceStore::new());
+let approval_manager = Arc::new(ApprovalManager::new(
+    Arc::clone(&allowance_store),
+    Arc::new(DeferredResolutionStore::new()),
+));
+
+// Register a frontend handler - the CLI, Discord bot, or web UI implements ApprovalHandler.
+approval_manager.register_handler(Arc::new(my_cli_handler)).await;
+
 let interceptor = SecurityInterceptor::new(
     capability_store,
     approval_manager,
     policy,
-    budget_tracker,
+    budget,
     audit_log,
     runtime_key,
     session_id,
     allowance_store,
     Some(workspace_root),
-    Some(workspace_budget),
+    None, // optional workspace budget tracker
 );
 
-// 3. Intercept sensitive actions before they hit the real system
-let action = SensitiveAction::FileDelete { 
-    path: "/home/user/important.txt".to_string() 
+// Every sensitive action goes through intercept() before execution.
+let action = SensitiveAction::FileDelete {
+    path: "/home/user/report.txt".to_string(),
 };
 
-// Automatically evaluates policy, deducts budget, or requests human approval
-match interceptor.intercept(&action, "Cleaning up temp files", None).await {
-    Ok(result) => println!("Action permitted. Proof: {:?}", result.proof),
-    Err(e) => eprintln!("Action blocked: {}", e),
+match interceptor.intercept(&action, "removing stale report", None).await {
+    Ok(result) => {
+        // result.proof says how it was authorized (capability, allowance, user approval, etc.)
+        // result.audit_id is the immutable audit trail entry
+        // result.budget_warning is Some(...) if spend is approaching the session limit
+    }
+    Err(e) => eprintln!("blocked: {e}"),
 }
 ```
 
-## Budget Enforcement
+## API Reference
 
-The `BudgetTracker` enforces both a maximum spend per session and a maximum spend per individual action. It utilizes an atomic "check and reserve" pattern under a single write lock to prevent race conditions where concurrent actions might bypass limits.
+### Key Types
 
-```rust
-use astrid_approval::budget::{BudgetConfig, BudgetTracker};
-
-// Max $10.00 for the session, max $5.00 per individual action.
-// Automatically warns the user when 80% of the session budget is consumed.
-let config = BudgetConfig::new(10.0, 5.0).with_warn_at_percent(80);
-let tracker = BudgetTracker::new(config);
-
-// Costs are atomically reserved, and can be refunded if the action fails
-let result = tracker.check_and_reserve(1.50);
-assert!(result.is_allowed());
-```
-
-## Allowance Patterns & Discovery
-
-In accordance with Astralis architectural guidelines, internal abstractions use closed-set Enums (such as `SensitiveAction` and `AllowancePattern`). This ensures exhaustive `match` statements across the workspace flag integration points at compile time whenever a new capability is introduced.
-
-When users approve an action, the system generates a signed `Allowance` using an `AllowancePattern` to prevent repetitive prompting:
-
-*   `ExactTool`: Precise access to an MCP tool.
-*   `FilePattern`: Glob-based file access (e.g., `src/**/*.rs` with `Write` permission).
-*   `NetworkHost`: Outbound HTTP/TCP access to a domain.
-*   `WorkspaceRelative`: Safely scopes file and tool allowances to the bounds of the current workspace directory, preventing directory traversal attacks.
-*   `CapsuleCapability`: Isolated execution grants for specific plugin architectures.
-
-## The Approval Manager
-
-When an action requires a human in the loop, the `ApprovalManager` routes an `ApprovalRequest` to the active frontend via the `ApprovalHandler` trait. Frontends implement this trait to render the request. If the frontend is disconnected or the request times out, the manager seamlessly queues it as a `DeferredResolution`.
+- **`SensitiveAction`** - Enum of every action category that can require approval: `FileRead`, `FileDelete`, `FileWriteOutsideSandbox`, `ExecuteCommand`, `NetworkRequest`, `TransmitData`, `FinancialTransaction`, `AccessControlChange`, `CapabilityGrant`, `McpToolCall`, `CapsuleExecution`, `CapsuleHttpRequest`, `CapsuleFileAccess`, `CapsuleNetBind`. Each variant carries the context needed for an informed allow/deny decision.
+- **`SecurityPolicy`** - Serializable struct with `blocked_tools`, `approval_required_tools`, `allowed_paths`, `denied_paths`, `allowed_hosts`, `denied_hosts`, `max_argument_size`, and `blocked_capsules`. Use `SecurityPolicy::default()` for sensible production defaults or `SecurityPolicy::permissive()` for testing.
+- **`SecurityInterceptor`** - Main entry point. Constructed once and shared via `Arc`. Call `intercept(&action, context, estimated_cost)` for every sensitive operation.
+- **`ApprovalRequest` / `ApprovalDecision` / `ApprovalResponse`** - The approval flow types. `ApprovalDecision` has five approval variants: `Approve` (once), `ApproveSession`, `ApproveWorkspace`, `ApproveAlways` (mints a capability token), `ApproveWithAllowance`.
+- **`RiskAssessment`** - Carries `RiskLevel` (from `astrid-core`), a reason string, and optional mitigations. Built automatically from `SensitiveAction::default_risk_level()`.
+- **`BudgetTracker`** / **`BudgetConfig`** - Session-scoped budget with `check_budget`, `check_and_reserve`, `record_cost`, `refund_cost`, `snapshot`, and `restore`. Thread-safe via internal `RwLock`.
+- **`WorkspaceBudgetTracker`** - Cumulative cross-session budget tracker. Optional cap (`max_usd: None` records spend for reporting without blocking).
+- **`Allowance`** / **`AllowancePattern`** / **`AllowanceStore`** - Pre-approved action grants. Allowances carry a `Signature` proving they were legitimately created, optional expiry, and optional use limits.
+- **`ApprovalHandler`** (trait) - Frontend interface. Implement `request_approval` and `is_available`.
+- **`ApprovalManager`** - Orchestrates allowance lookup, handler dispatch, timeout, and deferred queuing.
+- **`DeferredResolutionStore`** - In-memory queue for actions that could not be immediately resolved. Supports optional `ScopedKvStore` persistence with 24-hour stale-item eviction on load.
+- **`ApprovalError`** - Error enum: `Denied`, `Timeout`, `Deferred`, `PolicyBlocked`, `Storage`, `Internal`, `AuditFailed`.
+- **`InterceptResult`** / **`InterceptProof`** - Successful intercept outcome carrying the authorization proof and audit entry ID.
 
 ## Development
-
-This crate acts as the core security dependency of Astralis. Run tests via the workspace:
 
 ```bash
 cargo test -p astrid-approval
@@ -108,4 +102,4 @@ cargo test -p astrid-approval
 
 ## License
 
-This project is dual-licensed under either the [MIT License](../../LICENSE-MIT) or the [Apache License, Version 2.0](../../LICENSE-APACHE), at your option.
+Dual MIT/Apache-2.0. See [LICENSE-MIT](../../LICENSE-MIT) and [LICENSE-APACHE](../../LICENSE-APACHE).
