@@ -15,9 +15,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
 
-/// Maximum number of paste block lines to show in the preview.
-const PASTE_PREVIEW_MAX: usize = 10;
-
 /// Parameters for rendering a text segment with an inline cursor.
 struct CursorRenderParams<'a> {
     prompt_str: &'a str,
@@ -407,7 +404,10 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
     let prompt_len = 2u16;
     let avail = frame_area.width.saturating_sub(prompt_len + 1) as usize;
 
-    let mut total_lines = 0u16;
+    // All segments render inline on a single line. Compute the total
+    // character width to determine how many wrapped lines are needed.
+    let mut total_chars: usize = 0;
+    let mut paste_number: usize = 0;
     for (i, seg) in app.input_buf.segments.iter().enumerate() {
         match seg {
             InputSegment::Text(t) => {
@@ -416,30 +416,28 @@ fn input_height(app: &App, frame_area: Rect) -> u16 {
                 } else {
                     t
                 };
-                #[expect(clippy::cast_possible_truncation)]
-                {
-                    total_lines =
-                        total_lines.saturating_add(wrapped_line_count(display, avail) as u16);
-                }
+                total_chars = total_chars.saturating_add(display.len());
             },
             InputSegment::PasteBlock { line_count, .. } => {
-                let preview = (*line_count).min(PASTE_PREVIEW_MAX);
-                #[expect(clippy::cast_possible_truncation)]
-                {
-                    total_lines = total_lines.saturating_add(preview as u16);
-                }
-                if *line_count > PASTE_PREVIEW_MAX {
-                    total_lines = total_lines.saturating_add(1); // "... N more lines"
-                }
+                paste_number = paste_number.saturating_add(1);
+                // "[Pasted text #N, M lines]" or "[Pasted text #N, 1 line]"
+                let label = format!(
+                    "[Pasted text #{paste_number}, {line_count} line{}]",
+                    if *line_count == 1 { "" } else { "s" }
+                );
+                total_chars = total_chars.saturating_add(label.len());
             },
         }
     }
-
-    let max = if app.input_buf.has_paste_blocks() {
-        20
+    #[expect(clippy::cast_possible_truncation)]
+    let total_lines = if avail == 0 || total_chars == 0 {
+        1u16
     } else {
-        8
+        // Ceiling division: how many rows does total_chars span at `avail` width?
+        total_chars.div_ceil(avail).max(1) as u16
     };
+
+    let max = 8;
     let base = (1u16.saturating_add(total_lines)).clamp(3, max);
 
     if let UiState::Selection { options, .. } = &app.state {
@@ -1023,8 +1021,16 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         let has_paste_blocks = app.input_buf.has_paste_blocks();
 
         if has_paste_blocks {
-            // Segment-aware rendering: each segment gets its own set of lines.
+            // Inline rendering: all segments on a single line.
             let (cursor_seg, cursor_off) = app.input_buf.cursor;
+            let mut paste_number: usize = 0;
+            let mut spans: Vec<Span<'static>> = Vec::new();
+
+            // Leading prompt
+            spans.push(Span::styled(
+                prompt.to_string(),
+                input_style.add_modifier(Modifier::BOLD),
+            ));
 
             for (seg_idx, seg) in app.input_buf.segments.iter().enumerate() {
                 match seg {
@@ -1040,61 +1046,47 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                             display.to_string()
                         };
 
-                        let seg_prompt = if seg_idx == 0 { prompt } else { "  " };
                         let is_cursor_here = seg_idx == cursor_seg && !is_enum;
 
                         if is_cursor_here {
-                            lines.push(render_text_with_cursor(&CursorRenderParams {
-                                prompt_str: seg_prompt,
-                                raw_text: display,
-                                display_str: &display_str,
-                                cursor_byte_off: cursor_off,
-                                is_secret,
-                                has_slash_prefix: seg_idx == 0 && t.starts_with('/') && is_idle,
-                                cursor_str,
-                                input_style,
-                                cursor_color,
-                            }));
+                            let has_slash = seg_idx == 0 && t.starts_with('/') && is_idle;
+                            let adj_off = if has_slash {
+                                cursor_off.saturating_sub(1)
+                            } else {
+                                cursor_off
+                            };
+                            let split_pos = if is_secret {
+                                display[..adj_off.min(display.len())].chars().count()
+                            } else {
+                                adj_off.min(display_str.len())
+                            };
+                            let (before, after) =
+                                display_str.split_at(split_pos.min(display_str.len()));
+                            spans.push(Span::styled(before.to_string(), input_style));
+                            spans.push(Span::styled(
+                                cursor_str.to_string(),
+                                Style::default().fg(cursor_color),
+                            ));
+                            spans.push(Span::styled(after.to_string(), input_style));
                         } else {
-                            lines.push(Line::from(vec![
-                                Span::styled(
-                                    seg_prompt.to_string(),
-                                    input_style.add_modifier(Modifier::BOLD),
-                                ),
-                                Span::styled(display_str, input_style),
-                            ]));
+                            spans.push(Span::styled(display_str, input_style));
                         }
                     },
-                    InputSegment::PasteBlock { raw, line_count } => {
+                    InputSegment::PasteBlock { line_count, .. } => {
+                        paste_number = paste_number.saturating_add(1);
                         let paste_style = Style::default().fg(theme.diff_added);
-                        let raw_lines: Vec<&str> = raw.lines().collect();
-                        let show_count = (*line_count).min(PASTE_PREVIEW_MAX);
-                        for line in raw_lines.iter().take(show_count) {
-                            lines.push(Line::from(vec![
-                                Span::styled("     + ", paste_style),
-                                Span::styled((*line).to_string(), paste_style),
-                            ]));
-                        }
-                        if *line_count > PASTE_PREVIEW_MAX {
-                            let remaining = line_count.saturating_sub(PASTE_PREVIEW_MAX);
-                            lines.push(Line::from(Span::styled(
-                                format!("       ... +{remaining} more lines"),
-                                Style::default().fg(theme.muted),
-                            )));
-                        }
-                        // Defense-in-depth: render cursor if it somehow lands on a PasteBlock.
-                        if seg_idx == cursor_seg && !is_enum {
-                            lines.push(Line::from(vec![
-                                Span::styled("  ", input_style),
-                                Span::styled(
-                                    cursor_str.to_string(),
-                                    Style::default().fg(cursor_color),
-                                ),
-                            ]));
-                        }
+                        spans.push(Span::styled(
+                            format!(
+                                "[Pasted text #{paste_number}, {line_count} line{}]",
+                                if *line_count == 1 { "" } else { "s" }
+                            ),
+                            paste_style,
+                        ));
                     },
                 }
             }
+
+            lines.push(Line::from(spans));
         } else {
             // Simple flat rendering (no paste blocks) - original path.
             let flat = app.input_buf.flat_text();
