@@ -5,107 +5,30 @@ on:
     tags:
       - 'v[0-9]+.*'
 
-env:
-  CARGO_TERM_COLOR: always
-  QUICKJS_KERNEL_VERSION: v1.6.0
+permissions:
+  contents: write
 
 jobs:
-  publish:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    environment: crates-io
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.94"
-          targets: wasm32-wasip1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-release-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-release-
-
-      - name: Publish crates (dependency order)
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ASTRID_AUTO_BUILD_KERNEL: "1"
-        run: |
-          set -euo pipefail
-
-          # Publish in topological dependency order.
-          # Each crate waits for its dependencies to be indexed.
-          CRATES=(
-            astrid-core
-            astrid-crypto
-            astrid-config
-            astrid-telemetry
-            astrid-storage
-            astrid-capabilities
-            astrid-events
-            astrid-workspace
-            astrid-audit
-            astrid-vfs
-            astrid-approval
-            astrid-mcp
-            astrid-capsule
-            astrid-hooks
-            astrid-prelude
-            astrid-sys
-            astrid-sdk-macros
-            astrid-sdk
-            astrid-openclaw
-            astrid-kernel
-            astrid-cli
-          )
-
-          for crate in "${CRATES[@]}"; do
-            echo "Publishing $crate..."
-            cargo publish -p "$crate" --no-verify || {
-              echo "::warning::$crate publish failed or already published, continuing..."
-            }
-            # Wait for crates.io index to propagate
-            sleep 30
-          done
-
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: publish
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Generate changelog
+      - name: Extract changelog for this version
         id: changelog
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --oneline --no-decorate)
-          else
-            COMMITS=$(git log --oneline --no-decorate "$PREV_TAG"..HEAD)
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section for this version from CHANGELOG.md
+          BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="See [CHANGELOG.md](https://github.com/unicity-astrid/astrid/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details."
           fi
           {
             echo "body<<EOF"
-            echo "## Changes"
-            echo ""
-            echo "$COMMITS"
+            echo "$BODY"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -113,4 +36,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.changelog.outputs.body }}
-          generate_release_notes: true
