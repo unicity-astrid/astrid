@@ -992,7 +992,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                             t
                         };
                         let display_str = if is_secret {
-                            "*".repeat(display.len())
+                            "*".repeat(display.chars().count())
                         } else {
                             display.to_string()
                         };
@@ -1002,13 +1002,20 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
                         if is_cursor_here {
                             // Split text at cursor for inline cursor rendering.
+                            // For secret fields, convert byte offset to char offset
+                            // since the asterisk string is pure ASCII.
                             let adj_off = if seg_idx == 0 && t.starts_with('/') && is_idle {
                                 cursor_off.saturating_sub(1)
                             } else {
                                 cursor_off
                             };
+                            let split_pos = if is_secret {
+                                display[..adj_off.min(display.len())].chars().count()
+                            } else {
+                                adj_off.min(display_str.len())
+                            };
                             let (before, after) =
-                                display_str.split_at(adj_off.min(display_str.len()));
+                                display_str.split_at(split_pos.min(display_str.len()));
                             lines.push(Line::from(vec![
                                 Span::styled(
                                     seg_prompt.to_string(),
@@ -1071,7 +1078,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             };
 
             let display_str = if is_secret {
-                "*".repeat(display_input.len())
+                "*".repeat(display_input.chars().count())
             } else {
                 display_input.to_string()
             };
@@ -1084,10 +1091,28 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     Span::styled(cursor_str, Style::default().fg(cursor_color)),
                 ]
             } else {
+                // Split at cursor position for inline cursor rendering.
+                let cursor_off = app.input_buf.cursor.1;
+                let adj_off = if flat.starts_with('/') && is_idle {
+                    cursor_off.saturating_sub(1)
+                } else {
+                    cursor_off
+                };
+                // For secret fields, convert byte offset to char offset
+                // since the asterisk string is pure ASCII.
+                let split_pos = if is_secret {
+                    display_input[..adj_off.min(display_input.len())]
+                        .chars()
+                        .count()
+                } else {
+                    adj_off.min(display_str.len())
+                };
+                let (before, after) = display_str.split_at(split_pos.min(display_str.len()));
                 vec![
                     Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-                    Span::styled(display_str, input_style),
-                    Span::styled(cursor_str, Style::default().fg(cursor_color)),
+                    Span::styled(before.to_string(), input_style),
+                    Span::styled(cursor_str.to_string(), Style::default().fg(cursor_color)),
+                    Span::styled(after.to_string(), input_style),
                 ]
             };
             lines.push(Line::from(input_spans));

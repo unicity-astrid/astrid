@@ -43,7 +43,8 @@ fn handle_paste(app: &mut App, text: &str) {
         return;
     }
 
-    // Single-line paste: treat as typed text.
+    // Single-line paste: treat as typed text. Use insert_str for O(N) insertion
+    // instead of per-character insert_char which is O(N^2).
     if !text.contains('\n') {
         let limit = if text.len() > MAX_PASTE_LEN {
             app.push_notice(&format!(
@@ -54,17 +55,16 @@ fn handle_paste(app: &mut App, text: &str) {
         } else {
             text.len()
         };
-        let mut bytes: usize = 0;
-        for c in text.chars() {
-            if matches!(c, '\r' | '\0') {
-                continue;
-            }
-            bytes = bytes.saturating_add(c.len_utf8());
-            if bytes > limit {
-                break;
-            }
-            app.input_buf.insert_char(c);
-        }
+        // Sanitize: strip \r and \0, then truncate to limit.
+        let sanitized: String = text
+            .chars()
+            .filter(|c| !matches!(c, '\r' | '\0'))
+            .scan(0usize, |bytes, c| {
+                *bytes = bytes.saturating_add(c.len_utf8());
+                if *bytes > limit { None } else { Some(c) }
+            })
+            .collect();
+        app.input_buf.insert_str(&sanitized);
         app.quit_pending = false;
         app.palette_reset();
         return;
@@ -97,13 +97,24 @@ fn handle_paste(app: &mut App, text: &str) {
         return;
     }
 
-    // Sanitize: normalize line endings, strip bare CR, strip null bytes.
-    let sanitized = text.replace("\r\n", "\n").replace(['\r', '\0'], "");
+    // Bound the raw text before sanitization to prevent OOM on massive pastes.
+    // Allow 2x headroom for \r\n -> \n shrinkage.
+    let raw_limit = text.len().min(MAX_PASTE_LEN.saturating_mul(2));
+    let mut raw_end = raw_limit;
+    while raw_end > 0 && !text.is_char_boundary(raw_end) {
+        raw_end = raw_end.saturating_sub(1);
+    }
 
-    if sanitized.len() > MAX_PASTE_LEN {
+    // Sanitize: normalize line endings, strip bare CR, strip null bytes.
+    let sanitized = text[..raw_end]
+        .replace("\r\n", "\n")
+        .replace(['\r', '\0'], "");
+
+    let was_pre_truncated = text.len() > raw_limit;
+    if was_pre_truncated || sanitized.len() > MAX_PASTE_LEN {
         app.push_notice(&format!(
             "Paste too large ({} bytes, max {MAX_PASTE_LEN}). Truncated.",
-            sanitized.len()
+            text.len()
         ));
         // Truncate at a char boundary without exceeding MAX_PASTE_LEN.
         let end = sanitized

@@ -124,6 +124,17 @@ impl InputBuffer {
         self.normalize();
     }
 
+    /// Insert a string at the current cursor position in O(N) time.
+    /// Preferred over repeated `insert_char` calls for bulk insertion.
+    pub(crate) fn insert_str(&mut self, s: &str) {
+        self.ensure_text_at_cursor();
+        if let Some(InputSegment::Text(t)) = self.segments.get_mut(self.cursor.0) {
+            t.insert_str(self.cursor.1, s);
+            self.cursor.1 = self.cursor.1.saturating_add(s.len());
+        }
+        self.normalize();
+    }
+
     /// Delete the character before the cursor, or delete an entire paste block
     /// if the cursor is at the boundary after one.
     pub(crate) fn backspace(&mut self) {
@@ -338,20 +349,12 @@ impl InputBuffer {
     /// If the first segment is a `PasteBlock`, skips to the first Text
     /// segment so the cursor remains visible and typeable.
     pub(crate) fn move_home(&mut self) {
-        self.cursor = (0, 0);
+        // If the buffer starts with a PasteBlock, insert an empty Text at the
+        // front so Home always lands at the true beginning of the buffer.
         if matches!(self.segments.first(), Some(InputSegment::PasteBlock { .. })) {
-            if let Some(idx) = self
-                .segments
-                .iter()
-                .position(|s| matches!(s, InputSegment::Text(_)))
-            {
-                self.cursor = (idx, 0);
-            } else {
-                // All segments are PasteBlocks: insert a leading Text.
-                self.segments.insert(0, InputSegment::Text(String::new()));
-                self.cursor = (0, 0);
-            }
+            self.segments.insert(0, InputSegment::Text(String::new()));
         }
+        self.cursor = (0, 0);
     }
 
     /// Move cursor to the end of the buffer.
@@ -524,52 +527,6 @@ impl InputBuffer {
                 // Don't increment i - check the new next segment.
             } else {
                 i = i.saturating_add(1);
-            }
-        }
-
-        // Second pass: remove empty Text segments (keep at least one if all are empty).
-        let mut j: usize = 0;
-        while j < self.segments.len() {
-            if matches!(&self.segments[j], InputSegment::Text(t) if t.is_empty())
-                && self.segments.len() > 1
-            {
-                // Keep empty Text segments adjacent to PasteBlocks - they serve as
-                // structural insertion points for typing around paste blocks.
-                let prev_is_paste = j > 0
-                    && matches!(
-                        self.segments.get(j.saturating_sub(1)),
-                        Some(InputSegment::PasteBlock { .. })
-                    );
-                let next_is_paste = matches!(
-                    self.segments.get(j.saturating_add(1)),
-                    Some(InputSegment::PasteBlock { .. })
-                );
-                if prev_is_paste || next_is_paste {
-                    j = j.saturating_add(1);
-                    continue;
-                }
-
-                self.segments.remove(j);
-                if self.cursor.0 == j {
-                    // If we removed the cursor's segment, move to the appropriate position.
-                    if j < self.segments.len() {
-                        self.cursor = (j, 0);
-                    } else if !self.segments.is_empty() {
-                        let last = self.segments.len().saturating_sub(1);
-                        let off = match &self.segments[last] {
-                            InputSegment::Text(t) => t.len(),
-                            InputSegment::PasteBlock { .. } => 0,
-                        };
-                        self.cursor = (last, off);
-                    } else {
-                        self.cursor = (0, 0);
-                    }
-                } else if self.cursor.0 > j {
-                    self.cursor.0 = self.cursor.0.saturating_sub(1);
-                }
-                // Don't increment j - re-check the new element at this index.
-            } else {
-                j = j.saturating_add(1);
             }
         }
 
@@ -1145,6 +1102,35 @@ mod tests {
     }
 
     #[test]
+    fn input_buffer_insert_str_basic() {
+        let mut buf = InputBuffer::default();
+        buf.insert_str("hello");
+        assert_eq!(buf.flat_text(), "hello");
+        assert_eq!(buf.cursor, (0, 5));
+        // Insert in the middle.
+        buf.cursor.1 = 2;
+        buf.insert_str("XY");
+        assert_eq!(buf.flat_text(), "heXYllo");
+        assert_eq!(buf.cursor, (0, 4));
+    }
+
+    #[test]
+    fn input_buffer_insert_str_utf8() {
+        let mut buf = InputBuffer::default();
+        buf.insert_str("a\u{00e9}b"); // e-acute is 2 bytes
+        assert_eq!(buf.flat_text(), "a\u{00e9}b");
+        assert_eq!(buf.cursor, (0, 4)); // 1 + 2 + 1
+    }
+
+    #[test]
+    fn input_buffer_insert_str_adjacent_to_paste() {
+        let mut buf = InputBuffer::default();
+        buf.insert_paste("A\nB".to_string());
+        buf.insert_str("after");
+        assert_eq!(buf.flat_text(), "A\nBafter");
+    }
+
+    #[test]
     fn input_buffer_backspace_basic() {
         let mut buf = InputBuffer::default();
         buf.insert_char('a');
@@ -1547,8 +1533,9 @@ mod tests {
         buf.insert_char('x'); // after paste
         buf.move_home();
         buf.insert_char('z');
-        // 'z' must appear after the first paste block (ensure_text inserts after).
-        assert_eq!(buf.flat_text(), "A\nBzx");
+        // Home inserts a Text segment before the paste block, so 'z' goes
+        // at the true beginning of the buffer.
+        assert_eq!(buf.flat_text(), "zA\nBx");
     }
 
     #[test]
