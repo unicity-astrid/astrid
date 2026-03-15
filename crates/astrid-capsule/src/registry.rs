@@ -94,7 +94,7 @@ impl CapsuleRegistry {
         let capsule = self
             .capsules
             .remove(id)
-            .ok_or_else(|| CapsuleError::UnsupportedEntryPoint(format!("Not found: {id}")))?;
+            .ok_or_else(|| CapsuleError::NotFound(format!("capsule {id}")))?;
 
         // Clean up the capsule's uplinks.
         self.unregister_capsule_uplinks(id);
@@ -366,6 +366,22 @@ mod tests {
         }
         fn interceptor_semaphore(&self) -> &Arc<Semaphore> {
             &self.semaphore
+        }
+    }
+
+    #[test]
+    fn unregister_not_found_returns_not_found_error() {
+        let mut registry = CapsuleRegistry::new();
+        let id = CapsuleId::from_static("nonexistent");
+        match registry.unregister(&id) {
+            Err(CapsuleError::NotFound(msg)) => {
+                assert!(
+                    msg.contains("nonexistent"),
+                    "message should contain the id: {msg}"
+                );
+            },
+            Err(other) => panic!("expected NotFound, got: {other:?}"),
+            Ok(_) => panic!("expected error for nonexistent capsule"),
         }
     }
 
