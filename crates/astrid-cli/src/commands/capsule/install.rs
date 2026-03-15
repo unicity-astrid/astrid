@@ -851,12 +851,19 @@ fn run_lifecycle_if_wasm(
         .context("failed to create scoped KV store")?;
     let event_bus = astrid_events::EventBus::with_capacity(128);
 
-    // Create a temporary tokio runtime for lifecycle dispatch.
-    // We need this because the host functions use block_on internally.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("failed to build tokio runtime for lifecycle")?;
+    // Reuse the current tokio runtime if one exists (e.g. when called from
+    // `#[tokio::main]`). Only create a new runtime for standalone/test contexts
+    // where no runtime is active.
+    let (owned_rt, handle) = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        (None, handle)
+    } else {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("failed to build tokio runtime for lifecycle")?;
+        let handle = rt.handle().clone();
+        (Some(rt), handle)
+    };
 
     // Spawn a CLI-inline elicit handler that prompts on stdin.
     // Runs as a tokio task so we can use the async EventReceiver::recv().
@@ -865,14 +872,13 @@ fn run_lifecycle_if_wasm(
     // If the topic is ever extended (e.g. "astrid.v1.elicit.request"), update
     // this subscription and the integration test in lifecycle_e2e.rs.
     let elicit_receiver = event_bus.subscribe_topic("astrid.v1.elicit");
-    let elicit_handle = rt.spawn(async move {
+    let elicit_handle = handle.spawn(async move {
         cli_elicit_handler(elicit_receiver, elicit_bus).await;
     });
 
     let capsule_id_owned = astrid_capsule::capsule::CapsuleId::new(capsule_id.to_string())
         .map_err(|e| anyhow::anyhow!("invalid capsule ID: {e}"))?;
-    let secret_store =
-        astrid_storage::build_secret_store(capsule_id, kv.clone(), rt.handle().clone());
+    let secret_store = astrid_storage::build_secret_store(capsule_id, kv.clone(), handle.clone());
     let cfg = astrid_capsule::engine::wasm::LifecycleConfig {
         wasm_bytes,
         capsule_id: capsule_id_owned,
@@ -883,16 +889,22 @@ fn run_lifecycle_if_wasm(
         secret_store,
     };
 
-    let result = rt.block_on(async {
+    let result = if let Some(rt) = &owned_rt {
+        // Enter the runtime context so Handle::current() works inside
+        // run_lifecycle. Do NOT use block_in_place here - we are not a
+        // tokio worker thread, and block_in_place would panic.
+        let _guard = rt.enter();
+        astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
+    } else {
         tokio::task::block_in_place(|| {
             astrid_capsule::engine::wasm::run_lifecycle(cfg, phase, previous_version)
         })
-    });
+    };
 
     // Signal the elicit handler to stop
     elicit_handle.abort();
     drop(event_bus);
-    drop(rt);
+    drop(owned_rt);
 
     result.map_err(|e| anyhow::anyhow!("lifecycle dispatch failed: {e}"))
 }

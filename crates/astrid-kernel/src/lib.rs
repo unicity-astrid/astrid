@@ -588,6 +588,7 @@ impl Kernel {
         let socket_path = crate::socket::kernel_socket_path();
         let _ = std::fs::remove_file(&socket_path);
         let _ = std::fs::remove_file(&self.token_path);
+        crate::socket::remove_readiness_file();
 
         tracing::info!("Kernel shutdown complete");
     }

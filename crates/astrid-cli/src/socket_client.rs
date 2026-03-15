@@ -23,6 +23,29 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
     }
 }
 
+/// Path to the daemon readiness sentinel file.
+///
+/// The CLI polls for this file after spawning the daemon to determine when
+/// it is fully initialized and accepting connections.
+///
+/// NOTE: This is intentionally duplicated in `astrid-kernel/src/socket.rs`
+/// because the CLI cannot depend on `astrid-kernel`. The canonical path
+/// definition is `AstridHome::ready_path()` in `astrid-core`.
+#[must_use]
+pub fn readiness_path() -> std::path::PathBuf {
+    use astrid_core::dirs::AstridHome;
+    match AstridHome::resolve() {
+        Ok(home) => home.ready_path(),
+        Err(e) => {
+            warn!(
+                error = %e,
+                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.ready"
+            );
+            std::path::PathBuf::from("/tmp/.astrid/sessions/system.ready")
+        },
+    }
+}
+
 /// Path to the session authentication token file.
 ///
 /// # Errors

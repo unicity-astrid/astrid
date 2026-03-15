@@ -211,6 +211,16 @@ impl AstridHome {
         self.sessions_dir().join("system.token")
     }
 
+    /// Path to the daemon readiness sentinel (`~/.astrid/sessions/system.ready`).
+    ///
+    /// Written by the daemon after all capsules are loaded and accepting
+    /// connections. The CLI polls for this file instead of the socket file
+    /// to avoid connecting before the daemon is fully initialized.
+    #[must_use]
+    pub fn ready_path(&self) -> PathBuf {
+        self.sessions_dir().join("system.ready")
+    }
+
     /// Path to the workspace state database directory (`SurrealKV`).
     #[must_use]
     pub fn state_db_path(&self) -> PathBuf {
@@ -550,6 +560,10 @@ mod tests {
         assert_eq!(
             home.spark_path(),
             PathBuf::from("/tmp/test-astrid/spark.toml")
+        );
+        assert_eq!(
+            home.ready_path(),
+            PathBuf::from("/tmp/test-astrid/sessions/system.ready")
         );
     }
 
