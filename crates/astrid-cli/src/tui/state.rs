@@ -340,7 +340,6 @@ impl InputBuffer {
                 self.cursor = (target, 0);
             }
             // else: already at the end of the last segment - no-op.
-            // else: already at the end of the last segment.
         }
     }
 
@@ -499,24 +498,21 @@ impl InputBuffer {
             if let (InputSegment::Text(_), InputSegment::Text(_)) =
                 (&self.segments[i], &self.segments[next])
             {
-                // Merge next into current.
-                let merged_text = if let InputSegment::Text(t) = &self.segments[next] {
-                    t.clone()
-                } else {
-                    unreachable!()
-                };
-
+                // Remove `next` first to get an owned String, avoiding a clone.
                 let current_len = if let InputSegment::Text(t) = &self.segments[i] {
                     t.len()
                 } else {
                     unreachable!()
                 };
 
+                let removed = self.segments.remove(next);
+                let InputSegment::Text(merged_text) = removed else {
+                    unreachable!()
+                };
+
                 if let InputSegment::Text(t) = &mut self.segments[i] {
                     t.push_str(&merged_text);
                 }
-
-                self.segments.remove(next);
 
                 // Adjust cursor if it was in the removed segment.
                 if self.cursor.0 == next {

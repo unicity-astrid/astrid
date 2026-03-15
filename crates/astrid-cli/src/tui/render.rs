@@ -18,6 +18,49 @@ use ratatui::{
 /// Maximum number of paste block lines to show in the preview.
 const PASTE_PREVIEW_MAX: usize = 10;
 
+/// Parameters for rendering a text segment with an inline cursor.
+struct CursorRenderParams<'a> {
+    prompt_str: &'a str,
+    raw_text: &'a str,
+    display_str: &'a str,
+    cursor_byte_off: usize,
+    is_secret: bool,
+    has_slash_prefix: bool,
+    cursor_str: &'a str,
+    input_style: Style,
+    cursor_color: Color,
+}
+
+/// Build a `Line` with an inline cursor rendered at the correct position.
+///
+/// Handles slash-command prefix adjustment and secret-field byte-to-char
+/// offset conversion. Used by both the segment-aware and flat render paths.
+fn render_text_with_cursor(p: &CursorRenderParams<'_>) -> Line<'static> {
+    let adj_off = if p.has_slash_prefix {
+        p.cursor_byte_off.saturating_sub(1)
+    } else {
+        p.cursor_byte_off
+    };
+    let split_pos = if p.is_secret {
+        p.raw_text[..adj_off.min(p.raw_text.len())].chars().count()
+    } else {
+        adj_off.min(p.display_str.len())
+    };
+    let (before, after) = p.display_str.split_at(split_pos.min(p.display_str.len()));
+    Line::from(vec![
+        Span::styled(
+            p.prompt_str.to_string(),
+            p.input_style.add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(before.to_string(), p.input_style),
+        Span::styled(
+            p.cursor_str.to_string(),
+            Style::default().fg(p.cursor_color),
+        ),
+        Span::styled(after.to_string(), p.input_style),
+    ])
+}
+
 // ─── Public Helpers ──────────────────────────────────────────────
 
 /// Convert a line of markdown text to styled spans.
@@ -1001,33 +1044,17 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         let is_cursor_here = seg_idx == cursor_seg && !is_enum;
 
                         if is_cursor_here {
-                            // Split text at cursor for inline cursor rendering.
-                            // For secret fields, convert byte offset to char offset
-                            // since the asterisk string is pure ASCII.
-                            let adj_off = if seg_idx == 0 && t.starts_with('/') && is_idle {
-                                cursor_off.saturating_sub(1)
-                            } else {
-                                cursor_off
-                            };
-                            let split_pos = if is_secret {
-                                display[..adj_off.min(display.len())].chars().count()
-                            } else {
-                                adj_off.min(display_str.len())
-                            };
-                            let (before, after) =
-                                display_str.split_at(split_pos.min(display_str.len()));
-                            lines.push(Line::from(vec![
-                                Span::styled(
-                                    seg_prompt.to_string(),
-                                    input_style.add_modifier(Modifier::BOLD),
-                                ),
-                                Span::styled(before.to_string(), input_style),
-                                Span::styled(
-                                    cursor_str.to_string(),
-                                    Style::default().fg(cursor_color),
-                                ),
-                                Span::styled(after.to_string(), input_style),
-                            ]));
+                            lines.push(render_text_with_cursor(&CursorRenderParams {
+                                prompt_str: seg_prompt,
+                                raw_text: display,
+                                display_str: &display_str,
+                                cursor_byte_off: cursor_off,
+                                is_secret,
+                                has_slash_prefix: seg_idx == 0 && t.starts_with('/') && is_idle,
+                                cursor_str,
+                                input_style,
+                                cursor_color,
+                            }));
                         } else {
                             lines.push(Line::from(vec![
                                 Span::styled(
@@ -1084,38 +1111,25 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             };
 
             let show_placeholder = display_input.is_empty() && !is_secret && !is_enum;
-            let input_spans = if show_placeholder && let Some(ph) = field_placeholder {
-                vec![
+            if show_placeholder && let Some(ph) = field_placeholder {
+                lines.push(Line::from(vec![
                     Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
                     Span::styled(ph, Style::default().fg(theme.border)),
                     Span::styled(cursor_str, Style::default().fg(cursor_color)),
-                ]
+                ]));
             } else {
-                // Split at cursor position for inline cursor rendering.
-                let cursor_off = app.input_buf.cursor.1;
-                let adj_off = if flat.starts_with('/') && is_idle {
-                    cursor_off.saturating_sub(1)
-                } else {
-                    cursor_off
-                };
-                // For secret fields, convert byte offset to char offset
-                // since the asterisk string is pure ASCII.
-                let split_pos = if is_secret {
-                    display_input[..adj_off.min(display_input.len())]
-                        .chars()
-                        .count()
-                } else {
-                    adj_off.min(display_str.len())
-                };
-                let (before, after) = display_str.split_at(split_pos.min(display_str.len()));
-                vec![
-                    Span::styled(prompt, input_style.add_modifier(Modifier::BOLD)),
-                    Span::styled(before.to_string(), input_style),
-                    Span::styled(cursor_str.to_string(), Style::default().fg(cursor_color)),
-                    Span::styled(after.to_string(), input_style),
-                ]
-            };
-            lines.push(Line::from(input_spans));
+                lines.push(render_text_with_cursor(&CursorRenderParams {
+                    prompt_str: prompt,
+                    raw_text: display_input,
+                    display_str: &display_str,
+                    cursor_byte_off: app.input_buf.cursor.1,
+                    is_secret,
+                    has_slash_prefix: flat.starts_with('/') && is_idle,
+                    cursor_str,
+                    input_style,
+                    cursor_color,
+                }));
+            }
         }
 
         let para = Paragraph::new(lines).wrap(Wrap { trim: false });
