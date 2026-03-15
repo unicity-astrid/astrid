@@ -1139,5 +1139,51 @@ mod tests {
             assert!(store.list_keys("ns1").await.unwrap().is_empty());
             assert_eq!(store.list_keys("ns2").await.unwrap().len(), 1);
         }
+
+        #[tokio::test]
+        async fn test_surreal_clear_prefix_basic() {
+            let (store, _dir) = make_store();
+            store.set("ns1", "pfx.a", b"1".to_vec()).await.unwrap();
+            store.set("ns1", "pfx.b", b"2".to_vec()).await.unwrap();
+            store.set("ns1", "other", b"3".to_vec()).await.unwrap();
+            store.set("ns2", "pfx.c", b"4".to_vec()).await.unwrap();
+
+            let cleared = store.clear_prefix("ns1", "pfx.").await.unwrap();
+            assert_eq!(cleared, 2);
+            // "other" in ns1 untouched
+            assert_eq!(
+                store.get("ns1", "other").await.unwrap(),
+                Some(b"3".to_vec())
+            );
+            // ns2 untouched
+            assert_eq!(
+                store.get("ns2", "pfx.c").await.unwrap(),
+                Some(b"4".to_vec())
+            );
+        }
+
+        #[tokio::test]
+        async fn test_surreal_clear_prefix_no_matches() {
+            let (store, _dir) = make_store();
+            store.set("ns1", "key", b"v".to_vec()).await.unwrap();
+            let cleared = store.clear_prefix("ns1", "nope.").await.unwrap();
+            assert_eq!(cleared, 0);
+            // Original key untouched
+            assert!(store.exists("ns1", "key").await.unwrap());
+        }
+
+        #[tokio::test]
+        async fn test_surreal_clear_prefix_empty_clears_all() {
+            let (store, _dir) = make_store();
+            store.set("ns1", "a", b"1".to_vec()).await.unwrap();
+            store.set("ns1", "b", b"2".to_vec()).await.unwrap();
+            store.set("ns2", "c", b"3".to_vec()).await.unwrap();
+
+            let cleared = store.clear_prefix("ns1", "").await.unwrap();
+            assert_eq!(cleared, 2);
+            assert!(store.list_keys("ns1").await.unwrap().is_empty());
+            // ns2 untouched
+            assert_eq!(store.list_keys("ns2").await.unwrap().len(), 1);
+        }
     }
 }
