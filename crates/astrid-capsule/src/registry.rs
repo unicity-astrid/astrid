@@ -379,7 +379,7 @@ mod tests {
                     msg.contains("nonexistent"),
                     "message should contain the id: {msg}"
                 );
-            }
+            },
             Err(other) => panic!("expected NotFound, got: {other:?}"),
             Ok(_) => panic!("expected error for nonexistent capsule"),
         }
