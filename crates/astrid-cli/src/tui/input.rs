@@ -922,6 +922,97 @@ mod tests {
         };
     }
 
+    // ── Multi-line paste tests ──────────────────────────────────
+
+    #[test]
+    fn paste_multiline_creates_block_with_correct_line_count() {
+        let mut app = make_app();
+        let content = "line1\nline2\nline3";
+        handle_paste(&mut app, content);
+        assert!(app.input_buf.has_paste_blocks());
+        assert_eq!(app.input_buf.paste_block_total_lines(), 3);
+        assert_eq!(app.input_buf.flat_text(), content);
+    }
+
+    #[test]
+    fn paste_multiline_backspace_deletes_entire_block() {
+        let mut app = make_app();
+        handle_paste(&mut app, "line1\nline2");
+        assert!(app.input_buf.has_paste_blocks());
+        // Cursor is on trailing Text after the block. Backspace deletes the block.
+        app.input_buf.backspace();
+        assert!(!app.input_buf.has_paste_blocks());
+        assert!(app.input_buf.is_empty());
+    }
+
+    #[test]
+    fn paste_home_key_lands_at_true_beginning_with_leading_paste() {
+        let mut app = make_app();
+        handle_paste(&mut app, "block\ncontent");
+        app.input_buf.insert_char('z');
+        app.input_buf.move_home();
+        // Home should be at segment 0 offset 0 (a Text before the paste block).
+        assert_eq!(app.input_buf.cursor, (0, 0));
+        app.input_buf.insert_char('a');
+        // 'a' should appear before the paste block.
+        assert!(app.input_buf.flat_text().starts_with('a'));
+    }
+
+    #[test]
+    fn paste_slash_command_cursor_offset_adjustment() {
+        let mut app = make_app();
+        // Type a slash command.
+        app.input_buf.insert_char('/');
+        app.input_buf.insert_char('h');
+        app.input_buf.insert_char('e');
+        app.input_buf.insert_char('l');
+        app.input_buf.insert_char('p');
+        assert_eq!(app.input_buf.flat_text(), "/help");
+        // Move cursor to after the slash.
+        app.input_buf.cursor.1 = 1;
+        app.input_buf.insert_char('X');
+        // 'X' inserted at byte offset 1 (after '/').
+        assert_eq!(app.input_buf.flat_text(), "/Xhelp");
+    }
+
+    #[test]
+    fn paste_large_multiline_triggers_truncation_notice() {
+        let mut app = make_app();
+        // Create a paste larger than MAX_PASTE_LEN (32768 bytes).
+        let large = "x".repeat(40_000) + "\nsecond line";
+        let original_len = large.len();
+        handle_paste(&mut app, &large);
+        // Should have a truncation notice in messages.
+        let has_notice = app.messages.iter().any(|m| {
+            m.content.contains("Paste too large") && m.content.contains(&original_len.to_string())
+        });
+        assert!(has_notice, "expected truncation notice with original size");
+        // The paste block should exist but be truncated.
+        assert!(app.input_buf.has_paste_blocks());
+    }
+
+    #[test]
+    fn paste_single_line_uses_insert_str() {
+        let mut app = make_app();
+        handle_paste(&mut app, "hello world");
+        // Single-line paste should NOT create a paste block.
+        assert!(!app.input_buf.has_paste_blocks());
+        assert_eq!(app.input_buf.flat_text(), "hello world");
+        assert_eq!(app.input_buf.cursor, (0, 11));
+    }
+
+    #[test]
+    fn paste_sanitizes_cr_and_null() {
+        let mut app = make_app();
+        handle_paste(&mut app, "line1\r\nline2\rline3\0end");
+        let text = app.input_buf.flat_text();
+        assert!(!text.contains('\r'));
+        assert!(!text.contains('\0'));
+        assert!(text.contains("line1\nline2"));
+    }
+
+    // ── Onboarding tests ─────────────────────────────────────────
+
     #[test]
     fn array_field_adds_items_on_enter() {
         let mut app = make_app();
