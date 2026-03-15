@@ -1,0 +1,75 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened]
+
+jobs:
+  linked-issue:
+    name: Linked issue required
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Check if PR body references an issue (Closes #N, Fixes #N, Resolves #N)
+          if echo "$PR_BODY" | grep -qiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#[0-9]+'; then
+            echo "PR references an issue."
+            exit 0
+          fi
+
+          # Check if PR has linked issues via GitHub API
+          LINKED=$(gh api graphql -f query='
+            query {
+              repository(owner: "'"${REPO%%/*}"'", name: "'"${REPO##*/}"'") {
+                pullRequest(number: '"$PR_NUMBER"') {
+                  closingIssuesReferences(first: 1) {
+                    totalCount
+                  }
+                }
+              }
+            }' --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount' 2>/dev/null || echo "0")
+
+          if [ "$LINKED" -gt 0 ]; then
+            echo "PR has linked issues via GitHub UI."
+            exit 0
+          fi
+
+          echo "::error::Every PR must be linked to an issue. Use 'Closes #N' in the PR body or link via the GitHub sidebar."
+          exit 1
+
+  account-age:
+    name: Contributor account check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.author_association == 'NONE' || github.event.pull_request.author_association == 'FIRST_TIMER' || github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    steps:
+      - name: Check account age and activity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          CREATED=$(gh api "users/$PR_AUTHOR" --jq '.created_at')
+          CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CREATED" +%s 2>/dev/null)
+          NOW_TS=$(date +%s)
+          AGE_DAYS=$(( (NOW_TS - CREATED_TS) / 86400 ))
+
+          PUBLIC_REPOS=$(gh api "users/$PR_AUTHOR" --jq '.public_repos')
+          FOLLOWERS=$(gh api "users/$PR_AUTHOR" --jq '.followers')
+
+          echo "Account: $PR_AUTHOR"
+          echo "Age: $AGE_DAYS days"
+          echo "Public repos: $PUBLIC_REPOS"
+          echo "Followers: $FOLLOWERS"
+
+          if [ "$AGE_DAYS" -lt 30 ]; then
+            echo "::warning::New account ($AGE_DAYS days old). Requires maintainer review."
+          fi
+
+          if [ "$PUBLIC_REPOS" -eq 0 ] && [ "$FOLLOWERS" -eq 0 ]; then
+            echo "::warning::Account has no public repos and no followers. Possible spam account."
+          fi
