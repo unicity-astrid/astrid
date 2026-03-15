@@ -239,6 +239,33 @@ async fn main() -> Result<()> {
             // Load all plugins (auto-discovery)
             kernel.load_all_capsules().await;
 
+            // Verify the CLI proxy capsule loaded. Without it, the daemon
+            // has no accept loop and CLI connections will always time out.
+            {
+                let reg = kernel.capsules.read().await;
+                let has_cli_proxy = reg
+                    .list()
+                    .iter()
+                    .any(|id| id.as_str() == "astrid-capsule-cli");
+                if !has_cli_proxy {
+                    anyhow::bail!(
+                        "CLI proxy capsule (astrid-capsule-cli) not found. \
+                         Ensure it is installed in ~/.astrid/capsules/ or \
+                         .astrid/capsules/ in your workspace."
+                    );
+                }
+            }
+
+            // Signal readiness AFTER all capsules are loaded and accepting
+            // connections. The CLI polls for this file to avoid connecting
+            // before the handshake accept loop is running.
+            astrid_kernel::socket::write_readiness_file().map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to write readiness file \
+                     (daemon is useless without it): {e}"
+                )
+            })?;
+
             println!(
                 "{}",
                 theme::Theme::success(&format!(
@@ -316,6 +343,61 @@ async fn main() -> Result<()> {
 }
 
 /// The core Host wrapper logic.
+/// Spawn the daemon process and wait for it to signal readiness.
+///
+/// Returns the child process handle on success. The caller must `drop()` it
+/// after a successful handshake (to disown), or `kill()` + `wait()` on failure.
+///
+/// # Errors
+/// Returns an error if the daemon fails to spawn or doesn't become ready
+/// within 10 seconds.
+async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Child> {
+    println!("{}", theme::Theme::info("Booting Astrid daemon..."));
+    let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let exe = std::env::current_exe().context("Failed to get current executable path")?;
+
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("daemon")
+        .arg("--session")
+        .arg(astrid_core::SessionId::SYSTEM.0.to_string());
+
+    if let Some(ws_path) = ws.to_str() {
+        cmd.arg("--workspace").arg(ws_path);
+    }
+
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    // Remove stale readiness file before spawning so we don't
+    // mistake a leftover from a crashed daemon for the new one.
+    let _ = std::fs::remove_file(ready_path);
+
+    let child = cmd
+        .spawn()
+        .context("Failed to spawn background Kernel daemon")?;
+
+    // Poll for the readiness sentinel instead of the socket file.
+    // The readiness file is written only after load_all_capsules()
+    // completes (including await_capsule_readiness()), so the accept
+    // loop is guaranteed to be running by the time we connect.
+    let mut ready = false;
+    for _ in 0..200 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if ready_path.exists() {
+            ready = true;
+            break;
+        }
+    }
+    if !ready {
+        let log_hint = astrid_core::dirs::AstridHome::resolve()
+            .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
+            .unwrap_or_default();
+        anyhow::bail!("Daemon failed to become ready within 10 seconds.{log_hint}");
+    }
+    Ok(child)
+}
+
 /// Resolves the session, checks for an existing socket, and boots the kernel locally if necessary.
 ///
 /// # Errors
@@ -338,12 +420,12 @@ pub(crate) async fn run_or_connect(
     };
 
     let socket_path = socket_client::proxy_socket_path();
+    let ready_path = socket_client::readiness_path();
 
     // 2. Check if a Kernel is already running globally
     let mut needs_boot = !socket_path.exists();
 
     if socket_path.exists() {
-        // Test if the socket is actually alive by attempting a connection
         match tokio::net::UnixStream::connect(&socket_path).await {
             Ok(_) => {
                 println!(
@@ -359,6 +441,7 @@ pub(crate) async fn run_or_connect(
                     )
                 );
                 let _ = std::fs::remove_file(&socket_path);
+                let _ = std::fs::remove_file(&ready_path);
                 needs_boot = true;
             },
             Err(e) => {
@@ -367,56 +450,40 @@ pub(crate) async fn run_or_connect(
         }
     }
 
+    // Track the daemon child process so we can kill it if the handshake
+    // fails, preventing orphan daemons that linger until idle timeout.
+    let mut daemon_child: Option<std::process::Child> = None;
+
     if needs_boot {
-        println!("{}", theme::Theme::info("Booting Astrid daemon..."));
-        let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-
-        let exe = std::env::current_exe().context("Failed to get current executable path")?;
-
-        let mut cmd = std::process::Command::new(exe);
-        cmd.arg("daemon")
-           // The daemon uses the well-known system session UUID so kernel
-           // IPC responses can be verified by consumers (e.g. the registry).
-           .arg("--session")
-           .arg(astrid_core::SessionId::SYSTEM.0.to_string());
-
-        if let Some(ws_path) = ws.to_str() {
-            cmd.arg("--workspace").arg(ws_path);
-        }
-
-        // Detach the process from the current terminal's standard I/O
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-
-        // Spawn the background process
-        let child = cmd
-            .spawn()
-            .context("Failed to spawn background Kernel daemon")?;
-
-        // Disown the child so it survives when the CLI exits
-        std::mem::drop(child);
-
-        // Poll for the socket to appear instead of a fixed sleep.
-        // The daemon may take variable time to bind depending on capsule count.
-        let mut connected = false;
-        for _ in 0..100 {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            if socket_path.exists() {
-                connected = true;
-                break;
-            }
-        }
-        if !connected {
-            anyhow::bail!(
-                "Daemon failed to bind socket within 5 seconds at {}",
-                socket_path.display()
-            );
+        match spawn_daemon(&ready_path).await {
+            Ok(child) => daemon_child = Some(child),
+            Err(e) => return Err(e),
         }
     }
 
     // 3. Connect the dumb pipe
-    let mut client = socket_client::SocketClient::connect(session_id.clone()).await?;
+    let mut client = match socket_client::SocketClient::connect(session_id.clone()).await {
+        Ok(c) => {
+            drop(daemon_child);
+            c
+        },
+        Err(e) => {
+            if let Some(mut child) = daemon_child {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            let log_hint = astrid_core::dirs::AstridHome::resolve().map_or_else(
+                |_| "Failed to connect to daemon".to_string(),
+                |h| {
+                    format!(
+                        "Failed to connect to daemon. Check logs: {}",
+                        h.logs_dir().display()
+                    )
+                },
+            );
+            return Err(e.context(log_hint));
+        },
+    };
 
     // 4. Run the TUI or simple REPL loop
     let workspace_root = std::env::current_dir().ok();

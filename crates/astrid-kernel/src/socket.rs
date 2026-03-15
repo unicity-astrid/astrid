@@ -36,6 +36,10 @@ pub(crate) fn bind_session_socket() -> Result<UnixListener, std::io::Error> {
 
     prepare_socket_path(&path)?;
 
+    // Also clean stale readiness file as defense-in-depth for daemon
+    // crashes that bypassed graceful shutdown.
+    remove_readiness_file();
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             std::io::Error::other(format!(
@@ -140,6 +144,74 @@ fn prepare_socket_path(path: &std::path::Path) -> Result<(), std::io::Error> {
     }
 
     Ok(())
+}
+
+/// Path to the daemon readiness sentinel file.
+///
+/// NOTE: This is intentionally duplicated in `astrid-cli/src/socket_client.rs`
+/// because the CLI cannot depend on `astrid-kernel`. The canonical path
+/// definition is `AstridHome::ready_path()` in `astrid-core`.
+#[must_use]
+pub fn readiness_path() -> PathBuf {
+    use astrid_core::dirs::AstridHome;
+    match AstridHome::resolve() {
+        Ok(home) => home.ready_path(),
+        Err(e) => {
+            warn!(
+                error = %e,
+                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.ready"
+            );
+            PathBuf::from("/tmp/.astrid/sessions/system.ready")
+        },
+    }
+}
+
+/// Write the readiness sentinel file to signal that the daemon is fully
+/// initialized and accepting connections.
+///
+/// This must be called **after** `load_all_capsules()` completes (which
+/// includes `await_capsule_readiness()`). The CLI polls for this file
+/// instead of the socket file to avoid connecting before the accept loop
+/// is running.
+///
+/// # Errors
+/// Returns an error if the file cannot be written. The caller should treat
+/// this as a fatal boot failure - without the sentinel, the CLI will never
+/// detect that the daemon is ready.
+pub fn write_readiness_file() -> Result<(), std::io::Error> {
+    use std::fs::OpenOptions;
+
+    let path = readiness_path();
+
+    // Ensure the parent directory exists (defense-in-depth for contexts
+    // where bind_session_socket() has not run first).
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Create the sentinel file with owner-only permissions set atomically
+    // via OpenOptions::mode() to avoid a TOCTOU window where the file exists
+    // with default permissions before chmod.
+    let mut opts = OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+
+    opts.open(&path)?;
+    Ok(())
+}
+
+/// Remove the readiness sentinel file (best-effort).
+///
+/// Called during shutdown and stale-file cleanup. Errors are silently
+/// ignored - a missing file is not an error, and if removal fails the
+/// CLI's pre-spawn cleanup will handle it on next boot.
+pub fn remove_readiness_file() {
+    let _ = std::fs::remove_file(readiness_path());
 }
 
 #[cfg(test)]
