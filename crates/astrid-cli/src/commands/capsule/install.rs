@@ -914,10 +914,10 @@ fn run_lifecycle_if_wasm(
 /// Returns `(value, values)` where exactly one is `Some`.
 async fn prompt_stdin_field(
     prompt: String,
-    field_type: astrid_events::ipc::OnboardingFieldType,
+    field_type: astrid_types::ipc::OnboardingFieldType,
     default: Option<String>,
 ) -> (Option<String>, Option<Vec<String>>) {
-    use astrid_events::ipc::OnboardingFieldType;
+    use astrid_types::ipc::OnboardingFieldType;
 
     match field_type {
         OnboardingFieldType::Text => {
@@ -1011,7 +1011,7 @@ async fn cli_elicit_handler(
     event_bus: astrid_events::EventBus,
 ) {
     use astrid_events::AstridEvent;
-    use astrid_events::ipc::IpcPayload;
+    use astrid_types::ipc::IpcPayload;
 
     loop {
         let Some(event) = receiver.recv().await else {
@@ -1046,7 +1046,7 @@ async fn cli_elicit_handler(
             value,
             values,
         };
-        let msg = astrid_events::ipc::IpcMessage::new(response_topic, response, uuid::Uuid::nil());
+        let msg = astrid_types::ipc::IpcMessage::new(response_topic, response, uuid::Uuid::nil());
         event_bus.publish(AstridEvent::Ipc {
             message: msg,
             metadata: astrid_events::EventMetadata::default(),

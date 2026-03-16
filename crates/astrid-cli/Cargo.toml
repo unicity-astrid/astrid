@@ -20,6 +20,7 @@ astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-events = { workspace = true }
 astrid-openclaw = { workspace = true }
+astrid-types = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true }
 cargo_metadata = "0.23.1"

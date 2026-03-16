@@ -107,36 +107,32 @@ async fn drain_agent_response(
     formatter: &mut dyn OutputFormatter,
 ) -> anyhow::Result<bool> {
     loop {
-        let Some(event) = client.read_event().await? else {
+        let Some(message) = client.read_message().await? else {
             eprintln!("{}", Theme::error("Connection to daemon lost"));
             return Ok(false);
         };
 
-        let astrid_events::AstridEvent::Ipc { message, .. } = event else {
-            continue;
-        };
-
         match message.payload {
-            astrid_events::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
+            astrid_types::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
                 formatter.format_text(&text);
                 if is_final {
                     formatter.flush_markdown();
                     return Ok(true);
                 }
             },
-            astrid_events::ipc::IpcPayload::LlmStreamEvent {
-                event: astrid_events::llm::StreamEvent::ToolCallStart { id, name },
+            astrid_types::ipc::IpcPayload::LlmStreamEvent {
+                event: astrid_types::llm::StreamEvent::ToolCallStart { id, name },
                 ..
             } => {
                 formatter.flush_markdown();
                 formatter.format_tool_start(&id, &name, &serde_json::Value::Null);
             },
-            astrid_events::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
+            astrid_types::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
                 formatter.flush_markdown();
                 let res_val = serde_json::to_string(&result.content).unwrap_or_default();
                 formatter.format_tool_result(&call_id, &res_val, result.is_error);
             },
-            astrid_events::ipc::IpcPayload::ApprovalRequired {
+            astrid_types::ipc::IpcPayload::ApprovalRequired {
                 request_id,
                 action,
                 resource,
@@ -155,7 +151,7 @@ async fn drain_agent_response(
                 )
                 .await?;
             },
-            astrid_events::ipc::IpcPayload::SelectionRequired {
+            astrid_types::ipc::IpcPayload::SelectionRequired {
                 request_id,
                 title,
                 options,
@@ -172,7 +168,7 @@ async fn drain_agent_response(
                 )
                 .await?;
             },
-            astrid_events::ipc::IpcPayload::ElicitRequest {
+            astrid_types::ipc::IpcPayload::ElicitRequest {
                 request_id,
                 capsule_id,
                 field,
@@ -205,9 +201,9 @@ async fn auto_deny_approval(
         ))
     );
     client
-        .send_message(astrid_events::ipc::IpcMessage::new(
+        .send_message(astrid_types::ipc::IpcMessage::new(
             format!("astrid.v1.approval.response.{request_id}"),
-            astrid_events::ipc::IpcPayload::ApprovalResponse {
+            astrid_types::ipc::IpcPayload::ApprovalResponse {
                 request_id: request_id.to_owned(),
                 decision: "deny".into(),
                 reason: Some(APPROVAL_UNSUPPORTED_REASON.into()),
@@ -232,7 +228,7 @@ async fn auto_skip_selection(
     session_id: &SessionId,
     request_id: &str,
     title: &str,
-    options: &[astrid_events::ipc::SelectionOption],
+    options: &[astrid_types::ipc::SelectionOption],
     callback_topic: &str,
 ) -> anyhow::Result<()> {
     println!(
@@ -246,9 +242,9 @@ async fn auto_skip_selection(
         );
     }
     client
-        .send_message(astrid_events::ipc::IpcMessage::new(
+        .send_message(astrid_types::ipc::IpcMessage::new(
             callback_topic.to_owned(),
-            astrid_events::ipc::IpcPayload::Custom {
+            astrid_types::ipc::IpcPayload::Custom {
                 data: serde_json::json!({
                     "request_id": request_id,
                     "selected_id": "",
@@ -273,7 +269,7 @@ async fn auto_skip_elicit(
     session_id: &SessionId,
     request_id: uuid::Uuid,
     capsule_id: &str,
-    field: &astrid_events::ipc::OnboardingField,
+    field: &astrid_types::ipc::OnboardingField,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
@@ -283,9 +279,9 @@ async fn auto_skip_elicit(
         ))
     );
     client
-        .send_message(astrid_events::ipc::IpcMessage::new(
+        .send_message(astrid_types::ipc::IpcMessage::new(
             format!("astrid.v1.elicit.response.{request_id}"),
-            astrid_events::ipc::IpcPayload::ElicitResponse {
+            astrid_types::ipc::IpcPayload::ElicitResponse {
                 request_id,
                 value: None,
                 values: None,

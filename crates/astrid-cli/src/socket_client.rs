@@ -2,8 +2,7 @@ use astrid_core::SessionId;
 use astrid_core::session_token::{
     HandshakeRequest, HandshakeResponse, PROTOCOL_VERSION, SessionToken,
 };
-use astrid_events::ipc::{IpcMessage, IpcPayload};
-use astrid_events::{AstridEvent, EventMetadata};
+use astrid_types::ipc::{IpcMessage, IpcPayload};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tracing::warn;
@@ -102,13 +101,14 @@ impl SocketClient {
 
     /// Read the next event from the Kernel.
     ///
+    /// Read the next IPC message from the daemon.
+    ///
     /// The CLI proxy capsule sends individual `IpcMessage` objects over the
-    /// socket (not full `AstridEvent` wrappers). We deserialize the message
-    /// and wrap it as `AstridEvent::Ipc` for the TUI handler.
+    /// socket as length-prefixed JSON.
     ///
     /// # Errors
     /// Returns an error if the message cannot be read or parsed.
-    pub async fn read_event(&mut self) -> Result<Option<AstridEvent>> {
+    pub async fn read_message(&mut self) -> Result<Option<IpcMessage>> {
         let mut len_buf = [0u8; 4];
         if self.read_half.read_exact(&mut len_buf).await.is_err() {
             return Ok(None); // Connection closed
@@ -122,12 +122,8 @@ impl SocketClient {
         let mut payload = vec![0u8; len];
         self.read_half.read_exact(&mut payload).await?;
 
-        // The proxy sends raw IpcMessage JSON — wrap it as AstridEvent::Ipc.
         let message = serde_json::from_slice::<IpcMessage>(&payload)?;
-        Ok(Some(AstridEvent::Ipc {
-            metadata: EventMetadata::new("cli_proxy"),
-            message,
-        }))
+        Ok(Some(message))
     }
 
     /// Send a user input message to the Kernel.

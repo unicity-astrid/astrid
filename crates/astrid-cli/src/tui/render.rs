@@ -378,18 +378,18 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
 /// Calculate the number of display rows needed for the onboarding menu.
 /// 1 title row + N field rows + enum choices + array items + description for the current field.
 fn onboarding_row_count(
-    fields: &[astrid_events::ipc::OnboardingField],
+    fields: &[astrid_types::ipc::OnboardingField],
     current_idx: usize,
     current_array_items: &[String],
 ) -> usize {
     let mut n = fields.len().saturating_add(1);
     if let Some(field) = fields.get(current_idx) {
-        if let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
+        if let astrid_types::ipc::OnboardingFieldType::Enum(choices) = &field.field_type {
             n = n.saturating_add(PALETTE_MAX_VISIBLE.min(choices.len()));
         }
         if matches!(
             field.field_type,
-            astrid_events::ipc::OnboardingFieldType::Array
+            astrid_types::ipc::OnboardingFieldType::Array
         ) {
             n = n.saturating_add(current_array_items.len());
         }
@@ -999,11 +999,11 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         {
             is_secret = matches!(
                 field.field_type,
-                astrid_events::ipc::OnboardingFieldType::Secret
+                astrid_types::ipc::OnboardingFieldType::Secret
             );
             is_enum = matches!(
                 field.field_type,
-                astrid_events::ipc::OnboardingFieldType::Enum(_)
+                astrid_types::ipc::OnboardingFieldType::Enum(_)
             );
             field_placeholder = field.placeholder.as_deref();
         }
@@ -1194,7 +1194,7 @@ fn render_selection_picker(
     frame: &mut Frame,
     area: Rect,
     title: &str,
-    options: &[astrid_events::ipc::SelectionOption],
+    options: &[astrid_types::ipc::SelectionOption],
     selected: usize,
     scroll_offset: usize,
     theme: &Theme,
@@ -1258,7 +1258,7 @@ fn render_onboarding_menu(
     frame: &mut Frame,
     area: Rect,
     capsule_id: &str,
-    fields: &[astrid_events::ipc::OnboardingField],
+    fields: &[astrid_types::ipc::OnboardingField],
     current_idx: usize,
     enum_selected: usize,
     enum_scroll_offset: usize,
@@ -1302,10 +1302,10 @@ fn render_onboarding_menu(
         if is_current {
             let clean_prompt = sanitize_control_chars(&field.prompt);
             let hint = match &field.field_type {
-                astrid_events::ipc::OnboardingFieldType::Enum(_) => {
+                astrid_types::ipc::OnboardingFieldType::Enum(_) => {
                     "\u{2191}\u{2193} to select, Enter to confirm".to_string()
                 },
-                astrid_events::ipc::OnboardingFieldType::Array => {
+                astrid_types::ipc::OnboardingFieldType::Array => {
                     format!("{clean_prompt} (empty to finish)")
                 },
                 _ => clean_prompt,
@@ -1339,7 +1339,7 @@ fn render_onboarding_menu(
 
         // Render inline enum picker for the current field
         if is_current
-            && let astrid_events::ipc::OnboardingFieldType::Enum(choices) = &field.field_type
+            && let astrid_types::ipc::OnboardingFieldType::Enum(choices) = &field.field_type
         {
             let visible_count = PALETTE_MAX_VISIBLE.min(choices.len());
             let end = choices
@@ -1374,7 +1374,7 @@ fn render_onboarding_menu(
         if is_current
             && matches!(
                 field.field_type,
-                astrid_events::ipc::OnboardingFieldType::Array
+                astrid_types::ipc::OnboardingFieldType::Array
             )
             && !current_array_items.is_empty()
         {

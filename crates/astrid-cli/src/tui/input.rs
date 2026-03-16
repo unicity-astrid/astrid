@@ -87,8 +87,8 @@ fn handle_paste(app: &mut App, text: &str) {
         && fields.get(*current_idx).is_some_and(|f| {
             matches!(
                 f.field_type,
-                astrid_events::ipc::OnboardingFieldType::Secret
-                    | astrid_events::ipc::OnboardingFieldType::Array
+                astrid_types::ipc::OnboardingFieldType::Secret
+                    | astrid_types::ipc::OnboardingFieldType::Array
             )
         })
     {
@@ -213,7 +213,7 @@ fn handle_onboarding_input(app: &mut App, key: KeyEvent) {
         &app.state,
         UiState::Onboarding { fields, current_idx, .. }
             if fields.get(*current_idx).is_some_and(|f|
-                matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Enum(_))
+                matches!(f.field_type, astrid_types::ipc::OnboardingFieldType::Enum(_))
             )
     );
 
@@ -253,12 +253,11 @@ fn advance_onboarding(app: &mut App) {
         let is_enum_field = field.is_some_and(|f| {
             matches!(
                 f.field_type,
-                astrid_events::ipc::OnboardingFieldType::Enum(_)
+                astrid_types::ipc::OnboardingFieldType::Enum(_)
             )
         });
-        let is_array_field = field.is_some_and(|f| {
-            matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
-        });
+        let is_array_field = field
+            .is_some_and(|f| matches!(f.field_type, astrid_types::ipc::OnboardingFieldType::Array));
 
         // Pre-position enum_selected to the default value's index if present.
         *enum_selected = field.map_or(0, default_enum_position);
@@ -275,12 +274,12 @@ fn advance_onboarding(app: &mut App) {
 
 /// Compute the initial `enum_selected` index for a field, matching its default
 /// to a position in the enum choices. Returns 0 if no match or not an enum.
-pub(crate) fn default_enum_position(field: &astrid_events::ipc::OnboardingField) -> usize {
+pub(crate) fn default_enum_position(field: &astrid_types::ipc::OnboardingField) -> usize {
     field
         .default
         .as_deref()
         .and_then(|default_val| match &field.field_type {
-            astrid_events::ipc::OnboardingFieldType::Enum(choices) => {
+            astrid_types::ipc::OnboardingFieldType::Enum(choices) => {
                 choices.iter().position(|c| c == default_val)
             },
             _ => None,
@@ -314,7 +313,7 @@ fn finish_onboarding(app: &mut App) {
             // instead of writing .env.json.
             let field = fields.first();
             let is_array = field.is_some_and(|f| {
-                matches!(f.field_type, astrid_events::ipc::OnboardingFieldType::Array)
+                matches!(f.field_type, astrid_types::ipc::OnboardingFieldType::Array)
             });
 
             let (value, values) = if is_array {
@@ -386,7 +385,7 @@ fn handle_onboarding_text_input(app: &mut App, key: KeyEvent) {
 
                 let is_array = matches!(
                     field.field_type,
-                    astrid_events::ipc::OnboardingFieldType::Array
+                    astrid_types::ipc::OnboardingFieldType::Array
                 );
 
                 if is_array {
@@ -476,7 +475,7 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
             } = &mut app.state
             {
                 let choice_count = fields.get(*current_idx).map_or(0, |f| match &f.field_type {
-                    astrid_events::ipc::OnboardingFieldType::Enum(v) => v.len(),
+                    astrid_types::ipc::OnboardingFieldType::Enum(v) => v.len(),
                     _ => 0,
                 });
                 if enum_selected.saturating_add(1) < choice_count {
@@ -503,7 +502,7 @@ fn handle_onboarding_enum_input(app: &mut App, key: KeyEvent) {
                 // so this branch shouldn't be reached — but guard defensively.
                 // Returns (key, value) from the same .get() call to avoid re-indexing.
                 let selection = fields.get(*current_idx).and_then(|f| match &f.field_type {
-                    astrid_events::ipc::OnboardingFieldType::Enum(v) if !v.is_empty() => {
+                    astrid_types::ipc::OnboardingFieldType::Enum(v) if !v.is_empty() => {
                         let clamped = (*enum_selected).min(v.len().saturating_sub(1));
                         Some((f.key.clone(), v[clamped].clone()))
                     },
@@ -893,7 +892,7 @@ mod tests {
     }
 
     fn set_onboarding_with_array(app: &mut App) {
-        use astrid_events::ipc::{OnboardingField, OnboardingFieldType};
+        use astrid_types::ipc::{OnboardingField, OnboardingFieldType};
         app.state = UiState::Onboarding {
             capsule_id: "test-capsule".into(),
             fields: vec![
@@ -1255,19 +1254,19 @@ mod tests {
         app.state = UiState::Onboarding {
             capsule_id: "test".into(),
             fields: vec![
-                astrid_events::ipc::OnboardingField {
+                astrid_types::ipc::OnboardingField {
                     key: "relays".into(),
                     prompt: "Relays".into(),
                     description: None,
-                    field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                    field_type: astrid_types::ipc::OnboardingFieldType::Array,
                     default: None,
                     placeholder: None,
                 },
-                astrid_events::ipc::OnboardingField {
+                astrid_types::ipc::OnboardingField {
                     key: "peers".into(),
                     prompt: "Peers".into(),
                     description: None,
-                    field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                    field_type: astrid_types::ipc::OnboardingFieldType::Array,
                     default: None,
                     placeholder: None,
                 },
@@ -1436,11 +1435,11 @@ mod tests {
         let mut app = make_app();
         app.state = UiState::Onboarding {
             capsule_id: "test".into(),
-            fields: vec![astrid_events::ipc::OnboardingField {
+            fields: vec![astrid_types::ipc::OnboardingField {
                 key: "api_key".into(),
                 prompt: "Enter API key".into(),
                 description: None,
-                field_type: astrid_events::ipc::OnboardingFieldType::Secret,
+                field_type: astrid_types::ipc::OnboardingFieldType::Secret,
                 default: None,
                 placeholder: None,
             }],
@@ -1478,11 +1477,11 @@ mod tests {
         let mut app = make_app();
         app.state = UiState::Onboarding {
             capsule_id: "test".into(),
-            fields: vec![astrid_events::ipc::OnboardingField {
+            fields: vec![astrid_types::ipc::OnboardingField {
                 key: "relays".into(),
                 prompt: "Relays".into(),
                 description: None,
-                field_type: astrid_events::ipc::OnboardingFieldType::Array,
+                field_type: astrid_types::ipc::OnboardingFieldType::Array,
                 default: Some(r#"["a","b"]"#.into()),
                 placeholder: None,
             }],

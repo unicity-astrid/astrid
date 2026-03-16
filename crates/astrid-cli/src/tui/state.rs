@@ -584,7 +584,7 @@ pub(crate) enum UiState {
     /// Generic selection picker driven by a capsule.
     Selection {
         title: String,
-        options: Vec<astrid_events::ipc::SelectionOption>,
+        options: Vec<astrid_types::ipc::SelectionOption>,
         selected: usize,
         scroll_offset: usize,
         callback_topic: String,
@@ -593,7 +593,7 @@ pub(crate) enum UiState {
     /// Capsule Onboarding (configuring environment variables).
     Onboarding {
         capsule_id: String,
-        fields: Vec<astrid_events::ipc::OnboardingField>,
+        fields: Vec<astrid_types::ipc::OnboardingField>,
         current_idx: usize,
         answers: std::collections::HashMap<String, String>,
         /// Selected index within an enum picker (only used for Enum fields).
