@@ -58,7 +58,7 @@ Types for the out-of-band control channel between frontends and the core daemon:
 
 ```toml
 [dependencies]
-astrid-types = "0.3"
+astrid-types = "0.2"
 ```
 
 ```rust
