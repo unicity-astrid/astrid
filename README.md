@@ -194,9 +194,7 @@ Astrid follows a strict kernel/user-space divide. The kernel (native Rust daemon
 
 | Crate | Role |
 |---|---|
-| `astrid-sys` | Raw WASM-to-host FFI bindings. The syscall table. Every parameter is `Vec<u8>`. |
-| `astrid-sdk` | Safe Rust SDK for capsule authors. Mirrors `std` layout. Typed wrappers over `astrid-sys`. |
-| `astrid-sdk-macros` | `#[capsule]` proc macro. Generates WASM ABI exports from annotated impl blocks. |
+| [`astrid-sdk`](https://github.com/unicity-astrid/sdk-rust) | Safe Rust SDK for capsule authors. Mirrors `std` layout. Includes `astrid-sys` (syscall table) and `astrid-sdk-macros` (`#[capsule]` proc macro). Standalone repo. |
 | `astrid-openclaw` | TypeScript-to-WASM compiler for OpenClaw plugin compatibility. All-Rust pipeline: OXC + QuickJS/Wizer. |
 
 ### Infrastructure crates

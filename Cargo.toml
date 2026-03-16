@@ -16,10 +16,7 @@ members = [
     "crates/astrid-mcp",
     "crates/astrid-openclaw",
     "crates/astrid-prelude",
-    "crates/astrid-sdk",
-    "crates/astrid-sdk-macros",
     "crates/astrid-storage",
-    "crates/astrid-sys",
     "crates/astrid-telemetry",
     "crates/astrid-test",
     "crates/astrid-vfs",
@@ -48,10 +45,7 @@ astrid-kernel = { path = "crates/astrid-kernel", version = "0.2.0" }
 astrid-mcp = { path = "crates/astrid-mcp", version = "0.2.0" }
 astrid-openclaw = { path = "crates/astrid-openclaw", version = "0.2.0" }
 astrid-prelude = { path = "crates/astrid-prelude", version = "0.2.0" }
-astrid-sdk = { path = "crates/astrid-sdk", version = "0.2.0" }
-astrid-sdk-macros = { path = "crates/astrid-sdk-macros", version = "0.2.0" }
 astrid-storage = { path = "crates/astrid-storage", version = "0.2.0" }
-astrid-sys = { path = "crates/astrid-sys", version = "0.2.0" }
 astrid-telemetry = { path = "crates/astrid-telemetry", version = "0.2.0" }
 astrid-test = { path = "crates/astrid-test" }
 astrid-vfs = { path = "crates/astrid-vfs", version = "0.2.0" }
