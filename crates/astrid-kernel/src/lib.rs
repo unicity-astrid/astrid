@@ -69,6 +69,8 @@ pub struct Kernel {
     pub audit_log: Arc<AuditLog>,
     /// Number of active client connections (CLI sessions).
     pub active_connections: AtomicUsize,
+    /// Instant when the kernel was booted (for uptime calculation).
+    pub boot_time: std::time::Instant,
     /// Session token for socket authentication. Generated at boot, written to
     /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
     pub session_token: Arc<astrid_core::session_token::SessionToken>,
@@ -206,6 +208,7 @@ impl Kernel {
             kv,
             audit_log,
             active_connections: AtomicUsize::new(0),
+            boot_time: std::time::Instant::now(),
             session_token: Arc::new(session_token),
             token_path,
             allowance_store,

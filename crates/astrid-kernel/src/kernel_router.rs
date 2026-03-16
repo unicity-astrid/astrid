@@ -177,6 +177,38 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
             kernel.load_all_capsules().await;
             KernelResponse::Success(serde_json::json!({"status": "reloaded"}))
         },
+        KernelRequest::Shutdown { reason } => {
+            info!(
+                reason = reason.as_deref().unwrap_or("none"),
+                "Kernel received shutdown request via management API"
+            );
+            // Publish response before initiating shutdown so the client gets confirmation.
+            publish_response(
+                kernel,
+                response_topic.clone(),
+                KernelResponse::Success(serde_json::json!({"status": "shutting_down"})),
+            );
+            kernel
+                .shutdown(reason.or_else(|| Some("management_api".to_string())))
+                .await;
+            // After shutdown, the process should exit. The daemon's signal
+            // handler won't fire because we already called shutdown().
+            std::process::exit(0);
+        },
+        KernelRequest::GetStatus => {
+            let uptime = kernel.boot_time.elapsed().as_secs();
+            let reg = kernel.capsules.read().await;
+            let loaded: Vec<String> = reg.list().iter().map(|id| id.to_string()).collect();
+            let status = astrid_events::kernel_api::DaemonStatus {
+                pid: std::process::id(),
+                uptime_secs: uptime,
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                ephemeral: false, // The kernel doesn't know; daemon sets this via response override if needed
+                connected_clients: kernel.connection_count() as u32,
+                loaded_capsules: loaded,
+            };
+            KernelResponse::Status(status)
+        },
         KernelRequest::GetCapsuleMetadata => {
             let reg = kernel.capsules.read().await;
             let mut entries = Vec::new();
@@ -275,6 +307,8 @@ fn rate_limit_for_request(req: &KernelRequest) -> (&'static str, Option<u32>) {
         KernelRequest::ListCapsules => ("ListCapsules", None),
         KernelRequest::GetCommands => ("GetCommands", None),
         KernelRequest::GetCapsuleMetadata => ("GetCapsuleMetadata", None),
+        KernelRequest::Shutdown { .. } => ("Shutdown", Some(1)),
+        KernelRequest::GetStatus => ("GetStatus", None),
     }
 }
 

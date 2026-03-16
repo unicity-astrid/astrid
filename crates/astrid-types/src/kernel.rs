@@ -36,6 +36,13 @@ pub enum KernelRequest {
     /// Request metadata about loaded capsules (manifests, providers, interceptors).
     /// The kernel's equivalent of `/proc` — exposing process table info.
     GetCapsuleMetadata,
+    /// Request the daemon to shut down gracefully.
+    Shutdown {
+        /// Optional reason for shutdown.
+        reason: Option<String>,
+    },
+    /// Request daemon status information.
+    GetStatus,
 }
 
 /// Management API responses from the core daemon.
@@ -50,6 +57,8 @@ pub enum KernelResponse {
     CapsuleMetadata(Vec<CapsuleMetadataEntry>),
     /// The request failed.
     Error(String),
+    /// Daemon status information.
+    Status(DaemonStatus),
     /// The request requires user capability approval before it can proceed.
     ApprovalRequired {
         /// Unique ID for this specific action request.
@@ -59,6 +68,23 @@ pub enum KernelResponse {
         /// The specific capabilities required (e.g. `["host_process", "fs_write"]`).
         capabilities: Vec<String>,
     },
+}
+
+/// Daemon runtime status information.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaemonStatus {
+    /// Process ID of the daemon.
+    pub pid: u32,
+    /// Daemon uptime in seconds.
+    pub uptime_secs: u64,
+    /// Daemon version string.
+    pub version: String,
+    /// Whether the daemon is running in ephemeral mode.
+    pub ephemeral: bool,
+    /// Number of currently connected clients.
+    pub connected_clients: u32,
+    /// Names of loaded capsules.
+    pub loaded_capsules: Vec<String>,
 }
 
 /// Metadata entry for a loaded capsule.

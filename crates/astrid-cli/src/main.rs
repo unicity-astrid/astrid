@@ -84,6 +84,15 @@ enum Commands {
 
     /// Initialize a workspace
     Init,
+
+    /// Start the Astrid daemon in persistent mode (detached, no TUI)
+    Start,
+
+    /// Show daemon status (PID, uptime, connected clients, loaded capsules)
+    Status,
+
+    /// Stop a running Astrid daemon
+    Stop,
 }
 
 #[derive(Subcommand)]
@@ -246,6 +255,123 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Session { command }) => {
             commands::sessions::handle_session_commands(command)?;
+        },
+        Some(Commands::Start) => {
+            ensure_global_config();
+            let socket_path = socket_client::proxy_socket_path();
+
+            // Check if daemon is already running
+            if socket_path.exists() {
+                if let Ok(_stream) = tokio::net::UnixStream::connect(&socket_path).await {
+                    println!(
+                        "{}",
+                        theme::Theme::warning("Astrid daemon is already running.")
+                    );
+                    return Ok(());
+                }
+                // Stale socket — clean up
+                let _ = std::fs::remove_file(&socket_path);
+                let _ = std::fs::remove_file(socket_client::readiness_path());
+            }
+
+            let ready_path = socket_client::readiness_path();
+            spawn_persistent_daemon(&ready_path).await?;
+        },
+        Some(Commands::Status) => {
+            let socket_path = socket_client::proxy_socket_path();
+            if !socket_path.exists() {
+                println!("{}", theme::Theme::info("No Astrid daemon is running."));
+                return Ok(());
+            }
+
+            // Connect and send GetStatus request
+            let session_id = astrid_core::SessionId::from_uuid(uuid::Uuid::new_v4());
+            match socket_client::SocketClient::connect(session_id).await {
+                Ok(mut client) => {
+                    let req = astrid_types::kernel::KernelRequest::GetStatus;
+                    if let Ok(val) = serde_json::to_value(req) {
+                        let msg = astrid_types::ipc::IpcMessage::new(
+                            "astrid.v1.request.status",
+                            astrid_types::ipc::IpcPayload::RawJson(val),
+                            uuid::Uuid::nil(),
+                        );
+                        client.send_message(msg).await?;
+
+                        if let Some(response) = client.read_message().await? {
+                            if let astrid_types::ipc::IpcPayload::RawJson(val) = response.payload {
+                                if let Ok(astrid_types::kernel::KernelResponse::Status(status)) =
+                                    serde_json::from_value::<astrid_types::kernel::KernelResponse>(
+                                        val,
+                                    )
+                                {
+                                    let uptime_display = format_uptime(status.uptime_secs);
+                                    println!(
+                                        "{}",
+                                        theme::Theme::success(&format!(
+                                            "Astrid daemon (PID {}, uptime {})",
+                                            status.pid, uptime_display
+                                        ))
+                                    );
+                                    println!("  Version:    {}", status.version);
+                                    println!("  Clients:    {}", status.connected_clients);
+                                    println!(
+                                        "  Capsules:   {} loaded",
+                                        status.loaded_capsules.len()
+                                    );
+                                    for capsule in &status.loaded_capsules {
+                                        println!("    - {capsule}");
+                                    }
+                                } else {
+                                    println!(
+                                        "{}",
+                                        theme::Theme::error("Unexpected response from daemon")
+                                    );
+                                }
+                            }
+                        }
+                    }
+                },
+                Err(_) => {
+                    println!(
+                        "{}",
+                        theme::Theme::error(
+                            "Daemon socket exists but connection failed. \
+                             It may be starting up or in a bad state."
+                        )
+                    );
+                },
+            }
+        },
+        Some(Commands::Stop) => {
+            let socket_path = socket_client::proxy_socket_path();
+            if !socket_path.exists() {
+                println!("{}", theme::Theme::info("No Astrid daemon is running."));
+                return Ok(());
+            }
+
+            let session_id = astrid_core::SessionId::from_uuid(uuid::Uuid::new_v4());
+            match socket_client::SocketClient::connect(session_id).await {
+                Ok(mut client) => {
+                    let req = astrid_types::kernel::KernelRequest::Shutdown {
+                        reason: Some("astrid stop".to_string()),
+                    };
+                    if let Ok(val) = serde_json::to_value(req) {
+                        let msg = astrid_types::ipc::IpcMessage::new(
+                            "astrid.v1.request.shutdown",
+                            astrid_types::ipc::IpcPayload::RawJson(val),
+                            uuid::Uuid::nil(),
+                        );
+                        client.send_message(msg).await?;
+                        println!("{}", theme::Theme::success("Astrid daemon stopped."));
+                    }
+                },
+                Err(_) => {
+                    // Socket exists but can't connect — stale. Clean up.
+                    let _ = std::fs::remove_file(&socket_path);
+                    let _ = std::fs::remove_file(socket_client::readiness_path());
+                    println!("{}", theme::Theme::info("Cleaned up stale daemon socket."));
+                },
+            }
         },
     }
 
@@ -442,4 +568,72 @@ pub(crate) async fn run_or_connect(
         .map_or_else(|| "unknown".to_string(), |r| r.config.model.model);
 
     crate::commands::chat::run_chat(&mut client, &session_id, &model_name, format).await
+}
+
+/// Spawn a persistent (non-ephemeral) daemon and wait for readiness.
+async fn spawn_persistent_daemon(ready_path: &std::path::Path) -> Result<()> {
+    println!(
+        "{}",
+        theme::Theme::info("Starting Astrid daemon (persistent mode)...")
+    );
+    let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let daemon_bin = find_companion_binary("astrid-daemon")?;
+
+    let mut cmd = std::process::Command::new(daemon_bin);
+    // No --ephemeral flag = persistent mode
+
+    if let Some(ws_path) = ws.to_str() {
+        cmd.arg("--workspace").arg(ws_path);
+    }
+
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    let _ = std::fs::remove_file(ready_path);
+
+    let mut child = cmd.spawn().context("Failed to spawn Astrid daemon")?;
+
+    let mut ready = false;
+    for _ in 0..200 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if ready_path.exists() {
+            ready = true;
+            break;
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            anyhow::bail!("Daemon exited prematurely ({status}).{}", daemon_log_hint());
+        }
+    }
+    if !ready {
+        let _ = child.kill();
+        let _ = child.wait();
+        anyhow::bail!(
+            "Daemon failed to become ready within 10 seconds.{}",
+            daemon_log_hint()
+        );
+    }
+
+    // Disown the child — it runs independently.
+    drop(child);
+
+    println!(
+        "{}",
+        theme::Theme::success("Astrid daemon started (persistent mode).")
+    );
+    Ok(())
+}
+
+/// Format seconds into a human-readable uptime string.
+fn format_uptime(secs: u64) -> String {
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    if hours > 0 {
+        format!("{hours}h{minutes:02}m{seconds:02}s")
+    } else if minutes > 0 {
+        format!("{minutes}m{seconds:02}s")
+    } else {
+        format!("{seconds}s")
+    }
 }
