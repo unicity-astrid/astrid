@@ -13,7 +13,7 @@ Astrid is a user-space microkernel that treats AI agents the way Linux treats pr
 
 The kernel is fixed. Everything else is a swappable **capsule**: providers, orchestrators, tools, frontends, interceptors. You do not fork Astrid to customize it. You compose capsules into a configuration that fits your use case. Same core OS, different capsule sets, infinite configurations.
 
-Currently v0.2.0. Runs in user space. The only frontend today is the built-in CLI (`astrid chat`). The architecture is designed for unikernel deployment.
+Currently v0.3.0. Runs in user space. The only frontend today is the built-in CLI (`astrid chat`). The architecture is designed for unikernel deployment.
 
 ## Why capsules matter
 
@@ -219,7 +219,7 @@ Capsule KV stores are namespace-scoped per capsule. The kernel, audit log, capab
 
 ## Current state
 
-**v0.2.0.** The core runtime works end-to-end:
+**v0.3.0.** The core runtime works end-to-end:
 
 - Kernel boots, discovers and loads capsules, manages VFS overlay, listens on Unix socket
 - SecurityInterceptor with all five layers, tested with policy blocks, budget exhaustion, token auth, session/workspace allowances, and the "Allow Always" token minting path
