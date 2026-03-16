@@ -4,6 +4,7 @@ members = [
     "crates/astrid-approval",
     "crates/astrid-audit",
     "crates/astrid-capabilities",
+    "crates/astrid-build",
     "crates/astrid-capsule",
     "crates/astrid-cli",
     "crates/astrid-config",

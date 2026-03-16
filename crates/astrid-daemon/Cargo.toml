@@ -17,7 +17,6 @@ anyhow = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-kernel = { workspace = true }
-astrid-openclaw = { workspace = true }
 astrid-telemetry = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }

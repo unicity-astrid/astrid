@@ -1,6 +1,5 @@
 //! Capsule management commands - install capsules securely.
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
@@ -392,12 +391,19 @@ pub(crate) fn install_from_github(
     let output_dir = tmp_dir.path().join("dist");
     std::fs::create_dir_all(&output_dir)?;
 
-    crate::commands::build::run_build(
-        Some(clone_dir.to_str().context("Invalid clone dir path")?),
-        Some(output_dir.to_str().context("Invalid output dir path")?),
-        None,
-        None,
-    )?;
+    let build_bin = crate::find_companion_binary("astrid-build")?;
+    let build_status = std::process::Command::new(build_bin)
+        .arg(clone_dir.to_str().context("Invalid clone dir path")?)
+        .arg("--output")
+        .arg(output_dir.to_str().context("Invalid output dir path")?)
+        .status()
+        .context("Failed to run astrid-build")?;
+    if !build_status.success() {
+        bail!(
+            "astrid-build failed with exit code {}",
+            build_status.code().unwrap_or(1)
+        );
+    }
 
     // Find the .capsule file
     for entry in std::fs::read_dir(&output_dir)? {
@@ -441,30 +447,22 @@ pub(crate) fn transpile_and_install(
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for transpilation")?;
     let output_dir = tmp_dir.path();
 
-    let cache_dir = astrid_openclaw::pipeline::default_cache_dir();
-
-    // Config is empty at install time — required-field validation happens at
-    // capsule activation when config values are actually available.
-    // See `pipeline::validate_config(check_required: true)`.
-    let opts = astrid_openclaw::pipeline::CompileOptions {
-        plugin_dir: source_path,
-        output_dir,
-        config: &HashMap::new(),
-        cache_dir: cache_dir.as_deref(),
-        js_only: false,
-        no_cache: false,
-    };
-
-    let result = astrid_openclaw::pipeline::compile_plugin(&opts)
-        .map_err(|e| anyhow::anyhow!("OpenClaw compilation failed: {e}"))?;
-
-    eprintln!(
-        "Compiled {} v{} (tier: {}, cached: {})",
-        result.manifest.display_name(),
-        result.manifest.display_version(),
-        result.tier,
-        result.cached,
-    );
+    // Delegate to astrid-build for OpenClaw compilation
+    let build_bin = crate::find_companion_binary("astrid-build")?;
+    let status = std::process::Command::new(build_bin)
+        .arg(source_path)
+        .arg("--output")
+        .arg(output_dir)
+        .arg("--type")
+        .arg("openclaw")
+        .status()
+        .context("Failed to run astrid-build for OpenClaw transpilation")?;
+    if !status.success() {
+        bail!(
+            "OpenClaw compilation failed (astrid-build exit code {})",
+            status.code().unwrap_or(1)
+        );
+    }
 
     // Proceed with standard installation from the temp directory
     install_from_local_path_inner(output_dir, workspace, home, original_source)
@@ -498,12 +496,21 @@ pub(crate) fn install_from_local(
         let tmp_dir = tempfile::tempdir().context("failed to create temp dir for building")?;
         let output_dir = tmp_dir.path().join("dist");
 
-        crate::commands::build::run_build(
-            Some(source),
-            Some(output_dir.to_str().context("Invalid output dir path")?),
-            Some("rust"),
-            None,
-        )?;
+        let build_bin = crate::find_companion_binary("astrid-build")?;
+        let status = std::process::Command::new(build_bin)
+            .arg(source)
+            .arg("--output")
+            .arg(output_dir.to_str().context("Invalid output dir path")?)
+            .arg("--type")
+            .arg("rust")
+            .status()
+            .context("Failed to run astrid-build")?;
+        if !status.success() {
+            bail!(
+                "astrid-build failed with exit code {}",
+                status.code().unwrap_or(1)
+            );
+        }
 
         // Find the newly built .capsule file in the output directory
         for entry in std::fs::read_dir(&output_dir)? {

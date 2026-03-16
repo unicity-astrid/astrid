@@ -207,12 +207,24 @@ async fn main() -> Result<()> {
             project_type,
             from_mcp_json,
         }) => {
-            commands::build::run_build(
-                path.as_deref(),
-                output.as_deref(),
-                project_type.as_deref(),
-                from_mcp_json.as_deref(),
-            )?;
+            let build_bin = find_companion_binary("astrid-build")?;
+            let mut cmd = std::process::Command::new(build_bin);
+            if let Some(p) = &path {
+                cmd.arg(p);
+            }
+            if let Some(o) = &output {
+                cmd.arg("--output").arg(o);
+            }
+            if let Some(t) = &project_type {
+                cmd.arg("--type").arg(t);
+            }
+            if let Some(m) = &from_mcp_json {
+                cmd.arg("--from-mcp-json").arg(m);
+            }
+            let status = cmd.status().context("Failed to run astrid-build")?;
+            if !status.success() {
+                std::process::exit(status.code().unwrap_or(1));
+            }
         },
         Some(Commands::Init) => {
             commands::init::run_init()?;
@@ -247,16 +259,16 @@ fn daemon_log_hint() -> String {
         .unwrap_or_default()
 }
 
-/// Locate the `astrid-daemon` binary.
+/// Locate a companion binary (e.g. `astrid-daemon`, `astrid-build`).
 ///
 /// Search order:
 /// 1. Same directory as the current executable (co-installed)
 /// 2. `PATH` lookup
-fn find_daemon_binary() -> Result<std::path::PathBuf> {
+pub(crate) fn find_companion_binary(name: &str) -> Result<std::path::PathBuf> {
     // 1. Check next to the CLI binary
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let candidate = dir.join("astrid-daemon");
+            let candidate = dir.join(name);
             if candidate.is_file() {
                 return Ok(candidate);
             }
@@ -264,13 +276,13 @@ fn find_daemon_binary() -> Result<std::path::PathBuf> {
     }
 
     // 2. PATH lookup
-    if let Ok(path) = which::which("astrid-daemon") {
+    if let Ok(path) = which::which(name) {
         return Ok(path);
     }
 
     anyhow::bail!(
-        "astrid-daemon not found. Ensure it is installed alongside the astrid CLI \
-         or available in PATH. Build it with: cargo install --path crates/astrid-daemon"
+        "{name} not found. Ensure it is installed alongside the astrid CLI \
+         or available in PATH."
     )
 }
 
@@ -285,7 +297,7 @@ fn find_daemon_binary() -> Result<std::path::PathBuf> {
 async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Child> {
     println!("{}", theme::Theme::info("Booting Astrid daemon..."));
     let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let daemon_bin = find_daemon_binary()?;
+    let daemon_bin = find_companion_binary("astrid-daemon")?;
 
     let mut cmd = std::process::Command::new(daemon_bin);
     cmd.arg("--ephemeral");

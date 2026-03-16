@@ -19,17 +19,14 @@ astrid-capsule = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-events = { workspace = true }
-astrid-openclaw = { workspace = true }
 astrid-types = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true }
-cargo_metadata = "0.23.1"
 chrono = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
 crossterm = { workspace = true }
 directories = { workspace = true }
-extism = { workspace = true }
 flate2 = { workspace = true }
 indicatif = { workspace = true }
 ratatui = { workspace = true }
@@ -44,7 +41,6 @@ tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
-toml_edit = "0.25.3"
 tracing = { workspace = true }
 uuid = { workspace = true }
 which = { workspace = true }

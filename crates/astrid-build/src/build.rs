@@ -1,4 +1,4 @@
-use crate::commands::build::archiver::pack_capsule_archive;
+use crate::archiver::pack_capsule_archive;
 use anyhow::{Context, Result, bail};
 use astrid_openclaw::pipeline::{self, CompileOptions};
 use astrid_openclaw::tier::PluginTier;
@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
-
-pub(crate) mod archiver;
 
 /// Main entrypoint for the `astrid build` Universal Packager command.
 pub(crate) fn run_build(

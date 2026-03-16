@@ -35,10 +35,6 @@ struct Args {
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
-
-    /// Internal: run Wizer on the embedded QuickJS kernel (used by compiler subprocess)
-    #[arg(long, hide = true)]
-    wizer_internal: Option<std::path::PathBuf>,
 }
 
 fn init_logging(verbose: bool) {
@@ -81,13 +77,6 @@ fn init_logging(verbose: bool) {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-
-    // Handle wizer-internal (hidden, used by compiler subprocess)
-    if let Some(output) = args.wizer_internal {
-        astrid_openclaw::compiler::run_wizer_internal(&output)
-            .map_err(|e| anyhow::anyhow!("wizer-internal failed: {e}"))?;
-        return Ok(());
-    }
 
     init_logging(args.verbose);
 
