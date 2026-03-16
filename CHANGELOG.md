@@ -13,6 +13,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 - `yolo` as an alias for `autonomous` workspace mode (`astrid-config`, `astrid-workspace`)
 
+### Removed
+
+- `astrid-sdk`, `astrid-sdk-macros`, `astrid-sys` extracted to standalone repo ([sdk-rust](https://github.com/unicity-astrid/sdk-rust))
+
 ## [0.2.0] - 2026-03-15
 
 Initial tracked release. See the [repository history](https://github.com/unicity-astrid/astrid/commits/v0.2.0)
