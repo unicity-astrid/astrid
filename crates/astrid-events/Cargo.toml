@@ -8,27 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Event bus for Astrid secure agent runtime"
 
-[features]
-default = ["runtime"]
-runtime = [
-    "dep:astrid-core",
-    "dep:async-trait",
-    "dep:chrono",
-    "dep:dashmap",
-    "dep:tokio",
-    "dep:tracing",
-]
-
 [dependencies]
-astrid-core = { workspace = true, optional = true }
-async-trait = { workspace = true, optional = true }
-chrono = { workspace = true, optional = true }
-dashmap = { workspace = true, optional = true }
+astrid-types = { workspace = true }
+astrid-core = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1.49", features = ["sync", "rt"], optional = true }
-tracing = { workspace = true, optional = true }
+tokio = { version = "1.49", features = ["sync", "rt"] }
+tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

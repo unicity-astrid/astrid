@@ -1,3 +1,5 @@
+//! Kernel management API request and response types.
+
 use serde::{Deserialize, Serialize};
 
 /// The well-known system session UUID string used by the background daemon.

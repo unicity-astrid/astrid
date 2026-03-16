@@ -18,7 +18,7 @@ arboard = { workspace = true }
 astrid-capsule = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
-astrid-events = { workspace = true, features = ["runtime"] }
+astrid-events = { workspace = true }
 astrid-kernel = { workspace = true }
 astrid-openclaw = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }

@@ -13,7 +13,7 @@ astrid-approval = { workspace = true }
 astrid-capabilities = { workspace = true }
 astrid-core = { workspace = true }
 astrid-crypto = { workspace = true }
-astrid-events = { workspace = true, features = ["runtime"] }
+astrid-events = { workspace = true }
 astrid-mcp = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-vfs = { workspace = true }

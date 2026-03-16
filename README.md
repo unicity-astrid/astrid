@@ -13,7 +13,7 @@ Astrid is a user-space microkernel that treats AI agents the way Linux treats pr
 
 The kernel is fixed. Everything else is a swappable **capsule**: providers, orchestrators, tools, frontends, interceptors. You do not fork Astrid to customize it. You compose capsules into a configuration that fits your use case. Same core OS, different capsule sets, infinite configurations.
 
-Currently v0.2.0. Runs in user space. The only frontend today is the built-in CLI (`astrid chat`). The architecture is designed for unikernel deployment.
+Currently v0.3.0. Runs in user space. The only frontend today is the built-in CLI (`astrid chat`). The architecture is designed for unikernel deployment.
 
 ## Why capsules matter
 
@@ -180,7 +180,8 @@ Astrid follows a strict kernel/user-space divide. The kernel (native Rust daemon
 | `astrid-capabilities` | Ed25519-signed capability tokens with glob resource patterns and time bounds. |
 | `astrid-audit` | Chain-linked cryptographic audit log. Each entry is signed and hashes the previous. SurrealKV-backed with chain verification. |
 | `astrid-vfs` | Copy-on-write overlay filesystem. `Vfs` trait with `HostVfs` and `OverlayVfs` implementations. Capability-based `DirHandle`/`FileHandle`. |
-| `astrid-events` | IPC event bus. Broadcast-based with async receivers and synchronous subscriber callbacks. Feature-gated for WASM compatibility. |
+| `astrid-events` | IPC event bus. Broadcast-based with async receivers and synchronous subscriber callbacks. Types re-exported from `astrid-types`. |
+| `astrid-types` | Shared data types: IPC payloads, LLM schemas, kernel API. Minimal deps, WASM-compatible. Used by both kernel and SDK. |
 | `astrid-capsule` | Capsule runtime: manifest parsing, WASM/MCP/static engines, dependency resolution via toposort, capsule registry, hot-reload watcher. |
 | `astrid-mcp` | MCP client/server lifecycle. Wraps `rmcp` with binary hash verification, capability gating, and elicitation support. |
 | `astrid-crypto` | Ed25519 key pairs (via `ed25519-dalek`), BLAKE3 content hashing, signatures. Keys are zeroized on drop. |
@@ -218,7 +219,7 @@ Capsule KV stores are namespace-scoped per capsule. The kernel, audit log, capab
 
 ## Current state
 
-**v0.2.0.** The core runtime works end-to-end:
+**v0.3.0.** The core runtime works end-to-end:
 
 - Kernel boots, discovers and loads capsules, manages VFS overlay, listens on Unix socket
 - SecurityInterceptor with all five layers, tested with policy blocks, budget exhaustion, token auth, session/workspace allowances, and the "Allow Always" token minting path
