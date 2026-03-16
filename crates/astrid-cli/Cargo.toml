@@ -19,7 +19,6 @@ astrid-capsule = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-events = { workspace = true }
-astrid-kernel = { workspace = true }
 astrid-openclaw = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true }
@@ -47,6 +46,7 @@ toml = { workspace = true }
 toml_edit = "0.25.3"
 tracing = { workspace = true }
 uuid = { workspace = true }
+which = { workspace = true }
 
 [lints]
 workspace = true

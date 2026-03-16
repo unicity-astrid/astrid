@@ -1,0 +1,29 @@
+[package]
+name = "astrid-daemon"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Astrid daemon - the background kernel process for the Astrid secure agent runtime"
+
+[[bin]]
+name = "astrid-daemon"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+astrid-config = { workspace = true }
+astrid-core = { workspace = true }
+astrid-kernel = { workspace = true }
+astrid-openclaw = { workspace = true }
+astrid-telemetry = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

@@ -82,27 +82,8 @@ enum Commands {
         from_mcp_json: Option<String>,
     },
 
-    /// Run the Astrid Daemon in the background for a specific session
-    Daemon {
-        /// The session ID to bind the daemon to
-        #[arg(short, long)]
-        session: String,
-
-        /// Optional workspace root directory
-        #[arg(short, long)]
-        workspace: Option<std::path::PathBuf>,
-    },
-
     /// Initialize a workspace
     Init,
-
-    /// Internal: run Wizer on the embedded `QuickJS` kernel (used by compiler subprocess).
-    #[command(hide = true)]
-    WizerInternal {
-        /// Output path for the Wizer'd WASM.
-        #[arg(long)]
-        output: std::path::PathBuf,
-    },
 }
 
 #[derive(Subcommand)]
@@ -162,10 +143,7 @@ fn init_logging(cli: &Cli) {
         .ok()
         .map(|r| r.config);
 
-    let needs_file_log = matches!(
-        cli.command,
-        Some(Commands::Chat { .. } | Commands::Daemon { .. }) | None
-    );
+    let needs_file_log = matches!(cli.command, Some(Commands::Chat { .. }) | None);
 
     let log_config = if let Some(cfg) = &unified_cfg {
         let mut lc = config_bridge::to_log_config(cfg);
@@ -223,86 +201,6 @@ async fn main() -> Result<()> {
             let workspace = std::env::current_dir().ok();
             run_or_connect(None, workspace, output_format).await?;
         },
-        Some(Commands::Daemon { session, workspace }) => {
-            let session_id = astrid_core::SessionId::from_uuid(
-                uuid::Uuid::parse_str(&session)
-                    .map_err(|e| anyhow::anyhow!("Invalid UUID format: {e}"))?,
-            );
-            let ws = workspace.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-            });
-
-            let kernel = astrid_kernel::Kernel::new(session_id.clone(), ws)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to boot local Kernel: {e}"))?;
-
-            // Load all plugins (auto-discovery)
-            kernel.load_all_capsules().await;
-
-            // Verify the CLI proxy capsule loaded. Without it, the daemon
-            // has no accept loop and CLI connections will always time out.
-            {
-                let reg = kernel.capsules.read().await;
-                let has_cli_proxy = reg
-                    .list()
-                    .iter()
-                    .any(|id| id.as_str() == "astrid-capsule-cli");
-                if !has_cli_proxy {
-                    tracing::error!(
-                        "CLI proxy capsule (astrid-capsule-cli) not found - \
-                         daemon cannot accept CLI connections"
-                    );
-                    anyhow::bail!(
-                        "CLI proxy capsule (astrid-capsule-cli) not found. \
-                         Ensure it is installed in ~/.astrid/capsules/ or \
-                         .astrid/capsules/ in your workspace."
-                    );
-                }
-            }
-
-            // Signal readiness AFTER all capsules are loaded and accepting
-            // connections. The CLI polls for this file to avoid connecting
-            // before the handshake accept loop is running.
-            astrid_kernel::socket::write_readiness_file().map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to write readiness file \
-                     (daemon is useless without it): {e}"
-                )
-            })?;
-
-            println!(
-                "{}",
-                theme::Theme::success(&format!(
-                    "Kernel successfully booted for session {}",
-                    session_id.0
-                ))
-            );
-
-            // Wait for a termination signal, then shut down gracefully.
-            // SIGTERM is Unix-only; on other platforms we rely on Ctrl+C alone.
-            #[cfg(unix)]
-            {
-                let mut sigterm =
-                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                        .context("failed to register SIGTERM handler")?;
-                tokio::select! {
-                    _ = tokio::signal::ctrl_c() => {
-                        tracing::info!("Received SIGINT, shutting down");
-                    }
-                    _ = sigterm.recv() => {
-                        tracing::info!("Received SIGTERM, shutting down");
-                    }
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                tokio::signal::ctrl_c()
-                    .await
-                    .context("failed to listen for Ctrl+C")?;
-                tracing::info!("Received SIGINT, shutting down");
-            }
-            kernel.shutdown(Some("signal".to_string())).await;
-        },
         Some(Commands::Build {
             path,
             output,
@@ -337,10 +235,6 @@ async fn main() -> Result<()> {
         Some(Commands::Session { command }) => {
             commands::sessions::handle_session_commands(command)?;
         },
-        Some(Commands::WizerInternal { output }) => {
-            astrid_openclaw::compiler::run_wizer_internal(&output)
-                .map_err(|e| anyhow::anyhow!("wizer-internal failed: {e}"))?;
-        },
     }
 
     Ok(())
@@ -353,24 +247,48 @@ fn daemon_log_hint() -> String {
         .unwrap_or_default()
 }
 
-/// The core Host wrapper logic.
+/// Locate the `astrid-daemon` binary.
+///
+/// Search order:
+/// 1. Same directory as the current executable (co-installed)
+/// 2. `PATH` lookup
+fn find_daemon_binary() -> Result<std::path::PathBuf> {
+    // 1. Check next to the CLI binary
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("astrid-daemon");
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    // 2. PATH lookup
+    if let Ok(path) = which::which("astrid-daemon") {
+        return Ok(path);
+    }
+
+    anyhow::bail!(
+        "astrid-daemon not found. Ensure it is installed alongside the astrid CLI \
+         or available in PATH. Build it with: cargo install --path crates/astrid-daemon"
+    )
+}
+
 /// Spawn the daemon process and wait for it to signal readiness.
 ///
 /// Returns the child process handle on success. The caller must `drop()` it
 /// after a successful handshake (to disown), or `kill()` + `wait()` on failure.
 ///
 /// # Errors
-/// Returns an error if the daemon fails to spawn or doesn't become ready
-/// within 10 seconds.
+/// Returns an error if the daemon binary is not found, fails to spawn, or
+/// doesn't become ready within 10 seconds.
 async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Child> {
     println!("{}", theme::Theme::info("Booting Astrid daemon..."));
     let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let exe = std::env::current_exe().context("Failed to get current executable path")?;
+    let daemon_bin = find_daemon_binary()?;
 
-    let mut cmd = std::process::Command::new(exe);
-    cmd.arg("daemon")
-        .arg("--session")
-        .arg(astrid_core::SessionId::SYSTEM.0.to_string());
+    let mut cmd = std::process::Command::new(daemon_bin);
+    cmd.arg("--ephemeral");
 
     if let Some(ws_path) = ws.to_str() {
         cmd.arg("--workspace").arg(ws_path);
