@@ -333,6 +333,155 @@ mod tests {
     }
 
     #[test]
+    fn known_variants_unaffected_by_unknown() {
+        let payload = IpcPayload::AgentResponse {
+            text: "hello".into(),
+            is_final: true,
+            session_id: "s1".into(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn unknown_variant_serializes_as_type_unknown() {
+        let json = serde_json::to_string(&IpcPayload::Unknown).unwrap();
+        assert_eq!(json, r#"{"type":"unknown"}"#);
+    }
+
+    /// Every variant's serialized `type` tag must be recognised by
+    /// `is_known_tag`. If a new variant is added without updating the
+    /// match arm *and* the representatives list below, this test fails.
+    #[test]
+    fn is_known_tag_covers_all_variants() {
+        const EXPECTED_VARIANT_COUNT: usize = 17;
+
+        let representatives: Vec<IpcPayload> = vec![
+            IpcPayload::RawJson(serde_json::json!({"key": "val"})),
+            IpcPayload::UserInput {
+                text: String::new(),
+                session_id: "s".into(),
+                context: None,
+            },
+            IpcPayload::AgentResponse {
+                text: String::new(),
+                is_final: false,
+                session_id: "s".into(),
+            },
+            IpcPayload::ApprovalRequired {
+                request_id: "req-1".into(),
+                action: String::new(),
+                resource: String::new(),
+                reason: String::new(),
+                risk_level: "high".into(),
+            },
+            IpcPayload::ApprovalResponse {
+                request_id: "req-1".into(),
+                decision: "approve".into(),
+                reason: None,
+            },
+            IpcPayload::OnboardingRequired {
+                capsule_id: String::new(),
+                fields: vec![],
+            },
+            IpcPayload::LlmRequest {
+                request_id: Uuid::nil(),
+                model: String::new(),
+                messages: vec![],
+                tools: vec![],
+                system: String::new(),
+            },
+            IpcPayload::LlmStreamEvent {
+                request_id: Uuid::nil(),
+                event: crate::llm::StreamEvent::TextDelta(String::new()),
+            },
+            IpcPayload::LlmResponse {
+                request_id: Uuid::nil(),
+                response: crate::llm::LlmResponse {
+                    message: crate::llm::Message {
+                        role: crate::llm::MessageRole::Assistant,
+                        content: crate::llm::MessageContent::Text(String::new()),
+                    },
+                    has_tool_calls: false,
+                    stop_reason: crate::llm::StopReason::EndTurn,
+                    usage: crate::llm::Usage {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                    },
+                },
+            },
+            IpcPayload::ToolExecuteRequest {
+                call_id: String::new(),
+                tool_name: String::new(),
+                arguments: Value::Null,
+            },
+            IpcPayload::ToolExecuteResult {
+                call_id: String::new(),
+                result: crate::llm::ToolCallResult {
+                    call_id: String::new(),
+                    content: String::new(),
+                    is_error: false,
+                },
+            },
+            IpcPayload::SelectionRequired {
+                request_id: String::new(),
+                title: String::new(),
+                options: vec![],
+                callback_topic: String::new(),
+            },
+            IpcPayload::ElicitRequest {
+                request_id: Uuid::nil(),
+                capsule_id: String::new(),
+                field: OnboardingField {
+                    key: String::new(),
+                    prompt: String::new(),
+                    description: None,
+                    field_type: OnboardingFieldType::Text,
+                    default: None,
+                    placeholder: None,
+                },
+            },
+            IpcPayload::ElicitResponse {
+                request_id: Uuid::nil(),
+                value: None,
+                values: None,
+            },
+            IpcPayload::Connect,
+            IpcPayload::Disconnect { reason: None },
+            IpcPayload::Custom {
+                data: Value::Object(serde_json::Map::new()),
+            },
+        ];
+
+        assert_eq!(
+            representatives.len(),
+            EXPECTED_VARIANT_COUNT,
+            "IpcPayload variant count changed. Update the representatives list \
+             and bump EXPECTED_VARIANT_COUNT."
+        );
+
+        for variant in &representatives {
+            let json = serde_json::to_value(variant).unwrap();
+            let tag = json["type"]
+                .as_str()
+                .unwrap_or_else(|| panic!("variant {variant:?} has no `type` tag"));
+            assert!(
+                IpcPayload::is_known_tag(tag),
+                "is_known_tag does not recognise tag '{tag}' from variant {variant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_known_tag_rejects_unknown_tags() {
+        assert!(!IpcPayload::is_known_tag("my_plugin_msg"));
+        assert!(!IpcPayload::is_known_tag("unknown"));
+        assert!(!IpcPayload::is_known_tag(""));
+        assert!(!IpcPayload::is_known_tag("Raw_Json"));
+    }
+
+    #[test]
     fn onboarding_field_roundtrip() {
         let field = OnboardingField {
             key: "apiKey".into(),
@@ -348,6 +497,100 @@ mod tests {
     }
 
     #[test]
+    fn onboarding_field_roundtrip_array() {
+        let field = OnboardingField {
+            key: "relays".into(),
+            prompt: "Enter relay URLs".into(),
+            description: Some("Nostr relay endpoints".into()),
+            field_type: OnboardingFieldType::Array,
+            default: None,
+            placeholder: None,
+        };
+        let json = serde_json::to_string(&field).unwrap();
+        let parsed: OnboardingField = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, field);
+    }
+
+    #[test]
+    fn onboarding_required_payload_roundtrip() {
+        let payload = IpcPayload::OnboardingRequired {
+            capsule_id: "test-capsule".into(),
+            fields: vec![
+                OnboardingField {
+                    key: "network".into(),
+                    prompt: "Select network".into(),
+                    description: Some("Choose the target network".into()),
+                    field_type: OnboardingFieldType::Enum(vec!["testnet".into(), "mainnet".into()]),
+                    default: Some("testnet".into()),
+                    placeholder: None,
+                },
+                OnboardingField {
+                    key: "apiKey".into(),
+                    prompt: "Enter API key".into(),
+                    description: None,
+                    field_type: OnboardingFieldType::Secret,
+                    default: None,
+                    placeholder: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn elicit_request_roundtrip() {
+        let payload = IpcPayload::ElicitRequest {
+            request_id: Uuid::nil(),
+            capsule_id: "my-capsule".into(),
+            field: OnboardingField {
+                key: "api_url".into(),
+                prompt: "Enter API URL".into(),
+                description: Some("The backend endpoint".into()),
+                field_type: OnboardingFieldType::Text,
+                default: Some("https://example.com".into()),
+                placeholder: None,
+            },
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn elicit_response_roundtrip() {
+        let payload = IpcPayload::ElicitResponse {
+            request_id: Uuid::nil(),
+            value: Some("hello".into()),
+            values: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+    }
+
+    #[test]
+    fn disconnect_with_reason_roundtrip() {
+        let payload = IpcPayload::Disconnect {
+            reason: Some("quit".into()),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+        assert!(json.contains(r#""type":"disconnect""#), "json: {json}");
+    }
+
+    #[test]
+    fn disconnect_without_reason_roundtrip() {
+        let payload = IpcPayload::Disconnect { reason: None };
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: IpcPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, payload);
+        assert!(!json.contains("reason"), "json: {json}");
+    }
+
+    #[test]
     fn to_guest_bytes_custom_returns_inner_data() {
         let data = serde_json::json!({"session_id": "abc", "messages": []});
         let payload = IpcPayload::Custom { data: data.clone() };
@@ -355,5 +598,59 @@ mod tests {
         let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(roundtrip, data);
         assert!(roundtrip.get("type").is_none());
+    }
+
+    #[test]
+    fn to_guest_bytes_structured_preserves_type_tag() {
+        let payload = IpcPayload::UserInput {
+            text: "hello".into(),
+            session_id: "default".into(),
+            context: None,
+        };
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            roundtrip.get("type").and_then(|v| v.as_str()),
+            Some("user_input")
+        );
+    }
+
+    #[test]
+    fn to_guest_bytes_raw_json_unwraps() {
+        let inner = serde_json::json!({"key": "value"});
+        let payload = IpcPayload::RawJson(inner.clone());
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(roundtrip, inner);
+        assert!(roundtrip.get("type").is_none());
+    }
+
+    #[test]
+    fn to_guest_bytes_connect_unit_variant() {
+        let payload = IpcPayload::Connect;
+        let bytes = payload.to_guest_bytes().unwrap();
+        let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            roundtrip.get("type").and_then(|v| v.as_str()),
+            Some("connect")
+        );
+    }
+
+    #[test]
+    fn from_json_value_unknown_tag_becomes_custom() {
+        let data = serde_json::json!({"type": "my_plugin_msg", "foo": 42});
+        let payload = IpcPayload::from_json_value(data.clone());
+        assert_eq!(payload, IpcPayload::Custom { data });
+    }
+
+    #[test]
+    fn from_json_value_known_tag_parses() {
+        let data = serde_json::json!({
+            "type": "user_input",
+            "text": "hi",
+            "session_id": "s1"
+        });
+        let payload = IpcPayload::from_json_value(data);
+        assert!(matches!(payload, IpcPayload::UserInput { .. }));
     }
 }

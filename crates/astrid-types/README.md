@@ -58,7 +58,7 @@ Types for the out-of-band control channel between frontends and the core daemon:
 
 ```toml
 [dependencies]
-astrid-types = "0.2"
+astrid-types = "0.3"
 ```
 
 ```rust
@@ -92,7 +92,7 @@ let payload = IpcPayload::from_json_value(raw_json);
 ## Development
 
 ```bash
-cd core
+# From the workspace root
 cargo test -p astrid-types -- --quiet
 ```
 
