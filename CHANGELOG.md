@@ -9,6 +9,30 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Added
+
+- `astrid-daemon` crate — standalone kernel daemon binary with `--ephemeral` flag for CLI-spawned instances vs persistent multi-frontend mode
+- `astrid-build` crate — standalone capsule compiler and packager (Rust, OpenClaw, MCP). Invoked by CLI via subprocess.
+- `astrid start` command — spawn a persistent daemon (detached, no TUI)
+- `astrid status` command — query daemon PID, uptime, connected clients, loaded capsules
+- `astrid stop` command — graceful daemon shutdown via management API
+- `KernelRequest::Shutdown`, `KernelRequest::GetStatus`, and `DaemonStatus` types in `astrid-types`
+- `Kernel::boot_time` field for uptime tracking
+
+### Changed
+
+- CLI no longer embeds the kernel — spawns `astrid-daemon` as a companion binary
+- CLI no longer compiles capsules — delegates to `astrid-build` as a companion binary
+- CLI reads `IpcMessage` directly from socket instead of wrapping in `AstridEvent::Ipc`
+- IPC type imports in CLI now use `astrid-types` directly instead of going through `astrid-events` re-exports
+- Package renamed from `astrid-cli` to `astrid` (`cargo install astrid`)
+
+### Removed
+
+- `astrid-kernel` dependency from CLI
+- `astrid-openclaw`, `extism`, `cargo_metadata`, `toml_edit` dependencies from CLI
+- `Commands::Daemon` and `Commands::WizerInternal` from CLI (moved to `astrid-daemon` and `astrid-build`)
+
 ## [0.3.0] - 2026-03-17
 
 ### Added
