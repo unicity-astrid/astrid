@@ -148,9 +148,9 @@ pub enum AuditAction {
         args_hash: ContentHash,
     },
 
-    /// Plugin tool was called.
+    /// Capsule tool was called.
     CapsuleToolCall {
-        /// Plugin ID.
+        /// Capsule ID.
         capsule_id: String,
         /// Tool name.
         tool: String,

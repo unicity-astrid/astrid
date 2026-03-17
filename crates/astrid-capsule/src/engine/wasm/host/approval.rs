@@ -229,7 +229,7 @@ pub(crate) fn astrid_request_approval_impl(
     outputs: &mut [Val],
     user_data: UserData<HostState>,
 ) -> Result<(), Error> {
-    let request_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
+    let request_bytes = util::get_safe_bytes(capsule, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
     let mut guest_req: GuestApprovalRequest = serde_json::from_slice(&request_bytes)
         .map_err(|e| Error::msg(format!("invalid approval request JSON: {e}")))?;
 
@@ -318,8 +318,8 @@ pub(crate) fn astrid_request_approval_impl(
             "Approval auto-granted via existing allowance"
         );
 
-        let mem = plugin.memory_new(&response)?;
-        outputs[0] = plugin.memory_to_val(mem);
+        let mem = capsule.memory_new(&response)?;
+        outputs[0] = capsule.memory_to_val(mem);
         return Ok(());
     }
 
@@ -436,8 +436,8 @@ pub(crate) fn astrid_request_approval_impl(
         },
     };
 
-    let mem = plugin.memory_new(&response_json)?;
-    outputs[0] = plugin.memory_to_val(mem);
+    let mem = capsule.memory_new(&response_json)?;
+    outputs[0] = capsule.memory_to_val(mem);
     Ok(())
 }
 
