@@ -169,6 +169,15 @@ pub struct HostState {
     ///
     /// When `None`, identity host functions return an error.
     pub identity_store: Option<std::sync::Arc<dyn astrid_storage::IdentityStore>>,
+    /// Active HTTP streaming responses, keyed by handle ID.
+    ///
+    /// Each entry holds a `reqwest::Response` whose body is being consumed
+    /// incrementally by `astrid_http_stream_read`. Cleaned up by
+    /// `astrid_http_stream_close` or when the capsule unloads.
+    pub active_http_streams: HashMap<u64, Arc<tokio::sync::Mutex<reqwest::Response>>>,
+    /// Monotonic counter for HTTP stream handle IDs.
+    /// Starts at 1 (0 reserved as sentinel).
+    pub next_http_stream_id: u64,
     /// Active background processes managed for this capsule.
     ///
     /// Keyed by opaque handle IDs (not OS PIDs). Processes are cleaned up
@@ -252,6 +261,7 @@ impl std::fmt::Debug for HostState {
             )
             .field("cancel_token_cancelled", &self.cancel_token.is_cancelled())
             .field("has_identity_store", &self.identity_store.is_some())
+            .field("active_http_streams", &self.active_http_streams.len())
             .field("process_tracker", &self.process_tracker)
             .finish_non_exhaustive()
     }
@@ -303,6 +313,8 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
             ready_tx: None,
@@ -369,6 +381,8 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
             ready_tx: None,
@@ -440,6 +454,8 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
             ready_tx: None,
@@ -507,6 +523,8 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
             ready_tx: None,
@@ -590,6 +608,8 @@ mod tests {
             cli_socket_listener: None,
             active_streams: std::collections::HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store: secret_store.clone(),
             ready_tx: None,

@@ -80,10 +80,13 @@ pub(crate) enum WasmHostFunction {
     KillProcessHost,
     NetCloseStream,
     NetPollAccept,
+    HttpStreamStart,
+    HttpStreamRead,
+    HttpStreamClose,
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 48] = [
+    pub(crate) const ALL: [Self; 51] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -132,6 +135,9 @@ impl WasmHostFunction {
         Self::KillProcessHost,
         Self::NetCloseStream,
         Self::NetPollAccept,
+        Self::HttpStreamStart,
+        Self::HttpStreamRead,
+        Self::HttpStreamClose,
     ];
 
     #[must_use]
@@ -190,6 +196,9 @@ impl WasmHostFunction {
             Self::KillProcessHost => "astrid_kill_process_host",
             Self::NetCloseStream => "astrid_net_close_stream",
             Self::NetPollAccept => "astrid_net_poll_accept",
+            Self::HttpStreamStart => "astrid_http_stream_start",
+            Self::HttpStreamRead => "astrid_http_stream_read",
+            Self::HttpStreamClose => "astrid_http_stream_close",
         }
     }
 
@@ -230,7 +239,10 @@ impl WasmHostFunction {
             | Self::ReadProcessLogsHost
             | Self::KillProcessHost
             | Self::NetCloseStream
-            | Self::NetPollAccept => 1,
+            | Self::NetPollAccept
+            | Self::HttpStreamStart
+            | Self::HttpStreamRead
+            | Self::HttpStreamClose => 1,
             Self::WriteFile
             | Self::IpcPublish
             | Self::IpcRecv
@@ -258,7 +270,8 @@ impl WasmHostFunction {
             | Self::CronSchedule
             | Self::CronCancel
             | Self::SignalReady
-            | Self::NetCloseStream => TYPE_VOID,
+            | Self::NetCloseStream
+            | Self::HttpStreamClose => TYPE_VOID,
             Self::FsExists
             | Self::FsReaddir
             | Self::FsStat
@@ -293,7 +306,9 @@ impl WasmHostFunction {
             | Self::SpawnBackgroundHost
             | Self::ReadProcessLogsHost
             | Self::KillProcessHost
-            | Self::NetPollAccept => TYPE_I64,
+            | Self::NetPollAccept
+            | Self::HttpStreamStart
+            | Self::HttpStreamRead => TYPE_I64,
         }
     }
 }
@@ -518,6 +533,27 @@ pub fn register_host_functions(
                 ud,
                 net::astrid_net_poll_accept_impl,
             ),
+            WasmHostFunction::HttpStreamStart => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                http::astrid_http_stream_start_impl,
+            ),
+            WasmHostFunction::HttpStreamRead => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                http::astrid_http_stream_read_impl,
+            ),
+            WasmHostFunction::HttpStreamClose => builder.with_function(
+                func.name(),
+                args,
+                rets,
+                ud,
+                http::astrid_http_stream_close_impl,
+            ),
         };
     }
 
@@ -572,8 +608,20 @@ mod tests {
             WasmHostFunction::from_index(47),
             Some(WasmHostFunction::NetPollAccept)
         );
+        assert_eq!(
+            WasmHostFunction::from_index(48),
+            Some(WasmHostFunction::HttpStreamStart)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(49),
+            Some(WasmHostFunction::HttpStreamRead)
+        );
+        assert_eq!(
+            WasmHostFunction::from_index(50),
+            Some(WasmHostFunction::HttpStreamClose)
+        );
         // Sentinel: index beyond ALL returns None.
-        assert_eq!(WasmHostFunction::from_index(48), None);
+        assert_eq!(WasmHostFunction::from_index(51), None);
     }
 
     /// Every variant in the enum must be present in the ALL array exactly once.
@@ -582,7 +630,7 @@ mod tests {
         let all = &WasmHostFunction::ALL;
         // If a variant is added to the enum but not ALL, this count will be
         // wrong and the assertion on length will fail.
-        assert_eq!(all.len(), 48);
+        assert_eq!(all.len(), 51);
 
         // Check for duplicates.
         let mut seen = std::collections::HashSet::new();

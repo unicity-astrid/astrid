@@ -408,6 +408,30 @@ pub(crate) fn shim_invoke_host_func(
                 user_data,
             )?
         },
+        WasmHostFunction::HttpStreamStart => {
+            crate::engine::wasm::host::http::astrid_http_stream_start_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::HttpStreamRead => {
+            crate::engine::wasm::host::http::astrid_http_stream_read_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
+        WasmHostFunction::HttpStreamClose => {
+            crate::engine::wasm::host::http::astrid_http_stream_close_impl(
+                plugin,
+                &fn_inputs,
+                &mut fn_outputs,
+                user_data,
+            )?
+        },
     }
 
     if fn_outputs.is_empty() {
