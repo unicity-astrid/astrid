@@ -652,20 +652,19 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
     let ready_path = socket_client::readiness_path();
 
     // Boot daemon if needed
-    let mut needs_boot = !socket_path.exists();
-    if socket_path.exists() {
-        match tokio::net::UnixStream::connect(&socket_path).await {
-            Ok(_) => {
-                eprintln!("[headless] Connected to existing daemon");
-            },
-            Err(_) => {
-                eprintln!("[headless] Stale socket, respawning daemon...");
-                let _ = std::fs::remove_file(&socket_path);
-                let _ = std::fs::remove_file(&ready_path);
-                needs_boot = true;
-            },
+    let needs_boot = if socket_path.exists() {
+        if let Ok(_stream) = tokio::net::UnixStream::connect(&socket_path).await {
+            eprintln!("[headless] Connected to existing daemon");
+            false
+        } else {
+            eprintln!("[headless] Stale socket, respawning daemon...");
+            let _ = std::fs::remove_file(&socket_path);
+            let _ = std::fs::remove_file(&ready_path);
+            true
         }
-    }
+    } else {
+        true
+    };
     if needs_boot {
         spawn_daemon(&ready_path).await?;
     }
@@ -676,7 +675,9 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
         .context("Failed to connect to daemon")?;
 
     // Also read stdin if there's piped content and -p was used
-    let full_prompt = if !std::io::stdin().is_terminal() {
+    let full_prompt = if std::io::stdin().is_terminal() {
+        prompt
+    } else {
         let mut stdin_text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
         if stdin_text.is_empty() {
@@ -684,14 +685,51 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
         } else {
             format!("{stdin_text}\n\n{prompt}")
         }
-    } else {
-        prompt
     };
 
-    // Send the prompt
+    // Send the prompt and collect the streaming response
     client.send_input(full_prompt).await?;
+    let (response_text, tool_calls) =
+        collect_headless_response(&mut client, &session_id, format).await?;
 
-    // Collect the response (timeout after 120 seconds of no data)
+    // Final output
+    match format {
+        formatter::OutputFormat::Pretty => {
+            if !response_text.ends_with('\n') {
+                println!();
+            }
+        },
+        formatter::OutputFormat::Json => {
+            let output = serde_json::json!({
+                "response": response_text,
+                "tool_calls": tool_calls,
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        },
+    }
+
+    // Send disconnect
+    let disconnect = astrid_types::ipc::IpcMessage::new(
+        "client.v1.disconnect",
+        astrid_types::ipc::IpcPayload::Disconnect {
+            reason: Some("headless".to_string()),
+        },
+        session_id.0,
+    );
+    let _ = client.send_message(disconnect).await;
+
+    Ok(())
+}
+
+/// Collect the streaming response from the daemon in headless mode.
+///
+/// Returns `(response_text, tool_calls)`. Auto-denies any approval requests.
+/// Times out after 120 seconds of no data.
+async fn collect_headless_response(
+    client: &mut socket_client::SocketClient,
+    session_id: &astrid_core::SessionId,
+    format: formatter::OutputFormat,
+) -> Result<(String, Vec<serde_json::Value>)> {
     let mut response_text = String::new();
     let mut tool_calls: Vec<serde_json::Value> = Vec::new();
     let timeout_duration = std::time::Duration::from_secs(120);
@@ -699,7 +737,7 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
     loop {
         let message = match tokio::time::timeout(timeout_duration, client.read_message()).await {
             Ok(Ok(Some(msg))) => msg,
-            Ok(Ok(None)) => break, // connection closed
+            Ok(Ok(None)) => break,
             Ok(Err(e)) => return Err(e.context("Failed to read from daemon")),
             Err(_) => {
                 eprintln!("[headless] Timed out waiting for response (120s)");
@@ -739,7 +777,6 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
             astrid_types::ipc::IpcPayload::ApprovalRequired {
                 request_id, action, ..
             } => {
-                // Auto-deny in headless mode
                 eprintln!("[headless] Auto-denied approval for: {action}");
                 let response = astrid_types::ipc::IpcPayload::ApprovalResponse {
                     request_id: request_id.clone(),
@@ -757,33 +794,7 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
         }
     }
 
-    // Final output
-    match format {
-        formatter::OutputFormat::Pretty => {
-            if !response_text.ends_with('\n') {
-                println!();
-            }
-        },
-        formatter::OutputFormat::Json => {
-            let output = serde_json::json!({
-                "response": response_text,
-                "tool_calls": tool_calls,
-            });
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        },
-    }
-
-    // Send disconnect
-    let disconnect = astrid_types::ipc::IpcMessage::new(
-        "client.v1.disconnect",
-        astrid_types::ipc::IpcPayload::Disconnect {
-            reason: Some("headless".to_string()),
-        },
-        session_id.0,
-    );
-    let _ = client.send_message(disconnect).await;
-
-    Ok(())
+    Ok((response_text, tool_calls))
 }
 
 /// Format seconds into a human-readable uptime string.

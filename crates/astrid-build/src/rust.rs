@@ -89,38 +89,7 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     }
 
     // 5. Extract schemas using Extism
-    info!("   Extracting Extism schemas...");
-    let wasm_bytes = fs::read(&wasm_path).context("Failed to read compiled WASM binary")?;
-    let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
-    let mut plugin = extism::Plugin::new(&manifest, create_dummy_functions(), true)
-        .context("Failed to initialize Extism plugin for schema extraction")?;
-
-    let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
-        Ok(json) => json,
-        Err(e) => {
-            warn!(
-                "Capsule does not export schemas (astrid_export_schemas failed: {}). Proceeding without auto-generated tools.",
-                e
-            );
-            "{}".to_string()
-        },
-    };
-
-    let schema_value: Value = serde_json::from_str(&schema_json)
-        .unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
-
-    // The export format is either:
-    //   New: { "tools": { ... }, "description": "..." }
-    //   Old: { "tool_name": { schema }, ... }  (flat map, backward compat)
-    let (extracted_tools, capsule_description) = if let Some(tools) = schema_value.get("tools") {
-        let desc = schema_value
-            .get("description")
-            .and_then(Value::as_str)
-            .map(String::from);
-        (tools.clone(), desc)
-    } else {
-        (schema_value, None)
-    };
+    let (extracted_tools, capsule_description) = extract_schemas(&wasm_path)?;
 
     // 6. Merge with developer's Capsule.toml
     let base_toml_path = dir.join("Capsule.toml");
@@ -134,17 +103,16 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     };
 
     // Inject capsule description into package.description if not already set
-    if let Some(desc) = &capsule_description {
-        if let Some(pkg) = toml_doc.get_mut("package")
-            && let Some(table) = pkg.as_table_mut()
-        {
-            let existing = table
-                .get("description")
-                .and_then(toml_edit::Item::as_str)
-                .unwrap_or("");
-            if existing.is_empty() {
-                table.insert("description", toml_edit::value(desc.as_str()));
-            }
+    if let Some(desc) = &capsule_description
+        && let Some(pkg) = toml_doc.get_mut("package")
+        && let Some(table) = pkg.as_table_mut()
+    {
+        let existing = table
+            .get("description")
+            .and_then(toml_edit::Item::as_str)
+            .unwrap_or("");
+        if existing.is_empty() {
+            table.insert("description", toml_edit::value(desc.as_str()));
         }
     }
 
@@ -167,6 +135,44 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
 
     info!("Successfully built Rust capsule: {}", out_file.display());
     Ok(())
+}
+
+/// Extract tool schemas and capsule description from a compiled WASM binary.
+///
+/// Calls `astrid_export_schemas` via Extism and parses the result. Supports
+/// both the new format (`{ "tools": {...}, "description": "..." }`) and the
+/// legacy flat tool map for backward compatibility.
+fn extract_schemas(wasm_path: &Path) -> Result<(Value, Option<String>)> {
+    info!("   Extracting Extism schemas...");
+    let wasm_bytes = fs::read(wasm_path).context("Failed to read compiled WASM binary")?;
+    let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
+    let mut plugin = extism::Plugin::new(&manifest, create_dummy_functions(), true)
+        .context("Failed to initialize Extism plugin for schema extraction")?;
+
+    let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
+        Ok(json) => json,
+        Err(e) => {
+            warn!(
+                "Capsule does not export schemas (astrid_export_schemas failed: {}). \
+                 Proceeding without auto-generated tools.",
+                e
+            );
+            "{}".to_string()
+        },
+    };
+
+    let schema_value: Value = serde_json::from_str(&schema_json)
+        .unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
+
+    if let Some(tools) = schema_value.get("tools") {
+        let desc = schema_value
+            .get("description")
+            .and_then(Value::as_str)
+            .map(String::from);
+        Ok((tools.clone(), desc))
+    } else {
+        Ok((schema_value, None))
+    }
 }
 
 fn create_default_manifest(
@@ -247,7 +253,7 @@ fn toml_value_to_inline(val: &toml::Value) -> toml_edit::Value {
         toml::Value::Array(arr) => {
             let mut a = toml_edit::Array::new();
             for item in arr {
-                a.push_formatted(toml_edit::Value::from(toml_value_to_inline(item)));
+                a.push_formatted(toml_value_to_inline(item));
             }
             toml_edit::Value::Array(a)
         },
