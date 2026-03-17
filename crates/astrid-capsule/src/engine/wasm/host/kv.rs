@@ -30,7 +30,8 @@ pub(crate) fn astrid_kv_get_impl(
     })
     .map_err(|e| Error::msg(format!("kv_get failed: {e}")))?;
 
-    let value_bytes = result.unwrap_or_default();
+    let value_bytes = result
+        .ok_or_else(|| Error::msg(format!("kv key not found: {key}")))?;
 
     let mem = plugin.memory_new(&value_bytes)?;
     outputs[0] = plugin.memory_to_val(mem);
