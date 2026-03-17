@@ -196,13 +196,13 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
         KernelRequest::GetStatus => {
             let uptime = kernel.boot_time.elapsed().as_secs();
             let reg = kernel.capsules.read().await;
-            let loaded: Vec<String> = reg.list().iter().map(|id| id.to_string()).collect();
+            let loaded: Vec<String> = reg.list().iter().map(ToString::to_string).collect();
             let status = astrid_events::kernel_api::DaemonStatus {
                 pid: std::process::id(),
                 uptime_secs: uptime,
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 ephemeral: false, // The kernel doesn't know; daemon sets this via response override if needed
-                connected_clients: kernel.connection_count() as u32,
+                connected_clients: u32::try_from(kernel.connection_count()).unwrap_or(u32::MAX),
                 loaded_capsules: loaded,
             };
             KernelResponse::Status(status)

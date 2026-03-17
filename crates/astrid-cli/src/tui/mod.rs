@@ -150,7 +150,7 @@ async fn run_loop(
 
         // Poll for kernel events (non-blocking via timeout).
         match tokio::time::timeout(Duration::from_millis(1), client.read_message()).await {
-            Ok(Ok(Some(message))) => {
+            Ok(Ok(Some(ref message))) => {
                 handle_daemon_event(app, message);
             },
             Ok(Ok(None)) => {
@@ -210,7 +210,7 @@ async fn run_loop(
 
 /// Map a `KernelEvent` to TUI state changes.
 #[expect(clippy::too_many_lines)]
-fn handle_daemon_event(app: &mut App, message: IpcMessage) {
+fn handle_daemon_event(app: &mut App, message: &IpcMessage) {
     {
         if let astrid_types::ipc::IpcPayload::AgentResponse { text, is_final, .. } =
             &message.payload

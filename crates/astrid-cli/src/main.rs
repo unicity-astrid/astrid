@@ -342,27 +342,24 @@ async fn main() -> Result<()> {
             }
 
             let session_id = astrid_core::SessionId::from_uuid(uuid::Uuid::new_v4());
-            match socket_client::SocketClient::connect(session_id).await {
-                Ok(mut client) => {
-                    let req = astrid_types::kernel::KernelRequest::Shutdown {
-                        reason: Some("astrid stop".to_string()),
-                    };
-                    if let Ok(val) = serde_json::to_value(req) {
-                        let msg = astrid_types::ipc::IpcMessage::new(
-                            "astrid.v1.request.shutdown",
-                            astrid_types::ipc::IpcPayload::RawJson(val),
-                            uuid::Uuid::nil(),
-                        );
-                        client.send_message(msg).await?;
-                        println!("{}", theme::Theme::success("Astrid daemon stopped."));
-                    }
-                },
-                Err(_) => {
-                    // Socket exists but can't connect — stale. Clean up.
-                    let _ = std::fs::remove_file(&socket_path);
-                    let _ = std::fs::remove_file(socket_client::readiness_path());
-                    println!("{}", theme::Theme::info("Cleaned up stale daemon socket."));
-                },
+            if let Ok(mut client) = socket_client::SocketClient::connect(session_id).await {
+                let req = astrid_types::kernel::KernelRequest::Shutdown {
+                    reason: Some("astrid stop".to_string()),
+                };
+                if let Ok(val) = serde_json::to_value(req) {
+                    let msg = astrid_types::ipc::IpcMessage::new(
+                        "astrid.v1.request.shutdown",
+                        astrid_types::ipc::IpcPayload::RawJson(val),
+                        uuid::Uuid::nil(),
+                    );
+                    client.send_message(msg).await?;
+                    println!("{}", theme::Theme::success("Astrid daemon stopped."));
+                }
+            } else {
+                // Socket exists but can't connect — stale. Clean up.
+                let _ = std::fs::remove_file(&socket_path);
+                let _ = std::fs::remove_file(socket_client::readiness_path());
+                println!("{}", theme::Theme::info("Cleaned up stale daemon socket."));
             }
         },
     }
@@ -384,12 +381,12 @@ fn daemon_log_hint() -> String {
 /// 2. `PATH` lookup
 pub(crate) fn find_companion_binary(name: &str) -> Result<std::path::PathBuf> {
     // 1. Check next to the CLI binary
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
         }
     }
 
