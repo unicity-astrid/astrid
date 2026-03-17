@@ -17,6 +17,9 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- `net_write` no longer causes a WASM trap on broken pipe / connection reset when a headless client disconnects; write errors are logged at debug level and the dead stream is cleaned up on the next read
+- `net_read` returns a `NET_STREAM_CLOSED` sentinel byte instead of trapping on peer EOF/disconnect, allowing the CLI capsule run loop to remove dead streams gracefully
+- Also fixes a variable name mismatch (`capsule` vs `plugin`) in `approval.rs` that caused a compile error
 - KV host function double-encoding: `kv_get_impl` returned `serde_json::to_vec` of raw bytes instead of raw bytes directly
 - Config host function double-encoding: `get_config_impl` wrapped string values in JSON quotes, breaking URLs and other string config
 - React capsule LLM topic validation: `active_llm_topic()` could produce topics with empty segments causing IPC publish failures
