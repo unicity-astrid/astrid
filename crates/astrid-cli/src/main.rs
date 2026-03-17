@@ -10,7 +10,10 @@
 #![deny(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
-#![allow(dead_code)]
+#![expect(
+    dead_code,
+    reason = "incremental development — some plumbing used by later features"
+)]
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -297,37 +300,27 @@ async fn main() -> Result<()> {
                         );
                         client.send_message(msg).await?;
 
-                        if let Some(response) = client.read_message().await? {
-                            if let astrid_types::ipc::IpcPayload::RawJson(val) = response.payload {
-                                if let Ok(astrid_types::kernel::KernelResponse::Status(status)) =
-                                    serde_json::from_value::<astrid_types::kernel::KernelResponse>(
-                                        val,
-                                    )
-                                {
-                                    let uptime_display = format_uptime(status.uptime_secs);
-                                    println!(
-                                        "{}",
-                                        theme::Theme::success(&format!(
-                                            "Astrid daemon (PID {}, uptime {})",
-                                            status.pid, uptime_display
-                                        ))
-                                    );
-                                    println!("  Version:    {}", status.version);
-                                    println!("  Clients:    {}", status.connected_clients);
-                                    println!(
-                                        "  Capsules:   {} loaded",
-                                        status.loaded_capsules.len()
-                                    );
-                                    for capsule in &status.loaded_capsules {
-                                        println!("    - {capsule}");
-                                    }
-                                } else {
-                                    println!(
-                                        "{}",
-                                        theme::Theme::error("Unexpected response from daemon")
-                                    );
-                                }
+                        if let Some(response) = client.read_message().await?
+                            && let astrid_types::ipc::IpcPayload::RawJson(val) = response.payload
+                            && let Ok(astrid_types::kernel::KernelResponse::Status(status)) =
+                                serde_json::from_value::<astrid_types::kernel::KernelResponse>(val)
+                        {
+                            let uptime_display = format_uptime(status.uptime_secs);
+                            println!(
+                                "{}",
+                                theme::Theme::success(&format!(
+                                    "Astrid daemon (PID {}, uptime {})",
+                                    status.pid, uptime_display
+                                ))
+                            );
+                            println!("  Version:    {}", status.version);
+                            println!("  Clients:    {}", status.connected_clients);
+                            println!("  Capsules:   {} loaded", status.loaded_capsules.len());
+                            for capsule in &status.loaded_capsules {
+                                println!("    - {capsule}");
                             }
+                        } else {
+                            println!("{}", theme::Theme::error("Unexpected response from daemon"));
                         }
                     }
                 },
