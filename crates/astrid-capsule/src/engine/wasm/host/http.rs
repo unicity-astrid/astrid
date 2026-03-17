@@ -159,7 +159,7 @@ fn build_headers(raw: std::collections::HashMap<String, String>) -> Result<Heade
 /// Run the security gate check for an HTTP request.
 fn check_http_security(
     security: &Option<Arc<dyn crate::security::CapsuleSecurityGate>>,
-    capsule_id: &str,
+    capsule_id: String,
     req: &HttpRequest,
     runtime_handle: &tokio::runtime::Handle,
     host_semaphore: &Arc<tokio::sync::Semaphore>,
@@ -171,12 +171,11 @@ fn check_http_security(
             .host_str()
             .ok_or_else(|| Error::msg("URL missing host"))?;
 
-        let pid = capsule_id.to_owned();
         let full_url = req.url.clone();
         let m = req.method.clone();
         let gate = gate.clone();
         let check = util::bounded_block_on(runtime_handle, host_semaphore, async move {
-            gate.check_http_request(&pid, &m, &full_url).await
+            gate.check_http_request(&capsule_id, &m, &full_url).await
         });
         if let Err(reason) = check {
             return Err(Error::msg(format!(
@@ -221,7 +220,7 @@ pub(crate) fn astrid_http_request_impl(
 
     check_http_security(
         &security,
-        &capsule_id,
+        capsule_id,
         &req,
         &runtime_handle,
         &host_semaphore,
@@ -348,7 +347,7 @@ pub(crate) fn astrid_http_stream_start_impl(
 
     check_http_security(
         &security,
-        &capsule_id,
+        capsule_id,
         &req,
         &runtime_handle,
         &host_semaphore,
