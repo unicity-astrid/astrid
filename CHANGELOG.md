@@ -18,6 +18,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - `astrid stop` command — graceful daemon shutdown via management API
 - `KernelRequest::Shutdown`, `KernelRequest::GetStatus`, and `DaemonStatus` types in `astrid-types`
 - `Kernel::boot_time` field for uptime tracking
+- Streaming HTTP airlock: `astrid_http_stream_start`, `astrid_http_stream_read`, `astrid_http_stream_close` host functions for real-time SSE consumption (`astrid-capsule`)
 
 ### Changed
 
