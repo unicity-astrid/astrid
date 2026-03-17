@@ -8,46 +8,80 @@
 
 In the OS model, this is a shell. It does not run agents, call LLMs, enforce security policy, or own state. It spawns the kernel daemon as a background process, connects over a Unix domain socket, and renders streaming events in a ratatui TUI. Kill the CLI. Reconnect. Pick up where you left off. The daemon owns the session. The CLI is disposable.
 
-## Why it exists
+## Architecture
 
-Every kernel needs a way for the operator to interact with it. `astrid-cli` is that first interface. It auto-starts the kernel, performs an authenticated handshake (`SessionToken` over length-prefixed JSON), and then acts as a dumb pipe: user input goes in, streaming events come back, the TUI renders them.
+Three companion binaries work together:
 
-Separating the CLI from the kernel means the kernel survives disconnection. It also means the CLI can be replaced. A web UI, a Discord bot, or a programmatic NDJSON consumer can all connect to the same daemon socket. The CLI is the reference implementation.
+| Binary | Crate | Role |
+|---|---|---|
+| `astrid` | astrid-cli | Terminal frontend (TUI, REPL, capsule management) |
+| `astrid-daemon` | astrid-daemon | Background kernel process (boots kernel, loads capsules, serves IPC) |
+| `astrid-build` | astrid-build | Capsule compiler and packager (Rust, OpenClaw, MCP) |
 
-## What it does
-
-- **Auto-starts the kernel** on `astrid chat`. Spawns the daemon subprocess, polls a readiness sentinel, connects automatically. Kills orphan daemons on failure.
-- **Authenticated IPC.** Length-prefixed JSON over Unix domain socket with `SessionToken` handshake before any message traffic.
-- **ratatui TUI.** Full-screen terminal interface with bracketed paste, Kitty keyboard protocol (where supported), and animated thinking state.
-- **Approval gate rendering.** Renders `ApprovalRequired` payloads as interactive risk-colored prompts (Low/Medium/High/Critical). Approve once, approve for session, or deny.
-- **Onboarding flow.** Handles `OnboardingRequired` and `ElicitRequest` payloads inline, writes capsule config with `0o600` permissions, triggers kernel reload.
-- **Capsule management.** `install`, `update`, `list`, and `deps` subcommands manage capsules outside a chat session.
-- **Capsule builder.** `astrid build` auto-detects project type (Rust, TypeScript, MCP server) and packages a `.capsule` archive.
-- **JSON output mode.** `--format json` switches to NDJSON for scripting. Interactive prompts are auto-denied with diagnostic messages.
-- **Syntax highlighting.** Code blocks rendered via `syntect` with base16-ocean.dark and 24-bit color.
-
-## Subcommands
-
-| Command | What it does |
-|---|---|
-| `astrid chat` | Start or resume an interactive session. `--session <UUID>` to resume. |
-| `astrid init` | Initialize a workspace in the current directory. |
-| `astrid build` | Package a capsule. `--from-mcp-json` for legacy migration. |
-| `astrid capsule install <source>` | Install from local path or GitHub URL. `--workspace` for workspace-level. |
-| `astrid capsule update [target]` | Update one or all capsules. |
-| `astrid capsule list` | List installed capsules with capability metadata. |
-| `astrid capsule deps` | Print the capsule dependency graph. |
-| `astrid session list/delete/info` | Manage persisted sessions in `~/.astrid/sessions/`. |
-| `astrid daemon` | Run the kernel daemon directly (normally auto-spawned by `chat`). |
+The CLI discovers companion binaries in the same directory as itself, falling back to `PATH`. It never links the kernel directly — all communication is over the Unix domain socket via length-prefixed JSON.
 
 ## Quick start
 
 ```bash
 cargo install --path crates/astrid-cli
+cargo install --path crates/astrid-daemon
+cargo install --path crates/astrid-build
 
 astrid init
 astrid chat
 ```
+
+## Commands
+
+### Chat & sessions
+
+| Command | Description |
+|---|---|
+| `astrid` | Start an interactive chat session (default command) |
+| `astrid chat` | Same as above. `--session <UUID>` to resume a specific session. |
+| `astrid session list` | List persisted sessions |
+| `astrid session info <ID>` | Show session details |
+| `astrid session delete <ID>` | Delete a session |
+
+### Daemon lifecycle
+
+| Command | Description |
+|---|---|
+| `astrid start` | Start a persistent daemon (detached, no TUI). Survives CLI disconnect. |
+| `astrid status` | Show daemon PID, uptime, connected clients, loaded capsules. |
+| `astrid stop` | Gracefully shut down the running daemon. |
+
+When you run `astrid chat` without a running daemon, an **ephemeral** daemon is spawned automatically. It shuts down on idle after the last client disconnects. Use `astrid start` for a persistent daemon that serves multiple frontends (CLI, Discord, web).
+
+### Capsule management
+
+| Command | Description |
+|---|---|
+| `astrid capsule install <source>` | Install from local path, GitHub URL, or registry. `--workspace` for workspace-level. |
+| `astrid capsule update [target]` | Update one or all capsules from their original source. |
+| `astrid capsule list` | List installed capsules with capability metadata. `-v` for full details. |
+| `astrid capsule deps` | Print the capsule dependency graph. |
+
+### Build & init
+
+| Command | Description |
+|---|---|
+| `astrid build [path]` | Compile and package a capsule. Delegates to `astrid-build`. |
+| `astrid init` | Initialize a workspace in the current directory. |
+
+## Daemon connection flow
+
+1. Check for existing daemon (socket probe at `~/.astrid/sessions/system.sock`)
+2. If running → connect and perform handshake
+3. If not running → spawn `astrid-daemon --ephemeral`, poll readiness sentinel, connect
+4. If stale socket (connection refused) → clean up, respawn
+
+## Global flags
+
+| Flag | Description |
+|---|---|
+| `-v, --verbose` | Enable debug-level logging |
+| `--format json` | Switch to NDJSON output for scripting. Interactive prompts are auto-denied. |
 
 ## Development
 
