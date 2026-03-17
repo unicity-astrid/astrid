@@ -647,6 +647,15 @@ pub(crate) fn install_from_local_path_inner(
         return Err(e);
     }
 
+    // Preserve existing .env.json from backup (user configuration survives reinstall).
+    if let Some(ref backup) = backup_dir {
+        let old_env = backup.join(".env.json");
+        if old_env.exists() {
+            let new_env = target_dir.join(".env.json");
+            let _ = std::fs::copy(&old_env, &new_env);
+        }
+    }
+
     // Run lifecycle hook if a WASM binary exists
     if let Err(e) = run_lifecycle_if_wasm(
         &target_dir,
@@ -706,8 +715,9 @@ pub(crate) fn install_from_local_path_inner(
     };
     write_meta(&target_dir, &meta)?;
 
-    // Prompt for any missing [env] fields immediately after install.
-    if !manifest.env.is_empty() {
+    // Prompt for [env] fields only on first install (no prior .env.json).
+    let env_path = target_dir.join(".env.json");
+    if !manifest.env.is_empty() && !env_path.exists() {
         prompt_env_fields(&manifest.env, &target_dir)?;
     }
 
