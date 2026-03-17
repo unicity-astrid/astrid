@@ -159,11 +159,16 @@ cargo build --release
 # Initialize a workspace
 ./target/release/astrid init
 
-# Start a session (kernel daemon boots automatically)
+# Start a session (daemon boots automatically)
 ANTHROPIC_API_KEY=sk-... ./target/release/astrid chat
+
+# Or start a persistent daemon for multi-frontend use
+./target/release/astrid start
+./target/release/astrid status
+./target/release/astrid stop
 ```
 
-The CLI is a thin client. When you run `astrid chat`, it spawns the kernel daemon as a background process, connects over a Unix domain socket, and renders streaming events. The kernel manages VFS, capsules, IPC, audit, and security. The CLI manages input and display.
+Three binaries work together: `astrid` (CLI frontend), `astrid-daemon` (kernel process), and `astrid-build` (capsule compiler). When you run `astrid chat`, the CLI spawns the daemon as a background process, connects over a Unix domain socket, and renders streaming events. The daemon manages VFS, capsules, IPC, audit, and security. The CLI manages input and display.
 
 A starter distro with pre-built capsules for a complete coding agent experience is coming soon.
 
@@ -198,11 +203,18 @@ Astrid follows a strict kernel/user-space divide. The kernel (native Rust daemon
 | [`astrid-sdk`](https://github.com/unicity-astrid/sdk-rust) | Safe Rust SDK for capsule authors. Mirrors `std` layout. Includes `astrid-sys` (syscall table) and `astrid-sdk-macros` (`#[capsule]` proc macro). Standalone repo. |
 | `astrid-openclaw` | TypeScript-to-WASM compiler for OpenClaw plugin compatibility. All-Rust pipeline: OXC + QuickJS/Wizer. |
 
+### Binaries
+
+| Binary | Crate | Role |
+|---|---|---|
+| `astrid` | `astrid-cli` | Terminal frontend. Connects to daemon over Unix socket. TUI rendering, capsule management, `start`/`status`/`stop` lifecycle commands. |
+| `astrid-daemon` | `astrid-daemon` | Background kernel process. Boots the kernel, loads capsules, serves IPC requests. Spawned by CLI or started directly. |
+| `astrid-build` | `astrid-build` | Capsule compiler and packager. Handles Rust, OpenClaw (JS/TS), and legacy MCP projects. |
+
 ### Infrastructure crates
 
 | Crate | Role |
 |---|---|
-| `astrid-cli` | Thin client. Connects to kernel over Unix socket. TUI rendering, streaming, session management. |
 | `astrid-telemetry` | Structured logging with `tracing`. JSON and human-readable outputs. |
 | `astrid-prelude` | Common re-exports for internal crates. |
 
