@@ -652,11 +652,21 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
     let ready_path = socket_client::readiness_path();
 
     // Boot daemon if needed
-    if !socket_path.exists() {
-        spawn_daemon(&ready_path).await?;
-    } else if let Err(_) = tokio::net::UnixStream::connect(&socket_path).await {
-        let _ = std::fs::remove_file(&socket_path);
-        let _ = std::fs::remove_file(&ready_path);
+    let mut needs_boot = !socket_path.exists();
+    if socket_path.exists() {
+        match tokio::net::UnixStream::connect(&socket_path).await {
+            Ok(_) => {
+                eprintln!("[headless] Connected to existing daemon");
+            },
+            Err(_) => {
+                eprintln!("[headless] Stale socket, respawning daemon...");
+                let _ = std::fs::remove_file(&socket_path);
+                let _ = std::fs::remove_file(&ready_path);
+                needs_boot = true;
+            },
+        }
+    }
+    if needs_boot {
         spawn_daemon(&ready_path).await?;
     }
 
@@ -681,13 +691,20 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
     // Send the prompt
     client.send_input(full_prompt).await?;
 
-    // Collect the response
+    // Collect the response (timeout after 120 seconds of no data)
     let mut response_text = String::new();
     let mut tool_calls: Vec<serde_json::Value> = Vec::new();
+    let timeout_duration = std::time::Duration::from_secs(120);
 
     loop {
-        let Some(message) = client.read_message().await? else {
-            break;
+        let message = match tokio::time::timeout(timeout_duration, client.read_message()).await {
+            Ok(Ok(Some(msg))) => msg,
+            Ok(Ok(None)) => break, // connection closed
+            Ok(Err(e)) => return Err(e.context("Failed to read from daemon")),
+            Err(_) => {
+                eprintln!("[headless] Timed out waiting for response (120s)");
+                std::process::exit(53);
+            },
         };
 
         match &message.payload {
