@@ -19,7 +19,6 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 - KV host function double-encoding: `kv_get_impl` returned `serde_json::to_vec` of raw bytes instead of raw bytes directly
 - Config host function double-encoding: `get_config_impl` wrapped string values in JSON quotes, breaking URLs and other string config
-- SSRF resolver blocking local LLM endpoints: `SafeDnsResolver` rejected all private/loopback IPs regardless of capsule `net` capabilities
 - React capsule LLM topic validation: `active_llm_topic()` could produce topics with empty segments causing IPC publish failures
 
 ### Changed
