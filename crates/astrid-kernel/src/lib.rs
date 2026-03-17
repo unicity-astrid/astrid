@@ -71,6 +71,9 @@ pub struct Kernel {
     pub active_connections: AtomicUsize,
     /// Instant when the kernel was booted (for uptime calculation).
     pub boot_time: std::time::Instant,
+    /// Sender for the API-initiated shutdown signal. The daemon's main loop
+    /// selects on the receiver to exit gracefully without `process::exit`.
+    pub shutdown_tx: tokio::sync::watch::Sender<bool>,
     /// Session token for socket authentication. Generated at boot, written to
     /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
     pub session_token: Arc<astrid_core::session_token::SessionToken>,
@@ -209,6 +212,7 @@ impl Kernel {
             audit_log,
             active_connections: AtomicUsize::new(0),
             boot_time: std::time::Instant::now(),
+            shutdown_tx: tokio::sync::watch::channel(false).0,
             session_token: Arc::new(session_token),
             token_path,
             allowance_store,

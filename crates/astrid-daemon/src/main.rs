@@ -44,14 +44,7 @@ fn init_logging(verbose: bool) {
         .map(|r| r.config);
 
     let log_config = if let Some(cfg) = &unified_cfg {
-        let mut lc = astrid_telemetry::LogConfig::new(&cfg.logging.level);
-        lc.format = match cfg.logging.format.as_str() {
-            "pretty" => astrid_telemetry::LogFormat::Pretty,
-            "json" => astrid_telemetry::LogFormat::Json,
-            "full" => astrid_telemetry::LogFormat::Full,
-            _ => astrid_telemetry::LogFormat::Compact,
-        };
-        lc.directives.clone_from(&cfg.logging.directives);
+        let mut lc = astrid_telemetry::log_config_from(cfg);
         if verbose {
             "debug".clone_into(&mut lc.level);
         }
@@ -133,7 +126,9 @@ async fn main() -> Result<()> {
         "Kernel booted successfully"
     );
 
-    // Wait for a termination signal, then shut down gracefully.
+    // Wait for a termination signal or API shutdown request.
+    let mut shutdown_rx = kernel.shutdown_tx.subscribe();
+
     #[cfg(unix)]
     {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -145,14 +140,21 @@ async fn main() -> Result<()> {
             _ = sigterm.recv() => {
                 tracing::info!("Received SIGTERM, shutting down");
             }
+            _ = shutdown_rx.wait_for(|v| *v) => {
+                tracing::info!("Received API shutdown request, shutting down");
+            }
         }
     }
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c()
-            .await
-            .context("failed to listen for Ctrl+C")?;
-        tracing::info!("Received SIGINT, shutting down");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("Received SIGINT, shutting down");
+            }
+            _ = shutdown_rx.wait_for(|v| *v) => {
+                tracing::info!("Received API shutdown request, shutting down");
+            }
+        }
     }
 
     kernel.shutdown(Some("signal".to_string())).await;

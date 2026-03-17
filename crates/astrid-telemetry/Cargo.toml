@@ -9,6 +9,7 @@ rust-version.workspace = true
 description = "Telemetry and logging for Astrid secure agent runtime"
 
 [dependencies]
+astrid-config = { workspace = true, optional = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -17,6 +18,9 @@ tracing = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+
+[features]
+config = ["dep:astrid-config"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

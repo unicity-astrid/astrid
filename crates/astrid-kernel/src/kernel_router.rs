@@ -182,18 +182,16 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                 reason = reason.as_deref().unwrap_or("none"),
                 "Kernel received shutdown request via management API"
             );
-            // Publish response before initiating shutdown so the client gets confirmation.
+            // Publish response before signaling shutdown so the client gets confirmation.
             publish_response(
                 kernel,
                 response_topic.clone(),
                 KernelResponse::Success(serde_json::json!({"status": "shutting_down"})),
             );
-            kernel
-                .shutdown(reason.or_else(|| Some("management_api".to_string())))
-                .await;
-            // After shutdown, the process should exit. The daemon's signal
-            // handler won't fire because we already called shutdown().
-            std::process::exit(0);
+            // Signal the daemon's main loop to exit gracefully.
+            let _ = kernel.shutdown_tx.send(true);
+            // Return early — the daemon will call kernel.shutdown() from its main loop.
+            return;
         },
         KernelRequest::GetStatus => {
             let uptime = kernel.boot_time.elapsed().as_secs();

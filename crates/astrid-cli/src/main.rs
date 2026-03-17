@@ -19,7 +19,6 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 mod commands;
-pub mod config_bridge;
 mod formatter;
 mod repl;
 /// The socket client for interacting with the Kernel.
@@ -158,7 +157,7 @@ fn init_logging(cli: &Cli) {
     let needs_file_log = matches!(cli.command, Some(Commands::Chat { .. }) | None);
 
     let log_config = if let Some(cfg) = &unified_cfg {
-        let mut lc = config_bridge::to_log_config(cfg);
+        let mut lc = astrid_telemetry::log_config_from(cfg);
         if cli.verbose {
             "debug".clone_into(&mut lc.level);
         }

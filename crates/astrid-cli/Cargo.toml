@@ -21,7 +21,7 @@ astrid-core = { workspace = true }
 astrid-events = { workspace = true }
 astrid-types = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
-astrid-telemetry = { workspace = true }
+astrid-telemetry = { workspace = true, features = ["config"] }
 chrono = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }

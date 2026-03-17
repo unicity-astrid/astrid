@@ -46,3 +46,23 @@ mod logging;
 pub use context::RequestContext;
 pub use error::{TelemetryError, TelemetryResult};
 pub use logging::{LogConfig, LogFormat, LogTarget, setup_logging};
+
+/// Convert an [`astrid_config::Config`] into a [`LogConfig`] for telemetry init.
+///
+/// Available when the `config` feature is enabled.
+#[cfg(feature = "config")]
+#[must_use]
+pub fn log_config_from(cfg: &astrid_config::Config) -> LogConfig {
+    let format = match cfg.logging.format.as_str() {
+        "pretty" => LogFormat::Pretty,
+        "json" => LogFormat::Json,
+        "full" => LogFormat::Full,
+        _ => LogFormat::Compact,
+    };
+    LogConfig {
+        level: cfg.logging.level.clone(),
+        format,
+        directives: cfg.logging.directives.clone(),
+        ..Default::default()
+    }
+}

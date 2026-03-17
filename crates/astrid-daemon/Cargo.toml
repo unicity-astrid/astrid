@@ -17,7 +17,7 @@ anyhow = { workspace = true }
 astrid-config = { workspace = true }
 astrid-core = { workspace = true }
 astrid-kernel = { workspace = true }
-astrid-telemetry = { workspace = true }
+astrid-telemetry = { workspace = true, features = ["config"] }
 clap = { workspace = true }
 colored = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
