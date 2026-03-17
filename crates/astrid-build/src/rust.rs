@@ -190,18 +190,47 @@ fn inject_tool_schemas(toml_doc: &mut toml_edit::DocumentMut, extracted_tools: V
         tool_table.insert("name", toml_edit::value(tool_name));
         tool_table.insert("description", toml_edit::value(description));
 
-        let toml_val: toml::Value = serde_json::from_value(schema.clone())
-            .unwrap_or(toml::Value::Table(toml::map::Map::new()));
-        let toml_str = toml::to_string(&toml_val).unwrap_or_default();
-        if let Ok(parsed_doc) = toml_str.parse::<toml_edit::DocumentMut>() {
-            let table = parsed_doc.into_table();
-            tool_table.insert("input_schema", toml_edit::Item::Table(table));
+        // Convert JSON schema to a TOML inline table to avoid header conflicts.
+        // Regular TOML tables inside [[tool]] produce `[tool.input_schema]`
+        // headers that `toml` parsers treat as a duplicate `tool` key.
+        // Inline tables serialize as `input_schema = { ... }` on one line.
+        if let Ok(toml_val) = serde_json::from_value::<toml::Value>(schema.clone()) {
+            let inline = toml_value_to_inline(&toml_val);
+            tool_table.insert("input_schema", toml_edit::Item::Value(inline));
         }
 
         tools_array.push(tool_table);
     }
 
     toml_doc.insert("tool", toml_edit::Item::ArrayOfTables(tools_array));
+}
+
+/// Recursively convert a `toml::Value` into a `toml_edit::Value` using inline
+/// tables, so nested objects don't expand into conflicting TOML headers.
+fn toml_value_to_inline(val: &toml::Value) -> toml_edit::Value {
+    match val {
+        toml::Value::String(s) => toml_edit::value(s.as_str()).into_value().expect("string"),
+        toml::Value::Integer(i) => toml_edit::value(*i).into_value().expect("int"),
+        toml::Value::Float(f) => toml_edit::value(*f).into_value().expect("float"),
+        toml::Value::Boolean(b) => toml_edit::value(*b).into_value().expect("bool"),
+        toml::Value::Datetime(dt) => toml_edit::value(dt.to_string())
+            .into_value()
+            .expect("datetime"),
+        toml::Value::Array(arr) => {
+            let mut a = toml_edit::Array::new();
+            for item in arr {
+                a.push_formatted(toml_edit::Value::from(toml_value_to_inline(item)));
+            }
+            toml_edit::Value::Array(a)
+        },
+        toml::Value::Table(tbl) => {
+            let mut inline = toml_edit::InlineTable::new();
+            for (k, v) in tbl {
+                inline.insert(k, toml_value_to_inline(v));
+            }
+            toml_edit::Value::InlineTable(inline)
+        },
+    }
 }
 
 /// Create dummy host functions for Extism schema extraction.
