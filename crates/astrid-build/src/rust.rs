@@ -106,8 +106,21 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
         },
     };
 
-    let extracted_tools: Value = serde_json::from_str(&schema_json)
+    let schema_value: Value = serde_json::from_str(&schema_json)
         .unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
+
+    // The export format is either:
+    //   New: { "tools": { ... }, "description": "..." }
+    //   Old: { "tool_name": { schema }, ... }  (flat map, backward compat)
+    let (extracted_tools, capsule_description) = if let Some(tools) = schema_value.get("tools") {
+        let desc = schema_value
+            .get("description")
+            .and_then(Value::as_str)
+            .map(String::from);
+        (tools.clone(), desc)
+    } else {
+        (schema_value, None)
+    };
 
     // 6. Merge with developer's Capsule.toml
     let base_toml_path = dir.join("Capsule.toml");
@@ -119,6 +132,21 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     } else {
         create_default_manifest(&crate_name, &package_version, &wasm_name)
     };
+
+    // Inject capsule description into package.description if not already set
+    if let Some(desc) = &capsule_description {
+        if let Some(pkg) = toml_doc.get_mut("package")
+            && let Some(table) = pkg.as_table_mut()
+        {
+            let existing = table
+                .get("description")
+                .and_then(toml_edit::Item::as_str)
+                .unwrap_or("");
+            if existing.is_empty() {
+                table.insert("description", toml_edit::value(desc.as_str()));
+            }
+        }
+    }
 
     inject_tool_schemas(&mut toml_doc, extracted_tools);
 
@@ -270,7 +298,7 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         // KV store
         dummy("astrid_kv_get", 1, 1),
         dummy("astrid_kv_set", 2, 0),
-        dummy("astrid_kv_delete", 1, 1),
+        dummy("astrid_kv_delete", 1, 0),
         dummy("astrid_kv_list_keys", 1, 1),
         dummy("astrid_kv_clear_prefix", 1, 1),
         // Config and HTTP
@@ -294,6 +322,10 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         dummy("astrid_net_read", 1, 1),
         dummy("astrid_net_write", 2, 0),
         dummy("astrid_net_close_stream", 1, 0),
+        // Streaming HTTP
+        dummy("astrid_http_stream_start", 1, 1),
+        dummy("astrid_http_stream_read", 1, 1),
+        dummy("astrid_http_stream_close", 1, 0),
         // Identity
         dummy("astrid_get_caller", 0, 1),
         dummy("astrid_identity_resolve", 1, 1),
