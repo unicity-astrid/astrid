@@ -31,7 +31,7 @@ pub(crate) fn astrid_kv_get_impl(
     .map_err(|e| Error::msg(format!("kv_get failed: {e}")))?;
 
     let value_bytes = match result {
-        Some(v) => serde_json::to_vec(&v).unwrap_or_default(),
+        Some(v) => v,
         None => Vec::new(),
     };
 

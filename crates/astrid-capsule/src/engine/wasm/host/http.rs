@@ -226,9 +226,11 @@ pub(crate) fn astrid_http_request_impl(
         &host_semaphore,
     )?;
 
+    // Security gate already validated the URL and capsule capabilities.
+    // Skip SafeDnsResolver — it blocks legitimate local endpoints that
+    // capsules with net=["*"] should reach (local LLM servers, etc.).
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .dns_resolver(Arc::new(SafeDnsResolver))
         .build()
         .map_err(|e| Error::msg(format!("failed to build http client: {e}")))?;
 
@@ -353,9 +355,12 @@ pub(crate) fn astrid_http_stream_start_impl(
         &host_semaphore,
     )?;
 
+    // Security gate already validated the URL and capsule capabilities.
+    // Skip SafeDnsResolver for streaming — it blocks legitimate local
+    // LLM endpoints (127.0.0.1, 192.168.*) that capsules with net=["*"]
+    // should be able to reach.
     let client = reqwest::Client::builder()
         .connect_timeout(HTTP_STREAM_CONNECT_TIMEOUT)
-        .dns_resolver(Arc::new(SafeDnsResolver))
         .build()
         .map_err(|e| Error::msg(format!("failed to build http client: {e}")))?;
 
