@@ -706,9 +706,125 @@ pub(crate) fn install_from_local_path_inner(
     };
     write_meta(&target_dir, &meta)?;
 
+    // Prompt for any missing [env] fields immediately after install.
+    if !manifest.env.is_empty() {
+        prompt_env_fields(&manifest.env, &target_dir)?;
+    }
+
     // Clean up backup
     if let Some(ref backup) = backup_dir {
         let _ = std::fs::remove_dir_all(backup);
+    }
+
+    Ok(())
+}
+
+/// Prompt the user for missing environment variable values defined in `[env]`.
+///
+/// Reads existing `.env.json` if present, skips fields that already have values,
+/// and writes the updated config back with 0o600 permissions.
+fn prompt_env_fields(
+    env_defs: &std::collections::HashMap<String, astrid_capsule::manifest::EnvDef>,
+    capsule_dir: &Path,
+) -> anyhow::Result<()> {
+    let env_path = capsule_dir.join(".env.json");
+
+    // Load existing values
+    let mut values: serde_json::Map<String, serde_json::Value> = if env_path.exists() {
+        let content = std::fs::read_to_string(&env_path)?;
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        serde_json::Map::new()
+    };
+
+    let mut prompted = false;
+
+    // Sort keys for deterministic prompt order
+    let mut keys: Vec<&String> = env_defs.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        // Skip if already has a value
+        if values.contains_key(key.as_str()) {
+            continue;
+        }
+
+        let def = &env_defs[key];
+
+        if !prompted {
+            eprintln!("\nThis capsule requires configuration:");
+            prompted = true;
+        }
+
+        let prompt = def.request.as_deref().unwrap_or(key.as_str());
+        let description = def.description.as_deref().unwrap_or("");
+        let default = def.default.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+
+        if !description.is_empty() {
+            eprintln!("  {description}");
+        }
+
+        let is_secret = def.env_type == "secret";
+        let is_enum = !def.enum_values.is_empty();
+
+        let value = if is_enum {
+            // Show choices
+            eprintln!("  Options: {}", def.enum_values.join(", "));
+            let hint = if default.is_empty() {
+                String::new()
+            } else {
+                format!(" [{default}]")
+            };
+            eprint!("  {prompt}{hint}: ");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+            if input.is_empty() && !default.is_empty() {
+                default.to_string()
+            } else {
+                input.to_string()
+            }
+        } else if is_secret {
+            eprint!("  {prompt}: ");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            // For secrets, just read normally (rpassword would be better but adds a dep)
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            input.trim().to_string()
+        } else {
+            let hint = if default.is_empty() {
+                String::new()
+            } else {
+                format!(" [{default}]")
+            };
+            eprint!("  {prompt}{hint}: ");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+            if input.is_empty() && !default.is_empty() {
+                default.to_string()
+            } else {
+                input.to_string()
+            }
+        };
+
+        if !value.is_empty() {
+            values.insert(key.clone(), serde_json::Value::String(value));
+        }
+    }
+
+    if prompted {
+        // Write .env.json with 0o600 permissions
+        let json = serde_json::to_string_pretty(&values)?;
+        std::fs::write(&env_path, &json)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&env_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        eprintln!("  Configuration saved.\n");
     }
 
     Ok(())
