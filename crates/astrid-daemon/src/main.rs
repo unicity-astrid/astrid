@@ -86,6 +86,11 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to boot Kernel: {e}"))?;
 
+    // In ephemeral mode, shut down immediately when the last client disconnects.
+    if args.ephemeral {
+        kernel.set_ephemeral(true);
+    }
+
     // Load all capsules (auto-discovery)
     kernel.load_all_capsules().await;
 
