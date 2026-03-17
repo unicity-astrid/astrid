@@ -293,13 +293,15 @@ impl ExecutionEngine for WasmEngine {
             let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
 
             // Long-lived capsules (uplinks, cron, run-loop daemons) must not
-            // have a wall-clock timeout. Short-lived tool capsules get a
-            // 10-second safety timeout.
+            // have a wall-clock timeout. Other capsules get a 5-minute safety
+            // timeout — generous enough for interceptors that do streaming HTTP
+            // (e.g. LLM providers) while still catching runaways.
             let is_daemon = !manifest.uplinks.is_empty()
                 || !manifest.cron_jobs.is_empty()
                 || manifest.capabilities.uplink;
             if !is_daemon && !has_run_export {
-                extism_manifest = extism_manifest.with_timeout(std::time::Duration::from_secs(10));
+                extism_manifest =
+                    extism_manifest.with_timeout(std::time::Duration::from_secs(5 * 60));
             }
 
             let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
