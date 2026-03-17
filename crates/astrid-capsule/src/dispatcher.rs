@@ -27,13 +27,22 @@
 //! - Single-segment wildcard: `tool.execute.*.result` matches
 //!   `tool.execute.search.result` but not `tool.execute.result`
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, warn};
 
+use crate::capsule::{Capsule, CapsuleId};
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
+
+/// Work item sent to a per-capsule ordered queue.
+struct InterceptorWork {
+    action: String,
+    payload: Arc<Vec<u8>>,
+    topic: Arc<String>,
+}
 
 /// Routes events from the `EventBus` to capsule interceptors.
 ///
@@ -69,6 +78,7 @@ impl EventDispatcher {
         let mut last_lag_notification = std::time::Instant::now()
             .checked_sub(std::time::Duration::from_secs(10))
             .unwrap_or_else(std::time::Instant::now);
+        let mut capsule_queues: HashMap<CapsuleId, mpsc::Sender<InterceptorWork>> = HashMap::new();
         debug!("Event dispatcher started");
 
         while let Some(event) = receiver.recv().await {
@@ -99,143 +109,113 @@ impl EventDispatcher {
                 });
             }
 
-            match &*event {
+            let (topic, payload_bytes) = match &*event {
                 AstridEvent::Ipc { message, .. } => {
-                    self.dispatch_ipc(message);
+                    let topic = Arc::new(message.topic.clone());
+                    match message.payload.to_guest_bytes() {
+                        Ok(bytes) => (topic, Arc::new(bytes)),
+                        Err(e) => {
+                            warn!(topic = %message.topic, error = %e, "Failed to serialize IPC payload");
+                            continue;
+                        },
+                    }
                 },
                 other => {
-                    // Route lifecycle events to capsules with matching interceptors.
-                    // Uses event_type() (e.g. "astrid.v1.lifecycle.tool_call_started") as the topic.
-                    self.dispatch_lifecycle(other);
+                    let topic = Arc::new(other.event_type().to_string());
+                    match serde_json::to_vec(other) {
+                        Ok(bytes) => (topic, Arc::new(bytes)),
+                        Err(e) => {
+                            warn!(event_type = %topic, error = %e, "Failed to serialize lifecycle event");
+                            continue;
+                        },
+                    }
                 },
-            }
+            };
+
+            let matches = find_matching_interceptors(&self.registry, &topic).await;
+            dispatch_to_capsule_queues(&mut capsule_queues, matches, topic, payload_bytes);
         }
 
         debug!("Event dispatcher stopped (event bus closed)");
     }
-
-    /// Route a lifecycle event to capsules with matching interceptors.
-    ///
-    /// Uses `event_type()` (e.g. `tool_call_started`) as the topic for matching
-    /// against capsule interceptor patterns. Dispatch is fire-and-forget — return
-    /// values are discarded. Capsules that need request-response semantics should
-    /// use `hooks::trigger` (the kernel fan-out syscall) instead.
-    fn dispatch_lifecycle(&self, event: &AstridEvent) {
-        let topic = Arc::new(event.event_type().to_string());
-        let registry = Arc::clone(&self.registry);
-
-        // Serialize the entire event as the payload.
-        let payload_bytes = match serde_json::to_vec(event) {
-            Ok(bytes) => Arc::new(bytes),
-            Err(e) => {
-                warn!(
-                    event_type = %topic,
-                    error = %e,
-                    "Failed to serialize lifecycle event for dispatch"
-                );
-                return;
-            },
-        };
-
-        spawn_interceptor_fanout(registry, topic, payload_bytes);
-    }
-
-    /// Match an IPC event against all registered interceptors and invoke matches.
-    ///
-    /// Interceptors are dispatched concurrently — each gets its own spawned task
-    /// that runs to completion. This method returns immediately after spawning,
-    /// so the event loop is never blocked by slow or long-running interceptors.
-    fn dispatch_ipc(&self, message: &astrid_events::ipc::IpcMessage) {
-        let topic = Arc::new(message.topic.clone());
-        let registry = Arc::clone(&self.registry);
-
-        // Serialize only the guest-facing payload data, not the full IpcMessage
-        // envelope. Custom payloads are unwrapped to their inner data; structured
-        // variants keep their type tag for handler discrimination.
-        let payload_bytes = match message.payload.to_guest_bytes() {
-            Ok(bytes) => Arc::new(bytes),
-            Err(e) => {
-                warn!(topic = %topic, error = %e, "Failed to serialize IPC message for dispatch");
-                return;
-            },
-        };
-
-        spawn_interceptor_fanout(registry, topic, payload_bytes);
-    }
 }
 
-/// Collect matching interceptors from the registry and spawn each as an
-/// independent task. Shared by both IPC and lifecycle dispatch paths.
+/// Dispatch matching interceptors through per-capsule ordered queues.
 ///
-/// Takes a brief read lock on the registry to collect matches, then fans out
-/// each interceptor on its own spawned task so `block_in_place` (used by
-/// `invoke_interceptor` and WASM host functions) works correctly. Requires a
-/// multi-thread Tokio runtime.
-fn spawn_interceptor_fanout(
-    registry: Arc<RwLock<CapsuleRegistry>>,
+/// Each capsule gets a dedicated mpsc channel with a single consumer task
+/// that invokes interceptors sequentially. This guarantees events are
+/// delivered in publish order (by IPC `seq`), preventing out-of-order
+/// stream assembly in capsules like ReAct.
+///
+/// Different capsules still process events concurrently — only same-capsule
+/// delivery is serialized.
+fn dispatch_to_capsule_queues(
+    queues: &mut HashMap<CapsuleId, mpsc::Sender<InterceptorWork>>,
+    matches: Vec<(Arc<dyn Capsule>, String)>,
     topic: Arc<String>,
     payload_bytes: Arc<Vec<u8>>,
 ) {
-    tokio::task::spawn(async move {
-        let matches = find_matching_interceptors(&registry, &topic).await;
-
-        for (capsule, action) in matches {
-            let capsule_id = capsule.id().clone();
-            let payload = Arc::clone(&payload_bytes);
-            let topic = Arc::clone(&topic);
-
-            let semaphore = capsule.interceptor_semaphore().clone();
-            tokio::task::spawn(async move {
-                // Acquire per-capsule permit to bound concurrent invocations.
-                // Prevents a single capsule from spawning unbounded tasks under
-                // high-frequency event bursts.
-                let _permit = match semaphore.acquire().await {
-                    Ok(p) => p,
-                    Err(_) => {
-                        warn!(
-                            capsule_id = %capsule_id,
-                            "Interceptor semaphore closed, skipping"
-                        );
-                        return;
-                    },
-                };
-
-                debug!(
-                    capsule_id = %capsule_id,
-                    action = %action,
-                    topic = %topic,
-                    "Dispatching interceptor"
-                );
-
-                match capsule.invoke_interceptor(&action, &payload) {
-                    Ok(_) => {
+    for (capsule, action) in matches {
+        let capsule_id = capsule.id().clone();
+        let sender = queues
+            .entry(capsule_id.clone())
+            .or_insert_with(|| {
+                let (tx, mut rx) = mpsc::channel::<InterceptorWork>(256);
+                let capsule = Arc::clone(&capsule);
+                let capsule_id = capsule_id.clone();
+                tokio::task::spawn(async move {
+                    while let Some(work) = rx.recv().await {
                         debug!(
                             capsule_id = %capsule_id,
-                            action = %action,
-                            "Interceptor completed"
+                            action = %work.action,
+                            topic = %work.topic,
+                            "Dispatching interceptor (ordered)"
                         );
-                    },
-                    Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
-                        debug!(
-                            capsule_id = %capsule_id,
-                            action = %action,
-                            reason = %msg,
-                            "Interceptor skipped (NotSupported)"
-                        );
-                    },
-                    Err(e) => {
-                        warn!(
-                            capsule_id = %capsule_id,
-                            action = %action,
-                            topic = %topic,
-                            error = %e,
-                            "Interceptor invocation failed"
-                        );
-                    },
-                }
+                        match capsule.invoke_interceptor(&work.action, &work.payload) {
+                            Ok(_) => {
+                                debug!(
+                                    capsule_id = %capsule_id,
+                                    action = %work.action,
+                                    "Interceptor completed"
+                                );
+                            },
+                            Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                                debug!(
+                                    capsule_id = %capsule_id,
+                                    action = %work.action,
+                                    reason = %msg,
+                                    "Interceptor skipped (NotSupported)"
+                                );
+                            },
+                            Err(e) => {
+                                warn!(
+                                    capsule_id = %capsule_id,
+                                    action = %work.action,
+                                    topic = %work.topic,
+                                    error = %e,
+                                    "Interceptor invocation failed"
+                                );
+                            },
+                        }
+                    }
+                });
+                tx
             });
+
+        let work = InterceptorWork {
+            action,
+            payload: Arc::clone(&payload_bytes),
+            topic: Arc::clone(&topic),
+        };
+        // Non-blocking send — if the channel is full, the capsule is overwhelmed.
+        if let Err(e) = sender.try_send(work) {
+            warn!(
+                capsule_id = %capsule_id,
+                topic = %topic,
+                "Capsule dispatch queue full or closed, dropping event: {e}"
+            );
         }
-    });
+    }
 }
 
 /// Find all capsules with interceptors matching the given topic.

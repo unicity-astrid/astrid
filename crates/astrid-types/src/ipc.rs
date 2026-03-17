@@ -18,6 +18,10 @@ pub struct IpcMessage {
     pub source_id: Uuid,
     /// Timestamp when the message was dispatched.
     pub timestamp: DateTime<Utc>,
+    /// Monotonic sequence number assigned by the event bus at publish time.
+    /// Used by the dispatcher to guarantee in-order delivery per capsule.
+    #[serde(default)]
+    pub seq: u64,
 }
 
 impl IpcMessage {
@@ -30,6 +34,7 @@ impl IpcMessage {
             signature: None,
             source_id,
             timestamp: Utc::now(),
+            seq: 0,
         }
     }
 
