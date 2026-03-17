@@ -29,6 +29,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Changed
 
+- Ephemeral daemon now shuts down immediately when the last client disconnects (idle timeout 0, 1s check interval) instead of waiting 5 minutes
+- Renamed `plugin` → `capsule` in the WASM host layer and audit log fields for consistency with project terminology
 - Split `astrid-build` 1166-line `build.rs` into focused modules: `rust.rs`, `openclaw.rs`, `mcp.rs`
 
 ## [0.4.0] - 2026-03-17
