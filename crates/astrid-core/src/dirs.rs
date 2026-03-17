@@ -117,8 +117,8 @@ impl AstridHome {
 
     /// Ensure the directory structure exists with secure permissions.
     ///
-    /// Creates `keys/`, `logs/`, and `sessions/` subdirectories and sets them
-    /// all to `0o700` on Unix (owner-only access).
+    /// Creates `keys/`, `logs/`, `sessions/`, and `shared/` subdirectories
+    /// and sets them all to `0o700` on Unix (owner-only access).
     ///
     /// # Errors
     ///
@@ -127,6 +127,7 @@ impl AstridHome {
         std::fs::create_dir_all(self.keys_dir())?;
         std::fs::create_dir_all(self.logs_dir())?;
         std::fs::create_dir_all(self.sessions_dir())?;
+        std::fs::create_dir_all(self.shared_dir())?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -134,7 +135,8 @@ impl AstridHome {
             std::fs::set_permissions(self.root(), perms.clone())?;
             std::fs::set_permissions(self.keys_dir(), perms.clone())?;
             std::fs::set_permissions(self.logs_dir(), perms.clone())?;
-            std::fs::set_permissions(self.sessions_dir(), perms)?;
+            std::fs::set_permissions(self.sessions_dir(), perms.clone())?;
+            std::fs::set_permissions(self.shared_dir(), perms)?;
         }
         Ok(())
     }
