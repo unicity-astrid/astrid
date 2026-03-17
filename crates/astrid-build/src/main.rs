@@ -1,6 +1,6 @@
 //! Astrid Build - Capsule compilation and packaging tool.
 //!
-//! Compiles Rust, OpenClaw, and legacy MCP projects into `.capsule` archives.
+//! Compiles Rust, `OpenClaw`, and legacy MCP projects into `.capsule` archives.
 //! Typically invoked by the CLI (`astrid build`) but can be used standalone.
 
 #![deny(unsafe_code)]
@@ -15,6 +15,9 @@ use clap::Parser;
 
 mod archiver;
 mod build;
+mod mcp;
+mod openclaw;
+mod rust;
 
 /// Astrid Build - Capsule compilation and packaging
 #[derive(Parser)]
@@ -36,7 +39,7 @@ struct Args {
     #[arg(long)]
     from_mcp_json: Option<String>,
 
-    /// Internal: run Wizer on the embedded QuickJS kernel (used by compiler subprocess)
+    /// Internal: run Wizer on the embedded `QuickJS` kernel (used by compiler subprocess)
     #[arg(long, hide = true)]
     wizer_internal: Option<std::path::PathBuf>,
 }
