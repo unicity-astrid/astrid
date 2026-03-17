@@ -23,6 +23,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - `~/.astrid/shared/` directory now created on boot, eliminating `global:// VFS not mounted` warning on fresh installs
 - Capsule reinstall now preserves existing `.env.json` rather than overwriting it with an empty file
 - WASM execution timeout bumped from 30s to 5 minutes to prevent premature cancellation on slow operations
+- IPC event dispatcher now delivers events to each capsule in publish order via per-capsule mpsc queues, fixing out-of-order stream text assembly in the ReAct capsule
+- `IpcMessage` gains a monotonic `seq` field assigned at publish time for ordering and diagnostics
 - KV host function double-encoding: `kv_get_impl` returned `serde_json::to_vec` of raw bytes instead of raw bytes directly
 - Config host function double-encoding: `get_config_impl` wrapped string values in JSON quotes, breaking URLs and other string config
 - React capsule LLM topic validation: `active_llm_topic()` could produce topics with empty segments causing IPC publish failures
