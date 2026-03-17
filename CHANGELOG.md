@@ -21,6 +21,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - `net_read` returns a `NET_STREAM_CLOSED` sentinel byte instead of trapping on peer EOF/disconnect, allowing the CLI capsule run loop to remove dead streams gracefully
 - Also fixes a variable name mismatch (`capsule` vs `plugin`) in `approval.rs` that caused a compile error
 - `~/.astrid/shared/` directory now created on boot, eliminating `global:// VFS not mounted` warning on fresh installs
+- Capsule reinstall now preserves existing `.env.json` rather than overwriting it with an empty file
+- WASM execution timeout bumped from 30s to 5 minutes to prevent premature cancellation on slow operations
 - KV host function double-encoding: `kv_get_impl` returned `serde_json::to_vec` of raw bytes instead of raw bytes directly
 - Config host function double-encoding: `get_config_impl` wrapped string values in JSON quotes, breaking URLs and other string config
 - React capsule LLM topic validation: `active_llm_topic()` could produce topics with empty segments causing IPC publish failures
