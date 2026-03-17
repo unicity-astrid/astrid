@@ -245,6 +245,8 @@ impl ExecutionEngine for WasmEngine {
                 },
                 active_streams: std::collections::HashMap::new(),
                 next_stream_id: 1,
+                active_http_streams: std::collections::HashMap::new(),
+                next_http_stream_id: 1,
                 security: Some(security_gate),
                 hook_manager: None, // Will be injected by Gateway
                 capsule_registry: ctx.capsule_registry.clone(),
@@ -671,6 +673,8 @@ pub fn run_lifecycle(
         cli_socket_listener: None,
         active_streams: std::collections::HashMap::new(),
         next_stream_id: 1,
+        active_http_streams: std::collections::HashMap::new(),
+        next_http_stream_id: 1,
         lifecycle_phase: Some(phase),
         secret_store: cfg.secret_store,
         ready_tx: None,

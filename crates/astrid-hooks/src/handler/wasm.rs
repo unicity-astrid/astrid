@@ -237,6 +237,8 @@ impl WasmHandler {
             cli_socket_listener: None,
             active_streams: HashMap::new(),
             next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
             lifecycle_phase: None,
             secret_store,
             ready_tx: None,
