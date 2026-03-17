@@ -1,6 +1,6 @@
-//! Host function implementation for capsule-level approval requests.
+//! Host function implementation for plugin-level approval requests.
 //!
-//! Called by WASM guests via the `astrid_request_approval` FFI when a capsule
+//! Called by WASM guests via the `astrid_request_approval` FFI when a plugin
 //! needs human consent for a sensitive action. Checks the shared
 //! [`AllowanceStore`] first (instant path), then publishes an
 //! [`ApprovalRequired`] IPC event and blocks until the frontend responds.
@@ -73,7 +73,7 @@ fn check_allowance(
 /// Sanitize a guest-supplied display field in place.
 ///
 /// Trims whitespace, strips control characters, and enforces a character-count
-/// length cap. Logs a warning (with capsule ID and field name) when control
+/// length cap. Logs a warning (with plugin ID and field name) when control
 /// characters were stripped or the string was truncated.
 ///
 /// Unlike [`sanitize_action_for_pattern`], this is a general-purpose sanitizer
@@ -94,7 +94,7 @@ fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsul
         let original_chars = trimmed.chars().count();
         let sanitized_chars = sanitized.chars().count();
         tracing::warn!(
-            capsule = %capsule_id,
+            plugin = %capsule_id,
             field = field_name,
             original_chars,
             sanitized_chars,
@@ -114,7 +114,7 @@ fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsul
 /// glob wildcards are handled by downstream layers.
 ///
 /// Logs a warning if control characters were stripped or the string was
-/// truncated, identifying the capsule for audit purposes. Does NOT warn
+/// truncated, identifying the plugin for audit purposes. Does NOT warn
 /// for whitespace trimming alone (that is normal, not suspicious).
 fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
     let trimmed = action.trim();
@@ -131,7 +131,7 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
     let sanitized_chars = sanitized.chars().count();
     if sanitized_chars != trimmed_chars {
         tracing::warn!(
-            capsule = %capsule_id,
+            plugin = %capsule_id,
             original_chars = trimmed_chars,
             sanitized_chars = sanitized_chars,
             "Action string sanitized: control characters stripped or length truncated"
@@ -210,7 +210,7 @@ fn create_allowance_from_decision(
         uses_remaining: None,
         session_only,
         workspace_root,
-        signature: keypair.sign(b"capsule-approval"),
+        signature: keypair.sign(b"plugin-approval"),
     };
 
     if let Err(e) = store.add_allowance(allowance) {
@@ -312,7 +312,7 @@ pub(crate) fn astrid_request_approval_impl(
         .map_err(|e| Error::msg(format!("failed to serialize response: {e}")))?;
 
         tracing::debug!(
-            capsule = %capsule_id,
+            plugin = %capsule_id,
             action = %guest_req.action,
             resource = %guest_req.resource,
             "Approval auto-granted via existing allowance"
@@ -348,7 +348,7 @@ pub(crate) fn astrid_request_approval_impl(
     });
 
     tracing::debug!(
-        capsule = %capsule_id,
+        plugin = %capsule_id,
         action = %guest_req.action,
         resource = %guest_req.resource,
         risk_level = %guest_req.risk_level,
@@ -357,7 +357,7 @@ pub(crate) fn astrid_request_approval_impl(
     );
 
     // Block until response, timeout, or cancellation. Routed through the host
-    // semaphore to bound concurrent blocking operations across all capsules.
+    // semaphore to bound concurrent blocking operations across all plugins.
     let event = util::bounded_block_on_cancellable(
         &runtime_handle,
         &host_semaphore,
@@ -398,7 +398,7 @@ pub(crate) fn astrid_request_approval_impl(
                         }
 
                         tracing::info!(
-                            capsule = %capsule_id,
+                            plugin = %capsule_id,
                             action = %guest_req.action,
                             %decision,
                             reason = reason.as_deref().unwrap_or("none"),
@@ -423,7 +423,7 @@ pub(crate) fn astrid_request_approval_impl(
         },
         None => {
             tracing::warn!(
-                capsule = %capsule_id,
+                plugin = %capsule_id,
                 action = %guest_req.action,
                 "Approval request timed out or was cancelled"
             );
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn create_allowance_with_wildcard_in_action_is_not_overly_broad() {
         let store = AllowanceStore::new();
-        // A malicious capsule sends action = "*" hoping to get pattern "* *"
+        // A malicious plugin sends action = "*" hoping to get pattern "* *"
         // After escaping, pattern becomes "\* *" which won't match normal commands.
         create_allowance_from_decision(&store, "*", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn create_allowance_combined_attack() {
-        // A malicious capsule sends action with control chars + glob wildcards.
+        // A malicious plugin sends action with control chars + glob wildcards.
         // Layer 1 strips control chars, layer 2 escapes glob chars.
         // The resulting pattern must NOT match unintended commands.
         let store = AllowanceStore::new();
