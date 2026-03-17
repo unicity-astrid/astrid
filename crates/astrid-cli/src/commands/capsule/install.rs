@@ -767,32 +767,16 @@ fn prompt_env_fields(
         let is_secret = def.env_type == "secret";
         let is_enum = !def.enum_values.is_empty();
 
-        let value = if is_enum {
-            // Show choices
-            eprintln!("  Options: {}", def.enum_values.join(", "));
-            let hint = if default.is_empty() {
-                String::new()
-            } else {
-                format!(" [{default}]")
-            };
-            eprint!("  {prompt}{hint}: ");
-            let _ = std::io::Write::flush(&mut std::io::stderr());
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            let input = input.trim();
-            if input.is_empty() && !default.is_empty() {
-                default.to_string()
-            } else {
-                input.to_string()
-            }
-        } else if is_secret {
+        let value = if is_secret {
             eprint!("  {prompt}: ");
             let _ = std::io::Write::flush(&mut std::io::stderr());
-            // For secrets, just read normally (rpassword would be better but adds a dep)
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             input.trim().to_string()
         } else {
+            if is_enum {
+                eprintln!("  Options: {}", def.enum_values.join(", "));
+            }
             let hint = if default.is_empty() {
                 String::new()
             } else {
