@@ -37,6 +37,13 @@ use crate::capsule::{Capsule, CapsuleId};
 use crate::registry::CapsuleRegistry;
 use astrid_events::{AstridEvent, EventBus};
 
+/// Capacity of each per-capsule event dispatch queue.
+///
+/// If a capsule's queue fills up (i.e. it is processing events slower than
+/// they arrive), new events are dropped with a warning rather than blocking
+/// the dispatcher. 256 is generous for typical usage.
+const CAPSULE_EVENT_QUEUE_CAPACITY: usize = 256;
+
 /// Work item sent to a per-capsule ordered queue.
 struct InterceptorWork {
     action: String,
@@ -156,51 +163,47 @@ fn dispatch_to_capsule_queues(
     payload_bytes: Arc<Vec<u8>>,
 ) {
     for (capsule, action) in matches {
-        let capsule_id = capsule.id().clone();
-        let sender = queues
-            .entry(capsule_id.clone())
-            .or_insert_with(|| {
-                let (tx, mut rx) = mpsc::channel::<InterceptorWork>(256);
-                let capsule = Arc::clone(&capsule);
-                let capsule_id = capsule_id.clone();
-                tokio::task::spawn(async move {
-                    while let Some(work) = rx.recv().await {
-                        debug!(
-                            capsule_id = %capsule_id,
-                            action = %work.action,
-                            topic = %work.topic,
-                            "Dispatching interceptor (ordered)"
-                        );
-                        match capsule.invoke_interceptor(&work.action, &work.payload) {
-                            Ok(_) => {
-                                debug!(
-                                    capsule_id = %capsule_id,
-                                    action = %work.action,
-                                    "Interceptor completed"
-                                );
-                            },
-                            Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
-                                debug!(
-                                    capsule_id = %capsule_id,
-                                    action = %work.action,
-                                    reason = %msg,
-                                    "Interceptor skipped (NotSupported)"
-                                );
-                            },
-                            Err(e) => {
-                                warn!(
-                                    capsule_id = %capsule_id,
-                                    action = %work.action,
-                                    topic = %work.topic,
-                                    error = %e,
-                                    "Interceptor invocation failed"
-                                );
-                            },
-                        }
+        let sender = queues.entry(capsule.id().clone()).or_insert_with(|| {
+            let (tx, mut rx) = mpsc::channel::<InterceptorWork>(CAPSULE_EVENT_QUEUE_CAPACITY);
+            let capsule = Arc::clone(&capsule);
+            tokio::task::spawn(async move {
+                while let Some(work) = rx.recv().await {
+                    debug!(
+                        capsule_id = %capsule.id(),
+                        action = %work.action,
+                        topic = %work.topic,
+                        "Dispatching interceptor (ordered)"
+                    );
+                    match capsule.invoke_interceptor(&work.action, &work.payload) {
+                        Ok(_) => {
+                            debug!(
+                                capsule_id = %capsule.id(),
+                                action = %work.action,
+                                "Interceptor completed"
+                            );
+                        },
+                        Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                            debug!(
+                                capsule_id = %capsule.id(),
+                                action = %work.action,
+                                reason = %msg,
+                                "Interceptor skipped (NotSupported)"
+                            );
+                        },
+                        Err(e) => {
+                            warn!(
+                                capsule_id = %capsule.id(),
+                                action = %work.action,
+                                topic = %work.topic,
+                                error = %e,
+                                "Interceptor invocation failed"
+                            );
+                        },
                     }
-                });
-                tx
+                }
             });
+            tx
+        });
 
         let work = InterceptorWork {
             action,
@@ -210,7 +213,7 @@ fn dispatch_to_capsule_queues(
         // Non-blocking send — if the channel is full, the capsule is overwhelmed.
         if let Err(e) = sender.try_send(work) {
             warn!(
-                capsule_id = %capsule_id,
+                capsule_id = %capsule.id(),
                 topic = %topic,
                 "Capsule dispatch queue full or closed, dropping event: {e}"
             );
