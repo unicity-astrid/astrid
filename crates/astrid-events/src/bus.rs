@@ -1,6 +1,7 @@
 //! Event bus for broadcasting events to subscribers.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::broadcast;
 use tracing::{debug, trace, warn};
 
@@ -28,6 +29,8 @@ pub struct EventBus {
     registry: Arc<SubscriberRegistry>,
     /// Channel capacity.
     capacity: usize,
+    /// Monotonic sequence counter for IPC message ordering.
+    ipc_seq: Arc<AtomicU64>,
 }
 
 impl EventBus {
@@ -45,6 +48,7 @@ impl EventBus {
             sender,
             registry: Arc::new(SubscriberRegistry::new()),
             capacity,
+            ipc_seq: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -54,7 +58,14 @@ impl EventBus {
     /// notifies all synchronous subscribers in the registry.
     ///
     /// Returns the number of async receivers that received the event.
-    pub fn publish(&self, event: AstridEvent) -> usize {
+    pub fn publish(&self, mut event: AstridEvent) -> usize {
+        // Stamp IPC messages with a monotonic sequence number for ordered delivery.
+        if let AstridEvent::Ipc {
+            ref mut message, ..
+        } = event
+        {
+            message.seq = self.ipc_seq.fetch_add(1, Ordering::Relaxed);
+        }
         let event = Arc::new(event);
 
         trace!(event_type = %event.event_type(), "Publishing event");
@@ -128,12 +139,13 @@ impl Default for EventBus {
 
 impl Clone for EventBus {
     fn clone(&self) -> Self {
-        // Create a new bus that shares the same sender
-        // and the same subscriber registry
+        // Create a new bus that shares the same sender,
+        // subscriber registry, and sequence counter.
         Self {
             sender: self.sender.clone(),
             registry: Arc::clone(&self.registry),
             capacity: self.capacity,
+            ipc_seq: Arc::clone(&self.ipc_seq),
         }
     }
 }
