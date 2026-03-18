@@ -649,11 +649,7 @@ pub(crate) fn install_from_local_path_inner(
 
     // Preserve existing .env.json from backup (user configuration survives reinstall).
     if let Some(ref backup) = backup_dir {
-        let old_env = backup.join(".env.json");
-        if old_env.exists() {
-            let new_env = target_dir.join(".env.json");
-            let _ = std::fs::copy(&old_env, &new_env);
-        }
+        restore_env_from_backup(backup, &target_dir);
     }
 
     // Run lifecycle hook if a WASM binary exists
@@ -727,6 +723,16 @@ pub(crate) fn install_from_local_path_inner(
     }
 
     Ok(())
+}
+
+/// Copy `.env.json` from a backup directory into the new target directory if it exists.
+///
+/// Called after a reinstall to ensure user-configured environment variables survive.
+fn restore_env_from_backup(backup_dir: &Path, target_dir: &Path) {
+    let old_env = backup_dir.join(".env.json");
+    if old_env.exists() {
+        let _ = std::fs::copy(&old_env, target_dir.join(".env.json"));
+    }
 }
 
 /// Prompt the user for missing environment variable values defined in `[env]`.
