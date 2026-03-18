@@ -60,7 +60,10 @@ impl EventBus {
     /// Returns the number of async receivers that received the event.
     pub fn publish(&self, mut event: AstridEvent) -> usize {
         // Stamp IPC messages with a monotonic sequence number for ordered delivery.
-        if let AstridEvent::Ipc { ref mut message, .. } = event {
+        if let AstridEvent::Ipc {
+            ref mut message, ..
+        } = event
+        {
             message.seq = self.ipc_seq.fetch_add(1, Ordering::Relaxed);
         }
         let event = Arc::new(event);
