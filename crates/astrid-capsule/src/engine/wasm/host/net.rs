@@ -280,7 +280,7 @@ pub(crate) fn astrid_net_read_impl(
                     // Client disconnected cleanly — signal with sentinel rather
                     // than trapping. The WASM run loop will close the dead stream.
                     return Ok(NET_STREAM_CLOSED.to_vec());
-                }
+                },
                 Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
                 Ok(Ok(_)) => {}, // Got the 4-byte length prefix
             }
@@ -302,7 +302,7 @@ pub(crate) fn astrid_net_read_impl(
                 Err(_) => return Err(Error::msg("Payload read timed out")),
                 Ok(Err(e)) if is_peer_disconnect(&e) => return Ok(NET_STREAM_CLOSED.to_vec()),
                 Ok(Err(e)) => return Err(Error::msg(format!("socket payload read error: {e}"))),
-                Ok(Ok(_)) => {}
+                Ok(Ok(_)) => {},
             }
 
             Ok(payload)
@@ -382,12 +382,12 @@ pub(crate) fn astrid_net_write_impl(
             Ok::<(), std::io::Error>(())
         });
     match result {
-        Some(Ok(())) => {}
+        Some(Ok(())) => {},
         Some(Err(e)) => {
             // Write failed — client likely disconnected. Log and continue;
             // the dead stream will be cleaned up on the next read.
             tracing::debug!(error = %e, "net write failed, client likely disconnected");
-        }
+        },
         None => return Err(Error::msg("capsule unloading")),
     }
 
