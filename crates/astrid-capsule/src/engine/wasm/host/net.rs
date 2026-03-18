@@ -10,6 +10,24 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 /// Prevents resource exhaustion from malicious or runaway clients.
 const MAX_ACTIVE_STREAMS: usize = 8;
 
+/// Sentinel byte returned by `net_read` when the peer has disconnected cleanly.
+/// A single byte `0x01` can never be a valid length-prefixed message (it would
+/// require a 4-byte prefix), so it is unambiguous. The SDK checks for this and
+/// returns `Err(SysError::ApiError("stream closed"))` instead of `Ok(vec![])`.
+pub(crate) const NET_STREAM_CLOSED: &[u8] = &[0x01];
+
+/// Returns true for IO errors that represent a normal peer disconnect.
+/// These should NOT trap the WASM guest — the run loop handles dead streams.
+fn is_peer_disconnect(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::UnexpectedEof
+    )
+}
+
 /// Gate `net_bind` capability once at bind time (session-scoped).
 ///
 /// The kernel pre-binds the socket and provides it via `HostState`. This
@@ -258,6 +276,11 @@ pub(crate) fn astrid_net_read_impl(
             .await
             {
                 Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
+                Ok(Err(e)) if is_peer_disconnect(&e) => {
+                    // Client disconnected cleanly — signal with sentinel rather
+                    // than trapping. The WASM run loop will close the dead stream.
+                    return Ok(NET_STREAM_CLOSED.to_vec());
+                },
                 Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
                 Ok(Ok(_)) => {}, // Got the 4-byte length prefix
             }
@@ -270,13 +293,17 @@ pub(crate) fn astrid_net_read_impl(
             let mut payload = vec![0u8; len];
             // Timeout proportional to payload size: 5s base + 1s per MB.
             let timeout_ms = 5000 + (len as u64 / 1024);
-            tokio::time::timeout(
+            match tokio::time::timeout(
                 std::time::Duration::from_millis(timeout_ms),
                 stream.read_exact(&mut payload),
             )
             .await
-            .map_err(|_| Error::msg("Payload read timed out"))?
-            .map_err(|e| Error::msg(format!("socket payload read error: {e}")))?;
+            {
+                Err(_) => return Err(Error::msg("Payload read timed out")),
+                Ok(Err(e)) if is_peer_disconnect(&e) => return Ok(NET_STREAM_CLOSED.to_vec()),
+                Ok(Err(e)) => return Err(Error::msg(format!("socket payload read error: {e}"))),
+                Ok(Ok(_)) => {},
+            }
 
             Ok(payload)
         });
@@ -355,7 +382,12 @@ pub(crate) fn astrid_net_write_impl(
             Ok::<(), std::io::Error>(())
         });
     match result {
-        Some(inner) => inner?,
+        Some(Ok(())) => {},
+        Some(Err(e)) => {
+            // Write failed — client likely disconnected. Log and continue;
+            // the dead stream will be cleaned up on the next read.
+            tracing::debug!(error = %e, "net write failed, client likely disconnected");
+        },
         None => return Err(Error::msg("capsule unloading")),
     }
 
