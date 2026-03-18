@@ -439,6 +439,7 @@ mod tests {
         assert!(home.keys_dir().exists());
         assert!(home.logs_dir().exists());
         assert!(home.sessions_dir().exists());
+        assert!(home.shared_dir().exists());
     }
 
     #[cfg(unix)]
@@ -455,6 +456,9 @@ mod tests {
 
         let keys_perms = std::fs::metadata(home.keys_dir()).unwrap().permissions();
         assert_eq!(keys_perms.mode() & 0o777, 0o700);
+
+        let shared_perms = std::fs::metadata(home.shared_dir()).unwrap().permissions();
+        assert_eq!(shared_perms.mode() & 0o777, 0o700);
     }
 
     #[test]
