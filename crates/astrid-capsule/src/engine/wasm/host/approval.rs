@@ -224,7 +224,7 @@ fn create_allowance_from_decision(
 /// the request times out. If an allowance already exists, returns immediately.
 #[expect(clippy::needless_pass_by_value)]
 pub(crate) fn astrid_request_approval_impl(
-    plugin: &mut CurrentPlugin,
+    capsule: &mut CurrentPlugin,
     inputs: &[Val],
     outputs: &mut [Val],
     user_data: UserData<HostState>,

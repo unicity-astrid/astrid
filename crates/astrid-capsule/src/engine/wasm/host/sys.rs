@@ -68,16 +68,16 @@ pub(crate) fn astrid_get_config_impl(
         Some(serde_json::Value::String(s)) => {
             let mem = plugin.memory_new(&s)?;
             outputs[0] = plugin.memory_to_val(mem);
-        }
+        },
         Some(v) => {
             let s = serde_json::to_string(&v).unwrap_or_default();
             let mem = plugin.memory_new(&s)?;
             outputs[0] = plugin.memory_to_val(mem);
-        }
+        },
         None => {
             let mem = plugin.memory_new("")?;
             outputs[0] = plugin.memory_to_val(mem);
-        }
+        },
     }
     Ok(())
 }
