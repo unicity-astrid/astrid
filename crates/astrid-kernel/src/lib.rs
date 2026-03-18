@@ -865,32 +865,42 @@ fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
 /// and `EventDispatcher` (all events).
 const INTERNAL_SUBSCRIBER_COUNT: usize = 3;
 
+/// Initial grace period before idle checking begins.
+const IDLE_INITIAL_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+/// Additional grace for non-ephemeral daemons to let capsules fully initialize.
+const IDLE_NON_EPHEMERAL_GRACE: std::time::Duration = std::time::Duration::from_secs(25);
+/// How often the idle monitor polls when running in ephemeral mode.
+const IDLE_EPHEMERAL_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+/// How often the idle monitor polls when running in persistent mode.
+const IDLE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
+/// Default idle timeout for non-ephemeral daemons (5 minutes).
+const IDLE_DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(5);
+
 fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         // Initial grace period — wait for capsules to boot and first client
         // to connect before checking idle status.
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(IDLE_INITIAL_GRACE).await;
 
         // Read ephemeral flag after grace period (set by daemon after boot).
         let ephemeral = kernel.ephemeral.load(Ordering::Relaxed);
-        let timeout_secs: u64 = if ephemeral {
-            0
+        let idle_timeout = if ephemeral {
+            std::time::Duration::ZERO
         } else {
             std::env::var("ASTRID_IDLE_TIMEOUT_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(300)
+                .map_or(IDLE_DEFAULT_TIMEOUT, std::time::Duration::from_secs)
         };
-        let idle_timeout = std::time::Duration::from_secs(timeout_secs);
         let check_interval = if ephemeral {
-            std::time::Duration::from_secs(1)
+            IDLE_EPHEMERAL_CHECK_INTERVAL
         } else {
-            std::time::Duration::from_secs(15)
+            IDLE_CHECK_INTERVAL
         };
 
         // Non-ephemeral: additional grace to let capsules fully initialize.
         if !ephemeral {
-            tokio::time::sleep(std::time::Duration::from_secs(25)).await;
+            tokio::time::sleep(IDLE_NON_EPHEMERAL_GRACE).await;
         }
         let mut idle_since: Option<tokio::time::Instant> = None;
 
@@ -926,7 +936,7 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
 
                 tracing::debug!(
                     idle_secs = elapsed.as_secs(),
-                    timeout_secs,
+                    timeout_secs = idle_timeout.as_secs(),
                     connections,
                     bus_subscribers,
                     "Kernel idle, monitoring timeout"

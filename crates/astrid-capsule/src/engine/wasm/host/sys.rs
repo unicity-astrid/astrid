@@ -61,24 +61,16 @@ pub(crate) fn astrid_get_config_impl(
     let value = state.config.get(&key).cloned();
     drop(state);
 
-    match value {
-        // Return the raw string value, not JSON-encoded.
-        // serde_json::to_string wraps strings in quotes ("\"value\""),
-        // causing double-encoding when the SDK's env::var reads it.
-        Some(serde_json::Value::String(s)) => {
-            let mem = plugin.memory_new(&s)?;
-            outputs[0] = plugin.memory_to_val(mem);
-        },
-        Some(v) => {
-            let s = serde_json::to_string(&v).unwrap_or_default();
-            let mem = plugin.memory_new(&s)?;
-            outputs[0] = plugin.memory_to_val(mem);
-        },
-        None => {
-            let mem = plugin.memory_new("")?;
-            outputs[0] = plugin.memory_to_val(mem);
-        },
-    }
+    // Return the raw string value, not JSON-encoded.
+    // serde_json::to_string wraps strings in quotes ("\"value\""),
+    // causing double-encoding when the SDK's env::var reads it.
+    let result = match value {
+        Some(serde_json::Value::String(s)) => s,
+        Some(v) => serde_json::to_string(&v).unwrap_or_default(),
+        None => String::new(),
+    };
+    let mem = plugin.memory_new(&result)?;
+    outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
 
