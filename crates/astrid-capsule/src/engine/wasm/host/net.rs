@@ -10,11 +10,21 @@ use extism::{CurrentPlugin, Error, UserData, Val};
 /// Prevents resource exhaustion from malicious or runaway clients.
 const MAX_ACTIVE_STREAMS: usize = 8;
 
-/// Sentinel byte returned by `net_read` when the peer has disconnected cleanly.
-/// A single byte `0x01` can never be a valid length-prefixed message (it would
-/// require a 4-byte prefix), so it is unambiguous. The SDK checks for this and
-/// returns `Err(SysError::ApiError("stream closed"))` instead of `Ok(vec![])`.
-pub(crate) const NET_STREAM_CLOSED: &[u8] = &[0x01];
+/// Status byte always prepended to every `astrid_net_read` response.
+///
+/// The first byte of every `net_read` return is one of these discriminants.
+/// The SDK strips it and maps to `TryRecvError` or `Ok(data)`. This makes
+/// the wire format self-describing — no magic sentinel values, no collisions
+/// with message payloads.
+#[repr(u8)]
+pub(crate) enum NetReadStatus {
+    /// A complete message follows the status byte.
+    Data = 0x00,
+    /// Peer disconnected cleanly (EOF / broken pipe). No data follows.
+    Closed = 0x01,
+    /// No message available before the poll timeout. No data follows.
+    Pending = 0x02,
+}
 
 /// Returns true for IO errors that represent a normal peer disconnect.
 /// These should NOT trap the WASM guest — the run loop handles dead streams.
@@ -261,28 +271,26 @@ pub(crate) fn astrid_net_read_impl(
     // active_streams and the client will see a hard EOF / connection reset.
     use tokio::io::AsyncReadExt;
 
-    let result =
+    // Wire format: every response begins with a NetReadStatus byte, followed
+    // by the payload (empty unless status = Data). This makes the protocol
+    // self-describing — no magic sentinels, no collisions with message bytes.
+    let status =
         util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
             let mut stream = stream_arc.lock().await;
             let mut len_buf = [0u8; 4];
 
-            // Wait for exactly 4 bytes (the length prefix used by the IPC protocol).
-            // Distinguish between a genuine timeout (no data yet) and an I/O error
-            // (peer disconnect, broken pipe) to avoid spin-looping on dead connections.
             match tokio::time::timeout(
                 std::time::Duration::from_millis(50),
                 stream.read_exact(&mut len_buf),
             )
             .await
             {
-                Err(_) => return Ok(Vec::new()), // Genuine timeout, no data yet
+                Err(_) => return Ok((NetReadStatus::Pending, Vec::new())),
                 Ok(Err(e)) if is_peer_disconnect(&e) => {
-                    // Client disconnected cleanly — signal with sentinel rather
-                    // than trapping. The WASM run loop will close the dead stream.
-                    return Ok(NET_STREAM_CLOSED.to_vec());
+                    return Ok((NetReadStatus::Closed, Vec::new()));
                 },
                 Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
-                Ok(Ok(_)) => {}, // Got the 4-byte length prefix
+                Ok(Ok(_)) => {},
             }
 
             let len = u32::from_be_bytes(len_buf) as usize;
@@ -291,7 +299,6 @@ pub(crate) fn astrid_net_read_impl(
             }
 
             let mut payload = vec![0u8; len];
-            // Timeout proportional to payload size: 5s base + 1s per MB.
             let timeout_ms = 5000 + (len as u64 / 1024);
             match tokio::time::timeout(
                 std::time::Duration::from_millis(timeout_ms),
@@ -300,38 +307,30 @@ pub(crate) fn astrid_net_read_impl(
             .await
             {
                 Err(_) => return Err(Error::msg("Payload read timed out")),
-                Ok(Err(e)) if is_peer_disconnect(&e) => return Ok(NET_STREAM_CLOSED.to_vec()),
+                Ok(Err(e)) if is_peer_disconnect(&e) => {
+                    return Ok((NetReadStatus::Closed, Vec::new()));
+                },
                 Ok(Err(e)) => return Err(Error::msg(format!("socket payload read error: {e}"))),
                 Ok(Ok(_)) => {},
             }
 
-            Ok(payload)
+            Ok((NetReadStatus::Data, payload))
         });
-    // Cancellation returns empty bytes (not Err) - intentionally different
-    // from net_accept/net_write which return Err("capsule unloading"). The
-    // WASM guest's read loop treats empty as "no data yet, poll again", so
-    // returning empty lets it notice the shutdown via its own loop condition
-    // rather than hitting an unexpected error mid-message.
-    let result = match result {
-        Some(r) => r,
-        None => Ok(Vec::new()),
+
+    // Cancellation (capsule unloading) → Pending so the guest loop exits cleanly.
+    let (status, payload) = match status {
+        Some(r) => r?,
+        None => (NetReadStatus::Pending, Vec::new()),
     };
 
-    // Note: disconnect events are NOT published here. The WASM guest is
-    // responsible for calling close() on dead streams, which publishes the
-    // client.v1.disconnect event and removes the active_streams entry.
-    // Publishing here would cause duplicate disconnect events since the
-    // guest always calls close() after a read error.
-    let result = result?;
+    // Prepend the status byte so the SDK can discriminate without any
+    // out-of-band channel.
+    let mut response = Vec::with_capacity(1 + payload.len());
+    response.push(status as u8);
+    response.extend_from_slice(&payload);
 
-    if result.is_empty() {
-        let mem = plugin.memory_new("")?;
-        outputs[0] = plugin.memory_to_val(mem);
-    } else {
-        let mem = plugin.memory_new(&result)?;
-        outputs[0] = plugin.memory_to_val(mem);
-    }
-
+    let mem = plugin.memory_new(&response)?;
+    outputs[0] = plugin.memory_to_val(mem);
     Ok(())
 }
 
