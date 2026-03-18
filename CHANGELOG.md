@@ -11,6 +11,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- `astrid_net_read` now uses a self-describing `NetReadStatus` wire format: every response is prefixed with a discriminant byte (`0x00` = data, `0x01` = closed, `0x02` = pending), replacing the previous single-byte sentinel hack
 - Headless mode: `astrid -p "prompt"` for non-interactive single-prompt execution with stdin piping support
 - Post-install onboarding: `astrid capsule install` now prompts for `[env]` fields immediately after install
 - Shared `astrid_telemetry::log_config_from()` behind `config` feature flag — replaces duplicate config bridge code
