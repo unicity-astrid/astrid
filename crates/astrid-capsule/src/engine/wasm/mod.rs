@@ -15,6 +15,11 @@ pub mod host;
 pub mod host_state;
 pub(crate) mod tool;
 
+/// Wall-clock timeout for short-lived (non-daemon) WASM capsules.
+/// Generous enough for interceptors doing streaming HTTP (e.g. LLM providers)
+/// while still catching runaways.
+const WASM_CAPSULE_TIMEOUT_SECS: u64 = 5 * 60;
+
 /// Executes Pure WASM Components and AstridClaw transpiled OpenClaw plugins.
 ///
 /// This engine sandboxes the execution in Extism/Wasmtime and injects the
@@ -300,8 +305,8 @@ impl ExecutionEngine for WasmEngine {
                 || !manifest.cron_jobs.is_empty()
                 || manifest.capabilities.uplink;
             if !is_daemon && !has_run_export {
-                extism_manifest =
-                    extism_manifest.with_timeout(std::time::Duration::from_secs(5 * 60));
+                extism_manifest = extism_manifest
+                    .with_timeout(std::time::Duration::from_secs(WASM_CAPSULE_TIMEOUT_SECS));
             }
 
             let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
