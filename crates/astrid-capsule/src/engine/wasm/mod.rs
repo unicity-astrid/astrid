@@ -14,6 +14,62 @@ use crate::manifest::CapsuleManifest;
 pub mod host;
 pub mod host_state;
 
+/// Today's date as `YYYY-MM-DD` for daily log rotation.
+fn today_date_string() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    // Days since epoch → date components.
+    let days = secs / 86400;
+    let (y, m, d) = civil_from_days(days as i64);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Convert days since Unix epoch to (year, month, day).
+/// Algorithm from Howard Hinnant's `chrono`-compatible date library.
+#[expect(clippy::arithmetic_side_effects)]
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+/// Delete log files older than `max_days` from a capsule log directory.
+///
+/// Only deletes files matching the `YYYY-MM-DD.log` pattern.
+fn prune_old_logs(log_dir: &std::path::Path, max_days: u64) {
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(max_days * 86400))
+        .unwrap_or(std::time::UNIX_EPOCH);
+
+    let Ok(entries) = std::fs::read_dir(log_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        // Only touch files matching YYYY-MM-DD.log pattern.
+        if !name_str.ends_with(".log") || name_str.len() != 14 {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata()
+            && let Ok(modified) = meta.modified()
+            && modified < cutoff
+        {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// Read the expected WASM hash from `meta.json` in the capsule directory.
 fn read_expected_wasm_hash(capsule_dir: &std::path::Path) -> Option<String> {
     let meta_path = capsule_dir.join("meta.json");
@@ -299,15 +355,18 @@ impl ExecutionEngine for WasmEngine {
                 (None, None)
             };
 
-            // Open per-capsule log file at principal's .local/log/{capsule}.log
+            // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
+            // Prunes logs older than 7 days on each capsule load.
             let capsule_log = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                 let ph = home.principal_home(&ctx.principal);
-                let log_dir = ph.log_dir();
-                let _ = std::fs::create_dir_all(&log_dir);
+                let capsule_log_dir = ph.log_dir().join(&manifest.package.name);
+                let _ = std::fs::create_dir_all(&capsule_log_dir);
+                prune_old_logs(&capsule_log_dir, 7);
+                let today = today_date_string();
                 std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(log_dir.join(format!("{}.log", manifest.package.name)))
+                    .open(capsule_log_dir.join(format!("{today}.log")))
                     .ok()
                     .map(|f| Arc::new(std::sync::Mutex::new(f)))
             } else {
