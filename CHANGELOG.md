@@ -11,6 +11,15 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- Linux FHS-aligned directory layout (`etc/`, `var/`, `run/`, `log/`, `keys/`, `bin/`, `home/`) replacing the flat `~/.astrid/` structure
+- `PrincipalId` type for multi-principal (multi-user) deployments — each principal gets isolated capsules, KV, audit, tokens, and config under `home/{principal}/`
+- Content-addressed WASM binaries in `bin/` using BLAKE3 hashing — integrity verified on every capsule load (no hash = no load, wrong hash = no load)
+- Per-capsule daily log rotation at `home/{principal}/.local/log/{capsule}/{YYYY-MM-DD}.log` with 7-day retention
+- `/tmp` VFS mount backed by `home/{principal}/.local/tmp/` for per-principal temp isolation
+- Multi-source capsule discovery with precedence: principal > workspace (dedup by name)
+- `PrincipalHome` struct with `.local/` and `.config/` following XDG conventions
+- `layout-version` sentinel in `etc/` for future migration support
+- `lib/` directory reserved for future WIT shared WASM component libraries
 - End-to-end Tier 2 OpenClaw plugin support: TypeScript plugins with npm dependencies install, transpile, sandbox, and run as MCP capsules with full tool integration
 - OXC `strip_types()` transpiler for Tier 2 TS→JS (preserves ESM, unlike Tier 1's CJS conversion)
 - Node.js binary resolution at build time: prefers versioned Homebrew installs (node@22+), validates each candidate
@@ -44,9 +53,24 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Changed
 
+- Capsule install target moved from `~/.astrid/capsules/` to `home/{principal}/.local/capsules/` (capsule dir now holds only manifest + meta.json)
+- KV namespace format changed from `capsule:{name}` to `{principal}:capsule:{name}`
+- Socket/token/ready paths moved from `sessions/` to `run/`
+- Env config moved from capsule dir `.env.json` to `home/{principal}/.config/env/{capsule}.env.json`
+- System logs now use `.log` extension, no ANSI escape codes in file output, 7-day retention
+- `user_key_path()` renamed to `runtime_key_path()` (now at `keys/runtime.key`), `logs_dir()` renamed to `log_dir()`
 - Ephemeral daemon now shuts down immediately when the last client disconnects (idle timeout 0, 1s check interval) instead of waiting 5 minutes
 - Renamed `plugin` → `capsule` in the WASM host layer and audit log fields for consistency with project terminology
 - Split `astrid-build` 1166-line `build.rs` into focused modules: `rust.rs`, `openclaw.rs`, `mcp.rs`
+
+### Removed
+
+- `~/.astrid/capsules/` system capsules directory (user installs go to principal home)
+- `sessions/`, `shared/`, `audit.db`, `capabilities.db`, `state/`, `spark.toml`, `cache/capsules/` — replaced by FHS equivalents or moved to principal home
+
+### Breaking
+
+- Existing `~/.astrid/` must be deleted — no migration path. Reinstall all capsules after upgrading.
 
 ## [0.4.0] - 2026-03-17
 
