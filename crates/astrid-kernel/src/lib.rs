@@ -699,10 +699,12 @@ impl Kernel {
             // Also collect tools discovered from MCP host engines (Tier 2
             // OpenClaw capsules, legacy MCP servers). These are registered
             // dynamically at runtime via the MCP bridge.
+            let mut tool_names: std::collections::HashSet<String> =
+                tools.iter().map(|t| t.name.clone()).collect();
             let mcp_tools = self.mcp.inner().server_manager().all_tools().await;
             for t in mcp_tools {
                 // Avoid duplicates if a tool is declared in both manifest and MCP.
-                if !tools.iter().any(|existing| existing.name == t.name) {
+                if tool_names.insert(t.name.clone()) {
                     // Ensure input_schema has "properties" — LLM APIs require it.
                     let mut schema = t.input_schema;
                     if let Some(obj) = schema.as_object_mut() {

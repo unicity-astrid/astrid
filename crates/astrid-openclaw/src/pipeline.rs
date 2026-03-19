@@ -487,11 +487,14 @@ fn resolve_node_binary() -> String {
             .and_then(|s| s.parse().ok())
     }
 
-    // Check versioned Homebrew installs (highest version first)
-    for v in (22..=26).rev() {
-        let path = format!("/opt/homebrew/opt/node@{v}/bin/node");
-        if node_major(&path).is_some_and(|m| m >= 22) {
-            return path;
+    // Check versioned Homebrew installs (highest version first).
+    // Apple Silicon uses /opt/homebrew, Intel Macs use /usr/local.
+    for prefix in ["/opt/homebrew", "/usr/local"] {
+        for v in (22..=26).rev() {
+            let path = format!("{prefix}/opt/node@{v}/bin/node");
+            if node_major(&path).is_some_and(|m| m >= 22) {
+                return path;
+            }
         }
     }
     // Check if default `node` meets the minimum version

@@ -199,6 +199,15 @@ pub(crate) async fn resolve_env(
             "Capsule has unconfigured env fields — loading with empty defaults"
         );
 
+        // Fill missing fields with empty strings BEFORE publishing the
+        // onboarding event (which moves onboarding_fields). Uplink capsules
+        // load at daemon boot before any client connects, so the onboarding
+        // event would be lost. The install-time CLI prompts are the primary
+        // mechanism; this is the fallback.
+        for field in &onboarding_fields {
+            resolved.entry(field.key.clone()).or_default();
+        }
+
         let msg = astrid_events::ipc::IpcMessage::new(
             "astrid.v1.onboarding.required",
             astrid_events::ipc::IpcPayload::OnboardingRequired {
@@ -211,21 +220,6 @@ pub(crate) async fn resolve_env(
             metadata: astrid_events::EventMetadata::new(source),
             message: msg,
         });
-
-        // Don't block capsule loading — fill missing fields with empty
-        // strings so the capsule can boot. Uplink capsules load at daemon
-        // boot before any client connects, so the onboarding event above
-        // would be lost. The install-time CLI prompts are the primary
-        // mechanism; this is the fallback.
-        for field in resolved.keys().collect::<Vec<_>>() {
-            // already resolved
-            let _ = field;
-        }
-    }
-
-    // Ensure all declared env keys have a value (empty string fallback).
-    for key in manifest.env.keys() {
-        resolved.entry(key.clone()).or_default();
     }
 
     Ok(resolved)

@@ -27,67 +27,7 @@ use crate::error::{BridgeError, BridgeResult};
 /// - `BridgeError::TranspileFailed` if parsing or transformation fails
 /// - `BridgeError::UnresolvedImports` if the source contains non-type import declarations
 pub fn transpile(source: &str, filename: &str) -> BridgeResult<String> {
-    let allocator = oxc_allocator::Allocator::default();
-
-    let source_type = SourceType::from_path(filename).unwrap_or_else(|_| {
-        // Default to JS module if extension is unrecognized
-        SourceType::mjs()
-    });
-
-    // 1. Parse
-    let parse_ret = Parser::new(&allocator, source, source_type).parse();
-
-    if parse_ret.panicked {
-        let errors: Vec<String> = parse_ret.errors.iter().map(|e| format!("{e}")).collect();
-        return Err(BridgeError::TranspileFailed(format!(
-            "parse errors:\n{}",
-            errors.join("\n")
-        )));
-    }
-
-    if !parse_ret.errors.is_empty() {
-        let errors: Vec<String> = parse_ret.errors.iter().map(|e| format!("{e}")).collect();
-        return Err(BridgeError::TranspileFailed(format!(
-            "parse errors:\n{}",
-            errors.join("\n")
-        )));
-    }
-
-    let mut program = parse_ret.program;
-
-    // 2. Check for non-type imports
-    check_imports(&program)?;
-
-    // 3. Semantic analysis (required for transformer)
-    let sem_ret = SemanticBuilder::new()
-        .with_excess_capacity(2.0)
-        .build(&program);
-
-    let scoping = sem_ret.semantic.into_scoping();
-
-    // 4. Transform (strip TypeScript types)
-    let transform_options = TransformOptions::default();
-    let path = Path::new(filename);
-    let transform_ret = Transformer::new(&allocator, path, &transform_options)
-        .build_with_scoping(scoping, &mut program);
-
-    if !transform_ret.errors.is_empty() {
-        let errors: Vec<String> = transform_ret
-            .errors
-            .iter()
-            .map(|e| format!("{e}"))
-            .collect();
-        return Err(BridgeError::TranspileFailed(format!(
-            "transform errors:\n{}",
-            errors.join("\n")
-        )));
-    }
-
-    // 5. Code generation
-    let codegen_ret = Codegen::new().build(&program);
-    let js_output = codegen_ret.code;
-
-    // 6. ESM → CJS post-processing
+    let js_output = parse_and_transform(source, filename, true)?;
     Ok(esm_to_cjs(&js_output))
 }
 
@@ -100,6 +40,19 @@ pub fn transpile(source: &str, filename: &str) -> BridgeResult<String> {
 ///
 /// - [`BridgeError::TranspileFailed`] if parsing or transformation fails
 pub fn strip_types(source: &str, filename: &str) -> BridgeResult<String> {
+    parse_and_transform(source, filename, false)
+}
+
+/// Shared parse → transform → codegen pipeline.
+///
+/// When `check_tier1_imports` is `true`, non-type imports are rejected
+/// (Tier 1 single-file plugins). When `false`, all imports are allowed
+/// (Tier 2 plugins with npm dependencies).
+fn parse_and_transform(
+    source: &str,
+    filename: &str,
+    check_tier1_imports: bool,
+) -> BridgeResult<String> {
     let allocator = oxc_allocator::Allocator::default();
 
     let source_type = SourceType::from_path(filename).unwrap_or_else(|_| SourceType::mjs());
@@ -115,6 +68,10 @@ pub fn strip_types(source: &str, filename: &str) -> BridgeResult<String> {
     }
 
     let mut program = parse_ret.program;
+
+    if check_tier1_imports {
+        check_imports(&program)?;
+    }
 
     let sem_ret = SemanticBuilder::new()
         .with_excess_capacity(2.0)
