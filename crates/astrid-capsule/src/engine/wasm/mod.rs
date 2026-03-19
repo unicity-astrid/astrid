@@ -299,6 +299,21 @@ impl ExecutionEngine for WasmEngine {
                 (None, None)
             };
 
+            // Open per-capsule log file at principal's .local/log/{capsule}.log
+            let capsule_log = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                let ph = home.principal_home(&ctx.principal);
+                let log_dir = ph.log_dir();
+                let _ = std::fs::create_dir_all(&log_dir);
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(log_dir.join(format!("{}.log", manifest.package.name)))
+                    .ok()
+                    .map(|f| Arc::new(std::sync::Mutex::new(f)))
+            } else {
+                None
+            };
+
             let secret_store = astrid_storage::build_secret_store(
                 &manifest.package.name,
                 kv.clone(),
@@ -309,6 +324,7 @@ impl ExecutionEngine for WasmEngine {
                 principal: ctx.principal.clone(),
                 capsule_uuid,
                 caller_context: None,
+                capsule_log,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
                     .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
                 workspace_root,
@@ -743,6 +759,7 @@ pub fn run_lifecycle(
         principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
         caller_context: None,
+        capsule_log: None,
         capsule_id: cfg.capsule_id.clone(),
         workspace_root: cfg.workspace_root,
         vfs: Arc::new(vfs),

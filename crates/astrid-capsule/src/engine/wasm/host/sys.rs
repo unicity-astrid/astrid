@@ -33,12 +33,35 @@ pub(crate) fn astrid_log_impl(
         _ => LogLevel::Info,
     };
 
-    match parsed_level {
-        LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
-        LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
-        LogLevel::Info => tracing::info!(plugin = %capsule_id, "{message}"),
-        LogLevel::Warn => tracing::warn!(plugin = %capsule_id, "{message}"),
-        LogLevel::Error => tracing::error!(plugin = %capsule_id, "{message}"),
+    // Write to per-capsule log file if available, otherwise fall back to tracing.
+    let ud2 = user_data.get()?;
+    let state2 = ud2
+        .lock()
+        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+    if let Some(ref log_file) = state2.capsule_log {
+        use std::io::Write;
+        let level_str = match parsed_level {
+            LogLevel::Trace => "TRACE",
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info => "INFO",
+            LogLevel::Warn => "WARN",
+            LogLevel::Error => "ERROR",
+        };
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
+        if let Ok(mut f) = log_file.lock() {
+            let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+        }
+    } else {
+        drop(state2);
+        match parsed_level {
+            LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
+            LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
+            LogLevel::Info => tracing::info!(plugin = %capsule_id, "{message}"),
+            LogLevel::Warn => tracing::warn!(plugin = %capsule_id, "{message}"),
+            LogLevel::Error => tracing::error!(plugin = %capsule_id, "{message}"),
+        }
     }
 
     Ok(())

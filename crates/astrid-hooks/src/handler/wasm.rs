@@ -209,6 +209,7 @@ impl WasmHandler {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static(&hook_identity),
             workspace_root: self.workspace_root.clone(),
             vfs: Arc::new(vfs),

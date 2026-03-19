@@ -52,6 +52,10 @@ pub struct HostState {
     pub principal: astrid_core::principal::PrincipalId,
     /// The plugin this state belongs to.
     pub capsule_id: CapsuleId,
+    /// Per-capsule log file at `home/{principal}/.local/log/{capsule}.log`.
+    /// Capsule `astrid_log` output writes here instead of the system tracing
+    /// subscriber. `None` if the log file couldn't be opened.
+    pub capsule_log: Option<Arc<std::sync::Mutex<std::fs::File>>>,
     /// Context of the current caller (set per-invocation by the dispatcher).
     pub caller_context: Option<astrid_events::ipc::IpcMessage>,
     /// The unique session UUID for this plugin's execution state.
@@ -307,6 +311,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
@@ -379,6 +384,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
@@ -456,6 +462,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
@@ -529,6 +536,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
@@ -618,6 +626,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
