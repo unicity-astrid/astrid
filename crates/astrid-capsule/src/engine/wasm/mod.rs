@@ -221,6 +221,7 @@ impl ExecutionEngine for WasmEngine {
             );
 
             let host_state = HostState {
+                principal: ctx.principal.clone(),
                 capsule_uuid,
                 caller_context: None,
                 capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
@@ -651,6 +652,7 @@ pub fn run_lifecycle(
         })?;
 
     let host_state = HostState {
+        principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
         caller_context: None,
         capsule_id: cfg.capsule_id.clone(),

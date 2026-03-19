@@ -48,6 +48,8 @@ use crate::security::CapsuleSecurityGate;
 
 /// Shared state accessible to all host functions via `UserData<HostState>`.
 pub struct HostState {
+    /// The principal this capsule is running on behalf of.
+    pub principal: astrid_core::principal::PrincipalId,
     /// The plugin this state belongs to.
     pub capsule_id: CapsuleId,
     /// Context of the current caller (set per-invocation by the dispatcher).
@@ -242,6 +244,16 @@ impl HostState {
     pub fn set_inbound_tx(&mut self, tx: mpsc::Sender<InboundMessage>) {
         self.inbound_tx = Some(tx);
     }
+
+    /// Return the KV namespace for this capsule scoped to its principal.
+    ///
+    /// Format: `{principal}:capsule:{capsule_id}`. This is the same namespace
+    /// used when the `ScopedKvStore` was created, but exposed here for cases
+    /// where host functions need to construct the namespace dynamically.
+    #[must_use]
+    pub fn principal_kv_namespace(&self) -> String {
+        format!("{}:capsule:{}", self.principal, self.capsule_id)
+    }
 }
 
 impl std::fmt::Debug for HostState {
@@ -284,6 +296,7 @@ mod tests {
         ));
 
         let state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
@@ -352,6 +365,7 @@ mod tests {
         ));
 
         let mut state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
@@ -425,6 +439,7 @@ mod tests {
         ));
 
         let mut state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
@@ -494,6 +509,7 @@ mod tests {
         ));
 
         let mut state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static("test"),
@@ -579,6 +595,7 @@ mod tests {
         ));
 
         let mut state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static("test"),

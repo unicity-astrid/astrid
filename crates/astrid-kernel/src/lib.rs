@@ -291,6 +291,7 @@ impl Kernel {
         }
 
         let ctx = astrid_capsule::context::CapsuleContext::new(
+            principal.clone(),
             self.workspace_root.clone(),
             self.global_root.clone(),
             kv,

@@ -206,6 +206,7 @@ impl WasmHandler {
         );
 
         let host_state = HostState {
+            principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
             capsule_id: CapsuleId::from_static(&hook_identity),

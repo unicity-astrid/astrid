@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use astrid_core::SessionId;
+use astrid_core::principal::PrincipalId;
 use astrid_events::EventBus;
 use astrid_storage::ScopedKvStore;
 use uuid::Uuid;
@@ -21,6 +22,8 @@ use crate::registry::CapsuleRegistry;
 /// not be accidentally duplicated. Use `Arc<SessionToken>` for cheap sharing.
 /// Constructed via `new()` + builder methods (`with_session_token`, etc.).
 pub struct CapsuleContext {
+    /// The principal this capsule is running on behalf of.
+    pub principal: PrincipalId,
     pub workspace_root: PathBuf,
     /// Global shared resources directory (`~/.astrid/home/{principal}/`).
     /// When set, capsules declaring `fs_read = ["global://"]` can read files
@@ -48,6 +51,7 @@ pub struct CapsuleContext {
 impl CapsuleContext {
     #[must_use]
     pub fn new(
+        principal: PrincipalId,
         workspace_root: PathBuf,
         global_root: Option<PathBuf>,
         kv: ScopedKvStore,
@@ -55,6 +59,7 @@ impl CapsuleContext {
         cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     ) -> Self {
         Self {
+            principal,
             workspace_root,
             global_root,
             kv,

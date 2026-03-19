@@ -102,6 +102,7 @@ async fn setup_test_capsule(
     let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-plugin").unwrap();
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
+        astrid_core::PrincipalId::default(),
         temp_workspace.path().to_path_buf(),
         None,
         kv.clone(),
@@ -214,6 +215,7 @@ async fn setup_test_capsule_with_global(
     let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-plugin-global").unwrap();
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
+        astrid_core::PrincipalId::default(),
         temp_workspace.path().to_path_buf(),
         Some(temp_global.path().to_path_buf()),
         kv.clone(),

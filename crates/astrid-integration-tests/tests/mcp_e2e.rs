@@ -74,6 +74,7 @@ async fn test_mcp_host_engine_capability_validation() {
     let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-mcp").unwrap();
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
+        astrid_core::PrincipalId::default(),
         std::env::current_dir().unwrap(),
         None,
         kv.clone(),
