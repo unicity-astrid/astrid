@@ -393,9 +393,12 @@ impl Kernel {
         use astrid_capsule::toposort::toposort_manifests;
         use astrid_core::dirs::AstridHome;
 
+        // Discovery paths in priority order: system > principal > workspace.
         let mut paths = Vec::new();
         if let Ok(home) = AstridHome::resolve() {
-            paths.push(home.capsules_dir());
+            paths.push(home.capsules_dir()); // system capsules (highest priority)
+            let principal = astrid_core::PrincipalId::default();
+            paths.push(home.principal_home(&principal).capsules_dir()); // principal capsules
         }
 
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));

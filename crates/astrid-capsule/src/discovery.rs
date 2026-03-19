@@ -14,43 +14,60 @@ use crate::manifest::{CapsuleManifest, TopicDirection};
 /// Standard capsule manifest file name.
 pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
 
-/// Discover capsule manifests from standard locations.
+/// Discover capsule manifests from standard locations with precedence.
 ///
-/// Scans the following directories for `Capsule.toml` files:
-/// 1. `.astrid/capsules/` (workspace-level, relative to CWD)
-/// 2. Any additional paths provided in `extra_paths`
+/// Scans directories in priority order:
+/// 1. `extra_paths` (system and principal capsule dirs, passed by kernel)
+/// 2. `.astrid/capsules/` (workspace-level, relative to CWD)
 ///
-/// Each subdirectory containing a `Capsule.toml` is treated as a capsule.
-/// Errors in individual manifests are logged as warnings but do not
-/// prevent other manifests from loading.
+/// **Deduplication:** When the same `package.name` appears in multiple
+/// sources, the first occurrence wins (highest priority). Lower-priority
+/// duplicates are logged as warnings and skipped. The kernel passes paths
+/// in order: system (`~/.astrid/capsules/`), principal
+/// (`~/.astrid/home/{id}/.local/capsules/`), then workspace is scanned
+/// last.
 ///
 /// Returns `(manifest, capsule_dir)` pairs where `capsule_dir` is the
 /// directory containing the manifest.
 pub fn discover_manifests(extra_paths: Option<&[PathBuf]>) -> Vec<(CapsuleManifest, PathBuf)> {
     let mut manifests = Vec::new();
+    let mut seen_names: HashSet<String> = HashSet::new();
 
-    // Workspace-level capsules
-    let local_capsules_dir = PathBuf::from(".astrid/capsules");
-    if local_capsules_dir.exists() {
-        info!(path = %local_capsules_dir.display(), "Discovering capsules from local directory");
-        match load_manifests_from_dir(&local_capsules_dir) {
-            Ok(found) => manifests.extend(found),
-            Err(e) => warn!(error = %e, "Failed to load capsules from local directory"),
+    // Helper: load from a directory and deduplicate by name.
+    let mut load_dedup = |dir: &Path, source: &str| {
+        if !dir.exists() {
+            return;
         }
-    }
+        info!(path = %dir.display(), source, "Discovering capsules");
+        match load_manifests_from_dir(dir) {
+            Ok(found) => {
+                for (manifest, path) in found {
+                    if seen_names.contains(&manifest.package.name) {
+                        warn!(
+                            capsule = %manifest.package.name,
+                            source,
+                            skipped_path = %path.display(),
+                            "Skipping duplicate capsule (higher-priority version already loaded)"
+                        );
+                    } else {
+                        seen_names.insert(manifest.package.name.clone());
+                        manifests.push((manifest, path));
+                    }
+                }
+            },
+            Err(e) => warn!(source, error = %e, "Failed to load capsules"),
+        }
+    };
 
-    // Extra paths (user-level, custom, etc.)
+    // 1. Extra paths in priority order (system, then principal).
     if let Some(paths) = extra_paths {
         for path in paths {
-            if path.exists() {
-                info!(path = %path.display(), "Discovering capsules from custom path");
-                match load_manifests_from_dir(path) {
-                    Ok(found) => manifests.extend(found),
-                    Err(e) => warn!(error = %e, "Failed to load capsules from custom path"),
-                }
-            }
+            load_dedup(path, "extra");
         }
     }
+
+    // 2. Workspace-level capsules (lowest priority).
+    load_dedup(&PathBuf::from(".astrid/capsules"), "workspace");
 
     info!(count = manifests.len(), "Discovered capsule manifests");
     manifests
