@@ -318,13 +318,31 @@ pub fn setup_logging(config: &LogConfig) -> TelemetryResult<()> {
                 FileRotation::Never => Rotation::NEVER,
             };
 
-            let appender = RollingFileAppender::new(rotation, dir, &config.file.prefix);
+            let appender = RollingFileAppender::builder()
+                .rotation(rotation)
+                .filename_prefix(&config.file.prefix)
+                .filename_suffix("log")
+                .max_log_files(if config.file.max_files > 0 {
+                    config.file.max_files
+                } else {
+                    7 // default 7-day retention
+                })
+                .build(dir)
+                .map_err(|e| {
+                    TelemetryError::ConfigError(format!(
+                        "failed to create rolling log appender: {e}"
+                    ))
+                })?;
+
+            // Force ANSI off for file output — no terminal escape codes in logs.
+            let mut file_config = config.clone();
+            file_config.ansi = false;
 
             match format {
-                LogFormat::Json => setup_json_logging(filter, config, appender)?,
-                LogFormat::Pretty => setup_pretty_logging(filter, config, appender)?,
-                LogFormat::Compact => setup_compact_logging(filter, config, appender)?,
-                LogFormat::Full => setup_full_logging(filter, config, appender)?,
+                LogFormat::Json => setup_json_logging(filter, &file_config, appender)?,
+                LogFormat::Pretty => setup_pretty_logging(filter, &file_config, appender)?,
+                LogFormat::Compact => setup_compact_logging(filter, &file_config, appender)?,
+                LogFormat::Full => setup_full_logging(filter, &file_config, appender)?,
             }
         },
     }
