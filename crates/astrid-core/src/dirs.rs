@@ -4,7 +4,7 @@
 //!
 //! - [`AstridHome`]: Global state at `~/.astrid/` (or `$ASTRID_HOME`).
 //!   Linux FHS-aligned layout with `etc/`, `var/`, `run/`, `log/`, `keys/`,
-//!   `lib/`, `capsules/`, and `home/` for multi-principal isolation.
+//!   `bin/`, `lib/`, and `home/` for multi-principal isolation.
 //!
 //! - [`WorkspaceDir`]: Per-project directory at `<project>/.astrid/`.
 //!   Holds only committable project-level config (like `.astrid/ASTRID.md`).
@@ -18,7 +18,6 @@
 //!
 //! ```text
 //! ~/.astrid/                           (AstridHome)
-//! ├── capsules/                          system capsules (the "distro")
 //! ├── etc/
 //! │   ├── config.toml                    deployment config
 //! │   ├── servers.toml                   MCP server config
@@ -34,7 +33,8 @@
 //! │   └── deferred.db/                   deferred queue (ephemeral)
 //! ├── log/                               system logs
 //! ├── keys/                              runtime signing key
-//! ├── lib/                               content-addressed compiled WASM modules
+//! ├── bin/                               content-addressed compiled WASM binaries
+//! ├── lib/                               shared WASM component libraries (WIT, future)
 //! └── home/
 //!     └── {principal}/                   per-principal home
 //!         ├── .local/
@@ -164,7 +164,7 @@ impl AstridHome {
             self.run_dir(),
             self.log_dir(),
             self.keys_dir(),
-            self.lib_dir(),
+            self.bin_dir(),
             self.home_dir(),
         ];
         for dir in &dirs {
@@ -291,7 +291,16 @@ impl AstridHome {
         self.keys_dir().join("runtime.key")
     }
 
-    /// Content-addressed compiled WASM module cache (`lib/`).
+    /// Content-addressed compiled WASM binaries (`bin/`).
+    #[must_use]
+    pub fn bin_dir(&self) -> PathBuf {
+        self.root.join("bin")
+    }
+
+    /// Shared WASM component libraries (`lib/`).
+    ///
+    /// Reserved for future WIT interface components that capsules can import.
+    /// Not created eagerly — will be populated when component linking lands.
     #[must_use]
     pub fn lib_dir(&self) -> PathBuf {
         self.root.join("lib")
@@ -627,7 +636,7 @@ mod tests {
         assert!(home.run_dir().exists());
         assert!(home.log_dir().exists());
         assert!(home.keys_dir().exists());
-        assert!(home.lib_dir().exists());
+        assert!(home.bin_dir().exists());
         assert!(home.home_dir().exists());
     }
 
@@ -717,7 +726,7 @@ mod tests {
             home.runtime_key_path(),
             PathBuf::from(format!("{r}/keys/runtime.key"))
         );
-        assert_eq!(home.lib_dir(), PathBuf::from(format!("{r}/lib")));
+        assert_eq!(home.bin_dir(), PathBuf::from(format!("{r}/bin")));
         assert_eq!(home.home_dir(), PathBuf::from(format!("{r}/home")));
     }
 

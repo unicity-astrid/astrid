@@ -32,7 +32,7 @@ fn resolve_content_addressed_wasm(capsule_dir: &std::path::Path) -> Option<PathB
     let meta: serde_json::Value = serde_json::from_str(&content).ok()?;
     let hash = meta.get("wasm_hash")?.as_str()?;
     let home = astrid_core::dirs::AstridHome::resolve().ok()?;
-    let wasm_path = home.lib_dir().join(format!("{hash}.wasm"));
+    let wasm_path = home.bin_dir().join(format!("{hash}.wasm"));
     if wasm_path.exists() {
         Some(wasm_path)
     } else {

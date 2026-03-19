@@ -765,10 +765,10 @@ fn content_address_wasm(
         .with_context(|| format!("failed to read WASM binary: {}", wasm_path.display()))?;
 
     let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
-    let lib_dir = home.lib_dir();
-    std::fs::create_dir_all(&lib_dir)?;
+    let bin_dir = home.bin_dir();
+    std::fs::create_dir_all(&bin_dir)?;
 
-    let dest = lib_dir.join(format!("{hash}.wasm"));
+    let dest = bin_dir.join(format!("{hash}.wasm"));
     if !dest.exists() {
         std::fs::write(&dest, &wasm_bytes)?;
     }
