@@ -464,8 +464,14 @@ pub(crate) fn transpile_and_install(
         );
     }
 
-    // Proceed with standard installation from the temp directory
-    install_from_local_path_inner(output_dir, workspace, home, original_source)
+    // astrid-build produces a .capsule archive — find and unpack it
+    for entry in std::fs::read_dir(output_dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|s| s.to_str()) == Some("capsule") {
+            return unpack_and_install(&entry.path(), workspace, home, original_source);
+        }
+    }
+    bail!("OpenClaw compilation succeeded but no .capsule archive was produced")
 }
 
 pub(crate) fn install_from_local(
@@ -1183,6 +1189,10 @@ async fn cli_elicit_handler(
 /// required because `npm install` creates symlinks in `node_modules/.bin/`
 /// and the archiver also dereferences them via `follow_symlinks(true)`.
 pub(crate) fn copy_capsule_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    copy_capsule_dir_inner(src, dst, true)
+}
+
+fn copy_capsule_dir_inner(src: &Path, dst: &Path, is_root: bool) -> anyhow::Result<()> {
     std::fs::create_dir_all(dst).with_context(|| format!("failed to create {}", dst.display()))?;
 
     for entry in
@@ -1195,10 +1205,13 @@ pub(crate) fn copy_capsule_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
 
         if file_type.is_dir() {
             let name = entry.file_name();
-            if name == ".git" || name == "dist" || name == "target" {
+            // Always skip .git and target. Only skip dist at the top level —
+            // inside node_modules, dist/ contains compiled library code that
+            // Tier 2 capsules need at runtime.
+            if name == ".git" || name == "target" || (is_root && name == "dist") {
                 continue;
             }
-            copy_capsule_dir(&src_path, &dst_path)?;
+            copy_capsule_dir_inner(&src_path, &dst_path, false)?;
         } else if file_type.is_symlink() {
             // Dereference symlinks: resolve to the target's content and copy as
             // a regular file. This handles npm's node_modules/.bin/ symlinks.
@@ -1207,7 +1220,7 @@ pub(crate) fn copy_capsule_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
                 .with_context(|| format!("symlink target not found for {}", src_path.display()))?;
             if metadata.is_dir() {
                 // Symlink points to a directory - recurse into it
-                copy_capsule_dir(&src_path, &dst_path)?;
+                copy_capsule_dir_inner(&src_path, &dst_path, false)?;
             } else {
                 std::fs::copy(&src_path, &dst_path)
                     .with_context(|| format!("failed to copy {}", src_path.display()))?;

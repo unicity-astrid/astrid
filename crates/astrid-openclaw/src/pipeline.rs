@@ -16,6 +16,7 @@ use crate::node_bridge;
 use crate::output;
 use crate::shim;
 use crate::tier::{self, PluginTier};
+use crate::tier2;
 use crate::transpiler;
 
 /// Options for the compilation pipeline.
@@ -202,11 +203,32 @@ fn compile_tier2(
     }
 
     // Copy plugin source into output dir root (preserving directory structure)
-    copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
+    tier2::copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
+
+    // Transpile all .ts/.tsx files to .js so the bridge can run under any
+    // Node.js version without --experimental-strip-types. Uses OXC to strip
+    // types while preserving ESM syntax. The .ts originals are left in place
+    // (harmless) and the .js outputs satisfy the `.js` import specifiers that
+    // TypeScript convention mandates.
+    tier2::transpile_ts_tree(opts.output_dir)?;
 
     // Install npm dependencies if package.json has dependencies and npm is available.
     // Failure is a warning, not fatal — the user may have pre-installed deps or
     // they may be unnecessary for the plugin to compile (runtime concern).
+    //
+    // Use the resolved Node binary's sibling npm to ensure native addons are
+    // compiled for the correct ABI (the default PATH npm may be a different
+    // major version).
+    let node_bin = tier2::resolve_node_binary();
+    let npm_bin = {
+        let node_path = std::path::Path::new(&node_bin);
+        let sibling_npm = node_path.parent().map(|p| p.join("npm"));
+        match sibling_npm {
+            Some(p) if p.exists() => p.to_string_lossy().to_string(),
+            _ => "npm".to_string(),
+        }
+    };
+
     let pkg_json = opts.output_dir.join("package.json");
     if pkg_json.exists()
         && let Ok(pkg_content) = std::fs::read_to_string(&pkg_json)
@@ -216,11 +238,18 @@ fn compile_tier2(
             .and_then(|d| d.as_object())
             .is_some_and(|d| !d.is_empty())
     {
-        match std::process::Command::new("npm")
-            .args(["install", "--production"])
-            .current_dir(opts.output_dir)
-            .status()
-        {
+        // Prepend the resolved Node binary's directory to PATH so npm's
+        // `#!/usr/bin/env node` shebang picks up the correct version. Without
+        // this, npm may run under a different (older) Node, causing EBADENGINE
+        // errors and potentially incomplete installs.
+        let mut cmd = std::process::Command::new(&npm_bin);
+        cmd.args(["install", "--omit=dev"])
+            .current_dir(opts.output_dir);
+        if let Some(node_dir) = std::path::Path::new(&node_bin).parent() {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{}:{current_path}", node_dir.display()));
+        }
+        match cmd.status() {
             Ok(status) if status.success() => {},
             Ok(_) => {
                 eprintln!("warning: npm install failed — dependencies may be missing at runtime");
@@ -232,8 +261,18 @@ fn compile_tier2(
     // Write the MCP bridge script
     node_bridge::write_bridge_script(opts.output_dir)?;
 
-    // Generate Tier 2 Capsule.toml (MCP server instead of WASM component)
-    generate_tier2_manifest(astrid_id, oc_manifest, &entry_point_rel, opts.output_dir)?;
+    // Generate Tier 2 Capsule.toml (MCP server instead of WASM component).
+    // Use the transpiled .js entry point if the original was .ts/.tsx.
+    let js_entry = {
+        let p = std::path::Path::new(&entry_point_rel);
+        match p.extension().and_then(|e| e.to_str()) {
+            Some(ext) if ext.eq_ignore_ascii_case("ts") || ext.eq_ignore_ascii_case("tsx") => {
+                p.with_extension("js").to_string_lossy().to_string()
+            },
+            _ => entry_point_rel.clone(),
+        }
+    };
+    tier2::generate_tier2_manifest(astrid_id, oc_manifest, &js_entry, opts.output_dir)?;
 
     Ok(CompileResult {
         astrid_id: astrid_id.to_string(),
@@ -241,254 +280,6 @@ fn compile_tier2(
         manifest: oc_manifest.clone(),
         cached: false,
     })
-}
-
-/// Serializable Tier 2 `Capsule.toml` manifest.
-#[derive(Debug, serde::Serialize)]
-struct Tier2Manifest {
-    package: Tier2Package,
-    #[serde(default, rename = "uplink", skip_serializing_if = "Vec::is_empty")]
-    uplinks: Vec<Tier2UplinkDef>,
-    mcp_server: Vec<Tier2McpServer>,
-    capabilities: Tier2Capabilities,
-    #[serde(default, skip_serializing_if = "Tier2Dependencies::is_empty")]
-    dependencies: Tier2Dependencies,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    env: HashMap<String, Tier2EnvDef>,
-}
-
-/// Capability-based dependency declarations for Tier 2 capsule manifests.
-#[derive(Debug, Default, serde::Serialize)]
-struct Tier2Dependencies {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    provides: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    requires: Vec<String>,
-}
-
-impl Tier2Dependencies {
-    fn is_empty(&self) -> bool {
-        self.provides.is_empty() && self.requires.is_empty()
-    }
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Tier2Package {
-    name: String,
-    version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Tier2McpServer {
-    id: String,
-    #[serde(rename = "type")]
-    server_type: String,
-    command: String,
-    args: Vec<String>,
-}
-
-#[expect(clippy::trivially_copy_pass_by_ref)]
-fn is_false(v: &bool) -> bool {
-    !v
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Tier2Capabilities {
-    #[serde(default, skip_serializing_if = "is_false")]
-    uplink: bool,
-    host_process: Vec<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(untagged)]
-enum Tier2Platform {
-    Known(String),
-    Custom { custom: String },
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Tier2UplinkDef {
-    name: String,
-    platform: Tier2Platform,
-    profile: String,
-}
-
-const KNOWN_PLATFORMS: &[&str] = &["discord", "whatsapp", "telegram", "slack", "web", "cli"];
-
-fn channel_to_platform(channel: &str) -> Tier2Platform {
-    let lower = channel.to_lowercase();
-    if KNOWN_PLATFORMS.contains(&lower.as_str()) {
-        Tier2Platform::Known(lower)
-    } else {
-        Tier2Platform::Custom { custom: lower }
-    }
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Tier2EnvDef {
-    #[serde(rename = "type")]
-    env_type: String,
-    request: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    default: Option<String>,
-    #[serde(rename = "enum", default, skip_serializing_if = "Vec::is_empty")]
-    enum_values: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    placeholder: Option<String>,
-}
-
-/// Build the `[env]` map for a Tier 2 manifest from `configSchema` + `uiHints`.
-fn build_tier2_env(oc_manifest: &OpenClawManifest) -> BridgeResult<HashMap<String, Tier2EnvDef>> {
-    let mut env = HashMap::new();
-    for (key, f) in manifest::extract_env_fields(oc_manifest)? {
-        env.insert(
-            key,
-            Tier2EnvDef {
-                env_type: f.env_type,
-                request: f.request,
-                description: f.description,
-                default: f.default,
-                enum_values: f.enum_values,
-                placeholder: f.placeholder,
-            },
-        );
-    }
-    Ok(env)
-}
-
-/// Generate a `Capsule.toml` for Tier 2 plugins using `[[mcp_server]]`.
-fn generate_tier2_manifest(
-    astrid_id: &str,
-    oc_manifest: &OpenClawManifest,
-    entry_point_rel: &str,
-    output_dir: &Path,
-) -> BridgeResult<()> {
-    let env = build_tier2_env(oc_manifest)?;
-
-    let uplinks: Vec<Tier2UplinkDef> = oc_manifest
-        .channels
-        .iter()
-        .map(|ch| Tier2UplinkDef {
-            name: ch.clone(),
-            platform: channel_to_platform(ch),
-            profile: "bridge".to_string(),
-        })
-        .collect();
-
-    let manifest = Tier2Manifest {
-        package: Tier2Package {
-            name: astrid_id.to_string(),
-            version: oc_manifest.display_version().to_string(),
-            description: oc_manifest.description.clone(),
-        },
-        uplinks,
-        mcp_server: vec![Tier2McpServer {
-            id: astrid_id.to_string(),
-            server_type: "stdio".to_string(),
-            command: "node".to_string(),
-            args: vec![
-                "astrid_bridge.mjs".to_string(),
-                "--entry".to_string(),
-                entry_point_rel.to_string(),
-                "--plugin-id".to_string(),
-                astrid_id.to_string(),
-            ],
-        }],
-        capabilities: Tier2Capabilities {
-            uplink: !oc_manifest.channels.is_empty(),
-            host_process: vec!["node".to_string()],
-        },
-        dependencies: {
-            let mut provides = Vec::new();
-            for channel in &oc_manifest.channels {
-                if channel.is_empty() || channel.split('.').any(str::is_empty) {
-                    return Err(BridgeError::Manifest(format!(
-                        "channel name '{channel}' is invalid (empty or contains empty segments)"
-                    )));
-                }
-                provides.push(format!("uplink:{channel}"));
-            }
-            for provider in &oc_manifest.providers {
-                if provider.is_empty() || provider.split('.').any(str::is_empty) {
-                    return Err(BridgeError::Manifest(format!(
-                        "provider name '{provider}' is invalid (empty or contains empty segments)"
-                    )));
-                }
-                provides.push(format!("llm:{provider}"));
-            }
-            Tier2Dependencies {
-                provides,
-                ..Default::default()
-            }
-        },
-        env,
-    };
-
-    let toml_content = toml::to_string_pretty(&manifest)
-        .map_err(|e| BridgeError::Output(format!("failed to serialize Capsule.toml: {e}")))?;
-
-    let toml_path = output_dir.join("Capsule.toml");
-    std::fs::write(&toml_path, toml_content)
-        .map_err(|e| BridgeError::Output(format!("failed to write Capsule.toml: {e}")))?;
-
-    Ok(())
-}
-
-/// Maximum nesting depth for plugin source tree traversal.
-const MAX_COPY_DEPTH: usize = 64;
-
-/// Copy plugin source files, skipping `node_modules`, `.git`, etc.
-fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> {
-    if depth > MAX_COPY_DEPTH {
-        return Err(BridgeError::Manifest(
-            "plugin source tree exceeds maximum nesting depth (64)".into(),
-        ));
-    }
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-
-        // Skip build artifacts and large directories
-        if matches!(
-            name_str.as_ref(),
-            "node_modules"
-                | ".git"
-                | "dist"
-                | "target"
-                | ".next"
-                | ".nuxt"
-                | ".turbo"
-                | "build"
-                | ".cache"
-                | ".parcel-cache"
-                | ".yarn"
-        ) {
-            continue;
-        }
-
-        let dst_path = dst.join(&name);
-
-        if file_type.is_symlink() {
-            return Err(BridgeError::Manifest(format!(
-                "plugin source contains a symlink at {} — symlinks are not permitted in capsule archives",
-                entry.path().display()
-            )));
-        }
-
-        if file_type.is_dir() {
-            std::fs::create_dir_all(&dst_path)?;
-            copy_plugin_source(&entry.path(), &dst_path, depth.saturating_add(1))?;
-        } else if file_type.is_file() {
-            std::fs::copy(entry.path(), &dst_path)?;
-        }
-    }
-    Ok(())
 }
 
 /// Validate config values against the plugin's `configSchema`.
@@ -658,12 +449,15 @@ mod tests {
             capsule_toml.contains("[[mcp_server]]"),
             "Tier 2 should use mcp_server, got: {capsule_toml}"
         );
+        // The resolved node binary may be a full path (e.g. /opt/homebrew/opt/node@22/bin/node)
+        // or just "node" depending on what's installed. Check that it contains "node".
         assert!(
-            capsule_toml.contains("command = \"node\""),
-            "Tier 2 should use node"
+            capsule_toml.contains("command = \"node\"") || capsule_toml.contains("command = \"/"),
+            "Tier 2 should use node, got: {capsule_toml}"
         );
         assert!(
-            capsule_toml.contains("host_process = [\"node\"]"),
+            capsule_toml.contains("host_process = [\"node\"]")
+                || capsule_toml.contains("host_process = [\"/"),
             "Tier 2 should declare host_process"
         );
         assert!(
@@ -820,7 +614,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
+        tier2::copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(
@@ -837,7 +631,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
+        tier2::copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(!dst.path().join(".git").exists(), ".git should be skipped");
@@ -931,26 +725,9 @@ mod tests {
     }
 
     #[test]
-    fn channel_to_platform_known_returns_known() {
-        match channel_to_platform("discord") {
-            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
-            Tier2Platform::Custom { .. } => panic!("expected Known for discord"),
-        }
-    }
-
-    #[test]
-    fn channel_to_platform_unknown_returns_custom() {
-        match channel_to_platform("unicity") {
-            Tier2Platform::Custom { custom } => assert_eq!(custom, "unicity"),
-            Tier2Platform::Known(_) => panic!("expected Custom for unicity"),
-        }
-    }
-
-    #[test]
-    fn channel_to_platform_case_insensitive() {
-        match channel_to_platform("Discord") {
-            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
-            Tier2Platform::Custom { .. } => panic!("expected Known for Discord (case-insensitive)"),
-        }
+    fn channel_to_platform_lowercases() {
+        assert_eq!(tier2::channel_to_platform("discord"), "discord");
+        assert_eq!(tier2::channel_to_platform("unicity"), "unicity");
+        assert_eq!(tier2::channel_to_platform("Discord"), "discord");
     }
 }

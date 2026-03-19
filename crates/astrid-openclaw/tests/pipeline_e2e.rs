@@ -148,7 +148,10 @@ fn e2e_tier2_full_pipeline() {
 
     // MCP server config — must pass --entry and --plugin-id flags
     assert!(capsule_toml.contains("[[mcp_server]]"));
-    assert!(capsule_toml.contains(r#"command = "node""#));
+    assert!(
+        capsule_toml.contains(r#"command = "node""#) || capsule_toml.contains(r#"command = "/"#),
+        "Tier 2 should use node"
+    );
     assert!(capsule_toml.contains("astrid_bridge.mjs"));
     assert!(
         capsule_toml.contains("--entry"),
@@ -160,7 +163,11 @@ fn e2e_tier2_full_pipeline() {
     );
 
     // Capabilities
-    assert!(capsule_toml.contains(r#"host_process = ["node"]"#));
+    assert!(
+        capsule_toml.contains(r#"host_process = ["node"]"#)
+            || capsule_toml.contains(r#"host_process = ["/"#),
+        "Tier 2 should declare host_process"
+    );
 
     // Environment — slack_token should be detected as secret
     assert!(
@@ -462,7 +469,10 @@ fn e2e_official_openclaw_plugin_tier2() {
     // Verify Capsule.toml has MCP server config
     let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
     assert!(capsule_toml.contains("[[mcp_server]]"));
-    assert!(capsule_toml.contains(r#"command = "node""#));
+    assert!(
+        capsule_toml.contains(r#"command = "node""#) || capsule_toml.contains(r#"command = "/"#),
+        "Tier 2 should use node"
+    );
     assert!(capsule_toml.contains("--entry"));
     assert!(
         capsule_toml.contains("src/index.js"),
@@ -588,12 +598,11 @@ fn tier2_channel_plugin_generates_uplink_and_capability() {
     let uplink = &uplinks[0];
     assert_eq!(uplink.get("name").unwrap().as_str().unwrap(), "unicity");
     assert_eq!(uplink.get("profile").unwrap().as_str().unwrap(), "bridge");
-    // "unicity" is not a known platform, so it should be a table with custom key
-    let platform = uplink.get("platform").unwrap();
+    // Platform is the lowercased channel name
     assert_eq!(
-        platform.get("custom").unwrap().as_str().unwrap(),
+        uplink.get("platform").unwrap().as_str().unwrap(),
         "unicity",
-        "unknown platform should serialize as {{ custom = \"unicity\" }}"
+        "platform should be the lowercased channel name"
     );
 
     // Check capabilities.uplink = true

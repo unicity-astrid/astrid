@@ -75,10 +75,17 @@ impl ExecutionEngine for McpHostEngine {
         // 2. Fat Binary Resolution:
         // If the command is a relative path (e.g. "./bin/my-tool") that exists locally within
         // the capsule directory, check if it's a directory. If it is, append the host's target triple.
+        //
+        // Absolute paths to system binaries (e.g. "/opt/homebrew/opt/node@22/bin/node")
+        // are allowed if they were explicitly declared in the host_process capability.
+        // These are already validated in step 1 and don't need path traversal checks.
+        let is_absolute_system_binary = std::path::Path::new(&command_str).is_absolute();
+
         let local_cmd_path = self.capsule_dir.join(&command_str);
 
-        // Prevent path traversal outside the capsule directory
-        if let Ok(canonical_cmd) = local_cmd_path.canonicalize()
+        // Prevent path traversal outside the capsule directory (skip for system binaries)
+        if !is_absolute_system_binary
+            && let Ok(canonical_cmd) = local_cmd_path.canonicalize()
             && let Ok(canonical_capsule_dir) = self.capsule_dir.canonicalize()
         {
             if !canonical_cmd.starts_with(&canonical_capsule_dir) {
@@ -136,6 +143,11 @@ impl ExecutionEngine for McpHostEngine {
 
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
+        // Determine network access from the capsule's `net` capability.
+        // If the capsule declared any net domains, allow network access.
+        let allow_network =
+            !self.manifest.capabilities.net.is_empty() || self.manifest.capabilities.uplink;
+
         let config = astrid_mcp::ServerConfig {
             name: server_id.clone(),
             command: Some(command_str),
@@ -143,6 +155,7 @@ impl ExecutionEngine for McpHostEngine {
             env: resolved_env,
             cwd: Some(self.capsule_dir.clone()),
             restart_policy: astrid_mcp::RestartPolicy::Always, // Host engines should restart on crash
+            allow_network,
             ..Default::default()
         };
 

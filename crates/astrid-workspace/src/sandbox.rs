@@ -440,10 +440,15 @@ impl ProcessSandboxConfig {
             .collect::<io::Result<Vec<_>>>()?
             .join("\n");
 
-        // Build deny rules for hidden paths (e.g. ~/.astrid/)
+        // Build deny rules for hidden paths (e.g. ~/.astrid/).
+        // Skip any hidden path that is an ancestor of or equal to the
+        // writable_root — the capsule must be able to access its own
+        // directory, and Seatbelt deny rules block even lstat() on parent
+        // paths which prevents Node.js from resolving real paths.
         let hidden_deny_rules: String = self
             .hidden_paths
             .iter()
+            .filter(|p| !self.writable_root.starts_with(p.as_path()))
             .map(|p| {
                 validate_sandbox_str(p, "hidden path").map(|s| {
                     format!(
@@ -463,6 +468,7 @@ impl ProcessSandboxConfig {
 {network_rule}
 (allow sysctl-read)
 (allow ipc-posix-shm)
+(allow mach*)
 (allow file-read*
     (subpath "/usr")
     (subpath "/bin")
@@ -474,6 +480,7 @@ impl ProcessSandboxConfig {
     (subpath "{writable_root_str}")
     (subpath "/private/tmp")
     (subpath "/var/folders")
+    (literal "/")
 {extra_read_rules}
 )
 (allow file-write*

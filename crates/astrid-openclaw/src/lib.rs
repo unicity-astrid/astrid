@@ -33,4 +33,5 @@ pub mod output;
 pub mod pipeline;
 pub mod shim;
 pub mod tier;
+pub(crate) mod tier2;
 pub mod transpiler;

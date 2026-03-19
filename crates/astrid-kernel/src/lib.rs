@@ -683,7 +683,8 @@ impl Kernel {
         // the RwLock across N awaits would block all registry writers.
         let (all_tools, capsule_ids) = {
             let registry = self.capsules.read().await;
-            let tools: Vec<LlmToolDefinition> = registry
+            // Collect tools declared in Capsule.toml manifests (WASM capsules).
+            let mut tools: Vec<LlmToolDefinition> = registry
                 .values()
                 .flat_map(|capsule| {
                     capsule.manifest().tools.iter().map(|t| LlmToolDefinition {
@@ -694,6 +695,30 @@ impl Kernel {
                 })
                 .collect();
             let ids: Vec<String> = registry.list().iter().map(ToString::to_string).collect();
+
+            // Also collect tools discovered from MCP host engines (Tier 2
+            // OpenClaw capsules, legacy MCP servers). These are registered
+            // dynamically at runtime via the MCP bridge.
+            let mut tool_names: std::collections::HashSet<String> =
+                tools.iter().map(|t| t.name.clone()).collect();
+            let mcp_tools = self.mcp.inner().server_manager().all_tools().await;
+            for t in mcp_tools {
+                // Avoid duplicates if a tool is declared in both manifest and MCP.
+                if tool_names.insert(t.name.clone()) {
+                    // Ensure input_schema has "properties" — LLM APIs require it.
+                    let mut schema = t.input_schema;
+                    if let Some(obj) = schema.as_object_mut() {
+                        obj.entry("properties")
+                            .or_insert_with(|| serde_json::json!({}));
+                    }
+                    tools.push(LlmToolDefinition {
+                        name: t.name,
+                        description: t.description,
+                        input_schema: schema,
+                    });
+                }
+            }
+
             (tools, ids)
         };
 

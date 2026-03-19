@@ -11,6 +11,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- End-to-end Tier 2 OpenClaw plugin support: TypeScript plugins with npm dependencies install, transpile, sandbox, and run as MCP capsules with full tool integration
+- OXC `strip_types()` transpiler for Tier 2 TS→JS (preserves ESM, unlike Tier 1's CJS conversion)
+- Node.js binary resolution at build time: prefers versioned Homebrew installs (node@22+), validates each candidate
+- MCP-discovered tools are now merged into the LLM tool schema injection alongside WASM capsule tools
 - `astrid_net_read` now uses a self-describing `NetReadStatus` wire format: every response is prefixed with a discriminant byte (`0x00` = data, `0x01` = closed, `0x02` = pending), replacing the previous single-byte sentinel hack
 - Headless mode: `astrid -p "prompt"` for non-interactive single-prompt execution with stdin piping support
 - Post-install onboarding: `astrid capsule install` now prompts for `[env]` fields immediately after install
@@ -18,6 +22,14 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- `transpile_and_install` now correctly unpacks `.capsule` archives from `astrid-build` output
+- `copy_capsule_dir` only skips `dist/` at the top level; npm packages inside `node_modules` retain their `dist/` directories
+- MCP host engine: absolute system binaries (e.g. `/opt/homebrew/opt/node@22/bin/node`) skip path traversal check when declared in `host_process` capability
+- MCP host engine: `allow_network` derived from capsule capabilities (uplink/net) instead of defaulting to `false`
+- Capsule env resolution no longer blocks loading on missing optional fields; fills with empty defaults so uplink capsules can boot before clients connect
+- macOS Seatbelt sandbox: added `mach*` permission and unrestricted `file-read*` for Node.js compatibility
+- macOS Seatbelt sandbox: hidden path deny rules skip paths that are ancestors of the writable root
+- MCP tool schemas now include `properties` field for LLM API compatibility
 - `net_write` no longer causes a WASM trap on broken pipe / connection reset when a headless client disconnects; write errors are logged at debug level and the dead stream is cleaned up on the next read
 - `net_read` returns a `NET_STREAM_CLOSED` sentinel byte instead of trapping on peer EOF/disconnect, allowing the CLI capsule run loop to remove dead streams gracefully
 - Also fixes a variable name mismatch (`capsule` vs `plugin`) in `approval.rs` that caused a compile error
