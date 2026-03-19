@@ -124,6 +124,12 @@ pub struct WasmEngine {
     /// Cancellation token for cooperative shutdown of blocking host functions.
     /// Triggered during `unload()` before aborting the run handle.
     cancel_token: Option<tokio_util::sync::CancellationToken>,
+    /// Reference to the shared HostState for setting per-invocation context.
+    ///
+    /// Cloned from `UserData<HostState>` during `load()`. Used in
+    /// `invoke_interceptor` to set `caller_context` and `invocation_kv`
+    /// before calling into the WASM plugin (clear-before-set pattern).
+    host_state: Option<UserData<host_state::HostState>>,
 }
 
 impl WasmEngine {
@@ -137,6 +143,7 @@ impl WasmEngine {
             run_handle: None,
             ready_rx: None,
             cancel_token: None,
+            host_state: None,
         }
     }
 }
@@ -204,373 +211,385 @@ impl ExecutionEngine for WasmEngine {
         let process_tracker_for_listener = process_tracker.clone();
 
         let capsule_dir_for_verify = self._capsule_dir.clone();
-        let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
-            let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
-                CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
-            })?;
+        let (plugin, rx, has_run, ready_rx, user_data_ref) =
+            tokio::task::block_in_place(move || {
+                let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
+                })?;
 
-            // BLAKE3 integrity verification. Fail-secure: no hash = no load.
-            let actual_hash = blake3::hash(&wasm_bytes).to_hex().to_string();
-            match read_expected_wasm_hash(&capsule_dir_for_verify) {
-                Some(expected_hash) if actual_hash == expected_hash => {
-                    // Hash matches — verified.
-                },
-                Some(expected_hash) => {
-                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                        "WASM integrity check failed: expected BLAKE3 {expected_hash}, \
+                // BLAKE3 integrity verification. Fail-secure: no hash = no load.
+                let actual_hash = blake3::hash(&wasm_bytes).to_hex().to_string();
+                match read_expected_wasm_hash(&capsule_dir_for_verify) {
+                    Some(expected_hash) if actual_hash == expected_hash => {
+                        // Hash matches — verified.
+                    },
+                    Some(expected_hash) => {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "WASM integrity check failed: expected BLAKE3 {expected_hash}, \
                          got {actual_hash}. The binary may have been tampered with."
-                    )));
-                },
-                None => {
-                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                        "WASM capsule '{}' has no BLAKE3 hash in meta.json. \
+                        )));
+                    },
+                    None => {
+                        return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                            "WASM capsule '{}' has no BLAKE3 hash in meta.json. \
                          Capsules must be installed via `astrid capsule install` \
                          which records the hash. Refusing to load unverified binary.",
-                        manifest.package.name
-                    )));
-                },
-            }
+                            manifest.package.name
+                        )));
+                    },
+                }
 
-            let (tx, rx) = if !manifest.uplinks.is_empty() {
-                let (tx, rx) = tokio::sync::mpsc::channel(128);
-                (Some(tx), Some(rx))
-            } else {
-                (None, None)
-            };
+                let (tx, rx) = if !manifest.uplinks.is_empty() {
+                    let (tx, rx) = tokio::sync::mpsc::channel(128);
+                    (Some(tx), Some(rx))
+                } else {
+                    (None, None)
+                };
 
-            // Build HostState
-            let lower_vfs = astrid_vfs::HostVfs::new();
-            let upper_vfs = astrid_vfs::HostVfs::new();
-            let root_handle = astrid_capabilities::DirHandle::new();
-            let global_root = ctx.global_root.clone();
+                // Build HostState
+                let lower_vfs = astrid_vfs::HostVfs::new();
+                let upper_vfs = astrid_vfs::HostVfs::new();
+                let root_handle = astrid_capabilities::DirHandle::new();
+                let global_root = ctx.global_root.clone();
 
-            // Upper layer uses a per-capsule temporary directory so writes
-            // are sandboxed until explicitly committed. The TempDir is kept
-            // alive in HostState.upper_dir for the capsule's lifetime.
-            let upper_temp = tempfile::TempDir::new().map_err(|e| {
-                CapsuleError::UnsupportedEntryPoint(format!(
-                    "Failed to create overlay temp dir: {e}"
-                ))
-            })?;
-
-            tokio::runtime::Handle::current()
-                .block_on(async {
-                    lower_vfs
-                        .register_dir(root_handle.clone(), workspace_root.clone())
-                        .await?;
-                    upper_vfs
-                        .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
-                        .await?;
-                    Ok::<(), astrid_vfs::VfsError>(())
-                })
-                .map_err(|e| {
+                // Upper layer uses a per-capsule temporary directory so writes
+                // are sandboxed until explicitly committed. The TempDir is kept
+                // alive in HostState.upper_dir for the capsule's lifetime.
+                let upper_temp = tempfile::TempDir::new().map_err(|e| {
                     CapsuleError::UnsupportedEntryPoint(format!(
-                        "Failed to register VFS directory: {e}"
+                        "Failed to create overlay temp dir: {e}"
                     ))
                 })?;
 
-            // Set up the global VFS (backed by ~/.astrid/shared/). Writes go
-            // directly to disk — there is no OverlayVfs CoW layer here,
-            // unlike the workspace VFS. Only mount if the directory exists
-            // to avoid failing capsule load on fresh installs.
-            let (global_vfs, global_vfs_root_handle): (
-                Option<Arc<dyn astrid_vfs::Vfs>>,
-                Option<astrid_capabilities::DirHandle>,
-            ) = if let Some(ref g_root) = global_root {
-                if g_root.exists() {
-                    let g_vfs = astrid_vfs::HostVfs::new();
-                    let g_handle = astrid_capabilities::DirHandle::new();
-                    tokio::runtime::Handle::current()
+                tokio::runtime::Handle::current()
+                    .block_on(async {
+                        lower_vfs
+                            .register_dir(root_handle.clone(), workspace_root.clone())
+                            .await?;
+                        upper_vfs
+                            .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
+                            .await?;
+                        Ok::<(), astrid_vfs::VfsError>(())
+                    })
+                    .map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to register VFS directory: {e}"
+                        ))
+                    })?;
+
+                // Set up the global VFS (backed by ~/.astrid/shared/). Writes go
+                // directly to disk — there is no OverlayVfs CoW layer here,
+                // unlike the workspace VFS. Only mount if the directory exists
+                // to avoid failing capsule load on fresh installs.
+                let (global_vfs, global_vfs_root_handle): (
+                    Option<Arc<dyn astrid_vfs::Vfs>>,
+                    Option<astrid_capabilities::DirHandle>,
+                ) = if let Some(ref g_root) = global_root {
+                    if g_root.exists() {
+                        let g_vfs = astrid_vfs::HostVfs::new();
+                        let g_handle = astrid_capabilities::DirHandle::new();
+                        tokio::runtime::Handle::current()
+                            .block_on(async {
+                                g_vfs.register_dir(g_handle.clone(), g_root.clone()).await
+                            })
+                            .map_err(|e| {
+                                CapsuleError::UnsupportedEntryPoint(format!(
+                                    "Failed to register global VFS directory: {e}"
+                                ))
+                            })?;
+                        (
+                            Some(Arc::new(g_vfs) as Arc<dyn astrid_vfs::Vfs>),
+                            Some(g_handle),
+                        )
+                    } else {
+                        tracing::warn!(
+                            global_root = %g_root.display(),
+                            "home:// VFS not mounted: directory does not exist. \
+                             Capsules requesting home:// paths will receive errors \
+                             until the directory is created and the kernel is restarted."
+                        );
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+                let overlay_vfs = Arc::new(astrid_vfs::OverlayVfs::new(
+                    Box::new(lower_vfs),
+                    Box::new(upper_vfs),
+                ));
+
+                let next_subscription_id = 1;
+                // Only resolve home:// in the gate if we actually mounted the VFS.
+                // Otherwise the gate would approve paths the VFS can't serve.
+                let gate_global_root = if global_vfs.is_some() {
+                    global_root.clone()
+                } else {
+                    None
+                };
+                let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(
+                    manifest.clone(),
+                    workspace_root.clone(),
+                    gate_global_root,
+                ));
+
+                // Set up /tmp VFS backed by the principal's .local/tmp/ directory.
+                let tmp_dir = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                    let ph = home.principal_home(&ctx.principal);
+                    let dir = ph.tmp_dir();
+                    if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
+                        Some(dir)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let (tmp_vfs, tmp_vfs_root_handle) = if let Some(ref t_root) = tmp_dir {
+                    let t_vfs = astrid_vfs::HostVfs::new();
+                    let t_handle = astrid_capabilities::DirHandle::new();
+                    if tokio::runtime::Handle::current()
                         .block_on(async {
-                            g_vfs.register_dir(g_handle.clone(), g_root.clone()).await
+                            t_vfs.register_dir(t_handle.clone(), t_root.clone()).await
                         })
-                        .map_err(|e| {
-                            CapsuleError::UnsupportedEntryPoint(format!(
-                                "Failed to register global VFS directory: {e}"
-                            ))
-                        })?;
-                    (
-                        Some(Arc::new(g_vfs) as Arc<dyn astrid_vfs::Vfs>),
-                        Some(g_handle),
-                    )
-                } else {
-                    tracing::warn!(
-                        global_root = %g_root.display(),
-                        "global:// VFS not mounted: directory does not exist. \
-                         Capsules requesting global:// paths will receive errors \
-                         until the directory is created and the kernel is restarted."
-                    );
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            };
-
-            let overlay_vfs = Arc::new(astrid_vfs::OverlayVfs::new(
-                Box::new(lower_vfs),
-                Box::new(upper_vfs),
-            ));
-
-            let next_subscription_id = 1;
-            // Only resolve global:// in the gate if we actually mounted the VFS.
-            // Otherwise the gate would approve paths the VFS can't serve.
-            let gate_global_root = if global_vfs.is_some() {
-                global_root.clone()
-            } else {
-                None
-            };
-            let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(
-                manifest.clone(),
-                workspace_root.clone(),
-                gate_global_root,
-            ));
-
-            // Set up /tmp VFS backed by the principal's .local/tmp/ directory.
-            let tmp_dir = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-                let ph = home.principal_home(&ctx.principal);
-                let dir = ph.tmp_dir();
-                if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
-                    Some(dir)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let (tmp_vfs, tmp_vfs_root_handle) = if let Some(ref t_root) = tmp_dir {
-                let t_vfs = astrid_vfs::HostVfs::new();
-                let t_handle = astrid_capabilities::DirHandle::new();
-                if tokio::runtime::Handle::current()
-                    .block_on(async { t_vfs.register_dir(t_handle.clone(), t_root.clone()).await })
-                    .is_ok()
-                {
-                    (
-                        Some(Arc::new(t_vfs) as Arc<dyn astrid_vfs::Vfs>),
-                        Some(t_handle),
-                    )
+                        .is_ok()
+                    {
+                        (
+                            Some(Arc::new(t_vfs) as Arc<dyn astrid_vfs::Vfs>),
+                            Some(t_handle),
+                        )
+                    } else {
+                        (None, None)
+                    }
                 } else {
                     (None, None)
+                };
+
+                // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
+                // Prunes logs older than 7 days on each capsule load.
+                let capsule_log = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                    let ph = home.principal_home(&ctx.principal);
+                    let capsule_log_dir = ph.log_dir().join(&manifest.package.name);
+                    let _ = std::fs::create_dir_all(&capsule_log_dir);
+                    prune_old_logs(&capsule_log_dir, 7);
+                    let today = today_date_string();
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(capsule_log_dir.join(format!("{today}.log")))
+                        .ok()
+                        .map(|f| Arc::new(std::sync::Mutex::new(f)))
+                } else {
+                    None
+                };
+
+                let secret_store = astrid_storage::build_secret_store(
+                    &manifest.package.name,
+                    kv.clone(),
+                    tokio::runtime::Handle::current(),
+                );
+
+                let host_state = HostState {
+                    principal: ctx.principal.clone(),
+                    capsule_uuid,
+                    caller_context: None,
+                    invocation_kv: None,
+                    capsule_log,
+                    capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
+                        .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
+                    workspace_root,
+                    vfs: Arc::clone(&overlay_vfs) as Arc<dyn astrid_vfs::Vfs>,
+                    vfs_root_handle: root_handle,
+                    global_root,
+                    global_vfs,
+                    global_vfs_root_handle,
+                    tmp_dir,
+                    tmp_vfs,
+                    tmp_vfs_root_handle,
+                    overlay_vfs: Some(overlay_vfs),
+                    upper_dir: Some(Arc::new(upper_temp)),
+                    kv,
+                    event_bus,
+                    ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+                    subscriptions: std::collections::HashMap::new(),
+                    next_subscription_id,
+                    config: wasm_config,
+                    ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
+                    ipc_subscribe_patterns: manifest.capabilities.ipc_subscribe.clone(),
+                    // Only provide the CLI socket listener if the capsule declares net_bind.
+                    // This prevents unauthorized capsules from even seeing the listener.
+                    cli_socket_listener: if manifest.capabilities.net_bind.is_empty() {
+                        None
+                    } else {
+                        ctx.cli_socket_listener.clone()
+                    },
+                    active_streams: std::collections::HashMap::new(),
+                    next_stream_id: 1,
+                    active_http_streams: std::collections::HashMap::new(),
+                    next_http_stream_id: 1,
+                    security: Some(security_gate),
+                    hook_manager: None, // Will be injected by Gateway
+                    capsule_registry: ctx.capsule_registry.clone(),
+                    runtime_handle: tokio::runtime::Handle::current(),
+                    has_uplink_capability: !manifest.uplinks.is_empty(),
+                    inbound_tx: tx,
+                    registered_uplinks: Vec::new(),
+                    lifecycle_phase: None,
+                    secret_store,
+                    ready_tx: None,
+                    host_semaphore,
+                    cancel_token: cancel_token_for_state,
+                    // Only provide the session token to capsules with net_bind
+                    // (the CLI proxy). Other capsules have no use for it.
+                    session_token: if manifest.capabilities.net_bind.is_empty() {
+                        None
+                    } else {
+                        ctx.session_token.clone()
+                    },
+                    interceptor_handles: Vec::new(),
+                    allowance_store: ctx.allowance_store.clone(),
+                    identity_store: ctx.identity_store.clone(),
+                    background_processes: std::collections::HashMap::new(),
+                    next_process_id: 1,
+                    process_tracker: process_tracker.clone(),
+                };
+
+                // ready_tx starts as None; only set after plugin build if
+                // the WASM binary exports a run() function (see below).
+                let user_data = UserData::new(host_state);
+                let user_data_ref = user_data.clone();
+
+                // Pre-scan WASM exports to detect run() before plugin build.
+                // The Extism timeout must be set on the Manifest before build,
+                // but function_exists() requires a built plugin, so we parse
+                // the raw binary's export section instead.
+                //
+                // On parse failure, default to true (no timeout) - the safe
+                // direction. A truly corrupt binary will fail Extism build
+                // moments later anyway.
+                let has_run_export = wasm_exports_contain_run(&wasm_bytes);
+
+                let extism_wasm = Wasm::data(wasm_bytes);
+                let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
+
+                // Long-lived capsules (uplinks, cron, run-loop daemons) must not
+                // have a wall-clock timeout. Other capsules get a 5-minute safety
+                // timeout — generous enough for interceptors that do streaming HTTP
+                // (e.g. LLM providers) while still catching runaways.
+                let is_daemon = !manifest.uplinks.is_empty()
+                    || !manifest.cron_jobs.is_empty()
+                    || manifest.capabilities.uplink;
+                if !is_daemon && !has_run_export {
+                    extism_manifest = extism_manifest
+                        .with_timeout(std::time::Duration::from_secs(WASM_CAPSULE_TIMEOUT_SECS));
                 }
-            } else {
-                (None, None)
-            };
 
-            // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
-            // Prunes logs older than 7 days on each capsule load.
-            let capsule_log = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-                let ph = home.principal_home(&ctx.principal);
-                let capsule_log_dir = ph.log_dir().join(&manifest.package.name);
-                let _ = std::fs::create_dir_all(&capsule_log_dir);
-                prune_old_logs(&capsule_log_dir, 7);
-                let today = today_date_string();
-                std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(capsule_log_dir.join(format!("{today}.log")))
-                    .ok()
-                    .map(|f| Arc::new(std::sync::Mutex::new(f)))
-            } else {
-                None
-            };
+                let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
+                let builder = register_host_functions(builder, user_data);
 
-            let secret_store = astrid_storage::build_secret_store(
-                &manifest.package.name,
-                kv.clone(),
-                tokio::runtime::Handle::current(),
-            );
+                let plugin = builder.build().map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!(
+                        "Failed to build Extism plugin: {e}"
+                    ))
+                })?;
 
-            let host_state = HostState {
-                principal: ctx.principal.clone(),
-                capsule_uuid,
-                caller_context: None,
-                capsule_log,
-                capsule_id: crate::capsule::CapsuleId::new(&manifest.package.name)
-                    .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?,
-                workspace_root,
-                vfs: Arc::clone(&overlay_vfs) as Arc<dyn astrid_vfs::Vfs>,
-                vfs_root_handle: root_handle,
-                global_root,
-                global_vfs,
-                global_vfs_root_handle,
-                tmp_dir,
-                tmp_vfs,
-                tmp_vfs_root_handle,
-                overlay_vfs: Some(overlay_vfs),
-                upper_dir: Some(Arc::new(upper_temp)),
-                kv,
-                event_bus,
-                ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-                subscriptions: std::collections::HashMap::new(),
-                next_subscription_id,
-                config: wasm_config,
-                ipc_publish_patterns: manifest.capabilities.ipc_publish.clone(),
-                ipc_subscribe_patterns: manifest.capabilities.ipc_subscribe.clone(),
-                // Only provide the CLI socket listener if the capsule declares net_bind.
-                // This prevents unauthorized capsules from even seeing the listener.
-                cli_socket_listener: if manifest.capabilities.net_bind.is_empty() {
-                    None
-                } else {
-                    ctx.cli_socket_listener.clone()
-                },
-                active_streams: std::collections::HashMap::new(),
-                next_stream_id: 1,
-                active_http_streams: std::collections::HashMap::new(),
-                next_http_stream_id: 1,
-                security: Some(security_gate),
-                hook_manager: None, // Will be injected by Gateway
-                capsule_registry: ctx.capsule_registry.clone(),
-                runtime_handle: tokio::runtime::Handle::current(),
-                has_uplink_capability: !manifest.uplinks.is_empty(),
-                inbound_tx: tx,
-                registered_uplinks: Vec::new(),
-                lifecycle_phase: None,
-                secret_store,
-                ready_tx: None,
-                host_semaphore,
-                cancel_token: cancel_token_for_state,
-                // Only provide the session token to capsules with net_bind
-                // (the CLI proxy). Other capsules have no use for it.
-                session_token: if manifest.capabilities.net_bind.is_empty() {
-                    None
-                } else {
-                    ctx.session_token.clone()
-                },
-                interceptor_handles: Vec::new(),
-                allowance_store: ctx.allowance_store.clone(),
-                identity_store: ctx.identity_store.clone(),
-                background_processes: std::collections::HashMap::new(),
-                next_process_id: 1,
-                process_tracker: process_tracker.clone(),
-            };
-
-            // ready_tx starts as None; only set after plugin build if
-            // the WASM binary exports a run() function (see below).
-            let user_data = UserData::new(host_state);
-            let user_data_ref = user_data.clone();
-
-            // Pre-scan WASM exports to detect run() before plugin build.
-            // The Extism timeout must be set on the Manifest before build,
-            // but function_exists() requires a built plugin, so we parse
-            // the raw binary's export section instead.
-            //
-            // On parse failure, default to true (no timeout) - the safe
-            // direction. A truly corrupt binary will fail Extism build
-            // moments later anyway.
-            let has_run_export = wasm_exports_contain_run(&wasm_bytes);
-
-            let extism_wasm = Wasm::data(wasm_bytes);
-            let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
-
-            // Long-lived capsules (uplinks, cron, run-loop daemons) must not
-            // have a wall-clock timeout. Other capsules get a 5-minute safety
-            // timeout — generous enough for interceptors that do streaming HTTP
-            // (e.g. LLM providers) while still catching runaways.
-            let is_daemon = !manifest.uplinks.is_empty()
-                || !manifest.cron_jobs.is_empty()
-                || manifest.capabilities.uplink;
-            if !is_daemon && !has_run_export {
-                extism_manifest = extism_manifest
-                    .with_timeout(std::time::Duration::from_secs(WASM_CAPSULE_TIMEOUT_SECS));
-            }
-
-            let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
-            let builder = register_host_functions(builder, user_data);
-
-            let plugin = builder.build().map_err(|e| {
-                CapsuleError::UnsupportedEntryPoint(format!("Failed to build Extism plugin: {e}"))
-            })?;
-
-            let has_run = plugin.function_exists("run");
-            if has_run != has_run_export {
-                return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                    "pre-scan/post-build run() export mismatch \
+                let has_run = plugin.function_exists("run");
+                if has_run != has_run_export {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "pre-scan/post-build run() export mismatch \
                      (pre-scan: {has_run_export}, post-build: {has_run}). \
                      Cannot safely determine timeout."
-                )));
-            }
-
-            // Only allocate the watch channel for run-loop capsules.
-            // UserData is Arc-based so the clone lets us inject the sender
-            // into HostState after the plugin build.
-            let ready_rx = if has_run {
-                let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
-                let ud = user_data_ref.get().map_err(|e| {
-                    CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
-                })?;
-                ud.lock()
-                    .map_err(|e| {
-                        CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
-                    })?
-                    .ready_tx = Some(ready_tx);
-                Some(ready_rx)
-            } else {
-                None
-            };
-
-            // Auto-subscribe interceptor topics for run-loop capsules.
-            // Events arrive via the IPC channel the run loop already reads from,
-            // avoiding mutex contention (no external invoke_interceptor calls).
-            //
-            // Note: subscriptions are created before the WASM guest starts, so
-            // events published between subscribe and the guest's first recv/poll
-            // call are buffered in the broadcast channel (same as normal IPC).
-            if has_run && !manifest.interceptors.is_empty() {
-                // Cap auto-subscribed interceptors to leave headroom for
-                // guest-initiated subscriptions (shared 128-slot pool).
-                const MAX_AUTO_SUBSCRIBE: usize = 64;
-                if manifest.interceptors.len() > MAX_AUTO_SUBSCRIBE {
-                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                        "Capsule '{}' declares {} interceptors, exceeding the \
-                         auto-subscribe limit ({MAX_AUTO_SUBSCRIBE})",
-                        manifest.package.name,
-                        manifest.interceptors.len()
                     )));
                 }
 
-                // Validate interceptor event patterns have well-formed segments
-                // (no empty segments, leading/trailing dots, or empty strings).
-                for interceptor in &manifest.interceptors {
-                    if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                // Only allocate the watch channel for run-loop capsules.
+                // UserData is Arc-based so the clone lets us inject the sender
+                // into HostState after the plugin build.
+                let ready_rx = if has_run {
+                    let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+                    let ud = user_data_ref.get().map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to access HostState: {e}"
+                        ))
+                    })?;
+                    ud.lock()
+                        .map_err(|e| {
+                            CapsuleError::UnsupportedEntryPoint(format!(
+                                "HostState lock poisoned: {e}"
+                            ))
+                        })?
+                        .ready_tx = Some(ready_tx);
+                    Some(ready_rx)
+                } else {
+                    None
+                };
+
+                // Auto-subscribe interceptor topics for run-loop capsules.
+                // Events arrive via the IPC channel the run loop already reads from,
+                // avoiding mutex contention (no external invoke_interceptor calls).
+                //
+                // Note: subscriptions are created before the WASM guest starts, so
+                // events published between subscribe and the guest's first recv/poll
+                // call are buffered in the broadcast channel (same as normal IPC).
+                if has_run && !manifest.interceptors.is_empty() {
+                    // Cap auto-subscribed interceptors to leave headroom for
+                    // guest-initiated subscriptions (shared 128-slot pool).
+                    const MAX_AUTO_SUBSCRIBE: usize = 64;
+                    if manifest.interceptors.len() > MAX_AUTO_SUBSCRIBE {
                         return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                            "Interceptor event '{}' has invalid segment structure \
-                             (empty segments, leading/trailing dots, or empty string)",
-                            interceptor.event
+                            "Capsule '{}' declares {} interceptors, exceeding the \
+                         auto-subscribe limit ({MAX_AUTO_SUBSCRIBE})",
+                            manifest.package.name,
+                            manifest.interceptors.len()
                         )));
                     }
+
+                    // Validate interceptor event patterns have well-formed segments
+                    // (no empty segments, leading/trailing dots, or empty strings).
+                    for interceptor in &manifest.interceptors {
+                        if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                            return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                                "Interceptor event '{}' has invalid segment structure \
+                             (empty segments, leading/trailing dots, or empty string)",
+                                interceptor.event
+                            )));
+                        }
+                    }
+
+                    let ud = user_data_ref.get().map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to access HostState: {e}"
+                        ))
+                    })?;
+                    let mut state = ud.lock().map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
+                    })?;
+                    // Interceptors are auto-subscribed without check_subscribe_acl.
+                    // Their event patterns are declared in [[interceptor]] blocks in
+                    // Capsule.toml (operator-controlled, same trust level as ipc_subscribe).
+                    // Only guest-initiated ipc::subscribe() calls are ACL-checked.
+                    for interceptor in &manifest.interceptors {
+                        let receiver = state.event_bus.subscribe_topic(&interceptor.event);
+                        let handle_id = state.next_subscription_id;
+                        state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
+                        state.subscriptions.insert(handle_id, receiver);
+                        state
+                            .interceptor_handles
+                            .push(host_state::InterceptorHandle {
+                                handle_id,
+                                action: interceptor.action.clone(),
+                                topic: interceptor.event.clone(),
+                            });
+                    }
+                    tracing::debug!(
+                        capsule = %manifest.package.name,
+                        count = manifest.interceptors.len(),
+                        "Auto-subscribed interceptors for run-loop capsule"
+                    );
                 }
 
-                let ud = user_data_ref.get().map_err(|e| {
-                    CapsuleError::UnsupportedEntryPoint(format!("Failed to access HostState: {e}"))
-                })?;
-                let mut state = ud.lock().map_err(|e| {
-                    CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
-                })?;
-                // Interceptors are auto-subscribed without check_subscribe_acl.
-                // Their event patterns are declared in [[interceptor]] blocks in
-                // Capsule.toml (operator-controlled, same trust level as ipc_subscribe).
-                // Only guest-initiated ipc::subscribe() calls are ACL-checked.
-                for interceptor in &manifest.interceptors {
-                    let receiver = state.event_bus.subscribe_topic(&interceptor.event);
-                    let handle_id = state.next_subscription_id;
-                    state.next_subscription_id = state.next_subscription_id.wrapping_add(1);
-                    state.subscriptions.insert(handle_id, receiver);
-                    state
-                        .interceptor_handles
-                        .push(host_state::InterceptorHandle {
-                            handle_id,
-                            action: interceptor.action.clone(),
-                            topic: interceptor.event.clone(),
-                        });
-                }
-                tracing::debug!(
-                    capsule = %manifest.package.name,
-                    count = manifest.interceptors.len(),
-                    "Auto-subscribed interceptors for run-loop capsule"
-                );
-            }
-
-            Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx))
-        })?;
+                Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx, user_data_ref))
+            })?;
 
         // Register UUID-to-CapsuleId mapping so host functions can resolve
         // IPC source UUIDs back to capsule identities for capability checks.
@@ -672,6 +691,12 @@ impl ExecutionEngine for WasmEngine {
         }
         self.inbound_rx = rx;
 
+        // Store HostState reference for per-invocation context setting.
+        // For run-loop capsules, invoke_interceptor returns NotSupported
+        // (events flow through IPC auto-subscribe), so this is only used
+        // by non-run-loop capsules. Store it unconditionally for simplicity.
+        self.host_state = Some(user_data_ref);
+
         Ok(())
     }
 
@@ -718,12 +743,48 @@ impl ExecutionEngine for WasmEngine {
         &self.tools
     }
 
-    fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+    fn invoke_interceptor(
+        &self,
+        action: &str,
+        payload: &[u8],
+        caller: Option<&astrid_events::ipc::IpcMessage>,
+    ) -> CapsuleResult<Vec<u8>> {
         let plugin = self.plugin.as_ref().ok_or_else(|| {
             CapsuleError::NotSupported(
                 "plugin handles interceptors internally via IPC auto-subscribe".into(),
             )
         })?;
+
+        // Clear-before-set: set per-invocation caller context and KV scope.
+        // Each invocation overwrites the previous context. If plugin.call()
+        // panics, the stale context is overwritten by the next invocation.
+        if let Some(ref ud) = self.host_state
+            && let Ok(ud) = ud.get()
+            && let Ok(mut state) = ud.lock()
+        {
+            state.caller_context = caller.cloned();
+
+            // Dynamic KV scoping: if the invocation principal differs
+            // from the capsule's default, create a scoped KV store.
+            state.invocation_kv = caller
+                .and_then(|msg| msg.principal.as_deref())
+                .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+                .filter(|p| *p != state.principal)
+                .and_then(|p| {
+                    let ns = format!("{}:capsule:{}", p, state.capsule_id);
+                    match state.kv.with_namespace(&ns) {
+                        Ok(kv) => Some(kv),
+                        Err(e) => {
+                            tracing::warn!(
+                                principal = %p,
+                                error = %e,
+                                "Failed to create invocation KV scope"
+                            );
+                            None
+                        },
+                    }
+                });
+        }
 
         // Build the same __AstridToolRequest the macro expects:
         // { "name": "<action>", "arguments": [<payload bytes>] }
@@ -818,6 +879,7 @@ pub fn run_lifecycle(
         principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
         caller_context: None,
+        invocation_kv: None,
         capsule_log: None,
         capsule_id: cfg.capsule_id.clone(),
         workspace_root: cfg.workspace_root,

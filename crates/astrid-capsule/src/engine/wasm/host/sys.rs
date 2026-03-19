@@ -33,23 +33,52 @@ pub(crate) fn astrid_log_impl(
         _ => LogLevel::Info,
     };
 
-    // Write to per-capsule log file if available, otherwise fall back to tracing.
+    // Write to per-capsule log file. If the invocation principal differs
+    // from the capsule's default, open the target principal's log file
+    // (open/write/close — no FD caching, avoids leaks in 1000-user deployments).
     let ud2 = user_data.get()?;
     let state2 = ud2
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    if let Some(ref log_file) = state2.capsule_log {
+
+    let level_str = match parsed_level {
+        LogLevel::Trace => "TRACE",
+        LogLevel::Debug => "DEBUG",
+        LogLevel::Info => "INFO",
+        LogLevel::Warn => "WARN",
+        LogLevel::Error => "ERROR",
+    };
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
+
+    // Check if invocation principal differs from capsule's default.
+    let invocation_principal = state2
+        .caller_context
+        .as_ref()
+        .and_then(|msg| msg.principal.as_deref())
+        .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+        .filter(|p| *p != state2.principal);
+
+    if let Some(ref inv_principal) = invocation_principal {
+        // Cross-principal: open target log file, write, close.
+        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+            let ph = home.principal_home(inv_principal);
+            let log_dir = ph.log_dir().join(&capsule_id);
+            let _ = std::fs::create_dir_all(&log_dir);
+            let today = crate::engine::wasm::today_date_string();
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log_dir.join(format!("{today}.log")))
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+            }
+        }
+    } else if let Some(ref log_file) = state2.capsule_log {
+        // Default principal: use pre-opened log file (fast path).
         use std::io::Write;
-        let level_str = match parsed_level {
-            LogLevel::Trace => "TRACE",
-            LogLevel::Debug => "DEBUG",
-            LogLevel::Info => "INFO",
-            LogLevel::Warn => "WARN",
-            LogLevel::Error => "ERROR",
-        };
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
         if let Ok(mut f) = log_file.lock() {
             let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
         }
@@ -109,12 +138,11 @@ pub(crate) fn astrid_get_caller_impl(
         .lock()
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
 
-    let result = if let Some(_msg) = &state.caller_context {
-        let session_id = None::<String>; // TODO: extract from AstridEvent
-        let user_id = None::<String>; // TODO: extract from AstridEvent
+    let result = if let Some(ref msg) = state.caller_context {
         serde_json::json!({
-            "session_id": session_id,
-            "user_id": user_id
+            "principal": msg.principal,
+            "source_id": msg.source_id.to_string(),
+            "timestamp": msg.timestamp.to_rfc3339(),
         })
         .to_string()
     } else {
@@ -257,7 +285,7 @@ pub(crate) fn astrid_trigger_hook_impl(
                     let payload = payload_bytes.clone();
                     let hook = request.hook.clone();
                     join_set.spawn(async move {
-                        match capsule.invoke_interceptor(&action, &payload) {
+                        match capsule.invoke_interceptor(&action, &payload, None) {
                             Ok(bytes) if bytes.is_empty() => None,
                             Ok(bytes) => {
                                 match serde_json::from_slice::<serde_json::Value>(&bytes) {

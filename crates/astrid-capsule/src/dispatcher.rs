@@ -27,7 +27,7 @@
 //! - Single-segment wildcard: `tool.execute.*.result` matches
 //!   `tool.execute.search.result` but not `tool.execute.result`
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tokio::sync::{RwLock, mpsc};
@@ -49,6 +49,11 @@ struct InterceptorWork {
     action: String,
     payload: Arc<Vec<u8>>,
     topic: Arc<String>,
+    /// The originating IPC message, if this event came from IPC.
+    /// `None` for lifecycle events. Carried through to
+    /// `invoke_interceptor` so the kernel can set per-invocation
+    /// principal context on `HostState`.
+    ipc_message: Option<Arc<astrid_events::ipc::IpcMessage>>,
 }
 
 /// Routes events from the `EventBus` to capsule interceptors.
@@ -86,6 +91,9 @@ impl EventDispatcher {
             .checked_sub(std::time::Duration::from_secs(10))
             .unwrap_or_else(std::time::Instant::now);
         let mut capsule_queues: HashMap<CapsuleId, mpsc::Sender<InterceptorWork>> = HashMap::new();
+        let mut known_principals: HashSet<String> = HashSet::new();
+        // The "default" principal is always provisioned by the kernel boot sequence.
+        known_principals.insert("default".to_string());
         debug!("Event dispatcher started");
 
         while let Some(event) = receiver.recv().await {
@@ -116,11 +124,11 @@ impl EventDispatcher {
                 });
             }
 
-            let (topic, payload_bytes) = match &*event {
+            let (topic, payload_bytes, ipc_message) = match &*event {
                 AstridEvent::Ipc { message, .. } => {
                     let topic = Arc::new(message.topic.clone());
                     match message.payload.to_guest_bytes() {
-                        Ok(bytes) => (topic, Arc::new(bytes)),
+                        Ok(bytes) => (topic, Arc::new(bytes), Some(Arc::new(message.clone()))),
                         Err(e) => {
                             warn!(topic = %message.topic, error = %e, "Failed to serialize IPC payload");
                             continue;
@@ -130,7 +138,7 @@ impl EventDispatcher {
                 other => {
                     let topic = Arc::new(other.event_type().to_string());
                     match serde_json::to_vec(other) {
-                        Ok(bytes) => (topic, Arc::new(bytes)),
+                        Ok(bytes) => (topic, Arc::new(bytes), None),
                         Err(e) => {
                             warn!(event_type = %topic, error = %e, "Failed to serialize lifecycle event");
                             continue;
@@ -139,8 +147,39 @@ impl EventDispatcher {
                 },
             };
 
+            // Auto-provision home directories for new principals.
+            if let Some(ref msg) = ipc_message
+                && let Some(ref principal_str) = msg.principal
+                && !known_principals.contains(principal_str)
+            {
+                if let Ok(pid) = astrid_core::PrincipalId::new(principal_str) {
+                    if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                        let ph = home.principal_home(&pid);
+                        if let Err(e) = ph.ensure() {
+                            warn!(
+                                principal = %pid,
+                                error = %e,
+                                "Failed to auto-provision principal home"
+                            );
+                        }
+                    }
+                    known_principals.insert(principal_str.clone());
+                } else {
+                    warn!(
+                        principal = %principal_str,
+                        "IPC message has invalid principal string, ignoring"
+                    );
+                }
+            }
+
             let matches = find_matching_interceptors(&self.registry, &topic).await;
-            dispatch_to_capsule_queues(&mut capsule_queues, matches, topic, payload_bytes);
+            dispatch_to_capsule_queues(
+                &mut capsule_queues,
+                matches,
+                topic,
+                payload_bytes,
+                ipc_message,
+            );
         }
 
         debug!("Event dispatcher stopped (event bus closed)");
@@ -161,6 +200,7 @@ fn dispatch_to_capsule_queues(
     matches: Vec<(Arc<dyn Capsule>, String)>,
     topic: Arc<String>,
     payload_bytes: Arc<Vec<u8>>,
+    ipc_message: Option<Arc<astrid_events::ipc::IpcMessage>>,
 ) {
     for (capsule, action) in matches {
         let sender = queues.entry(capsule.id().clone()).or_insert_with(|| {
@@ -174,7 +214,8 @@ fn dispatch_to_capsule_queues(
                         topic = %work.topic,
                         "Dispatching interceptor (ordered)"
                     );
-                    match capsule.invoke_interceptor(&work.action, &work.payload) {
+                    let caller = work.ipc_message.as_deref();
+                    match capsule.invoke_interceptor(&work.action, &work.payload, caller) {
                         Ok(_) => {
                             debug!(
                                 capsule_id = %capsule.id(),
@@ -209,6 +250,7 @@ fn dispatch_to_capsule_queues(
             action,
             payload: Arc::clone(&payload_bytes),
             topic: Arc::clone(&topic),
+            ipc_message: ipc_message.clone(),
         };
         // Non-blocking send — if the channel is full, the capsule is overwhelmed.
         if let Err(e) = sender.try_send(work) {
@@ -493,7 +535,12 @@ mod tests {
         fn tools(&self) -> &[Arc<dyn CapsuleTool>] {
             &[]
         }
-        fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        fn invoke_interceptor(
+            &self,
+            _action: &str,
+            _payload: &[u8],
+            _caller: Option<&astrid_events::ipc::IpcMessage>,
+        ) -> CapsuleResult<Vec<u8>> {
             self.invoked.store(true, Ordering::SeqCst);
             Ok(Vec::new())
         }

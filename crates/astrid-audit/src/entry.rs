@@ -20,6 +20,10 @@ pub struct AuditEntry {
     pub timestamp: Timestamp,
     /// Session this entry belongs to.
     pub session_id: SessionId,
+    /// The principal (user identity) this action was performed on behalf of.
+    /// `None` for system actions that have no user context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<astrid_core::PrincipalId>,
     /// The action being audited.
     pub action: AuditAction,
     /// Authorization proof for this action.
@@ -48,6 +52,7 @@ impl AuditEntry {
             id: AuditEntryId::new(),
             timestamp: Timestamp::now(),
             session_id,
+            principal: None,
             action,
             authorization,
             outcome,
@@ -89,6 +94,10 @@ impl AuditEntry {
         data.extend_from_slice(self.id.0.as_bytes());
         data.extend_from_slice(&self.timestamp.0.timestamp().to_le_bytes());
         data.extend_from_slice(self.session_id.0.as_bytes());
+        // Include principal in signing data (empty string if None).
+        if let Some(ref p) = self.principal {
+            data.extend_from_slice(p.as_str().as_bytes());
+        }
         // Action is serialized to JSON for consistent hashing
         if let Ok(action_json) = serde_json::to_vec(&self.action) {
             data.extend_from_slice(&action_json);

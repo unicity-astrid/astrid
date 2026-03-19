@@ -4,15 +4,24 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+use crate::principal::PrincipalId;
+
 /// Astrid-native user identity (spans all platforms).
 ///
 /// This is the canonical identifier for a user across all platforms.
 /// The same `AstridUserId` is used whether the user is on Discord,
 /// any platform (Discord, Telegram, etc.).
+///
+/// The `principal` field maps this identity to a home directory at
+/// `~/.astrid/home/{principal}/`. Multiple platform links (Discord,
+/// Telegram, web passkey) all resolve to the same principal.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AstridUserId {
     /// Unique identifier (UUID).
     pub id: Uuid,
+    /// The principal this user maps to. Determines the home directory
+    /// and KV namespace (`{principal}:capsule:{name}`).
+    pub principal: PrincipalId,
     /// Optional ed25519 public key for signing (32 bytes).
     #[serde(
         serialize_with = "serialize_optional_key",
@@ -27,21 +36,97 @@ pub struct AstridUserId {
 
 impl AstridUserId {
     /// Create a new Astrid user identity with a random UUID.
+    ///
+    /// Uses the `"default"` principal. Call [`with_principal`](Self::with_principal)
+    /// or [`with_display_name`](Self::with_display_name) to customize.
     #[must_use]
     pub fn new() -> Self {
         Self {
             id: Uuid::new_v4(),
+            principal: PrincipalId::default(),
             public_key: None,
             display_name: None,
             created_at: Utc::now(),
         }
     }
 
-    /// Create an identity with a display name.
+    /// Set the principal for this identity.
+    #[must_use]
+    pub fn with_principal(mut self, principal: PrincipalId) -> Self {
+        self.principal = principal;
+        self
+    }
+
+    /// Create an identity with a display name, auto-deriving the principal.
+    ///
+    /// Derivation: lowercase, replace invalid chars with hyphens, truncate
+    /// to 64 chars, validate as `PrincipalId`. Falls back to
+    /// `"user-{first-8-of-uuid}"` if derivation produces an empty string.
     #[must_use]
     pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
-        self.display_name = Some(name.into());
+        let name = name.into();
+        let derived = derive_principal_from_name(&name, &self.id);
+        self.principal = derived;
+        self.display_name = Some(name);
         self
+    }
+}
+
+/// Derive a `PrincipalId` from a display name.
+///
+/// Rules: lowercase, replace non-alphanumeric/non-hyphen/non-underscore
+/// with hyphens, collapse consecutive hyphens, trim leading/trailing hyphens,
+/// truncate to 64 chars. Falls back to `"user-{first-8-of-uuid}"`.
+fn derive_principal_from_name(name: &str, uuid: &Uuid) -> PrincipalId {
+    let sanitized: String = name
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    // Collapse consecutive hyphens and trim leading/trailing.
+    let mut result = String::with_capacity(sanitized.len());
+    let mut prev_hyphen = true; // treat start as hyphen to trim leading
+    for c in sanitized.chars() {
+        if c == '-' {
+            if !prev_hyphen {
+                result.push(c);
+            }
+            prev_hyphen = true;
+        } else {
+            result.push(c);
+            prev_hyphen = false;
+        }
+    }
+    // Trim trailing hyphen.
+    if result.ends_with('-') {
+        result.pop();
+    }
+
+    // Truncate to 64 chars (PrincipalId max).
+    if result.len() > 64 {
+        result.truncate(64);
+        // Don't end on a hyphen after truncation.
+        while result.ends_with('-') {
+            result.pop();
+        }
+    }
+
+    // Try to validate. Fall back to uuid-based name.
+    if result.is_empty() {
+        let fallback = format!("user-{}", &uuid.to_string()[..8]);
+        PrincipalId::new(&fallback).unwrap_or_default()
+    } else {
+        PrincipalId::new(&result).unwrap_or_else(|_| {
+            let fallback = format!("user-{}", &uuid.to_string()[..8]);
+            PrincipalId::new(&fallback).unwrap_or_default()
+        })
     }
 }
 

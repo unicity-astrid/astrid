@@ -52,11 +52,10 @@ pub struct Kernel {
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
     pub workspace_root: PathBuf,
-    /// The global shared resources directory (`~/.astrid/shared/`). Capsules
-    /// declaring `fs_read = ["global://"]` can read files under this root.
-    /// Scoped to `shared/` so that keys, databases, and capsule .env files in
-    /// `~/.astrid/` are NOT accessible. Write access is intentionally not
-    /// granted to any shipped capsule.
+    /// The principal home resources directory (`~/.astrid/home/{principal}/`).
+    /// Capsules declaring `fs_read = ["home://"]` can read files under this
+    /// root. Scoped to the principal's home so that keys, databases, and
+    /// system config in `~/.astrid/` are NOT accessible.
     ///
     /// Always `Some` in production (boot requires `AstridHome`). Remains
     /// `Option` for compatibility with `CapsuleContext` and test fixtures.
@@ -126,7 +125,7 @@ impl Kernel {
             ))
         })?;
 
-        // Resolve the global shared directory for the `global://` VFS scheme.
+        // Resolve the home directory for the `home://` VFS scheme.
         // Points to `~/.astrid/home/{principal}/` — NOT the full `~/.astrid/`
         // root — so capsules cannot access keys, databases, or config.
         let default_principal = astrid_core::PrincipalId::default();
@@ -383,7 +382,7 @@ impl Kernel {
             registry.get(id)
         };
         if let Some(capsule) = capsule
-            && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[])
+            && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[], None)
         {
             tracing::debug!(
                 capsule_id = %id,

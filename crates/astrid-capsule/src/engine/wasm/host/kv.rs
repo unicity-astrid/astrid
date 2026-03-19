@@ -19,7 +19,7 @@ pub(crate) fn astrid_kv_get_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.kv.clone(),
+            state.effective_kv().clone(),
             state.runtime_handle.clone(),
             state.host_semaphore.clone(),
         )
@@ -56,7 +56,7 @@ pub(crate) fn astrid_kv_set_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.kv.clone(),
+            state.effective_kv().clone(),
             state.runtime_handle.clone(),
             state.host_semaphore.clone(),
         )
@@ -87,7 +87,7 @@ pub(crate) fn astrid_kv_delete_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.kv.clone(),
+            state.effective_kv().clone(),
             state.runtime_handle.clone(),
             state.host_semaphore.clone(),
         )
@@ -118,7 +118,7 @@ pub(crate) fn astrid_kv_list_keys_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.kv.clone(),
+            state.effective_kv().clone(),
             state.runtime_handle.clone(),
             state.host_semaphore.clone(),
         )
@@ -152,7 +152,7 @@ pub(crate) fn astrid_kv_clear_prefix_impl(
             .lock()
             .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
         (
-            state.kv.clone(),
+            state.effective_kv().clone(),
             state.runtime_handle.clone(),
             state.host_semaphore.clone(),
         )

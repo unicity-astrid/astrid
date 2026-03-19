@@ -355,7 +355,12 @@ mod tests {
         async fn wait_ready(&self, _timeout: Duration) -> ReadyStatus {
             ReadyStatus::Ready
         }
-        fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+        fn invoke_interceptor(
+            &self,
+            _action: &str,
+            _payload: &[u8],
+            _caller: Option<&astrid_events::ipc::IpcMessage>,
+        ) -> CapsuleResult<Vec<u8>> {
             Ok(Vec::new())
         }
         fn check_health(&self) -> CapsuleState {

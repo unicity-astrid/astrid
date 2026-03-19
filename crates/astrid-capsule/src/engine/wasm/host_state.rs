@@ -66,7 +66,7 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
-    /// Global shared resources directory. Paths prefixed with `global://`
+    /// Global shared resources directory. Paths prefixed with `home://`
     /// are resolved relative to this root.
     pub global_root: Option<PathBuf>,
     /// VFS instance for the global shared root. This is a direct `HostVfs` —
@@ -90,6 +90,13 @@ pub struct HostState {
     pub upper_dir: Option<Arc<tempfile::TempDir>>,
     /// Plugin-scoped KV store (`plugin:{capsule_id}` namespace).
     pub kv: ScopedKvStore,
+    /// Per-invocation KV store scoped to a different principal.
+    ///
+    /// Set by `WasmEngine::invoke_interceptor` when the IPC message's
+    /// principal differs from `self.principal`. Host functions use
+    /// `invocation_kv.as_ref().unwrap_or(&kv)` to transparently scope
+    /// reads/writes to the calling principal.
+    pub invocation_kv: Option<ScopedKvStore>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -266,6 +273,15 @@ impl HostState {
     pub fn principal_kv_namespace(&self) -> String {
         format!("{}:capsule:{}", self.principal, self.capsule_id)
     }
+
+    /// Return the effective KV store for the current invocation.
+    ///
+    /// Uses `invocation_kv` if set (different principal), falls back to
+    /// the capsule's default `kv` store.
+    #[must_use]
+    pub fn effective_kv(&self) -> &ScopedKvStore {
+        self.invocation_kv.as_ref().unwrap_or(&self.kv)
+    }
 }
 
 impl std::fmt::Debug for HostState {
@@ -311,6 +327,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
@@ -384,6 +401,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
@@ -462,6 +480,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
@@ -536,6 +555,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
@@ -626,6 +646,7 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),

@@ -22,6 +22,13 @@ pub struct IpcMessage {
     /// Used by the dispatcher to guarantee in-order delivery per capsule.
     #[serde(default)]
     pub seq: u64,
+    /// The principal (user identity) this message is acting on behalf of.
+    ///
+    /// `String` rather than `PrincipalId` because `astrid-types` must not
+    /// depend on `astrid-core`. Validation to `PrincipalId` happens at the
+    /// kernel boundary. `None` for system events (boot, lifecycle).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<String>,
 }
 
 impl IpcMessage {
@@ -35,6 +42,7 @@ impl IpcMessage {
             source_id,
             timestamp: Utc::now(),
             seq: 0,
+            principal: None,
         }
     }
 
@@ -42,6 +50,13 @@ impl IpcMessage {
     #[must_use]
     pub fn with_signature(mut self, signature: Vec<u8>) -> Self {
         self.signature = Some(signature);
+        self
+    }
+
+    /// Set the acting principal for this message.
+    #[must_use]
+    pub fn with_principal(mut self, principal: impl Into<String>) -> Self {
+        self.principal = Some(principal.into());
         self
     }
 }
@@ -328,6 +343,53 @@ mod tests {
 
         let signed = msg.with_signature(vec![1, 2, 3]);
         assert_eq!(signed.signature, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn ipc_message_principal() {
+        let msg = IpcMessage::new(
+            "test.topic",
+            IpcPayload::Custom {
+                data: serde_json::json!({}),
+            },
+            Uuid::new_v4(),
+        );
+        assert!(msg.principal.is_none());
+
+        let with_principal = msg.with_principal("alice");
+        assert_eq!(with_principal.principal.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn ipc_message_principal_serde_roundtrip() {
+        let msg = IpcMessage::new(
+            "test.topic",
+            IpcPayload::Custom {
+                data: serde_json::json!({}),
+            },
+            Uuid::nil(),
+        )
+        .with_principal("bob");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""principal":"bob""#));
+
+        let parsed: IpcMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.principal.as_deref(), Some("bob"));
+    }
+
+    #[test]
+    fn ipc_message_principal_absent_in_json() {
+        // Messages without principal should deserialize with None.
+        let json = r#"{"topic":"t","payload":{"type":"connect"},"source_id":"00000000-0000-0000-0000-000000000000","timestamp":"2024-01-01T00:00:00Z","seq":0}"#;
+        let msg: IpcMessage = serde_json::from_str(json).unwrap();
+        assert!(msg.principal.is_none());
+    }
+
+    #[test]
+    fn ipc_message_principal_not_serialized_when_none() {
+        let msg = IpcMessage::new("test.topic", IpcPayload::Connect, Uuid::nil());
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(!json.contains("principal"));
     }
 
     #[test]

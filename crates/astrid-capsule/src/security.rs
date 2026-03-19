@@ -255,7 +255,7 @@ impl CapsuleSecurityGate for DenyAllGate {
 /// Security gate that enforces capabilities based on the manifest.
 /// Assumes capabilities declared in the manifest were approved by the user during installation.
 ///
-/// VFS scheme prefixes (`workspace://`, `global://`) in `fs_read` / `fs_write`
+/// VFS scheme prefixes (`workspace://`, `home://`) in `fs_read` / `fs_write`
 /// capability entries are resolved to their physical root paths at construction
 /// time so that runtime path checks use simple `starts_with` matching.
 #[derive(Debug, Clone)]
@@ -316,7 +316,7 @@ impl ManifestSecurityGate {
     /// Translate VFS scheme prefixes into physical paths.
     ///
     /// - `workspace://` -> `<workspace_root>/`
-    /// - `global://` -> `<global_root>/` (dropped if no global root is configured)
+    /// - `home://` -> `<home_root>/` (dropped if no home root is configured)
     /// - `*` -> kept as-is (wildcard — confined at check time)
     /// - anything else -> kept as-is (literal path prefix for backwards compat)
     ///
@@ -333,13 +333,13 @@ impl ManifestSecurityGate {
             } else if let Some(suffix) = entry.strip_prefix("workspace://") {
                 let path = canonical_ws.join(suffix);
                 resolved.push(path.to_string_lossy().to_string());
-            } else if let Some(suffix) = entry.strip_prefix("global://") {
+            } else if let Some(suffix) = entry.strip_prefix("home://") {
                 if let Some(g_root) = canonical_global {
                     let path = g_root.join(suffix);
                     resolved.push(path.to_string_lossy().to_string());
                 }
-                // If no global root is configured, silently drop this entry
-                // so the capsule simply cannot access global paths.
+                // If no home root is configured, silently drop this entry
+                // so the capsule simply cannot access home paths.
             } else {
                 resolved.push(entry.clone());
             }
@@ -645,7 +645,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_global() {
-        let manifest = make_manifest(vec![], vec!["global://"], vec![]);
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
 
         assert!(
@@ -662,8 +662,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_global_without_root() {
-        // When no global root is configured, global:// entries are silently dropped
-        let manifest = make_manifest(vec![], vec!["global://"], vec![]);
+        // When no global root is configured, home:// entries are silently dropped
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
 
         assert!(
@@ -675,7 +675,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_both() {
-        let manifest = make_manifest(vec![], vec!["workspace://", "global://"], vec![]);
+        let manifest = make_manifest(vec![], vec!["workspace://", "home://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
 
         assert!(
@@ -693,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_global_path_denied_without_manifest_entry() {
-        // Manifest only has workspace://, no global:// — global paths must be denied
+        // Manifest only has workspace://, no home:// — global paths must be denied
         // even when global_root is configured.
         let manifest = make_manifest(vec![], vec!["workspace://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));

@@ -204,7 +204,16 @@ pub(crate) fn astrid_ipc_publish_impl(
         Err(_) => return Err(Error::msg("IPC payload is not valid JSON")),
     };
 
-    let message = IpcMessage::new(topic, payload, state.capsule_uuid);
+    // Propagate the principal from the invocation context to the outgoing
+    // message. The capsule never touches the principal — it's invisible.
+    // This ensures the principal propagates through event chains
+    // (uplink → react → tool → response) without capsule code forwarding it.
+    let mut message = IpcMessage::new(topic, payload, state.capsule_uuid);
+    if let Some(ref caller) = state.caller_context
+        && let Some(ref principal) = caller.principal
+    {
+        message = message.with_principal(principal.clone());
+    }
 
     let event = AstridEvent::Ipc {
         metadata: EventMetadata::new("wasm_guest").with_session_id(state.capsule_uuid),

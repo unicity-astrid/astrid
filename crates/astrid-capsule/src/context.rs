@@ -25,9 +25,9 @@ pub struct CapsuleContext {
     /// The principal this capsule is running on behalf of.
     pub principal: PrincipalId,
     pub workspace_root: PathBuf,
-    /// Global shared resources directory (`~/.astrid/home/{principal}/`).
-    /// When set, capsules declaring `fs_read = ["global://"]` can read files
-    /// under this root via the `global://` path prefix. This is scoped to the
+    /// Home resources directory (`~/.astrid/home/{principal}/`).
+    /// When set, capsules declaring `fs_read = ["home://"]` can read files
+    /// under this root via the `home://` path prefix. This is scoped to the
     /// principal's home — keys, databases, and system config in `~/.astrid/`
     /// are NOT accessible through this path.
     pub global_root: Option<PathBuf>,
