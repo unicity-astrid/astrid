@@ -16,8 +16,8 @@ pub fn proxy_socket_path() -> std::path::PathBuf {
     match AstridHome::resolve() {
         Ok(home) => home.socket_path(),
         Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.sock");
-            std::path::PathBuf::from("/tmp/.astrid/sessions/system.sock")
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/run/system.sock");
+            std::path::PathBuf::from("/tmp/.astrid/run/system.sock")
         },
     }
 }
@@ -38,9 +38,9 @@ pub fn readiness_path() -> std::path::PathBuf {
         Err(e) => {
             warn!(
                 error = %e,
-                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.ready"
+                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/run/system.ready"
             );
-            std::path::PathBuf::from("/tmp/.astrid/sessions/system.ready")
+            std::path::PathBuf::from("/tmp/.astrid/run/system.ready")
         },
     }
 }

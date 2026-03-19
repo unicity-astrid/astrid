@@ -77,7 +77,7 @@ pub struct Kernel {
     /// selects on the receiver to exit gracefully without `process::exit`.
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
     /// Session token for socket authentication. Generated at boot, written to
-    /// `~/.astrid/sessions/system.token`. CLI sends this as its first message.
+    /// `~/.astrid/run/system.token`. CLI sends this as its first message.
     pub session_token: Arc<astrid_core::session_token::SessionToken>,
     /// Path where the session token was written at boot. Stored so shutdown
     /// uses the exact same path (avoids fallback mismatch if env changes).

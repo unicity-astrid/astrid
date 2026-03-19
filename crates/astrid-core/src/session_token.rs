@@ -1,7 +1,7 @@
 //! Session token for Unix socket authentication.
 //!
 //! The daemon generates a random 256-bit token at startup and writes it to
-//! `~/.astrid/sessions/system.token` with 0o600 permissions. The CLI reads
+//! `~/.astrid/run/system.token` with 0o600 permissions. The CLI reads
 //! this token and sends it as the first message after connecting. The daemon
 //! validates the token with constant-time comparison and rejects connections
 //! that fail.

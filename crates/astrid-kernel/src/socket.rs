@@ -11,8 +11,8 @@ pub(crate) fn kernel_socket_path() -> PathBuf {
     match AstridHome::resolve() {
         Ok(home) => home.socket_path(),
         Err(e) => {
-            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.sock");
-            PathBuf::from("/tmp/.astrid/sessions/system.sock")
+            warn!(error = %e, "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/run/system.sock");
+            PathBuf::from("/tmp/.astrid/run/system.sock")
         },
     }
 }
@@ -159,9 +159,9 @@ pub fn readiness_path() -> PathBuf {
         Err(e) => {
             warn!(
                 error = %e,
-                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/sessions/system.ready"
+                "Failed to resolve ASTRID_HOME; falling back to /tmp/.astrid/run/system.ready"
             );
-            PathBuf::from("/tmp/.astrid/sessions/system.ready")
+            PathBuf::from("/tmp/.astrid/run/system.ready")
         },
     }
 }
