@@ -139,12 +139,6 @@ pub(crate) fn scan_installed_capsules() -> anyhow::Result<Vec<InstalledCapsule>>
     let home = AstridHome::resolve().context("failed to resolve Astrid home directory")?;
     let mut capsules = Vec::new();
 
-    // System capsules
-    let system_dir = home.capsules_dir();
-    if system_dir.is_dir() {
-        scan_dir(&system_dir, CapsuleLocation::User, &mut capsules)?;
-    }
-
     // Principal (user-installed) capsules
     let principal = astrid_core::PrincipalId::default();
     let principal_dir = home.principal_home(&principal).capsules_dir();

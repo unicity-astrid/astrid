@@ -145,9 +145,13 @@ impl AstridHome {
 
     /// Ensure the system directory structure exists with secure permissions.
     ///
-    /// Creates `etc/`, `var/`, `run/`, `log/`, `keys/`, `lib/`, `capsules/`,
-    /// and `home/`. Writes `etc/layout-version` with the current version.
+    /// Creates `etc/`, `var/`, `run/`, `log/`, `keys/`, `lib/`, and `home/`.
+    /// Writes `etc/layout-version` with the current version.
     /// Sets all directories to `0o700` on Unix.
+    ///
+    /// Note: `capsules/` (system/distro capsules) is NOT created eagerly.
+    /// Nothing writes there yet — user installs go to principal home.
+    /// It will be created when an operator install mechanism lands.
     ///
     /// # Errors
     ///
@@ -161,7 +165,6 @@ impl AstridHome {
             self.log_dir(),
             self.keys_dir(),
             self.lib_dir(),
-            self.capsules_dir(),
             self.home_dir(),
         ];
         for dir in &dirs {
@@ -192,12 +195,6 @@ impl AstridHome {
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
-    }
-
-    /// System capsules directory (`capsules/`).
-    #[must_use]
-    pub fn capsules_dir(&self) -> PathBuf {
-        self.root.join("capsules")
     }
 
     /// Configuration directory (`etc/`).
@@ -631,7 +628,6 @@ mod tests {
         assert!(home.log_dir().exists());
         assert!(home.keys_dir().exists());
         assert!(home.lib_dir().exists());
-        assert!(home.capsules_dir().exists());
         assert!(home.home_dir().exists());
     }
 
@@ -679,7 +675,6 @@ mod tests {
         let r = "/tmp/test-astrid";
 
         assert_eq!(home.root(), Path::new(r));
-        assert_eq!(home.capsules_dir(), PathBuf::from(format!("{r}/capsules")));
         assert_eq!(home.etc_dir(), PathBuf::from(format!("{r}/etc")));
         assert_eq!(
             home.config_path(),
