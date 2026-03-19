@@ -214,6 +214,36 @@ impl ExecutionEngine for WasmEngine {
                 gate_global_root,
             ));
 
+            // Set up /tmp VFS backed by the principal's .local/tmp/ directory.
+            let tmp_dir = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                let ph = home.principal_home(&ctx.principal);
+                let dir = ph.tmp_dir();
+                if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
+                    Some(dir)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let (tmp_vfs, tmp_vfs_root_handle) = if let Some(ref t_root) = tmp_dir {
+                let t_vfs = astrid_vfs::HostVfs::new();
+                let t_handle = astrid_capabilities::DirHandle::new();
+                if tokio::runtime::Handle::current()
+                    .block_on(async { t_vfs.register_dir(t_handle.clone(), t_root.clone()).await })
+                    .is_ok()
+                {
+                    (
+                        Some(Arc::new(t_vfs) as Arc<dyn astrid_vfs::Vfs>),
+                        Some(t_handle),
+                    )
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            };
+
             let secret_store = astrid_storage::build_secret_store(
                 &manifest.package.name,
                 kv.clone(),
@@ -232,6 +262,9 @@ impl ExecutionEngine for WasmEngine {
                 global_root,
                 global_vfs,
                 global_vfs_root_handle,
+                tmp_dir,
+                tmp_vfs,
+                tmp_vfs_root_handle,
                 overlay_vfs: Some(overlay_vfs),
                 upper_dir: Some(Arc::new(upper_temp)),
                 kv,
@@ -662,6 +695,9 @@ pub fn run_lifecycle(
         global_root: None,
         global_vfs: None,
         global_vfs_root_handle: None,
+        tmp_dir: None,
+        tmp_vfs: None,
+        tmp_vfs_root_handle: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,

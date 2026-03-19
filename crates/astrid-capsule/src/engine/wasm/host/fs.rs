@@ -5,8 +5,11 @@ use std::sync::Arc;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
-/// URI scheme prefix for the global shared directory (`~/.astrid/shared/`).
+/// URI scheme prefix for the global shared directory.
 const GLOBAL_SCHEME: &str = "global://";
+
+/// Path prefix that maps to the principal's tmp directory.
+const TMP_PREFIX: &str = "/tmp/";
 
 /// Strip any leading absolute slashes or prefixes (e.g. C:\) from the requested path
 fn make_relative(requested: &str) -> &Path {
@@ -83,15 +86,26 @@ fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhy
     })
 }
 
+/// Which VFS target a resolved path points at.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VfsTarget {
+    /// The workspace overlay VFS (default).
+    Workspace,
+    /// The global shared directory (`global://`).
+    Global,
+    /// The principal's tmp directory (`/tmp/`).
+    Tmp,
+}
+
 /// First-phase resolution result: physical path for the security gate,
-/// the VFS-relative path, and whether this is a global:// path.
+/// the VFS-relative path, and which VFS to target.
 struct ResolvedPath {
     /// Absolute physical path (for security gate check).
     physical: PathBuf,
     /// Path relative to the root (for VFS operations).
     relative: PathBuf,
-    /// Whether this path targets the global shared VFS.
-    is_global: bool,
+    /// Which VFS this path targets.
+    target: VfsTarget,
 }
 
 /// Second-phase resolution result: the VFS instance and capability handle
@@ -111,7 +125,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
     if let Some(stripped) = raw_path.strip_prefix(GLOBAL_SCHEME) {
         let global_root = state.global_root.as_ref().ok_or_else(|| {
             Error::msg(
-                "global:// scheme is not available: no ~/.astrid/shared/ directory is configured. \
+                "global:// scheme is not available: no global directory is configured. \
                  Create the directory and restart the kernel.",
             )
         })?;
@@ -124,7 +138,26 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         Ok(ResolvedPath {
             physical: resolved.physical,
             relative,
-            is_global: true,
+            target: VfsTarget::Global,
+        })
+    } else if raw_path.starts_with(TMP_PREFIX) || raw_path == "/tmp" {
+        let tmp_root = state.tmp_dir.as_ref().ok_or_else(|| {
+            Error::msg("/tmp is not available: no tmp directory is configured for this principal.")
+        })?;
+        let stripped = raw_path
+            .strip_prefix(TMP_PREFIX)
+            .or_else(|| raw_path.strip_prefix("/tmp"))
+            .unwrap_or("");
+        let resolved = resolve_physical_absolute(tmp_root, stripped)?;
+        let relative = resolved
+            .physical
+            .strip_prefix(&resolved.canonical_root)
+            .map_err(|_| Error::msg("resolved /tmp path escaped canonical root"))?
+            .to_path_buf();
+        Ok(ResolvedPath {
+            physical: resolved.physical,
+            relative,
+            target: VfsTarget::Tmp,
         })
     } else {
         let resolved = resolve_physical_absolute(&state.workspace_root, raw_path)?;
@@ -136,7 +169,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         Ok(ResolvedPath {
             physical: resolved.physical,
             relative,
-            is_global: false,
+            target: VfsTarget::Workspace,
         })
     }
 }
@@ -144,28 +177,44 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
 /// Phase 2: Given a first-phase result, select the correct VFS instance
 /// and capability handle.
 fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, Error> {
-    if resolved.is_global {
-        let vfs = state.global_vfs.clone().ok_or_else(|| {
-            Error::msg(
-                "global:// VFS is not mounted: ~/.astrid/shared/ directory may not exist. \
-                 Create the directory and restart the kernel.",
-            )
-        })?;
-        let handle = state
-            .global_vfs_root_handle
-            .clone()
-            .ok_or_else(|| Error::msg("global:// VFS root handle is not available"))?;
-        Ok(ResolvedVfsPath {
-            relative: resolved.relative.clone(),
-            vfs,
-            handle,
-        })
-    } else {
-        Ok(ResolvedVfsPath {
+    match resolved.target {
+        VfsTarget::Global => {
+            let vfs = state.global_vfs.clone().ok_or_else(|| {
+                Error::msg(
+                    "global:// VFS is not mounted. \
+                     Create the directory and restart the kernel.",
+                )
+            })?;
+            let handle = state
+                .global_vfs_root_handle
+                .clone()
+                .ok_or_else(|| Error::msg("global:// VFS root handle is not available"))?;
+            Ok(ResolvedVfsPath {
+                relative: resolved.relative.clone(),
+                vfs,
+                handle,
+            })
+        },
+        VfsTarget::Tmp => {
+            let vfs = state
+                .tmp_vfs
+                .clone()
+                .ok_or_else(|| Error::msg("/tmp VFS is not mounted for this principal."))?;
+            let handle = state
+                .tmp_vfs_root_handle
+                .clone()
+                .ok_or_else(|| Error::msg("/tmp VFS root handle is not available"))?;
+            Ok(ResolvedVfsPath {
+                relative: resolved.relative.clone(),
+                vfs,
+                handle,
+            })
+        },
+        VfsTarget::Workspace => Ok(ResolvedVfsPath {
             relative: resolved.relative.clone(),
             vfs: state.vfs.clone(),
             handle: state.vfs_root_handle.clone(),
-        })
+        }),
     }
 }
 

@@ -62,14 +62,22 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
-    /// Global shared resources directory (`~/.astrid/shared/`). Paths prefixed
-    /// with `global://` are resolved relative to this root.
+    /// Global shared resources directory. Paths prefixed with `global://`
+    /// are resolved relative to this root.
     pub global_root: Option<PathBuf>,
     /// VFS instance for the global shared root. This is a direct `HostVfs` —
     /// writes are permanent (no OverlayVfs CoW layer).
     pub global_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
     /// Capability handle for the global shared VFS root.
     pub global_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    /// Principal's tmp directory. Paths starting with `/tmp/` are resolved
+    /// relative to this root (`~/.astrid/home/{principal}/.local/tmp/`).
+    pub tmp_dir: Option<PathBuf>,
+    /// VFS instance for the principal's tmp directory. Direct `HostVfs` —
+    /// writes are permanent.
+    pub tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    /// Capability handle for the tmp VFS root.
+    pub tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// Concrete reference to the [`OverlayVfs`](astrid_vfs::OverlayVfs) for
     /// commit/rollback operations. `None` for non-overlay VFS configurations
     /// (e.g., tests with a plain `HostVfs`).
@@ -306,6 +314,9 @@ mod tests {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            tmp_dir: None,
+            tmp_vfs: None,
+            tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -375,6 +386,9 @@ mod tests {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            tmp_dir: None,
+            tmp_vfs: None,
+            tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -449,6 +463,9 @@ mod tests {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            tmp_dir: None,
+            tmp_vfs: None,
+            tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -519,6 +536,9 @@ mod tests {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            tmp_dir: None,
+            tmp_vfs: None,
+            tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -605,6 +625,9 @@ mod tests {
             global_root: None,
             global_vfs: None,
             global_vfs_root_handle: None,
+            tmp_dir: None,
+            tmp_vfs: None,
+            tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
