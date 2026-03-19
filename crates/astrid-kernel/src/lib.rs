@@ -266,8 +266,20 @@ impl Kernel {
             format!("{principal}:capsule:{}", capsule.id()),
         )?;
 
-        // Pre-load `.env.json` into the KV store if it exists
-        let env_path = dir.join(".env.json");
+        // Pre-load env config into the KV store.
+        // Check principal config first, fall back to capsule dir's .env.json.
+        let capsule_name = capsule.id().to_string();
+        let env_path = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+            let ph = home.principal_home(&principal);
+            let principal_env = ph.env_dir().join(format!("{capsule_name}.env.json"));
+            if principal_env.exists() {
+                principal_env
+            } else {
+                dir.join(".env.json")
+            }
+        } else {
+            dir.join(".env.json")
+        };
         if env_path.exists()
             && let Ok(contents) = std::fs::read_to_string(&env_path)
             && let Ok(env_map) =

@@ -1,7 +1,7 @@
 //! Capsule management commands - install capsules securely.
 
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use astrid_capsule::discovery::load_manifest;
@@ -655,7 +655,7 @@ pub(crate) fn install_from_local_path_inner(
 
     // Preserve existing .env.json from backup (user configuration survives reinstall).
     if let Some(ref backup) = backup_dir {
-        restore_env_from_backup(backup, &target_dir);
+        restore_env_from_backup(home, backup, &id);
     }
 
     // Run lifecycle hook if a WASM binary exists
@@ -718,9 +718,10 @@ pub(crate) fn install_from_local_path_inner(
     write_meta(&target_dir, &meta)?;
 
     // Prompt for [env] fields only on first install (no prior .env.json).
-    let env_path = target_dir.join(".env.json");
+    // Env config lives in the principal's config dir, not the capsule dir.
+    let env_path = resolve_env_path(home, &manifest.package.name)?;
     if !manifest.env.is_empty() && !env_path.exists() {
-        prompt_env_fields(&manifest.env, &target_dir)?;
+        prompt_env_fields(&manifest.env, &env_path)?;
     }
 
     // Clean up backup
@@ -731,29 +732,40 @@ pub(crate) fn install_from_local_path_inner(
     Ok(())
 }
 
-/// Copy `.env.json` from a backup directory into the new target directory if it exists.
+/// Resolve the path to a capsule's env config file.
+///
+/// Returns `home/{principal}/.config/env/{capsule}.env.json`.
+fn resolve_env_path(home: &AstridHome, capsule_name: &str) -> anyhow::Result<PathBuf> {
+    let principal = astrid_core::PrincipalId::default();
+    let ph = home.principal_home(&principal);
+    let env_dir = ph.env_dir();
+    std::fs::create_dir_all(&env_dir)?;
+    Ok(env_dir.join(format!("{capsule_name}.env.json")))
+}
+
+/// Copy `.env.json` from a backup directory to the new env path if it exists.
 ///
 /// Called after a reinstall to ensure user-configured environment variables survive.
-fn restore_env_from_backup(backup_dir: &Path, target_dir: &Path) {
+fn restore_env_from_backup(home: &AstridHome, backup_dir: &Path, capsule_name: &str) {
     let old_env = backup_dir.join(".env.json");
-    if old_env.exists() {
-        let _ = std::fs::copy(&old_env, target_dir.join(".env.json"));
+    if old_env.exists()
+        && let Ok(env_path) = resolve_env_path(home, capsule_name)
+    {
+        let _ = std::fs::copy(&old_env, env_path);
     }
 }
 
 /// Prompt the user for missing environment variable values defined in `[env]`.
 ///
-/// Reads existing `.env.json` if present, skips fields that already have values,
+/// Reads existing env config if present, skips fields that already have values,
 /// and writes the updated config back with 0o600 permissions.
 fn prompt_env_fields(
     env_defs: &std::collections::HashMap<String, astrid_capsule::manifest::EnvDef>,
-    capsule_dir: &Path,
+    env_path: &Path,
 ) -> anyhow::Result<()> {
-    let env_path = capsule_dir.join(".env.json");
-
     // Load existing values
     let mut values: serde_json::Map<String, serde_json::Value> = if env_path.exists() {
-        let content = std::fs::read_to_string(&env_path)?;
+        let content = std::fs::read_to_string(env_path)?;
         serde_json::from_str(&content).unwrap_or_default()
     } else {
         serde_json::Map::new()
@@ -824,11 +836,11 @@ fn prompt_env_fields(
     if prompted {
         // Write .env.json with 0o600 permissions
         let json = serde_json::to_string_pretty(&values)?;
-        std::fs::write(&env_path, &json)?;
+        std::fs::write(env_path, &json)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&env_path, std::fs::Permissions::from_mode(0o600))?;
+            std::fs::set_permissions(env_path, std::fs::Permissions::from_mode(0o600))?;
         }
         eprintln!("  Configuration saved.\n");
     }
