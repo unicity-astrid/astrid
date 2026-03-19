@@ -419,16 +419,6 @@ impl ProcessSandboxConfig {
             ""
         };
 
-        // Build extra read path rules
-        let extra_read_rules: String = self
-            .extra_read_paths
-            .iter()
-            .map(|p| {
-                validate_sandbox_str(p, "extra read path").map(|s| format!("    (subpath \"{s}\")"))
-            })
-            .collect::<io::Result<Vec<_>>>()?
-            .join("\n");
-
         // Build extra write path rules
         let extra_write_rules: String = self
             .extra_write_paths
@@ -440,10 +430,15 @@ impl ProcessSandboxConfig {
             .collect::<io::Result<Vec<_>>>()?
             .join("\n");
 
-        // Build deny rules for hidden paths (e.g. ~/.astrid/)
+        // Build deny rules for hidden paths (e.g. ~/.astrid/).
+        // Skip any hidden path that is an ancestor of or equal to the
+        // writable_root — the capsule must be able to access its own
+        // directory, and Seatbelt deny rules block even lstat() on parent
+        // paths which prevents Node.js from resolving real paths.
         let hidden_deny_rules: String = self
             .hidden_paths
             .iter()
+            .filter(|p| !self.writable_root.starts_with(p.as_path()))
             .map(|p| {
                 validate_sandbox_str(p, "hidden path").map(|s| {
                     format!(
@@ -463,19 +458,8 @@ impl ProcessSandboxConfig {
 {network_rule}
 (allow sysctl-read)
 (allow ipc-posix-shm)
-(allow file-read*
-    (subpath "/usr")
-    (subpath "/bin")
-    (subpath "/sbin")
-    (subpath "/System")
-    (subpath "/Library")
-    (subpath "/opt")
-    (subpath "/dev")
-    (subpath "{writable_root_str}")
-    (subpath "/private/tmp")
-    (subpath "/var/folders")
-{extra_read_rules}
-)
+(allow mach*)
+(allow file-read*)
 (allow file-write*
     (subpath "{writable_root_str}")
     (subpath "/private/tmp")

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 
 use crate::context::CapsuleContext;
-use crate::error::{CapsuleError, CapsuleResult};
+use crate::error::CapsuleResult;
 use crate::manifest::{CapsuleManifest, EnvDef};
 
 /// A runtime environment capable of executing capsule logic.
@@ -193,6 +193,12 @@ pub(crate) async fn resolve_env(
             .collect::<Vec<_>>()
             .join(", ");
 
+        tracing::info!(
+            capsule = %manifest.package.name,
+            missing = %missing_display,
+            "Capsule has unconfigured env fields — loading with empty defaults"
+        );
+
         let msg = astrid_events::ipc::IpcMessage::new(
             "astrid.v1.onboarding.required",
             astrid_events::ipc::IpcPayload::OnboardingRequired {
@@ -206,9 +212,20 @@ pub(crate) async fn resolve_env(
             message: msg,
         });
 
-        return Err(CapsuleError::UnsupportedEntryPoint(format!(
-            "Missing required environment variables: {missing_display}",
-        )));
+        // Don't block capsule loading — fill missing fields with empty
+        // strings so the capsule can boot. Uplink capsules load at daemon
+        // boot before any client connects, so the onboarding event above
+        // would be lost. The install-time CLI prompts are the primary
+        // mechanism; this is the fallback.
+        for field in resolved.keys().collect::<Vec<_>>() {
+            // already resolved
+            let _ = field;
+        }
+    }
+
+    // Ensure all declared env keys have a value (empty string fallback).
+    for key in manifest.env.keys() {
+        resolved.entry(key.clone()).or_default();
     }
 
     Ok(resolved)

@@ -204,9 +204,30 @@ fn compile_tier2(
     // Copy plugin source into output dir root (preserving directory structure)
     copy_plugin_source(opts.plugin_dir, opts.output_dir, 0)?;
 
+    // Transpile all .ts/.tsx files to .js so the bridge can run under any
+    // Node.js version without --experimental-strip-types. Uses OXC to strip
+    // types while preserving ESM syntax. The .ts originals are left in place
+    // (harmless) and the .js outputs satisfy the `.js` import specifiers that
+    // TypeScript convention mandates.
+    transpile_ts_tree(opts.output_dir)?;
+
     // Install npm dependencies if package.json has dependencies and npm is available.
     // Failure is a warning, not fatal — the user may have pre-installed deps or
     // they may be unnecessary for the plugin to compile (runtime concern).
+    //
+    // Use the resolved Node binary's sibling npm to ensure native addons are
+    // compiled for the correct ABI (the default PATH npm may be a different
+    // major version).
+    let node_bin = resolve_node_binary();
+    let npm_bin = {
+        let node_path = std::path::Path::new(&node_bin);
+        let sibling_npm = node_path.parent().map(|p| p.join("npm"));
+        match sibling_npm {
+            Some(p) if p.exists() => p.to_string_lossy().to_string(),
+            _ => "npm".to_string(),
+        }
+    };
+
     let pkg_json = opts.output_dir.join("package.json");
     if pkg_json.exists()
         && let Ok(pkg_content) = std::fs::read_to_string(&pkg_json)
@@ -216,11 +237,18 @@ fn compile_tier2(
             .and_then(|d| d.as_object())
             .is_some_and(|d| !d.is_empty())
     {
-        match std::process::Command::new("npm")
-            .args(["install", "--production"])
-            .current_dir(opts.output_dir)
-            .status()
-        {
+        // Prepend the resolved Node binary's directory to PATH so npm's
+        // `#!/usr/bin/env node` shebang picks up the correct version. Without
+        // this, npm may run under a different (older) Node, causing EBADENGINE
+        // errors and potentially incomplete installs.
+        let mut cmd = std::process::Command::new(&npm_bin);
+        cmd.args(["install", "--omit=dev"])
+            .current_dir(opts.output_dir);
+        if let Some(node_dir) = std::path::Path::new(&node_bin).parent() {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{}:{current_path}", node_dir.display()));
+        }
+        match cmd.status() {
             Ok(status) if status.success() => {},
             Ok(_) => {
                 eprintln!("warning: npm install failed — dependencies may be missing at runtime");
@@ -232,8 +260,18 @@ fn compile_tier2(
     // Write the MCP bridge script
     node_bridge::write_bridge_script(opts.output_dir)?;
 
-    // Generate Tier 2 Capsule.toml (MCP server instead of WASM component)
-    generate_tier2_manifest(astrid_id, oc_manifest, &entry_point_rel, opts.output_dir)?;
+    // Generate Tier 2 Capsule.toml (MCP server instead of WASM component).
+    // Use the transpiled .js entry point if the original was .ts/.tsx.
+    let js_entry = {
+        let p = std::path::Path::new(&entry_point_rel);
+        match p.extension().and_then(|e| e.to_str()) {
+            Some(ext) if ext.eq_ignore_ascii_case("ts") || ext.eq_ignore_ascii_case("tsx") => {
+                p.with_extension("js").to_string_lossy().to_string()
+            },
+            _ => entry_point_rel.clone(),
+        }
+    };
+    generate_tier2_manifest(astrid_id, oc_manifest, &js_entry, opts.output_dir)?;
 
     Ok(CompileResult {
         astrid_id: astrid_id.to_string(),
@@ -302,28 +340,14 @@ struct Tier2Capabilities {
 }
 
 #[derive(Debug, serde::Serialize)]
-#[serde(untagged)]
-enum Tier2Platform {
-    Known(String),
-    Custom { custom: String },
-}
-
-#[derive(Debug, serde::Serialize)]
 struct Tier2UplinkDef {
     name: String,
-    platform: Tier2Platform,
+    platform: String,
     profile: String,
 }
 
-const KNOWN_PLATFORMS: &[&str] = &["discord", "whatsapp", "telegram", "slack", "web", "cli"];
-
-fn channel_to_platform(channel: &str) -> Tier2Platform {
-    let lower = channel.to_lowercase();
-    if KNOWN_PLATFORMS.contains(&lower.as_str()) {
-        Tier2Platform::Known(lower)
-    } else {
-        Tier2Platform::Custom { custom: lower }
-    }
+fn channel_to_platform(channel: &str) -> String {
+    channel.to_lowercase()
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -389,7 +413,7 @@ fn generate_tier2_manifest(
         mcp_server: vec![Tier2McpServer {
             id: astrid_id.to_string(),
             server_type: "stdio".to_string(),
-            command: "node".to_string(),
+            command: resolve_node_binary(),
             args: vec![
                 "astrid_bridge.mjs".to_string(),
                 "--entry".to_string(),
@@ -400,7 +424,7 @@ fn generate_tier2_manifest(
         }],
         capabilities: Tier2Capabilities {
             uplink: !oc_manifest.channels.is_empty(),
-            host_process: vec!["node".to_string()],
+            host_process: vec![resolve_node_binary()],
         },
         dependencies: {
             let mut provides = Vec::new();
@@ -436,6 +460,46 @@ fn generate_tier2_manifest(
         .map_err(|e| BridgeError::Output(format!("failed to write Capsule.toml: {e}")))?;
 
     Ok(())
+}
+
+/// Resolve the best available `Node.js` binary (>= 22).
+///
+/// Prefers versioned Homebrew installs (`node@22`, `node@23`, …) over the
+/// default `node` on `PATH`, since `OpenClaw` plugins require Node >= 22 for
+/// native `TypeScript` imports. Each candidate is executed with `--version`
+/// to verify it actually works (broken dylibs, etc.). Falls back to
+/// `"node"` if nothing better is found.
+fn resolve_node_binary() -> String {
+    /// Run `<binary> --version` and return the major version if successful.
+    fn node_major(bin: &str) -> Option<u32> {
+        let output = std::process::Command::new(bin)
+            .arg("--version")
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let version = String::from_utf8(output.stdout).ok()?;
+        version
+            .trim()
+            .strip_prefix('v')
+            .and_then(|s| s.split('.').next())
+            .and_then(|s| s.parse().ok())
+    }
+
+    // Check versioned Homebrew installs (highest version first)
+    for v in (22..=26).rev() {
+        let path = format!("/opt/homebrew/opt/node@{v}/bin/node");
+        if node_major(&path).is_some_and(|m| m >= 22) {
+            return path;
+        }
+    }
+    // Check if default `node` meets the minimum version
+    if node_major("node").is_some_and(|m| m >= 22) {
+        return "node".to_string();
+    }
+    // Fallback — let the OS resolve it at runtime
+    "node".to_string()
 }
 
 /// Maximum nesting depth for plugin source tree traversal.
@@ -486,6 +550,46 @@ fn copy_plugin_source(src: &Path, dst: &Path, depth: usize) -> BridgeResult<()> 
             copy_plugin_source(&entry.path(), &dst_path, depth.saturating_add(1))?;
         } else if file_type.is_file() {
             std::fs::copy(entry.path(), &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Walk a directory tree and transpile all `.ts`/`.tsx` files to `.js`.
+///
+/// Skips `node_modules` and dotfiles. Leaves the original `.ts` files in
+/// place — the generated `.js` files satisfy the import specifiers that
+/// `TypeScript` projects conventionally use (e.g. `import ... from "./foo.js"`).
+fn transpile_ts_tree(dir: &Path) -> BridgeResult<()> {
+    transpile_ts_tree_inner(dir, 0)
+}
+
+fn transpile_ts_tree_inner(dir: &Path, depth: usize) -> BridgeResult<()> {
+    if depth > MAX_COPY_DEPTH {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if name_str == "node_modules" || name_str.starts_with('.') {
+            continue;
+        }
+
+        let ft = entry.file_type()?;
+        if ft.is_dir() {
+            transpile_ts_tree_inner(&entry.path(), depth.saturating_add(1))?;
+        } else if ft.is_file()
+            && (name_str.ends_with(".ts") || name_str.ends_with(".tsx"))
+            && !name_str.ends_with(".d.ts")
+        {
+            let source = std::fs::read_to_string(entry.path())?;
+            let js = transpiler::strip_types(&source, &name_str)?;
+
+            // Write .js alongside .ts
+            let js_path = entry.path().with_extension("js");
+            std::fs::write(&js_path, js)?;
         }
     }
     Ok(())

@@ -91,6 +91,57 @@ pub fn transpile(source: &str, filename: &str) -> BridgeResult<String> {
     Ok(esm_to_cjs(&js_output))
 }
 
+/// Strip `TypeScript` types from a source file, preserving ESM syntax.
+///
+/// Unlike [`transpile`], this does **not** check imports or convert ESM to CJS.
+/// Intended for Tier 2 plugins that run under Node.js with full module support.
+///
+/// # Errors
+///
+/// - [`BridgeError::TranspileFailed`] if parsing or transformation fails
+pub fn strip_types(source: &str, filename: &str) -> BridgeResult<String> {
+    let allocator = oxc_allocator::Allocator::default();
+
+    let source_type = SourceType::from_path(filename).unwrap_or_else(|_| SourceType::mjs());
+
+    let parse_ret = Parser::new(&allocator, source, source_type).parse();
+
+    if parse_ret.panicked || !parse_ret.errors.is_empty() {
+        let errors: Vec<String> = parse_ret.errors.iter().map(|e| format!("{e}")).collect();
+        return Err(BridgeError::TranspileFailed(format!(
+            "parse errors:\n{}",
+            errors.join("\n")
+        )));
+    }
+
+    let mut program = parse_ret.program;
+
+    let sem_ret = SemanticBuilder::new()
+        .with_excess_capacity(2.0)
+        .build(&program);
+    let scoping = sem_ret.semantic.into_scoping();
+
+    let transform_options = TransformOptions::default();
+    let path = Path::new(filename);
+    let transform_ret = Transformer::new(&allocator, path, &transform_options)
+        .build_with_scoping(scoping, &mut program);
+
+    if !transform_ret.errors.is_empty() {
+        let errors: Vec<String> = transform_ret
+            .errors
+            .iter()
+            .map(|e| format!("{e}"))
+            .collect();
+        return Err(BridgeError::TranspileFailed(format!(
+            "transform errors:\n{}",
+            errors.join("\n")
+        )));
+    }
+
+    let codegen_ret = Codegen::new().build(&program);
+    Ok(codegen_ret.code)
+}
+
 /// Node.js modules that are polyfilled in the WASM sandbox shim.
 ///
 /// Imports from these modules are allowed and rewritten to `require()` calls
