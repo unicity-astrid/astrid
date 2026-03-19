@@ -109,8 +109,7 @@ async fn main() -> Result<()> {
             );
             anyhow::bail!(
                 "CLI proxy capsule (astrid-capsule-cli) not found. \
-                 Ensure it is installed in ~/.astrid/capsules/ or \
-                 .astrid/capsules/ in your workspace."
+                 Install it with: astrid capsule install @unicity-astrid/capsule-cli"
             );
         }
     }
