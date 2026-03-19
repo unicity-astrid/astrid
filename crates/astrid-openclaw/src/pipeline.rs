@@ -611,7 +611,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
+        tier2::copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(
@@ -628,7 +628,7 @@ mod tests {
         std::fs::write(src.path().join("index.js"), "y").unwrap();
 
         let dst = tempfile::tempdir().unwrap();
-        copy_plugin_source(src.path(), dst.path(), 0).unwrap();
+        tier2::copy_plugin_source(src.path(), dst.path(), 0).unwrap();
 
         assert!(dst.path().join("index.js").exists());
         assert!(!dst.path().join(".git").exists(), ".git should be skipped");
@@ -722,26 +722,9 @@ mod tests {
     }
 
     #[test]
-    fn channel_to_platform_known_returns_known() {
-        match channel_to_platform("discord") {
-            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
-            Tier2Platform::Custom { .. } => panic!("expected Known for discord"),
-        }
-    }
-
-    #[test]
-    fn channel_to_platform_unknown_returns_custom() {
-        match channel_to_platform("unicity") {
-            Tier2Platform::Custom { custom } => assert_eq!(custom, "unicity"),
-            Tier2Platform::Known(_) => panic!("expected Custom for unicity"),
-        }
-    }
-
-    #[test]
-    fn channel_to_platform_case_insensitive() {
-        match channel_to_platform("Discord") {
-            Tier2Platform::Known(s) => assert_eq!(s, "discord"),
-            Tier2Platform::Custom { .. } => panic!("expected Known for Discord (case-insensitive)"),
-        }
+    fn channel_to_platform_lowercases() {
+        assert_eq!(tier2::channel_to_platform("discord"), "discord");
+        assert_eq!(tier2::channel_to_platform("unicity"), "unicity");
+        assert_eq!(tier2::channel_to_platform("Discord"), "discord");
     }
 }
