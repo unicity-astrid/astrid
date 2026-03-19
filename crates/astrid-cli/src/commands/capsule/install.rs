@@ -205,7 +205,8 @@ pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::R
 
 /// Check all installed capsules for updates and install those with newer versions.
 fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()> {
-    let capsules_dir = home.capsules_dir();
+    let principal = astrid_core::PrincipalId::default();
+    let capsules_dir = home.principal_home(&principal).capsules_dir();
     if !capsules_dir.exists() {
         eprintln!("No capsules installed.");
         return Ok(());
@@ -689,6 +690,9 @@ pub(crate) fn install_from_local_path_inner(
         },
     };
 
+    // Content-address WASM binary into lib/ (shared, deduped).
+    let wasm_hash = content_address_wasm(home, &target_dir, &manifest)?;
+
     // Write meta.json on success
     let now = chrono::Utc::now().to_rfc3339();
     let meta = CapsuleMeta {
@@ -714,6 +718,7 @@ pub(crate) fn install_from_local_path_inner(
             .collect(),
         requires: manifest.dependencies.requires.clone(),
         topics: baked_topics,
+        wasm_hash,
     };
     write_meta(&target_dir, &meta)?;
 
@@ -730,6 +735,48 @@ pub(crate) fn install_from_local_path_inner(
     }
 
     Ok(())
+}
+
+/// Content-address WASM binaries into the shared `lib/` directory.
+///
+/// Finds `.wasm` files in the capsule target directory, hashes them with
+/// BLAKE3, copies to `lib/{hash}.wasm`, and removes the original from the
+/// capsule directory. Returns the hash if a WASM binary was processed.
+fn content_address_wasm(
+    home: &AstridHome,
+    target_dir: &Path,
+    manifest: &astrid_capsule::manifest::CapsuleManifest,
+) -> anyhow::Result<Option<String>> {
+    let Some(component) = manifest.components.first() else {
+        return Ok(None);
+    };
+
+    let wasm_path = if component.path.is_absolute() {
+        component.path.clone()
+    } else {
+        target_dir.join(&component.path)
+    };
+
+    if !wasm_path.exists() || wasm_path.extension().and_then(|e| e.to_str()) != Some("wasm") {
+        return Ok(None);
+    }
+
+    let wasm_bytes = std::fs::read(&wasm_path)
+        .with_context(|| format!("failed to read WASM binary: {}", wasm_path.display()))?;
+
+    let hash = blake3::hash(&wasm_bytes).to_hex().to_string();
+    let lib_dir = home.lib_dir();
+    std::fs::create_dir_all(&lib_dir)?;
+
+    let dest = lib_dir.join(format!("{hash}.wasm"));
+    if !dest.exists() {
+        std::fs::write(&dest, &wasm_bytes)?;
+    }
+
+    // Remove the WASM from the capsule dir — it now lives in lib/
+    let _ = std::fs::remove_file(&wasm_path);
+
+    Ok(Some(hash))
 }
 
 /// Resolve the path to a capsule's env config file.
@@ -1254,7 +1301,10 @@ fn resolve_target_dir(
         let root = std::env::current_dir().context("could not determine current directory")?;
         Ok(root.join(".astrid").join("capsules").join(id))
     } else {
-        Ok(home.capsules_dir().join(id))
+        // User-installed capsules go to the principal's home, not the system dir.
+        let principal = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&principal);
+        Ok(ph.capsules_dir().join(id))
     }
 }
 
@@ -1304,7 +1354,10 @@ mod tests {
         install_from_local_path(base, false, &home).expect("install should succeed");
 
         // Verify installed directory preserves node_modules
-        let installed = home.capsules_dir().join("install-test");
+        let installed = home
+            .principal_home(&astrid_core::PrincipalId::default())
+            .capsules_dir()
+            .join("install-test");
         assert!(
             installed.join("Capsule.toml").exists(),
             "installed capsule must have Capsule.toml"
@@ -1406,7 +1459,10 @@ mod tests {
         install_from_local_path(base, false, &home).expect("install must not bail on symlinks");
 
         // Verify the symlink was dereferenced into a regular file
-        let installed = home.capsules_dir().join("symlink-test");
+        let installed = home
+            .principal_home(&astrid_core::PrincipalId::default())
+            .capsules_dir()
+            .join("symlink-test");
         let bin_file = installed.join("node_modules/.bin/somepkg");
         assert!(
             bin_file.exists(),
@@ -1434,6 +1490,7 @@ mod tests {
             provides: vec!["tool:run_shell".into(), "topic:session.response.*".into()],
             requires: vec!["topic:identity.response.ready".into()],
             topics: vec![],
+            wasm_hash: None,
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1456,6 +1513,7 @@ mod tests {
             provides: vec![],
             requires: vec![],
             topics: vec![],
+            wasm_hash: None,
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1496,7 +1554,10 @@ mod tests {
         let home = AstridHome::from_path(home_dir.path());
         install_from_local_path(base, false, &home).expect("install should succeed");
 
-        let installed = home.capsules_dir().join("meta-test");
+        let installed = home
+            .principal_home(&astrid_core::PrincipalId::default())
+            .capsules_dir()
+            .join("meta-test");
         let meta = read_meta(&installed).expect("meta.json should exist after install");
         assert_eq!(meta.version, "2.0.0");
     }
@@ -1516,7 +1577,13 @@ mod tests {
 
         // First install
         install_from_local_path(base, false, &home).expect("first install");
-        let meta1 = read_meta(&home.capsules_dir().join("upgrade-test")).unwrap();
+        let meta1 = read_meta(
+            &home
+                .principal_home(&astrid_core::PrincipalId::default())
+                .capsules_dir()
+                .join("upgrade-test"),
+        )
+        .unwrap();
         assert_eq!(meta1.version, "1.0.0");
         let original_installed_at = meta1.installed_at.clone();
 
@@ -1528,7 +1595,13 @@ mod tests {
         .unwrap();
         install_from_local_path(base, false, &home).expect("upgrade");
 
-        let meta2 = read_meta(&home.capsules_dir().join("upgrade-test")).unwrap();
+        let meta2 = read_meta(
+            &home
+                .principal_home(&astrid_core::PrincipalId::default())
+                .capsules_dir()
+                .join("upgrade-test"),
+        )
+        .unwrap();
         assert_eq!(meta2.version, "2.0.0");
         assert_eq!(
             meta2.installed_at, original_installed_at,
@@ -1653,7 +1726,10 @@ mod tests {
         let home = AstridHome::from_path(home_dir.path());
         install_from_local_path(base, false, &home).expect("install should succeed");
 
-        let installed = home.capsules_dir().join("topic-test");
+        let installed = home
+            .principal_home(&astrid_core::PrincipalId::default())
+            .capsules_dir()
+            .join("topic-test");
         let meta = read_meta(&installed).expect("meta.json should exist");
         assert_eq!(meta.topics.len(), 2);
         assert_eq!(meta.topics[0].name, "llm.v1.chunk");
@@ -1766,7 +1842,10 @@ mod tests {
         let home = AstridHome::from_path(home_dir.path());
         install_from_local_path(base, false, &home).expect("install should succeed");
 
-        let installed = home.capsules_dir().join("no-topics");
+        let installed = home
+            .principal_home(&astrid_core::PrincipalId::default())
+            .capsules_dir()
+            .join("no-topics");
         let meta = read_meta(&installed).expect("meta.json should exist");
         assert!(meta.topics.is_empty());
     }

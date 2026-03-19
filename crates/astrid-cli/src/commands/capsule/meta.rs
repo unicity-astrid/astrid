@@ -36,6 +36,10 @@ pub(crate) struct CapsuleMeta {
     /// Topic API declarations with inline schema content, baked at install time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) topics: Vec<BakedTopic>,
+    /// BLAKE3 hash of the WASM binary, stored content-addressed in `lib/`.
+    /// `None` for non-WASM capsules (MCP/OpenClaw).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) wasm_hash: Option<String>,
 }
 
 /// A topic API declaration baked into `meta.json` with inline schema content.
@@ -135,10 +139,17 @@ pub(crate) fn scan_installed_capsules() -> anyhow::Result<Vec<InstalledCapsule>>
     let home = AstridHome::resolve().context("failed to resolve Astrid home directory")?;
     let mut capsules = Vec::new();
 
-    // User-level capsules
-    let user_dir = home.capsules_dir();
-    if user_dir.is_dir() {
-        scan_dir(&user_dir, CapsuleLocation::User, &mut capsules)?;
+    // System capsules
+    let system_dir = home.capsules_dir();
+    if system_dir.is_dir() {
+        scan_dir(&system_dir, CapsuleLocation::User, &mut capsules)?;
+    }
+
+    // Principal (user-installed) capsules
+    let principal = astrid_core::PrincipalId::default();
+    let principal_dir = home.principal_home(&principal).capsules_dir();
+    if principal_dir.is_dir() {
+        scan_dir(&principal_dir, CapsuleLocation::User, &mut capsules)?;
     }
 
     // Workspace-level capsules
@@ -307,6 +318,7 @@ mod tests {
                     schema: None,
                 },
             ],
+            wasm_hash: None,
         };
 
         let json = serde_json::to_string_pretty(&meta).expect("serialize");
@@ -342,6 +354,7 @@ mod tests {
             provides: vec![],
             requires: vec![],
             topics: vec![],
+            wasm_hash: None,
         };
         let json = serde_json::to_string(&meta).expect("serialize");
         assert!(

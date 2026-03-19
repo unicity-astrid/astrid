@@ -13,6 +13,32 @@ use crate::manifest::CapsuleManifest;
 
 pub mod host;
 pub mod host_state;
+
+/// Read the expected WASM hash from `meta.json` in the capsule directory.
+fn read_expected_wasm_hash(capsule_dir: &std::path::Path) -> Option<String> {
+    let meta_path = capsule_dir.join("meta.json");
+    let content = std::fs::read_to_string(&meta_path).ok()?;
+    let meta: serde_json::Value = serde_json::from_str(&content).ok()?;
+    meta.get("wasm_hash")?.as_str().map(String::from)
+}
+
+/// Resolve a content-addressed WASM binary from `lib/{hash}.wasm`.
+///
+/// Reads `meta.json` in the capsule dir to find the `wasm_hash` field,
+/// then resolves the path in the Astrid home `lib/` directory.
+fn resolve_content_addressed_wasm(capsule_dir: &std::path::Path) -> Option<PathBuf> {
+    let meta_path = capsule_dir.join("meta.json");
+    let content = std::fs::read_to_string(&meta_path).ok()?;
+    let meta: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let hash = meta.get("wasm_hash")?.as_str()?;
+    let home = astrid_core::dirs::AstridHome::resolve().ok()?;
+    let wasm_path = home.lib_dir().join(format!("{hash}.wasm"));
+    if wasm_path.exists() {
+        Some(wasm_path)
+    } else {
+        None
+    }
+}
 pub(crate) mod tool;
 
 /// Wall-clock timeout for short-lived (non-daemon) WASM capsules.
@@ -76,7 +102,13 @@ impl ExecutionEngine for WasmEngine {
         let wasm_path = if component.path.is_absolute() {
             component.path.clone()
         } else {
-            self._capsule_dir.join(&component.path)
+            let local = self._capsule_dir.join(&component.path);
+            if local.exists() {
+                local
+            } else {
+                // WASM may be content-addressed in lib/ — check meta.json for hash.
+                resolve_content_addressed_wasm(&self._capsule_dir).unwrap_or(local)
+            }
         };
 
         // Clone context components to move into block_in_place
@@ -115,10 +147,33 @@ impl ExecutionEngine for WasmEngine {
         let process_tracker = Arc::new(crate::engine::wasm::host::process::ProcessTracker::new());
         let process_tracker_for_listener = process_tracker.clone();
 
+        let capsule_dir_for_verify = self._capsule_dir.clone();
         let (plugin, rx, has_run, ready_rx) = tokio::task::block_in_place(move || {
             let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                 CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
             })?;
+
+            // BLAKE3 integrity verification. Fail-secure: no hash = no load.
+            let actual_hash = blake3::hash(&wasm_bytes).to_hex().to_string();
+            match read_expected_wasm_hash(&capsule_dir_for_verify) {
+                Some(expected_hash) if actual_hash == expected_hash => {
+                    // Hash matches — verified.
+                },
+                Some(expected_hash) => {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "WASM integrity check failed: expected BLAKE3 {expected_hash}, \
+                         got {actual_hash}. The binary may have been tampered with."
+                    )));
+                },
+                None => {
+                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
+                        "WASM capsule '{}' has no BLAKE3 hash in meta.json. \
+                         Capsules must be installed via `astrid capsule install` \
+                         which records the hash. Refusing to load unverified binary.",
+                        manifest.package.name
+                    )));
+                },
+            }
 
             let (tx, rx) = if !manifest.uplinks.is_empty() {
                 let (tx, rx) = tokio::sync::mpsc::channel(128);

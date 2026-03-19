@@ -189,6 +189,7 @@ mod tests {
                 provides: provides.iter().map(|s| (*s).to_string()).collect(),
                 requires: requires.iter().map(|s| (*s).to_string()).collect(),
                 topics: vec![],
+                wasm_hash: None,
             }),
             location: CapsuleLocation::User,
         }
@@ -310,6 +311,7 @@ mod tests {
                     provides: vec!["topic:foo".to_string()],
                     requires: vec![],
                     topics: vec![],
+                    wasm_hash: None,
                 }),
                 location: CapsuleLocation::User,
             },
@@ -323,6 +325,7 @@ mod tests {
                     provides: vec![],
                     requires: vec!["topic:foo".to_string()],
                     topics: vec![],
+                    wasm_hash: None,
                 }),
                 location: CapsuleLocation::Workspace,
             },
