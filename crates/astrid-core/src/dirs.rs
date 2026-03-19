@@ -3,41 +3,64 @@
 //! Two key directory structures:
 //!
 //! - [`AstridHome`]: Global state at `~/.astrid/` (or `$ASTRID_HOME`).
-//!   Holds keys, audit logs, capability databases, sessions, workspace state,
-//!   and global config. All sensitive/runtime data lives here.
+//!   Linux FHS-aligned layout with `etc/`, `var/`, `run/`, `log/`, `keys/`,
+//!   `lib/`, `capsules/`, and `home/` for multi-principal isolation.
 //!
 //! - [`WorkspaceDir`]: Per-project directory at `<project>/.astrid/`.
-//!   Holds only committable project-level config (like `.claude/CLAUDE.md`).
+//!   Holds only committable project-level config (like `.astrid/ASTRID.md`).
 //!   Contains a `workspace-id` UUID that links the project to its global state.
+//!
+//! - [`PrincipalHome`]: Per-principal home directory under `~/.astrid/home/{id}/`.
+//!   Each principal gets isolated capsules, KV data, audit chain, tokens, and
+//!   config — portable across deployments.
 //!
 //! # Layout
 //!
 //! ```text
-//! ~/.astrid/                      (AstridHome)
-//! ├── keys/
-//! │   └── user.key                  (ed25519 secret key, 0600)
-//! ├── logs/                         (daemon/runtime log files)
-//! ├── sessions/                     (session JSON files)
-//! ├── state.db/                     (SurrealKV — allowances, budget, escape)
-//! ├── audit.db/                     (SurrealKV — audit entries)
-//! ├── capabilities.db/              (SurrealKV — capability tokens)
-//! ├── deferred.db/                  (SurrealKV — deferred queue)
-//! ├── hooks/                        (user-level hooks)
-//! ├── capsules/                     (installed capsules)
-//! ├── cache/capsules/               (capsule compilation cache)
-//! ├── state/                        (gateway state)
-//! ├── servers.toml                  (MCP server config)
-//! ├── gateway.toml                  (gateway daemon config)
-//! └── config.toml                   (global runtime config)
+//! ~/.astrid/                           (AstridHome)
+//! ├── capsules/                          system capsules (the "distro")
+//! ├── etc/
+//! │   ├── config.toml                    deployment config
+//! │   ├── servers.toml                   MCP server config
+//! │   ├── gateway.toml                   daemon config
+//! │   ├── hooks/                         system hooks
+//! │   └── layout-version                 layout version sentinel
+//! ├── var/
+//! │   └── state.db/                      system KV (SurrealKV, persistent)
+//! ├── run/                               ephemeral runtime state
+//! │   ├── system.sock
+//! │   ├── system.token
+//! │   ├── system.ready
+//! │   └── deferred.db/                   deferred queue (ephemeral)
+//! ├── log/                               system logs
+//! ├── keys/                              runtime signing key
+//! ├── lib/                               content-addressed compiled WASM modules
+//! └── home/
+//!     └── {principal}/                   per-principal home
+//!         ├── .local/
+//!         │   ├── capsules/              user-installed capsules
+//!         │   ├── kv/                    capsule KV data
+//!         │   ├── log/                   capsule logs
+//!         │   ├── audit/                 user's audit chain
+//!         │   ├── tokens/                capability tokens
+//!         │   └── tmp/                   VFS mounts as /tmp
+//!         └── .config/
+//!             └── env/                   capsule config overrides
 //!
-//! <project>/.astrid/              (WorkspaceDir)
-//! ├── workspace-id                  (UUID linking project to global state)
-//! └── ASTRID.md                   (project-level instructions)
+//! <project>/.astrid/                   (WorkspaceDir)
+//! ├── workspace-id                       UUID linking project to global state
+//! └── ASTRID.md                        project-level instructions
 //! ```
 
 use std::io;
 use std::path::{Component, Path, PathBuf};
+
 use uuid::Uuid;
+
+use crate::principal::PrincipalId;
+
+/// Current layout version. Written to `etc/layout-version` on first boot.
+pub const LAYOUT_VERSION: &str = "1";
 
 /// Reject paths containing `..` (parent directory) components.
 fn reject_parent_traversal(path: &Path, var_name: &str) -> io::Result<()> {
@@ -50,9 +73,14 @@ fn reject_parent_traversal(path: &Path, var_name: &str) -> io::Result<()> {
     Ok(())
 }
 
+// ── AstridHome (system-level) ────────────────────────────────────────────
+
 /// Global Astrid home directory (`~/.astrid/` or `$ASTRID_HOME`).
 ///
-/// Contains keys, audit databases, capability stores, and global config.
+/// FHS-aligned system layout. Contains config (`etc/`), persistent state
+/// (`var/`), ephemeral runtime (`run/`), logs (`log/`), keys (`keys/`),
+/// shared WASM modules (`lib/`), system capsules (`capsules/`), and
+/// per-principal home directories (`home/`).
 #[derive(Debug, Clone)]
 pub struct AstridHome {
     root: PathBuf,
@@ -115,166 +143,284 @@ impl AstridHome {
         Self { root: root.into() }
     }
 
-    /// Ensure the directory structure exists with secure permissions.
+    /// Ensure the system directory structure exists with secure permissions.
     ///
-    /// Creates `keys/`, `logs/`, `sessions/`, and `shared/` subdirectories
-    /// and sets them all to `0o700` on Unix (owner-only access).
+    /// Creates `etc/`, `var/`, `run/`, `log/`, `keys/`, `lib/`, `capsules/`,
+    /// and `home/`. Writes `etc/layout-version` with the current version.
+    /// Sets all directories to `0o700` on Unix.
     ///
     /// # Errors
     ///
     /// Returns an error if directory creation or permission setting fails.
     pub fn ensure(&self) -> io::Result<()> {
-        std::fs::create_dir_all(self.keys_dir())?;
-        std::fs::create_dir_all(self.logs_dir())?;
-        std::fs::create_dir_all(self.sessions_dir())?;
-        std::fs::create_dir_all(self.shared_dir())?;
+        let dirs = [
+            self.etc_dir(),
+            self.hooks_dir(),
+            self.var_dir(),
+            self.run_dir(),
+            self.log_dir(),
+            self.keys_dir(),
+            self.lib_dir(),
+            self.capsules_dir(),
+            self.home_dir(),
+        ];
+        for dir in &dirs {
+            std::fs::create_dir_all(dir)?;
+        }
+
+        // Write layout version sentinel (idempotent).
+        let version_path = self.etc_dir().join("layout-version");
+        if !version_path.exists() {
+            std::fs::write(&version_path, LAYOUT_VERSION)?;
+        }
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o700);
             std::fs::set_permissions(self.root(), perms.clone())?;
-            std::fs::set_permissions(self.keys_dir(), perms.clone())?;
-            std::fs::set_permissions(self.logs_dir(), perms.clone())?;
-            std::fs::set_permissions(self.sessions_dir(), perms.clone())?;
-            std::fs::set_permissions(self.shared_dir(), perms)?;
+            for dir in &dirs {
+                std::fs::set_permissions(dir, perms.clone())?;
+            }
         }
         Ok(())
     }
 
-    /// Root directory path.
+    // ── Path accessors ───────────────────────────────────────────────
+
+    /// Root directory path (`~/.astrid/`).
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// Keys directory (`~/.astrid/keys/`).
+    /// System capsules directory (`capsules/`).
     #[must_use]
-    pub fn keys_dir(&self) -> PathBuf {
-        self.root.join("keys")
+    pub fn capsules_dir(&self) -> PathBuf {
+        self.root.join("capsules")
     }
 
-    /// Logs directory (`~/.astrid/logs/`).
+    /// Configuration directory (`etc/`).
     #[must_use]
-    pub fn logs_dir(&self) -> PathBuf {
-        self.root.join("logs")
+    pub fn etc_dir(&self) -> PathBuf {
+        self.root.join("etc")
     }
 
-    /// Path to the user's ed25519 secret key file.
-    #[must_use]
-    pub fn user_key_path(&self) -> PathBuf {
-        self.keys_dir().join("user.key")
-    }
-
-    /// Path to the audit database directory (`SurrealKV`).
-    #[must_use]
-    pub fn audit_db_path(&self) -> PathBuf {
-        self.root.join("audit.db")
-    }
-
-    /// Path to the capabilities database directory (`SurrealKV`).
-    #[must_use]
-    pub fn capabilities_db_path(&self) -> PathBuf {
-        self.root.join("capabilities.db")
-    }
-
-    /// Path to the deferred queue database directory (`SurrealKV`).
-    #[must_use]
-    pub fn deferred_db_path(&self) -> PathBuf {
-        self.root.join("deferred.db")
-    }
-
-    /// Path to the MCP servers configuration file.
-    #[must_use]
-    pub fn servers_config_path(&self) -> PathBuf {
-        self.root.join("servers.toml")
-    }
-
-    /// Path to the global runtime configuration file.
+    /// Path to the global runtime configuration file (`etc/config.toml`).
     #[must_use]
     pub fn config_path(&self) -> PathBuf {
-        self.root.join("config.toml")
+        self.etc_dir().join("config.toml")
     }
 
-    /// Sessions directory (`~/.astrid/sessions/`).
+    /// Path to the MCP servers configuration file (`etc/servers.toml`).
     #[must_use]
-    pub fn sessions_dir(&self) -> PathBuf {
-        self.root.join("sessions")
+    pub fn servers_config_path(&self) -> PathBuf {
+        self.etc_dir().join("servers.toml")
     }
 
-    /// Path to the kernel's Unix domain socket (`~/.astrid/sessions/system.sock`).
+    /// Path to the gateway daemon configuration file (`etc/gateway.toml`).
+    #[must_use]
+    pub fn gateway_config_path(&self) -> PathBuf {
+        self.etc_dir().join("gateway.toml")
+    }
+
+    /// System hooks directory (`etc/hooks/`).
+    #[must_use]
+    pub fn hooks_dir(&self) -> PathBuf {
+        self.etc_dir().join("hooks")
+    }
+
+    /// Persistent state directory (`var/`).
+    #[must_use]
+    pub fn var_dir(&self) -> PathBuf {
+        self.root.join("var")
+    }
+
+    /// Path to the system KV database (`var/state.db/`).
+    #[must_use]
+    pub fn state_db_path(&self) -> PathBuf {
+        self.var_dir().join("state.db")
+    }
+
+    /// Ephemeral runtime directory (`run/`).
+    #[must_use]
+    pub fn run_dir(&self) -> PathBuf {
+        self.root.join("run")
+    }
+
+    /// Path to the kernel's Unix domain socket (`run/system.sock`).
     #[must_use]
     pub fn socket_path(&self) -> PathBuf {
-        self.sessions_dir().join("system.sock")
+        self.run_dir().join("system.sock")
     }
 
-    /// Path to the session authentication token (`~/.astrid/sessions/system.token`).
+    /// Path to the session authentication token (`run/system.token`).
     #[must_use]
     pub fn token_path(&self) -> PathBuf {
-        self.sessions_dir().join("system.token")
+        self.run_dir().join("system.token")
     }
 
-    /// Path to the daemon readiness sentinel (`~/.astrid/sessions/system.ready`).
+    /// Path to the daemon readiness sentinel (`run/system.ready`).
     ///
     /// Written by the daemon after all capsules are loaded and accepting
     /// connections. The CLI polls for this file instead of the socket file
     /// to avoid connecting before the daemon is fully initialized.
     #[must_use]
     pub fn ready_path(&self) -> PathBuf {
-        self.sessions_dir().join("system.ready")
+        self.run_dir().join("system.ready")
     }
 
-    /// Path to the workspace state database directory (`SurrealKV`).
+    /// Path to the deferred queue database (`run/deferred.db/`).
     #[must_use]
-    pub fn state_db_path(&self) -> PathBuf {
-        self.root.join("state.db")
+    pub fn deferred_db_path(&self) -> PathBuf {
+        self.run_dir().join("deferred.db")
     }
 
-    /// Shared resources directory (`~/.astrid/shared/`).
-    ///
-    /// Capsules with `global://` in their manifest can read from this directory.
-    /// Unlike the rest of `~/.astrid/` (keys, databases, capsule .env files),
-    /// this directory is explicitly designed to be VFS-accessible.
+    /// System log directory (`log/`).
     #[must_use]
-    pub fn shared_dir(&self) -> PathBuf {
-        self.root.join("shared")
+    pub fn log_dir(&self) -> PathBuf {
+        self.root.join("log")
     }
 
-    /// Installed capsules directory (`~/.astrid/capsules/`).
+    /// Keys directory (`keys/`).
     #[must_use]
-    pub fn capsules_dir(&self) -> PathBuf {
-        self.root.join("capsules")
+    pub fn keys_dir(&self) -> PathBuf {
+        self.root.join("keys")
     }
 
-    /// Capsule compilation cache directory (`~/.astrid/cache/capsules/`).
+    /// Path to the runtime signing key (`keys/runtime.key`).
     #[must_use]
-    pub fn capsules_cache_dir(&self) -> PathBuf {
-        self.root.join("cache").join("capsules")
+    pub fn runtime_key_path(&self) -> PathBuf {
+        self.keys_dir().join("runtime.key")
     }
 
-    /// Hooks directory (`~/.astrid/hooks/`).
+    /// Content-addressed compiled WASM module cache (`lib/`).
     #[must_use]
-    pub fn hooks_dir(&self) -> PathBuf {
-        self.root.join("hooks")
+    pub fn lib_dir(&self) -> PathBuf {
+        self.root.join("lib")
     }
 
-    /// Path to the gateway configuration file (`~/.astrid/gateway.toml`).
+    /// Principal home directories root (`home/`).
     #[must_use]
-    pub fn gateway_config_path(&self) -> PathBuf {
-        self.root.join("gateway.toml")
+    pub fn home_dir(&self) -> PathBuf {
+        self.root.join("home")
     }
 
-    /// State directory (`~/.astrid/state/`).
+    /// Get the home directory for a specific principal.
     #[must_use]
-    pub fn state_dir(&self) -> PathBuf {
-        self.root.join("state")
-    }
-
-    /// Path to the living spark identity file (`~/.astrid/spark.toml`).
-    #[must_use]
-    pub fn spark_path(&self) -> PathBuf {
-        self.root.join("spark.toml")
+    pub fn principal_home(&self, id: &PrincipalId) -> PrincipalHome {
+        PrincipalHome {
+            root: self.home_dir().join(id.as_str()),
+        }
     }
 }
+
+// ── PrincipalHome (per-user) ─────────────────────────────────────────────
+
+/// Per-principal home directory (`~/.astrid/home/{principal}/`).
+///
+/// Each principal gets isolated storage following the XDG-like convention:
+/// `.local/` for data and `.config/` for configuration.
+#[derive(Debug, Clone)]
+pub struct PrincipalHome {
+    root: PathBuf,
+}
+
+impl PrincipalHome {
+    /// Create from an explicit path (useful for testing).
+    #[must_use]
+    pub fn from_path(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    /// Ensure the full principal directory tree exists with secure permissions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory creation or permission setting fails.
+    pub fn ensure(&self) -> io::Result<()> {
+        let dirs = [
+            self.capsules_dir(),
+            self.kv_dir(),
+            self.log_dir(),
+            self.audit_dir(),
+            self.tokens_dir(),
+            self.tmp_dir(),
+            self.env_dir(),
+        ];
+        for dir in &dirs {
+            std::fs::create_dir_all(dir)?;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o700);
+            std::fs::set_permissions(&self.root, perms.clone())?;
+            // Secure the two top-level dot-dirs.
+            std::fs::set_permissions(self.root.join(".local"), perms.clone())?;
+            std::fs::set_permissions(self.root.join(".config"), perms)?;
+        }
+        Ok(())
+    }
+
+    // ── Path accessors ───────────────────────────────────────────────
+
+    /// Principal home root (`home/{principal}/`).
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// User-installed capsules (`.local/capsules/`).
+    #[must_use]
+    pub fn capsules_dir(&self) -> PathBuf {
+        self.root.join(".local").join("capsules")
+    }
+
+    /// Capsule KV data (`.local/kv/`).
+    #[must_use]
+    pub fn kv_dir(&self) -> PathBuf {
+        self.root.join(".local").join("kv")
+    }
+
+    /// Capsule logs (`.local/log/`).
+    #[must_use]
+    pub fn log_dir(&self) -> PathBuf {
+        self.root.join(".local").join("log")
+    }
+
+    /// Audit chain (`.local/audit/`).
+    #[must_use]
+    pub fn audit_dir(&self) -> PathBuf {
+        self.root.join(".local").join("audit")
+    }
+
+    /// Capability tokens (`.local/tokens/`).
+    #[must_use]
+    pub fn tokens_dir(&self) -> PathBuf {
+        self.root.join(".local").join("tokens")
+    }
+
+    /// Temporary files, VFS-mounted as `/tmp` (`.local/tmp/`).
+    #[must_use]
+    pub fn tmp_dir(&self) -> PathBuf {
+        self.root.join(".local").join("tmp")
+    }
+
+    /// Configuration directory (`.config/`).
+    #[must_use]
+    pub fn config_dir(&self) -> PathBuf {
+        self.root.join(".config")
+    }
+
+    /// Capsule environment config overrides (`.config/env/`).
+    #[must_use]
+    pub fn env_dir(&self) -> PathBuf {
+        self.root.join(".config").join("env")
+    }
+}
+
+// ── WorkspaceDir (per-project) ───────────────────────────────────────────
 
 /// Per-project workspace directory (`<project>/.astrid/`).
 ///
@@ -305,35 +451,27 @@ impl WorkspaceDir {
         let mut current = start.as_path();
 
         loop {
-            // Check for .astrid/ directory
             if current.join(".astrid").is_dir() {
                 return Self {
                     project_root: current.to_path_buf(),
                 };
             }
-
-            // Check for .git
             if current.join(".git").exists() {
                 return Self {
                     project_root: current.to_path_buf(),
                 };
             }
-
-            // Check for ASTRID.md
             if current.join("ASTRID.md").exists() {
                 return Self {
                     project_root: current.to_path_buf(),
                 };
             }
-
-            // Walk up
             match current.parent() {
                 Some(parent) if parent != current => current = parent,
                 _ => break,
             }
         }
 
-        // Fallback to start_dir
         Self {
             project_root: start,
         }
@@ -355,7 +493,6 @@ impl WorkspaceDir {
     /// Returns an error if directory creation or workspace ID generation fails.
     pub fn ensure(&self) -> io::Result<()> {
         std::fs::create_dir_all(self.dot_astrid())?;
-        // Generate workspace ID if missing (idempotent — reads existing).
         let _ = self.workspace_id()?;
         Ok(())
     }
@@ -370,6 +507,12 @@ impl WorkspaceDir {
     #[must_use]
     pub fn dot_astrid(&self) -> PathBuf {
         self.project_root.join(".astrid")
+    }
+
+    /// Workspace capsules directory (`.astrid/capsules/`).
+    #[must_use]
+    pub fn capsules_dir(&self) -> PathBuf {
+        self.dot_astrid().join("capsules")
     }
 
     /// Path to the workspace-id file (`.astrid/workspace-id`).
@@ -394,7 +537,6 @@ impl WorkspaceDir {
                 return Ok(id);
             }
         }
-        // Generate and write a new workspace ID.
         std::fs::create_dir_all(self.dot_astrid())?;
         let id = Uuid::new_v4();
         std::fs::write(&path, id.to_string())?;
@@ -412,6 +554,8 @@ impl WorkspaceDir {
 mod tests {
     use super::*;
 
+    // ── AstridHome resolution ────────────────────────────────────────
+
     #[test]
     fn test_astrid_home_resolve_with_env() {
         let dir = tempfile::tempdir().unwrap();
@@ -428,37 +572,6 @@ mod tests {
         let home = AstridHome::resolve_with_env(None, Some(home_val.clone())).unwrap();
         let expected = PathBuf::from(home_val).join(".astrid");
         assert_eq!(home.root(), expected);
-    }
-
-    #[test]
-    fn test_astrid_home_ensure_creates_dirs() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(dir.path());
-        home.ensure().unwrap();
-
-        assert!(home.keys_dir().exists());
-        assert!(home.logs_dir().exists());
-        assert!(home.sessions_dir().exists());
-        assert!(home.shared_dir().exists());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_astrid_home_ensure_sets_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(dir.path());
-        home.ensure().unwrap();
-
-        let root_perms = std::fs::metadata(home.root()).unwrap().permissions();
-        assert_eq!(root_perms.mode() & 0o777, 0o700);
-
-        let keys_perms = std::fs::metadata(home.keys_dir()).unwrap().permissions();
-        assert_eq!(keys_perms.mode() & 0o777, 0o700);
-
-        let shared_perms = std::fs::metadata(home.shared_dir()).unwrap().permissions();
-        assert_eq!(shared_perms.mode() & 0o777, 0o700);
     }
 
     #[test]
@@ -487,11 +600,7 @@ mod tests {
     fn test_astrid_home_rejects_relative_env() {
         let result = AstridHome::resolve_with_env(Some("relative/path".to_string()), None);
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("absolute"),
-            "expected absolute path error, got: {err}"
-        );
+        assert!(result.unwrap_err().to_string().contains("absolute"));
     }
 
     #[test]
@@ -504,74 +613,195 @@ mod tests {
     fn test_astrid_home_rejects_relative_home() {
         let result = AstridHome::resolve_with_env(None, Some("relative/path".to_string()));
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("absolute"),
-            "expected absolute path error, got: {err}"
-        );
+        assert!(result.unwrap_err().to_string().contains("absolute"));
+    }
+
+    // ── AstridHome ensure ────────────────────────────────────────────
+
+    #[test]
+    fn test_astrid_home_ensure_creates_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(dir.path());
+        home.ensure().unwrap();
+
+        assert!(home.etc_dir().exists());
+        assert!(home.hooks_dir().exists());
+        assert!(home.var_dir().exists());
+        assert!(home.run_dir().exists());
+        assert!(home.log_dir().exists());
+        assert!(home.keys_dir().exists());
+        assert!(home.lib_dir().exists());
+        assert!(home.capsules_dir().exists());
+        assert!(home.home_dir().exists());
     }
 
     #[test]
-    fn test_astrid_home_path_accessors() {
+    fn test_astrid_home_ensure_writes_layout_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(dir.path());
+        home.ensure().unwrap();
+
+        let version_path = home.etc_dir().join("layout-version");
+        assert!(version_path.exists());
+        let content = std::fs::read_to_string(&version_path).unwrap();
+        assert_eq!(content, LAYOUT_VERSION);
+    }
+
+    #[test]
+    fn test_astrid_home_ensure_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(dir.path());
+        home.ensure().unwrap();
+        home.ensure().unwrap(); // second call should not fail
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_astrid_home_ensure_sets_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(dir.path());
+        home.ensure().unwrap();
+
+        let root_perms = std::fs::metadata(home.root()).unwrap().permissions();
+        assert_eq!(root_perms.mode() & 0o777, 0o700);
+
+        let keys_perms = std::fs::metadata(home.keys_dir()).unwrap().permissions();
+        assert_eq!(keys_perms.mode() & 0o777, 0o700);
+    }
+
+    // ── AstridHome path accessors ────────────────────────────────────
+
+    #[test]
+    fn test_astrid_home_fhs_paths() {
         let home = AstridHome::from_path("/tmp/test-astrid");
-        assert_eq!(home.root(), Path::new("/tmp/test-astrid"));
-        assert_eq!(home.keys_dir(), PathBuf::from("/tmp/test-astrid/keys"));
-        assert_eq!(home.logs_dir(), PathBuf::from("/tmp/test-astrid/logs"));
+        let r = "/tmp/test-astrid";
+
+        assert_eq!(home.root(), Path::new(r));
+        assert_eq!(home.capsules_dir(), PathBuf::from(format!("{r}/capsules")));
+        assert_eq!(home.etc_dir(), PathBuf::from(format!("{r}/etc")));
         assert_eq!(
-            home.user_key_path(),
-            PathBuf::from("/tmp/test-astrid/keys/user.key")
-        );
-        assert_eq!(
-            home.audit_db_path(),
-            PathBuf::from("/tmp/test-astrid/audit.db")
-        );
-        assert_eq!(
-            home.capabilities_db_path(),
-            PathBuf::from("/tmp/test-astrid/capabilities.db")
-        );
-        assert_eq!(
-            home.deferred_db_path(),
-            PathBuf::from("/tmp/test-astrid/deferred.db")
+            home.config_path(),
+            PathBuf::from(format!("{r}/etc/config.toml"))
         );
         assert_eq!(
             home.servers_config_path(),
-            PathBuf::from("/tmp/test-astrid/servers.toml")
+            PathBuf::from(format!("{r}/etc/servers.toml"))
         );
-        assert_eq!(
-            home.config_path(),
-            PathBuf::from("/tmp/test-astrid/config.toml")
-        );
-        assert_eq!(
-            home.sessions_dir(),
-            PathBuf::from("/tmp/test-astrid/sessions")
-        );
-        assert_eq!(
-            home.state_db_path(),
-            PathBuf::from("/tmp/test-astrid/state.db")
-        );
-        assert_eq!(
-            home.capsules_dir(),
-            PathBuf::from("/tmp/test-astrid/capsules")
-        );
-        assert_eq!(
-            home.capsules_cache_dir(),
-            PathBuf::from("/tmp/test-astrid/cache/capsules")
-        );
-        assert_eq!(home.hooks_dir(), PathBuf::from("/tmp/test-astrid/hooks"));
         assert_eq!(
             home.gateway_config_path(),
-            PathBuf::from("/tmp/test-astrid/gateway.toml")
+            PathBuf::from(format!("{r}/etc/gateway.toml"))
         );
-        assert_eq!(home.state_dir(), PathBuf::from("/tmp/test-astrid/state"));
+        assert_eq!(home.hooks_dir(), PathBuf::from(format!("{r}/etc/hooks")));
+        assert_eq!(home.var_dir(), PathBuf::from(format!("{r}/var")));
         assert_eq!(
-            home.spark_path(),
-            PathBuf::from("/tmp/test-astrid/spark.toml")
+            home.state_db_path(),
+            PathBuf::from(format!("{r}/var/state.db"))
+        );
+        assert_eq!(home.run_dir(), PathBuf::from(format!("{r}/run")));
+        assert_eq!(
+            home.socket_path(),
+            PathBuf::from(format!("{r}/run/system.sock"))
+        );
+        assert_eq!(
+            home.token_path(),
+            PathBuf::from(format!("{r}/run/system.token"))
         );
         assert_eq!(
             home.ready_path(),
-            PathBuf::from("/tmp/test-astrid/sessions/system.ready")
+            PathBuf::from(format!("{r}/run/system.ready"))
         );
+        assert_eq!(
+            home.deferred_db_path(),
+            PathBuf::from(format!("{r}/run/deferred.db"))
+        );
+        assert_eq!(home.log_dir(), PathBuf::from(format!("{r}/log")));
+        assert_eq!(home.keys_dir(), PathBuf::from(format!("{r}/keys")));
+        assert_eq!(
+            home.runtime_key_path(),
+            PathBuf::from(format!("{r}/keys/runtime.key"))
+        );
+        assert_eq!(home.lib_dir(), PathBuf::from(format!("{r}/lib")));
+        assert_eq!(home.home_dir(), PathBuf::from(format!("{r}/home")));
     }
+
+    // ── PrincipalHome ────────────────────────────────────────────────
+
+    #[test]
+    fn test_principal_home_from_astrid_home() {
+        let home = AstridHome::from_path("/tmp/test-astrid");
+        let principal = PrincipalId::default();
+        let ph = home.principal_home(&principal);
+        assert_eq!(ph.root(), Path::new("/tmp/test-astrid/home/default"));
+    }
+
+    #[test]
+    fn test_principal_home_paths() {
+        let ph = PrincipalHome::from_path("/tmp/test-astrid/home/alice");
+        let r = "/tmp/test-astrid/home/alice";
+
+        assert_eq!(ph.root(), Path::new(r));
+        assert_eq!(
+            ph.capsules_dir(),
+            PathBuf::from(format!("{r}/.local/capsules"))
+        );
+        assert_eq!(ph.kv_dir(), PathBuf::from(format!("{r}/.local/kv")));
+        assert_eq!(ph.log_dir(), PathBuf::from(format!("{r}/.local/log")));
+        assert_eq!(ph.audit_dir(), PathBuf::from(format!("{r}/.local/audit")));
+        assert_eq!(ph.tokens_dir(), PathBuf::from(format!("{r}/.local/tokens")));
+        assert_eq!(ph.tmp_dir(), PathBuf::from(format!("{r}/.local/tmp")));
+        assert_eq!(ph.config_dir(), PathBuf::from(format!("{r}/.config")));
+        assert_eq!(ph.env_dir(), PathBuf::from(format!("{r}/.config/env")));
+    }
+
+    #[test]
+    fn test_principal_home_ensure_creates_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let ph = PrincipalHome::from_path(dir.path().join("alice"));
+        ph.ensure().unwrap();
+
+        assert!(ph.capsules_dir().exists());
+        assert!(ph.kv_dir().exists());
+        assert!(ph.log_dir().exists());
+        assert!(ph.audit_dir().exists());
+        assert!(ph.tokens_dir().exists());
+        assert!(ph.tmp_dir().exists());
+        assert!(ph.env_dir().exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_principal_home_ensure_sets_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let ph = PrincipalHome::from_path(dir.path().join("bob"));
+        ph.ensure().unwrap();
+
+        let root_perms = std::fs::metadata(ph.root()).unwrap().permissions();
+        assert_eq!(root_perms.mode() & 0o777, 0o700);
+
+        let local_perms = std::fs::metadata(ph.root().join(".local"))
+            .unwrap()
+            .permissions();
+        assert_eq!(local_perms.mode() & 0o777, 0o700);
+
+        let config_perms = std::fs::metadata(ph.root().join(".config"))
+            .unwrap()
+            .permissions();
+        assert_eq!(config_perms.mode() & 0o777, 0o700);
+    }
+
+    #[test]
+    fn test_principal_home_ensure_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let ph = PrincipalHome::from_path(dir.path().join("charlie"));
+        ph.ensure().unwrap();
+        ph.ensure().unwrap(); // second call should not fail
+    }
+
+    // ── WorkspaceDir ─────────────────────────────────────────────────
 
     #[test]
     fn test_workspace_detect_with_dot_astrid() {
@@ -617,10 +847,6 @@ mod tests {
         let isolated = dir.path().join("isolated");
         std::fs::create_dir_all(&isolated).unwrap();
 
-        // No .astrid, .git, or ASTRID.md anywhere in the tree up from
-        // `isolated` (tempdir itself has no markers) — but the walk will
-        // eventually hit the real filesystem root. To truly test fallback
-        // we use `from_path` which is the deterministic path.
         let ws = WorkspaceDir::from_path(&isolated);
         assert_eq!(ws.root(), isolated);
     }
@@ -628,7 +854,6 @@ mod tests {
     #[test]
     fn test_workspace_detect_prefers_dot_astrid_over_git() {
         let dir = tempfile::tempdir().unwrap();
-        // Create both .astrid/ and .git
         std::fs::create_dir(dir.path().join(".astrid")).unwrap();
         std::fs::create_dir(dir.path().join(".git")).unwrap();
 
@@ -648,7 +873,6 @@ mod tests {
         assert!(ws.dot_astrid().exists());
         assert!(ws.workspace_id_path().exists());
 
-        // workspace_id should be a valid UUID
         let content = std::fs::read_to_string(ws.workspace_id_path()).unwrap();
         uuid::Uuid::parse_str(content.trim()).expect("workspace-id should be a valid UUID");
     }
@@ -658,12 +882,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = WorkspaceDir::from_path(dir.path());
 
-        // Pre-write a workspace-id (simulating a cloned repo)
         std::fs::create_dir_all(ws.dot_astrid()).unwrap();
         let pre_id = uuid::Uuid::new_v4();
         std::fs::write(ws.workspace_id_path(), pre_id.to_string()).unwrap();
 
-        // workspace_id() should adopt the existing ID
         let id = ws.workspace_id().unwrap();
         assert_eq!(id, pre_id);
     }
@@ -682,6 +904,10 @@ mod tests {
         let ws = WorkspaceDir::from_path("/home/user/project");
         assert_eq!(ws.root(), Path::new("/home/user/project"));
         assert_eq!(ws.dot_astrid(), PathBuf::from("/home/user/project/.astrid"));
+        assert_eq!(
+            ws.capsules_dir(),
+            PathBuf::from("/home/user/project/.astrid/capsules")
+        );
         assert_eq!(
             ws.workspace_id_path(),
             PathBuf::from("/home/user/project/.astrid/workspace-id")

@@ -169,7 +169,7 @@ fn init_logging(cli: &Cli) {
             "debug".clone_into(&mut lc.level);
         }
         if needs_file_log && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
+            lc.target = astrid_telemetry::LogTarget::File(home.log_dir());
         }
         lc
     } else {
@@ -177,7 +177,7 @@ fn init_logging(cli: &Cli) {
         let mut lc = astrid_telemetry::LogConfig::new(level)
             .with_format(astrid_telemetry::LogFormat::Compact);
         if needs_file_log && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
+            lc.target = astrid_telemetry::LogTarget::File(home.log_dir());
         }
         lc
     };
@@ -393,7 +393,7 @@ async fn main() -> Result<()> {
 /// Build a hint string pointing the user to the daemon log directory.
 fn daemon_log_hint() -> String {
     astrid_core::dirs::AstridHome::resolve()
-        .map(|h| format!(" Check logs: {}", h.logs_dir().display()))
+        .map(|h| format!(" Check logs: {}", h.log_dir().display()))
         .unwrap_or_default()
 }
 
@@ -565,7 +565,7 @@ pub(crate) async fn run_or_connect(
                 |h| {
                     format!(
                         "Failed to connect to daemon. Check logs: {}",
-                        h.logs_dir().display()
+                        h.log_dir().display()
                     )
                 },
             );

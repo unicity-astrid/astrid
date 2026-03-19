@@ -127,9 +127,11 @@ impl Kernel {
         })?;
 
         // Resolve the global shared directory for the `global://` VFS scheme.
-        // Scoped to `~/.astrid/shared/` — NOT the full `~/.astrid/` root — so
-        // capsules cannot access keys, databases, or capsule .env files.
-        let global_root = Some(home.shared_dir());
+        // Points to `~/.astrid/home/{principal}/` — NOT the full `~/.astrid/`
+        // root — so capsules cannot access keys, databases, or config.
+        let default_principal = astrid_core::PrincipalId::default();
+        let principal_home = home.principal_home(&default_principal);
+        let global_root = Some(principal_home.root().to_path_buf());
 
         // 1. Open the persistent KV store (needed by capability store below).
         let kv_path = home.state_db_path();
@@ -799,7 +801,12 @@ fn open_audit_log() -> std::io::Result<Arc<AuditLog>> {
         .map_err(|e| std::io::Error::other(format!("cannot create Astrid home dirs: {e}")))?;
 
     let runtime_key = load_or_generate_runtime_key(&home.keys_dir())?;
-    let audit_log = AuditLog::open(home.audit_db_path(), runtime_key)
+    let default_principal = astrid_core::PrincipalId::default();
+    let principal_home = home.principal_home(&default_principal);
+    principal_home
+        .ensure()
+        .map_err(|e| std::io::Error::other(format!("cannot create principal home dirs: {e}")))?;
+    let audit_log = AuditLog::open(principal_home.audit_dir(), runtime_key)
         .map_err(|e| std::io::Error::other(format!("cannot open audit log: {e}")))?;
 
     // Verify all historical chains on boot.

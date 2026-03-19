@@ -39,7 +39,8 @@ impl ActiveWorktree {
 
         let branch_name = format!("astrid-session-{}", session_id.0);
         let worktree_path = home
-            .sessions_dir()
+            .run_dir()
+            .join("worktrees")
             .join(workspace_id.to_string())
             .join(session_id.0.to_string());
 

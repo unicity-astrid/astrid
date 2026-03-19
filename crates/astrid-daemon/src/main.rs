@@ -49,7 +49,7 @@ fn init_logging(verbose: bool) {
             "debug".clone_into(&mut lc.level);
         }
         if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
+            lc.target = astrid_telemetry::LogTarget::File(home.log_dir());
         }
         lc
     } else {
@@ -57,7 +57,7 @@ fn init_logging(verbose: bool) {
         let mut lc = astrid_telemetry::LogConfig::new(level)
             .with_format(astrid_telemetry::LogFormat::Compact);
         if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-            lc.target = astrid_telemetry::LogTarget::File(home.logs_dir());
+            lc.target = astrid_telemetry::LogTarget::File(home.log_dir());
         }
         lc
     };

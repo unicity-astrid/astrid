@@ -17,7 +17,7 @@ pub(crate) fn handle_session_commands(command: SessionCommands) -> Result<()> {
 
 fn list_sessions() -> Result<()> {
     let home = AstridHome::resolve().context("Failed to resolve Astrid home directory")?;
-    let sessions_dir = home.sessions_dir();
+    let sessions_dir = home.run_dir();
 
     if !sessions_dir.exists() {
         println!("{}", Theme::info("No active sessions found."));
@@ -61,7 +61,7 @@ fn delete_session(id: &str) -> Result<()> {
     uuid::Uuid::parse_str(id)
         .map_err(|_| anyhow::anyhow!("Invalid session ID (must be a UUID): {id}"))?;
     let home = AstridHome::resolve().context("Failed to resolve Astrid home directory")?;
-    let session_dir = home.sessions_dir().join(id);
+    let session_dir = home.run_dir().join(id);
 
     if !session_dir.exists() {
         anyhow::bail!("Session not found: {id}");
@@ -76,7 +76,7 @@ fn session_info(id: &str) -> Result<()> {
     uuid::Uuid::parse_str(id)
         .map_err(|_| anyhow::anyhow!("Invalid session ID (must be a UUID): {id}"))?;
     let home = AstridHome::resolve().context("Failed to resolve Astrid home directory")?;
-    let session_dir = home.sessions_dir().join(id);
+    let session_dir = home.run_dir().join(id);
 
     if !session_dir.exists() {
         anyhow::bail!("Session not found: {id}");
