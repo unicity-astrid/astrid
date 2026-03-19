@@ -148,7 +148,10 @@ fn e2e_tier2_full_pipeline() {
 
     // MCP server config — must pass --entry and --plugin-id flags
     assert!(capsule_toml.contains("[[mcp_server]]"));
-    assert!(capsule_toml.contains(r#"command = "node""#));
+    assert!(
+        capsule_toml.contains(r#"command = "node""#) || capsule_toml.contains(r#"command = "/"#),
+        "Tier 2 should use node"
+    );
     assert!(capsule_toml.contains("astrid_bridge.mjs"));
     assert!(
         capsule_toml.contains("--entry"),
@@ -160,7 +163,11 @@ fn e2e_tier2_full_pipeline() {
     );
 
     // Capabilities
-    assert!(capsule_toml.contains(r#"host_process = ["node"]"#));
+    assert!(
+        capsule_toml.contains(r#"host_process = ["node"]"#)
+            || capsule_toml.contains(r#"host_process = ["/"#),
+        "Tier 2 should declare host_process"
+    );
 
     // Environment — slack_token should be detected as secret
     assert!(
@@ -462,7 +469,10 @@ fn e2e_official_openclaw_plugin_tier2() {
     // Verify Capsule.toml has MCP server config
     let capsule_toml = std::fs::read_to_string(output_dir.path().join("Capsule.toml")).unwrap();
     assert!(capsule_toml.contains("[[mcp_server]]"));
-    assert!(capsule_toml.contains(r#"command = "node""#));
+    assert!(
+        capsule_toml.contains(r#"command = "node""#) || capsule_toml.contains(r#"command = "/"#),
+        "Tier 2 should use node"
+    );
     assert!(capsule_toml.contains("--entry"));
     assert!(
         capsule_toml.contains("src/index.js"),

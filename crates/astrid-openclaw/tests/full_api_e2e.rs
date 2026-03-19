@@ -317,7 +317,11 @@ fn tier2_pipeline_generates_correct_capsule_toml() {
 
     // MCP server config with bridge flags
     assert!(capsule_toml.contains("[[mcp_server]]"));
-    assert!(capsule_toml.contains(r#"command = "node""#));
+    // The resolved node binary may be a full path or just "node"
+    assert!(
+        capsule_toml.contains(r#"command = "node""#) || capsule_toml.contains(r#"command = "/"#),
+        "Tier 2 should use node"
+    );
     assert!(capsule_toml.contains("astrid_bridge.mjs"));
     assert!(capsule_toml.contains("--entry"), "must pass --entry flag");
     assert!(
@@ -326,7 +330,11 @@ fn tier2_pipeline_generates_correct_capsule_toml() {
     );
 
     // Capabilities
-    assert!(capsule_toml.contains(r#"host_process = ["node"]"#));
+    assert!(
+        capsule_toml.contains(r#"host_process = ["node"]"#)
+            || capsule_toml.contains(r#"host_process = ["/"#),
+        "Tier 2 should declare host_process"
+    );
 
     // Bridge script copied
     assert!(

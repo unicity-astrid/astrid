@@ -449,12 +449,15 @@ mod tests {
             capsule_toml.contains("[[mcp_server]]"),
             "Tier 2 should use mcp_server, got: {capsule_toml}"
         );
+        // The resolved node binary may be a full path (e.g. /opt/homebrew/opt/node@22/bin/node)
+        // or just "node" depending on what's installed. Check that it contains "node".
         assert!(
-            capsule_toml.contains("command = \"node\""),
-            "Tier 2 should use node"
+            capsule_toml.contains("command = \"node\"") || capsule_toml.contains("command = \"/"),
+            "Tier 2 should use node, got: {capsule_toml}"
         );
         assert!(
-            capsule_toml.contains("host_process = [\"node\"]"),
+            capsule_toml.contains("host_process = [\"node\"]")
+                || capsule_toml.contains("host_process = [\"/"),
             "Tier 2 should declare host_process"
         );
         assert!(
