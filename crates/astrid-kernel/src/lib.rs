@@ -260,9 +260,10 @@ impl Kernel {
 
         // Build the context — use the shared kernel KV so capsules can
         // communicate state through overlapping KV namespaces.
+        let principal = astrid_core::PrincipalId::default();
         let kv = astrid_storage::ScopedKvStore::new(
             Arc::clone(&self.kv) as Arc<dyn astrid_storage::KvStore>,
-            format!("capsule:{}", capsule.id()),
+            format!("{principal}:capsule:{}", capsule.id()),
         )?;
 
         // Pre-load `.env.json` into the KV store if it exists
@@ -741,8 +742,9 @@ impl Kernel {
             "Injecting tool schemas into capsule KV stores"
         );
 
+        let principal = astrid_core::PrincipalId::default();
         for capsule_id in &capsule_ids {
-            let namespace = format!("capsule:{capsule_id}");
+            let namespace = format!("{principal}:capsule:{capsule_id}");
             if let Err(e) = self
                 .kv
                 .set(&namespace, "tool_schemas", tool_bytes.clone())

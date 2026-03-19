@@ -22,11 +22,11 @@ use crate::registry::CapsuleRegistry;
 /// Constructed via `new()` + builder methods (`with_session_token`, etc.).
 pub struct CapsuleContext {
     pub workspace_root: PathBuf,
-    /// Global shared resources directory (`~/.astrid/shared/`). When set,
-    /// capsules declaring `fs_read = ["global://"]` can read files under
-    /// this root via the `global://` path prefix. This is scoped to the
-    /// `shared/` subdirectory — keys, databases, and capsule secrets in
-    /// `~/.astrid/` are NOT accessible through this path.
+    /// Global shared resources directory (`~/.astrid/home/{principal}/`).
+    /// When set, capsules declaring `fs_read = ["global://"]` can read files
+    /// under this root via the `global://` path prefix. This is scoped to the
+    /// principal's home — keys, databases, and system config in `~/.astrid/`
+    /// are NOT accessible through this path.
     pub global_root: Option<PathBuf>,
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
