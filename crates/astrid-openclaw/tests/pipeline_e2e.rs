@@ -588,12 +588,11 @@ fn tier2_channel_plugin_generates_uplink_and_capability() {
     let uplink = &uplinks[0];
     assert_eq!(uplink.get("name").unwrap().as_str().unwrap(), "unicity");
     assert_eq!(uplink.get("profile").unwrap().as_str().unwrap(), "bridge");
-    // "unicity" is not a known platform, so it should be a table with custom key
-    let platform = uplink.get("platform").unwrap();
+    // Platform is the lowercased channel name
     assert_eq!(
-        platform.get("custom").unwrap().as_str().unwrap(),
+        uplink.get("platform").unwrap().as_str().unwrap(),
         "unicity",
-        "unknown platform should serialize as {{ custom = \"unicity\" }}"
+        "platform should be the lowercased channel name"
     );
 
     // Check capabilities.uplink = true
