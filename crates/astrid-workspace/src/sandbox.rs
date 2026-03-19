@@ -419,6 +419,16 @@ impl ProcessSandboxConfig {
             ""
         };
 
+        // Build extra read path rules
+        let extra_read_rules: String = self
+            .extra_read_paths
+            .iter()
+            .map(|p| {
+                validate_sandbox_str(p, "extra read path").map(|s| format!("    (subpath \"{s}\")"))
+            })
+            .collect::<io::Result<Vec<_>>>()?
+            .join("\n");
+
         // Build extra write path rules
         let extra_write_rules: String = self
             .extra_write_paths
@@ -459,7 +469,20 @@ impl ProcessSandboxConfig {
 (allow sysctl-read)
 (allow ipc-posix-shm)
 (allow mach*)
-(allow file-read*)
+(allow file-read*
+    (subpath "/usr")
+    (subpath "/bin")
+    (subpath "/sbin")
+    (subpath "/System")
+    (subpath "/Library")
+    (subpath "/opt")
+    (subpath "/dev")
+    (subpath "{writable_root_str}")
+    (subpath "/private/tmp")
+    (subpath "/var/folders")
+    (literal "/")
+{extra_read_rules}
+)
 (allow file-write*
     (subpath "{writable_root_str}")
     (subpath "/private/tmp")
