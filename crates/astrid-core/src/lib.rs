@@ -22,6 +22,7 @@ pub mod dirs;
 pub mod elicitation;
 pub mod env_policy;
 pub mod identity;
+pub mod principal;
 pub mod retry;
 pub mod session_token;
 pub mod types;
@@ -32,6 +33,7 @@ pub use elicitation::{
     ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
+pub use principal::{PrincipalId, PrincipalIdError};
 pub use retry::RetryConfig;
 pub use types::{
     AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
