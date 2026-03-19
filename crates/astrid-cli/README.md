@@ -71,7 +71,7 @@ When you run `astrid chat` without a running daemon, an **ephemeral** daemon is 
 
 ## Daemon connection flow
 
-1. Check for existing daemon (socket probe at `~/.astrid/sessions/system.sock`)
+1. Check for existing daemon (socket probe at `~/.astrid/run/system.sock`)
 2. If running → connect and perform handshake
 3. If not running → spawn `astrid-daemon --ephemeral`, poll readiness sentinel, connect
 4. If stale socket (connection refused) → clean up, respawn

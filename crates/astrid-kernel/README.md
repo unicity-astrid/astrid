@@ -19,7 +19,7 @@ The `Kernel` struct holds every system-wide resource: `EventBus`, `CapsuleRegist
 2. Initialize the MCP process manager with workspace-scoped sandboxing.
 3. Bootstrap the capability store (ed25519 key pair) and chain-linked audit log.
 4. Mount the copy-on-write VFS overlay. Writes land in a session-scoped `TempDir`. The real workspace is read-only until explicit commit.
-5. Bind `~/.astrid/sessions/system.sock` (parent directory 0o700). Generate a 256-bit CSPRNG session token, write it to a 0o600 file.
+5. Bind `~/.astrid/run/system.sock` (parent directory 0o700). Generate a 256-bit CSPRNG session token, write it to a 0o600 file.
 6. Create the identity store. Bootstrap the CLI root user idempotently.
 7. Spawn four background tasks: kernel management router, connection tracker, idle monitor, capsule health monitor.
 8. Spawn the `EventDispatcher` to route IPC events to capsule interceptors.
