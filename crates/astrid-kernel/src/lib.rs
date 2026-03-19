@@ -145,8 +145,9 @@ impl Kernel {
         // 2. Initialize MCP process manager with security layer.
         //    Set workspace_root so sandboxed MCP servers have a writable directory.
         let mcp_config = ServersConfig::load_default().unwrap_or_default();
-        let mcp_manager =
-            ServerManager::new(mcp_config).with_workspace_root(workspace_root.clone());
+        let mcp_manager = ServerManager::new(mcp_config)
+            .with_workspace_root(workspace_root.clone())
+            .with_capsule_log_dir(principal_home.log_dir());
         let mcp_client = McpClient::new(mcp_manager);
 
         // 3. Bootstrap capability store (persistent) and audit log.

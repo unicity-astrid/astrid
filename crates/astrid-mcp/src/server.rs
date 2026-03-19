@@ -118,6 +118,11 @@ pub struct ServerManager {
     ///
     /// When `None`, sandboxing falls back to `config.cwd` or a temp directory.
     workspace_root: Option<PathBuf>,
+    /// Directory for capsule stderr log files.
+    ///
+    /// When set, MCP capsule server stderr is redirected to
+    /// `{capsule_log_dir}/{capsule-name}.log`. When `None`, stderr is inherited.
+    capsule_log_dir: Option<PathBuf>,
 }
 
 impl ServerManager {
@@ -130,6 +135,7 @@ impl ServerManager {
             running: Arc::new(RwLock::new(HashMap::new())),
             shutdown_timeout,
             workspace_root: None,
+            capsule_log_dir: None,
         }
     }
 
@@ -141,6 +147,15 @@ impl ServerManager {
     #[must_use]
     pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
         self.workspace_root = Some(root);
+        self
+    }
+
+    /// Set the directory for capsule stderr log files.
+    ///
+    /// MCP capsule stderr will be redirected to `{dir}/{capsule-name}.log`.
+    #[must_use]
+    pub fn with_capsule_log_dir(mut self, dir: PathBuf) -> Self {
+        self.capsule_log_dir = Some(dir);
         self
     }
 
@@ -314,11 +329,25 @@ impl ServerManager {
             McpError::ConfigError(format!("No command specified for stdio server {name}"))
         })?;
 
-        let cmd = if config.trusted {
+        let mut cmd = if config.trusted {
             build_unsandboxed_command(name, command, config)
         } else {
             self.build_sandboxed_command(name, command, config)?
         };
+
+        // Redirect capsule stderr to a per-capsule log file if configured.
+        if let Some(ref log_dir) = self.capsule_log_dir {
+            let capsule_name = name.strip_prefix("capsule:").unwrap_or(name);
+            let log_path = log_dir.join(format!("{capsule_name}.log"));
+            if let Ok(file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+            {
+                cmd.stderr(file);
+                info!(server = name, log = %log_path.display(), "Redirecting capsule stderr to log file");
+            }
+        }
 
         // Create transport (spawns the child process)
         let transport = TokioChildProcess::new(cmd).map_err(|e| McpError::ServerStartFailed {
