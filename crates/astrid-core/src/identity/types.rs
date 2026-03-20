@@ -96,23 +96,11 @@ fn derive_principal_from_name(name: &str, uuid: &Uuid) -> PrincipalId {
         .collect();
 
     // Collapse consecutive hyphens and trim leading/trailing.
-    let mut result = String::with_capacity(sanitized.len());
-    let mut prev_hyphen = true; // treat start as hyphen to trim leading
-    for c in sanitized.chars() {
-        if c == '-' {
-            if !prev_hyphen {
-                result.push(c);
-            }
-            prev_hyphen = true;
-        } else {
-            result.push(c);
-            prev_hyphen = false;
-        }
-    }
-    // Trim trailing hyphen.
-    if result.ends_with('-') {
-        result.pop();
-    }
+    let mut result: String = sanitized
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
 
     // Truncate to 64 chars (PrincipalId max).
     if result.len() > 64 {
