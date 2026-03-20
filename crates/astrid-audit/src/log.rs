@@ -61,18 +61,62 @@ impl AuditLog {
         authorization: AuthorizationProof,
         outcome: AuditOutcome,
     ) -> AuditResult<AuditEntryId> {
+        self.append_inner(session_id, None, action, authorization, outcome)
+    }
+
+    /// Append a new audit entry tagged with the acting principal.
+    ///
+    /// Use this when the action was performed on behalf of a specific
+    /// user (e.g., cross-principal KV write, tool execution). The
+    /// principal is included in the cryptographic signing data.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the entry cannot be stored or the chain head cannot be updated.
+    pub fn append_with_principal(
+        &self,
+        session_id: SessionId,
+        principal: astrid_core::PrincipalId,
+        action: AuditAction,
+        authorization: AuthorizationProof,
+        outcome: AuditOutcome,
+    ) -> AuditResult<AuditEntryId> {
+        self.append_inner(session_id, Some(principal), action, authorization, outcome)
+    }
+
+    /// Shared implementation for `append` and `append_with_principal`.
+    fn append_inner(
+        &self,
+        session_id: SessionId,
+        principal: Option<astrid_core::PrincipalId>,
+        action: AuditAction,
+        authorization: AuthorizationProof,
+        outcome: AuditOutcome,
+    ) -> AuditResult<AuditEntryId> {
         // Get the previous hash for this session
         let previous_hash = self.get_previous_hash(&session_id)?;
 
         // Create and sign the entry
-        let entry = AuditEntry::create(
-            session_id.clone(),
-            action,
-            authorization,
-            outcome,
-            previous_hash,
-            &self.runtime_key,
-        );
+        let entry = if let Some(p) = principal {
+            AuditEntry::create_with_principal(
+                session_id.clone(),
+                p,
+                action,
+                authorization,
+                outcome,
+                previous_hash,
+                &self.runtime_key,
+            )
+        } else {
+            AuditEntry::create(
+                session_id.clone(),
+                action,
+                authorization,
+                outcome,
+                previous_hash,
+                &self.runtime_key,
+            )
+        };
 
         let entry_id = entry.id.clone();
         let entry_hash = entry.content_hash();

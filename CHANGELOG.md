@@ -11,6 +11,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- `AuditLog::append_with_principal()` for principal-tagged audit entries
+- Auto-provisioning gated on identity store — only `"default"` principal is auto-provisioned when identity store is configured
 - Linux FHS-aligned directory layout (`etc/`, `var/`, `run/`, `log/`, `keys/`, `bin/`, `home/`) replacing the flat `~/.astrid/` structure
 - `PrincipalId` type for multi-principal (multi-user) deployments — each principal gets isolated capsules, KV, audit, tokens, and config under `home/{principal}/`
 - Content-addressed WASM binaries in `bin/` using BLAKE3 hashing — integrity verified on every capsule load (no hash = no load, wrong hash = no load)
@@ -42,6 +44,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- `AstridUserId.principal` now has `#[serde(default)]` — existing identity records without the field deserialize with `"default"` instead of failing
 - `transpile_and_install` now correctly unpacks `.capsule` archives from `astrid-build` output
 - `copy_capsule_dir` only skips `dist/` at the top level; npm packages inside `node_modules` retain their `dist/` directories
 - MCP host engine: absolute system binaries (e.g. `/opt/homebrew/opt/node@22/bin/node`) skip path traversal check when declared in `host_process` capability

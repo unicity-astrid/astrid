@@ -100,6 +100,21 @@ mod tests {
     }
 
     #[test]
+    fn test_legacy_user_deserializes_without_principal() {
+        // Records created before the principal field was added must
+        // deserialize with the default principal, not fail.
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000001",
+            "public_key": null,
+            "display_name": "legacy-user",
+            "created_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let user: AstridUserId = serde_json::from_str(json).unwrap();
+        assert_eq!(user.principal.as_str(), "default");
+        assert_eq!(user.display_name.as_deref(), Some("legacy-user"));
+    }
+
+    #[test]
     fn normalize_platform_trims_and_lowercases() {
         assert_eq!(normalize_platform("Discord"), "discord");
         assert_eq!(normalize_platform("  TELEGRAM  "), "telegram");
