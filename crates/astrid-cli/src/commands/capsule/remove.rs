@@ -27,24 +27,24 @@ pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool) -> anyhow
 
     let target_meta = super::meta::read_meta(&target_dir);
 
+    // Scan once, reuse for both dependency check and binary cleanup
+    let all_capsules = scan_installed_capsules()?;
+
     // Dependency safety check (skip with --force)
-    if !force {
-        let all_capsules = scan_installed_capsules()?;
-        if let Some(block) = check_removal_safety(name, target_meta.as_ref(), &all_capsules) {
-            bail!(
-                "Cannot remove '{name}': it is the sole provider of '{}' \
-                 which is required by '{}'. Use --force to override.",
-                block.capability,
-                block.dependent,
-            );
-        }
+    if !force && let Some(block) = check_removal_safety(name, target_meta.as_ref(), &all_capsules) {
+        bail!(
+            "Cannot remove '{name}': it is the sole provider of '{}' \
+             which is required by '{}'. Use --force to override.",
+            block.capability,
+            block.dependent,
+        );
     }
 
     // Clean up content-addressed WASM binary if no other capsule uses it
     if let Some(ref meta) = target_meta
         && let Some(ref hash) = meta.wasm_hash
     {
-        cleanup_wasm_binary(&home, name, hash)?;
+        cleanup_wasm_binary(&home, name, hash, &all_capsules)?;
     }
 
     // Remove the capsule directory
@@ -131,9 +131,12 @@ fn check_removal_safety(
 
 /// Remove the content-addressed WASM binary from `bin/` if no other installed
 /// capsule references the same hash.
-fn cleanup_wasm_binary(home: &AstridHome, target_name: &str, hash: &str) -> anyhow::Result<()> {
-    let all_capsules = scan_installed_capsules()?;
-
+fn cleanup_wasm_binary(
+    home: &AstridHome,
+    target_name: &str,
+    hash: &str,
+    all_capsules: &[super::meta::InstalledCapsule],
+) -> anyhow::Result<()> {
     let hash_in_use = all_capsules.iter().any(|c| {
         c.name != target_name
             && c.meta
