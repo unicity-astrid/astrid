@@ -13,14 +13,23 @@ use crate::entry::{AuditAction, AuditEntry, AuditOutcome, AuthorizationProof};
 use crate::error::{AuditError, AuditResult};
 use crate::storage::{AuditStorage, SurrealKvAuditStorage};
 
+/// Key for the per-chain head cache: (session, optional principal).
+///
+/// System entries (no principal) use `(session_id, None)`.
+/// Principal entries use `(session_id, Some(principal))`.
+type ChainKey = (SessionId, Option<astrid_core::PrincipalId>);
+
 /// Audit log for recording and verifying security events.
 pub struct AuditLog {
     /// Storage backend.
     storage: Box<dyn AuditStorage>,
     /// Runtime signing key.
     runtime_key: KeyPair,
-    /// Current chain heads per session (cached for performance).
-    chain_heads: RwLock<std::collections::HashMap<SessionId, ContentHash>>,
+    /// Current chain heads per (session, principal) pair.
+    ///
+    /// Each principal maintains its own independent chain within a session.
+    /// System entries (no principal) use `(session_id, None)`.
+    chain_heads: RwLock<std::collections::HashMap<ChainKey, ContentHash>>,
 }
 
 impl AuditLog {
@@ -93,13 +102,15 @@ impl AuditLog {
         authorization: AuthorizationProof,
         outcome: AuditOutcome,
     ) -> AuditResult<AuditEntryId> {
-        // Get the previous hash for this session
-        let previous_hash = self.get_previous_hash(&session_id)?;
+        // Get the previous hash for this entry's chain (system or principal).
+        let chain_key: ChainKey = (session_id.clone(), principal.clone());
+        let previous_hash = self.get_previous_hash(&chain_key)?;
 
-        // Create and sign the entry
+        // Create and sign the entry. session_id is moved into create,
+        // chain_key retains the clone for the cache update below.
         let entry = if let Some(p) = principal {
             AuditEntry::create_with_principal(
-                session_id.clone(),
+                session_id,
                 p,
                 action,
                 authorization,
@@ -109,7 +120,7 @@ impl AuditLog {
             )
         } else {
             AuditEntry::create(
-                session_id.clone(),
+                session_id,
                 action,
                 authorization,
                 outcome,
@@ -130,39 +141,41 @@ impl AuditLog {
         // Store the entry
         self.storage.store(&entry)?;
 
-        // Update cached chain head
+        // Update cached chain head for this entry's chain.
         {
             let mut heads = self
                 .chain_heads
                 .write()
                 .map_err(|e| AuditError::StorageError(e.to_string()))?;
-            heads.insert(session_id, entry_hash);
+            heads.insert(chain_key, entry_hash);
         }
 
         Ok(entry_id)
     }
 
-    /// Get the previous hash for a session (for chain linking).
-    fn get_previous_hash(&self, session_id: &SessionId) -> AuditResult<ContentHash> {
+    /// Get the previous hash for a chain (session + optional principal).
+    fn get_previous_hash(&self, chain_key: &ChainKey) -> AuditResult<ContentHash> {
         // Check cache first
         {
             let heads = self
                 .chain_heads
                 .read()
                 .map_err(|e| AuditError::StorageError(e.to_string()))?;
-            if let Some(hash) = heads.get(session_id) {
+            if let Some(hash) = heads.get(chain_key) {
                 return Ok(*hash);
             }
         }
 
         // Check storage
-        if let Some(head_id) = self.storage.get_chain_head(session_id)?
+        if let Some(head_id) = self
+            .storage
+            .get_chain_head(&chain_key.0, chain_key.1.as_ref())?
             && let Some(entry) = self.storage.get(&head_id)?
         {
             return Ok(entry.content_hash());
         }
 
-        // Genesis - no previous entry
+        // Genesis - no previous entry for this chain
         Ok(ContentHash::zero())
     }
 
@@ -184,7 +197,11 @@ impl AuditLog {
         self.storage.get_session_entries(session_id)
     }
 
-    /// Verify the integrity of the audit chain for a session.
+    /// Verify the integrity of all audit chains in a session.
+    ///
+    /// Each principal (and the system chain) is verified independently.
+    /// A session with entries from principals "alice" and "bob" plus system
+    /// entries will verify three independent chains.
     ///
     /// # Errors
     ///
@@ -200,22 +217,107 @@ impl AuditLog {
             });
         }
 
+        // Group entries by principal (None = system chain).
+        let mut chains: std::collections::HashMap<
+            Option<astrid_core::PrincipalId>,
+            Vec<&AuditEntry>,
+        > = std::collections::HashMap::new();
+        for entry in &entries {
+            chains
+                .entry(entry.principal.clone())
+                .or_default()
+                .push(entry);
+        }
+
         let mut issues = Vec::new();
         let mut entries_verified: usize = 0;
 
-        // Sort by timestamp to ensure correct order
-        let mut sorted_entries = entries;
-        sorted_entries.sort_by(|a, b| a.timestamp.0.cmp(&b.timestamp.0));
+        // Verify each chain independently.
+        for chain_entries in chains.values_mut() {
+            // Sort by timestamp within each chain.
+            chain_entries.sort_by(|a, b| a.timestamp.0.cmp(&b.timestamp.0));
 
-        // Verify first entry has zero previous hash
-        if !sorted_entries[0].previous_hash.is_zero() {
-            issues.push(ChainIssue::InvalidGenesis {
-                entry_id: sorted_entries[0].id.clone(),
+            // Verify genesis (first entry has zero previous hash).
+            if !chain_entries[0].previous_hash.is_zero() {
+                issues.push(ChainIssue::InvalidGenesis {
+                    entry_id: chain_entries[0].id.clone(),
+                });
+            }
+
+            // Verify signatures.
+            for entry in chain_entries.iter() {
+                if let Err(e) = entry.verify_signature() {
+                    error!(entry_id = %entry.id, error = %e, "Invalid signature");
+                    issues.push(ChainIssue::InvalidSignature {
+                        entry_id: entry.id.clone(),
+                    });
+                }
+                entries_verified = entries_verified.saturating_add(1);
+            }
+
+            // Verify chain linking within this principal's chain.
+            for i in 1..chain_entries.len() {
+                #[expect(clippy::arithmetic_side_effects)]
+                let prev = chain_entries[i - 1];
+                let curr = chain_entries[i];
+
+                if !curr.follows(prev) {
+                    warn!(
+                        current = %curr.id,
+                        previous = %prev.id,
+                        "Chain link broken"
+                    );
+                    issues.push(ChainIssue::BrokenLink {
+                        entry_id: curr.id.clone(),
+                        expected_previous: prev.content_hash(),
+                        actual_previous: curr.previous_hash,
+                    });
+                }
+            }
+        }
+
+        Ok(ChainVerificationResult {
+            valid: issues.is_empty(),
+            entries_verified,
+            issues,
+        })
+    }
+
+    /// Verify the integrity of a single principal's chain within a session.
+    ///
+    /// Pass `None` to verify the system chain (entries without a principal).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if entries cannot be retrieved from storage.
+    pub fn verify_principal_chain(
+        &self,
+        session_id: &SessionId,
+        principal: Option<&astrid_core::PrincipalId>,
+    ) -> AuditResult<ChainVerificationResult> {
+        let entries = self.get_principal_entries(session_id, principal)?;
+
+        if entries.is_empty() {
+            return Ok(ChainVerificationResult {
+                valid: true,
+                entries_verified: 0,
+                issues: Vec::new(),
             });
         }
 
-        // Verify signatures
-        for entry in &sorted_entries {
+        let mut issues = Vec::new();
+        let mut entries_verified: usize = 0;
+
+        let mut sorted = entries;
+        sorted.sort_by(|a, b| a.timestamp.0.cmp(&b.timestamp.0));
+
+        if !sorted[0].previous_hash.is_zero() {
+            issues.push(ChainIssue::InvalidGenesis {
+                entry_id: sorted[0].id.clone(),
+            });
+        }
+
+        for entry in &sorted {
             if let Err(e) = entry.verify_signature() {
                 error!(entry_id = %entry.id, error = %e, "Invalid signature");
                 issues.push(ChainIssue::InvalidSignature {
@@ -225,19 +327,12 @@ impl AuditLog {
             entries_verified = entries_verified.saturating_add(1);
         }
 
-        // Verify chain linking
-        for i in 1..sorted_entries.len() {
-            // Safety: i starts at 1, so i-1 is always valid
+        for i in 1..sorted.len() {
             #[expect(clippy::arithmetic_side_effects)]
-            let prev = &sorted_entries[i - 1];
-            let curr = &sorted_entries[i];
-
+            let prev = &sorted[i - 1];
+            let curr = &sorted[i];
             if !curr.follows(prev) {
-                warn!(
-                    current = %curr.id,
-                    previous = %prev.id,
-                    "Chain link broken"
-                );
+                warn!(current = %curr.id, previous = %prev.id, "Chain link broken");
                 issues.push(ChainIssue::BrokenLink {
                     entry_id: curr.id.clone(),
                     expected_previous: prev.content_hash(),
@@ -251,6 +346,25 @@ impl AuditLog {
             entries_verified,
             issues,
         })
+    }
+
+    /// Get entries for a specific principal within a session.
+    ///
+    /// Pass `None` to get system entries (no principal).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if entries cannot be retrieved from storage.
+    pub fn get_principal_entries(
+        &self,
+        session_id: &SessionId,
+        principal: Option<&astrid_core::PrincipalId>,
+    ) -> AuditResult<Vec<AuditEntry>> {
+        let all = self.storage.get_session_entries(session_id)?;
+        Ok(all
+            .into_iter()
+            .filter(|e| e.principal.as_ref() == principal)
+            .collect())
     }
 
     /// Verify the entire audit log (all sessions).
@@ -737,5 +851,199 @@ mod tests {
             result.issues
         );
         assert_eq!(result.entries_verified, 3);
+    }
+
+    // ── Per-principal chain tests ────────────────────────────────
+
+    #[test]
+    fn test_principal_chains_are_independent() {
+        let keypair = KeyPair::generate();
+        let log = AuditLog::in_memory(keypair);
+        let session_id = SessionId::new();
+        let alice = astrid_core::PrincipalId::new("alice").unwrap();
+        let bob = astrid_core::PrincipalId::new("bob").unwrap();
+
+        // Alice: 2 entries
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::McpToolCall {
+                server: "test".into(),
+                tool: "alice_tool_1".into(),
+                args_hash: ContentHash::zero(),
+            },
+            AuthorizationProof::NotRequired {
+                reason: "test".into(),
+            },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::McpToolCall {
+                server: "test".into(),
+                tool: "alice_tool_2".into(),
+                args_hash: ContentHash::zero(),
+            },
+            AuthorizationProof::NotRequired {
+                reason: "test".into(),
+            },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+
+        // Bob: 1 entry
+        log.append_with_principal(
+            session_id.clone(),
+            bob.clone(),
+            AuditAction::McpToolCall {
+                server: "test".into(),
+                tool: "bob_tool_1".into(),
+                args_hash: ContentHash::zero(),
+            },
+            AuthorizationProof::NotRequired {
+                reason: "test".into(),
+            },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+
+        // System: 1 entry
+        log.append(
+            session_id.clone(),
+            AuditAction::SessionStarted {
+                user_id: [0; 8],
+                platform: "test".into(),
+            },
+            AuthorizationProof::System {
+                reason: "test".into(),
+            },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+
+        // Each chain verifies independently.
+        let alice_result = log
+            .verify_principal_chain(&session_id, Some(&alice))
+            .unwrap();
+        assert!(alice_result.valid, "alice chain: {:?}", alice_result.issues);
+        assert_eq!(alice_result.entries_verified, 2);
+
+        let bob_result = log.verify_principal_chain(&session_id, Some(&bob)).unwrap();
+        assert!(bob_result.valid, "bob chain: {:?}", bob_result.issues);
+        assert_eq!(bob_result.entries_verified, 1);
+
+        let system_result = log.verify_principal_chain(&session_id, None).unwrap();
+        assert!(
+            system_result.valid,
+            "system chain: {:?}",
+            system_result.issues
+        );
+        assert_eq!(system_result.entries_verified, 1);
+
+        // Full session verification covers all 4 entries.
+        let full = log.verify_chain(&session_id).unwrap();
+        assert!(full.valid, "full session: {:?}", full.issues);
+        assert_eq!(full.entries_verified, 4);
+    }
+
+    #[test]
+    fn test_get_principal_entries_filters_correctly() {
+        let keypair = KeyPair::generate();
+        let log = AuditLog::in_memory(keypair);
+        let session_id = SessionId::new();
+        let alice = astrid_core::PrincipalId::new("alice").unwrap();
+
+        // 2 alice entries + 1 system entry
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::FileRead {
+                path: "a.txt".into(),
+            },
+            AuthorizationProof::NotRequired { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append(
+            session_id.clone(),
+            AuditAction::ConfigReloaded,
+            AuthorizationProof::System { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::FileRead {
+                path: "b.txt".into(),
+            },
+            AuthorizationProof::NotRequired { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+
+        let alice_entries = log
+            .get_principal_entries(&session_id, Some(&alice))
+            .unwrap();
+        assert_eq!(alice_entries.len(), 2);
+
+        let system_entries = log.get_principal_entries(&session_id, None).unwrap();
+        assert_eq!(system_entries.len(), 1);
+
+        // Total session still has 3
+        let all = log.get_session_entries(&session_id).unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_mixed_session_verify_chain_passes() {
+        // A session with interleaved principal and system entries
+        // should verify cleanly — each chain is independent.
+        let keypair = KeyPair::generate();
+        let log = AuditLog::in_memory(keypair);
+        let session_id = SessionId::new();
+        let alice = astrid_core::PrincipalId::new("alice").unwrap();
+
+        // Interleave: system, alice, system, alice
+        log.append(
+            session_id.clone(),
+            AuditAction::ConfigReloaded,
+            AuthorizationProof::System { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::FileRead {
+                path: "a.txt".into(),
+            },
+            AuthorizationProof::NotRequired { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append(
+            session_id.clone(),
+            AuditAction::ConfigReloaded,
+            AuthorizationProof::System { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+        log.append_with_principal(
+            session_id.clone(),
+            alice.clone(),
+            AuditAction::FileRead {
+                path: "b.txt".into(),
+            },
+            AuthorizationProof::NotRequired { reason: "t".into() },
+            AuditOutcome::success(),
+        )
+        .unwrap();
+
+        let result = log.verify_chain(&session_id).unwrap();
+        assert!(result.valid, "mixed chain: {:?}", result.issues);
+        assert_eq!(result.entries_verified, 4);
     }
 }

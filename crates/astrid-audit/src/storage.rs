@@ -30,12 +30,19 @@ pub(crate) trait AuditStorage: Send + Sync {
     /// Returns an error if retrieval or deserialization fails.
     fn get(&self, id: &AuditEntryId) -> AuditResult<Option<AuditEntry>>;
 
-    /// Get the chain head (latest entry ID) for a session.
+    /// Get the chain head (latest entry ID) for a session+principal chain.
+    ///
+    /// `principal = None` returns the system chain head. `Some(pid)` returns
+    /// the principal-specific chain head.
     ///
     /// # Errors
     ///
     /// Returns an error if retrieval or parsing fails.
-    fn get_chain_head(&self, session_id: &SessionId) -> AuditResult<Option<AuditEntryId>>;
+    fn get_chain_head(
+        &self,
+        session_id: &SessionId,
+        principal: Option<&astrid_core::PrincipalId>,
+    ) -> AuditResult<Option<AuditEntryId>>;
 
     /// Get all entries for a session, in insertion order.
     ///
@@ -133,6 +140,20 @@ where
     }
 }
 
+/// Build the storage key for a chain head.
+///
+/// System chain (no principal): `"{session_uuid}"`
+/// Principal chain: `"{session_uuid}:{principal}"`
+///
+/// Unambiguous because session UUIDs contain no colons and principal IDs
+/// are validated to contain only alphanumeric, hyphens, and underscores.
+fn chain_head_key(session_id: &SessionId, principal: Option<&astrid_core::PrincipalId>) -> String {
+    match principal {
+        Some(p) => format!("{}:{}", session_id.0, p),
+        None => session_id.0.to_string(),
+    }
+}
+
 /// SurrealKV-based storage backend for audit logs.
 pub(crate) struct SurrealKvAuditStorage {
     store: Arc<dyn KvStore>,
@@ -199,10 +220,11 @@ impl AuditStorage for SurrealKvAuditStorage {
         block_on(self.store.set(NS_SESSION_INDEX, &session_key, index_data))
             .map_err(|e| AuditError::StorageError(e.to_string()))?;
 
-        // Update chain head.
+        // Update chain head for the entry's chain (system or principal).
+        let chain_key = chain_head_key(&entry.session_id, entry.principal.as_ref());
         block_on(
             self.store
-                .set(NS_CHAIN_HEADS, &session_key, entry_key.into_bytes()),
+                .set(NS_CHAIN_HEADS, &chain_key, entry_key.into_bytes()),
         )
         .map_err(|e| AuditError::StorageError(e.to_string()))?;
 
@@ -225,8 +247,12 @@ impl AuditStorage for SurrealKvAuditStorage {
         }
     }
 
-    fn get_chain_head(&self, session_id: &SessionId) -> AuditResult<Option<AuditEntryId>> {
-        let key = session_id.0.to_string();
+    fn get_chain_head(
+        &self,
+        session_id: &SessionId,
+        principal: Option<&astrid_core::PrincipalId>,
+    ) -> AuditResult<Option<AuditEntryId>> {
+        let key = chain_head_key(session_id, principal);
 
         let data = block_on(self.store.get(NS_CHAIN_HEADS, &key))
             .map_err(|e| AuditError::StorageError(e.to_string()))?;
@@ -400,7 +426,7 @@ mod tests {
 
         storage.store(&entry2).unwrap();
 
-        let head = storage.get_chain_head(&session_id).unwrap().unwrap();
+        let head = storage.get_chain_head(&session_id, None).unwrap().unwrap();
         assert_eq!(head, entry2.id);
     }
 
@@ -436,7 +462,7 @@ mod tests {
         let entries = storage.get_session_entries(&session_id).unwrap();
         assert_eq!(entries.len(), 1);
 
-        let head = storage.get_chain_head(&session_id).unwrap().unwrap();
+        let head = storage.get_chain_head(&session_id, None).unwrap().unwrap();
         assert_eq!(head, entry_id);
     }
 
