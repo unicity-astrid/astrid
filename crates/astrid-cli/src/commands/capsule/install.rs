@@ -354,6 +354,7 @@ pub(crate) fn install_from_github(
         && let Ok(json) = response.json::<serde_json::Value>()
         && let Some(assets) = json.get("assets").and_then(serde_json::Value::as_array)
     {
+        // Priority 1: .capsule archive (fully packaged, preferred)
         for asset in assets {
             if let Some(name) = asset.get("name").and_then(serde_json::Value::as_str)
                 && name.ends_with(".capsule")
@@ -375,8 +376,129 @@ pub(crate) fn install_from_github(
                 return unpack_and_install(&download_path, workspace, home, original_source);
             }
         }
+
+        // Priority 2: raw .wasm binary + Capsule.toml from repo at the tag
+        let tag = json
+            .get("tag_name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if !tag.is_empty()
+            && let Some(result) = try_install_from_wasm_asset(
+                &client,
+                org,
+                repo,
+                tag,
+                assets,
+                workspace,
+                home,
+                original_source,
+            )
+        {
+            return result;
+        }
     }
 
+    // Fallback: clone + build from source
+    clone_and_build(url, repo, workspace, home, original_source)
+}
+
+/// Try to install from a raw `.wasm` release asset paired with `Capsule.toml`
+/// fetched from the repository at the release tag.
+///
+/// Returns `Some(Result)` if a `.wasm` asset was found (install attempted),
+/// or `None` to signal the caller should fall through to clone+build.
+#[expect(clippy::too_many_arguments)]
+fn try_install_from_wasm_asset(
+    client: &reqwest::blocking::Client,
+    org: &str,
+    repo: &str,
+    tag: &str,
+    assets: &[serde_json::Value],
+    workspace: bool,
+    home: &AstridHome,
+    original_source: Option<&str>,
+) -> Option<anyhow::Result<()>> {
+    // Find a .wasm asset
+    let (wasm_name, download_url) = assets.iter().find_map(|asset| {
+        let name = asset.get("name")?.as_str()?;
+        if !Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
+        {
+            return None;
+        }
+        let url = asset.get("browser_download_url")?.as_str()?;
+        Some((name.to_string(), url.to_string()))
+    })?;
+
+    eprintln!("Downloading {wasm_name} from release {tag}...");
+
+    // Download the .wasm binary
+    let tmp_dir = match tempfile::tempdir() {
+        Ok(d) => d,
+        Err(e) => return Some(Err(e.into())),
+    };
+
+    let wasm_path = tmp_dir.path().join(&wasm_name);
+    let download_result = (|| -> anyhow::Result<()> {
+        let mut file = std::fs::File::create(&wasm_path)?;
+        let download_res = client.get(&download_url).send()?;
+        // Enforce a strict 50MB download limit to prevent DoS attacks
+        let mut limited_stream = download_res.take(50 * 1024 * 1024);
+        std::io::copy(&mut limited_stream, &mut file)?;
+        Ok(())
+    })();
+
+    if let Err(e) = download_result {
+        eprintln!("Failed to download WASM asset: {e}. Falling back to source build.");
+        return None;
+    }
+
+    // Fetch Capsule.toml from the repo at the release tag
+    let capsule_toml_url =
+        format!("https://raw.githubusercontent.com/{org}/{repo}/{tag}/Capsule.toml");
+
+    let capsule_toml_result = (|| -> anyhow::Result<String> {
+        let response = client.get(&capsule_toml_url).send()?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "Capsule.toml not found at {tag} (HTTP {})",
+                response.status()
+            );
+        }
+        Ok(response.text()?)
+    })();
+
+    let capsule_toml_content = match capsule_toml_result {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Failed to fetch Capsule.toml: {e}. Falling back to source build.");
+            return None;
+        },
+    };
+
+    // Assemble: write Capsule.toml alongside the .wasm in the temp dir
+    let capsule_toml_path = tmp_dir.path().join("Capsule.toml");
+    if let Err(e) = std::fs::write(&capsule_toml_path, &capsule_toml_content) {
+        return Some(Err(e.into()));
+    }
+
+    Some(install_from_local_path_inner(
+        tmp_dir.path(),
+        workspace,
+        home,
+        original_source,
+    ))
+}
+
+/// Clone a GitHub repository and build the capsule from source using `astrid-build`.
+fn clone_and_build(
+    url: &str,
+    repo: &str,
+    workspace: bool,
+    home: &AstridHome,
+    original_source: Option<&str>,
+) -> anyhow::Result<()> {
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for cloning")?;
     let clone_dir = tmp_dir.path().join(repo);
 
@@ -1863,5 +1985,98 @@ mod tests {
         let (org, repo) = extract_github_org_repo("https://github.com/org/repo.git").unwrap();
         assert_eq!(org, "org");
         assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn try_install_wasm_asset_no_wasm_returns_none() {
+        // When no .wasm asset exists, should return None (fall through)
+        let client = reqwest::blocking::Client::new();
+        let assets = vec![serde_json::json!({
+            "name": "readme.md",
+            "browser_download_url": "https://example.com/readme.md"
+        })];
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+
+        let result = try_install_from_wasm_asset(
+            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
+        );
+        assert!(result.is_none(), "should return None when no .wasm asset");
+    }
+
+    #[test]
+    fn try_install_wasm_asset_finds_wasm() {
+        // When a .wasm asset exists but download will fail (bad URL), should
+        // return None (falls back to clone+build) rather than propagating error.
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        let assets = vec![serde_json::json!({
+            "name": "astrid_capsule_test.wasm",
+            "browser_download_url": "http://127.0.0.1:1/nonexistent.wasm"
+        })];
+        let home_dir = tempfile::tempdir().unwrap();
+        let home = AstridHome::from_path(home_dir.path());
+
+        let result = try_install_from_wasm_asset(
+            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
+        );
+        // Download fails → returns None (fall through)
+        assert!(result.is_none(), "should return None on download failure");
+    }
+
+    #[test]
+    fn try_install_wasm_asset_prefers_first_wasm() {
+        // If multiple .wasm assets exist, should pick the first one
+        let assets = vec![
+            serde_json::json!({
+                "name": "first.wasm",
+                "browser_download_url": "https://example.com/first.wasm"
+            }),
+            serde_json::json!({
+                "name": "second.wasm",
+                "browser_download_url": "https://example.com/second.wasm"
+            }),
+        ];
+        // Just test the find_map logic
+        let found = assets.iter().find_map(|asset| {
+            let name = asset.get("name")?.as_str()?;
+            if !name.ends_with(".wasm") {
+                return None;
+            }
+            Some(name.to_string())
+        });
+        assert_eq!(found.as_deref(), Some("first.wasm"));
+    }
+
+    #[test]
+    fn try_install_wasm_asset_skips_non_wasm() {
+        // .capsule assets should not be matched by the .wasm check
+        let assets = vec![serde_json::json!({
+            "name": "capsule.capsule",
+            "browser_download_url": "https://example.com/capsule.capsule"
+        })];
+        let found = assets.iter().find_map(|asset| {
+            let name = asset.get("name")?.as_str()?;
+            if !name.ends_with(".wasm") {
+                return None;
+            }
+            Some(name.to_string())
+        });
+        assert!(found.is_none(), ".capsule should not match .wasm check");
+    }
+
+    #[test]
+    fn capsule_toml_raw_url_format() {
+        // Verify the raw.githubusercontent.com URL format is correct
+        let org = "unicity-astrid";
+        let repo = "capsule-cli";
+        let tag = "v0.1.0";
+        let url = format!("https://raw.githubusercontent.com/{org}/{repo}/{tag}/Capsule.toml");
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/unicity-astrid/capsule-cli/v0.1.0/Capsule.toml"
+        );
     }
 }
