@@ -21,6 +21,10 @@ pub struct AstridUserId {
     pub id: Uuid,
     /// The principal this user maps to. Determines the home directory
     /// and KV namespace (`{principal}:capsule:{name}`).
+    ///
+    /// Defaults to `"default"` for backward compatibility with identity
+    /// records created before this field existed.
+    #[serde(default)]
     pub principal: PrincipalId,
     /// Optional ed25519 public key for signing (32 bytes).
     #[serde(

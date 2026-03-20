@@ -229,11 +229,13 @@ impl Kernel {
         drop(spawn_react_watchdog(Arc::clone(&kernel.event_bus)));
         drop(spawn_capsule_health_monitor(Arc::clone(&kernel)));
 
-        // Spawn the event dispatcher — routes EventBus events to capsule interceptors
+        // Spawn the event dispatcher — routes EventBus events to capsule interceptors.
+        // Wire the identity store so auto-provisioning is gated.
         let dispatcher = astrid_capsule::dispatcher::EventDispatcher::new(
             Arc::clone(&kernel.capsules),
             Arc::clone(&kernel.event_bus),
-        );
+        )
+        .with_identity_store(Arc::clone(&kernel.identity_store));
         tokio::spawn(dispatcher.run());
 
         debug_assert_eq!(

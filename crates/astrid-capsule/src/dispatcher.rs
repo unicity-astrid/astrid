@@ -64,6 +64,11 @@ struct InterceptorWork {
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
+    /// Identity store for validating principals before auto-provisioning.
+    /// When set, only principals with a matching identity record get
+    /// home directories created. When `None`, provisioning is ungated
+    /// (pre-production behavior).
+    identity_store: Option<Arc<dyn astrid_storage::IdentityStore>>,
 }
 
 impl EventDispatcher {
@@ -73,7 +78,15 @@ impl EventDispatcher {
         Self {
             registry,
             event_bus,
+            identity_store: None,
         }
+    }
+
+    /// Set the identity store for principal validation during auto-provisioning.
+    #[must_use]
+    pub fn with_identity_store(mut self, store: Arc<dyn astrid_storage::IdentityStore>) -> Self {
+        self.identity_store = Some(store);
+        self
     }
 
     /// Run the dispatch loop. Blocks until the event bus is closed.
@@ -148,16 +161,24 @@ impl EventDispatcher {
             };
 
             // Auto-provision home directories for new principals.
-            // TODO: gate on identity_store lookup once wired through dispatcher.
-            // Currently unauthenticated — any valid-format principal triggers
-            // directory creation. Acceptable pre-production; must be gated
-            // before multi-tenant deployment.
+            // When an identity store is configured, only the "default"
+            // principal is auto-provisioned. Other principals must be
+            // explicitly created via the identity flow (uplink calls
+            // create_user → AstridUserId with principal → uplink sets
+            // principal on IPC). This prevents unauthenticated directory
+            // creation from arbitrary IPC principal strings.
             if let Some(ref msg) = ipc_message
                 && let Some(ref principal_str) = msg.principal
                 && !known_principals.contains(principal_str)
             {
                 if let Ok(pid) = astrid_core::PrincipalId::new(principal_str) {
-                    if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+                    // Gate: if identity store is wired, only auto-provision
+                    // "default". Other principals are created by uplinks
+                    // which handle home provisioning after create_user.
+                    let should_provision =
+                        self.identity_store.is_none() || pid == astrid_core::PrincipalId::default();
+
+                    if should_provision && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                         let ph = home.principal_home(&pid);
                         if let Err(e) = ph.ensure() {
                             warn!(
