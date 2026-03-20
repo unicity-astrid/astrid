@@ -44,6 +44,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- Dispatcher `known_principals` HashSet capped at 10K entries to prevent unbounded memory growth
+- Dispatcher only caches principal after successful home provisioning — transient failures allow retry on next event
 - `AstridUserId.principal` now has `#[serde(default)]` — existing identity records without the field deserialize with `"default"` instead of failing
 - `transpile_and_install` now correctly unpacks `.capsule` archives from `astrid-build` output
 - `copy_capsule_dir` only skips `dist/` at the top level; npm packages inside `node_modules` retain their `dist/` directories
