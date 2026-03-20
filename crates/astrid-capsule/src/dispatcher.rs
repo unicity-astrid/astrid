@@ -107,6 +107,11 @@ impl EventDispatcher {
         let mut known_principals: HashSet<String> = HashSet::new();
         // The "default" principal is always provisioned by the kernel boot sequence.
         known_principals.insert("default".to_string());
+        /// Maximum number of principals tracked before the set stops growing.
+        /// 10K principals = ~640KB of memory (64-byte strings). Beyond this,
+        /// new principals are still dispatched but not cached — they'll hit
+        /// the filesystem check on every event instead of the O(1) HashSet.
+        const MAX_KNOWN_PRINCIPALS: usize = 10_000;
         debug!("Event dispatcher started");
 
         while let Some(event) = receiver.recv().await {
@@ -181,6 +186,7 @@ impl EventDispatcher {
                     if should_provision && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                         let ph = home.principal_home(&pid);
                         if let Err(e) = ph.ensure() {
+                            // Don't cache — allow retry on next event (#544).
                             warn!(
                                 principal = %pid,
                                 error = %e,
@@ -191,9 +197,15 @@ impl EventDispatcher {
                                 principal = %pid,
                                 "Auto-provisioned principal home directory"
                             );
+                            // Only cache on success so transient failures
+                            // can retry on the next event (#544).
+                            if known_principals.len() < MAX_KNOWN_PRINCIPALS {
+                                known_principals.insert(principal_str.clone());
+                            }
                         }
                     }
-                    known_principals.insert(principal_str.clone());
+                    // If AstridHome::resolve() failed, don't cache — allow
+                    // retry when the home directory becomes available.
                 } else {
                     warn!(
                         principal = %principal_str,
