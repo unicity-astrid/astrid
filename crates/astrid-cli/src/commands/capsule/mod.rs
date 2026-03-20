@@ -4,3 +4,4 @@ pub(crate) mod deps;
 pub(crate) mod install;
 pub(crate) mod list;
 pub(crate) mod meta;
+pub(crate) mod remove;

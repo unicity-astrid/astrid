@@ -1417,7 +1417,7 @@ fn copy_capsule_dir_inner(src: &Path, dst: &Path, is_root: bool) -> anyhow::Resu
     Ok(())
 }
 
-fn resolve_target_dir(
+pub(crate) fn resolve_target_dir(
     home: &AstridHome,
     id: &str,
     workspace: bool,

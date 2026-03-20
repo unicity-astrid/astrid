@@ -128,6 +128,17 @@ enum CapsuleCommands {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Remove an installed capsule
+    Remove {
+        /// Capsule name to remove
+        name: String,
+        /// Remove from workspace instead of user-level
+        #[arg(long)]
+        workspace: bool,
+        /// Force removal even if other capsules depend on it
+        #[arg(long)]
+        force: bool,
+    },
     /// Show the capsule dependency graph
     Deps,
 }
@@ -273,6 +284,13 @@ async fn main() -> Result<()> {
             },
             CapsuleCommands::List { verbose } => {
                 commands::capsule::list::list_capsules(verbose)?;
+            },
+            CapsuleCommands::Remove {
+                name,
+                workspace,
+                force,
+            } => {
+                commands::capsule::remove::remove_capsule(&name, workspace, force)?;
             },
             CapsuleCommands::Deps => {
                 commands::capsule::deps::show_deps()?;
