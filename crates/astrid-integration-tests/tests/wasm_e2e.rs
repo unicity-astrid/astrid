@@ -122,9 +122,9 @@ async fn setup_test_capsule(
     Some((capsule, tool_ctx, temp_workspace))
 }
 
-/// Like `setup_test_capsule` but with a separate global root directory for
-/// testing the `global://` VFS scheme end-to-end.
-async fn setup_test_capsule_with_global(
+/// Like `setup_test_capsule` but with a separate home root directory for
+/// testing the `home://` VFS scheme end-to-end.
+async fn setup_test_capsule_with_home(
     tools: Vec<ToolDef>,
     fs_read_caps: Vec<String>,
     fs_write_caps: Vec<String>,
@@ -149,7 +149,7 @@ async fn setup_test_capsule_with_global(
 
     let manifest = CapsuleManifest {
         package: PackageDef {
-            name: "test-plugin-global".into(),
+            name: "test-plugin-home".into(),
             version: "0.1.0".into(),
             description: None,
             authors: vec![],
@@ -210,14 +210,14 @@ async fn setup_test_capsule_with_global(
         .expect("Failed to create capsule");
 
     let temp_workspace = tempfile::tempdir().unwrap();
-    let temp_global = tempfile::tempdir().unwrap();
+    let temp_home = tempfile::tempdir().unwrap();
 
-    let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-plugin-global").unwrap();
+    let kv = ScopedKvStore::new(Arc::new(MemoryKvStore::new()), "test-plugin-home").unwrap();
     let event_bus = Arc::new(EventBus::with_capacity(128));
     let ctx = CapsuleContext::new(
         astrid_core::PrincipalId::default(),
         temp_workspace.path().to_path_buf(),
-        Some(temp_global.path().to_path_buf()),
+        Some(temp_home.path().to_path_buf()),
         kv.clone(),
         event_bus.clone(),
         None,
@@ -232,7 +232,7 @@ async fn setup_test_capsule_with_global(
         kv.clone(),
     );
 
-    Some((capsule, tool_ctx, temp_workspace, temp_global))
+    Some((capsule, tool_ctx, temp_workspace, temp_home))
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -556,26 +556,23 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_wasm_capsule_e2e_global_vfs_read() {
+async fn test_wasm_capsule_e2e_home_vfs_read() {
     let tools = vec![ToolDef {
         name: "test-file-read".into(),
         description: "Read tool".into(),
         input_schema: json!({ "type": "object" }),
     }];
-    // Grant both workspace:// and global:// read access
-    let Some((capsule, tool_ctx, _temp_ws, temp_global)) = setup_test_capsule_with_global(
-        tools,
-        vec!["workspace://".into(), "global://".into()],
-        vec![],
-    )
-    .await
+    // Grant both workspace:// and home:// read access
+    let Some((capsule, tool_ctx, _temp_ws, temp_home)) =
+        setup_test_capsule_with_home(tools, vec!["workspace://".into(), "home://".into()], vec![])
+            .await
     else {
         return;
     };
 
-    // Write a file directly to the global temp dir (simulating ~/.astrid/ content)
-    let global_file = temp_global.path().join("test-global.txt");
-    std::fs::write(&global_file, "hello from global").unwrap();
+    // Write a file directly to the home temp dir (simulating ~/.astrid/home/ content)
+    let home_file = temp_home.path().join("test-home.txt");
+    std::fs::write(&home_file, "hello from home").unwrap();
 
     let read_tool = capsule
         .tools()
@@ -583,35 +580,35 @@ async fn test_wasm_capsule_e2e_global_vfs_read() {
         .find(|t| t.name() == "test-file-read")
         .unwrap();
 
-    // Read via global:// prefix — exercises the full resolve_path → gate → resolve_vfs pipeline
+    // Read via home:// prefix — exercises the full resolve_path → gate → resolve_vfs pipeline
     let result = read_tool
-        .execute(json!({ "path": "global://test-global.txt" }), &tool_ctx)
+        .execute(json!({ "path": "home://test-home.txt" }), &tool_ctx)
         .await;
-    assert!(result.is_ok(), "global:// read failed: {result:?}");
+    assert!(result.is_ok(), "home:// read failed: {result:?}");
 
     let output: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
     let inner: serde_json::Value =
         serde_json::from_str(output["content"].as_str().unwrap()).unwrap();
-    assert_eq!(inner["content"], "hello from global");
+    assert_eq!(inner["content"], "hello from home");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_wasm_capsule_e2e_global_vfs_denied_without_capability() {
+async fn test_wasm_capsule_e2e_home_vfs_denied_without_capability() {
     let tools = vec![ToolDef {
         name: "test-file-read".into(),
         description: "Read tool".into(),
         input_schema: json!({ "type": "object" }),
     }];
-    // Only workspace:// read — no global:// capability
-    let Some((capsule, tool_ctx, _temp_ws, temp_global)) =
-        setup_test_capsule_with_global(tools, vec!["workspace://".into()], vec![]).await
+    // Only workspace:// read — no home:// capability
+    let Some((capsule, tool_ctx, _temp_ws, temp_home)) =
+        setup_test_capsule_with_home(tools, vec!["workspace://".into()], vec![]).await
     else {
         return;
     };
 
-    // Write a file to the global dir
-    let global_file = temp_global.path().join("secret.txt");
-    std::fs::write(&global_file, "secret data").unwrap();
+    // Write a file to the home dir
+    let home_file = temp_home.path().join("secret.txt");
+    std::fs::write(&home_file, "secret data").unwrap();
 
     let read_tool = capsule
         .tools()
@@ -619,11 +616,11 @@ async fn test_wasm_capsule_e2e_global_vfs_denied_without_capability() {
         .find(|t| t.name() == "test-file-read")
         .unwrap();
 
-    // Attempt to read via global:// — should be denied by security gate
+    // Attempt to read via home:// — should be denied by security gate
     let result = read_tool
-        .execute(json!({ "path": "global://secret.txt" }), &tool_ctx)
+        .execute(json!({ "path": "home://secret.txt" }), &tool_ctx)
         .await;
-    assert!(result.is_err(), "global:// read should have been denied");
+    assert!(result.is_err(), "home:// read should have been denied");
     let err_str = result.unwrap_err().to_string();
     assert!(
         err_str.contains("security denied") || err_str.contains("not declared in manifest"),

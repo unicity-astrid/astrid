@@ -755,13 +755,21 @@ impl ExecutionEngine for WasmEngine {
             )
         })?;
 
-        // Clear-before-set: set per-invocation caller context and KV scope.
-        // Each invocation overwrites the previous context. If plugin.call()
-        // panics, the stale context is overwritten by the next invocation.
+        // Set per-invocation caller context and KV scope. Recovers from
+        // poisoned mutex to prevent stale principal context from persisting.
         if let Some(ref ud) = self.host_state
             && let Ok(ud) = ud.get()
-            && let Ok(mut state) = ud.lock()
         {
+            let mut state = match ud.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::error!(
+                        "HostState lock poisoned during set; recovering to prevent \
+                         principal context leak"
+                    );
+                    poisoned.into_inner()
+                },
+            };
             state.caller_context = caller.cloned();
 
             // Dynamic KV scoping: if the invocation principal differs
@@ -812,10 +820,20 @@ impl ExecutionEngine for WasmEngine {
         // Clear invocation context after call returns (success or error).
         // Prevents stale principal/KV from leaking to any subsequent
         // call path (tool execution, run-loop subscriptions).
+        // Recovers from poisoned mutex — principal isolation is critical.
         if let Some(ref ud) = self.host_state
             && let Ok(ud) = ud.get()
-            && let Ok(mut state) = ud.lock()
         {
+            let mut state = match ud.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::error!(
+                        "HostState lock poisoned during post-invocation clear; \
+                         recovering to prevent principal context leak"
+                    );
+                    poisoned.into_inner()
+                },
+            };
             state.caller_context = None;
             state.invocation_kv = None;
         }

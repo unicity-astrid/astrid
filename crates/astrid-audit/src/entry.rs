@@ -88,6 +88,10 @@ impl AuditEntry {
     }
 
     /// Create and sign a new audit entry with a principal.
+    ///
+    /// Used when audit entries need to record which principal an action
+    /// was performed on behalf of. Call sites will be wired when the
+    /// kernel audit integration is updated.
     #[must_use]
     pub fn create_with_principal(
         session_id: SessionId,
@@ -121,11 +125,19 @@ impl AuditEntry {
         data.extend_from_slice(self.id.0.as_bytes());
         data.extend_from_slice(&self.timestamp.0.timestamp().to_le_bytes());
         data.extend_from_slice(self.session_id.0.as_bytes());
-        // Include principal in signing data. When None, no bytes are
-        // added (distinct from Some("") which would add zero bytes).
-        // This means None and absent are equivalent in the signing chain.
+        // Include principal in signing data with length-delimited encoding
+        // to prevent ambiguity between None and adjacent field boundaries.
+        // 0xFF marker + 4-byte length + bytes for Some, 0x00 marker for None.
         if let Some(ref p) = self.principal {
-            data.extend_from_slice(p.as_str().as_bytes());
+            let bytes = p.as_str().as_bytes();
+            data.push(0xFF); // presence marker
+            // PrincipalId is max 64 bytes — safe truncation.
+            #[expect(clippy::cast_possible_truncation)]
+            let len = bytes.len() as u32;
+            data.extend_from_slice(&len.to_le_bytes());
+            data.extend_from_slice(bytes);
+        } else {
+            data.push(0x00); // absence marker
         }
         // Action is serialized to JSON for consistent hashing
         if let Ok(action_json) = serde_json::to_vec(&self.action) {

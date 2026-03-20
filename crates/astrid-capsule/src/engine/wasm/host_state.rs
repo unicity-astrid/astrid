@@ -66,13 +66,13 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
-    /// Global shared resources directory. Paths prefixed with `home://`
+    /// Principal's home directory. Paths prefixed with `home://`
     /// are resolved relative to this root.
     pub home_root: Option<PathBuf>,
-    /// VFS instance for the global shared root. This is a direct `HostVfs` —
-    /// writes are permanent (no OverlayVfs CoW layer).
+    /// VFS instance for the principal's home directory. This is a direct
+    /// `HostVfs` — writes are permanent (no OverlayVfs CoW layer).
     pub home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the global shared VFS root.
+    /// Capability handle for the home VFS root.
     pub home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// Principal's tmp directory. Paths starting with `/tmp/` are resolved
     /// relative to this root (`~/.astrid/home/{principal}/.local/tmp/`).

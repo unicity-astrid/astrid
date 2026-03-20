@@ -79,12 +79,24 @@ mod tests {
     }
 
     #[test]
-    fn test_principal_explicit_override() {
+    fn test_principal_explicit_override_after_display_name() {
         let principal = crate::PrincipalId::new("custom-principal").unwrap();
         let user = AstridUserId::new()
             .with_display_name("Alice")
             .with_principal(principal);
         assert_eq!(user.principal.as_str(), "custom-principal");
+    }
+
+    #[test]
+    fn test_principal_preserved_when_set_before_display_name() {
+        // Documented order: with_principal() then with_display_name()
+        // should preserve the explicit principal.
+        let principal = crate::PrincipalId::new("custom-principal").unwrap();
+        let user = AstridUserId::new()
+            .with_principal(principal)
+            .with_display_name("Alice");
+        assert_eq!(user.principal.as_str(), "custom-principal");
+        assert_eq!(user.display_name.as_deref(), Some("Alice"));
     }
 
     #[test]

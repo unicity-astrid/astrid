@@ -15,7 +15,7 @@ Unit tests prove a crate works in isolation. Integration tests prove the OS work
 
 | File | What it proves |
 |---|---|
-| `wasm_e2e.rs` | WASM sandbox enforcement: memory allocation traps, IPC payload limits, VFS path traversal rejection, `global://` scheme access control, HTTP security gate (undeclared hosts denied, CRLF injection rejected). |
+| `wasm_e2e.rs` | WASM sandbox enforcement: memory allocation traps, IPC payload limits, VFS path traversal rejection, `home://` scheme access control, HTTP security gate (undeclared hosts denied, CRLF injection rejected). |
 | `mcp_e2e.rs` | `CapsuleLoader` rejects capsules requesting binaries not listed in the manifest's `host_process` capability array. |
 | `allowance_flow.rs` | Approve Once, Approve Session, Approve Workspace, and Approve Always state machine. Cross-workspace isolation verified. |
 | `capability_lifecycle.rs` | "Allow Always" mints a `CapabilityToken` in the `CapabilityStore`. Subsequent identical actions hit the capability path. Tokens survive across independent interceptor instances. |
