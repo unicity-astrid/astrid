@@ -18,6 +18,17 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - `/tmp` VFS mount backed by `home/{principal}/.local/tmp/` for per-principal temp isolation
 - Multi-source capsule discovery with precedence: principal > workspace (dedup by name)
 - `PrincipalHome` struct with `.local/` and `.config/` following XDG conventions
+- Per-invocation principal resolution — KV, audit, logging, and capability checks scope to the calling user per IPC message, not per capsule load
+- `IpcMessage.principal` field for carrying the acting principal through event chains (transparent to capsules)
+- `AstridUserId.principal` field mapping platform identities to `PrincipalId` with auto-derivation from display name
+- Dynamic KV scoping via `invocation_kv` on `HostState` — capsules call `kv::get("key")` and the kernel returns the right value for the current principal
+- Principal auto-propagation on `ipc_publish` — capsules never touch the principal, it flows through event chains automatically
+- Auto-provisioning of principal home directories on first encounter
+- `astrid_get_caller` host function now returns `{ principal, source_id, timestamp }` instead of empty object
+- Dynamic per-principal log routing — cross-principal invocations write to the target principal's log directory
+- `AuditEntry.principal` field with length-delimited signing data encoding
+- `ScopedKvStore::with_namespace()` for creating scoped views sharing the same underlying store
+- `AuditEntry::create_with_principal()` builder for principal-tagged audit entries
 - `layout-version` sentinel in `etc/` for future migration support
 - `lib/` directory reserved for future WIT shared WASM component libraries
 - End-to-end Tier 2 OpenClaw plugin support: TypeScript plugins with npm dependencies install, transpile, sandbox, and run as MCP capsules with full tool integration
@@ -53,6 +64,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Changed
 
+- `global://` VFS scheme renamed to `home://`
+- `Capsule::invoke_interceptor` now accepts `Option<&IpcMessage>` for per-invocation principal context
+- `CapsuleContext.global_root` renamed to `home_root`; `HostState.global_vfs` renamed to `home_vfs`
+- `AstridUserId` now requires `principal: PrincipalId` field (existing KV records incompatible — nuke `~/.astrid/`)
 - Capsule install target moved from `~/.astrid/capsules/` to `home/{principal}/.local/capsules/` (capsule dir now holds only manifest + meta.json)
 - KV namespace format changed from `capsule:{name}` to `{principal}:capsule:{name}`
 - Socket/token/ready paths moved from `sessions/` to `run/`
