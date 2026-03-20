@@ -250,7 +250,7 @@ impl ExecutionEngine for WasmEngine {
                 let lower_vfs = astrid_vfs::HostVfs::new();
                 let upper_vfs = astrid_vfs::HostVfs::new();
                 let root_handle = astrid_capabilities::DirHandle::new();
-                let global_root = ctx.global_root.clone();
+                let home_root = ctx.home_root.clone();
 
                 // Upper layer uses a per-capsule temporary directory so writes
                 // are sandboxed until explicitly committed. The TempDir is kept
@@ -281,10 +281,10 @@ impl ExecutionEngine for WasmEngine {
                 // directly to disk — there is no OverlayVfs CoW layer here,
                 // unlike the workspace VFS. Only mount if the directory exists
                 // to avoid failing capsule load on fresh installs.
-                let (global_vfs, global_vfs_root_handle): (
+                let (home_vfs, home_vfs_root_handle): (
                     Option<Arc<dyn astrid_vfs::Vfs>>,
                     Option<astrid_capabilities::DirHandle>,
-                ) = if let Some(ref g_root) = global_root {
+                ) = if let Some(ref g_root) = home_root {
                     if g_root.exists() {
                         let g_vfs = astrid_vfs::HostVfs::new();
                         let g_handle = astrid_capabilities::DirHandle::new();
@@ -303,7 +303,7 @@ impl ExecutionEngine for WasmEngine {
                         )
                     } else {
                         tracing::warn!(
-                            global_root = %g_root.display(),
+                            home_root = %g_root.display(),
                             "home:// VFS not mounted: directory does not exist. \
                              Capsules requesting home:// paths will receive errors \
                              until the directory is created and the kernel is restarted."
@@ -322,15 +322,15 @@ impl ExecutionEngine for WasmEngine {
                 let next_subscription_id = 1;
                 // Only resolve home:// in the gate if we actually mounted the VFS.
                 // Otherwise the gate would approve paths the VFS can't serve.
-                let gate_global_root = if global_vfs.is_some() {
-                    global_root.clone()
+                let gate_home_root = if home_vfs.is_some() {
+                    home_root.clone()
                 } else {
                     None
                 };
                 let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(
                     manifest.clone(),
                     workspace_root.clone(),
-                    gate_global_root,
+                    gate_home_root,
                 ));
 
                 // Set up /tmp VFS backed by the principal's .local/tmp/ directory.
@@ -400,9 +400,9 @@ impl ExecutionEngine for WasmEngine {
                     workspace_root,
                     vfs: Arc::clone(&overlay_vfs) as Arc<dyn astrid_vfs::Vfs>,
                     vfs_root_handle: root_handle,
-                    global_root,
-                    global_vfs,
-                    global_vfs_root_handle,
+                    home_root,
+                    home_vfs,
+                    home_vfs_root_handle,
                     tmp_dir,
                     tmp_vfs,
                     tmp_vfs_root_handle,
@@ -800,14 +800,27 @@ impl ExecutionEngine for WasmEngine {
         // kv, etc.) also call block_in_place internally during plugin.call().
         // The caller MUST invoke this from a Tokio worker thread (e.g. via
         // tokio::task::spawn), never from spawn_blocking.
-        tokio::task::block_in_place(|| {
+        let result = tokio::task::block_in_place(|| {
             let mut plugin = plugin
                 .lock()
                 .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))?;
             plugin
                 .call::<&[u8], Vec<u8>>("astrid_hook_trigger", &input)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
-        })
+        });
+
+        // Clear invocation context after call returns (success or error).
+        // Prevents stale principal/KV from leaking to any subsequent
+        // call path (tool execution, run-loop subscriptions).
+        if let Some(ref ud) = self.host_state
+            && let Ok(ud) = ud.get()
+            && let Ok(mut state) = ud.lock()
+        {
+            state.caller_context = None;
+            state.invocation_kv = None;
+        }
+
+        result
     }
 
     fn check_health(&self) -> crate::capsule::CapsuleState {
@@ -885,9 +898,9 @@ pub fn run_lifecycle(
         workspace_root: cfg.workspace_root,
         vfs: Arc::new(vfs),
         vfs_root_handle: root_handle,
-        global_root: None,
-        global_vfs: None,
-        global_vfs_root_handle: None,
+        home_root: None,
+        home_vfs: None,
+        home_vfs_root_handle: None,
         tmp_dir: None,
         tmp_vfs: None,
         tmp_vfs_root_handle: None,

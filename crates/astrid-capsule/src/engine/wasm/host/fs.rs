@@ -123,13 +123,13 @@ struct ResolvedVfsPath {
 /// whether it targets the workspace or home VFS.
 fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error> {
     if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
-        let global_root = state.global_root.as_ref().ok_or_else(|| {
+        let home_root = state.home_root.as_ref().ok_or_else(|| {
             Error::msg(
                 "home:// scheme is not available: no home directory is configured. \
                  Create the directory and restart the kernel.",
             )
         })?;
-        let resolved = resolve_physical_absolute(global_root, stripped)?;
+        let resolved = resolve_physical_absolute(home_root, stripped)?;
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
@@ -179,14 +179,14 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
 fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, Error> {
     match resolved.target {
         VfsTarget::Home => {
-            let vfs = state.global_vfs.clone().ok_or_else(|| {
+            let vfs = state.home_vfs.clone().ok_or_else(|| {
                 Error::msg(
                     "home:// VFS is not mounted. \
                      Create the directory and restart the kernel.",
                 )
             })?;
             let handle = state
-                .global_vfs_root_handle
+                .home_vfs_root_handle
                 .clone()
                 .ok_or_else(|| Error::msg("home:// VFS root handle is not available"))?;
             Ok(ResolvedVfsPath {

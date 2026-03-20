@@ -87,6 +87,33 @@ impl AuditEntry {
         entry
     }
 
+    /// Create and sign a new audit entry with a principal.
+    #[must_use]
+    pub fn create_with_principal(
+        session_id: SessionId,
+        principal: astrid_core::PrincipalId,
+        action: AuditAction,
+        authorization: AuthorizationProof,
+        outcome: AuditOutcome,
+        previous_hash: ContentHash,
+        runtime_key: &KeyPair,
+    ) -> Self {
+        let mut entry = Self::new_unsigned(
+            session_id,
+            action,
+            authorization,
+            outcome,
+            previous_hash,
+            runtime_key.export_public_key(),
+        );
+        entry.principal = Some(principal);
+
+        let signing_data = entry.signing_data();
+        entry.signature = runtime_key.sign(&signing_data);
+
+        entry
+    }
+
     /// Get the data used for signing.
     #[must_use]
     pub fn signing_data(&self) -> Vec<u8> {
@@ -94,7 +121,9 @@ impl AuditEntry {
         data.extend_from_slice(self.id.0.as_bytes());
         data.extend_from_slice(&self.timestamp.0.timestamp().to_le_bytes());
         data.extend_from_slice(self.session_id.0.as_bytes());
-        // Include principal in signing data (empty string if None).
+        // Include principal in signing data. When None, no bytes are
+        // added (distinct from Some("") which would add zero bytes).
+        // This means None and absent are equivalent in the signing chain.
         if let Some(ref p) = self.principal {
             data.extend_from_slice(p.as_str().as_bytes());
         }

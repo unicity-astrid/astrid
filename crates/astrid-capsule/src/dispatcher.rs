@@ -148,6 +148,10 @@ impl EventDispatcher {
             };
 
             // Auto-provision home directories for new principals.
+            // TODO: gate on identity_store lookup once wired through dispatcher.
+            // Currently unauthenticated — any valid-format principal triggers
+            // directory creation. Acceptable pre-production; must be gated
+            // before multi-tenant deployment.
             if let Some(ref msg) = ipc_message
                 && let Some(ref principal_str) = msg.principal
                 && !known_principals.contains(principal_str)
@@ -160,6 +164,11 @@ impl EventDispatcher {
                                 principal = %pid,
                                 error = %e,
                                 "Failed to auto-provision principal home"
+                            );
+                        } else {
+                            debug!(
+                                principal = %pid,
+                                "Auto-provisioned principal home directory"
                             );
                         }
                     }

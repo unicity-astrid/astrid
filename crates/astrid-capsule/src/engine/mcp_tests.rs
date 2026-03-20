@@ -99,7 +99,7 @@ mod tests {
         let ctx = CapsuleContext {
             principal: astrid_core::PrincipalId::default(),
             workspace_root: std::path::PathBuf::from("/"),
-            global_root: None,
+            home_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,
@@ -160,7 +160,7 @@ mod tests {
         let ctx = CapsuleContext {
             principal: astrid_core::PrincipalId::default(),
             workspace_root: std::path::PathBuf::from("/"),
-            global_root: None,
+            home_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,
@@ -218,7 +218,7 @@ mod tests {
         let ctx = CapsuleContext {
             principal: astrid_core::PrincipalId::default(),
             workspace_root: std::path::PathBuf::from("/"),
-            global_root: None,
+            home_root: None,
             event_bus: bus,
             kv,
             cli_socket_listener: None,

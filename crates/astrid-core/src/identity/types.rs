@@ -57,16 +57,21 @@ impl AstridUserId {
         self
     }
 
-    /// Create an identity with a display name, auto-deriving the principal.
+    /// Create an identity with a display name, auto-deriving the principal
+    /// only if the current principal is still the default.
     ///
     /// Derivation: lowercase, replace invalid chars with hyphens, truncate
     /// to 64 chars, validate as `PrincipalId`. Falls back to
     /// `"user-{first-8-of-uuid}"` if derivation produces an empty string.
+    ///
+    /// If [`with_principal`](Self::with_principal) was called first, the
+    /// explicit principal is preserved.
     #[must_use]
     pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
-        let derived = derive_principal_from_name(&name, &self.id);
-        self.principal = derived;
+        if self.principal == PrincipalId::default() {
+            self.principal = derive_principal_from_name(&name, &self.id);
+        }
         self.display_name = Some(name);
         self
     }

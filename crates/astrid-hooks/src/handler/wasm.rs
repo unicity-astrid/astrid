@@ -217,9 +217,9 @@ impl WasmHandler {
             vfs_root_handle: root_handle,
             // Hooks intentionally do not support home:// or /tmp access — they run
             // outside the full capsule manifest/security-gate lifecycle.
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,

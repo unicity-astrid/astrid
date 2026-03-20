@@ -68,12 +68,12 @@ pub struct HostState {
     pub vfs_root_handle: astrid_capabilities::DirHandle,
     /// Global shared resources directory. Paths prefixed with `home://`
     /// are resolved relative to this root.
-    pub global_root: Option<PathBuf>,
+    pub home_root: Option<PathBuf>,
     /// VFS instance for the global shared root. This is a direct `HostVfs` —
     /// writes are permanent (no OverlayVfs CoW layer).
-    pub global_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    pub home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
     /// Capability handle for the global shared VFS root.
-    pub global_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    pub home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// Principal's tmp directory. Paths starting with `/tmp/` are resolved
     /// relative to this root (`~/.astrid/home/{principal}/.local/tmp/`).
     pub tmp_dir: Option<PathBuf>,
@@ -290,7 +290,7 @@ impl std::fmt::Debug for HostState {
             .field("capsule_id", &self.capsule_id)
             .field("workspace_root", &self.workspace_root)
             .field("vfs_root_handle", &self.vfs_root_handle)
-            .field("has_global_root", &self.global_root.is_some())
+            .field("has_home_root", &self.home_root.is_some())
             .field("has_security", &self.security.is_some())
             .field("has_uplink_capability", &self.has_uplink_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
@@ -333,9 +333,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -407,9 +407,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -486,9 +486,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -561,9 +561,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -652,9 +652,9 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,

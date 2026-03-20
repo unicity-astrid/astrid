@@ -283,7 +283,7 @@ impl ManifestSecurityGate {
     pub(crate) fn new(
         manifest: CapsuleManifest,
         workspace_root: std::path::PathBuf,
-        global_root: Option<std::path::PathBuf>,
+        home_root: Option<std::path::PathBuf>,
     ) -> Self {
         // Canonicalize roots once up front. Both `resolve_schemes` (for prefix
         // strings) and `workspace_root_path` (for wildcard confinement) use
@@ -291,19 +291,19 @@ impl ManifestSecurityGate {
         let canonical_ws = workspace_root
             .canonicalize()
             .unwrap_or_else(|_| workspace_root.to_path_buf());
-        let canonical_global = global_root
+        let canonical_home = home_root
             .as_ref()
             .map(|g| g.canonicalize().unwrap_or_else(|_| g.clone()));
 
         let resolved_fs_read = Self::resolve_schemes(
             &manifest.capabilities.fs_read,
             &canonical_ws,
-            &canonical_global,
+            &canonical_home,
         );
         let resolved_fs_write = Self::resolve_schemes(
             &manifest.capabilities.fs_write,
             &canonical_ws,
-            &canonical_global,
+            &canonical_home,
         );
         Self {
             manifest,
@@ -324,7 +324,7 @@ impl ManifestSecurityGate {
     fn resolve_schemes(
         entries: &[String],
         canonical_ws: &std::path::Path,
-        canonical_global: &Option<std::path::PathBuf>,
+        canonical_home: &Option<std::path::PathBuf>,
     ) -> Vec<String> {
         let mut resolved = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -334,7 +334,7 @@ impl ManifestSecurityGate {
                 let path = canonical_ws.join(suffix);
                 resolved.push(path.to_string_lossy().to_string());
             } else if let Some(suffix) = entry.strip_prefix("home://") {
-                if let Some(g_root) = canonical_global {
+                if let Some(g_root) = canonical_home {
                     let path = g_root.join(suffix);
                     resolved.push(path.to_string_lossy().to_string());
                 }
@@ -537,7 +537,7 @@ mod tests {
         std::path::PathBuf::from("/workspace")
     }
 
-    fn global_root() -> std::path::PathBuf {
+    fn home_root() -> std::path::PathBuf {
         std::path::PathBuf::from("/home/user/.astrid")
     }
 
@@ -646,7 +646,7 @@ mod tests {
     #[tokio::test]
     async fn test_scheme_resolution_global() {
         let manifest = make_manifest(vec![], vec!["home://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md")
@@ -676,7 +676,7 @@ mod tests {
     #[tokio::test]
     async fn test_scheme_resolution_both() {
         let manifest = make_manifest(vec![], vec!["workspace://", "home://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/workspace/src/main.rs")
@@ -694,9 +694,9 @@ mod tests {
     #[tokio::test]
     async fn test_global_path_denied_without_manifest_entry() {
         // Manifest only has workspace://, no home:// — global paths must be denied
-        // even when global_root is configured.
+        // even when home_root is configured.
         let manifest = make_manifest(vec![], vec!["workspace://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/home/user/.astrid/skills/foo/SKILL.md")

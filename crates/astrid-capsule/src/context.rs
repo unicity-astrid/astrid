@@ -30,7 +30,7 @@ pub struct CapsuleContext {
     /// under this root via the `home://` path prefix. This is scoped to the
     /// principal's home — keys, databases, and system config in `~/.astrid/`
     /// are NOT accessible through this path.
-    pub global_root: Option<PathBuf>,
+    pub home_root: Option<PathBuf>,
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -53,7 +53,7 @@ impl CapsuleContext {
     pub fn new(
         principal: PrincipalId,
         workspace_root: PathBuf,
-        global_root: Option<PathBuf>,
+        home_root: Option<PathBuf>,
         kv: ScopedKvStore,
         event_bus: Arc<EventBus>,
         cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -61,7 +61,7 @@ impl CapsuleContext {
         Self {
             principal,
             workspace_root,
-            global_root,
+            home_root,
             kv,
             event_bus,
             cli_socket_listener,

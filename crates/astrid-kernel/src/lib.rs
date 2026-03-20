@@ -59,7 +59,7 @@ pub struct Kernel {
     ///
     /// Always `Some` in production (boot requires `AstridHome`). Remains
     /// `Option` for compatibility with `CapsuleContext` and test fixtures.
-    pub global_root: Option<PathBuf>,
+    pub home_root: Option<PathBuf>,
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Shared KV store backing all capsule-scoped stores and kernel state.
@@ -130,7 +130,7 @@ impl Kernel {
         // root — so capsules cannot access keys, databases, or config.
         let default_principal = astrid_core::PrincipalId::default();
         let principal_home = home.principal_home(&default_principal);
-        let global_root = Some(principal_home.root().to_path_buf());
+        let home_root = Some(principal_home.root().to_path_buf());
 
         // 1. Open the persistent KV store (needed by capability store below).
         let kv_path = home.state_db_path();
@@ -210,7 +210,7 @@ impl Kernel {
             _upper_dir: Arc::new(upper_temp),
             vfs_root_handle: root_handle,
             workspace_root,
-            global_root,
+            home_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
             audit_log,
@@ -293,7 +293,7 @@ impl Kernel {
         let ctx = astrid_capsule::context::CapsuleContext::new(
             principal.clone(),
             self.workspace_root.clone(),
-            self.global_root.clone(),
+            self.home_root.clone(),
             kv,
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
