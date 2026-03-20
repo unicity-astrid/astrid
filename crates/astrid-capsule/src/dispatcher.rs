@@ -175,11 +175,8 @@ impl EventDispatcher {
                     // Gate: if identity store is wired, only auto-provision
                     // "default". Other principals are created by uplinks
                     // which handle home provisioning after create_user.
-                    let should_provision = if self.identity_store.is_some() {
-                        pid == astrid_core::PrincipalId::default()
-                    } else {
-                        true // pre-production: ungated
-                    };
+                    let should_provision =
+                        self.identity_store.is_none() || pid == astrid_core::PrincipalId::default();
 
                     if should_provision && let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
                         let ph = home.principal_home(&pid);

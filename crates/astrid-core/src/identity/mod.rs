@@ -109,7 +109,8 @@ mod tests {
             "display_name": "legacy-user",
             "created_at": "2024-01-01T00:00:00Z"
         }"#;
-        let user: AstridUserId = serde_json::from_str(json).unwrap();
+        let user: AstridUserId = serde_json::from_str(json)
+            .expect("legacy user record should deserialize without principal field");
         assert_eq!(user.principal.as_str(), "default");
         assert_eq!(user.display_name.as_deref(), Some("legacy-user"));
     }
