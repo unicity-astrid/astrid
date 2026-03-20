@@ -219,7 +219,12 @@ impl ExecutionEngine for McpHostEngine {
         }
     }
 
-    fn invoke_interceptor(&self, action: &str, payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+    fn invoke_interceptor(
+        &self,
+        action: &str,
+        payload: &[u8],
+        _caller: Option<&astrid_events::ipc::IpcMessage>,
+    ) -> CapsuleResult<Vec<u8>> {
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
         let params: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {

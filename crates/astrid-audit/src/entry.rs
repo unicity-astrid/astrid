@@ -20,6 +20,10 @@ pub struct AuditEntry {
     pub timestamp: Timestamp,
     /// Session this entry belongs to.
     pub session_id: SessionId,
+    /// The principal (user identity) this action was performed on behalf of.
+    /// `None` for system actions that have no user context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<astrid_core::PrincipalId>,
     /// The action being audited.
     pub action: AuditAction,
     /// Authorization proof for this action.
@@ -48,6 +52,7 @@ impl AuditEntry {
             id: AuditEntryId::new(),
             timestamp: Timestamp::now(),
             session_id,
+            principal: None,
             action,
             authorization,
             outcome,
@@ -82,6 +87,37 @@ impl AuditEntry {
         entry
     }
 
+    /// Create and sign a new audit entry with a principal.
+    ///
+    /// Used when audit entries need to record which principal an action
+    /// was performed on behalf of. Call sites will be wired when the
+    /// kernel audit integration is updated.
+    #[must_use]
+    pub fn create_with_principal(
+        session_id: SessionId,
+        principal: astrid_core::PrincipalId,
+        action: AuditAction,
+        authorization: AuthorizationProof,
+        outcome: AuditOutcome,
+        previous_hash: ContentHash,
+        runtime_key: &KeyPair,
+    ) -> Self {
+        let mut entry = Self::new_unsigned(
+            session_id,
+            action,
+            authorization,
+            outcome,
+            previous_hash,
+            runtime_key.export_public_key(),
+        );
+        entry.principal = Some(principal);
+
+        let signing_data = entry.signing_data();
+        entry.signature = runtime_key.sign(&signing_data);
+
+        entry
+    }
+
     /// Get the data used for signing.
     #[must_use]
     pub fn signing_data(&self) -> Vec<u8> {
@@ -89,6 +125,20 @@ impl AuditEntry {
         data.extend_from_slice(self.id.0.as_bytes());
         data.extend_from_slice(&self.timestamp.0.timestamp().to_le_bytes());
         data.extend_from_slice(self.session_id.0.as_bytes());
+        // Include principal in signing data with length-delimited encoding
+        // to prevent ambiguity between None and adjacent field boundaries.
+        // 0xFF marker + 4-byte length + bytes for Some, 0x00 marker for None.
+        if let Some(ref p) = self.principal {
+            let bytes = p.as_str().as_bytes();
+            data.push(0xFF); // presence marker
+            // PrincipalId is max 64 bytes — safe truncation.
+            #[expect(clippy::cast_possible_truncation)]
+            let len = bytes.len() as u32;
+            data.extend_from_slice(&len.to_le_bytes());
+            data.extend_from_slice(bytes);
+        } else {
+            data.push(0x00); // absence marker
+        }
         // Action is serialized to JSON for consistent hashing
         if let Ok(action_json) = serde_json::to_vec(&self.action) {
             data.extend_from_slice(&action_json);

@@ -22,6 +22,12 @@ mod tests {
     }
 
     #[test]
+    fn test_astrid_user_id_default_principal() {
+        let user = AstridUserId::new();
+        assert_eq!(user.principal.as_str(), "default");
+    }
+
+    #[test]
     fn test_astrid_user_id_display() {
         let user = AstridUserId::new();
         let display = user.to_string();
@@ -30,6 +36,67 @@ mod tests {
         let user_with_name = AstridUserId::new().with_display_name("Alice");
         let display = user_with_name.to_string();
         assert!(display.starts_with("Alice("));
+    }
+
+    #[test]
+    fn test_principal_derived_from_display_name() {
+        let user = AstridUserId::new().with_display_name("Josh Bouw");
+        assert_eq!(user.principal.as_str(), "josh-bouw");
+    }
+
+    #[test]
+    fn test_principal_derived_unicode_fallback() {
+        // All non-ASCII chars → hyphens → collapsed → empty → fallback.
+        let user = AstridUserId::new().with_display_name("日本語");
+        assert!(
+            user.principal.as_str().starts_with("user-"),
+            "expected uuid fallback, got: {}",
+            user.principal.as_str()
+        );
+    }
+
+    #[test]
+    fn test_principal_derived_empty_string() {
+        let user = AstridUserId::new().with_display_name("");
+        assert!(
+            user.principal.as_str().starts_with("user-"),
+            "expected uuid fallback, got: {}",
+            user.principal.as_str()
+        );
+    }
+
+    #[test]
+    fn test_principal_derived_special_chars() {
+        let user = AstridUserId::new().with_display_name("alice@example.com");
+        assert_eq!(user.principal.as_str(), "alice-example-com");
+    }
+
+    #[test]
+    fn test_principal_derived_truncation() {
+        let long_name = "a".repeat(100);
+        let user = AstridUserId::new().with_display_name(&long_name);
+        assert!(user.principal.as_str().len() <= 64);
+    }
+
+    #[test]
+    fn test_principal_explicit_override_after_display_name() {
+        let principal = crate::PrincipalId::new("custom-principal").unwrap();
+        let user = AstridUserId::new()
+            .with_display_name("Alice")
+            .with_principal(principal);
+        assert_eq!(user.principal.as_str(), "custom-principal");
+    }
+
+    #[test]
+    fn test_principal_preserved_when_set_before_display_name() {
+        // Documented order: with_principal() then with_display_name()
+        // should preserve the explicit principal.
+        let principal = crate::PrincipalId::new("custom-principal").unwrap();
+        let user = AstridUserId::new()
+            .with_principal(principal)
+            .with_display_name("Alice");
+        assert_eq!(user.principal.as_str(), "custom-principal");
+        assert_eq!(user.display_name.as_deref(), Some("Alice"));
     }
 
     #[test]

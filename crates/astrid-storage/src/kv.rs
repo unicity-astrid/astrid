@@ -644,6 +644,17 @@ impl ScopedKvStore {
         &self.namespace
     }
 
+    /// Create a new scoped view sharing the same underlying store but with
+    /// a different namespace. Used for per-invocation principal scoping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::InvalidKey`] if the namespace is empty
+    /// or contains null bytes.
+    pub fn with_namespace(&self, namespace: impl Into<String>) -> StorageResult<Self> {
+        Self::new(Arc::clone(&self.inner), namespace)
+    }
+
     /// Get a raw byte value by key.
     ///
     /// # Errors

@@ -5,8 +5,8 @@ use std::sync::Arc;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
-/// URI scheme prefix for the global shared directory.
-const GLOBAL_SCHEME: &str = "global://";
+/// URI scheme prefix for the principal's home directory.
+const HOME_SCHEME: &str = "home://";
 
 /// Path prefix that maps to the principal's tmp directory.
 const TMP_PREFIX: &str = "/tmp/";
@@ -91,8 +91,8 @@ fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhy
 enum VfsTarget {
     /// The workspace overlay VFS (default).
     Workspace,
-    /// The global shared directory (`global://`).
-    Global,
+    /// The principal's home directory (`home://`).
+    Home,
     /// The principal's tmp directory (`/tmp/`).
     Tmp,
 }
@@ -120,25 +120,25 @@ struct ResolvedVfsPath {
 }
 
 /// Phase 1: Resolve a raw guest path to a physical path and determine
-/// whether it targets the workspace or global VFS.
+/// whether it targets the workspace or home VFS.
 fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error> {
-    if let Some(stripped) = raw_path.strip_prefix(GLOBAL_SCHEME) {
-        let global_root = state.global_root.as_ref().ok_or_else(|| {
+    if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
+        let home_root = state.home_root.as_ref().ok_or_else(|| {
             Error::msg(
-                "global:// scheme is not available: no global directory is configured. \
+                "home:// scheme is not available: no home directory is configured. \
                  Create the directory and restart the kernel.",
             )
         })?;
-        let resolved = resolve_physical_absolute(global_root, stripped)?;
+        let resolved = resolve_physical_absolute(home_root, stripped)?;
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
-            .map_err(|_| Error::msg("resolved global path escaped canonical root"))?
+            .map_err(|_| Error::msg("resolved home path escaped canonical root"))?
             .to_path_buf();
         Ok(ResolvedPath {
             physical: resolved.physical,
             relative,
-            target: VfsTarget::Global,
+            target: VfsTarget::Home,
         })
     } else if raw_path.starts_with(TMP_PREFIX) || raw_path == "/tmp" {
         let tmp_root = state.tmp_dir.as_ref().ok_or_else(|| {
@@ -178,17 +178,17 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
 /// and capability handle.
 fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, Error> {
     match resolved.target {
-        VfsTarget::Global => {
-            let vfs = state.global_vfs.clone().ok_or_else(|| {
+        VfsTarget::Home => {
+            let vfs = state.home_vfs.clone().ok_or_else(|| {
                 Error::msg(
-                    "global:// VFS is not mounted. \
+                    "home:// VFS is not mounted. \
                      Create the directory and restart the kernel.",
                 )
             })?;
             let handle = state
-                .global_vfs_root_handle
+                .home_vfs_root_handle
                 .clone()
-                .ok_or_else(|| Error::msg("global:// VFS root handle is not available"))?;
+                .ok_or_else(|| Error::msg("home:// VFS root handle is not available"))?;
             Ok(ResolvedVfsPath {
                 relative: resolved.relative.clone(),
                 vfs,

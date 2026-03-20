@@ -52,15 +52,14 @@ pub struct Kernel {
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
     pub workspace_root: PathBuf,
-    /// The global shared resources directory (`~/.astrid/shared/`). Capsules
-    /// declaring `fs_read = ["global://"]` can read files under this root.
-    /// Scoped to `shared/` so that keys, databases, and capsule .env files in
-    /// `~/.astrid/` are NOT accessible. Write access is intentionally not
-    /// granted to any shipped capsule.
+    /// The principal home resources directory (`~/.astrid/home/{principal}/`).
+    /// Capsules declaring `fs_read = ["home://"]` can read files under this
+    /// root. Scoped to the principal's home so that keys, databases, and
+    /// system config in `~/.astrid/` are NOT accessible.
     ///
     /// Always `Some` in production (boot requires `AstridHome`). Remains
     /// `Option` for compatibility with `CapsuleContext` and test fixtures.
-    pub global_root: Option<PathBuf>,
+    pub home_root: Option<PathBuf>,
     /// The natively bound Unix Socket for the CLI proxy.
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
     /// Shared KV store backing all capsule-scoped stores and kernel state.
@@ -126,12 +125,12 @@ impl Kernel {
             ))
         })?;
 
-        // Resolve the global shared directory for the `global://` VFS scheme.
+        // Resolve the home directory for the `home://` VFS scheme.
         // Points to `~/.astrid/home/{principal}/` — NOT the full `~/.astrid/`
         // root — so capsules cannot access keys, databases, or config.
         let default_principal = astrid_core::PrincipalId::default();
         let principal_home = home.principal_home(&default_principal);
-        let global_root = Some(principal_home.root().to_path_buf());
+        let home_root = Some(principal_home.root().to_path_buf());
 
         // 1. Open the persistent KV store (needed by capability store below).
         let kv_path = home.state_db_path();
@@ -211,7 +210,7 @@ impl Kernel {
             _upper_dir: Arc::new(upper_temp),
             vfs_root_handle: root_handle,
             workspace_root,
-            global_root,
+            home_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
             audit_log,
@@ -294,7 +293,7 @@ impl Kernel {
         let ctx = astrid_capsule::context::CapsuleContext::new(
             principal.clone(),
             self.workspace_root.clone(),
-            self.global_root.clone(),
+            self.home_root.clone(),
             kv,
             Arc::clone(&self.event_bus),
             self.cli_socket_listener.clone(),
@@ -383,7 +382,7 @@ impl Kernel {
             registry.get(id)
         };
         if let Some(capsule) = capsule
-            && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[])
+            && let Err(e) = capsule.invoke_interceptor("handle_lifecycle_restart", &[], None)
         {
             tracing::debug!(
                 capsule_id = %id,

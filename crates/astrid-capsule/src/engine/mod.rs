@@ -59,12 +59,17 @@ pub(crate) trait ExecutionEngine: Send + Sync {
     /// Invoke an interceptor handler by action name.
     ///
     /// `action` is the handler name (e.g., `handle_user_prompt`) and
-    /// `payload` is the serialized IPC payload. Returns the raw WASM
-    /// response bytes.
+    /// `payload` is the serialized IPC payload. `caller` is the originating
+    /// IPC message used to set per-invocation principal context on `HostState`.
     ///
     /// The default implementation returns an error. Engines that support
     /// interceptors (e.g., `WasmEngine`) override this.
-    fn invoke_interceptor(&self, _action: &str, _payload: &[u8]) -> CapsuleResult<Vec<u8>> {
+    fn invoke_interceptor(
+        &self,
+        _action: &str,
+        _payload: &[u8],
+        _caller: Option<&astrid_events::ipc::IpcMessage>,
+    ) -> CapsuleResult<Vec<u8>> {
         Err(crate::error::CapsuleError::NotSupported(
             "interceptors not supported by this engine".into(),
         ))

@@ -65,8 +65,12 @@ impl Default for EventMetadata {
 }
 
 /// All events that can occur in the Astrid runtime.
+///
+/// Always stored behind `Arc` in practice (`EventBus` publishes `Arc<AstridEvent>`),
+/// so the variant size difference is acceptable — no heap allocation per event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[expect(clippy::large_enum_variant)]
 pub enum AstridEvent {
     // ========== Agent Lifecycle ==========
     /// Runtime started.

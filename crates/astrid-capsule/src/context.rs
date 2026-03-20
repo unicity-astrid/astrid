@@ -25,12 +25,12 @@ pub struct CapsuleContext {
     /// The principal this capsule is running on behalf of.
     pub principal: PrincipalId,
     pub workspace_root: PathBuf,
-    /// Global shared resources directory (`~/.astrid/home/{principal}/`).
-    /// When set, capsules declaring `fs_read = ["global://"]` can read files
-    /// under this root via the `global://` path prefix. This is scoped to the
+    /// Home resources directory (`~/.astrid/home/{principal}/`).
+    /// When set, capsules declaring `fs_read = ["home://"]` can read files
+    /// under this root via the `home://` path prefix. This is scoped to the
     /// principal's home — keys, databases, and system config in `~/.astrid/`
     /// are NOT accessible through this path.
-    pub global_root: Option<PathBuf>,
+    pub home_root: Option<PathBuf>,
     pub kv: ScopedKvStore,
     pub event_bus: Arc<EventBus>,
     pub cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -53,7 +53,7 @@ impl CapsuleContext {
     pub fn new(
         principal: PrincipalId,
         workspace_root: PathBuf,
-        global_root: Option<PathBuf>,
+        home_root: Option<PathBuf>,
         kv: ScopedKvStore,
         event_bus: Arc<EventBus>,
         cli_socket_listener: Option<Arc<tokio::sync::Mutex<tokio::net::UnixListener>>>,
@@ -61,7 +61,7 @@ impl CapsuleContext {
         Self {
             principal,
             workspace_root,
-            global_root,
+            home_root,
             kv,
             event_bus,
             cli_socket_listener,

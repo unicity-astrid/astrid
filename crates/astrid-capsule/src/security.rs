@@ -255,7 +255,7 @@ impl CapsuleSecurityGate for DenyAllGate {
 /// Security gate that enforces capabilities based on the manifest.
 /// Assumes capabilities declared in the manifest were approved by the user during installation.
 ///
-/// VFS scheme prefixes (`workspace://`, `global://`) in `fs_read` / `fs_write`
+/// VFS scheme prefixes (`workspace://`, `home://`) in `fs_read` / `fs_write`
 /// capability entries are resolved to their physical root paths at construction
 /// time so that runtime path checks use simple `starts_with` matching.
 #[derive(Debug, Clone)]
@@ -283,7 +283,7 @@ impl ManifestSecurityGate {
     pub(crate) fn new(
         manifest: CapsuleManifest,
         workspace_root: std::path::PathBuf,
-        global_root: Option<std::path::PathBuf>,
+        home_root: Option<std::path::PathBuf>,
     ) -> Self {
         // Canonicalize roots once up front. Both `resolve_schemes` (for prefix
         // strings) and `workspace_root_path` (for wildcard confinement) use
@@ -291,19 +291,19 @@ impl ManifestSecurityGate {
         let canonical_ws = workspace_root
             .canonicalize()
             .unwrap_or_else(|_| workspace_root.to_path_buf());
-        let canonical_global = global_root
+        let canonical_home = home_root
             .as_ref()
             .map(|g| g.canonicalize().unwrap_or_else(|_| g.clone()));
 
         let resolved_fs_read = Self::resolve_schemes(
             &manifest.capabilities.fs_read,
             &canonical_ws,
-            &canonical_global,
+            &canonical_home,
         );
         let resolved_fs_write = Self::resolve_schemes(
             &manifest.capabilities.fs_write,
             &canonical_ws,
-            &canonical_global,
+            &canonical_home,
         );
         Self {
             manifest,
@@ -316,7 +316,7 @@ impl ManifestSecurityGate {
     /// Translate VFS scheme prefixes into physical paths.
     ///
     /// - `workspace://` -> `<workspace_root>/`
-    /// - `global://` -> `<global_root>/` (dropped if no global root is configured)
+    /// - `home://` -> `<home_root>/` (dropped if no home root is configured)
     /// - `*` -> kept as-is (wildcard — confined at check time)
     /// - anything else -> kept as-is (literal path prefix for backwards compat)
     ///
@@ -324,7 +324,7 @@ impl ManifestSecurityGate {
     fn resolve_schemes(
         entries: &[String],
         canonical_ws: &std::path::Path,
-        canonical_global: &Option<std::path::PathBuf>,
+        canonical_home: &Option<std::path::PathBuf>,
     ) -> Vec<String> {
         let mut resolved = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -333,13 +333,13 @@ impl ManifestSecurityGate {
             } else if let Some(suffix) = entry.strip_prefix("workspace://") {
                 let path = canonical_ws.join(suffix);
                 resolved.push(path.to_string_lossy().to_string());
-            } else if let Some(suffix) = entry.strip_prefix("global://") {
-                if let Some(g_root) = canonical_global {
+            } else if let Some(suffix) = entry.strip_prefix("home://") {
+                if let Some(g_root) = canonical_home {
                     let path = g_root.join(suffix);
                     resolved.push(path.to_string_lossy().to_string());
                 }
-                // If no global root is configured, silently drop this entry
-                // so the capsule simply cannot access global paths.
+                // If no home root is configured, silently drop this entry
+                // so the capsule simply cannot access home paths.
             } else {
                 resolved.push(entry.clone());
             }
@@ -537,7 +537,7 @@ mod tests {
         std::path::PathBuf::from("/workspace")
     }
 
-    fn global_root() -> std::path::PathBuf {
+    fn home_root() -> std::path::PathBuf {
         std::path::PathBuf::from("/home/user/.astrid")
     }
 
@@ -645,8 +645,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_global() {
-        let manifest = make_manifest(vec![], vec!["global://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md")
@@ -662,8 +662,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_global_without_root() {
-        // When no global root is configured, global:// entries are silently dropped
-        let manifest = make_manifest(vec![], vec!["global://"], vec![]);
+        // When no global root is configured, home:// entries are silently dropped
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
 
         assert!(
@@ -675,8 +675,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scheme_resolution_both() {
-        let manifest = make_manifest(vec![], vec!["workspace://", "global://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let manifest = make_manifest(vec![], vec!["workspace://", "home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/workspace/src/main.rs")
@@ -693,10 +693,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_global_path_denied_without_manifest_entry() {
-        // Manifest only has workspace://, no global:// — global paths must be denied
-        // even when global_root is configured.
+        // Manifest only has workspace://, no home:// — global paths must be denied
+        // even when home_root is configured.
         let manifest = make_manifest(vec![], vec!["workspace://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(global_root()));
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
             gate.check_file_read("test", "/home/user/.astrid/skills/foo/SKILL.md")

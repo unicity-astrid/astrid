@@ -66,14 +66,14 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
-    /// Global shared resources directory. Paths prefixed with `global://`
+    /// Principal's home directory. Paths prefixed with `home://`
     /// are resolved relative to this root.
-    pub global_root: Option<PathBuf>,
-    /// VFS instance for the global shared root. This is a direct `HostVfs` —
-    /// writes are permanent (no OverlayVfs CoW layer).
-    pub global_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the global shared VFS root.
-    pub global_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    pub home_root: Option<PathBuf>,
+    /// VFS instance for the principal's home directory. This is a direct
+    /// `HostVfs` — writes are permanent (no OverlayVfs CoW layer).
+    pub home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    /// Capability handle for the home VFS root.
+    pub home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// Principal's tmp directory. Paths starting with `/tmp/` are resolved
     /// relative to this root (`~/.astrid/home/{principal}/.local/tmp/`).
     pub tmp_dir: Option<PathBuf>,
@@ -90,6 +90,13 @@ pub struct HostState {
     pub upper_dir: Option<Arc<tempfile::TempDir>>,
     /// Plugin-scoped KV store (`plugin:{capsule_id}` namespace).
     pub kv: ScopedKvStore,
+    /// Per-invocation KV store scoped to a different principal.
+    ///
+    /// Set by `WasmEngine::invoke_interceptor` when the IPC message's
+    /// principal differs from `self.principal`. Host functions use
+    /// `invocation_kv.as_ref().unwrap_or(&kv)` to transparently scope
+    /// reads/writes to the calling principal.
+    pub invocation_kv: Option<ScopedKvStore>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -266,6 +273,15 @@ impl HostState {
     pub fn principal_kv_namespace(&self) -> String {
         format!("{}:capsule:{}", self.principal, self.capsule_id)
     }
+
+    /// Return the effective KV store for the current invocation.
+    ///
+    /// Uses `invocation_kv` if set (different principal), falls back to
+    /// the capsule's default `kv` store.
+    #[must_use]
+    pub fn effective_kv(&self) -> &ScopedKvStore {
+        self.invocation_kv.as_ref().unwrap_or(&self.kv)
+    }
 }
 
 impl std::fmt::Debug for HostState {
@@ -274,7 +290,7 @@ impl std::fmt::Debug for HostState {
             .field("capsule_id", &self.capsule_id)
             .field("workspace_root", &self.workspace_root)
             .field("vfs_root_handle", &self.vfs_root_handle)
-            .field("has_global_root", &self.global_root.is_some())
+            .field("has_home_root", &self.home_root.is_some())
             .field("has_security", &self.security.is_some())
             .field("has_uplink_capability", &self.has_uplink_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
@@ -311,14 +327,15 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -384,14 +401,15 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -462,14 +480,15 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -536,14 +555,15 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
@@ -626,14 +646,15 @@ mod tests {
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
+            invocation_kv: None,
             capsule_log: None,
             capsule_id: CapsuleId::from_static("test"),
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            global_root: None,
-            global_vfs: None,
-            global_vfs_root_handle: None,
+            home_root: None,
+            home_vfs: None,
+            home_vfs_root_handle: None,
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
