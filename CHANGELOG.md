@@ -11,6 +11,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- Per-principal audit chain splitting — each principal maintains its own independent chain per session, independently verifiable via `verify_principal_chain()` and `get_principal_entries()`
 - `AuditLog::append_with_principal()` for principal-tagged audit entries
 - Auto-provisioning gated on identity store — only `"default"` principal is auto-provisioned when identity store is configured
 - Linux FHS-aligned directory layout (`etc/`, `var/`, `run/`, `log/`, `keys/`, `bin/`, `home/`) replacing the flat `~/.astrid/` structure
