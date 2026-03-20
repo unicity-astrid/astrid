@@ -466,7 +466,10 @@ fn try_install_from_wasm_asset(
                 response.status()
             );
         }
-        Ok(response.text()?)
+        // Limit Capsule.toml to 1MB to prevent OOM from malicious repos
+        let mut content = String::new();
+        response.take(1024 * 1024).read_to_string(&mut content)?;
+        Ok(content)
     })();
 
     let capsule_toml_content = match capsule_toml_result {
@@ -2026,6 +2029,20 @@ mod tests {
         assert!(result.is_none(), "should return None on download failure");
     }
 
+    /// Helper matching the same logic as `try_install_from_wasm_asset`
+    fn find_wasm_asset(assets: &[serde_json::Value]) -> Option<String> {
+        assets.iter().find_map(|asset| {
+            let name = asset.get("name")?.as_str()?;
+            if !Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
+            {
+                return None;
+            }
+            Some(name.to_string())
+        })
+    }
+
     #[test]
     fn try_install_wasm_asset_prefers_first_wasm() {
         // If multiple .wasm assets exist, should pick the first one
@@ -2039,15 +2056,7 @@ mod tests {
                 "browser_download_url": "https://example.com/second.wasm"
             }),
         ];
-        // Just test the find_map logic
-        let found = assets.iter().find_map(|asset| {
-            let name = asset.get("name")?.as_str()?;
-            if !name.ends_with(".wasm") {
-                return None;
-            }
-            Some(name.to_string())
-        });
-        assert_eq!(found.as_deref(), Some("first.wasm"));
+        assert_eq!(find_wasm_asset(&assets).as_deref(), Some("first.wasm"));
     }
 
     #[test]
@@ -2057,14 +2066,23 @@ mod tests {
             "name": "capsule.capsule",
             "browser_download_url": "https://example.com/capsule.capsule"
         })];
-        let found = assets.iter().find_map(|asset| {
-            let name = asset.get("name")?.as_str()?;
-            if !name.ends_with(".wasm") {
-                return None;
-            }
-            Some(name.to_string())
-        });
-        assert!(found.is_none(), ".capsule should not match .wasm check");
+        assert!(
+            find_wasm_asset(&assets).is_none(),
+            ".capsule should not match .wasm check"
+        );
+    }
+
+    #[test]
+    fn try_install_wasm_asset_case_insensitive() {
+        let assets = vec![serde_json::json!({
+            "name": "capsule.WASM",
+            "browser_download_url": "https://example.com/capsule.WASM"
+        })];
+        assert_eq!(
+            find_wasm_asset(&assets).as_deref(),
+            Some("capsule.WASM"),
+            "should match .WASM case-insensitively"
+        );
     }
 
     #[test]
