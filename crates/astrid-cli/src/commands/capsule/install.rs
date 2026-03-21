@@ -843,12 +843,46 @@ pub(crate) fn install_from_local_path_inner(
         prompt_env_fields(&manifest.env, &env_path)?;
     }
 
+    // Warn if the newly installed capsule has unsatisfied imports.
+    validate_install_imports(&manifest);
+
     // Clean up backup
     if let Some(ref backup) = backup_dir {
         let _ = std::fs::remove_dir_all(backup);
     }
 
     Ok(())
+}
+
+/// Check if a newly installed capsule's imports are satisfied by other
+/// installed capsules' exports. Prints warnings for unsatisfied imports.
+fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest) {
+    if !manifest.has_imports() {
+        return;
+    }
+    let Ok(all_capsules) = super::meta::scan_installed_capsules() else {
+        return;
+    };
+
+    for (ns, name, req, optional) in manifest.import_tuples() {
+        let satisfied = all_capsules.iter().any(|c| {
+            c.name != manifest.package.name
+                && c.meta.as_ref().is_some_and(|m| {
+                    m.exports
+                        .get(ns)
+                        .and_then(|ifaces| ifaces.get(name))
+                        .and_then(|v| semver::Version::parse(v).ok())
+                        .is_some_and(|v| req.matches(&v))
+                })
+        });
+
+        if !satisfied {
+            let severity = if optional { "optional" } else { "required" };
+            eprintln!(
+                "  Warning: {severity} import {ns}/{name} {req} is not satisfied by any installed capsule"
+            );
+        }
+    }
 }
 
 /// Content-address WASM binaries into the shared `lib/` directory.
