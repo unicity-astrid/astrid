@@ -15,6 +15,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- Kernel boot validation — validates every capsule's required `[imports]` has a matching `[exports]` from another loaded capsule, logs errors for unsatisfied required imports and info for optional ones
 - `astrid capsule remove` command with dependency safety checks — blocks removal if the capsule is the sole exporter of an interface that another capsule imports (`--force` to override), cleans up content-addressed WASM binaries from `bin/` when no other capsule references the same hash
 - Install capsules from GitHub release WASM assets — `astrid capsule install @org/repo` now downloads pre-built `.wasm` binaries from release assets before falling back to clone + build from source
 - Per-principal audit chain splitting — each principal maintains its own independent chain per session, independently verifiable via `verify_principal_chain()` and `get_principal_entries()`

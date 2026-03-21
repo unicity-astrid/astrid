@@ -21,6 +21,7 @@ astrid-events = { workspace = true }
 astrid-mcp = { workspace = true }
 astrid-storage = { workspace = true, features = ["kv"] }
 astrid-vfs = { workspace = true }
+semver = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "signal"] }
