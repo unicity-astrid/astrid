@@ -1,6 +1,6 @@
 /// WIT interface definitions for Astrid WASM-sandboxed capsules.
 ///
-/// Package: astrid:capsule@0.2.0
+/// Package: astrid:capsule@0.1.0
 ///
 /// This file defines the canonical contract between the Astrid host runtime
 /// and WASM capsule guests. Near-term it documents the Extism host function
@@ -18,7 +18,7 @@
 /// below describe the *logical* contract. Once the kernel migrates to the
 /// Component Model (WS-8), these become actual typed parameters.
 
-package astrid:capsule@0.2.0;
+package astrid:capsule@0.1.0;
 
 // ---------------------------------------------------------------------------
 // Shared types
