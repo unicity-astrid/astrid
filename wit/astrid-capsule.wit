@@ -270,6 +270,8 @@ interface fs {
     /// Get file metadata (size, type, mtime).
     ///
     /// Returns a JSON object: `{"size": u64, "isDir": bool, "mtime": u64}`.
+    /// Note: the JSON field is camelCase `isDir` (matching current serialization),
+    /// while the WIT record uses kebab-case `is-dir` (WIT convention).
     /// Security-gated: requires file-read capability.
     fs-stat: func(path: string) -> string;
 
@@ -499,11 +501,10 @@ interface sys {
 
     /// Emit a structured log message attributed to the calling capsule.
     ///
-    /// Level is a string: "trace", "debug", "info", "warn", "error".
     /// Logs are routed to the current principal's log directory with
     /// daily rotation. Cross-principal invocations write to the target
     /// principal's log directory.
-    log: func(level: string, message: string);
+    log: func(level: log-level, message: string);
 
     /// Signal that the capsule's run loop is ready.
     ///
@@ -553,7 +554,7 @@ interface process {
     /// Blocks the WASM thread until the process exits or is cancelled.
     /// Returns JSON `{"stdout", "stderr", "exit_code"}`.
     /// Cancelled processes return exit_code -1.
-    spawn-host: func(request-json: string) -> string;
+    spawn: func(request-json: string) -> string;
 
     /// Spawn a background (non-blocking) process.
     ///
@@ -561,21 +562,21 @@ interface process {
     /// Returns JSON `{"id": u64}` — the process handle for log/kill.
     /// Max 8 concurrent background processes per capsule.
     /// stdout/stderr are buffered (1 MB per stream, ring buffer).
-    spawn-background-host: func(request-json: string) -> string;
+    spawn-background: func(request-json: string) -> string;
 
     /// Read buffered logs from a background process.
     ///
     /// Input: JSON `{"id": u64}`.
     /// Returns JSON `{"stdout", "stderr", "running", "exit_code"}`.
     /// Drains the buffers (subsequent reads return only new data).
-    read-process-logs-host: func(request-json: string) -> string;
+    read-logs: func(request-json: string) -> string;
 
     /// Kill a background process.
     ///
     /// Input: JSON `{"id": u64}`.
     /// Sends SIGKILL to the process group (Unix) or kill (Windows).
     /// Returns JSON `{"killed", "exit_code", "stdout", "stderr"}`.
-    kill-process-host: func(request-json: string) -> string;
+    kill: func(request-json: string) -> string;
 }
 
 /// Interactive user input collection during lifecycle hooks.
@@ -689,13 +690,6 @@ world capsule {
     /// containing the action name and event data. The guest returns
     /// a JSON response directing the kernel how to proceed.
     export astrid-hook-trigger: func(input: list<u8>) -> list<u8>;
-
-    /// Execute a tool invocation routed to this capsule.
-    ///
-    /// The kernel calls `astrid_tool_call` with a JSON payload
-    /// containing the tool name and arguments. The guest returns
-    /// a JSON response with the tool's output.
-    export astrid-tool-call: func(input: list<u8>) -> list<u8>;
 
     /// Background run loop for long-lived capsules.
     ///
