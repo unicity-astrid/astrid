@@ -971,6 +971,23 @@ fn content_address_wit(
             continue;
         }
 
+        // Enforce 1MB size limit to prevent DoS from oversized .wit files.
+        let metadata = std::fs::metadata(&path)
+            .with_context(|| format!("failed to stat {}", path.display()))?;
+        if metadata.len() > 1024 * 1024 {
+            anyhow::bail!(
+                "WIT file {} exceeds 1MB size limit ({})",
+                path.display(),
+                metadata.len(),
+            );
+        }
+
+        let filename = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("WIT file has no filename: {}", path.display()))?
+            .to_string_lossy()
+            .into_owned();
+
         let content =
             std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
 
@@ -981,11 +998,6 @@ fn content_address_wit(
             std::fs::write(&dest, &content)?;
         }
 
-        let filename = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
         hashes.insert(filename, hash);
     }
 

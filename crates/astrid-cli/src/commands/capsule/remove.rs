@@ -181,15 +181,17 @@ fn cleanup_wit_files(
     wit_files: &std::collections::HashMap<String, String>,
     all_capsules: &[super::meta::InstalledCapsule],
 ) -> anyhow::Result<()> {
-    for hash in wit_files.values() {
-        let hash_in_use = all_capsules.iter().any(|c| {
-            c.name != target_name
-                && c.meta
-                    .as_ref()
-                    .is_some_and(|m| m.wit_files.values().any(|h| h == hash))
-        });
+    // Build a set of all WIT hashes used by other capsules (O(N * W_avg)).
+    let other_hashes: HashSet<&str> = all_capsules
+        .iter()
+        .filter(|c| c.name != target_name)
+        .filter_map(|c| c.meta.as_ref())
+        .flat_map(|m| m.wit_files.values().map(String::as_str))
+        .collect();
 
-        if !hash_in_use {
+    // Remove WIT files not referenced by any other capsule (O(W)).
+    for hash in wit_files.values() {
+        if !other_hashes.contains(hash.as_str()) {
             let wit_path = home.wit_dir().join(format!("{hash}.wit"));
             if wit_path.exists() {
                 std::fs::remove_file(&wit_path)
