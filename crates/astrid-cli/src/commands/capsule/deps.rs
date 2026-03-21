@@ -147,7 +147,7 @@ pub(crate) fn show_tree() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (all_trees, _) = build_dep_graph(&capsules);
+    let (all_trees, unsatisfied) = build_dep_graph(&capsules);
 
     for (i, tree) in all_trees.iter().enumerate() {
         if i > 0 {
@@ -186,6 +186,15 @@ pub(crate) fn show_tree() -> anyhow::Result<()> {
                     }
                 }
             }
+        }
+    }
+
+    if !unsatisfied.is_empty() {
+        println!();
+        println!("{}", Theme::header("Unsatisfied Imports"));
+        for u in &unsatisfied {
+            let iface = format!("{}/{} {}", u.namespace, u.interface, u.version);
+            println!("  {} imports {}", u.capsule_name.bold(), iface.red());
         }
     }
 
