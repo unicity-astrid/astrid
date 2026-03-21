@@ -1513,21 +1513,23 @@ fn validate_imports_exports(
         std::path::PathBuf,
     )],
 ) {
-    use astrid_capsule::toposort::import_satisfied_by;
-
-    let all_exports: Vec<(&str, &str, &semver::Version)> = manifests
-        .iter()
-        .flat_map(|(m, _)| m.export_triples())
-        .collect();
+    let exports_by_interface: std::collections::HashMap<(&str, &str), Vec<&semver::Version>> =
+        manifests.iter().flat_map(|(m, _)| m.export_triples()).fold(
+            std::collections::HashMap::new(),
+            |mut acc, (ns, name, ver)| {
+                acc.entry((ns, name)).or_default().push(ver);
+                acc
+            },
+        );
 
     let mut satisfied_count: u32 = 0;
     let mut warning_count: u32 = 0;
 
     for (manifest, _) in manifests {
         for (ns, name, req, optional) in manifest.import_tuples() {
-            let has_provider = all_exports
-                .iter()
-                .any(|(ens, en, ev)| import_satisfied_by(ns, name, req, ens, en, ev));
+            let has_provider = exports_by_interface
+                .get(&(ns, name))
+                .is_some_and(|versions| versions.iter().any(|v| req.matches(v)));
 
             if has_provider {
                 satisfied_count = satisfied_count.saturating_add(1);
