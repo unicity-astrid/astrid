@@ -91,8 +91,12 @@ enum Commands {
         from_mcp_json: Option<String>,
     },
 
-    /// Initialize a workspace
-    Init,
+    /// Initialize a workspace and install a distro
+    Init {
+        /// Distro to install (name, @org/repo, or path to Distro.toml)
+        #[arg(long, default_value = "astralis")]
+        distro: String,
+    },
 
     /// Start the Astrid daemon in persistent mode (detached, no TUI)
     Start,
@@ -271,8 +275,8 @@ async fn main() -> Result<()> {
                 std::process::exit(status.code().unwrap_or(1));
             }
         },
-        Some(Commands::Init) => {
-            commands::init::run_init()?;
+        Some(Commands::Init { distro }) => {
+            commands::init::run_init(&distro)?;
         },
 
         Some(Commands::Capsule { command }) => match command {
