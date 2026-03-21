@@ -15,6 +15,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- `astrid init` with distro-based capsule installation — fetches Distro.toml, multi-select provider groups, shared variable prompts with `{{ var }}` template resolution, progress bars, writes Distro.lock for reproducibility. Supports `--distro` flag for custom distros.
 - Distro.toml parser and Distro.lock generator — parse distro manifests with full os-release style metadata, shared variables with `{{ var }}` templates, provider groups, uplink roles, and semver validation. Atomic lockfile writes with BLAKE3 hashes for reproducible installs.
 - Kernel boot validation — validates every capsule's required `[imports]` has a matching `[exports]` from another loaded capsule, logs errors for unsatisfied required imports and info for optional ones
 - `astrid capsule remove` command with dependency safety checks — blocks removal if the capsule is the sole exporter of an interface that another capsule imports (`--force` to override), cleans up content-addressed WASM binaries from `bin/` when no other capsule references the same hash

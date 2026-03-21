@@ -1,57 +1,454 @@
-//! Init command — initialize a workspace.
+//! Init command — first-run distro installation and workspace setup.
+//!
+//! Fetches a `Distro.toml` manifest, lets the user select providers,
+//! prompts for shared variables, installs all selected capsules, and
+//! writes a `Distro.lock` for reproducibility.
 
-use astrid_core::dirs::WorkspaceDir;
+use std::collections::HashMap;
+use std::io::Write;
 
+use anyhow::{Context, bail};
+use astrid_core::dirs::AstridHome;
+use indicatif::{ProgressBar, ProgressStyle};
+
+use super::distro::lock::{LockedCapsule, create_lock, is_lock_fresh, load_lock, write_lock};
+use super::distro::manifest::{DistroCapsule, DistroManifest, parse_manifest};
 use crate::theme::Theme;
 
-/// Initialize the current directory as an Astrid workspace.
-pub(crate) fn run_init() -> anyhow::Result<()> {
-    let cwd = std::env::current_dir()?;
-    let ws = WorkspaceDir::from_path(&cwd);
+/// Default distro name when none specified.
+const DEFAULT_DISTRO: &str = "astralis";
 
-    if ws.dot_astrid().exists() {
-        println!(
+/// Default GitHub org for distro repos.
+const DEFAULT_ORG: &str = "unicity-astrid";
+
+/// Run the init flow: workspace setup + distro-based capsule installation.
+pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
+    let home = AstridHome::resolve()?;
+    home.ensure()?;
+
+    // Workspace init (existing behaviour).
+    init_workspace()?;
+
+    // Check lockfile — if fresh, we're already initialized.
+    let principal = astrid_core::PrincipalId::default();
+    let lock_path = home
+        .principal_home(&principal)
+        .config_dir()
+        .join("distro.lock");
+
+    // Fetch and parse the distro manifest.
+    let manifest = fetch_and_parse_manifest(distro_source)?;
+
+    // Check lock freshness AFTER parsing manifest (need manifest to compare).
+    if let Some(existing_lock) = load_lock(&lock_path)?
+        && is_lock_fresh(&existing_lock, &manifest)
+    {
+        eprintln!(
             "{}",
             Theme::info(&format!(
-                "Workspace already initialized at {}",
-                cwd.display()
+                "{} is already installed (Distro.lock is up to date)",
+                manifest
+                    .distro
+                    .pretty_name
+                    .as_deref()
+                    .unwrap_or(&manifest.distro.name),
             ))
         );
         return Ok(());
     }
 
-    ws.ensure()?;
-
-    // Write a template config.toml if one doesn't exist.
-    let config_path = ws.dot_astrid().join("config.toml");
-    if !config_path.exists() {
-        std::fs::write(
-            &config_path,
-            "# Astrid workspace configuration\n\
-             # See docs for available options.\n\
-             \n\
-             # [model]\n\
-             # provider = \"anthropic\"\n\
-             # model = \"claude-sonnet-4-5-20250929\"\n\
-             \n\
-             # [security]\n\
-             # auto_approve_read = true\n\
-             \n\
-             # [budget]\n\
-             # session_max_usd = 10.0\n",
-        )?;
+    // Display distro info.
+    let display_name = manifest
+        .distro
+        .pretty_name
+        .as_deref()
+        .unwrap_or(&manifest.distro.name);
+    eprintln!("{}", Theme::header(&format!("Installing {display_name}")));
+    if let Some(ref desc) = manifest.distro.description {
+        eprintln!("  {desc}");
     }
+    eprintln!();
 
-    println!(
-        "{}",
-        Theme::success(&format!(
-            "Initialized workspace at {}",
-            ws.dot_astrid().display()
-        ))
-    );
-    println!("  Created: {}", ws.dot_astrid().display());
-    println!("  Config:  {}", config_path.display());
-    println!();
+    // Select providers (multi-select per group).
+    let selected = select_capsules(&manifest)?;
+
+    // Collect variables needed by selected capsules.
+    let vars = collect_variables(&manifest, &selected)?;
+
+    // Install each capsule with progress.
+    let locked = install_capsules(&selected)?;
+
+    // Write per-capsule env files with resolved variable templates.
+    write_env_files(&home, &selected, &vars)?;
+
+    // Write Distro.lock.
+    let lock = create_lock(&manifest, locked);
+    write_lock(&lock_path, &lock)?;
+
+    eprintln!();
+    eprintln!("{}", Theme::success("Installation complete."));
+    eprintln!("  Run {} to start.", Theme::prompt("astrid"),);
 
     Ok(())
+}
+
+/// Initialize the current directory as an Astrid workspace (if not already).
+fn init_workspace() -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+    let ws = astrid_core::dirs::WorkspaceDir::from_path(&cwd);
+
+    if !ws.dot_astrid().exists() {
+        ws.ensure()?;
+        let config_path = ws.dot_astrid().join("config.toml");
+        if !config_path.exists() {
+            std::fs::write(
+                &config_path,
+                "# Astrid workspace configuration\n\
+                 # See docs for available options.\n",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Resolve a distro source string to a manifest URL or path, then parse it.
+fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
+    // Local file path.
+    let path = std::path::Path::new(source);
+    if path.exists() && path.is_file() {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        return parse_manifest(&content);
+    }
+
+    // @org/repo → raw GitHub URL.
+    let url = if let Some(repo_path) = source.strip_prefix('@') {
+        format!("https://raw.githubusercontent.com/{repo_path}/main/Distro.toml")
+    } else if source.starts_with("http://") || source.starts_with("https://") {
+        source.to_string()
+    } else {
+        // Bare name → default org.
+        format!("https://raw.githubusercontent.com/{DEFAULT_ORG}/{source}/main/Distro.toml")
+    };
+
+    eprintln!("Fetching distro manifest...");
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let response = client
+        .get(&url)
+        .send()
+        .context("failed to fetch distro manifest")?;
+
+    if !response.status().is_success() {
+        bail!(
+            "failed to fetch distro manifest from {url} (HTTP {})",
+            response.status(),
+        );
+    }
+
+    // Limit to 1MB.
+    let content = {
+        use std::io::Read;
+        let mut buf = String::new();
+        response.take(1024 * 1024).read_to_string(&mut buf)?;
+        buf
+    };
+
+    parse_manifest(&content)
+}
+
+/// Select which capsules to install. Capsules without a group are always
+/// included. Capsules with a group are presented for multi-select.
+fn select_capsules(manifest: &DistroManifest) -> anyhow::Result<Vec<DistroCapsule>> {
+    let mut selected = Vec::new();
+    let mut groups: HashMap<&str, Vec<&DistroCapsule>> = HashMap::new();
+
+    for cap in &manifest.capsules {
+        if let Some(ref group) = cap.group {
+            groups.entry(group.as_str()).or_default().push(cap);
+        } else {
+            selected.push(cap.clone());
+        }
+    }
+
+    for (group_name, group_caps) in &groups {
+        eprintln!("Select {group_name} provider(s):");
+        for (i, cap) in group_caps.iter().enumerate() {
+            eprintln!("  [{}] {}", i.saturating_add(1), cap.name);
+        }
+
+        eprint!("Enter numbers (comma-separated, e.g. 1,2): ");
+        std::io::stderr().flush()?;
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+
+        let choices: Vec<usize> = input
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .filter(|&n| n >= 1 && n <= group_caps.len())
+            .collect();
+
+        if choices.is_empty() {
+            // Default to first provider if nothing selected.
+            eprintln!("  No selection — defaulting to {}", group_caps[0].name);
+            selected.push(group_caps[0].clone());
+        } else {
+            for idx in choices {
+                selected.push(group_caps[idx.saturating_sub(1)].clone());
+            }
+        }
+        eprintln!();
+    }
+
+    Ok(selected)
+}
+
+/// Prompt for distro-level variables needed by the selected capsules.
+/// Only prompts for variables that are actually referenced by a selected capsule's env.
+fn collect_variables(
+    manifest: &DistroManifest,
+    selected: &[DistroCapsule],
+) -> anyhow::Result<HashMap<String, String>> {
+    // Collect all variable references from selected capsules.
+    let mut needed_vars: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for cap in selected {
+        for value in cap.env.values() {
+            for var in extract_var_refs(value) {
+                needed_vars.insert(var.to_string());
+            }
+        }
+    }
+
+    if needed_vars.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    eprintln!("Configuration:");
+    let mut vars = HashMap::new();
+
+    // Sort for deterministic prompt order.
+    let mut sorted_vars: Vec<&str> = needed_vars.iter().map(String::as_str).collect();
+    sorted_vars.sort_unstable();
+
+    for var_name in sorted_vars {
+        let Some(def) = manifest.variables.get(var_name) else {
+            continue;
+        };
+
+        let desc = def.description.as_deref().unwrap_or(var_name);
+        let default_hint = def
+            .default
+            .as_ref()
+            .map(|d| format!(" [{d}]"))
+            .unwrap_or_default();
+
+        eprint!("  {desc}{default_hint}: ");
+        std::io::stderr().flush()?;
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        let value = if input.is_empty() {
+            def.default.clone().unwrap_or_default()
+        } else {
+            input.to_string()
+        };
+
+        if !value.is_empty() {
+            vars.insert(var_name.to_string(), value);
+        }
+    }
+
+    eprintln!();
+    Ok(vars)
+}
+
+/// Extract `{{ var }}` references from a template string.
+fn extract_var_refs(template: &str) -> Vec<&str> {
+    template
+        .split("{{")
+        .skip(1)
+        .filter_map(|s| s.split_once("}}"))
+        .map(|(var, _)| var.trim())
+        .filter(|var| !var.is_empty())
+        .collect()
+}
+
+/// Resolve `{{ var }}` references in a template string with values.
+fn resolve_template(template: &str, vars: &HashMap<String, String>) -> String {
+    let mut result = template.to_string();
+    for (key, value) in vars {
+        let pattern = format!("{{{{ {key} }}}}");
+        result = result.replace(&pattern, value);
+        // Also handle no-space variant.
+        let compact = format!("{{{{{key}}}}}");
+        result = result.replace(&compact, value);
+    }
+    result
+}
+
+/// Install each selected capsule with a progress bar.
+fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCapsule>> {
+    let total = selected.len();
+    let pb = ProgressBar::new(total as u64);
+    pb.set_style(
+        ProgressStyle::with_template("  [{bar:30}] {pos}/{len} {msg}")
+            .expect("valid template")
+            .progress_chars("=> "),
+    );
+
+    let mut locked = Vec::with_capacity(total);
+    let mut failed = Vec::new();
+
+    for cap in selected {
+        pb.set_message(cap.name.clone());
+
+        if let Err(e) = super::capsule::install::install_capsule(&cap.source, false) {
+            eprintln!("\n  Failed to install {}: {e}", cap.name);
+            failed.push(cap.name.clone());
+            pb.inc(1);
+            continue;
+        }
+
+        // Read the installed meta to get the wasm_hash for the lock.
+        let home = AstridHome::resolve()?;
+        let target_dir = super::capsule::install::resolve_target_dir(&home, &cap.name, false)?;
+        let meta = super::capsule::meta::read_meta(&target_dir);
+
+        locked.push(LockedCapsule {
+            name: cap.name.clone(),
+            version: cap.version.clone(),
+            source: cap.source.clone(),
+            hash: meta
+                .and_then(|m| m.wasm_hash)
+                .map(|h| format!("blake3:{h}"))
+                .unwrap_or_default(),
+        });
+
+        pb.inc(1);
+    }
+
+    pb.finish_and_clear();
+
+    if failed.is_empty() {
+        eprintln!("  Installed {total} capsule(s).");
+    } else {
+        eprintln!(
+            "  Installed {} capsule(s), {} failed: {}",
+            total.saturating_sub(failed.len()),
+            failed.len(),
+            failed.join(", "),
+        );
+    }
+
+    Ok(locked)
+}
+
+/// Write per-capsule .env.json files with resolved variable templates.
+fn write_env_files(
+    home: &AstridHome,
+    selected: &[DistroCapsule],
+    vars: &HashMap<String, String>,
+) -> anyhow::Result<()> {
+    let principal = astrid_core::PrincipalId::default();
+    let env_dir = home.principal_home(&principal).env_dir();
+    std::fs::create_dir_all(&env_dir)?;
+
+    for cap in selected {
+        if cap.env.is_empty() {
+            continue;
+        }
+
+        let env_path = env_dir.join(format!("{}.env.json", cap.name));
+        if env_path.exists() {
+            // Don't overwrite existing env config — user may have customized.
+            continue;
+        }
+
+        let mut resolved: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+        for (key, template) in &cap.env {
+            let value = resolve_template(template, vars);
+            if !value.is_empty() {
+                resolved.insert(key.clone(), serde_json::Value::String(value));
+            }
+        }
+
+        if !resolved.is_empty() {
+            let json = serde_json::to_string_pretty(&resolved)?;
+            std::fs::write(&env_path, &json)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&env_path, std::fs::Permissions::from_mode(0o600))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_var_refs_finds_all() {
+        assert_eq!(extract_var_refs("{{ foo }}"), vec!["foo"]);
+        assert_eq!(extract_var_refs("{{ a }}-{{ b }}"), vec!["a", "b"],);
+        assert!(extract_var_refs("no vars").is_empty());
+    }
+
+    #[test]
+    fn resolve_template_replaces_vars() {
+        let mut vars = HashMap::new();
+        vars.insert("key".to_string(), "secret123".to_string());
+        vars.insert("url".to_string(), "https://api.example.com".to_string());
+
+        assert_eq!(resolve_template("{{ key }}", &vars), "secret123",);
+        assert_eq!(
+            resolve_template("prefix-{{ url }}-suffix", &vars),
+            "prefix-https://api.example.com-suffix",
+        );
+    }
+
+    #[test]
+    fn resolve_template_handles_missing_var() {
+        let vars = HashMap::new();
+        // Unresolved template stays as-is.
+        assert_eq!(resolve_template("{{ missing }}", &vars), "{{ missing }}",);
+    }
+
+    #[test]
+    fn distro_source_resolution() {
+        // Bare name → default org URL.
+        let url = if "astralis".starts_with("http") {
+            "astralis".to_string()
+        } else if let Some(repo) = "astralis".strip_prefix('@') {
+            format!("https://raw.githubusercontent.com/{repo}/main/Distro.toml")
+        } else {
+            format!("https://raw.githubusercontent.com/{DEFAULT_ORG}/astralis/main/Distro.toml")
+        };
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/unicity-astrid/astralis/main/Distro.toml",
+        );
+
+        // @org/repo → raw URL.
+        let source = "@myorg/mydistro";
+        let url = if let Some(repo) = source.strip_prefix('@') {
+            format!("https://raw.githubusercontent.com/{repo}/main/Distro.toml")
+        } else {
+            source.to_string()
+        };
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/myorg/mydistro/main/Distro.toml",
+        );
+    }
 }
