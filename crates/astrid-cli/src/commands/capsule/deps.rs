@@ -238,6 +238,7 @@ mod tests {
                 topics: vec![],
                 wasm_hash: None,
                 wit_files: std::collections::HashMap::new(),
+                supersedes: None,
             }),
             location: CapsuleLocation::User,
         }

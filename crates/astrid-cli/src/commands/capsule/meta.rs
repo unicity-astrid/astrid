@@ -46,6 +46,9 @@ pub(crate) struct CapsuleMeta {
     /// Maps original filename to BLAKE3 hash (e.g. `"my-analytics.wit" → "abc123"`).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub(crate) wit_files: HashMap<String, String>,
+    /// Name of the capsule this one supersedes (replaces).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) supersedes: Option<String>,
 }
 
 /// A topic API declaration baked into `meta.json` with inline schema content.
@@ -318,6 +321,7 @@ mod tests {
             ],
             wasm_hash: None,
             wit_files: HashMap::new(),
+            supersedes: None,
         };
 
         let json = serde_json::to_string_pretty(&meta).expect("serialize");
@@ -355,6 +359,7 @@ mod tests {
             topics: vec![],
             wasm_hash: None,
             wit_files: HashMap::new(),
+            supersedes: None,
         };
         let json = serde_json::to_string(&meta).expect("serialize");
         assert!(

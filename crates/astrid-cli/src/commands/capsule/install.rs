@@ -843,6 +843,7 @@ pub(crate) fn install_from_local_path_inner(
         topics: baked_topics,
         wasm_hash,
         wit_files,
+        supersedes: manifest.package.supersedes.clone(),
     };
     write_meta(&target_dir, &meta)?;
 
@@ -1820,6 +1821,7 @@ mod tests {
             topics: vec![],
             wasm_hash: None,
             wit_files: std::collections::HashMap::new(),
+            supersedes: None,
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1844,6 +1846,7 @@ mod tests {
             topics: vec![],
             wasm_hash: None,
             wit_files: std::collections::HashMap::new(),
+            supersedes: None,
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");

@@ -219,6 +219,13 @@ pub struct PackageDef {
     pub exclude: Option<Vec<String>>,
     /// A catch-all table for custom, tool-specific metadata.
     pub metadata: Option<serde_json::Value>,
+    /// Name of the capsule this one supersedes (replaces).
+    ///
+    /// v0.5.0: parsed and stored in meta.json, not kernel-enforced.
+    /// v0.6.0: kernel loads superseding capsule instead of the original,
+    /// with auto-rollback if the replacement crashes.
+    #[serde(default)]
+    pub supersedes: Option<String>,
 }
 
 /// Defines an executable or library component within the capsule.

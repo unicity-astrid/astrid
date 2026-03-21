@@ -173,6 +173,7 @@ mod tests {
             topics: vec![],
             wasm_hash: hash.map(String::from),
             wit_files: std::collections::HashMap::new(),
+            supersedes: None,
         }
     }
 
