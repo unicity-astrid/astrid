@@ -1,0 +1,376 @@
+//! Distro manifest types and parsing.
+//!
+//! Parses `Distro.toml` into strongly-typed [`DistroManifest`] with validation
+//! for schema version, semver, identifier formats, and variable references.
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use anyhow::Context;
+use serde::{Deserialize, Serialize};
+
+/// Current supported schema version.
+pub(crate) const SCHEMA_VERSION: u32 = 1;
+
+/// A parsed distro manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) struct DistroManifest {
+    /// Schema version for forward compatibility.
+    pub(crate) schema_version: u32,
+    /// Distro metadata.
+    pub(crate) distro: DistroMeta,
+    /// Shared variables for capsule env configuration.
+    #[serde(default)]
+    pub(crate) variables: HashMap<String, VariableDef>,
+    /// Capsule entries in the distro.
+    #[serde(default, rename = "capsule")]
+    pub(crate) capsules: Vec<DistroCapsule>,
+}
+
+/// Distro identity and metadata (os-release style).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) struct DistroMeta {
+    /// Machine-readable identifier (e.g. `astralis`).
+    pub(crate) id: String,
+    /// Display name (e.g. `Astralis`).
+    pub(crate) name: String,
+    /// Full human-readable string (e.g. `Astralis 0.1.0 (Genesis)`).
+    #[serde(default)]
+    pub(crate) pretty_name: Option<String>,
+    /// Semantic version.
+    pub(crate) version: String,
+    /// Release codename (e.g. `genesis`).
+    #[serde(default)]
+    pub(crate) codename: Option<String>,
+    /// Release date (YYYY-MM-DD).
+    #[serde(default)]
+    pub(crate) release_date: Option<String>,
+    /// Short description.
+    #[serde(default)]
+    pub(crate) description: Option<String>,
+    /// Original authors.
+    #[serde(default)]
+    pub(crate) authors: Vec<String>,
+    /// Current maintainers.
+    #[serde(default)]
+    pub(crate) maintainers: Vec<String>,
+    /// Homepage URL.
+    #[serde(default)]
+    pub(crate) homepage: Option<String>,
+    /// Support URL.
+    #[serde(default)]
+    pub(crate) support: Option<String>,
+    /// Bug tracker URL.
+    #[serde(default)]
+    pub(crate) bug_tracker: Option<String>,
+    /// Source repository URL.
+    #[serde(default)]
+    pub(crate) repository: Option<String>,
+    /// SPDX license identifier.
+    #[serde(default)]
+    pub(crate) license: Option<String>,
+    /// Minimum Astrid runtime version required.
+    #[serde(default)]
+    pub(crate) astrid_version: Option<String>,
+    /// Namespaced interface requirements.
+    ///
+    /// Outer key = namespace, inner key = interface name, value = semver requirement.
+    /// Example: `[distro.requires.astrid] llm = "^1.0"`
+    #[serde(default)]
+    pub(crate) requires: HashMap<String, HashMap<String, String>>,
+}
+
+/// A shared variable defined at the distro level.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct VariableDef {
+    /// Whether this variable holds a secret (masked during input).
+    #[serde(default)]
+    pub(crate) secret: bool,
+    /// Human-readable description shown during prompts.
+    #[serde(default)]
+    pub(crate) description: Option<String>,
+    /// Default value.
+    #[serde(default)]
+    pub(crate) default: Option<String>,
+}
+
+/// A capsule entry in the distro manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DistroCapsule {
+    /// Capsule package name (e.g. `astrid-capsule-session`).
+    pub(crate) name: String,
+    /// Source location (e.g. `@unicity-astrid/capsule-session`).
+    pub(crate) source: String,
+    /// Exact version to install (resolved to a git tag).
+    pub(crate) version: String,
+    /// Provider group for multi-select during init (e.g. `llm`).
+    #[serde(default)]
+    pub(crate) group: Option<String>,
+    /// Deployment role (e.g. `uplink`).
+    #[serde(default)]
+    pub(crate) role: Option<String>,
+    /// Environment variable mappings with `{{ var }}` template references.
+    #[serde(default)]
+    pub(crate) env: HashMap<String, String>,
+}
+
+/// Parse a `Distro.toml` string into a [`DistroManifest`].
+pub(crate) fn parse_manifest(content: &str) -> anyhow::Result<DistroManifest> {
+    let manifest: DistroManifest =
+        toml::from_str(content).context("failed to parse Distro.toml")?;
+    super::validate::validate_manifest(&manifest)?;
+    Ok(manifest)
+}
+
+/// Load and parse a `Distro.toml` from disk.
+pub(crate) fn load_manifest(path: &Path) -> anyhow::Result<DistroManifest> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    parse_manifest(&content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MINIMAL: &str = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@unicity-astrid/capsule-cli"
+version = "0.1.0"
+role = "uplink"
+"#;
+
+    #[test]
+    fn parse_minimal_manifest() {
+        let m = parse_manifest(MINIMAL).unwrap();
+        assert_eq!(m.schema_version, 1);
+        assert_eq!(m.distro.id, "test");
+        assert_eq!(m.distro.name, "Test");
+        assert_eq!(m.distro.version, "0.1.0");
+        assert_eq!(m.capsules.len(), 1);
+        assert_eq!(m.capsules[0].name, "astrid-capsule-cli");
+        assert_eq!(m.capsules[0].role.as_deref(), Some("uplink"));
+    }
+
+    #[test]
+    fn parse_full_manifest() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "astralis"
+name = "Astralis"
+pretty-name = "Astralis 0.1.0 (Genesis)"
+version = "0.1.0"
+codename = "genesis"
+release-date = "2026-03-21"
+description = "The complete Astrid AI assistant experience"
+authors = ["Astrid Core Team"]
+maintainers = ["Joshua J. Bouw <josh@unicity-labs.com>"]
+homepage = "https://github.com/unicity-astrid/astralis"
+support = "https://github.com/unicity-astrid/astrid/discussions"
+bug-tracker = "https://github.com/unicity-astrid/astralis/issues"
+repository = "https://github.com/unicity-astrid/astralis"
+license = "MIT OR Apache-2.0"
+astrid-version = ">=0.5.0"
+
+[distro.requires.astrid]
+llm = "^1.0"
+session = "^1.0"
+
+[variables]
+api_key = { secret = true, description = "API key" }
+base_url = { description = "Base URL", default = "https://api.openai.com" }
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@unicity-astrid/capsule-cli"
+version = "0.1.0"
+role = "uplink"
+
+[[capsule]]
+name = "astrid-capsule-openai-compat"
+source = "@unicity-astrid/capsule-openai-compat"
+version = "0.1.0"
+group = "llm"
+
+[capsule.env]
+api_key = "{{ api_key }}"
+base_url = "{{ base_url }}"
+"#;
+        let m = parse_manifest(toml).unwrap();
+        assert_eq!(m.distro.codename.as_deref(), Some("genesis"));
+        assert_eq!(m.distro.maintainers.len(), 1);
+        assert_eq!(m.variables.len(), 2);
+        assert!(m.variables["api_key"].secret);
+        assert_eq!(
+            m.variables["base_url"].default.as_deref(),
+            Some("https://api.openai.com")
+        );
+        assert_eq!(m.capsules.len(), 2);
+        assert_eq!(m.capsules[1].group.as_deref(), Some("llm"));
+        assert_eq!(m.capsules[1].env["api_key"], "{{ api_key }}");
+        let requires = &m.distro.requires;
+        assert_eq!(requires["astrid"]["llm"], "^1.0");
+    }
+
+    #[test]
+    fn parse_rejects_wrong_schema_version() {
+        let toml = r#"
+schema-version = 99
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "cli"
+source = "@org/cli"
+version = "0.1.0"
+role = "uplink"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("schema-version"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_rejects_invalid_distro_id() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "INVALID"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "cli"
+source = "@org/cli"
+version = "0.1.0"
+role = "uplink"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("distro.id"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_rejects_no_capsules() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("at least one capsule"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_no_uplink() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-session"
+source = "@org/session"
+version = "0.1.0"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("uplink"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_capsule_names() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@org/cli"
+version = "0.1.0"
+role = "uplink"
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@org/cli2"
+version = "0.2.0"
+role = "uplink"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("duplicate"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_rejects_undefined_variable_ref() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@org/cli"
+version = "0.1.0"
+role = "uplink"
+
+[[capsule]]
+name = "astrid-capsule-llm"
+source = "@org/llm"
+version = "0.1.0"
+
+[capsule.env]
+key = "{{ undefined_var }}"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("undefined_var"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_rejects_invalid_distro_version() {
+        let toml = r#"
+schema-version = 1
+
+[distro]
+id = "test"
+name = "Test"
+version = "not_semver"
+
+[[capsule]]
+name = "cli"
+source = "@org/cli"
+version = "0.1.0"
+role = "uplink"
+"#;
+        let err = parse_manifest(toml).unwrap_err();
+        assert!(err.to_string().contains("version"), "got: {err}");
+    }
+}
