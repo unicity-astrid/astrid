@@ -293,6 +293,12 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
     eprintln!(
         "Done: {updated} updated, {up_to_date} up-to-date, {check_failed} check-failed, {skipped} skipped, {install_failed} install-failed."
     );
+
+    // Regenerate Distro.lock if any capsules were updated.
+    if updated > 0 {
+        regenerate_distro_lock(home)?;
+    }
+
     Ok(())
 }
 
@@ -902,10 +908,69 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
     }
 }
 
-/// Content-address WASM binaries into the shared `lib/` directory.
+/// Regenerate the Distro.lock from currently installed capsules.
+///
+/// Scans all installed capsules, reads their meta.json, and writes a new
+/// lockfile with current versions and BLAKE3 hashes. Called after `update`
+/// to keep the lock in sync.
+fn regenerate_distro_lock(home: &AstridHome) -> anyhow::Result<()> {
+    use crate::commands::distro::lock::{DistroLock, DistroLockMeta, LockedCapsule, write_lock};
+
+    let principal = astrid_core::PrincipalId::default();
+    let lock_path = home
+        .principal_home(&principal)
+        .config_dir()
+        .join("distro.lock");
+
+    // Only regenerate if a lock already exists (distro was initialized).
+    if !lock_path.exists() {
+        return Ok(());
+    }
+
+    let all = super::meta::scan_installed_capsules()?;
+    let capsules: Vec<LockedCapsule> = all
+        .iter()
+        .filter_map(|c| {
+            let meta = c.meta.as_ref()?;
+            Some(LockedCapsule {
+                name: c.name.clone(),
+                version: meta.version.clone(),
+                source: meta.source.clone().unwrap_or_default(),
+                hash: meta
+                    .wasm_hash
+                    .as_ref()
+                    .map(|h| format!("blake3:{h}"))
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    // Read existing lock to preserve distro identity.
+    let existing = crate::commands::distro::lock::load_lock(&lock_path)?;
+    let (id, version) = existing.as_ref().map_or_else(
+        || ("unknown".into(), "0.0.0".into()),
+        |l| (l.distro.id.clone(), l.distro.version.clone()),
+    );
+
+    let lock = DistroLock {
+        schema_version: 1,
+        distro: DistroLockMeta {
+            id,
+            version,
+            resolved_at: chrono::Utc::now().to_rfc3339(),
+        },
+        capsules,
+    };
+
+    write_lock(&lock_path, &lock)?;
+    eprintln!("Distro.lock updated.");
+    Ok(())
+}
+
+/// Content-address WASM binaries into the shared `bin/` directory.
 ///
 /// Finds `.wasm` files in the capsule target directory, hashes them with
-/// BLAKE3, copies to `lib/{hash}.wasm`, and removes the original from the
+/// BLAKE3, copies to `bin/{hash}.wasm`, and removes the original from the
 /// capsule directory. Returns the hash if a WASM binary was processed.
 fn content_address_wasm(
     home: &AstridHome,
