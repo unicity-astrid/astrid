@@ -38,10 +38,14 @@ pub(crate) struct CapsuleMeta {
     /// Topic API declarations with inline schema content, baked at install time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) topics: Vec<BakedTopic>,
-    /// BLAKE3 hash of the WASM binary, stored content-addressed in `lib/`.
+    /// BLAKE3 hash of the WASM binary, stored content-addressed in `bin/`.
     /// `None` for non-WASM capsules (MCP/OpenClaw).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) wasm_hash: Option<String>,
+    /// Content-addressed WIT files stored in `wit/`.
+    /// Maps original filename to BLAKE3 hash (e.g. `"my-analytics.wit" → "abc123"`).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub(crate) wit_files: HashMap<String, String>,
 }
 
 /// A topic API declaration baked into `meta.json` with inline schema content.
@@ -313,6 +317,7 @@ mod tests {
                 },
             ],
             wasm_hash: None,
+            wit_files: HashMap::new(),
         };
 
         let json = serde_json::to_string_pretty(&meta).expect("serialize");
@@ -349,6 +354,7 @@ mod tests {
             exports: HashMap::new(),
             topics: vec![],
             wasm_hash: None,
+            wit_files: HashMap::new(),
         };
         let json = serde_json::to_string(&meta).expect("serialize");
         assert!(

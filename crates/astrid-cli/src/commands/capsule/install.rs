@@ -815,8 +815,11 @@ pub(crate) fn install_from_local_path_inner(
         },
     };
 
-    // Content-address WASM binary into lib/ (shared, deduped).
+    // Content-address WASM binary into bin/ (shared, deduped).
     let wasm_hash = content_address_wasm(home, &target_dir, &manifest)?;
+
+    // Content-address WIT files into wit/ (shared, deduped).
+    let wit_files = content_address_wit(home, &target_dir)?;
 
     // Write meta.json on success
     let now = chrono::Utc::now().to_rfc3339();
@@ -833,6 +836,7 @@ pub(crate) fn install_from_local_path_inner(
         exports: version_map_to_strings(&manifest.exports, |d| d.version.to_string()),
         topics: baked_topics,
         wasm_hash,
+        wit_files,
     };
     write_meta(&target_dir, &meta)?;
 
@@ -934,10 +938,70 @@ fn content_address_wasm(
         std::fs::write(&dest, &wasm_bytes)?;
     }
 
-    // Remove the WASM from the capsule dir — it now lives in lib/
+    // Remove the WASM from the capsule dir — it now lives in bin/
     let _ = std::fs::remove_file(&wasm_path);
 
     Ok(Some(hash))
+}
+
+/// Content-address WIT files from a capsule's `wit/` directory into the
+/// shared `wit/` store. Each `.wit` file is BLAKE3-hashed and stored as
+/// `wit/{hash}.wit`. Returns a map of original filename → hash.
+fn content_address_wit(
+    home: &AstridHome,
+    target_dir: &Path,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    let wit_source = target_dir.join("wit");
+    let mut hashes = std::collections::HashMap::new();
+
+    if !wit_source.is_dir() {
+        return Ok(hashes);
+    }
+
+    let wit_store = home.wit_dir();
+    std::fs::create_dir_all(&wit_store)?;
+
+    let entries = std::fs::read_dir(&wit_source)
+        .with_context(|| format!("failed to read {}", wit_source.display()))?;
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("wit") {
+            continue;
+        }
+
+        // Enforce 1MB size limit to prevent DoS from oversized .wit files.
+        let metadata = std::fs::metadata(&path)
+            .with_context(|| format!("failed to stat {}", path.display()))?;
+        if metadata.len() > 1024 * 1024 {
+            anyhow::bail!(
+                "WIT file {} exceeds 1MB size limit ({})",
+                path.display(),
+                metadata.len(),
+            );
+        }
+
+        let filename = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("WIT file has no filename: {}", path.display()))?
+            .to_string_lossy()
+            .into_owned();
+
+        let content =
+            std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+
+        let hash = blake3::hash(&content).to_hex().to_string();
+        let dest = wit_store.join(format!("{hash}.wit"));
+
+        if !dest.exists() {
+            std::fs::write(&dest, &content)?;
+        }
+
+        hashes.insert(filename, hash);
+    }
+
+    Ok(hashes)
 }
 
 /// Convert a nested namespace→interface→T map to namespace→interface→String
@@ -1681,6 +1745,7 @@ mod tests {
             },
             topics: vec![],
             wasm_hash: None,
+            wit_files: std::collections::HashMap::new(),
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");
@@ -1704,6 +1769,7 @@ mod tests {
             exports: std::collections::HashMap::new(),
             topics: vec![],
             wasm_hash: None,
+            wit_files: std::collections::HashMap::new(),
         };
         write_meta(dir.path(), &meta).unwrap();
         let loaded = read_meta(dir.path()).expect("meta should be readable");

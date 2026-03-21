@@ -165,6 +165,7 @@ impl AstridHome {
             self.log_dir(),
             self.keys_dir(),
             self.bin_dir(),
+            self.wit_dir(),
             self.home_dir(),
         ];
         for dir in &dirs {
@@ -295,6 +296,16 @@ impl AstridHome {
     #[must_use]
     pub fn bin_dir(&self) -> PathBuf {
         self.root.join("bin")
+    }
+
+    /// Content-addressed WIT interface definitions (`wit/`).
+    ///
+    /// Stores BLAKE3-hashed `.wit` files from third-party capsules.
+    /// Standard interfaces ship with the SDK; custom interfaces are
+    /// stored here on capsule install.
+    #[must_use]
+    pub fn wit_dir(&self) -> PathBuf {
+        self.root.join("wit")
     }
 
     /// Shared WASM component libraries (`lib/`).

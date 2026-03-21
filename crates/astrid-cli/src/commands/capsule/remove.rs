@@ -47,6 +47,11 @@ pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool) -> anyhow
         cleanup_wasm_binary(&home, name, hash, &all_capsules)?;
     }
 
+    // Clean up content-addressed WIT files if no other capsule references them
+    if let Some(ref meta) = target_meta {
+        cleanup_wit_files(&home, name, &meta.wit_files, &all_capsules)?;
+    }
+
     // Remove the capsule directory
     std::fs::remove_dir_all(&target_dir)
         .with_context(|| format!("failed to remove {}", target_dir.display()))?;
@@ -168,6 +173,35 @@ fn cleanup_wasm_binary(
     Ok(())
 }
 
+/// Remove content-addressed WIT files from `wit/` if no other installed
+/// capsule references the same hashes.
+fn cleanup_wit_files(
+    home: &AstridHome,
+    target_name: &str,
+    wit_files: &std::collections::HashMap<String, String>,
+    all_capsules: &[super::meta::InstalledCapsule],
+) -> anyhow::Result<()> {
+    // Build a set of all WIT hashes used by other capsules (O(N * W_avg)).
+    let other_hashes: HashSet<&str> = all_capsules
+        .iter()
+        .filter(|c| c.name != target_name)
+        .filter_map(|c| c.meta.as_ref())
+        .flat_map(|m| m.wit_files.values().map(String::as_str))
+        .collect();
+
+    // Remove WIT files not referenced by any other capsule (O(W)).
+    for hash in wit_files.values() {
+        if !other_hashes.contains(hash.as_str()) {
+            let wit_path = home.wit_dir().join(format!("{hash}.wit"));
+            if wit_path.exists() {
+                std::fs::remove_file(&wit_path)
+                    .with_context(|| format!("failed to remove {}", wit_path.display()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::meta::{CapsuleLocation, CapsuleMeta, InstalledCapsule};
@@ -201,6 +235,7 @@ mod tests {
             imports: import_map,
             topics: vec![],
             wasm_hash: hash.map(String::from),
+            wit_files: std::collections::HashMap::new(),
         }
     }
 
