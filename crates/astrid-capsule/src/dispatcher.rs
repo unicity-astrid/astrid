@@ -308,13 +308,14 @@ fn dispatch_to_capsule_queues(
 /// Find all capsules with interceptors matching the given topic.
 ///
 /// Takes a brief read lock on the registry. Only `Ready` capsules are
-/// considered. Returns `(capsule, action)` pairs for each match.
+/// considered. Returns `(capsule, action)` pairs sorted by interceptor
+/// priority (lower values fire first, default 100).
 async fn find_matching_interceptors(
     registry: &RwLock<CapsuleRegistry>,
     topic: &str,
 ) -> Vec<(Arc<dyn crate::capsule::Capsule>, String)> {
     let registry = registry.read().await;
-    let mut matches = Vec::new();
+    let mut matches: Vec<(Arc<dyn crate::capsule::Capsule>, String, u32)> = Vec::new();
     for capsule_id in registry.list() {
         if let Some(capsule) = registry.get(capsule_id) {
             if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
@@ -322,12 +323,21 @@ async fn find_matching_interceptors(
             }
             for interceptor in &capsule.manifest().interceptors {
                 if topic_matches(topic, &interceptor.event) {
-                    matches.push((Arc::clone(&capsule), interceptor.action.clone()));
+                    matches.push((
+                        Arc::clone(&capsule),
+                        interceptor.action.clone(),
+                        interceptor.priority,
+                    ));
                 }
             }
         }
     }
+    // Sort by priority — lower values fire first.
+    matches.sort_by_key(|(_, _, priority)| *priority);
     matches
+        .into_iter()
+        .map(|(capsule, action, _)| (capsule, action))
+        .collect()
 }
 
 /// Returns `true` if `s` has no empty segments — i.e. no leading/trailing dots
@@ -543,6 +553,7 @@ mod tests {
                 interceptors: vec![InterceptorDef {
                     event: interceptor_event.to_string(),
                     action: "test_action".to_string(),
+                    priority: 100,
                 }],
                 cron_jobs: Vec::new(),
                 tools: Vec::new(),
