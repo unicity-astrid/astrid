@@ -11,7 +11,9 @@ use anyhow::{Context, bail};
 use astrid_core::dirs::AstridHome;
 use indicatif::{ProgressBar, ProgressStyle};
 
-use super::distro::lock::{LockedCapsule, create_lock, is_lock_fresh, load_lock, write_lock};
+use super::distro::lock::{
+    DistroLock, DistroLockMeta, LockedCapsule, is_lock_fresh, load_lock, write_lock,
+};
 use super::distro::manifest::{DistroCapsule, DistroManifest, parse_manifest};
 use crate::theme::Theme;
 
@@ -70,10 +72,16 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     eprintln!();
 
     // Select providers (multi-select per group).
-    let selected = select_capsules(&manifest)?;
+    // Extract fields we need before consuming capsules.
+    let variables = manifest.variables;
+    let distro_id = manifest.distro.id;
+    let distro_version = manifest.distro.version;
+    let schema_version = manifest.schema_version;
+
+    let selected = select_capsules(manifest.capsules)?;
 
     // Collect variables needed by selected capsules.
-    let vars = collect_variables(&manifest, &selected)?;
+    let vars = collect_variables(&variables, &selected)?;
 
     // Install each capsule with progress.
     let locked = install_capsules(&selected)?;
@@ -82,7 +90,7 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     write_env_files(&home, &selected, &vars)?;
 
     // Write Distro.lock.
-    let lock = create_lock(&manifest, locked);
+    let lock = create_lock_from_parts(schema_version, &distro_id, &distro_version, locked);
     write_lock(&lock_path, &lock)?;
 
     eprintln!();
@@ -111,6 +119,21 @@ fn init_workspace() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Resolve a distro source string to a raw GitHub URL.
+///
+/// - `astralis` → `https://raw.githubusercontent.com/unicity-astrid/astralis/main/Distro.toml`
+/// - `@org/repo` → `https://raw.githubusercontent.com/org/repo/main/Distro.toml`
+/// - `https://...` → as-is
+fn resolve_distro_url(source: &str) -> String {
+    if source.starts_with("http://") || source.starts_with("https://") {
+        source.to_string()
+    } else if let Some(repo_path) = source.strip_prefix('@') {
+        format!("https://raw.githubusercontent.com/{repo_path}/main/Distro.toml")
+    } else {
+        format!("https://raw.githubusercontent.com/{DEFAULT_ORG}/{source}/main/Distro.toml")
+    }
+}
+
 /// Resolve a distro source string to a manifest URL or path, then parse it.
 fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
     // Local file path.
@@ -121,15 +144,7 @@ fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
         return parse_manifest(&content);
     }
 
-    // @org/repo → raw GitHub URL.
-    let url = if let Some(repo_path) = source.strip_prefix('@') {
-        format!("https://raw.githubusercontent.com/{repo_path}/main/Distro.toml")
-    } else if source.starts_with("http://") || source.starts_with("https://") {
-        source.to_string()
-    } else {
-        // Bare name → default org.
-        format!("https://raw.githubusercontent.com/{DEFAULT_ORG}/{source}/main/Distro.toml")
-    };
+    let url = resolve_distro_url(source);
 
     eprintln!("Fetching distro manifest...");
 
@@ -163,15 +178,16 @@ fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
 
 /// Select which capsules to install. Capsules without a group are always
 /// included. Capsules with a group are presented for multi-select.
-fn select_capsules(manifest: &DistroManifest) -> anyhow::Result<Vec<DistroCapsule>> {
+/// Takes ownership of the manifest's capsule list to avoid cloning.
+fn select_capsules(capsules: Vec<DistroCapsule>) -> anyhow::Result<Vec<DistroCapsule>> {
     let mut selected = Vec::new();
-    let mut groups: HashMap<&str, Vec<&DistroCapsule>> = HashMap::new();
+    let mut groups: HashMap<String, Vec<DistroCapsule>> = HashMap::new();
 
-    for cap in &manifest.capsules {
+    for cap in capsules {
         if let Some(ref group) = cap.group {
-            groups.entry(group.as_str()).or_default().push(cap);
+            groups.entry(group.clone()).or_default().push(cap);
         } else {
-            selected.push(cap.clone());
+            selected.push(cap);
         }
     }
 
@@ -194,7 +210,6 @@ fn select_capsules(manifest: &DistroManifest) -> anyhow::Result<Vec<DistroCapsul
             .collect();
 
         if choices.is_empty() {
-            // Default to first provider if nothing selected.
             eprintln!("  No selection — defaulting to {}", group_caps[0].name);
             selected.push(group_caps[0].clone());
         } else {
@@ -211,7 +226,7 @@ fn select_capsules(manifest: &DistroManifest) -> anyhow::Result<Vec<DistroCapsul
 /// Prompt for distro-level variables needed by the selected capsules.
 /// Only prompts for variables that are actually referenced by a selected capsule's env.
 fn collect_variables(
-    manifest: &DistroManifest,
+    variables: &HashMap<String, super::distro::manifest::VariableDef>,
     selected: &[DistroCapsule],
 ) -> anyhow::Result<HashMap<String, String>> {
     // Collect all variable references from selected capsules.
@@ -236,7 +251,7 @@ fn collect_variables(
     sorted_vars.sort_unstable();
 
     for var_name in sorted_vars {
-        let Some(def) = manifest.variables.get(var_name) else {
+        let Some(def) = variables.get(var_name) else {
             continue;
         };
 
@@ -267,6 +282,24 @@ fn collect_variables(
 
     eprintln!();
     Ok(vars)
+}
+
+/// Create a lockfile from resolved parts (avoids borrowing the full manifest).
+fn create_lock_from_parts(
+    schema_version: u32,
+    distro_id: &str,
+    distro_version: &str,
+    capsules: Vec<LockedCapsule>,
+) -> DistroLock {
+    DistroLock {
+        schema_version,
+        distro: DistroLockMeta {
+            id: distro_id.to_string(),
+            version: distro_version.to_string(),
+            resolved_at: chrono::Utc::now().to_rfc3339(),
+        },
+        capsules,
+    }
 }
 
 /// Extract `{{ var }}` references from a template string.
@@ -305,6 +338,7 @@ fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCaps
 
     let mut locked = Vec::with_capacity(total);
     let mut failed = Vec::new();
+    let home = AstridHome::resolve()?;
 
     for cap in selected {
         pb.set_message(cap.name.clone());
@@ -317,7 +351,6 @@ fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCaps
         }
 
         // Read the installed meta to get the wasm_hash for the lock.
-        let home = AstridHome::resolve()?;
         let target_dir = super::capsule::install::resolve_target_dir(&home, &cap.name, false)?;
         let meta = super::capsule::meta::read_meta(&target_dir);
 
@@ -425,30 +458,24 @@ mod tests {
     }
 
     #[test]
-    fn distro_source_resolution() {
-        // Bare name → default org URL.
-        let url = if "astralis".starts_with("http") {
-            "astralis".to_string()
-        } else if let Some(repo) = "astralis".strip_prefix('@') {
-            format!("https://raw.githubusercontent.com/{repo}/main/Distro.toml")
-        } else {
-            format!("https://raw.githubusercontent.com/{DEFAULT_ORG}/astralis/main/Distro.toml")
-        };
+    fn distro_source_resolution_bare_name() {
         assert_eq!(
-            url,
+            resolve_distro_url("astralis"),
             "https://raw.githubusercontent.com/unicity-astrid/astralis/main/Distro.toml",
         );
+    }
 
-        // @org/repo → raw URL.
-        let source = "@myorg/mydistro";
-        let url = if let Some(repo) = source.strip_prefix('@') {
-            format!("https://raw.githubusercontent.com/{repo}/main/Distro.toml")
-        } else {
-            source.to_string()
-        };
+    #[test]
+    fn distro_source_resolution_at_prefix() {
         assert_eq!(
-            url,
+            resolve_distro_url("@myorg/mydistro"),
             "https://raw.githubusercontent.com/myorg/mydistro/main/Distro.toml",
         );
+    }
+
+    #[test]
+    fn distro_source_resolution_full_url() {
+        let url = "https://example.com/Distro.toml";
+        assert_eq!(resolve_distro_url(url), url);
     }
 }
