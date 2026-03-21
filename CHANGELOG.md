@@ -11,6 +11,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Changed
 
+- Append-only artifact store — `bin/` and `wit/` are never deleted on capsule remove. Content-addressed artifacts are the audit trail; deleting them breaks provability. Future `astrid gc` for explicit cleanup.
 - Replace `[dependencies]` provides/requires string arrays with `[imports]`/`[exports]` namespaced TOML tables — semver version requirements on imports (`^1.0`), exact versions on exports (`1.0.0`), optional imports, namespace/interface name validation
 - **WIT spec:** Rewrite `wit/astrid-capsule.wit` to document all 51 host ABI functions (was 7). Split monolithic `host` interface into 11 domain-specific interfaces (fs, ipc, uplink, kv, net, http, sys, cron, process, elicit, approval, identity). Updated guest exports to reflect actual entry points (`astrid_hook_trigger`, `astrid_tool_call`, `run`, `astrid_install`, `astrid_upgrade`). Bumped package version to `0.2.0`.
 
