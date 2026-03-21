@@ -143,7 +143,10 @@ enum CapsuleCommands {
         #[arg(long)]
         force: bool,
     },
-    /// Show the capsule dependency graph
+    /// Show the capsule imports/exports dependency tree
+    Tree,
+    /// Alias for `tree` (deprecated)
+    #[command(hide = true)]
     Deps,
 }
 
@@ -296,8 +299,8 @@ async fn main() -> Result<()> {
             } => {
                 commands::capsule::remove::remove_capsule(&name, workspace, force)?;
             },
-            CapsuleCommands::Deps => {
-                commands::capsule::deps::show_deps()?;
+            CapsuleCommands::Tree | CapsuleCommands::Deps => {
+                commands::capsule::deps::show_tree()?;
             },
         },
         Some(Commands::Session { command }) => {
