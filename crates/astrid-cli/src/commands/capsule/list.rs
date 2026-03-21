@@ -1,4 +1,6 @@
-//! `astrid capsule list` - display all installed capsules with capability metadata.
+//! `astrid capsule list` - display all installed capsules with interface metadata.
+
+use std::collections::HashMap;
 
 use colored::Colorize;
 
@@ -48,17 +50,17 @@ fn print_compact(capsules: &[super::meta::InstalledCapsule]) {
         .unwrap_or(7); // "unknown".len()
 
     for cap in capsules {
-        let (version, provides_count, requires_count) = match &cap.meta {
+        let (version, exports_count, imports_count) = match &cap.meta {
             Some(meta) => (
                 meta.version.as_str(),
-                meta.provides.len(),
-                meta.requires.len(),
+                meta.exports.values().map(HashMap::len).sum::<usize>(),
+                meta.imports.values().map(HashMap::len).sum::<usize>(),
             ),
             None => ("unknown", 0, 0),
         };
 
         let location_tag = format!("[{}]", cap.location);
-        let caps_summary = format!("provides: {provides_count}, requires: {requires_count}");
+        let caps_summary = format!("exports: {exports_count}, imports: {imports_count}");
 
         // Pad the name before applying bold to avoid ANSI escape codes
         // distorting the column width calculation.
@@ -92,12 +94,7 @@ fn print_verbose(capsules: &[super::meta::InstalledCapsule]) {
             println!("  {}", Theme::dimmed("(no metadata)"));
             continue;
         };
-        let (version, source, provides, requires) = (
-            meta.version.as_str(),
-            meta.source.as_deref(),
-            meta.provides.as_slice(),
-            meta.requires.as_slice(),
-        );
+        let (version, source) = (meta.version.as_str(), meta.source.as_deref());
 
         println!(
             "{}  {}  {}",
@@ -110,20 +107,25 @@ fn print_verbose(capsules: &[super::meta::InstalledCapsule]) {
             println!("  {}", Theme::kv("Source", src));
         }
 
-        print_capability_list("Provides", provides);
-        print_capability_list("Requires", requires);
+        print_interface_map("Exports", &meta.exports);
+        print_interface_map("Imports", &meta.imports);
         print_topics(&meta.topics);
     }
 }
 
-/// Print a labelled capability list, or "(none)" if empty.
-fn print_capability_list(label: &str, caps: &[String]) {
-    if caps.is_empty() {
+/// Print a labelled interface map (imports or exports), or "(none)" if empty.
+fn print_interface_map(
+    label: &str,
+    map: &std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+) {
+    if map.is_empty() {
         println!("  {}: {}", label.bold(), Theme::dimmed("(none)"));
     } else {
         println!("  {}:", label.bold());
-        for cap in caps {
-            println!("    {cap}");
+        for (ns, ifaces) in map {
+            for (name, version) in ifaces {
+                println!("    {ns}/{name} {version}");
+            }
         }
     }
 }

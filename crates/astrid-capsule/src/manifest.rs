@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,9 +23,17 @@ pub struct CapsuleManifest {
     /// The WASM components provided by this capsule.
     #[serde(default, rename = "component")]
     pub components: Vec<ComponentDef>,
-    /// Capability-based dependency declarations for boot ordering.
+    /// Namespaced interface imports — what this capsule needs from others.
+    ///
+    /// Outer key = namespace (e.g. `"astrid"`), inner key = interface name
+    /// (e.g. `"session"`), value = version requirement and optional flag.
     #[serde(default)]
-    pub dependencies: DependenciesDef,
+    pub imports: ImportsMap,
+    /// Namespaced interface exports — what this capsule provides.
+    ///
+    /// Outer key = namespace, inner key = interface name, value = exact version.
+    #[serde(default)]
+    pub exports: ExportsMap,
     /// Capabilities requested by this capsule.
     #[serde(default)]
     pub capabilities: CapabilitiesDef,
@@ -63,82 +70,110 @@ pub struct CapsuleManifest {
     /// Topic API declarations describing the payload shape of IPC topics.
     #[serde(default, rename = "topic")]
     pub topics: Vec<TopicDef>,
-    /// Cached effective provides (computed lazily on first `effective_provides()` call).
-    ///
-    /// **Do not pre-populate.** Always initialize as `OnceLock::new()` in struct literals.
-    /// After `Clone`, the cache carries over the already-initialized value. Mutating
-    /// fields of the clone after `effective_provides()` was called on either the
-    /// original or the clone will return stale data.
-    #[serde(skip)]
-    #[doc(hidden)]
-    pub effective_provides_cache: OnceLock<Vec<String>>,
 }
 
 impl CapsuleManifest {
-    /// Compute the effective set of provided capabilities.
-    ///
-    /// If `dependencies.provides` is explicitly non-empty, returns it directly.
-    /// Otherwise, auto-derives capabilities from `ipc_publish` topics, tools,
-    /// LLM providers, and uplinks using typed prefixes (`topic:`, `tool:`,
-    /// `llm:`, `uplink:`).
+    /// Returns `true` if this capsule has no imports.
     #[must_use]
-    pub fn effective_provides(&self) -> &[String] {
-        self.effective_provides_cache.get_or_init(|| {
-            if !self.dependencies.provides.is_empty() {
-                return self.dependencies.provides.clone();
-            }
-            let mut caps = Vec::new();
-            for topic in &self.capabilities.ipc_publish {
-                caps.push(format!("topic:{topic}"));
-            }
-            for tool in &self.tools {
-                caps.push(format!("tool:{}", tool.name));
-            }
-            for provider in &self.llm_providers {
-                caps.push(format!("llm:{}", provider.id));
-            }
-            for uplink in &self.uplinks {
-                caps.push(format!("uplink:{}", uplink.name));
-            }
-            caps
+    pub fn has_imports(&self) -> bool {
+        self.imports.values().any(|ns| !ns.is_empty())
+    }
+
+    /// Iterate all exported interfaces as `(namespace, name, version)` triples.
+    pub fn export_triples(&self) -> impl Iterator<Item = (&str, &str, &semver::Version)> {
+        self.exports.iter().flat_map(|(ns, ifaces)| {
+            ifaces
+                .iter()
+                .map(move |(name, def)| (ns.as_str(), name.as_str(), &def.version))
+        })
+    }
+
+    /// Iterate all imported interfaces as `(namespace, name, version_req, optional)` tuples.
+    pub fn import_tuples(&self) -> impl Iterator<Item = (&str, &str, &semver::VersionReq, bool)> {
+        self.imports.iter().flat_map(|(ns, ifaces)| {
+            ifaces
+                .iter()
+                .map(move |(name, def)| (ns.as_str(), name.as_str(), &def.version, def.optional))
         })
     }
 }
 
-/// Capability-based dependency declarations for boot ordering.
-///
-/// Capsules declare what capabilities they `provide` to the system and what
-/// they `require` to be present before booting. Capabilities use typed
-/// prefixes:
-///
-/// - `topic:llm.stream.anthropic` - IPC topic
-/// - `tool:run_shell_command` - tool availability
-/// - `llm:claude-3-5-sonnet` - LLM provider
-/// - `uplink:cli` - uplink/frontend
-///
-/// Wildcards (`*`) match a single dot-separated segment:
-/// `topic:llm.stream.*` matches `topic:llm.stream.anthropic`.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DependenciesDef {
-    /// Capabilities this capsule provides to the system.
-    ///
-    /// Auto-derived from `ipc_publish`, `tools`, `llm_providers`, and
-    /// `uplinks` if not explicitly declared.
-    #[serde(default)]
-    pub provides: Vec<String>,
+/// Namespaced interface imports. Outer key = namespace, inner key = interface name.
+pub type ImportsMap = HashMap<String, HashMap<String, ImportDef>>;
 
-    /// Capabilities that MUST be provided by another loaded capsule
-    /// before this capsule boots. Any single provider satisfying a
-    /// requirement is sufficient (any-satisfies semantic).
-    #[serde(default)]
-    pub requires: Vec<String>,
+/// Namespaced interface exports. Outer key = namespace, inner key = interface name.
+pub type ExportsMap = HashMap<String, HashMap<String, ExportDef>>;
+
+/// An imported interface — version requirement with optional flag.
+///
+/// Deserializes from either a version string (`"^1.0"`) or a table
+/// (`{ version = "^1.0", optional = true }`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportDef {
+    /// Semver version requirement (e.g. `^1.0`, `>=1.0, <2.0`, `*`).
+    pub version: semver::VersionReq,
+    /// If `true`, the capsule boots even if no provider is loaded.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
 }
 
-impl DependenciesDef {
-    /// Returns `true` if no capabilities are declared.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.provides.is_empty() && self.requires.is_empty()
+impl<'de> Deserialize<'de> for ImportDef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Short(String),
+            Full {
+                version: String,
+                #[serde(default)]
+                optional: bool,
+            },
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        let (version_str, optional) = match raw {
+            Raw::Short(s) => (s, false),
+            Raw::Full { version, optional } => (version, optional),
+        };
+        let version = semver::VersionReq::parse(&version_str).map_err(|e| {
+            serde::de::Error::custom(format!("invalid semver requirement '{version_str}': {e}"))
+        })?;
+        Ok(Self { version, optional })
+    }
+}
+
+/// An exported interface — exact version declaration.
+///
+/// Deserializes from either a version string (`"1.0.0"`) or a table
+/// (`{ version = "1.0.0" }`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportDef {
+    /// Exact semver version this capsule provides.
+    pub version: semver::Version,
+}
+
+impl<'de> Deserialize<'de> for ExportDef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Short(String),
+            Full { version: String },
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        let version_str = match raw {
+            Raw::Short(s) => s,
+            Raw::Full { version } => version,
+        };
+        let version = semver::Version::parse(&version_str).map_err(|e| {
+            serde::de::Error::custom(format!("invalid semver version '{version_str}': {e}"))
+        })?;
+        Ok(Self { version })
     }
 }
 

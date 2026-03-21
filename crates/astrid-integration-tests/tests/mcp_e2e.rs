@@ -31,7 +31,8 @@ async fn test_mcp_host_engine_capability_validation() {
             metadata: None,
         },
         components: vec![],
-        dependencies: Default::default(),
+        imports: std::collections::HashMap::new(),
+        exports: std::collections::HashMap::new(),
         capabilities: CapabilitiesDef {
             net: vec![],
             net_bind: vec![],
@@ -62,7 +63,6 @@ async fn test_mcp_host_engine_capability_validation() {
         cron_jobs: vec![],
         tools: vec![],
         topics: vec![],
-        effective_provides_cache: std::sync::OnceLock::new(),
     };
 
     let loader = CapsuleLoader::new(test_secure_mcp_client());

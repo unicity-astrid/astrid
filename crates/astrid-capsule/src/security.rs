@@ -479,6 +479,8 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, PackageDef};
 
@@ -504,7 +506,8 @@ mod tests {
                 metadata: None,
             },
             components: vec![],
-            dependencies: Default::default(),
+            imports: HashMap::new(),
+            exports: HashMap::new(),
             capabilities: CapabilitiesDef {
                 net: net.into_iter().map(String::from).collect(),
                 net_bind: vec![],
@@ -529,7 +532,6 @@ mod tests {
             cron_jobs: vec![],
             tools: vec![],
             topics: vec![],
-            effective_provides_cache: std::sync::OnceLock::new(),
         }
     }
 

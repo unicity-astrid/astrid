@@ -14,6 +14,46 @@ use crate::manifest::{CapsuleManifest, TopicDirection};
 /// Standard capsule manifest file name.
 pub(crate) const MANIFEST_FILE_NAME: &str = "Capsule.toml";
 
+/// Check if a string is a valid namespace or interface name: `^[a-z][a-z0-9-]*$`.
+fn is_valid_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Validate namespace and interface name identifiers for a manifest section.
+fn validate_interface_identifiers<'a>(
+    path: &Path,
+    section: &str,
+    namespace: &str,
+    names: impl Iterator<Item = &'a String>,
+) -> CapsuleResult<()> {
+    if !is_valid_identifier(namespace) {
+        return Err(CapsuleError::ManifestParseError {
+            path: path.to_path_buf(),
+            message: format!(
+                "[{section}].{namespace}: invalid namespace \
+                 (must match ^[a-z][a-z0-9-]*$)"
+            ),
+        });
+    }
+    for name in names {
+        if !is_valid_identifier(name) {
+            return Err(CapsuleError::ManifestParseError {
+                path: path.to_path_buf(),
+                message: format!(
+                    "[{section}.{namespace}].{name}: invalid interface name \
+                     (must match ^[a-z][a-z0-9-]*$)"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Discover capsule manifests from standard locations with precedence.
 ///
 /// Scans directories in priority order:
@@ -212,74 +252,21 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         }
     }
 
-    // Validate dependency capability strings.
-    let dep_caps = manifest
-        .dependencies
-        .provides
-        .iter()
-        .map(|c| ("provides", c.as_str()))
-        .chain(
-            manifest
-                .dependencies
-                .requires
-                .iter()
-                .map(|c| ("requires", c.as_str())),
-        );
-
-    for (kind, cap) in dep_caps {
-        if cap.is_empty() {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!("[dependencies].{kind} contains an empty capability string"),
-            });
-        }
-        let Some((prefix, body)) = cap.split_once(':') else {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!(
-                    "[dependencies].{kind} '{cap}' must have a type prefix \
-                     (e.g. topic:, tool:, llm:, uplink:)"
-                ),
-            });
-        };
-        const KNOWN_PREFIXES: &[&str] = &["topic", "tool", "llm", "uplink"];
-        if !KNOWN_PREFIXES.contains(&prefix) {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!(
-                    "[dependencies].{kind} '{cap}' has unknown prefix '{prefix}:' \
-                     (expected one of: topic:, tool:, llm:, uplink:)"
-                ),
-            });
-        }
-        if !crate::dispatcher::has_valid_segments(body) {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!(
-                    "[dependencies].{kind} '{cap}' body contains empty segments \
-                     (consecutive dots, leading/trailing dots, or is empty)"
-                ),
-            });
-        }
-        // Wildcards are only valid in `requires` (pattern matching).
-        // In `provides`, a capsule must declare concrete capabilities.
-        if kind == "provides" && body.contains('*') {
-            return Err(CapsuleError::ManifestParseError {
-                path: path.to_path_buf(),
-                message: format!(
-                    "[dependencies].provides '{cap}' contains a wildcard - \
-                     provides must be concrete capabilities, not patterns"
-                ),
-            });
-        }
+    // Validate [imports] and [exports] namespace/name format.
+    // Semver parsing is already handled by the custom Deserialize impls.
+    for (namespace, ifaces) in &manifest.imports {
+        validate_interface_identifiers(path, "imports", namespace, ifaces.keys())?;
+    }
+    for (namespace, ifaces) in &manifest.exports {
+        validate_interface_identifiers(path, "exports", namespace, ifaces.keys())?;
     }
 
     // Uplink capsules load in a partition before non-uplinks.
-    // Declaring `requires` on an uplink would violate this ordering.
-    if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
+    // Declaring [imports] on an uplink would violate this ordering.
+    if manifest.capabilities.uplink && manifest.has_imports() {
         return Err(CapsuleError::ManifestParseError {
             path: path.to_path_buf(),
-            message: "[dependencies].requires is not allowed on uplink capsules \
+            message: "[imports] is not allowed on uplink capsules \
                       (uplinks load before non-uplinks and cannot depend on them)"
                 .into(),
         });
@@ -468,120 +455,109 @@ version = "0.1.0"
     }
 
     #[test]
-    fn load_manifest_parses_dependencies_provides_requires() {
+    fn load_manifest_parses_imports_and_exports() {
         let toml = format!(
             "{VALID_HEADER}\n\
-             [dependencies]\n\
-             provides = [\"topic:identity.response.ready\"]\n\
-             requires = [\"topic:llm.stream.*\"]\n"
+             [imports.astrid]\n\
+             llm = \"^1.0\"\n\
+             session = {{ version = \"^1.0\", optional = true }}\n\n\
+             [exports.astrid]\n\
+             identity = \"1.0.0\"\n"
         );
         let m = load_from_toml(&toml).unwrap();
+        let astrid_imports = m.imports.get("astrid").unwrap();
+        assert_eq!(astrid_imports.len(), 2);
+        assert!(!astrid_imports["llm"].optional);
+        assert!(astrid_imports["session"].optional);
+        let astrid_exports = m.exports.get("astrid").unwrap();
+        assert_eq!(astrid_exports.len(), 1);
         assert_eq!(
-            m.dependencies.provides,
-            vec!["topic:identity.response.ready"]
+            astrid_exports["identity"].version,
+            semver::Version::new(1, 0, 0)
         );
-        assert_eq!(m.dependencies.requires, vec!["topic:llm.stream.*"]);
     }
 
     #[test]
-    fn load_manifest_defaults_empty_dependencies() {
+    fn load_manifest_defaults_empty_imports_exports() {
         let m = load_from_toml(VALID_HEADER).unwrap();
-        assert!(m.dependencies.provides.is_empty());
-        assert!(m.dependencies.requires.is_empty());
-        assert!(m.dependencies.is_empty());
+        assert!(m.imports.is_empty());
+        assert!(m.exports.is_empty());
+        assert!(!m.has_imports());
     }
 
     #[test]
-    fn load_manifest_parses_dependencies_provides_only() {
+    fn load_manifest_parses_exports_only() {
         let toml = format!(
             "{VALID_HEADER}\n\
-             [dependencies]\n\
-             provides = [\"topic:foo\", \"tool:bar\"]\n"
+             [exports.astrid]\n\
+             session = \"1.0.0\"\n\
+             context = {{ version = \"1.0.0\" }}\n"
         );
         let m = load_from_toml(&toml).unwrap();
-        assert_eq!(m.dependencies.provides, vec!["topic:foo", "tool:bar"]);
-        assert!(m.dependencies.requires.is_empty());
+        assert!(m.imports.is_empty());
+        let astrid = m.exports.get("astrid").unwrap();
+        assert_eq!(astrid.len(), 2);
     }
 
     #[test]
-    fn load_manifest_rejects_empty_capability_in_requires() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"\"]");
+    fn load_manifest_rejects_invalid_namespace() {
+        let toml = format!("{VALID_HEADER}\n[exports.INVALID]\nfoo = \"1.0.0\"");
         let err = load_from_toml(&toml).unwrap_err();
         assert!(
-            err.to_string().contains("empty capability string"),
-            "expected 'empty capability string' error, got: {err}"
+            err.to_string().contains("invalid namespace"),
+            "expected 'invalid namespace' error, got: {err}"
         );
     }
 
     #[test]
-    fn load_manifest_rejects_missing_prefix_in_provides() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"no_prefix\"]");
+    fn load_manifest_rejects_invalid_interface_name() {
+        let toml = format!("{VALID_HEADER}\n[exports.astrid]\n\"BAD_NAME\" = \"1.0.0\"");
         let err = load_from_toml(&toml).unwrap_err();
         assert!(
-            err.to_string().contains("must have a type prefix"),
-            "expected 'must have a type prefix' error, got: {err}"
+            err.to_string().contains("invalid interface name"),
+            "expected 'invalid interface name' error, got: {err}"
         );
     }
 
     #[test]
-    fn load_manifest_rejects_unknown_prefix_in_requires() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"service:foo\"]");
+    fn load_manifest_rejects_invalid_import_version() {
+        let toml = format!("{VALID_HEADER}\n[imports.astrid]\nllm = \"not_semver\"");
         let err = load_from_toml(&toml).unwrap_err();
         assert!(
-            err.to_string().contains("unknown prefix"),
-            "expected 'unknown prefix' error, got: {err}"
+            err.to_string().contains("invalid semver"),
+            "expected semver error, got: {err}"
         );
     }
 
     #[test]
-    fn load_manifest_rejects_empty_segments_in_dependency_body() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:a..b\"]");
+    fn load_manifest_rejects_invalid_export_version() {
+        let toml = format!("{VALID_HEADER}\n[exports.astrid]\nllm = \"not_semver\"");
         let err = load_from_toml(&toml).unwrap_err();
         assert!(
-            err.to_string().contains("empty segments"),
-            "expected 'empty segments' error, got: {err}"
+            err.to_string().contains("invalid semver"),
+            "expected semver error, got: {err}"
         );
     }
 
     #[test]
-    fn load_manifest_rejects_wildcard_in_provides() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nprovides = [\"topic:llm.stream.*\"]");
-        let err = load_from_toml(&toml).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("wildcard"),
-            "expected 'wildcard' error for provides with *, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn load_manifest_allows_wildcard_in_requires() {
-        let toml = format!("{VALID_HEADER}\n[dependencies]\nrequires = [\"topic:llm.stream.*\"]");
-        assert!(
-            load_from_toml(&toml).is_ok(),
-            "wildcards should be allowed in requires"
-        );
-    }
-
-    #[test]
-    fn load_manifest_rejects_uplink_with_requires() {
+    fn load_manifest_rejects_uplink_with_imports() {
         let toml = format!(
-            "{VALID_HEADER}\n[capabilities]\nuplink = true\n\n[dependencies]\nrequires = [\"topic:foo\"]"
+            "{VALID_HEADER}\n[capabilities]\nuplink = true\n\n[imports.astrid]\nllm = \"^1.0\""
         );
         let err = load_from_toml(&toml).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("not allowed on uplink"),
-            "expected uplink+requires rejection, got: {msg}"
+            "expected uplink+imports rejection, got: {msg}"
         );
     }
 
     #[test]
-    fn load_manifest_allows_uplink_without_requires() {
+    fn load_manifest_allows_uplink_without_imports() {
         let toml = format!("{VALID_HEADER}\n[capabilities]\nuplink = true");
         assert!(
             load_from_toml(&toml).is_ok(),
-            "uplink without requires should be valid"
+            "uplink without imports should be valid"
         );
     }
 

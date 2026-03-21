@@ -2,8 +2,9 @@
 //!
 //! `CapsuleMeta` is persisted as `meta.json` alongside each installed capsule's
 //! `Capsule.toml`. It records the installed version, source, timestamps, and
-//! the resolved capability surface (`provides`/`requires`).
+//! the resolved interface imports/exports.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
@@ -26,13 +27,14 @@ pub(crate) struct CapsuleMeta {
     /// Used by `astrid capsule update` to re-fetch from the same source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) source: Option<String>,
-    /// Resolved capabilities this capsule provides (baked from `effective_provides()`
-    /// at install time so registries and tooling can read them without running Rust).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) provides: Vec<String>,
-    /// Capabilities this capsule requires from other capsules.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) requires: Vec<String>,
+    /// Namespaced interface imports — what this capsule needs from others.
+    /// Outer key = namespace, inner key = interface name, value = version string.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub(crate) imports: HashMap<String, HashMap<String, String>>,
+    /// Namespaced interface exports — what this capsule provides.
+    /// Outer key = namespace, inner key = interface name, value = version string.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub(crate) exports: HashMap<String, HashMap<String, String>>,
     /// Topic API declarations with inline schema content, baked at install time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) topics: Vec<BakedTopic>,
@@ -233,14 +235,12 @@ mod tests {
         assert_eq!(results[0].name, "alpha");
         let meta_a = results[0].meta.as_ref().expect("alpha has meta");
         assert_eq!(meta_a.version, "1.0.0");
-        assert_eq!(meta_a.provides, vec!["topic:foo"]);
-        assert_eq!(meta_a.requires, vec!["topic:bar"]);
+        // Alpha has no imports/exports in the test data (old provides/requires format is gone)
+        assert!(meta_a.exports.is_empty());
 
         assert_eq!(results[1].name, "bravo");
         let meta_b = results[1].meta.as_ref().expect("bravo has meta");
         assert_eq!(meta_b.version, "2.0.0");
-        assert!(meta_b.provides.is_empty());
-        assert!(meta_b.requires.is_empty());
     }
 
     #[test]
@@ -296,8 +296,8 @@ mod tests {
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
             source: None,
-            provides: vec![],
-            requires: vec![],
+            imports: HashMap::new(),
+            exports: HashMap::new(),
             topics: vec![
                 BakedTopic {
                     name: "llm.v1.chunk".into(),
@@ -345,8 +345,8 @@ mod tests {
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
             source: None,
-            provides: vec![],
-            requires: vec![],
+            imports: HashMap::new(),
+            exports: HashMap::new(),
             topics: vec![],
             wasm_hash: None,
         };

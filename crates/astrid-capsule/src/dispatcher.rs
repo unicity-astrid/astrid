@@ -530,7 +530,8 @@ mod tests {
                     metadata: None,
                 },
                 components: Vec::new(),
-                dependencies: Default::default(),
+                imports: std::collections::HashMap::new(),
+                exports: std::collections::HashMap::new(),
                 capabilities: CapabilitiesDef::default(),
                 env: std::collections::HashMap::new(),
                 context_files: Vec::new(),
@@ -546,7 +547,6 @@ mod tests {
                 cron_jobs: Vec::new(),
                 tools: Vec::new(),
                 topics: Vec::new(),
-                effective_provides_cache: std::sync::OnceLock::new(),
             };
             let capsule = Self {
                 id: CapsuleId::from_static(name),

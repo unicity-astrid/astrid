@@ -432,14 +432,13 @@ impl Kernel {
         };
 
         // Defence-in-depth: manifest validation in discovery.rs rejects
-        // uplinks with `requires`, but warn here in case a manifest bypasses
+        // uplinks with [imports], but warn here in case a manifest bypasses
         // the normal load path.
         for (manifest, _) in &sorted {
-            if manifest.capabilities.uplink && !manifest.dependencies.requires.is_empty() {
+            if manifest.capabilities.uplink && manifest.has_imports() {
                 tracing::warn!(
                     capsule = %manifest.package.name,
-                    requires = ?manifest.dependencies.requires,
-                    "Uplink capsule has [dependencies].requires - \
+                    "Uplink capsule has [imports] - \
                      this should have been rejected at manifest load time"
                 );
             }

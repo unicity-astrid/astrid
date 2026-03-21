@@ -87,40 +87,52 @@ fn check_removal_safety(
     target_meta: Option<&CapsuleMeta>,
     all_capsules: &[super::meta::InstalledCapsule],
 ) -> Option<RemovalBlocked> {
-    let target_provides: HashSet<&str> = target_meta
-        .map(|m| m.provides.iter().map(String::as_str).collect())
+    // Collect all interfaces the target exports as (namespace, name) pairs.
+    let target_exports: HashSet<(&str, &str)> = target_meta
+        .map(|m| {
+            m.exports
+                .iter()
+                .flat_map(|(ns, ifaces)| {
+                    ifaces.keys().map(move |name| (ns.as_str(), name.as_str()))
+                })
+                .collect()
+        })
         .unwrap_or_default();
 
-    if target_provides.is_empty() {
+    if target_exports.is_empty() {
         return None;
     }
 
-    // Collect all capabilities provided by capsules other than the target
-    let mut other_provided: HashSet<&str> = HashSet::new();
+    // Collect all interfaces exported by capsules other than the target.
+    let mut other_exported: HashSet<(&str, &str)> = HashSet::new();
     for capsule in all_capsules {
         if capsule.name == target_name {
             continue;
         }
         if let Some(ref meta) = capsule.meta {
-            for cap in &meta.provides {
-                other_provided.insert(cap.as_str());
+            for (ns, ifaces) in &meta.exports {
+                for name in ifaces.keys() {
+                    other_exported.insert((ns.as_str(), name.as_str()));
+                }
             }
         }
     }
 
-    // Check if any other capsule requires something only the target provides
+    // Check if any other capsule imports something only the target exports.
     for capsule in all_capsules {
         if capsule.name == target_name {
             continue;
         }
         if let Some(ref meta) = capsule.meta {
-            for req in &meta.requires {
-                if target_provides.contains(req.as_str()) && !other_provided.contains(req.as_str())
-                {
-                    return Some(RemovalBlocked {
-                        capability: req.clone(),
-                        dependent: capsule.name.clone(),
-                    });
+            for (ns, ifaces) in &meta.imports {
+                for name in ifaces.keys() {
+                    let key = (ns.as_str(), name.as_str());
+                    if target_exports.contains(&key) && !other_exported.contains(&key) {
+                        return Some(RemovalBlocked {
+                            capability: format!("{ns}/{name}"),
+                            dependent: capsule.name.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -161,67 +173,93 @@ mod tests {
     use super::super::meta::{CapsuleLocation, CapsuleMeta, InstalledCapsule};
     use super::*;
 
-    fn meta(provides: &[&str], requires: &[&str], hash: Option<&str>) -> CapsuleMeta {
+    fn meta_ie(
+        exports: &[(&str, &str, &str)],
+        imports: &[(&str, &str, &str)],
+        hash: Option<&str>,
+    ) -> CapsuleMeta {
+        let mut export_map = std::collections::HashMap::new();
+        for (ns, iface, ver) in exports {
+            export_map
+                .entry(ns.to_string())
+                .or_insert_with(std::collections::HashMap::new)
+                .insert(iface.to_string(), ver.to_string());
+        }
+        let mut import_map = std::collections::HashMap::new();
+        for (ns, iface, ver) in imports {
+            import_map
+                .entry(ns.to_string())
+                .or_insert_with(std::collections::HashMap::new)
+                .insert(iface.to_string(), ver.to_string());
+        }
         CapsuleMeta {
             version: "1.0.0".into(),
             installed_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
             source: None,
-            provides: provides.iter().map(|s| s.to_string()).collect(),
-            requires: requires.iter().map(|s| s.to_string()).collect(),
+            exports: export_map,
+            imports: import_map,
             topics: vec![],
             wasm_hash: hash.map(String::from),
         }
     }
 
-    fn capsule(name: &str, provides: &[&str], requires: &[&str]) -> InstalledCapsule {
+    fn capsule(
+        name: &str,
+        exports: &[(&str, &str, &str)],
+        imports: &[(&str, &str, &str)],
+    ) -> InstalledCapsule {
         InstalledCapsule {
             name: name.to_string(),
-            meta: Some(meta(provides, requires, None)),
+            meta: Some(meta_ie(exports, imports, None)),
             location: CapsuleLocation::User,
         }
     }
 
     #[test]
     fn removal_safe_when_no_dependents() {
-        let target_meta = Some(meta(&["rfc:llm-provider.v1"], &[], None));
+        let target_meta = Some(meta_ie(&[("astrid", "llm", "1.0.0")], &[], None));
         let all = vec![
-            capsule("target", &["rfc:llm-provider.v1"], &[]),
-            capsule("other", &["tool:fs_read"], &[]),
+            capsule("target", &[("astrid", "llm", "1.0.0")], &[]),
+            capsule("other", &[("astrid", "tool", "1.0.0")], &[]),
         ];
         assert!(check_removal_safety("target", target_meta.as_ref(), &all).is_none());
     }
 
     #[test]
     fn removal_blocked_when_sole_provider() {
-        let target_meta = Some(meta(&["rfc:llm-provider.v1"], &[], None));
+        let target_meta = Some(meta_ie(&[("astrid", "llm", "1.0.0")], &[], None));
         let all = vec![
-            capsule("target", &["rfc:llm-provider.v1"], &[]),
-            capsule("react", &["tool:react"], &["rfc:llm-provider.v1"]),
+            capsule("target", &[("astrid", "llm", "1.0.0")], &[]),
+            capsule("react", &[], &[("astrid", "llm", "^1.0")]),
         ];
         let block =
             check_removal_safety("target", target_meta.as_ref(), &all).expect("should be blocked");
-        assert_eq!(block.capability, "rfc:llm-provider.v1");
+        assert_eq!(block.capability, "astrid/llm");
         assert_eq!(block.dependent, "react");
     }
 
     #[test]
     fn removal_safe_when_another_provider_exists() {
-        let target_meta = Some(meta(&["rfc:llm-provider.v1"], &[], None));
+        let target_meta = Some(meta_ie(&[("astrid", "llm", "1.0.0")], &[], None));
         let all = vec![
-            capsule("anthropic", &["rfc:llm-provider.v1"], &[]),
-            capsule("openai", &["rfc:llm-provider.v1"], &[]),
-            capsule("react", &["tool:react"], &["rfc:llm-provider.v1"]),
+            capsule("openai", &[("astrid", "llm", "1.0.0")], &[]),
+            capsule("ollama", &[("astrid", "llm", "1.0.0")], &[]),
+            capsule("react", &[], &[("astrid", "llm", "^1.0")]),
         ];
-        assert!(check_removal_safety("anthropic", target_meta.as_ref(), &all).is_none());
+        assert!(check_removal_safety("openai", target_meta.as_ref(), &all).is_none());
     }
 
     #[test]
-    fn removal_safe_when_no_provides() {
-        let target_meta = Some(meta(&[], &[], None));
+    fn removal_safe_when_no_exports() {
+        let target_meta = Some(meta_ie(&[], &[], None));
         let all = vec![
             capsule("target", &[], &[]),
-            capsule("other", &["tool:fs_read"], &["rfc:something.v1"]),
+            capsule(
+                "other",
+                &[("astrid", "tool", "1.0.0")],
+                &[("astrid", "llm", "^1.0")],
+            ),
         ];
         assert!(check_removal_safety("target", target_meta.as_ref(), &all).is_none());
     }
@@ -234,19 +272,30 @@ mod tests {
                 meta: None,
                 location: CapsuleLocation::User,
             },
-            capsule("other", &["tool:fs_read"], &["rfc:something.v1"]),
+            capsule(
+                "other",
+                &[("astrid", "tool", "1.0.0")],
+                &[("astrid", "llm", "^1.0")],
+            ),
         ];
         assert!(check_removal_safety("target", None, &all).is_none());
     }
 
     #[test]
     fn removal_blocked_on_first_conflict_only() {
-        // Multiple dependents, but we return the first one found
-        let target_meta = Some(meta(&["rfc:llm-provider.v1", "tool:generate"], &[], None));
+        let target_meta = Some(meta_ie(
+            &[("astrid", "llm", "1.0.0"), ("astrid", "tool", "1.0.0")],
+            &[],
+            None,
+        ));
         let all = vec![
-            capsule("target", &["rfc:llm-provider.v1", "tool:generate"], &[]),
-            capsule("react", &["tool:react"], &["rfc:llm-provider.v1"]),
-            capsule("cli", &["uplink:cli"], &["tool:generate"]),
+            capsule(
+                "target",
+                &[("astrid", "llm", "1.0.0"), ("astrid", "tool", "1.0.0")],
+                &[],
+            ),
+            capsule("react", &[], &[("astrid", "llm", "^1.0")]),
+            capsule("cli", &[], &[("astrid", "tool", "^1.0")]),
         ];
         let block = check_removal_safety("target", target_meta.as_ref(), &all);
         assert!(block.is_some());
