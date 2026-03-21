@@ -923,34 +923,43 @@ fn regenerate_distro_lock(home: &AstridHome) -> anyhow::Result<()> {
         .join("distro.lock");
 
     // Only regenerate if a lock already exists (distro was initialized).
-    if !lock_path.exists() {
+    let Some(existing) = crate::commands::distro::lock::load_lock(&lock_path)? else {
         return Ok(());
-    }
+    };
 
     let all = super::meta::scan_installed_capsules()?;
     let capsules: Vec<LockedCapsule> = all
         .iter()
-        .filter_map(|c| {
-            let meta = c.meta.as_ref()?;
-            Some(LockedCapsule {
+        .map(|c| {
+            let (version, source, hash) = c.meta.as_ref().map_or_else(
+                || {
+                    eprintln!(
+                        "  Warning: {} has no meta.json, locked with empty version",
+                        c.name,
+                    );
+                    (String::new(), String::new(), String::new())
+                },
+                |meta| {
+                    (
+                        meta.version.clone(),
+                        meta.source.clone().unwrap_or_default(),
+                        meta.wasm_hash
+                            .as_ref()
+                            .map(|h| format!("blake3:{h}"))
+                            .unwrap_or_default(),
+                    )
+                },
+            );
+            LockedCapsule {
                 name: c.name.clone(),
-                version: meta.version.clone(),
-                source: meta.source.clone().unwrap_or_default(),
-                hash: meta
-                    .wasm_hash
-                    .as_ref()
-                    .map(|h| format!("blake3:{h}"))
-                    .unwrap_or_default(),
-            })
+                version,
+                source,
+                hash,
+            }
         })
         .collect();
 
-    // Read existing lock to preserve distro identity.
-    let existing = crate::commands::distro::lock::load_lock(&lock_path)?;
-    let (id, version) = existing.as_ref().map_or_else(
-        || ("unknown".into(), "0.0.0".into()),
-        |l| (l.distro.id.clone(), l.distro.version.clone()),
-    );
+    let (id, version) = (existing.distro.id, existing.distro.version);
 
     let lock = DistroLock {
         schema_version: 1,
