@@ -308,13 +308,14 @@ fn dispatch_to_capsule_queues(
 /// Find all capsules with interceptors matching the given topic.
 ///
 /// Takes a brief read lock on the registry. Only `Ready` capsules are
-/// considered. Returns `(capsule, action)` pairs for each match.
+/// considered. Returns `(capsule, action)` pairs sorted by interceptor
+/// priority (lower values fire first, default 100).
 async fn find_matching_interceptors(
     registry: &RwLock<CapsuleRegistry>,
     topic: &str,
 ) -> Vec<(Arc<dyn crate::capsule::Capsule>, String)> {
     let registry = registry.read().await;
-    let mut matches = Vec::new();
+    let mut matches: Vec<(Arc<dyn crate::capsule::Capsule>, String, u32)> = Vec::new();
     for capsule_id in registry.list() {
         if let Some(capsule) = registry.get(capsule_id) {
             if !matches!(capsule.state(), crate::capsule::CapsuleState::Ready) {
@@ -322,12 +323,21 @@ async fn find_matching_interceptors(
             }
             for interceptor in &capsule.manifest().interceptors {
                 if topic_matches(topic, &interceptor.event) {
-                    matches.push((Arc::clone(&capsule), interceptor.action.clone()));
+                    matches.push((
+                        Arc::clone(&capsule),
+                        interceptor.action.clone(),
+                        interceptor.priority,
+                    ));
                 }
             }
         }
     }
+    // Sort by priority — lower values fire first.
+    matches.sort_by_key(|(_, _, priority)| *priority);
     matches
+        .into_iter()
+        .map(|(capsule, action, _)| (capsule, action))
+        .collect()
 }
 
 /// Returns `true` if `s` has no empty segments — i.e. no leading/trailing dots
@@ -489,6 +499,7 @@ mod tests {
     // ── Dispatch integration tests ──────────────────────────────────
 
     use async_trait::async_trait;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
@@ -504,10 +515,21 @@ mod tests {
         id: CapsuleId,
         manifest: CapsuleManifest,
         invoked: Arc<AtomicBool>,
+        /// Optional shared log for recording invocation order across capsules.
+        invocation_log: Option<Arc<Mutex<Vec<String>>>>,
     }
 
     impl MockCapsule {
         fn new(name: &str, interceptor_event: &str) -> (Self, Arc<AtomicBool>) {
+            Self::with_priority(name, interceptor_event, 100, None)
+        }
+
+        fn with_priority(
+            name: &str,
+            interceptor_event: &str,
+            priority: u32,
+            invocation_log: Option<Arc<Mutex<Vec<String>>>>,
+        ) -> (Self, Arc<AtomicBool>) {
             let invoked = Arc::new(AtomicBool::new(false));
             let manifest = CapsuleManifest {
                 package: PackageDef {
@@ -543,6 +565,7 @@ mod tests {
                 interceptors: vec![InterceptorDef {
                     event: interceptor_event.to_string(),
                     action: "test_action".to_string(),
+                    priority,
                 }],
                 cron_jobs: Vec::new(),
                 tools: Vec::new(),
@@ -552,6 +575,7 @@ mod tests {
                 id: CapsuleId::from_static(name),
                 manifest,
                 invoked: Arc::clone(&invoked),
+                invocation_log,
             };
             (capsule, invoked)
         }
@@ -584,6 +608,9 @@ mod tests {
             _caller: Option<&astrid_events::ipc::IpcMessage>,
         ) -> CapsuleResult<Vec<u8>> {
             self.invoked.store(true, Ordering::SeqCst);
+            if let Some(ref log) = self.invocation_log {
+                log.lock().unwrap().push(self.id.to_string());
+            }
             Ok(Vec::new())
         }
     }
@@ -767,5 +794,67 @@ mod tests {
     fn mock_capsule_check_health_returns_ready() {
         let (capsule, _) = MockCapsule::new("health-test", "test.topic");
         assert_eq!(capsule.check_health(), CapsuleState::Ready);
+    }
+
+    #[tokio::test]
+    async fn dispatch_respects_interceptor_priority_order() {
+        // Three capsules intercept the same topic with different priorities.
+        // Priority 10 (guard) should fire before 50 (transform) before 100 (handler).
+        let order = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        let (guard, _) =
+            MockCapsule::with_priority("guard", "shared.topic", 10, Some(Arc::clone(&order)));
+        let (handler, _) =
+            MockCapsule::with_priority("handler", "shared.topic", 100, Some(Arc::clone(&order)));
+        let (transform, _) =
+            MockCapsule::with_priority("transform", "shared.topic", 50, Some(Arc::clone(&order)));
+
+        let mut registry = CapsuleRegistry::new();
+        // Register in non-priority order to prove sorting works.
+        registry.register(Box::new(handler)).unwrap();
+        registry.register(Box::new(guard)).unwrap();
+        registry.register(Box::new(transform)).unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+
+        let bus = Arc::new(EventBus::with_capacity(64));
+        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
+        let handle = tokio::spawn(dispatcher.run());
+
+        tokio::task::yield_now().await;
+
+        publish_ipc(&bus, "shared.topic");
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let recorded = order.lock().unwrap().clone();
+        assert_eq!(
+            recorded,
+            vec!["guard", "transform", "handler"],
+            "interceptors must fire in priority order (lower first)"
+        );
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn find_matching_interceptors_sorts_by_priority() {
+        // Unit test for find_matching_interceptors directly.
+        let (low, _) = MockCapsule::with_priority("low-pri", "test.event", 10, None);
+        let (high, _) = MockCapsule::with_priority("high-pri", "test.event", 200, None);
+        let (mid, _) = MockCapsule::with_priority("mid-pri", "test.event", 50, None);
+
+        let mut registry = CapsuleRegistry::new();
+        registry.register(Box::new(high)).unwrap();
+        registry.register(Box::new(low)).unwrap();
+        registry.register(Box::new(mid)).unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+
+        let matches = find_matching_interceptors(&registry, "test.event").await;
+        let names: Vec<&str> = matches.iter().map(|(c, _)| c.id().as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["low-pri", "mid-pri", "high-pri"],
+            "find_matching_interceptors must return results sorted by priority"
+        );
     }
 }

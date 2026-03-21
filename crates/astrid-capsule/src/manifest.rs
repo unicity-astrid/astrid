@@ -448,6 +448,16 @@ pub struct InterceptorDef {
     /// Name of the handler function inside the WASM guest
     /// (must match an `#[astrid::interceptor("...")]` annotation).
     pub action: String,
+    /// Dispatch priority — lower values fire first. Default 100.
+    /// Enables layered interception (e.g. input guard at 10 fires before
+    /// react loop at 100).
+    #[serde(default = "default_interceptor_priority")]
+    pub priority: u32,
+}
+
+/// Default interceptor priority.
+const fn default_interceptor_priority() -> u32 {
+    100
 }
 
 /// Direction a capsule interacts with an IPC topic.
