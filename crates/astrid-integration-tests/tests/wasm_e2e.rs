@@ -54,6 +54,7 @@ async fn setup_test_capsule(
             include: None,
             exclude: None,
             metadata: None,
+            supersedes: None,
         },
         components: vec![ComponentDef {
             id: "default".to_string(),
@@ -166,6 +167,7 @@ async fn setup_test_capsule_with_home(
             include: None,
             exclude: None,
             metadata: None,
+            supersedes: None,
         },
         components: vec![ComponentDef {
             id: "default".to_string(),

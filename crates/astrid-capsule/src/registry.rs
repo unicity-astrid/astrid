@@ -305,6 +305,7 @@ mod tests {
                         include: None,
                         exclude: None,
                         metadata: None,
+                        supersedes: None,
                     },
                     components: Vec::new(),
                     imports: std::collections::HashMap::new(),

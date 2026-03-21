@@ -18,6 +18,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 ### Added
 
 - Interceptor priority — `priority` field on `[[interceptor]]` in Capsule.toml (lower fires first, default 100). Enables layered interception (e.g. input guard before react loop).
+- Supersedes field — `supersedes` in `[package]` of Capsule.toml declares that a capsule replaces another. Kernel filters out superseded capsules at boot before toposort, enabling hot-swap capsule upgrades.
 - Distro.lock regeneration on `astrid capsule update` — keeps the lockfile in sync after capsule updates
 - Content-addressed WIT storage — capsule install hashes `.wit` files into `~/.astrid/wit/`, capsule remove cleans up unreferenced WIT files, `wit_files` field in `meta.json`
 - `astrid capsule tree` command — renders the imports/exports dependency graph of all installed capsules, showing which capsule exports satisfy each import, with unsatisfied imports highlighted in red (`astrid capsule deps` retained as hidden alias)

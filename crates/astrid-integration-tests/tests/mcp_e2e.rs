@@ -29,6 +29,7 @@ async fn test_mcp_host_engine_capability_validation() {
             include: None,
             exclude: None,
             metadata: None,
+            supersedes: None,
         },
         components: vec![],
         imports: std::collections::HashMap::new(),

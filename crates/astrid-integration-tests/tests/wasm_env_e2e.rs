@@ -76,6 +76,7 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
             include: None,
             exclude: None,
             metadata: None,
+            supersedes: None,
         },
         components: vec![ComponentDef {
             id: "default".to_string(),

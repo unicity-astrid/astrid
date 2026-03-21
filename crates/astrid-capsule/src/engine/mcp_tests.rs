@@ -30,6 +30,7 @@ mod tests {
                 include: None,
                 exclude: None,
                 metadata: None,
+                supersedes: None,
             },
             components: vec![],
             imports: HashMap::new(),
