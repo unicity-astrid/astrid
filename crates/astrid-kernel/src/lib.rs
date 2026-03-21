@@ -417,6 +417,11 @@ impl Kernel {
 
         let discovered = astrid_capsule::discovery::discover_manifests(Some(&paths));
 
+        // Supersession: if capsule B declares `supersedes = "A"`, filter out A.
+        // B takes A's place. If B fails to boot later, A's binary is still in
+        // bin/ (append-only store) for manual recovery.
+        let discovered = filter_superseded(discovered);
+
         // Topological sort ALL capsules together so cross-partition
         // requirements (e.g. a non-uplink requiring an uplink's capability)
         // resolve correctly without spurious "not provided" warnings.
@@ -1498,6 +1503,49 @@ mod tests {
         tracker.last_attempt = std::time::Instant::now() - RestartTracker::MAX_BACKOFF;
         assert!(!tracker.should_restart());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Supersession
+// ---------------------------------------------------------------------------
+
+/// Filter out capsules that have been superseded by another loaded capsule.
+///
+/// If capsule B declares `supersedes = "A"` and both A and B are discovered,
+/// A is removed from the list. B takes its place. If B fails to boot, A's
+/// binary is still in `bin/` (append-only store) for manual recovery.
+fn filter_superseded(
+    manifests: Vec<(
+        astrid_capsule::manifest::CapsuleManifest,
+        std::path::PathBuf,
+    )>,
+) -> Vec<(
+    astrid_capsule::manifest::CapsuleManifest,
+    std::path::PathBuf,
+)> {
+    // Collect all superseded capsule names (owned to avoid borrow conflict).
+    let superseded: std::collections::HashSet<String> = manifests
+        .iter()
+        .filter_map(|(m, _)| {
+            m.package.supersedes.as_ref().map(|target| {
+                tracing::info!(
+                    capsule = %m.package.name,
+                    supersedes = %target,
+                    "Capsule supersedes another — superseded capsule will not load"
+                );
+                target.clone()
+            })
+        })
+        .collect();
+
+    if superseded.is_empty() {
+        return manifests;
+    }
+
+    manifests
+        .into_iter()
+        .filter(|(m, _)| !superseded.contains(&m.package.name))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
