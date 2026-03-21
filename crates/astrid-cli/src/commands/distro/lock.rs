@@ -27,8 +27,8 @@ pub(crate) struct DistroLock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct DistroLockMeta {
-    /// Distro name (must match the manifest).
-    pub(crate) name: String,
+    /// Distro ID (must match `distro.id` in the manifest).
+    pub(crate) id: String,
     /// Distro version (must match the manifest).
     pub(crate) version: String,
     /// ISO 8601 UTC timestamp of when the lock was generated.
@@ -78,7 +78,7 @@ pub(crate) fn write_lock(path: &Path, lock: &DistroLock) -> anyhow::Result<()> {
 
 /// Check if a lockfile is fresh (name and version match the manifest).
 pub(crate) fn is_lock_fresh(lock: &DistroLock, manifest: &DistroManifest) -> bool {
-    lock.distro.name == manifest.distro.id && lock.distro.version == manifest.distro.version
+    lock.distro.id == manifest.distro.id && lock.distro.version == manifest.distro.version
 }
 
 /// Create a new lockfile from resolved capsule data.
@@ -86,7 +86,7 @@ pub(crate) fn create_lock(manifest: &DistroManifest, capsules: Vec<LockedCapsule
     DistroLock {
         schema_version: manifest.schema_version,
         distro: DistroLockMeta {
-            name: manifest.distro.id.clone(),
+            id: manifest.distro.id.clone(),
             version: manifest.distro.version.clone(),
             resolved_at: chrono::Utc::now().to_rfc3339(),
         },
@@ -106,7 +106,7 @@ mod tests {
         let lock = DistroLock {
             schema_version: 1,
             distro: DistroLockMeta {
-                name: "test".into(),
+                id: "test".into(),
                 version: "0.1.0".into(),
                 resolved_at: "2026-03-21T14:30:00Z".into(),
             },
@@ -122,7 +122,7 @@ mod tests {
         let loaded = load_lock(&path).unwrap().expect("lock should exist");
 
         assert_eq!(loaded.schema_version, 1);
-        assert_eq!(loaded.distro.name, "test");
+        assert_eq!(loaded.distro.id, "test");
         assert_eq!(loaded.distro.version, "0.1.0");
         assert_eq!(loaded.capsules.len(), 1);
         assert_eq!(loaded.capsules[0].hash, "blake3:abc123");
@@ -158,7 +158,7 @@ role = "uplink"
         let lock = DistroLock {
             schema_version: 1,
             distro: DistroLockMeta {
-                name: "test".into(),
+                id: "test".into(),
                 version: "0.1.0".into(),
                 resolved_at: "2026-01-01T00:00:00Z".into(),
             },
@@ -190,7 +190,7 @@ role = "uplink"
         let lock = DistroLock {
             schema_version: 1,
             distro: DistroLockMeta {
-                name: "test".into(),
+                id: "test".into(),
                 version: "0.1.0".into(),
                 resolved_at: "2026-01-01T00:00:00Z".into(),
             },

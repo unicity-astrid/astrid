@@ -20,21 +20,13 @@ fn is_valid_id(s: &str) -> bool {
 
 /// Extract `{{ var_name }}` references from a template string.
 fn extract_variable_refs(template: &str) -> Vec<&str> {
-    let mut refs = Vec::new();
-    let mut rest = template;
-    while let Some(start) = rest.find("{{") {
-        let after_open = &rest[start.saturating_add(2)..];
-        if let Some(end) = after_open.find("}}") {
-            let var_name = after_open[..end].trim();
-            if !var_name.is_empty() {
-                refs.push(var_name);
-            }
-            rest = &after_open[end.saturating_add(2)..];
-        } else {
-            break;
-        }
-    }
-    refs
+    template
+        .split("{{")
+        .skip(1)
+        .filter_map(|s| s.split_once("}}"))
+        .map(|(var, _)| var.trim())
+        .filter(|var| !var.is_empty())
+        .collect()
 }
 
 /// Validate a parsed distro manifest.
