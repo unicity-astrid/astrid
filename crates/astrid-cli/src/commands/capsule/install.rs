@@ -722,7 +722,6 @@ pub(crate) fn install_from_local_path(
     install_from_local_path_inner(source_path, workspace, home, None)
 }
 
-#[expect(clippy::too_many_lines)]
 pub(crate) fn install_from_local_path_inner(
     source_path: &Path,
     workspace: bool,
@@ -830,28 +829,8 @@ pub(crate) fn install_from_local_path_inner(
         source: original_source
             .map(String::from)
             .or_else(|| existing_meta.and_then(|m| m.source)),
-        imports: manifest
-            .imports
-            .iter()
-            .map(|(ns, ifaces)| {
-                let inner: std::collections::HashMap<String, String> = ifaces
-                    .iter()
-                    .map(|(name, def)| (name.clone(), def.version.to_string()))
-                    .collect();
-                (ns.clone(), inner)
-            })
-            .collect(),
-        exports: manifest
-            .exports
-            .iter()
-            .map(|(ns, ifaces)| {
-                let inner: std::collections::HashMap<String, String> = ifaces
-                    .iter()
-                    .map(|(name, def)| (name.clone(), def.version.to_string()))
-                    .collect();
-                (ns.clone(), inner)
-            })
-            .collect(),
+        imports: version_map_to_strings(&manifest.imports, |d| d.version.to_string()),
+        exports: version_map_to_strings(&manifest.exports, |d| d.version.to_string()),
         topics: baked_topics,
         wasm_hash,
     };
@@ -912,6 +891,23 @@ fn content_address_wasm(
     let _ = std::fs::remove_file(&wasm_path);
 
     Ok(Some(hash))
+}
+
+/// Convert a nested namespace→interface→T map to namespace→interface→String
+/// by extracting the version via the provided closure.
+fn version_map_to_strings<T>(
+    map: &std::collections::HashMap<String, std::collections::HashMap<String, T>>,
+    version_fn: impl Fn(&T) -> String,
+) -> std::collections::HashMap<String, std::collections::HashMap<String, String>> {
+    map.iter()
+        .map(|(ns, ifaces)| {
+            let inner = ifaces
+                .iter()
+                .map(|(name, def)| (name.clone(), version_fn(def)))
+                .collect();
+            (ns.clone(), inner)
+        })
+        .collect()
 }
 
 /// Resolve the path to a capsule's env config file.
