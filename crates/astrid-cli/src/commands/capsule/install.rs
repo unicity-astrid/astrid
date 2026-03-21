@@ -854,8 +854,9 @@ pub(crate) fn install_from_local_path_inner(
     Ok(())
 }
 
-/// Check if a newly installed capsule's imports are satisfied by other
-/// installed capsules' exports. Prints warnings for unsatisfied imports.
+/// Check if a newly installed capsule's required imports are satisfied by
+/// other installed capsules' exports. Prints actionable guidance for
+/// unsatisfied required imports. Silent for optional imports.
 fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest) {
     if !manifest.has_imports() {
         return;
@@ -864,7 +865,12 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
         return;
     };
 
+    let mut missing = Vec::new();
+
     for (ns, name, req, optional) in manifest.import_tuples() {
+        if optional {
+            continue;
+        }
         let satisfied = all_capsules.iter().any(|c| {
             c.name != manifest.package.name
                 && c.meta.as_ref().is_some_and(|m| {
@@ -877,11 +883,18 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
         });
 
         if !satisfied {
-            let severity = if optional { "optional" } else { "required" };
-            eprintln!(
-                "  Warning: {severity} import {ns}/{name} {req} is not satisfied by any installed capsule"
-            );
+            missing.push(format!("{ns}/{name} {req}"));
         }
+    }
+
+    if !missing.is_empty() {
+        eprintln!();
+        for m in &missing {
+            eprintln!("  Note: {} needs {m}.", manifest.package.name);
+        }
+        eprintln!(
+            "  Install the missing capsule(s) or run `astrid init` to set up a complete environment."
+        );
     }
 }
 
