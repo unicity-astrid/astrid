@@ -121,13 +121,13 @@ const STANDARD_WIT_FILES: &[&str] = &[
     "types.wit",
 ];
 
-/// SDK repo base URL for fetching WIT files.
-const SDK_WIT_BASE_URL: &str = "https://raw.githubusercontent.com/unicity-astrid/sdk-rust/main/wit";
+/// Canonical WIT repo base URL for fetching interface definitions.
+const WIT_BASE_URL: &str = "https://raw.githubusercontent.com/unicity-astrid/wit/main/interfaces";
 
 /// Install standard WIT interface definitions to `~/.astrid/wit/astrid/`.
 ///
 /// Best-effort: logs warnings on failure but does not block init.
-/// The WIT files are small (< 10KB each) and fetched from the SDK repo.
+/// The WIT files are small (< 10KB each) and fetched from the canonical WIT repo.
 fn install_standard_wit(home: &AstridHome) {
     let wit_dir = home.wit_dir().join("astrid");
     if let Err(e) = std::fs::create_dir_all(&wit_dir) {
@@ -165,7 +165,7 @@ fn install_standard_wit(home: &AstridHome) {
 
     let mut installed = 0u32;
     for filename in STANDARD_WIT_FILES {
-        let url = format!("{SDK_WIT_BASE_URL}/{filename}");
+        let url = format!("{WIT_BASE_URL}/{filename}");
         let target = wit_dir.join(filename);
 
         match client.get(&url).send() {
