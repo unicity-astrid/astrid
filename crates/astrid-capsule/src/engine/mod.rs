@@ -69,7 +69,7 @@ pub(crate) trait ExecutionEngine: Send + Sync {
         _action: &str,
         _payload: &[u8],
         _caller: Option<&astrid_events::ipc::IpcMessage>,
-    ) -> CapsuleResult<Vec<u8>> {
+    ) -> CapsuleResult<crate::capsule::InterceptResult> {
         Err(crate::error::CapsuleError::NotSupported(
             "interceptors not supported by this engine".into(),
         ))

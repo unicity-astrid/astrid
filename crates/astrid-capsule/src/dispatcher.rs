@@ -228,15 +228,17 @@ impl EventDispatcher {
     }
 }
 
-/// Dispatch matching interceptors through per-capsule ordered queues.
+/// Dispatch matching interceptors as a middleware chain.
 ///
-/// Each capsule gets a dedicated mpsc channel with a single consumer task
-/// that invokes interceptors sequentially. This guarantees events are
-/// delivered in publish order (by IPC `seq`), preventing out-of-order
-/// stream assembly in capsules like ReAct.
+/// Interceptors are called sequentially in priority order (lower fires first).
+/// Each interceptor returns an [`InterceptResult`] that controls the chain:
+/// - `Continue` — pass (possibly modified) payload to the next interceptor
+/// - `Final` — short-circuit with a response, no further interceptors fire
+/// - `Deny` — short-circuit with denial, audit-logged, no further interceptors fire
 ///
-/// Different capsules still process events concurrently — only same-capsule
-/// delivery is serialized.
+/// Within a single capsule, events are still delivered in publish order via
+/// per-capsule mpsc queues (preserving IPC `seq` ordering). The chain semantics
+/// apply across capsules for the same event.
 fn dispatch_to_capsule_queues(
     queues: &mut HashMap<CapsuleId, mpsc::Sender<InterceptorWork>>,
     matches: Vec<(Arc<dyn Capsule>, String)>,
@@ -244,64 +246,161 @@ fn dispatch_to_capsule_queues(
     payload_bytes: Arc<Vec<u8>>,
     ipc_message: Option<Arc<astrid_events::ipc::IpcMessage>>,
 ) {
-    for (capsule, action) in matches {
-        let sender = queues.entry(capsule.id().clone()).or_insert_with(|| {
-            let (tx, mut rx) = mpsc::channel::<InterceptorWork>(CAPSULE_EVENT_QUEUE_CAPACITY);
-            let capsule = Arc::clone(&capsule);
-            tokio::task::spawn(async move {
-                while let Some(work) = rx.recv().await {
+    if matches.is_empty() {
+        return;
+    }
+
+    // Clone what we need for the spawned chain task.
+    let matches_owned: Vec<_> = matches
+        .into_iter()
+        .map(|(c, a)| (Arc::clone(&c), a))
+        .collect();
+
+    // For single-interceptor events (common case), skip chain overhead.
+    if matches_owned.len() == 1 {
+        let (capsule, action) = matches_owned.into_iter().next().unwrap();
+        dispatch_single(queues, capsule, action, topic, payload_bytes, ipc_message);
+        return;
+    }
+
+    // Multi-interceptor chain: run sequentially in priority order.
+    // Spawned as a task so the dispatcher loop doesn't block.
+    let topic_clone = Arc::clone(&topic);
+    let ipc_clone = ipc_message.clone();
+    tokio::task::spawn(async move {
+        let mut current_payload = (*payload_bytes).clone();
+
+        for (capsule, action) in &matches_owned {
+            debug!(
+                capsule_id = %capsule.id(),
+                action = %action,
+                topic = %topic_clone,
+                "Dispatching interceptor (chain)"
+            );
+            let caller = ipc_clone.as_deref();
+            match capsule.invoke_interceptor(action, &current_payload, caller) {
+                Ok(crate::capsule::InterceptResult::Continue(modified_payload)) => {
                     debug!(
                         capsule_id = %capsule.id(),
-                        action = %work.action,
-                        topic = %work.topic,
-                        "Dispatching interceptor (ordered)"
+                        action = %action,
+                        "Interceptor: Continue"
                     );
-                    let caller = work.ipc_message.as_deref();
-                    match capsule.invoke_interceptor(&work.action, &work.payload, caller) {
-                        Ok(_) => {
-                            debug!(
-                                capsule_id = %capsule.id(),
-                                action = %work.action,
-                                "Interceptor completed"
-                            );
-                        },
-                        Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
-                            debug!(
-                                capsule_id = %capsule.id(),
-                                action = %work.action,
-                                reason = %msg,
-                                "Interceptor skipped (NotSupported)"
-                            );
-                        },
-                        Err(e) => {
-                            warn!(
-                                capsule_id = %capsule.id(),
-                                action = %work.action,
-                                topic = %work.topic,
-                                error = %e,
-                                "Interceptor invocation failed"
-                            );
-                        },
+                    // If the interceptor returned payload bytes, use them
+                    // for the next interceptor in the chain.
+                    if !modified_payload.is_empty() {
+                        current_payload = modified_payload;
                     }
-                }
-            });
-            tx
-        });
-
-        let work = InterceptorWork {
-            action,
-            payload: Arc::clone(&payload_bytes),
-            topic: Arc::clone(&topic),
-            ipc_message: ipc_message.clone(),
-        };
-        // Non-blocking send — if the channel is full, the capsule is overwhelmed.
-        if let Err(e) = sender.try_send(work) {
-            warn!(
-                capsule_id = %capsule.id(),
-                topic = %topic,
-                "Capsule dispatch queue full or closed, dropping event: {e}"
-            );
+                },
+                Ok(crate::capsule::InterceptResult::Final(response)) => {
+                    debug!(
+                        capsule_id = %capsule.id(),
+                        action = %action,
+                        topic = %topic_clone,
+                        response_len = response.len(),
+                        "Interceptor: Final — chain halted"
+                    );
+                    return; // Short-circuit — no further interceptors
+                },
+                Ok(crate::capsule::InterceptResult::Deny { reason }) => {
+                    warn!(
+                        capsule_id = %capsule.id(),
+                        action = %action,
+                        topic = %topic_clone,
+                        reason = %reason,
+                        "Interceptor: Deny — chain halted"
+                    );
+                    return; // Short-circuit — no further interceptors
+                },
+                Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                    debug!(
+                        capsule_id = %capsule.id(),
+                        action = %action,
+                        reason = %msg,
+                        "Interceptor skipped (NotSupported)"
+                    );
+                    // Continue chain — this capsule doesn't participate
+                },
+                Err(e) => {
+                    warn!(
+                        capsule_id = %capsule.id(),
+                        action = %action,
+                        topic = %topic_clone,
+                        error = %e,
+                        "Interceptor invocation failed — continuing chain"
+                    );
+                    // Continue chain on error — don't let a broken capsule
+                    // block the entire pipeline
+                },
+            }
         }
+    });
+}
+
+/// Fast path for single-interceptor dispatch — uses per-capsule queue
+/// for ordered delivery without chain overhead.
+fn dispatch_single(
+    queues: &mut HashMap<CapsuleId, mpsc::Sender<InterceptorWork>>,
+    capsule: Arc<dyn Capsule>,
+    action: String,
+    topic: Arc<String>,
+    payload_bytes: Arc<Vec<u8>>,
+    ipc_message: Option<Arc<astrid_events::ipc::IpcMessage>>,
+) {
+    let sender = queues.entry(capsule.id().clone()).or_insert_with(|| {
+        let (tx, mut rx) = mpsc::channel::<InterceptorWork>(CAPSULE_EVENT_QUEUE_CAPACITY);
+        let capsule = Arc::clone(&capsule);
+        tokio::task::spawn(async move {
+            while let Some(work) = rx.recv().await {
+                debug!(
+                    capsule_id = %capsule.id(),
+                    action = %work.action,
+                    topic = %work.topic,
+                    "Dispatching interceptor (ordered)"
+                );
+                let caller = work.ipc_message.as_deref();
+                match capsule.invoke_interceptor(&work.action, &work.payload, caller) {
+                    Ok(_) => {
+                        debug!(
+                            capsule_id = %capsule.id(),
+                            action = %work.action,
+                            "Interceptor completed"
+                        );
+                    },
+                    Err(crate::error::CapsuleError::NotSupported(ref msg)) => {
+                        debug!(
+                            capsule_id = %capsule.id(),
+                            action = %work.action,
+                            reason = %msg,
+                            "Interceptor skipped (NotSupported)"
+                        );
+                    },
+                    Err(e) => {
+                        warn!(
+                            capsule_id = %capsule.id(),
+                            action = %work.action,
+                            topic = %work.topic,
+                            error = %e,
+                            "Interceptor invocation failed"
+                        );
+                    },
+                }
+            }
+        });
+        tx
+    });
+
+    let work = InterceptorWork {
+        action,
+        payload: Arc::clone(&payload_bytes),
+        topic: Arc::clone(&topic),
+        ipc_message: ipc_message.clone(),
+    };
+    if let Err(e) = sender.try_send(work) {
+        warn!(
+            capsule_id = %capsule.id(),
+            topic = %topic,
+            "Capsule dispatch queue full or closed, dropping event: {e}"
+        );
     }
 }
 
@@ -503,7 +602,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    use crate::capsule::{Capsule, CapsuleId, CapsuleState};
+    use crate::capsule::{Capsule, CapsuleId, CapsuleState, InterceptResult};
     use crate::context::CapsuleContext;
     use crate::error::CapsuleResult;
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, InterceptorDef, PackageDef};
@@ -517,6 +616,8 @@ mod tests {
         invoked: Arc<AtomicBool>,
         /// Optional shared log for recording invocation order across capsules.
         invocation_log: Option<Arc<Mutex<Vec<String>>>>,
+        /// Override the default `Continue` result for testing chain semantics.
+        result_override: Option<InterceptResult>,
     }
 
     impl MockCapsule {
@@ -576,6 +677,7 @@ mod tests {
                 manifest,
                 invoked: Arc::clone(&invoked),
                 invocation_log,
+                result_override: None,
             };
             (capsule, invoked)
         }
@@ -606,12 +708,15 @@ mod tests {
             _action: &str,
             _payload: &[u8],
             _caller: Option<&astrid_events::ipc::IpcMessage>,
-        ) -> CapsuleResult<Vec<u8>> {
+        ) -> CapsuleResult<InterceptResult> {
             self.invoked.store(true, Ordering::SeqCst);
             if let Some(ref log) = self.invocation_log {
                 log.lock().unwrap().push(self.id.to_string());
             }
-            Ok(Vec::new())
+            if let Some(ref result) = self.result_override {
+                return Ok(result.clone());
+            }
+            Ok(InterceptResult::Continue(Vec::new()))
         }
     }
 
@@ -856,5 +961,112 @@ mod tests {
             vec!["low-pri", "mid-pri", "high-pri"],
             "find_matching_interceptors must return results sorted by priority"
         );
+    }
+
+    #[tokio::test]
+    async fn deny_interceptor_short_circuits_chain() {
+        // Guard at priority 10 denies, handler at priority 100 should never fire.
+        let order = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        let (mut guard, _) =
+            MockCapsule::with_priority("guard", "shared.topic", 10, Some(Arc::clone(&order)));
+        guard.result_override = Some(InterceptResult::Deny {
+            reason: "blocked by guard".into(),
+        });
+
+        let (handler, invoked_handler) =
+            MockCapsule::with_priority("handler", "shared.topic", 100, Some(Arc::clone(&order)));
+
+        let mut registry = CapsuleRegistry::new();
+        registry.register(Box::new(handler)).unwrap();
+        registry.register(Box::new(guard)).unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+
+        let bus = Arc::new(EventBus::with_capacity(64));
+        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
+        let handle = tokio::spawn(dispatcher.run());
+
+        tokio::task::yield_now().await;
+
+        publish_ipc(&bus, "shared.topic");
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let recorded = order.lock().unwrap().clone();
+        assert_eq!(
+            recorded,
+            vec!["guard"],
+            "only the guard should have fired — handler should be short-circuited"
+        );
+        assert!(
+            !invoked_handler.load(Ordering::SeqCst),
+            "handler must NOT be invoked after Deny"
+        );
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn final_interceptor_short_circuits_chain() {
+        // Cache at priority 30 returns Final, core at priority 100 should never fire.
+        let order = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        let (mut cache, _) =
+            MockCapsule::with_priority("cache", "shared.topic", 30, Some(Arc::clone(&order)));
+        cache.result_override = Some(InterceptResult::Final(b"cached response".to_vec()));
+
+        let (core, invoked_core) =
+            MockCapsule::with_priority("core", "shared.topic", 100, Some(Arc::clone(&order)));
+
+        let mut registry = CapsuleRegistry::new();
+        registry.register(Box::new(core)).unwrap();
+        registry.register(Box::new(cache)).unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+
+        let bus = Arc::new(EventBus::with_capacity(64));
+        let dispatcher = EventDispatcher::new(Arc::clone(&registry), Arc::clone(&bus));
+        let handle = tokio::spawn(dispatcher.run());
+
+        tokio::task::yield_now().await;
+
+        publish_ipc(&bus, "shared.topic");
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let recorded = order.lock().unwrap().clone();
+        assert_eq!(
+            recorded,
+            vec!["cache"],
+            "only the cache should have fired — core should be short-circuited"
+        );
+        assert!(
+            !invoked_core.load(Ordering::SeqCst),
+            "core must NOT be invoked after Final"
+        );
+
+        handle.abort();
+    }
+
+    #[test]
+    fn intercept_result_from_guest_bytes() {
+        // Empty = Continue
+        let r = InterceptResult::from_guest_bytes(vec![]);
+        assert!(matches!(r, InterceptResult::Continue(ref b) if b.is_empty()));
+
+        // 0x00 + payload = Continue
+        let r = InterceptResult::from_guest_bytes(vec![0x00, 1, 2, 3]);
+        assert!(matches!(r, InterceptResult::Continue(ref b) if b == &[1, 2, 3]));
+
+        // 0x01 + payload = Final
+        let r = InterceptResult::from_guest_bytes(vec![0x01, 4, 5]);
+        assert!(matches!(r, InterceptResult::Final(ref b) if b == &[4, 5]));
+
+        // 0x02 + reason = Deny
+        let r = InterceptResult::from_guest_bytes(vec![0x02, b'n', b'o']);
+        assert!(matches!(r, InterceptResult::Deny { ref reason } if reason == "no"));
+
+        // Unknown discriminant = Continue with full bytes
+        let r = InterceptResult::from_guest_bytes(vec![0xFF, 1]);
+        assert!(matches!(r, InterceptResult::Continue(ref b) if b == &[0xFF, 1]));
     }
 }
