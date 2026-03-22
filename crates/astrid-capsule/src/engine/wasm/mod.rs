@@ -547,7 +547,7 @@ impl ExecutionEngine for WasmEngine {
                     // Validate interceptor event patterns have well-formed segments
                     // (no empty segments, leading/trailing dots, or empty strings).
                     for interceptor in &manifest.interceptors {
-                        if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                        if !crate::topic::has_valid_segments(&interceptor.event) {
                             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                                 "Interceptor event '{}' has invalid segment structure \
                              (empty segments, leading/trailing dots, or empty string)",
@@ -748,7 +748,7 @@ impl ExecutionEngine for WasmEngine {
         action: &str,
         payload: &[u8],
         caller: Option<&astrid_events::ipc::IpcMessage>,
-    ) -> CapsuleResult<Vec<u8>> {
+    ) -> CapsuleResult<crate::capsule::InterceptResult> {
         let plugin = self.plugin.as_ref().ok_or_else(|| {
             CapsuleError::NotSupported(
                 "plugin handles interceptors internally via IPC auto-subscribe".into(),
@@ -838,7 +838,7 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_kv = None;
         }
 
-        result
+        result.map(crate::capsule::InterceptResult::from_guest_bytes)
     }
 
     fn check_health(&self) -> crate::capsule::CapsuleState {

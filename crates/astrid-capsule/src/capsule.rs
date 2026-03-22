@@ -16,6 +16,52 @@ use crate::tool::CapsuleTool;
 /// Maximum concurrent interceptor invocations per capsule.
 const MAX_CONCURRENT_INTERCEPTORS: usize = 4;
 
+/// Result of an interceptor invocation, determining how the dispatcher
+/// continues the middleware chain.
+///
+/// Interceptors are called in priority order (lower fires first). Each
+/// interceptor can pass the event through, short-circuit with a final
+/// response, or deny the event entirely.
+///
+/// # Wire Format
+///
+/// WASM guests encode this as a discriminant byte followed by payload:
+/// - `0x00` + payload = `Continue` (pass through, possibly modified)
+/// - `0x01` + payload = `Final` (short-circuit success)
+/// - `0x02` + UTF-8 reason = `Deny` (short-circuit denial)
+/// - Empty bytes = `Continue` with empty payload (backward compatible)
+#[derive(Debug, Clone)]
+pub enum InterceptResult {
+    /// Pass the (possibly modified) payload to the next interceptor in the chain.
+    Continue(Vec<u8>),
+    /// Short-circuit the chain with a final response. No further interceptors fire.
+    Final(Vec<u8>),
+    /// Deny the event. No further interceptors fire. The reason is audit-logged.
+    Deny { reason: String },
+}
+
+impl InterceptResult {
+    /// Decode an `InterceptResult` from raw WASM guest output bytes.
+    ///
+    /// Empty output is treated as `Continue` with empty payload for
+    /// backward compatibility with interceptors that don't return a result.
+    pub fn from_guest_bytes(bytes: Vec<u8>) -> Self {
+        if bytes.is_empty() {
+            return Self::Continue(Vec::new());
+        }
+        match bytes[0] {
+            0x00 => Self::Continue(bytes[1..].to_vec()),
+            0x01 => Self::Final(bytes[1..].to_vec()),
+            0x02 => {
+                let reason = String::from_utf8_lossy(&bytes[1..]).into_owned();
+                Self::Deny { reason }
+            },
+            // Unknown discriminant — treat as Continue for forward compatibility.
+            _ => Self::Continue(bytes),
+        }
+    }
+}
+
 /// Unique, stable, human-readable capsule identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct CapsuleId(String);
@@ -154,12 +200,17 @@ pub trait Capsule: Send + Sync {
     /// handler name (e.g., `handle_user_prompt`), `payload` is the
     /// serialized IPC payload bytes. `caller` is the originating IPC
     /// message (if any) — used to set per-invocation principal context.
+    ///
+    /// Returns an [`InterceptResult`] that controls the middleware chain:
+    /// - `Continue` — pass (possibly modified) payload to the next interceptor
+    /// - `Final` — short-circuit the chain with a response
+    /// - `Deny` — short-circuit the chain, audit-logged
     fn invoke_interceptor(
         &self,
         _action: &str,
         _payload: &[u8],
         _caller: Option<&astrid_events::ipc::IpcMessage>,
-    ) -> CapsuleResult<Vec<u8>> {
+    ) -> CapsuleResult<InterceptResult> {
         Err(CapsuleError::NotSupported(
             "interceptors not supported".into(),
         ))
@@ -319,7 +370,7 @@ impl Capsule for CompositeCapsule {
         action: &str,
         payload: &[u8],
         caller: Option<&astrid_events::ipc::IpcMessage>,
-    ) -> CapsuleResult<Vec<u8>> {
+    ) -> CapsuleResult<InterceptResult> {
         for engine in &self.engines {
             match engine.invoke_interceptor(action, payload, caller) {
                 Ok(result) => return Ok(result),

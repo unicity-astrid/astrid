@@ -224,7 +224,7 @@ impl ExecutionEngine for McpHostEngine {
         action: &str,
         payload: &[u8],
         _caller: Option<&astrid_events::ipc::IpcMessage>,
-    ) -> CapsuleResult<Vec<u8>> {
+    ) -> CapsuleResult<crate::capsule::InterceptResult> {
         let server_id = format!("capsule:{}", self.manifest.package.name);
 
         let params: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
@@ -267,10 +267,12 @@ impl ExecutionEngine for McpHostEngine {
                     .collect::<Vec<_>>()
                     .join("");
 
+                // MCP interceptors always continue — no wire format for
+                // short-circuit in the MCP protocol. Future: add convention.
                 if text.is_empty() || text == "null" {
-                    Ok(Vec::new())
+                    Ok(crate::capsule::InterceptResult::Continue(Vec::new()))
                 } else {
-                    Ok(text.into_bytes())
+                    Ok(crate::capsule::InterceptResult::Continue(text.into_bytes()))
                 }
             },
             Err(e) => {
@@ -280,7 +282,7 @@ impl ExecutionEngine for McpHostEngine {
                     error = %e,
                     "Failed to invoke hook interceptor on MCP capsule"
                 );
-                Ok(Vec::new())
+                Ok(crate::capsule::InterceptResult::Continue(Vec::new()))
             },
         }
     }

@@ -260,7 +260,7 @@ pub(crate) fn astrid_trigger_hook_impl(
                             continue;
                         }
                         for interceptor in &capsule.manifest().interceptors {
-                            if crate::dispatcher::topic_matches(&request.hook, &interceptor.event) {
+                            if crate::topic::topic_matches(&request.hook, &interceptor.event) {
                                 matches.push((
                                     std::sync::Arc::clone(&capsule),
                                     interceptor.action.clone(),
@@ -286,19 +286,34 @@ pub(crate) fn astrid_trigger_hook_impl(
                     let hook = request.hook.clone();
                     join_set.spawn(async move {
                         match capsule.invoke_interceptor(&action, &payload, None) {
-                            Ok(bytes) if bytes.is_empty() => None,
-                            Ok(bytes) => {
-                                match serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                    Ok(val) => Some(val),
-                                    Err(_) => {
-                                        tracing::warn!(
-                                            capsule_id = %capsule.id(),
-                                            action = %action,
-                                            "interceptor returned non-JSON response, skipping"
-                                        );
-                                        None
-                                    },
-                                }
+                            Ok(crate::capsule::InterceptResult::Continue(bytes))
+                                if bytes.is_empty() =>
+                            {
+                                None
+                            },
+                            Ok(
+                                crate::capsule::InterceptResult::Continue(bytes)
+                                | crate::capsule::InterceptResult::Final(bytes),
+                            ) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                Ok(val) => Some(val),
+                                Err(_) => {
+                                    tracing::warn!(
+                                        capsule_id = %capsule.id(),
+                                        action = %action,
+                                        "interceptor returned non-JSON response, skipping"
+                                    );
+                                    None
+                                },
+                            },
+                            Ok(crate::capsule::InterceptResult::Deny { reason }) => {
+                                tracing::warn!(
+                                    capsule_id = %capsule.id(),
+                                    action = %action,
+                                    hook = %hook,
+                                    reason = %reason,
+                                    "interceptor denied during hook trigger"
+                                );
+                                None
                             },
                             Err(e) => {
                                 tracing::warn!(

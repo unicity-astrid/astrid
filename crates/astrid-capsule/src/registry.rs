@@ -360,8 +360,8 @@ mod tests {
             _action: &str,
             _payload: &[u8],
             _caller: Option<&astrid_events::ipc::IpcMessage>,
-        ) -> CapsuleResult<Vec<u8>> {
-            Ok(Vec::new())
+        ) -> CapsuleResult<crate::capsule::InterceptResult> {
+            Ok(crate::capsule::InterceptResult::Continue(Vec::new()))
         }
         fn check_health(&self) -> CapsuleState {
             CapsuleState::Ready

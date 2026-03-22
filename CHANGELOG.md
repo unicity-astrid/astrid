@@ -17,6 +17,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- Short-circuit interceptor chain — interceptors return `Continue`, `Final`, or `Deny` to control the middleware chain. A guard at priority 10 can veto an event before the core handler at priority 100 ever sees it. Wire format: discriminant byte (0x00/0x01/0x02) + payload, backward compatible with existing capsules.
 - Export conflict detection on `capsule install` — detects when a new capsule exports interfaces already provided by an installed capsule, prompts user to replace. Nix-aligned approach: conflicts derived from exports data, no name-based `supersedes` field needed.
 - Interceptor priority — `priority` field on `[[interceptor]]` in Capsule.toml (lower fires first, default 100). Enables layered interception (e.g. input guard before react loop).
 - Distro.lock regeneration on `astrid capsule update` — keeps the lockfile in sync after capsule updates
