@@ -10,8 +10,8 @@ use tracing::{info, warn};
 /// Build a Rust capsule from a crate directory.
 ///
 /// 1. `cargo build --target wasm32-wasip1 --release`
-/// 2. Extract tool schemas via Extism (`astrid_export_schemas`)
-/// 3. Merge schemas into `Capsule.toml`
+/// 2. Extract capsule description via Extism (`astrid_export_schemas`)
+/// 3. Merge description into `Capsule.toml`
 /// 4. Pack into `.capsule` archive
 pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     info!("Building Rust WASM capsule from {}", dir.display());
@@ -88,8 +88,8 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
         );
     }
 
-    // 5. Extract schemas using Extism
-    let (extracted_tools, capsule_description) = extract_schemas(&wasm_path)?;
+    // 5. Extract capsule description using Extism
+    let capsule_description = extract_capsule_description(&wasm_path)?;
 
     // 6. Merge with developer's Capsule.toml
     let base_toml_path = dir.join("Capsule.toml");
@@ -116,8 +116,6 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
         }
     }
 
-    inject_tool_schemas(&mut toml_doc, extracted_tools);
-
     let toml_content = toml_doc.to_string();
 
     // 7. Pack the archive
@@ -137,42 +135,37 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Extract tool schemas and capsule description from a compiled WASM binary.
+/// Extract capsule description from a compiled WASM binary.
 ///
-/// Calls `astrid_export_schemas` via Extism and parses the result. Supports
-/// both the new format (`{ "tools": {...}, "description": "..." }`) and the
-/// legacy flat tool map for backward compatibility.
-fn extract_schemas(wasm_path: &Path) -> Result<(Value, Option<String>)> {
-    info!("   Extracting Extism schemas...");
+/// Calls `astrid_export_schemas` via Extism and parses the result to extract
+/// the capsule description. Tool schemas are no longer extracted here (tools
+/// are registered via IPC convention, not manifest declarations).
+fn extract_capsule_description(wasm_path: &Path) -> Result<Option<String>> {
+    info!("   Extracting capsule metadata...");
     let wasm_bytes = fs::read(wasm_path).context("Failed to read compiled WASM binary")?;
     let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
     let mut plugin = extism::Plugin::new(&manifest, create_dummy_functions(), true)
-        .context("Failed to initialize Extism plugin for schema extraction")?;
+        .context("Failed to initialize Extism plugin for metadata extraction")?;
 
     let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
         Ok(json) => json,
         Err(e) => {
             warn!(
-                "Capsule does not export schemas (astrid_export_schemas failed: {}). \
-                 Proceeding without auto-generated tools.",
+                "Capsule does not export metadata (astrid_export_schemas failed: {}). \
+                 Proceeding without auto-generated description.",
                 e
             );
-            "{}".to_string()
+            return Ok(None);
         },
     };
 
     let schema_value: Value = serde_json::from_str(&schema_json)
         .unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
 
-    if let Some(tools) = schema_value.get("tools") {
-        let desc = schema_value
-            .get("description")
-            .and_then(Value::as_str)
-            .map(String::from);
-        Ok((tools.clone(), desc))
-    } else {
-        Ok((schema_value, None))
-    }
+    Ok(schema_value
+        .get("description")
+        .and_then(Value::as_str)
+        .map(String::from))
 }
 
 fn create_default_manifest(
@@ -198,73 +191,6 @@ fn create_default_manifest(
     doc.insert("component", toml_edit::Item::ArrayOfTables(comp_arr));
 
     doc
-}
-
-fn inject_tool_schemas(toml_doc: &mut toml_edit::DocumentMut, extracted_tools: Value) {
-    let Value::Object(tools) = extracted_tools else {
-        return;
-    };
-    if tools.is_empty() {
-        return;
-    }
-
-    let mut tools_array = toml_doc
-        .get("tool")
-        .and_then(toml_edit::Item::as_array_of_tables)
-        .cloned()
-        .unwrap_or_default();
-
-    for (tool_name, schema) in tools {
-        let description = schema
-            .get("description")
-            .and_then(Value::as_str)
-            .unwrap_or("Auto-generated Rust tool");
-
-        let mut tool_table = toml_edit::Table::new();
-        tool_table.insert("name", toml_edit::value(tool_name));
-        tool_table.insert("description", toml_edit::value(description));
-
-        // Convert JSON schema to a TOML inline table to avoid header conflicts.
-        // Regular TOML tables inside [[tool]] produce `[tool.input_schema]`
-        // headers that `toml` parsers treat as a duplicate `tool` key.
-        // Inline tables serialize as `input_schema = { ... }` on one line.
-        if let Ok(toml_val) = serde_json::from_value::<toml::Value>(schema.clone()) {
-            let inline = toml_value_to_inline(&toml_val);
-            tool_table.insert("input_schema", toml_edit::Item::Value(inline));
-        }
-
-        tools_array.push(tool_table);
-    }
-
-    toml_doc.insert("tool", toml_edit::Item::ArrayOfTables(tools_array));
-}
-
-/// Recursively convert a `toml::Value` into a `toml_edit::Value` using inline
-/// tables, so nested objects don't expand into conflicting TOML headers.
-fn toml_value_to_inline(val: &toml::Value) -> toml_edit::Value {
-    match val {
-        toml::Value::String(s) => toml_edit::value(s.as_str()).into_value().expect("string"),
-        toml::Value::Integer(i) => toml_edit::value(*i).into_value().expect("int"),
-        toml::Value::Float(f) => toml_edit::value(*f).into_value().expect("float"),
-        toml::Value::Boolean(b) => toml_edit::value(*b).into_value().expect("bool"),
-        toml::Value::Datetime(dt) => toml_edit::value(dt.to_string())
-            .into_value()
-            .expect("datetime"),
-        toml::Value::Array(arr) => {
-            let mut a = toml_edit::Array::new();
-            for item in arr {
-                a.push_formatted(toml_value_to_inline(item));
-            }
-            toml_edit::Value::Array(a)
-        },
-        toml::Value::Table(tbl) => {
-            let mut inline = toml_edit::InlineTable::new();
-            for (k, v) in tbl {
-                inline.insert(k, toml_value_to_inline(v));
-            }
-            toml_edit::Value::InlineTable(inline)
-        },
-    }
 }
 
 /// Create dummy host functions for Extism schema extraction.
@@ -313,9 +239,6 @@ fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
         // Logging and hooks
         dummy("astrid_log", 2, 0),
         dummy("astrid_trigger_hook", 1, 1),
-        // Cron
-        dummy("astrid_cron_schedule", 3, 0),
-        dummy("astrid_cron_cancel", 1, 0),
         // Process spawning
         dummy("astrid_spawn_host", 1, 1),
         dummy("astrid_spawn_background_host", 1, 1),

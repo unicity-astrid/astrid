@@ -531,8 +531,6 @@ mod tests {
                     action: "test_action".to_string(),
                     priority,
                 }],
-                cron_jobs: Vec::new(),
-                tools: Vec::new(),
                 topics: Vec::new(),
             };
             let capsule = Self {

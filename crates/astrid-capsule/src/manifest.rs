@@ -61,12 +61,6 @@ pub struct CapsuleManifest {
     /// Interceptors (eBPF-style hooks) this capsule registers.
     #[serde(default, rename = "interceptor")]
     pub interceptors: Vec<InterceptorDef>,
-    /// Scheduled background tasks (cron jobs) this capsule provides.
-    #[serde(default, rename = "cron")]
-    pub cron_jobs: Vec<CronDef>,
-    /// Native tools this capsule provides to the LLM agent.
-    #[serde(default, rename = "tool")]
-    pub tools: Vec<ToolDef>,
     /// Topic API declarations describing the payload shape of IPC topics.
     #[serde(default, rename = "topic")]
     pub topics: Vec<TopicDef>,
@@ -427,17 +421,6 @@ pub struct LlmProviderDef {
     pub capabilities: Vec<String>,
 }
 
-/// A tool provided by the capsule to the LLM agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDef {
-    /// Name of the tool.
-    pub name: String,
-    /// Human-readable description.
-    pub description: String,
-    /// JSON schema for the tool's input parameters.
-    pub input_schema: serde_json::Value,
-}
-
 /// An event interceptor registered by the capsule.
 ///
 /// Maps an IPC event topic pattern to a named action (WASM export handler).
@@ -501,17 +484,4 @@ pub struct TopicDef {
     pub description: Option<String>,
     /// Path to a JSON Schema file (relative to the capsule directory).
     pub schema: Option<PathBuf>,
-}
-
-/// A scheduled background task (cron job) provided by the capsule.
-///
-/// Allows the OS scheduler to trigger capsule logic at specific intervals.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CronDef {
-    /// The name of the scheduled task.
-    pub name: String,
-    /// The cron expression schedule (e.g., "0 0 * * *").
-    pub schedule: String,
-    /// The action or topic to trigger when the schedule fires.
-    pub action: String,
 }

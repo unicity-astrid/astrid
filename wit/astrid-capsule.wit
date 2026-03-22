@@ -7,7 +7,7 @@
 /// contract (WS-3); long-term it becomes direct Component Model imports/exports
 /// when migrating to the Component Model (WS-8).
 ///
-/// The host exposes 51 functions across 11 domain-specific interfaces. All
+/// The host exposes 49 functions across 10 domain-specific interfaces. All
 /// operations are capability-gated and audited by the Astrid runtime. Capsules
 /// never bypass the security model — the host enforces workspace boundaries,
 /// budget limits, capability tokens, and per-principal scoping on every call.
@@ -527,20 +527,6 @@ interface sys {
     check-capsule-capability: func(request-json: string) -> string;
 }
 
-/// Cron scheduling (stub — not yet implemented).
-interface cron {
-    /// Schedule a cron job.
-    ///
-    /// Arguments: cron expression, topic, payload.
-    /// Currently logs a warning and returns without effect.
-    cron-schedule: func(cron-expr: string, topic: string, payload: string);
-
-    /// Cancel a scheduled cron job.
-    ///
-    /// Currently logs a warning and returns without effect.
-    cron-cancel: func(job-id: string);
-}
-
 /// Host-side process spawning with OS-level sandboxing.
 ///
 /// Commands are wrapped in platform-specific sandbox tools
@@ -667,7 +653,7 @@ interface identity {
 /// A conforming capsule imports the domain-specific host interfaces and
 /// exports the guest entry-point functions below.
 world capsule {
-    // Host-provided imports (51 functions across 11 interfaces).
+    // Host-provided imports (49 functions across 10 interfaces).
     import fs;
     import ipc;
     import uplink;
@@ -675,7 +661,6 @@ world capsule {
     import net;
     import http;
     import sys;
-    import cron;
     import process;
     import elicit;
     import approval;

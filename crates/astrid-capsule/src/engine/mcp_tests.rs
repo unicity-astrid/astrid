@@ -48,7 +48,6 @@ mod tests {
                 allow_prompt_injection: false,
             },
             env: HashMap::new(),
-            tools: vec![],
             context_files: vec![],
             mcp_servers: vec![McpServerDef {
                 id: "test-server".to_string(),
@@ -62,7 +61,6 @@ mod tests {
             uplinks: vec![],
             llm_providers: vec![],
             interceptors: vec![],
-            cron_jobs: vec![],
             topics: vec![],
         }
     }

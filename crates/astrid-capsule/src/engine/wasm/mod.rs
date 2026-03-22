@@ -468,13 +468,11 @@ impl ExecutionEngine for WasmEngine {
                 let extism_wasm = Wasm::data(wasm_bytes);
                 let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
 
-                // Long-lived capsules (uplinks, cron, run-loop daemons) must not
+                // Long-lived capsules (uplinks, run-loop daemons) must not
                 // have a wall-clock timeout. Other capsules get a 5-minute safety
                 // timeout — generous enough for interceptors that do streaming HTTP
                 // (e.g. LLM providers) while still catching runaways.
-                let is_daemon = !manifest.uplinks.is_empty()
-                    || !manifest.cron_jobs.is_empty()
-                    || manifest.capabilities.uplink;
+                let is_daemon = !manifest.uplinks.is_empty() || manifest.capabilities.uplink;
                 if !is_daemon && !has_run_export {
                     extism_manifest = extism_manifest
                         .with_timeout(std::time::Duration::from_secs(WASM_CAPSULE_TIMEOUT_SECS));

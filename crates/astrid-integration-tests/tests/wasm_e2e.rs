@@ -3,18 +3,14 @@ use std::sync::Arc;
 
 use astrid_capsule::capsule::CapsuleState;
 use astrid_capsule::loader::CapsuleLoader;
-use astrid_capsule::manifest::{
-    CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef, ToolDef,
-};
+use astrid_capsule::manifest::{CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef};
 use astrid_events::EventBus;
 use astrid_mcp::testing::test_secure_mcp_client;
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
-use serde_json::json;
 
 use astrid_capsule::context::CapsuleContext;
 
 async fn setup_test_capsule(
-    tools: Vec<ToolDef>,
     fs_read_caps: Vec<String>,
     fs_write_caps: Vec<String>,
     net_caps: Vec<String>,
@@ -83,8 +79,6 @@ async fn setup_test_capsule(
         uplinks: vec![],
         llm_providers: vec![],
         interceptors: vec![],
-        cron_jobs: vec![],
-        tools,
         topics: vec![],
     };
 
@@ -116,7 +110,6 @@ async fn setup_test_capsule(
 /// Like `setup_test_capsule` but with a separate home root directory for
 /// testing the `home://` VFS scheme end-to-end.
 async fn setup_test_capsule_with_home(
-    tools: Vec<ToolDef>,
     fs_read_caps: Vec<String>,
     fs_write_caps: Vec<String>,
 ) -> Option<(
@@ -188,8 +181,6 @@ async fn setup_test_capsule_with_home(
         uplinks: vec![],
         llm_providers: vec![],
         interceptors: vec![],
-        cron_jobs: vec![],
-        tools,
         topics: vec![],
     };
 
@@ -222,13 +213,8 @@ async fn setup_test_capsule_with_home(
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_basic_log() {
-    let tools = vec![ToolDef {
-        name: "test-log".into(),
-        description: "Test log tool".into(),
-        input_schema: json!({ "type": "object", "properties": { "message": { "type": "string" } } }),
-    }];
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -237,13 +223,8 @@ async fn test_wasm_capsule_e2e_basic_log() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_malicious_log_rejected() {
-    let tools = vec![ToolDef {
-        name: "test-malicious-log".into(),
-        description: "Malicious log tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -252,13 +233,8 @@ async fn test_wasm_capsule_e2e_malicious_log_rejected() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_malicious_kv_rejected() {
-    let tools = vec![ToolDef {
-        name: "test-malicious-kv".into(),
-        description: "Malicious kv tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -267,13 +243,8 @@ async fn test_wasm_capsule_e2e_malicious_kv_rejected() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_ipc_limits() {
-    let tools = vec![ToolDef {
-        name: "test-ipc-limits".into(),
-        description: "Test IPC Limits".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -282,13 +253,8 @@ async fn test_wasm_capsule_e2e_ipc_limits() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_vfs_path_traversal() {
-    let tools = vec![ToolDef {
-        name: "test-file-read".into(),
-        description: "Test file read tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -297,14 +263,8 @@ async fn test_wasm_capsule_e2e_vfs_path_traversal() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_http_security_gate() {
-    let tools = vec![ToolDef {
-        name: "test-http".into(),
-        description: "Test http tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
-
     let Some((_capsule, _tmp)) =
-        setup_test_capsule(tools, vec![], vec![], vec!["api.github.com".into()]).await
+        setup_test_capsule(vec![], vec![], vec!["api.github.com".into()]).await
     else {
         return;
     };
@@ -313,13 +273,7 @@ async fn test_wasm_capsule_e2e_http_security_gate() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_malicious_http_headers() {
-    let tools = vec![ToolDef {
-        name: "test-malicious-http-headers".into(),
-        description: "Malicious HTTP headers tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
-    let Some((_capsule, _tmp)) = setup_test_capsule(tools, vec![], vec![], vec!["*".into()]).await
-    else {
+    let Some((_capsule, _tmp)) = setup_test_capsule(vec![], vec![], vec!["*".into()]).await else {
         return;
     };
 }
@@ -327,20 +281,8 @@ async fn test_wasm_capsule_e2e_malicious_http_headers() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
-    let tools = vec![
-        ToolDef {
-            name: "test-file-write".into(),
-            description: "Write tool".into(),
-            input_schema: json!({ "type": "object" }),
-        },
-        ToolDef {
-            name: "test-file-read".into(),
-            description: "Read tool".into(),
-            input_schema: json!({ "type": "object" }),
-        },
-    ];
     let Some((_capsule, _temp_dir)) =
-        setup_test_capsule(tools, vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
+        setup_test_capsule(vec!["/".into()], vec!["/".into()], vec!["*".into()]).await
     else {
         return;
     };
@@ -349,14 +291,8 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_home_vfs_read() {
-    let tools = vec![ToolDef {
-        name: "test-file-read".into(),
-        description: "Read tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _temp_ws, _temp_home)) =
-        setup_test_capsule_with_home(tools, vec!["workspace://".into(), "home://".into()], vec![])
-            .await
+        setup_test_capsule_with_home(vec!["workspace://".into(), "home://".into()], vec![]).await
     else {
         return;
     };
@@ -365,13 +301,8 @@ async fn test_wasm_capsule_e2e_home_vfs_read() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_home_vfs_denied_without_capability() {
-    let tools = vec![ToolDef {
-        name: "test-file-read".into(),
-        description: "Read tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
     let Some((_capsule, _temp_ws, _temp_home)) =
-        setup_test_capsule_with_home(tools, vec!["workspace://".into()], vec![]).await
+        setup_test_capsule_with_home(vec!["workspace://".into()], vec![]).await
     else {
         return;
     };

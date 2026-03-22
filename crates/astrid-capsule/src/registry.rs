@@ -317,8 +317,6 @@ mod tests {
                     uplinks: Vec::new(),
                     llm_providers: Vec::new(),
                     interceptors: Vec::new(),
-                    cron_jobs: Vec::new(),
-                    tools: Vec::new(),
                     topics: Vec::new(),
                 },
                 semaphore: Arc::new(Semaphore::new(4)),

@@ -260,20 +260,6 @@ pub(crate) fn shim_invoke_host_func(
             &mut fn_outputs,
             user_data,
         )?,
-        WasmHostFunction::CronSchedule => {
-            crate::engine::wasm::host::cron::astrid_cron_schedule_impl(
-                plugin,
-                &fn_inputs,
-                &mut fn_outputs,
-                user_data,
-            )?
-        },
-        WasmHostFunction::CronCancel => crate::engine::wasm::host::cron::astrid_cron_cancel_impl(
-            plugin,
-            &fn_inputs,
-            &mut fn_outputs,
-            user_data,
-        )?,
         WasmHostFunction::SpawnHost => crate::engine::wasm::host::process::astrid_spawn_host_impl(
             plugin,
             &fn_inputs,

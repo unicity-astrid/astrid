@@ -1,7 +1,5 @@
 /// Capsule-level approval requests.
 pub(crate) mod approval;
-/// Cron scheduling.
-pub(crate) mod cron;
 /// Elicit lifecycle API (install/upgrade user input collection).
 pub(crate) mod elicit;
 /// File system operations for plugins.
@@ -60,8 +58,6 @@ pub(crate) enum WasmHostFunction {
     HttpRequest,
     TriggerHook,
     Log,
-    CronSchedule,
-    CronCancel,
     SpawnHost,
     Elicit,
     HasSecret,
@@ -86,7 +82,7 @@ pub(crate) enum WasmHostFunction {
 }
 
 impl WasmHostFunction {
-    pub(crate) const ALL: [Self; 51] = [
+    pub(crate) const ALL: [Self; 49] = [
         Self::FsExists,
         Self::FsMkdir,
         Self::FsReaddir,
@@ -111,8 +107,6 @@ impl WasmHostFunction {
         Self::HttpRequest,
         Self::TriggerHook,
         Self::Log,
-        Self::CronSchedule,
-        Self::CronCancel,
         Self::SpawnHost,
         Self::NetBindUnix,
         Self::NetAccept,
@@ -176,8 +170,6 @@ impl WasmHostFunction {
             Self::HttpRequest => "astrid_http_request",
             Self::TriggerHook => "astrid_trigger_hook",
             Self::Log => "astrid_log",
-            Self::CronSchedule => "astrid_cron_schedule",
-            Self::CronCancel => "astrid_cron_cancel",
             Self::SpawnHost => "astrid_spawn_host",
             Self::Elicit => "astrid_elicit",
             Self::HasSecret => "astrid_has_secret",
@@ -221,7 +213,6 @@ impl WasmHostFunction {
             | Self::GetConfig
             | Self::HttpRequest
             | Self::SpawnHost
-            | Self::CronCancel
             | Self::NetBindUnix
             | Self::NetAccept
             | Self::NetRead
@@ -249,7 +240,7 @@ impl WasmHostFunction {
             | Self::KvSet
             | Self::Log
             | Self::NetWrite => 2,
-            Self::UplinkRegister | Self::UplinkSend | Self::CronSchedule => 3,
+            Self::UplinkRegister | Self::UplinkSend => 3,
             Self::GetCaller | Self::SignalReady | Self::ClockMs | Self::GetInterceptorHandles => 0,
         }
     }
@@ -267,8 +258,6 @@ impl WasmHostFunction {
             | Self::KvSet
             | Self::KvDelete
             | Self::Log
-            | Self::CronSchedule
-            | Self::CronCancel
             | Self::SignalReady
             | Self::NetCloseStream
             | Self::HttpStreamClose => TYPE_VOID,
@@ -420,12 +409,6 @@ pub fn register_host_functions(
             },
             WasmHostFunction::Log => {
                 builder.with_function(func.name(), args, rets, ud, sys::astrid_log_impl)
-            },
-            WasmHostFunction::CronSchedule => {
-                builder.with_function(func.name(), args, rets, ud, cron::astrid_cron_schedule_impl)
-            },
-            WasmHostFunction::CronCancel => {
-                builder.with_function(func.name(), args, rets, ud, cron::astrid_cron_cancel_impl)
             },
             WasmHostFunction::SpawnHost => {
                 builder.with_function(func.name(), args, rets, ud, process::astrid_spawn_host_impl)
@@ -601,27 +584,27 @@ mod tests {
     #[test]
     fn shim_index_stability() {
         assert_eq!(
-            WasmHostFunction::from_index(46),
+            WasmHostFunction::from_index(44),
             Some(WasmHostFunction::NetCloseStream)
         );
         assert_eq!(
-            WasmHostFunction::from_index(47),
+            WasmHostFunction::from_index(45),
             Some(WasmHostFunction::NetPollAccept)
         );
         assert_eq!(
-            WasmHostFunction::from_index(48),
+            WasmHostFunction::from_index(46),
             Some(WasmHostFunction::HttpStreamStart)
         );
         assert_eq!(
-            WasmHostFunction::from_index(49),
+            WasmHostFunction::from_index(47),
             Some(WasmHostFunction::HttpStreamRead)
         );
         assert_eq!(
-            WasmHostFunction::from_index(50),
+            WasmHostFunction::from_index(48),
             Some(WasmHostFunction::HttpStreamClose)
         );
         // Sentinel: index beyond ALL returns None.
-        assert_eq!(WasmHostFunction::from_index(51), None);
+        assert_eq!(WasmHostFunction::from_index(49), None);
     }
 
     /// Every variant in the enum must be present in the ALL array exactly once.
@@ -630,7 +613,7 @@ mod tests {
         let all = &WasmHostFunction::ALL;
         // If a variant is added to the enum but not ALL, this count will be
         // wrong and the assertion on length will fail.
-        assert_eq!(all.len(), 51);
+        assert_eq!(all.len(), 49);
 
         // Check for duplicates.
         let mut seen = std::collections::HashSet::new();
@@ -659,7 +642,7 @@ mod tests {
         assert_eq!(f.return_type(), super::shim::TYPE_I64);
     }
 
-    /// Verify that legacy indices (0..42) still map to their expected functions.
+    /// Verify that legacy indices still map to their expected functions.
     /// Catches accidental insertion in the middle of the ALL array.
     #[test]
     fn legacy_index_stability() {
@@ -669,15 +652,15 @@ mod tests {
             Some(WasmHostFunction::FsExists)
         );
         assert_eq!(
-            WasmHostFunction::from_index(27),
+            WasmHostFunction::from_index(25),
             Some(WasmHostFunction::NetBindUnix)
         );
         assert_eq!(
-            WasmHostFunction::from_index(28),
+            WasmHostFunction::from_index(26),
             Some(WasmHostFunction::NetAccept)
         );
         assert_eq!(
-            WasmHostFunction::from_index(42),
+            WasmHostFunction::from_index(40),
             Some(WasmHostFunction::CheckCapsuleCapability)
         );
     }

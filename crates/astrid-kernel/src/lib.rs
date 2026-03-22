@@ -890,7 +890,7 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
                 let reg = kernel.capsules.read().await;
                 reg.values().any(|c| {
                     let m = c.manifest();
-                    !m.uplinks.is_empty() || !m.cron_jobs.is_empty()
+                    !m.uplinks.is_empty()
                 })
             };
 

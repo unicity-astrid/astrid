@@ -22,7 +22,6 @@ flate2 = { workspace = true }
 serde_json = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }
-toml = { workspace = true }
 toml_edit = "0.25.3"
 tracing = { workspace = true }
 

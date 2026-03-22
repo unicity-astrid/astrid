@@ -60,8 +60,6 @@ async fn test_mcp_host_engine_capability_validation() {
         uplinks: vec![],
         llm_providers: vec![],
         interceptors: vec![],
-        cron_jobs: vec![],
-        tools: vec![],
         topics: vec![],
     };
 

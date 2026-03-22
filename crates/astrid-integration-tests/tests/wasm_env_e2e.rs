@@ -3,9 +3,7 @@ use std::sync::Arc;
 
 use astrid_capsule::context::CapsuleContext;
 use astrid_capsule::loader::CapsuleLoader;
-use astrid_capsule::manifest::{
-    CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef, ToolDef,
-};
+use astrid_capsule::manifest::{CapabilitiesDef, CapsuleManifest, ComponentDef, PackageDef};
 use astrid_events::EventBus;
 use astrid_mcp::testing::test_secure_mcp_client;
 use astrid_storage::{MemoryKvStore, ScopedKvStore};
@@ -15,12 +13,6 @@ use serde_json::json;
 #[ignore = "tool dispatch migrating to IPC convention"]
 #[expect(clippy::too_many_lines)]
 async fn test_wasm_capsule_e2e_env_config_injection() {
-    let tools = vec![ToolDef {
-        name: "test-config".into(),
-        description: "Test config tool".into(),
-        input_schema: json!({ "type": "object" }),
-    }];
-
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
@@ -109,8 +101,6 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         uplinks: vec![],
         llm_providers: vec![],
         interceptors: vec![],
-        cron_jobs: vec![],
-        tools,
         topics: vec![],
     };
 
