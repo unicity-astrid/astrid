@@ -73,10 +73,16 @@ pub struct CapsuleManifest {
 }
 
 impl CapsuleManifest {
-    /// Returns `true` if this capsule has no imports.
+    /// Returns `true` if this capsule declares any imports.
     #[must_use]
     pub fn has_imports(&self) -> bool {
         self.imports.values().any(|ns| !ns.is_empty())
+    }
+
+    /// Returns `true` if this capsule declares any exports.
+    #[must_use]
+    pub fn has_exports(&self) -> bool {
+        self.exports.values().any(|ns| !ns.is_empty())
     }
 
     /// Iterate all exported interfaces as `(namespace, name, version)` triples.

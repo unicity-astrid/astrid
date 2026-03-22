@@ -1,6 +1,6 @@
 //! Capsule management commands - install capsules securely.
 
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
@@ -743,6 +743,9 @@ pub(crate) fn install_from_local_path_inner(
     let id = manifest.package.name.clone();
     let new_version = manifest.package.version.clone();
 
+    // Check for export conflicts with installed capsules before touching disk.
+    check_export_conflicts(&manifest, workspace)?;
+
     // Resolve Target Directory
     let target_dir = resolve_target_dir(home, &id, workspace)?;
     let parent = target_dir.parent().context("target dir has no parent")?;
@@ -906,6 +909,95 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
             "  Install the missing capsule(s) or run `astrid init` to set up a complete environment."
         );
     }
+}
+
+/// Check if a capsule being installed exports interfaces already exported by
+/// another installed capsule. If conflicts are found, prompts the user to
+/// replace the existing provider.
+///
+/// This is the Nix-aligned approach: conflicts are derived from the exports
+/// data the system already has, rather than requiring capsules to name each
+/// other via a `supersedes` field.
+fn check_export_conflicts(
+    manifest: &astrid_capsule::manifest::CapsuleManifest,
+    workspace: bool,
+) -> anyhow::Result<()> {
+    if !manifest.has_exports() {
+        return Ok(());
+    }
+
+    let Ok(all_capsules) = super::meta::scan_installed_capsules() else {
+        return Ok(());
+    };
+
+    // Collect conflicts: (namespace/interface, existing capsule name)
+    let mut conflicts: Vec<(String, String)> = Vec::new();
+
+    for (ns, name, _ver) in manifest.export_triples() {
+        for c in &all_capsules {
+            // Skip self (reinstall/upgrade case)
+            if c.name == manifest.package.name {
+                continue;
+            }
+            if let Some(ref meta) = c.meta
+                && meta
+                    .exports
+                    .get(ns)
+                    .and_then(|ifaces| ifaces.get(name))
+                    .is_some()
+            {
+                conflicts.push((format!("{ns}/{name}"), c.name.clone()));
+            }
+        }
+    }
+
+    if conflicts.is_empty() {
+        return Ok(());
+    }
+
+    // Deduplicate capsule names (one capsule may conflict on multiple interfaces)
+    let mut conflicting_capsules: Vec<String> = conflicts
+        .iter()
+        .map(|(_, capsule)| capsule.clone())
+        .collect();
+    conflicting_capsules.sort();
+    conflicting_capsules.dedup();
+
+    eprintln!();
+    eprintln!("  Export conflict detected:");
+    for (iface, capsule) in &conflicts {
+        eprintln!(
+            "    {} exports {iface}, already exported by {capsule}",
+            manifest.package.name
+        );
+    }
+    eprintln!();
+
+    // In non-interactive mode (no TTY), bail rather than silently proceeding.
+    if !std::io::stdin().is_terminal() {
+        bail!(
+            "Export conflict: {} would duplicate interfaces exported by {}. \
+             Use interactive mode to replace, or remove the existing capsule first.",
+            manifest.package.name,
+            conflicting_capsules.join(", ")
+        );
+    }
+
+    eprint!("  Replace {}? [y/N] ", conflicting_capsules.join(", "));
+
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    if !answer.trim().eq_ignore_ascii_case("y") {
+        bail!("Installation cancelled.");
+    }
+
+    // Remove conflicting capsules (force=true to skip dependency check — user confirmed).
+    for capsule_name in &conflicting_capsules {
+        eprintln!("  Removing {capsule_name}...");
+        super::remove::remove_capsule(capsule_name, workspace, true)?;
+    }
+
+    Ok(())
 }
 
 /// Regenerate the Distro.lock from currently installed capsules.

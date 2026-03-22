@@ -17,6 +17,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- Export conflict detection on `capsule install` — detects when a new capsule exports interfaces already provided by an installed capsule, prompts user to replace. Nix-aligned approach: conflicts derived from exports data, no name-based `supersedes` field needed.
 - Interceptor priority — `priority` field on `[[interceptor]]` in Capsule.toml (lower fires first, default 100). Enables layered interception (e.g. input guard before react loop).
 - Distro.lock regeneration on `astrid capsule update` — keeps the lockfile in sync after capsule updates
 - Content-addressed WIT storage — capsule install hashes `.wit` files into `~/.astrid/wit/`, capsule remove cleans up unreferenced WIT files, `wit_files` field in `meta.json`

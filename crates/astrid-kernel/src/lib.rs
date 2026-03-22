@@ -1506,21 +1506,42 @@ mod tests {
 
 /// Validate that every capsule's required imports have a matching export
 /// from another loaded capsule. Logs errors for unsatisfied required imports
-/// and info messages for unsatisfied optional imports.
+/// and info messages for unsatisfied optional imports. Also warns about
+/// duplicate exports of the same interface from multiple capsules.
 fn validate_imports_exports(
     manifests: &[(
         astrid_capsule::manifest::CapsuleManifest,
         std::path::PathBuf,
     )],
 ) {
-    let exports_by_interface: std::collections::HashMap<(&str, &str), Vec<&semver::Version>> =
-        manifests.iter().flat_map(|(m, _)| m.export_triples()).fold(
-            std::collections::HashMap::new(),
-            |mut acc, (ns, name, ver)| {
-                acc.entry((ns, name)).or_default().push(ver);
-                acc
-            },
-        );
+    // Track (namespace, interface) → list of (capsule_name, version).
+    let mut exports_by_interface: std::collections::HashMap<
+        (&str, &str),
+        Vec<(&str, &semver::Version)>,
+    > = std::collections::HashMap::new();
+
+    for (m, _) in manifests {
+        for (ns, name, ver) in m.export_triples() {
+            exports_by_interface
+                .entry((ns, name))
+                .or_default()
+                .push((&m.package.name, ver));
+        }
+    }
+
+    // Warn about duplicate exports — two capsules providing the same interface
+    // will both fire on matching events, causing double-processing.
+    for ((ns, name), providers) in &exports_by_interface {
+        if providers.len() > 1 {
+            let names: Vec<&str> = providers.iter().map(|(n, _)| *n).collect();
+            tracing::warn!(
+                interface = %format!("{ns}/{name}"),
+                providers = ?names,
+                "Multiple capsules export the same interface — events may be double-processed. \
+                 Consider removing one with `astrid capsule remove`."
+            );
+        }
+    }
 
     let mut satisfied_count: u32 = 0;
     let mut warning_count: u32 = 0;
@@ -1529,7 +1550,7 @@ fn validate_imports_exports(
         for (ns, name, req, optional) in manifest.import_tuples() {
             let has_provider = exports_by_interface
                 .get(&(ns, name))
-                .is_some_and(|versions| versions.iter().any(|v| req.matches(v)));
+                .is_some_and(|providers| providers.iter().any(|(_, v)| req.matches(v)));
 
             if has_provider {
                 satisfied_count = satisfied_count.saturating_add(1);
