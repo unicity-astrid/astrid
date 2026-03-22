@@ -138,11 +138,11 @@ fn install_standard_wit(home: &AstridHome) {
         return;
     }
 
-    // Skip if already populated (re-init shouldn't re-fetch).
-    let already_populated = std::fs::read_dir(&wit_dir)
-        .map(|entries| entries.count() >= STANDARD_WIT_FILES.len())
-        .unwrap_or(false);
-    if already_populated {
+    // Skip if all expected files already exist (idempotent, resilient to partial installs).
+    let all_files_exist = STANDARD_WIT_FILES
+        .iter()
+        .all(|&file| wit_dir.join(file).exists());
+    if all_files_exist {
         return;
     }
 
@@ -168,40 +168,46 @@ fn install_standard_wit(home: &AstridHome) {
         let url = format!("{WIT_BASE_URL}/{filename}");
         let target = wit_dir.join(filename);
 
-        match client.get(&url).send() {
-            Ok(response) if response.status().is_success() => match response.text() {
-                Ok(content) => {
-                    if let Err(e) = std::fs::write(&target, &content) {
-                        eprintln!(
-                            "{}",
-                            Theme::warning(&format!("Failed to write {filename}: {e}"))
-                        );
-                    } else {
-                        installed = installed.saturating_add(1);
-                    }
-                },
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        Theme::warning(&format!("Failed to read {filename}: {e}"))
-                    );
-                },
-            },
-            Ok(response) => {
-                eprintln!(
-                    "{}",
-                    Theme::warning(&format!(
-                        "Failed to fetch {filename} (HTTP {})",
-                        response.status()
-                    ))
-                );
-            },
+        let response = match client.get(&url).send() {
+            Ok(r) => r,
             Err(e) => {
                 eprintln!(
                     "{}",
                     Theme::warning(&format!("Failed to fetch {filename}: {e}"))
                 );
+                continue;
             },
+        };
+
+        if !response.status().is_success() {
+            eprintln!(
+                "{}",
+                Theme::warning(&format!(
+                    "Failed to fetch {filename} (HTTP {})",
+                    response.status()
+                ))
+            );
+            continue;
+        }
+
+        let content = match response.text() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    Theme::warning(&format!("Failed to read response body for {filename}: {e}"))
+                );
+                continue;
+            },
+        };
+
+        if let Err(e) = std::fs::write(&target, &content) {
+            eprintln!(
+                "{}",
+                Theme::warning(&format!("Failed to write {filename}: {e}"))
+            );
+        } else {
+            installed = installed.saturating_add(1);
         }
     }
 
