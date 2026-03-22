@@ -5,15 +5,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use astrid_core::SessionId;
 use astrid_core::principal::PrincipalId;
 use astrid_events::EventBus;
 use astrid_storage::ScopedKvStore;
-use uuid::Uuid;
 
 use astrid_core::session_token::SessionToken;
 
-use crate::capsule::CapsuleId;
 use crate::registry::CapsuleRegistry;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
@@ -97,41 +94,6 @@ impl CapsuleContext {
     #[must_use]
     pub fn with_identity_store(mut self, store: Arc<dyn astrid_storage::IdentityStore>) -> Self {
         self.identity_store = Some(store);
-        self
-    }
-}
-
-/// Context provided to a capsule tool during execution.
-#[derive(Debug, Clone)]
-pub struct CapsuleToolContext {
-    pub capsule_id: CapsuleId,
-    pub workspace_root: PathBuf,
-    pub kv: ScopedKvStore,
-    pub session_id: Option<SessionId>,
-    pub user_id: Option<Uuid>,
-}
-
-impl CapsuleToolContext {
-    #[must_use]
-    pub fn new(capsule_id: CapsuleId, workspace_root: PathBuf, kv: ScopedKvStore) -> Self {
-        Self {
-            capsule_id,
-            workspace_root,
-            kv,
-            session_id: None,
-            user_id: None,
-        }
-    }
-
-    #[must_use]
-    pub fn with_session(mut self, session_id: SessionId) -> Self {
-        self.session_id = Some(session_id);
-        self
-    }
-
-    #[must_use]
-    pub fn with_user(mut self, user_id: Uuid) -> Self {
-        self.user_id = Some(user_id);
         self
     }
 }

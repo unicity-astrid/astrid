@@ -41,11 +41,6 @@ pub(crate) trait ExecutionEngine: Send + Sync {
         None
     }
 
-    /// Return the native tools provided by this engine.
-    fn tools(&self) -> &[std::sync::Arc<dyn crate::tool::CapsuleTool>] {
-        &[]
-    }
-
     /// Wait for the engine's background task to signal readiness.
     ///
     /// Returns [`ReadyStatus::Ready`] if the engine is ready or has no

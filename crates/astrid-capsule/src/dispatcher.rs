@@ -470,7 +470,6 @@ mod tests {
     use crate::context::CapsuleContext;
     use crate::error::CapsuleResult;
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, InterceptorDef, PackageDef};
-    use crate::tool::CapsuleTool;
     use astrid_events::ipc::IpcPayload;
 
     /// A minimal mock capsule for dispatch tests.
@@ -563,9 +562,6 @@ mod tests {
         }
         async fn unload(&mut self) -> CapsuleResult<()> {
             Ok(())
-        }
-        fn tools(&self) -> &[Arc<dyn CapsuleTool>] {
-            &[]
         }
         fn invoke_interceptor(
             &self,

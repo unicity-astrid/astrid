@@ -274,7 +274,6 @@ mod tests {
     use crate::context::CapsuleContext;
     use crate::error::CapsuleResult;
     use crate::manifest::{CapabilitiesDef, CapsuleManifest, PackageDef};
-    use crate::tool::CapsuleTool;
 
     struct MockCapsule {
         id: CapsuleId,
@@ -343,9 +342,6 @@ mod tests {
         }
         async fn unload(&mut self) -> CapsuleResult<()> {
             Ok(())
-        }
-        fn tools(&self) -> &[Arc<dyn CapsuleTool>] {
-            &[]
         }
         fn take_inbound_rx(
             &mut self,

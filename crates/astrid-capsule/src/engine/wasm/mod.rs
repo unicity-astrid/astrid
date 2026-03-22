@@ -95,8 +95,6 @@ fn resolve_content_addressed_wasm(capsule_dir: &std::path::Path) -> Option<PathB
         None
     }
 }
-pub(crate) mod tool;
-
 /// Wall-clock timeout for short-lived (non-daemon) WASM capsules.
 /// Generous enough for interceptors doing streaming HTTP (e.g. LLM providers)
 /// while still catching runaways.
@@ -112,7 +110,6 @@ pub struct WasmEngine {
     _capsule_dir: PathBuf,
     plugin: Option<Arc<Mutex<extism::Plugin>>>,
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
-    tools: Vec<Arc<dyn crate::tool::CapsuleTool>>,
     run_handle: Option<tokio::task::JoinHandle<()>>,
     /// Receiver for the readiness signal from the run loop.
     /// Only set for capsules that have a `run()` export.
@@ -139,7 +136,6 @@ impl WasmEngine {
             _capsule_dir: capsule_dir,
             plugin: None,
             inbound_rx: None,
-            tools: Vec::new(),
             run_handle: None,
             ready_rx: None,
             cancel_token: None,
@@ -677,16 +673,6 @@ impl ExecutionEngine for WasmEngine {
             }));
             // plugin_arc moved into the spawn — self.plugin stays None.
         } else {
-            let mut tools: Vec<Arc<dyn crate::tool::CapsuleTool>> = Vec::new();
-            for t in &self.manifest.tools {
-                tools.push(Arc::new(tool::WasmCapsuleTool::new(
-                    t.name.clone(),
-                    t.description.clone(),
-                    t.input_schema.clone(),
-                    Arc::clone(&plugin_arc),
-                )));
-            }
-            self.tools = tools;
             self.plugin = Some(plugin_arc);
         }
         self.inbound_rx = rx;
@@ -715,7 +701,6 @@ impl ExecutionEngine for WasmEngine {
         }
         self.plugin = None; // Drop releases WASM memory
         self.ready_rx = None; // Prevent stale channel observation post-unload
-        self.tools.clear();
         Ok(())
     }
 
@@ -737,10 +722,6 @@ impl ExecutionEngine for WasmEngine {
         &mut self,
     ) -> Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>> {
         self.inbound_rx.take()
-    }
-
-    fn tools(&self) -> &[Arc<dyn crate::tool::CapsuleTool>] {
-        &self.tools
     }
 
     fn invoke_interceptor(

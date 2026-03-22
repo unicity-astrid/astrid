@@ -11,7 +11,6 @@ use tokio::sync::Semaphore;
 use crate::context::CapsuleContext;
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
-use crate::tool::CapsuleTool;
 
 /// Maximum concurrent interceptor invocations per capsule.
 const MAX_CONCURRENT_INTERCEPTORS: usize = 4;
@@ -170,11 +169,6 @@ pub trait Capsule: Send + Sync {
     /// Unload the capsule, terminating all of its execution engines.
     async fn unload(&mut self) -> CapsuleResult<()>;
 
-    /// Tools exposed by this capsule.
-    fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
-        &[] // Default implementation returning empty list
-    }
-
     /// Extract the inbound receiver for uplink messages.
     /// This is typically called exactly once by the OS router after loading.
     fn take_inbound_rx(
@@ -264,7 +258,6 @@ pub(crate) struct CompositeCapsule {
     manifest: CapsuleManifest,
     state: CapsuleState,
     engines: Vec<Box<dyn crate::engine::ExecutionEngine>>,
-    tools: Vec<Arc<dyn CapsuleTool>>,
     capsule_dir: Option<PathBuf>,
     interceptor_semaphore: Arc<Semaphore>,
 }
@@ -278,7 +271,6 @@ impl CompositeCapsule {
             manifest,
             state: CapsuleState::Unloaded,
             engines: Vec::new(),
-            tools: Vec::new(),
             capsule_dir: None,
             interceptor_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_INTERCEPTORS)),
         })
@@ -311,13 +303,11 @@ impl Capsule for CompositeCapsule {
 
     async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
         self.state = CapsuleState::Loading;
-        self.tools.clear();
         for engine in &mut self.engines {
             if let Err(e) = engine.load(ctx).await {
                 self.state = CapsuleState::Failed(e.to_string());
                 return Err(e);
             }
-            self.tools.extend_from_slice(engine.tools());
         }
         self.state = CapsuleState::Ready;
         Ok(())
@@ -330,13 +320,8 @@ impl Capsule for CompositeCapsule {
             // prevent others from shutting down gracefully.
             let _ = engine.unload().await;
         }
-        self.tools.clear();
         self.state = CapsuleState::Unloaded;
         Ok(())
-    }
-
-    fn tools(&self) -> &[std::sync::Arc<dyn CapsuleTool>] {
-        &self.tools
     }
 
     async fn wait_ready(&self, timeout: std::time::Duration) -> ReadyStatus {

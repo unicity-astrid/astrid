@@ -490,10 +490,6 @@ impl Kernel {
         let other_names: Vec<String> = others.iter().map(|(m, _)| m.package.name.clone()).collect();
         self.await_capsule_readiness(&other_names).await;
 
-        // Inject tool schemas into every capsule's KV namespace so any
-        // capsule (e.g. react) can read them via kv::get_json("tool_schemas").
-        self.inject_tool_schemas().await;
-
         // Signal that all capsules have been loaded so uplink capsules
         // (like the registry) can proceed with discovery instead of
         // polling with arbitrary timeouts.
@@ -690,90 +686,6 @@ impl Kernel {
                         );
                     },
                 }
-            }
-        }
-    }
-
-    /// Collect all tool definitions from loaded capsule manifests and write
-    /// them to every capsule's scoped KV namespace as `tool_schemas`.
-    async fn inject_tool_schemas(&self) {
-        use astrid_events::llm::LlmToolDefinition;
-        use astrid_storage::KvStore;
-
-        // Collect tools and capsule IDs under a short-lived read lock,
-        // then drop the guard before the async KV write loop. Holding
-        // the RwLock across N awaits would block all registry writers.
-        let (all_tools, capsule_ids) = {
-            let registry = self.capsules.read().await;
-            // Collect tools declared in Capsule.toml manifests (WASM capsules).
-            let mut tools: Vec<LlmToolDefinition> = registry
-                .values()
-                .flat_map(|capsule| {
-                    capsule.manifest().tools.iter().map(|t| LlmToolDefinition {
-                        name: t.name.clone(),
-                        description: Some(t.description.clone()),
-                        input_schema: t.input_schema.clone(),
-                    })
-                })
-                .collect();
-            let ids: Vec<String> = registry.list().iter().map(ToString::to_string).collect();
-
-            // Also collect tools discovered from MCP host engines (Tier 2
-            // OpenClaw capsules, legacy MCP servers). These are registered
-            // dynamically at runtime via the MCP bridge.
-            let mut tool_names: std::collections::HashSet<String> =
-                tools.iter().map(|t| t.name.clone()).collect();
-            let mcp_tools = self.mcp.inner().server_manager().all_tools().await;
-            for t in mcp_tools {
-                // Avoid duplicates if a tool is declared in both manifest and MCP.
-                if tool_names.insert(t.name.clone()) {
-                    // Ensure input_schema has "properties" — LLM APIs require it.
-                    let mut schema = t.input_schema;
-                    if let Some(obj) = schema.as_object_mut() {
-                        obj.entry("properties")
-                            .or_insert_with(|| serde_json::json!({}));
-                    }
-                    tools.push(LlmToolDefinition {
-                        name: t.name,
-                        description: t.description,
-                        input_schema: schema,
-                    });
-                }
-            }
-
-            (tools, ids)
-        };
-
-        if all_tools.is_empty() {
-            return;
-        }
-
-        let tool_bytes = match serde_json::to_vec(&all_tools) {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to serialize tool schemas");
-                return;
-            },
-        };
-
-        tracing::info!(
-            tool_count = all_tools.len(),
-            "Injecting tool schemas into capsule KV stores"
-        );
-
-        let principal = astrid_core::PrincipalId::default();
-        for capsule_id in &capsule_ids {
-            let namespace = format!("{principal}:capsule:{capsule_id}");
-            if let Err(e) = self
-                .kv
-                .set(&namespace, "tool_schemas", tool_bytes.clone())
-                .await
-            {
-                tracing::warn!(
-                    capsule = %capsule_id,
-                    error = %e,
-                    "Failed to inject tool schemas"
-                );
             }
         }
     }
