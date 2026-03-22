@@ -926,9 +926,8 @@ fn check_export_conflicts(
         return Ok(());
     }
 
-    let Ok(all_capsules) = super::meta::scan_installed_capsules() else {
-        return Ok(());
-    };
+    let all_capsules = super::meta::scan_installed_capsules()
+        .context("failed to scan installed capsules for export conflict check")?;
 
     // Collect conflicts: (namespace/interface, existing capsule name)
     let mut conflicts: Vec<(String, String)> = Vec::new();
