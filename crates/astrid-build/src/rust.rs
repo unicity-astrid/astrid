@@ -160,7 +160,7 @@ fn extract_capsule_description(wasm_path: &Path) -> Result<Option<String>> {
     };
 
     let schema_value: Value = serde_json::from_str(&schema_json)
-        .unwrap_or_else(|_| Value::Object(serde_json::Map::default()));
+        .context("Failed to parse JSON from astrid_export_schemas")?;
 
     Ok(schema_value
         .get("description")
