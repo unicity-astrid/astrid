@@ -31,7 +31,7 @@ pub(crate) fn check_subscribe_acl(
     // The second case correctly prevents scope escalation via wildcard subscriptions.
     if !acl_patterns
         .iter()
-        .any(|acl| crate::dispatcher::topic_matches(topic_pattern, acl))
+        .any(|acl| crate::topic::topic_matches(topic_pattern, acl))
     {
         return Err(format!(
             "Capsule '{capsule_id}' is not allowed to subscribe to topic \
@@ -160,7 +160,7 @@ pub(crate) fn astrid_ipc_publish_impl(
         String::from_utf8(topic_bytes).map_err(|_| Error::msg("Topic is not valid UTF-8"))?;
 
     // Reject malformed topic structure before any matching or routing.
-    if !crate::dispatcher::has_valid_segments(&topic) {
+    if !crate::topic::has_valid_segments(&topic) {
         return Err(Error::msg(
             "Topic contains empty segments (consecutive dots, leading/trailing dots, or is empty)",
         ));
@@ -185,7 +185,7 @@ pub(crate) fn astrid_ipc_publish_impl(
     if !state
         .ipc_publish_patterns
         .iter()
-        .any(|pattern| crate::dispatcher::topic_matches(&topic, pattern))
+        .any(|pattern| crate::topic::topic_matches(&topic, pattern))
     {
         return Err(Error::msg(format!(
             "Capsule '{}' is not allowed to publish to topic '{topic}' — \
@@ -247,7 +247,7 @@ pub(crate) fn astrid_ipc_subscribe_impl(
         .map_err(|_| Error::msg("Topic pattern is not valid UTF-8"))?;
 
     // Reject malformed subscription pattern structure before registration.
-    if !crate::dispatcher::has_valid_segments(&topic_pattern) {
+    if !crate::topic::has_valid_segments(&topic_pattern) {
         return Err(Error::msg(
             "Topic pattern contains empty segments (consecutive dots, leading/trailing dots, or is empty)",
         ));

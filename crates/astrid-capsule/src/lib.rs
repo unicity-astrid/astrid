@@ -18,5 +18,6 @@ pub mod manifest;
 pub mod registry;
 pub mod security;
 pub mod tool;
+pub mod topic;
 pub mod toposort;
 pub(crate) mod watcher;

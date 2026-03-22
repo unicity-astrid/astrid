@@ -260,7 +260,7 @@ pub(crate) fn astrid_trigger_hook_impl(
                             continue;
                         }
                         for interceptor in &capsule.manifest().interceptors {
-                            if crate::dispatcher::topic_matches(&request.hook, &interceptor.event) {
+                            if crate::topic::topic_matches(&request.hook, &interceptor.event) {
                                 matches.push((
                                     std::sync::Arc::clone(&capsule),
                                     interceptor.action.clone(),

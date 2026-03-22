@@ -547,7 +547,7 @@ impl ExecutionEngine for WasmEngine {
                     // Validate interceptor event patterns have well-formed segments
                     // (no empty segments, leading/trailing dots, or empty strings).
                     for interceptor in &manifest.interceptors {
-                        if !crate::dispatcher::has_valid_segments(&interceptor.event) {
+                        if !crate::topic::has_valid_segments(&interceptor.event) {
                             return Err(CapsuleError::UnsupportedEntryPoint(format!(
                                 "Interceptor event '{}' has invalid segment structure \
                              (empty segments, leading/trailing dots, or empty string)",

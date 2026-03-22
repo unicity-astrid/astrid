@@ -241,7 +241,7 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         .map(|i| ("interceptor event pattern", i.event.as_str()));
 
     for (kind, pattern) in ipc_patterns.chain(interceptor_patterns) {
-        if !crate::dispatcher::has_valid_segments(pattern) {
+        if !crate::topic::has_valid_segments(pattern) {
             return Err(CapsuleError::ManifestParseError {
                 path: path.to_path_buf(),
                 message: format!(
@@ -277,7 +277,7 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         let mut seen_topics: HashSet<(&str, TopicDirection)> = HashSet::new();
         for topic in &manifest.topics {
             // Topic name must have valid segments (no empty segments).
-            if !crate::dispatcher::has_valid_segments(&topic.name) {
+            if !crate::topic::has_valid_segments(&topic.name) {
                 return Err(CapsuleError::ManifestParseError {
                     path: path.to_path_buf(),
                     message: format!(
