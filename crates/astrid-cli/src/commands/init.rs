@@ -86,6 +86,9 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     // Install each capsule with progress.
     let locked = install_capsules(&selected)?;
 
+    // Install standard WIT interface definitions.
+    install_standard_wit(&home);
+
     // Write per-capsule env files with resolved variable templates.
     write_env_files(&home, &selected, &vars)?;
 
@@ -98,6 +101,123 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     eprintln!("  Run {} to start.", Theme::prompt("astrid"),);
 
     Ok(())
+}
+
+/// Standard WIT interface files to install during init.
+///
+/// Fetched from the SDK repo at `raw.githubusercontent.com`. These define
+/// the typed contracts between capsules (llm, session, spark, etc.).
+/// Installed to `~/.astrid/wit/astrid/` so capsules and the LLM can
+/// read them via `home://wit/astrid/`.
+const STANDARD_WIT_FILES: &[&str] = &[
+    "context.wit",
+    "hook.wit",
+    "llm.wit",
+    "prompt.wit",
+    "registry.wit",
+    "session.wit",
+    "spark.wit",
+    "tool.wit",
+    "types.wit",
+];
+
+/// Canonical WIT repo base URL for fetching interface definitions.
+const WIT_BASE_URL: &str = "https://raw.githubusercontent.com/unicity-astrid/wit/main/interfaces";
+
+/// Install standard WIT interface definitions to `~/.astrid/wit/astrid/`.
+///
+/// Best-effort: logs warnings on failure but does not block init.
+/// The WIT files are small (< 10KB each) and fetched from the canonical WIT repo.
+fn install_standard_wit(home: &AstridHome) {
+    let wit_dir = home.wit_dir().join("astrid");
+    if let Err(e) = std::fs::create_dir_all(&wit_dir) {
+        eprintln!(
+            "{}",
+            Theme::warning(&format!("Failed to create WIT directory: {e}"))
+        );
+        return;
+    }
+
+    // Skip if all expected files already exist (idempotent, resilient to partial installs).
+    let all_files_exist = STANDARD_WIT_FILES
+        .iter()
+        .all(|&file| wit_dir.join(file).exists());
+    if all_files_exist {
+        return;
+    }
+
+    eprintln!("  Installing standard WIT interfaces...");
+
+    let client = match reqwest::blocking::Client::builder()
+        .user_agent("astrid-cli")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                Theme::warning(&format!("Failed to create HTTP client for WIT fetch: {e}"))
+            );
+            return;
+        },
+    };
+
+    let mut installed = 0u32;
+    for filename in STANDARD_WIT_FILES {
+        let url = format!("{WIT_BASE_URL}/{filename}");
+        let target = wit_dir.join(filename);
+
+        let response = match client.get(&url).send() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    Theme::warning(&format!("Failed to fetch {filename}: {e}"))
+                );
+                continue;
+            },
+        };
+
+        if !response.status().is_success() {
+            eprintln!(
+                "{}",
+                Theme::warning(&format!(
+                    "Failed to fetch {filename} (HTTP {})",
+                    response.status()
+                ))
+            );
+            continue;
+        }
+
+        let content = match response.text() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    Theme::warning(&format!("Failed to read response body for {filename}: {e}"))
+                );
+                continue;
+            },
+        };
+
+        if let Err(e) = std::fs::write(&target, &content) {
+            eprintln!(
+                "{}",
+                Theme::warning(&format!("Failed to write {filename}: {e}"))
+            );
+        } else {
+            installed = installed.saturating_add(1);
+        }
+    }
+
+    if installed > 0 {
+        eprintln!(
+            "  {} {installed}/{} WIT interfaces installed",
+            Theme::success("OK"),
+            STANDARD_WIT_FILES.len()
+        );
+    }
 }
 
 /// Initialize the current directory as an Astrid workspace (if not already).
