@@ -599,4 +599,27 @@ mod tests {
         let url = "https://example.com/Distro.toml";
         assert_eq!(resolve_distro_url(url), url);
     }
+
+    #[test]
+    fn install_standard_wit_creates_principal_wit_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = astrid_core::dirs::AstridHome::from_path(tmp.path());
+        let principal = astrid_core::PrincipalId::default();
+
+        // Best-effort: network calls fail in CI, but directory creation
+        // happens before the HTTP fetch so the side-effect is testable.
+        install_standard_wit(&home, &principal);
+
+        let expected = home.principal_home(&principal).root().join("wit");
+        assert!(
+            expected.exists(),
+            "WIT directory must be created inside the principal home"
+        );
+
+        let old_path = home.wit_dir().join("astrid");
+        assert!(
+            !old_path.exists(),
+            "WIT must not be written to the old root-level location"
+        );
+    }
 }
