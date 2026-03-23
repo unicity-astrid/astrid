@@ -48,6 +48,11 @@ struct Cli {
     #[arg(short, long)]
     prompt: Option<String>,
 
+    /// Auto-approve all tool approval requests in headless mode (autonomous/yolo mode).
+    /// Without this flag, headless mode auto-denies approvals.
+    #[arg(short = 'y', long = "yes", alias = "yolo", alias = "autonomous")]
+    auto_approve: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -221,7 +226,7 @@ async fn main() -> Result<()> {
     // Headless mode: -p "prompt" sends a single prompt and exits.
     if let Some(prompt_text) = cli.prompt {
         ensure_global_config();
-        return run_headless(prompt_text, output_format).await;
+        return run_headless(prompt_text, output_format, cli.auto_approve).await;
     }
 
     // Also detect piped stdin with no subcommand as headless.
@@ -230,7 +235,7 @@ async fn main() -> Result<()> {
         let mut stdin_text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
         if !stdin_text.is_empty() {
-            return run_headless(stdin_text, output_format).await;
+            return run_headless(stdin_text, output_format, cli.auto_approve).await;
         }
     }
 
@@ -670,7 +675,11 @@ async fn spawn_persistent_daemon(ready_path: &std::path::Path) -> Result<()> {
 /// Output format:
 /// - `Pretty`: prints the raw response text to stdout.
 /// - `Json`: prints a JSON object with `response` and tool call details.
-async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result<()> {
+async fn run_headless(
+    prompt: String,
+    format: formatter::OutputFormat,
+    auto_approve: bool,
+) -> Result<()> {
     use astrid_core::SessionId;
 
     let socket_path = socket_client::proxy_socket_path();
@@ -715,7 +724,7 @@ async fn run_headless(prompt: String, format: formatter::OutputFormat) -> Result
     // Send the prompt and collect the streaming response
     client.send_input(full_prompt).await?;
     let (response_text, tool_calls) =
-        collect_headless_response(&mut client, &session_id, format).await?;
+        collect_headless_response(&mut client, &session_id, format, auto_approve).await?;
 
     // Final output
     match format {
@@ -754,6 +763,7 @@ async fn collect_headless_response(
     client: &mut socket_client::SocketClient,
     session_id: &astrid_core::SessionId,
     format: formatter::OutputFormat,
+    auto_approve: bool,
 ) -> Result<(String, Vec<serde_json::Value>)> {
     let mut response_text = String::new();
     let mut tool_calls: Vec<serde_json::Value> = Vec::new();
@@ -802,17 +812,25 @@ async fn collect_headless_response(
             astrid_types::ipc::IpcPayload::ApprovalRequired {
                 request_id, action, ..
             } => {
-                eprintln!("[headless] Auto-denied approval for: {action}");
+                let decision = if auto_approve { "approve" } else { "deny" };
+                eprintln!(
+                    "[headless] Auto-{} approval for: {action}",
+                    if auto_approve { "approved" } else { "denied" }
+                );
                 let response = astrid_types::ipc::IpcPayload::ApprovalResponse {
                     request_id: request_id.clone(),
-                    decision: "deny".to_string(),
-                    reason: Some("headless mode".to_string()),
+                    decision: decision.to_string(),
+                    reason: Some(
+                        if auto_approve {
+                            "headless --yes mode"
+                        } else {
+                            "headless mode"
+                        }
+                        .to_string(),
+                    ),
                 };
-                let msg = astrid_types::ipc::IpcMessage::new(
-                    "astrid.v1.approval.response",
-                    response,
-                    session_id.0,
-                );
+                let topic = format!("astrid.v1.approval.response.{request_id}");
+                let msg = astrid_types::ipc::IpcMessage::new(topic, response, session_id.0);
                 client.send_message(msg).await?;
             },
             _ => {},

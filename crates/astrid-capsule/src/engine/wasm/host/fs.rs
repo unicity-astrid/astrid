@@ -8,6 +8,9 @@ use crate::engine::wasm::host_state::HostState;
 /// URI scheme prefix for the principal's home directory.
 const HOME_SCHEME: &str = "home://";
 
+/// URI scheme prefix for the daemon's current working directory.
+const CWD_SCHEME: &str = "cwd://";
+
 /// Path prefix that maps to the principal's tmp directory.
 const TMP_PREFIX: &str = "/tmp/";
 
@@ -122,7 +125,19 @@ struct ResolvedVfsPath {
 /// Phase 1: Resolve a raw guest path to a physical path and determine
 /// whether it targets the workspace or home VFS.
 fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error> {
-    if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
+    if let Some(stripped) = raw_path.strip_prefix(CWD_SCHEME) {
+        let resolved = resolve_physical_absolute(&state.workspace_root, stripped)?;
+        let relative = resolved
+            .physical
+            .strip_prefix(&resolved.canonical_root)
+            .map_err(|_| Error::msg("resolved cwd path escaped canonical root"))?
+            .to_path_buf();
+        Ok(ResolvedPath {
+            physical: resolved.physical,
+            relative,
+            target: VfsTarget::Workspace,
+        })
+    } else if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
         let home_root = state.home_root.as_ref().ok_or_else(|| {
             Error::msg(
                 "home:// scheme is not available: no home directory is configured. \

@@ -92,7 +92,6 @@ impl SandboxCommand {
     /// Panics on macOS if `validate_sandbox_str` passes but the path is not
     /// valid UTF-8. This is unreachable because the validation rejects
     /// non-UTF-8 paths.
-    #[expect(clippy::needless_pass_by_value)]
     pub fn wrap(inner_cmd: Command, worktree_path: &Path) -> io::Result<Command> {
         // Validate on all platforms for defense in depth and API consistency.
         // On macOS the validated string is needed for SBPL interpolation.
@@ -138,6 +137,24 @@ impl SandboxCommand {
 
         #[cfg(target_os = "macos")]
         {
+            // sandbox-exec (Seatbelt) is deprecated and broken on macOS 15+ (Darwin 25+).
+            // Check the Darwin major version at runtime and skip sandboxing if >= 25.
+            let darwin_major: u32 = std::process::Command::new("uname")
+                .arg("-r")
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(|s| s.split('.').next()?.parse().ok())
+                .unwrap_or(0);
+
+            if darwin_major >= 24 {
+                tracing::warn!(
+                    "macOS 15+ detected (Darwin {darwin_major}): sandbox-exec is deprecated and \
+                     broken on this OS version. Running host process unsandboxed."
+                );
+                return Ok(inner_cmd);
+            }
+
             // Safe: validate_sandbox_str above confirmed valid UTF-8.
             let worktree_str = worktree_path
                 .to_str()

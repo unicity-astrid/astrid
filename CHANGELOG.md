@@ -9,6 +9,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Fixed
+
+- `cwd://` VFS scheme was handled in the security gate (capability checks) but not in the runtime path resolver — capsules using `cwd://` paths at runtime received a security denial because the path resolved to `<cwd>/cwd:/path` instead of `<cwd>/path`. Added `cwd://` handling to `resolve_path` in the fs host implementation.
+
 ### Changed
 
 - `workspace://` VFS scheme renamed to `cwd://` — the scheme maps to the daemon's CWD at boot; the old name implied a structured project workspace concept that was never implemented.
