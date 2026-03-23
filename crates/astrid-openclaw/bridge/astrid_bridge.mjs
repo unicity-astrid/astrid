@@ -653,6 +653,27 @@ async function loadPlugin() {
       }
     }
 
+    // Register built-in tool_describe handler — returns all registered tools
+    // as LlmToolDefinition-compatible JSON for the IPC tool describe protocol.
+    if (!eventHandlers.has("tool_describe")) eventHandlers.set("tool_describe", []);
+    eventHandlers.get("tool_describe").push({
+      handler: () => {
+        const tools = [];
+        for (const [name, tool] of registeredTools) {
+          let schema = tool.definition?.inputSchema || tool.definition?.input_schema;
+          if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+            schema = { type: "object" };
+          }
+          const desc = typeof tool.definition?.description === "string"
+            ? tool.definition.description
+            : "";
+          tools.push({ name, description: desc, input_schema: schema });
+        }
+        return { tools };
+      },
+      priority: 0,
+    });
+
     log.info(
       `Plugin loaded: ${registeredTools.size} tools, ` +
         `${registeredChannels.size} channels, ` +
