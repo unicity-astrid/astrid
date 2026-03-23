@@ -298,29 +298,30 @@ function handleInitialize(id, params) {
   });
 }
 
-function handleToolsList(id) {
+/// Build a tool definition array from registeredTools.
+///
+/// @param {string} schemaKey — property name for the schema field
+///   ("inputSchema" for MCP protocol, "input_schema" for Astrid IPC).
+function buildToolList(schemaKey) {
   const tools = [];
-
   for (const [name, tool] of registeredTools) {
-    // Coerce inputSchema to a plain JSON object — rmcp requires a JSON object
-    // (serde_json::Map), not an array, null, or primitive.
     let schema = tool.definition?.inputSchema || tool.definition?.input_schema;
     if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
       schema = { type: "object" };
     }
-    // Coerce description to string — rmcp expects Option<Cow<str>>
     const desc = typeof tool.definition?.description === "string"
       ? tool.definition.description
       : "";
-    // Coerce name to string
     const toolName = typeof name === "string" ? name : String(name);
-
-    tools.push({
-      name: toolName,
-      description: desc,
-      inputSchema: schema,
-    });
+    const entry = { name: toolName, description: desc };
+    entry[schemaKey] = schema;
+    tools.push(entry);
   }
+  return tools;
+}
+
+function handleToolsList(id) {
+  const tools = buildToolList("inputSchema");
 
   // Add special tool for agent context
   tools.push({
@@ -657,20 +658,7 @@ async function loadPlugin() {
     // as LlmToolDefinition-compatible JSON for the IPC tool describe protocol.
     if (!eventHandlers.has("tool_describe")) eventHandlers.set("tool_describe", []);
     eventHandlers.get("tool_describe").push({
-      handler: () => {
-        const tools = [];
-        for (const [name, tool] of registeredTools) {
-          let schema = tool.definition?.inputSchema || tool.definition?.input_schema;
-          if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-            schema = { type: "object" };
-          }
-          const desc = typeof tool.definition?.description === "string"
-            ? tool.definition.description
-            : "";
-          tools.push({ name, description: desc, input_schema: schema });
-        }
-        return { tools };
-      },
+      handler: () => ({ tools: buildToolList("input_schema") }),
       priority: 0,
     });
 
