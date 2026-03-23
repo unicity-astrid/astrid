@@ -86,8 +86,8 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     // Install each capsule with progress.
     let locked = install_capsules(&selected)?;
 
-    // Install standard WIT interface definitions.
-    install_standard_wit(&home);
+    // Install standard WIT interface definitions to the principal's home.
+    install_standard_wit(&home, &principal);
 
     // Write per-capsule env files with resolved variable templates.
     write_env_files(&home, &selected, &vars)?;
@@ -105,10 +105,10 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
 
 /// Standard WIT interface files to install during init.
 ///
-/// Fetched from the SDK repo at `raw.githubusercontent.com`. These define
-/// the typed contracts between capsules (llm, session, spark, etc.).
-/// Installed to `~/.astrid/wit/astrid/` so capsules and the LLM can
-/// read them via `home://wit/astrid/`.
+/// Fetched from the canonical WIT repo at `raw.githubusercontent.com`. These
+/// define the typed contracts between capsules (llm, session, spark, etc.).
+/// Installed to `~/.astrid/home/{principal}/wit/` so capsules and the LLM
+/// can read them via `home://wit/`.
 const STANDARD_WIT_FILES: &[&str] = &[
     "context.wit",
     "hook.wit",
@@ -124,12 +124,13 @@ const STANDARD_WIT_FILES: &[&str] = &[
 /// Canonical WIT repo base URL for fetching interface definitions.
 const WIT_BASE_URL: &str = "https://raw.githubusercontent.com/unicity-astrid/wit/main/interfaces";
 
-/// Install standard WIT interface definitions to `~/.astrid/wit/astrid/`.
+/// Install standard WIT interface definitions to `~/.astrid/home/{principal}/wit/`.
 ///
-/// Best-effort: logs warnings on failure but does not block init.
-/// The WIT files are small (< 10KB each) and fetched from the canonical WIT repo.
-fn install_standard_wit(home: &AstridHome) {
-    let wit_dir = home.wit_dir().join("astrid");
+/// Per-principal install (Nix-aligned): a principal's `home://wit/` reflects
+/// the interfaces available to their installed capsules. Best-effort: logs
+/// warnings on failure but does not block init.
+fn install_standard_wit(home: &AstridHome, principal: &astrid_core::PrincipalId) {
+    let wit_dir = home.principal_home(principal).root().join("wit");
     if let Err(e) = std::fs::create_dir_all(&wit_dir) {
         eprintln!(
             "{}",
@@ -597,5 +598,28 @@ mod tests {
     fn distro_source_resolution_full_url() {
         let url = "https://example.com/Distro.toml";
         assert_eq!(resolve_distro_url(url), url);
+    }
+
+    #[test]
+    fn install_standard_wit_creates_principal_wit_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = astrid_core::dirs::AstridHome::from_path(tmp.path());
+        let principal = astrid_core::PrincipalId::default();
+
+        // Best-effort: network calls fail in CI, but directory creation
+        // happens before the HTTP fetch so the side-effect is testable.
+        install_standard_wit(&home, &principal);
+
+        let expected = home.principal_home(&principal).root().join("wit");
+        assert!(
+            expected.exists(),
+            "WIT directory must be created inside the principal home"
+        );
+
+        let old_path = home.wit_dir().join("astrid");
+        assert!(
+            !old_path.exists(),
+            "WIT must not be written to the old root-level location"
+        );
     }
 }

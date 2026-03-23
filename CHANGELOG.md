@@ -19,7 +19,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
-- Standard WIT interface installation during `astrid init` — fetches 9 WIT files (llm, session, spark, context, prompt, tool, hook, registry, types) from the SDK repo and installs to `~/.astrid/wit/astrid/` for capsule and LLM access via `home://wit/astrid/`
+- Standard WIT interface installation during `astrid init` — fetches 9 WIT files (llm, session, spark, context, prompt, tool, hook, registry, types) from the canonical WIT repo and installs to `~/.astrid/home/{principal}/wit/` for capsule and LLM access via `home://wit/`
 - Short-circuit interceptor chain — interceptors return `Continue`, `Final`, or `Deny` to control the middleware chain. A guard at priority 10 can veto an event before the core handler at priority 100 ever sees it. Wire format: discriminant byte (0x00/0x01/0x02) + payload, backward compatible with existing capsules.
 - Export conflict detection on `capsule install` — detects when a new capsule exports interfaces already provided by an installed capsule, prompts user to replace. Nix-aligned approach: conflicts derived from exports data, no name-based `supersedes` field needed.
 - Interceptor priority — `priority` field on `[[interceptor]]` in Capsule.toml (lower fires first, default 100). Enables layered interception (e.g. input guard before react loop).
@@ -65,6 +65,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- `astrid init` standard WIT files were installed to `~/.astrid/wit/astrid/` (root-level, no VFS scheme). Capsules access the VFS via `home://` which maps to `~/.astrid/home/{principal}/` — the files were unreachable. Now installed to `~/.astrid/home/{principal}/wit/`, accessible as `home://wit/` (fixes #598)
 - Dispatcher `known_principals` HashSet capped at 10K entries to prevent unbounded memory growth
 - Dispatcher only caches principal after successful home provisioning — transient failures allow retry on next event
 - `AstridUserId.principal` now has `#[serde(default)]` — existing identity records without the field deserialize with `"default"` instead of failing
