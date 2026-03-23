@@ -21,7 +21,7 @@ The `CompositeCapsule` owns a `Vec<Box<dyn ExecutionEngine>>` and fans lifecycle
 
 `ManifestSecurityGate` intercepts every sensitive host call: HTTP requests, filesystem reads/writes, process spawns, socket binds, identity operations. Anything not declared in `[capabilities]` is denied.
 
-The gate resolves VFS scheme prefixes (`workspace://`, `home://`) to canonical physical paths at construction time. Path traversal via `..` is rejected before the check reaches `starts_with`. Wildcard `"*"` in `fs_read`/`fs_write` is confined to the canonical workspace root, so `*` does not mean "the entire filesystem."
+The gate resolves VFS scheme prefixes (`cwd://`, `home://`) to canonical physical paths at construction time. Path traversal via `..` is rejected before the check reaches `starts_with`. Wildcard `"*"` in `fs_read`/`fs_write` is confined to the canonical workspace root, so `*` does not mean "the entire filesystem."
 
 Identity operations use a hierarchical capability model: `admin > link > resolve`. Having `"admin"` implies all lower levels.
 

@@ -11,6 +11,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Changed
 
+- `workspace://` VFS scheme renamed to `cwd://` — the scheme maps to the daemon's CWD at boot; the old name implied a structured project workspace concept that was never implemented.
+
 - **Tools are now a pure IPC convention.** Removed kernel-side tool dispatch (`WasmCapsuleTool`, `CapsuleTool` trait, `inject_tool_schemas`, `CapsuleToolContext`), `ToolDef` and `[[tool]]` from manifest, `inject_tool_schemas` from `astrid-build`. The kernel no longer parses or manages tool schemas. Tool capsules use IPC interceptors on `tool.v1.execute.<name>` and `tool.v1.request.describe`. The router capsule handles discovery and dispatch.
 - **Removed dead cron host functions.** `astrid_cron_schedule` and `astrid_cron_cancel` were never implemented (stubs only). `CronDef` and `[[cron]]` removed from manifest. WIT spec updated: 49 host functions across 10 domain interfaces.
 - Append-only artifact store — `bin/` and `wit/` are never deleted on capsule remove. Content-addressed artifacts are the audit trail; deleting them breaks provability. Future `astrid gc` for explicit cleanup.

@@ -292,7 +292,7 @@ async fn test_wasm_capsule_e2e_vfs_legitimate_rw() {
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_home_vfs_read() {
     let Some((_capsule, _temp_ws, _temp_home)) =
-        setup_test_capsule_with_home(vec!["workspace://".into(), "home://".into()], vec![]).await
+        setup_test_capsule_with_home(vec!["cwd://".into(), "home://".into()], vec![]).await
     else {
         return;
     };
@@ -302,7 +302,7 @@ async fn test_wasm_capsule_e2e_home_vfs_read() {
 #[ignore = "tool dispatch migrating to IPC convention"]
 async fn test_wasm_capsule_e2e_home_vfs_denied_without_capability() {
     let Some((_capsule, _temp_ws, _temp_home)) =
-        setup_test_capsule_with_home(vec!["workspace://".into()], vec![]).await
+        setup_test_capsule_with_home(vec!["cwd://".into()], vec![]).await
     else {
         return;
     };
