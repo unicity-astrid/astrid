@@ -8,6 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Astrid capsule build tooling - compiles and packages capsules"
 
+[lib]
+name = "astrid_build"
+path = "src/lib.rs"
+
 [[bin]]
 name = "astrid-build"
 path = "src/main.rs"

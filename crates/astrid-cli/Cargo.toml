@@ -16,7 +16,12 @@ path = "src/main.rs"
 name = "astrid-daemon"
 path = "src/daemon.rs"
 
+[[bin]]
+name = "astrid-build"
+path = "src/build.rs"
+
 [dependencies]
+astrid-build = { workspace = true }
 anyhow = { workspace = true }
 arboard = { workspace = true }
 astrid-capsule = { workspace = true }

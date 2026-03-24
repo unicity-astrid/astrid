@@ -38,6 +38,7 @@ rust-version = "1.94"
 astrid-approval = { path = "crates/astrid-approval", version = "0.5.0" }
 astrid-audit = { path = "crates/astrid-audit", version = "0.5.0" }
 astrid-capabilities = { path = "crates/astrid-capabilities", version = "0.5.0" }
+astrid-build = { path = "crates/astrid-build", version = "0.5.0" }
 astrid-capsule = { path = "crates/astrid-capsule", version = "0.5.0" }
 astrid-config = { path = "crates/astrid-config", version = "0.5.0" }
 astrid-daemon = { path = "crates/astrid-daemon", version = "0.5.0" }

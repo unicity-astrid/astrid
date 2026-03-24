@@ -1,6 +1,9 @@
-//! Standalone `astrid-build` binary.
+//! Bundled build binary — installed alongside `astrid` via `cargo install astrid`.
+//!
+//! Delegates to the shared `astrid_build` library. This is identical to the
+//! standalone `astrid-build` binary but co-installed with the CLI so
+//! `find_companion_binary("astrid-build")` always finds it.
 
-use anyhow::Result;
 use clap::Parser;
 
 /// Astrid Build - Capsule compilation and packaging
@@ -28,7 +31,7 @@ struct Args {
     wizer_internal: Option<std::path::PathBuf>,
 }
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     if let Some(output) = args.wizer_internal {
