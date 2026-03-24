@@ -168,3 +168,11 @@ jobs:
 
             **With many thanks from the following Astrinauts** 🚀
             ${{ steps.contributors.outputs.list }}
+
+      - name: Notify Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/unicity-astrid/homebrew-tap/dispatches \
+            -f event_type=release \
+            -f "client_payload[version]=${GITHUB_REF_NAME#v}"

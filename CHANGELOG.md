@@ -9,6 +9,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Added
+
+- Release workflow automatically updates the Homebrew tap formula with new version and SHA256 hashes via `repository_dispatch`.
+
 ## [0.5.1] - 2026-03-25
 
 ### Added
