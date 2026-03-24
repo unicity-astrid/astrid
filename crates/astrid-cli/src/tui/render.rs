@@ -14,6 +14,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
+use unicode_width::UnicodeWidthStr;
 
 /// Parameters for rendering a text segment with an inline cursor.
 struct CursorRenderParams<'a> {
@@ -313,8 +314,7 @@ fn build_breadcrumb(path: &str) -> Vec<String> {
 /// Preserves leading whitespace on the first sub-line so that
 /// `markdown_to_spans` can still detect indented list markers.
 fn word_wrap_line(text: &str, max_width: usize) -> Vec<String> {
-    let char_count = text.chars().count();
-    if max_width == 0 || char_count <= max_width {
+    if max_width == 0 || text.width() <= max_width {
         return vec![text.to_string()];
     }
 
@@ -323,14 +323,14 @@ fn word_wrap_line(text: &str, max_width: usize) -> Vec<String> {
 
     let mut result = Vec::new();
     let mut line = String::from(leading);
-    let mut width = leading.chars().count();
+    let mut width = leading.width();
     let mut first_word = true;
 
     for word in trimmed.split(' ') {
         if word.is_empty() {
             continue;
         }
-        let w = word.chars().count();
+        let w = word.width();
         if first_word {
             line.push_str(word);
             width = width.saturating_add(w);
@@ -362,7 +362,7 @@ fn wrapped_line_count(text: &str, width: usize) -> usize {
     let mut lines = 1usize;
     let mut col = 0usize;
     for word in text.split_whitespace() {
-        let wlen = word.len();
+        let wlen = word.width();
         if col > 0 && col.saturating_add(1).saturating_add(wlen) > width {
             lines = lines.saturating_add(1);
             col = wlen;

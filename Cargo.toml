@@ -112,6 +112,7 @@ uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
 walkdir = "2.5"
 wasm-encoder = "0.227"
 wasmparser = "0.227"
+unicode-width = "0.2"
 which = "7"
 wizer = "10"
 zeroize = { version = "1.8", features = ["derive"] }
