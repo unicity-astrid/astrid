@@ -560,8 +560,12 @@ fn render_nexus(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                                 prev_blank = is_blank;
 
                                 if is_blank {
+                                    // Skip leading blank lines so ⏺ lands on the
+                                    // first real content line, not a stray newline.
+                                    if is_first_visual {
+                                        continue;
+                                    }
                                     lines.push(Line::from(""));
-                                    is_first_visual = false;
                                     continue;
                                 }
 

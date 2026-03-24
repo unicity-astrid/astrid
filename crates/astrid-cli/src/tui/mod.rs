@@ -225,10 +225,14 @@ pub(crate) fn handle_daemon_event(app: &mut App, message: &IpcMessage) {
             app.stream_buffer.push_str(text);
 
             if *is_final {
-                // Flush the accumulated stream buffer as an assistant message
+                // Flush the accumulated stream buffer as an assistant message.
+                // Trim leading newlines — some LLM providers prepend blank lines.
                 if !app.stream_buffer.is_empty() {
                     let response = std::mem::take(&mut app.stream_buffer);
-                    app.push_message(MessageRole::Assistant, response);
+                    let trimmed = response
+                        .trim_start_matches(&['\n', '\r'] as &[char])
+                        .to_string();
+                    app.push_message(MessageRole::Assistant, trimmed);
                 }
                 app.state = UiState::Idle;
                 app.scroll_offset = 0;
