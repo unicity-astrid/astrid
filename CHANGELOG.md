@@ -13,6 +13,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 - `cargo install astrid` now also installs `astrid-build` (capsule compiler) alongside `astrid` and `astrid-daemon`. Previously required a separate `cargo install astrid-build`.
 
+### Fixed
+
+- `astrid capsule install` no longer blocks when a new capsule exports an interface already exported by an installed capsule. Multiple providers (e.g. two LLM providers) can now coexist — prints an informational note instead of prompting for replacement.
+
 ## [0.5.0] - 2026-03-24
 
 ### Changed
