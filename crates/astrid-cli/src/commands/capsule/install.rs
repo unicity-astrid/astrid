@@ -1,6 +1,6 @@
 //! Capsule management commands - install capsules securely.
 
-use std::io::{IsTerminal, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -966,15 +966,13 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
 }
 
 /// Check if a capsule being installed exports interfaces already exported by
-/// another installed capsule. If conflicts are found, prompts the user to
-/// replace the existing provider.
-///
-/// This is the Nix-aligned approach: conflicts are derived from the exports
-/// data the system already has, rather than requiring capsules to name each
-/// other via a `supersedes` field.
+/// another installed capsule. Prints an informational notice but does NOT
+/// block installation — multiple capsules exporting the same interface is
+/// valid (e.g. multiple LLM providers coexisting). The kernel boot validator
+/// warns at runtime if duplicate exports cause double-processing concerns.
 fn check_export_conflicts(
     manifest: &astrid_capsule::manifest::CapsuleManifest,
-    workspace: bool,
+    _workspace: bool,
 ) -> anyhow::Result<()> {
     if !manifest.has_exports() {
         return Ok(());
@@ -983,8 +981,8 @@ fn check_export_conflicts(
     let all_capsules = super::meta::scan_installed_capsules()
         .context("failed to scan installed capsules for export conflict check")?;
 
-    // Collect conflicts: (namespace/interface, existing capsule name)
-    let mut conflicts: Vec<(String, String)> = Vec::new();
+    // Collect shared exports: (namespace/interface, existing capsule name)
+    let mut shared: Vec<(String, String)> = Vec::new();
 
     for (ns, name, _ver) in manifest.export_triples() {
         for c in &all_capsules {
@@ -999,55 +997,13 @@ fn check_export_conflicts(
                     .and_then(|ifaces| ifaces.get(name))
                     .is_some()
             {
-                conflicts.push((format!("{ns}/{name}"), c.name.clone()));
+                shared.push((format!("{ns}/{name}"), c.name.clone()));
             }
         }
     }
 
-    if conflicts.is_empty() {
-        return Ok(());
-    }
-
-    // Deduplicate capsule names (one capsule may conflict on multiple interfaces)
-    let mut conflicting_capsules: Vec<String> = conflicts
-        .iter()
-        .map(|(_, capsule)| capsule.clone())
-        .collect();
-    conflicting_capsules.sort();
-    conflicting_capsules.dedup();
-
-    eprintln!();
-    eprintln!("  Export conflict detected:");
-    for (iface, capsule) in &conflicts {
-        eprintln!(
-            "    {} exports {iface}, already exported by {capsule}",
-            manifest.package.name
-        );
-    }
-    eprintln!();
-
-    // In non-interactive mode (no TTY), bail rather than silently proceeding.
-    if !std::io::stdin().is_terminal() {
-        bail!(
-            "Export conflict: {} would duplicate interfaces exported by {}. \
-             Use interactive mode to replace, or remove the existing capsule first.",
-            manifest.package.name,
-            conflicting_capsules.join(", ")
-        );
-    }
-
-    eprint!("  Replace {}? [y/N] ", conflicting_capsules.join(", "));
-
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    if !answer.trim().eq_ignore_ascii_case("y") {
-        bail!("Installation cancelled.");
-    }
-
-    // Remove conflicting capsules (force=true to skip dependency check — user confirmed).
-    for capsule_name in &conflicting_capsules {
-        eprintln!("  Removing {capsule_name}...");
-        super::remove::remove_capsule(capsule_name, workspace, true)?;
+    for (iface, capsule) in &shared {
+        eprintln!("  Note: {iface} also exported by {capsule} — both will be active");
     }
 
     Ok(())
