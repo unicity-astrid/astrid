@@ -1002,7 +1002,12 @@ fn check_export_conflicts(
     }
 
     for (iface, capsule) in &shared {
-        eprintln!("  Note: {iface} also exported by {capsule} — both will be active");
+        tracing::info!(
+            interface = %iface,
+            existing = %capsule,
+            new = %manifest.package.name,
+            "Shared export — both capsules will be active"
+        );
     }
 
     Ok(())
