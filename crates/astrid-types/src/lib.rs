@@ -22,7 +22,7 @@ pub mod llm;
 pub use ipc::{IpcMessage, IpcPayload, OnboardingField, OnboardingFieldType, SelectionOption};
 pub use kernel::{
     CapsuleMetadataEntry, CommandInfo, DaemonStatus, KernelRequest, KernelResponse,
-    LlmProviderInfo, SYSTEM_SESSION_UUID,
+    SYSTEM_SESSION_UUID,
 };
 pub use llm::{
     ContentPart, LlmResponse, LlmToolDefinition, Message, MessageContent, MessageRole, StopReason,

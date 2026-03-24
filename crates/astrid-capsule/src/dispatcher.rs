@@ -525,7 +525,6 @@ mod tests {
                 mcp_servers: Vec::new(),
                 skills: Vec::new(),
                 uplinks: Vec::new(),
-                llm_providers: Vec::new(),
                 interceptors: vec![InterceptorDef {
                     event: interceptor_event.to_string(),
                     action: "test_action".to_string(),

@@ -77,7 +77,6 @@ async fn setup_test_capsule(
         mcp_servers: vec![],
         skills: vec![],
         uplinks: vec![],
-        llm_providers: vec![],
         interceptors: vec![],
         topics: vec![],
     };
@@ -179,7 +178,6 @@ async fn setup_test_capsule_with_home(
         mcp_servers: vec![],
         skills: vec![],
         uplinks: vec![],
-        llm_providers: vec![],
         interceptors: vec![],
         topics: vec![],
     };

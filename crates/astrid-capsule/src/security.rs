@@ -527,7 +527,6 @@ mod tests {
             mcp_servers: vec![],
             skills: vec![],
             uplinks: vec![],
-            llm_providers: vec![],
             interceptors: vec![],
             topics: vec![],
         }

@@ -59,7 +59,6 @@ mod tests {
             skills: vec![],
             commands: vec![],
             uplinks: vec![],
-            llm_providers: vec![],
             interceptors: vec![],
             topics: vec![],
         }
