@@ -10,35 +10,57 @@
 #![deny(clippy::unwrap_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use clap::Parser;
+
 mod archiver;
 mod build;
 mod mcp;
 mod openclaw;
 mod rust;
 
-/// Run the build tool with the given arguments.
+/// CLI arguments for `astrid-build`.
+#[derive(Parser)]
+#[command(name = "astrid-build")]
+#[command(author, version, about = "Capsule compilation and packaging")]
+pub struct Args {
+    /// Path to the project directory (defaults to current directory)
+    pub path: Option<String>,
+
+    /// Output directory for the packaged `.capsule` archive
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    /// Explicitly define the project type (e.g., 'mcp' for legacy host servers)
+    #[arg(short = 't', long = "type")]
+    pub project_type: Option<String>,
+
+    /// Import a legacy `mcp.json` to auto-convert
+    #[arg(long)]
+    pub from_mcp_json: Option<String>,
+
+    /// Internal: run Wizer on the embedded `QuickJS` kernel (used by compiler subprocess)
+    #[arg(long, hide = true)]
+    pub wizer_internal: Option<std::path::PathBuf>,
+}
+
+/// Parse CLI arguments and run the build tool.
 ///
-/// This is the library entry point used by both the standalone `astrid-build`
-/// binary and the bundled `astrid` CLI.
+/// Single entry point for both the standalone and bundled binaries.
 ///
 /// # Errors
 /// Returns an error if the build fails (missing manifest, compile error, etc.).
-pub fn run(
-    path: Option<&str>,
-    output: Option<&str>,
-    project_type: Option<&str>,
-    from_mcp_json: Option<&str>,
-) -> anyhow::Result<()> {
-    build::run_build(path, output, project_type, from_mcp_json)
-}
+pub fn run() -> anyhow::Result<()> {
+    let args = Args::parse();
 
-/// Run the internal Wizer subprocess for `OpenClaw` compilation.
-///
-/// This is a hidden internal entry point used by the compiler subprocess.
-///
-/// # Errors
-/// Returns an error if Wizer fails to produce the output WASM.
-pub fn run_wizer_internal(output: &std::path::Path) -> anyhow::Result<()> {
-    astrid_openclaw::compiler::run_wizer_internal(output)
-        .map_err(|e| anyhow::anyhow!("wizer-internal failed: {e}"))
+    if let Some(output) = args.wizer_internal {
+        return astrid_openclaw::compiler::run_wizer_internal(&output)
+            .map_err(|e| anyhow::anyhow!("wizer-internal failed: {e}"));
+    }
+
+    build::run_build(
+        args.path.as_deref(),
+        args.output.as_deref(),
+        args.project_type.as_deref(),
+        args.from_mcp_json.as_deref(),
+    )
 }
