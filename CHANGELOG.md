@@ -67,6 +67,11 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- `cwd://` VFS scheme was handled in the security gate (capability checks) but not in the runtime path resolver — capsules using `cwd://` paths at runtime received a security denial because the path resolved to `<cwd>/cwd:/path` instead of `<cwd>/path`
+- `sandbox-exec` (Seatbelt) crashes with SIGABRT on macOS 15+ (Darwin >= 24) — skip sandboxing on affected versions
+- Headless approval response published to wrong IPC topic (`astrid.v1.approval.response` instead of `astrid.v1.approval.response.{request_id}`) and used wrong decision string (`allow` instead of `approve`)
+- `[[component]].capabilities` (fs_read, fs_write, host_process) not merged into root capabilities — security gate couldn't see them
+- Lifecycle hooks (`on_install`) couldn't access `home://` VFS — added `home_root` to `LifecycleConfig`
 - `astrid init` standard WIT files were installed to `~/.astrid/wit/astrid/` (root-level, no VFS scheme). Capsules access the VFS via `home://` which maps to `~/.astrid/home/{principal}/` — the files were unreachable. Now installed to `~/.astrid/home/{principal}/wit/`, accessible as `home://wit/` (fixes #598)
 - Dispatcher `known_principals` HashSet capped at 10K entries to prevent unbounded memory growth
 - Dispatcher only caches principal after successful home provisioning — transient failures allow retry on next event

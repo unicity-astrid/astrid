@@ -840,6 +840,9 @@ pub struct LifecycleConfig {
     pub capsule_id: crate::capsule::CapsuleId,
     /// Workspace root directory for VFS.
     pub workspace_root: PathBuf,
+    /// Principal home root for `home://` VFS scheme. Optional — when set,
+    /// lifecycle hooks can access `home://` paths (e.g. to write skill files).
+    pub home_root: Option<PathBuf>,
     /// Scoped KV store for the capsule.
     pub kv: astrid_storage::ScopedKvStore,
     /// Event bus for IPC (elicit requests flow through this).
@@ -871,7 +874,7 @@ pub fn run_lifecycle(
         LifecyclePhase::Upgrade => "astrid_upgrade",
     };
 
-    // Build a minimal VFS
+    // Build a minimal VFS for workspace
     let vfs = astrid_vfs::HostVfs::new();
     let root_handle = astrid_capabilities::DirHandle::new();
     tokio::runtime::Handle::current()
@@ -885,6 +888,25 @@ pub fn run_lifecycle(
             ))
         })?;
 
+    // Mount home VFS if a home root was provided.
+    let (home_root, home_vfs, home_vfs_root_handle) = if let Some(ref h_root) = cfg.home_root {
+        let h_vfs = astrid_vfs::HostVfs::new();
+        let h_handle = astrid_capabilities::DirHandle::new();
+        let canonical = h_root.canonicalize().unwrap_or_else(|_| h_root.clone());
+        let _ = tokio::runtime::Handle::current().block_on(async {
+            h_vfs
+                .register_dir(h_handle.clone(), canonical.clone())
+                .await
+        });
+        (
+            Some(canonical),
+            Some(Arc::new(h_vfs) as Arc<dyn astrid_vfs::Vfs>),
+            Some(h_handle),
+        )
+    } else {
+        (None, None, None)
+    };
+
     let host_state = HostState {
         principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
@@ -895,9 +917,9 @@ pub fn run_lifecycle(
         workspace_root: cfg.workspace_root,
         vfs: Arc::new(vfs),
         vfs_root_handle: root_handle,
-        home_root: None,
-        home_vfs: None,
-        home_vfs_root_handle: None,
+        home_root,
+        home_vfs,
+        home_vfs_root_handle,
         tmp_dir: None,
         tmp_vfs: None,
         tmp_vfs_root_handle: None,

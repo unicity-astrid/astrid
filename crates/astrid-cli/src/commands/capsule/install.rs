@@ -1474,10 +1474,18 @@ fn run_lifecycle_if_wasm(
     let capsule_id_owned = astrid_capsule::capsule::CapsuleId::new(capsule_id.to_string())
         .map_err(|e| anyhow::anyhow!("invalid capsule ID: {e}"))?;
     let secret_store = astrid_storage::build_secret_store(capsule_id, kv.clone(), handle.clone());
+    // Resolve principal home so lifecycle hooks can use home:// VFS.
+    let home_root = astrid_core::dirs::AstridHome::resolve().ok().map(|h| {
+        h.principal_home(&astrid_core::PrincipalId::default())
+            .root()
+            .to_path_buf()
+    });
+
     let cfg = astrid_capsule::engine::wasm::LifecycleConfig {
         wasm_bytes,
         capsule_id: capsule_id_owned,
         workspace_root: target_dir.to_path_buf(),
+        home_root,
         kv,
         event_bus: event_bus.clone(),
         config: std::collections::HashMap::new(),

@@ -189,11 +189,28 @@ pub fn load_manifest(path: &Path) -> CapsuleResult<CapsuleManifest> {
         message: e.to_string(),
     })?;
 
-    let manifest: CapsuleManifest =
+    let mut manifest: CapsuleManifest =
         toml::from_str(&content).map_err(|e| CapsuleError::ManifestParseError {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
+
+    // Merge component-level capabilities into the root capabilities.
+    // [[component]].capabilities can declare fs_read, fs_write, host_process,
+    // etc. These must be visible in the root `manifest.capabilities` because
+    // the security gate reads from there.
+    for component in &manifest.components {
+        if let Some(ref caps) = component.capabilities {
+            manifest.capabilities.fs_read.extend(caps.fs_read.clone());
+            manifest.capabilities.fs_write.extend(caps.fs_write.clone());
+            manifest
+                .capabilities
+                .host_process
+                .extend(caps.host_process.clone());
+            manifest.capabilities.net.extend(caps.net.clone());
+            manifest.capabilities.net_bind.extend(caps.net_bind.clone());
+        }
+    }
 
     // Enforce astrid-version (MSRV for Astrid, like rust-version in Cargo.toml).
     // If the capsule requires a newer runtime than we are, reject it.
