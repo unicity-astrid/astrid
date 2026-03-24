@@ -35,7 +35,7 @@ This is not a plugin system bolted onto an application. It is the application's 
 
 **Mix and match providers.** Run multiple provider capsules simultaneously. A routing capsule examines each request and picks the best provider by complexity, cost, or latency. Every provider speaks the same IPC event schema.
 
-**Self-modifying agents.** Capsules have filesystem access to `home://`, which includes their own configuration, environment, and persistent state. The identity capsule already does this — the LLM calls `save_identity` to rewrite its own `spark.toml` during onboarding. A capsule can adjust its own behaviour across sessions: tuning parameters, updating prompts, evolving its personality. The agent modifies its own harness — within the capability sandbox.
+**Self-modifying agents.** The agent can write a new capsule — Rust source, `Capsule.toml`, tests — build it via `astrid-build`, install it with `capsule install`, and exercise it by publishing to its IPC topics. It can extend its own OS at runtime: add new tools, new interceptors, new capabilities. It can also modify its own existing configuration, environment, and persistent state across sessions. The identity capsule already does this in miniature — the LLM rewrites its own `spark.toml` during onboarding. The full picture is an agent that writes, tests, and deploys its own capsules — evolving its own harness within the capability sandbox.
 
 **Ship custom distros.** Package a `Distro.toml` plus capsules. Enterprise A gets an approval-gated orchestrator. Startup B gets an autonomous worker with a local model. Security patches ship to everyone simultaneously.
 
