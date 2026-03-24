@@ -53,6 +53,16 @@ struct Cli {
     #[arg(short = 'y', long = "yes", alias = "yolo", alias = "autonomous")]
     auto_approve: bool,
 
+    /// Resume or create a named session for multi-turn headless conversations.
+    /// Use the same ID across multiple -p calls to maintain context.
+    /// If omitted, a fresh session is created each time.
+    #[arg(long = "session")]
+    session_name: Option<String>,
+
+    /// Print the session ID to stderr after the response, for use in scripts.
+    #[arg(long = "print-session")]
+    print_session: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -226,7 +236,14 @@ async fn main() -> Result<()> {
     // Headless mode: -p "prompt" sends a single prompt and exits.
     if let Some(prompt_text) = cli.prompt {
         ensure_global_config();
-        return run_headless(prompt_text, output_format, cli.auto_approve).await;
+        return run_headless(
+            prompt_text,
+            output_format,
+            cli.auto_approve,
+            cli.session_name,
+            cli.print_session,
+        )
+        .await;
     }
 
     // Also detect piped stdin with no subcommand as headless.
@@ -235,7 +252,14 @@ async fn main() -> Result<()> {
         let mut stdin_text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
         if !stdin_text.is_empty() {
-            return run_headless(stdin_text, output_format, cli.auto_approve).await;
+            return run_headless(
+                stdin_text,
+                output_format,
+                cli.auto_approve,
+                cli.session_name,
+                cli.print_session,
+            )
+            .await;
         }
     }
 
@@ -679,6 +703,8 @@ async fn run_headless(
     prompt: String,
     format: formatter::OutputFormat,
     auto_approve: bool,
+    session_name: Option<String>,
+    print_session: bool,
 ) -> Result<()> {
     use astrid_core::SessionId;
 
@@ -703,7 +729,23 @@ async fn run_headless(
         spawn_daemon(&ready_path).await?;
     }
 
-    let session_id = SessionId::from_uuid(uuid::Uuid::new_v4());
+    // Use a named session (deterministic UUID v5 from name) or fresh UUID v4.
+    let session_id = if let Some(ref name) = session_name {
+        // Derive a stable UUID from the session name so the same name always
+        // maps to the same session ID across invocations.
+        let ns = uuid::Uuid::NAMESPACE_URL;
+        let id = uuid::Uuid::new_v5(&ns, name.as_bytes());
+        if print_session {
+            eprintln!("[headless] Session: {name} ({id})");
+        }
+        SessionId::from_uuid(id)
+    } else {
+        let id = uuid::Uuid::new_v4();
+        if print_session {
+            eprintln!("[headless] Session: {id}");
+        }
+        SessionId::from_uuid(id)
+    };
     let mut client = socket_client::SocketClient::connect(session_id.clone())
         .await
         .context("Failed to connect to daemon")?;

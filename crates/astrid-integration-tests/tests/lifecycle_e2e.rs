@@ -43,6 +43,7 @@ fn make_lifecycle_config(wasm_bytes: Vec<u8>) -> (LifecycleConfig, ScopedKvStore
         wasm_bytes,
         capsule_id: CapsuleId::new("test-lifecycle").unwrap(),
         workspace_root: workspace,
+        home_root: None,
         kv: kv.clone(),
         event_bus,
         config: std::collections::HashMap::new(),
