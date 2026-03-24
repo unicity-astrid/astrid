@@ -795,7 +795,7 @@ pub(crate) fn install_from_local_path_inner(
     let new_version = manifest.package.version.clone();
 
     // Check for export conflicts with installed capsules before touching disk.
-    check_export_conflicts(&manifest, workspace)?;
+    check_export_conflicts(&manifest)?;
 
     // Resolve Target Directory
     let target_dir = resolve_target_dir(home, &id, workspace)?;
@@ -972,7 +972,6 @@ fn validate_install_imports(manifest: &astrid_capsule::manifest::CapsuleManifest
 /// warns at runtime if duplicate exports cause double-processing concerns.
 fn check_export_conflicts(
     manifest: &astrid_capsule::manifest::CapsuleManifest,
-    _workspace: bool,
 ) -> anyhow::Result<()> {
     if !manifest.has_exports() {
         return Ok(());
