@@ -9,6 +9,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
 ### Changed
 
 - `workspace://` VFS scheme renamed to `cwd://` — the scheme maps to the daemon's CWD at boot; the old name implied a structured project workspace concept that was never implemented.
