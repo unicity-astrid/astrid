@@ -22,6 +22,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
+- `cargo install astrid` installs both `astrid` (CLI) and `astrid-daemon` binaries from a single crate. The CLI crate now includes the daemon as a second `[[bin]]` entry point.
 - Standard WIT interface installation during `astrid init` — fetches 9 WIT files (llm, session, spark, context, prompt, tool, hook, registry, types) from the canonical WIT repo and installs to `~/.astrid/home/{principal}/wit/` for capsule and LLM access via `home://wit/`
 - Short-circuit interceptor chain — interceptors return `Continue`, `Final`, or `Deny` to control the middleware chain. A guard at priority 10 can veto an event before the core handler at priority 100 ever sees it. Wire format: discriminant byte (0x00/0x01/0x02) + payload, backward compatible with existing capsules.
 - Export conflict detection on `capsule install` — detects when a new capsule exports interfaces already provided by an installed capsule, prompts user to replace. Nix-aligned approach: conflicts derived from exports data, no name-based `supersedes` field needed.

@@ -8,6 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Astrid daemon - the background kernel process for the Astrid secure agent runtime"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "astrid-daemon"
 path = "src/main.rs"
@@ -20,7 +23,7 @@ astrid-kernel = { workspace = true }
 astrid-telemetry = { workspace = true, features = ["config"] }
 clap = { workspace = true }
 colored = { workspace = true }
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 
