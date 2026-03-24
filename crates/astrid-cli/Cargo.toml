@@ -25,7 +25,7 @@ astrid-core = { workspace = true }
 blake3 = { workspace = true }
 astrid-events = { workspace = true }
 astrid-types = { workspace = true }
-astrid-daemon = { path = "../astrid-daemon" }
+astrid-daemon = { workspace = true }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true, features = ["config"] }
 chrono = { workspace = true }
