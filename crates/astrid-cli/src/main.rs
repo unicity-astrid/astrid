@@ -199,6 +199,8 @@ enum SessionCommands {
     },
 }
 
+// ─── Bootstrap helpers ───────────────────────────────────────────
+
 fn ensure_global_config() {
     use astrid_core::dirs::AstridHome;
     if let Ok(home) = AstridHome::resolve() {
@@ -206,6 +208,29 @@ fn ensure_global_config() {
     }
     // Auto-init on first run.
     let _ = ensure_initialized();
+}
+
+/// Run `astrid init` automatically if no distro has been installed yet.
+///
+/// Checks for `distro.lock` as the canonical signal. If absent, runs init
+/// with the default distro so first-time users don't need a separate step.
+fn ensure_initialized() -> Result<()> {
+    if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+        let principal = astrid_core::PrincipalId::default();
+        let lock_path = home
+            .principal_home(&principal)
+            .config_dir()
+            .join("distro.lock");
+        if !lock_path.exists() {
+            eprintln!(
+                "{}",
+                theme::Theme::info("First run detected — running astrid init...")
+            );
+            commands::init::run_init("astralis")?;
+            commands::self_update::ensure_path_setup()?;
+        }
+    }
+    Ok(())
 }
 
 fn init_logging(cli: &Cli) {
@@ -240,6 +265,35 @@ fn init_logging(cli: &Cli) {
     }
 }
 
+/// Locate a companion binary (e.g. `astrid-daemon`, `astrid-build`).
+///
+/// Search order:
+/// 1. Same directory as the current executable (co-installed)
+/// 2. `PATH` lookup
+pub(crate) fn find_companion_binary(name: &str) -> Result<std::path::PathBuf> {
+    // 1. Check next to the CLI binary
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+
+    // 2. PATH lookup
+    if let Ok(path) = which::which(name) {
+        return Ok(path);
+    }
+
+    anyhow::bail!(
+        "{name} not found. Ensure it is installed alongside the astrid CLI \
+         or available in PATH."
+    )
+}
+
+// ─── Main dispatch ───────────────────────────────────────────────
+
 #[tokio::main]
 #[expect(clippy::too_many_lines, reason = "top-level command dispatch")]
 async fn main() -> Result<()> {
@@ -262,7 +316,7 @@ async fn main() -> Result<()> {
     if let Some(prompt_text) = cli.prompt {
         ensure_global_config();
         if cli.snapshot_tui {
-            return run_snapshot_tui(
+            return commands::headless::run_snapshot_tui(
                 prompt_text,
                 cli.auto_approve,
                 cli.session_name,
@@ -271,7 +325,7 @@ async fn main() -> Result<()> {
             )
             .await;
         }
-        return run_headless(
+        return commands::headless::run_headless(
             prompt_text,
             output_format,
             cli.auto_approve,
@@ -287,7 +341,7 @@ async fn main() -> Result<()> {
         let mut stdin_text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
         if !stdin_text.is_empty() {
-            return run_headless(
+            return commands::headless::run_headless(
                 stdin_text,
                 output_format,
                 cli.auto_approve,
@@ -298,7 +352,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Handle commands
+    // Subcommand dispatch.
     match cli.command {
         Some(Commands::Chat { session }) => {
             if output_format == formatter::OutputFormat::Json {
@@ -309,7 +363,6 @@ async fn main() -> Result<()> {
             run_or_connect(session, workspace, output_format).await?;
         },
         None => {
-            // Default to Chat mode if no command is specified
             if output_format == formatter::OutputFormat::Json {
                 print_banner();
             }
@@ -346,7 +399,6 @@ async fn main() -> Result<()> {
             commands::init::run_init(&distro)?;
             commands::self_update::ensure_path_setup()?;
         },
-
         Some(Commands::Capsule { command }) => match command {
             CapsuleCommands::Install { source, workspace } => {
                 commands::capsule::install::install_capsule(&source, workspace)?;
@@ -373,107 +425,13 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Start) => {
             ensure_global_config();
-            let socket_path = socket_client::proxy_socket_path();
-
-            // Check if daemon is already running
-            if socket_path.exists() {
-                if let Ok(_stream) = tokio::net::UnixStream::connect(&socket_path).await {
-                    println!(
-                        "{}",
-                        theme::Theme::warning("Astrid daemon is already running.")
-                    );
-                    return Ok(());
-                }
-                // Stale socket — clean up
-                let _ = std::fs::remove_file(&socket_path);
-                let _ = std::fs::remove_file(socket_client::readiness_path());
-            }
-
-            let ready_path = socket_client::readiness_path();
-            spawn_persistent_daemon(&ready_path).await?;
+            commands::daemon::handle_start().await?;
         },
         Some(Commands::Status) => {
-            let socket_path = socket_client::proxy_socket_path();
-            if !socket_path.exists() {
-                println!("{}", theme::Theme::info("No Astrid daemon is running."));
-                return Ok(());
-            }
-
-            // Connect and send GetStatus request
-            let session_id = astrid_core::SessionId::from_uuid(uuid::Uuid::new_v4());
-            match socket_client::SocketClient::connect(session_id).await {
-                Ok(mut client) => {
-                    let req = astrid_types::kernel::KernelRequest::GetStatus;
-                    if let Ok(val) = serde_json::to_value(req) {
-                        let msg = astrid_types::ipc::IpcMessage::new(
-                            "astrid.v1.request.status",
-                            astrid_types::ipc::IpcPayload::RawJson(val),
-                            uuid::Uuid::nil(),
-                        );
-                        client.send_message(msg).await?;
-
-                        if let Some(response) = client.read_message().await?
-                            && let astrid_types::ipc::IpcPayload::RawJson(val) = response.payload
-                            && let Ok(astrid_types::kernel::KernelResponse::Status(status)) =
-                                serde_json::from_value::<astrid_types::kernel::KernelResponse>(val)
-                        {
-                            let uptime_display = format_uptime(status.uptime_secs);
-                            println!(
-                                "{}",
-                                theme::Theme::success(&format!(
-                                    "Astrid daemon (PID {}, uptime {})",
-                                    status.pid, uptime_display
-                                ))
-                            );
-                            println!("  Version:    {}", status.version);
-                            println!("  Clients:    {}", status.connected_clients);
-                            println!("  Capsules:   {} loaded", status.loaded_capsules.len());
-                            for capsule in &status.loaded_capsules {
-                                println!("    - {capsule}");
-                            }
-                        } else {
-                            println!("{}", theme::Theme::error("Unexpected response from daemon"));
-                        }
-                    }
-                },
-                Err(_) => {
-                    println!(
-                        "{}",
-                        theme::Theme::error(
-                            "Daemon socket exists but connection failed. \
-                             It may be starting up or in a bad state."
-                        )
-                    );
-                },
-            }
+            commands::daemon::handle_status().await?;
         },
         Some(Commands::Stop) => {
-            let socket_path = socket_client::proxy_socket_path();
-            if !socket_path.exists() {
-                println!("{}", theme::Theme::info("No Astrid daemon is running."));
-                return Ok(());
-            }
-
-            let session_id = astrid_core::SessionId::from_uuid(uuid::Uuid::new_v4());
-            if let Ok(mut client) = socket_client::SocketClient::connect(session_id).await {
-                let req = astrid_types::kernel::KernelRequest::Shutdown {
-                    reason: Some("astrid stop".to_string()),
-                };
-                if let Ok(val) = serde_json::to_value(req) {
-                    let msg = astrid_types::ipc::IpcMessage::new(
-                        "astrid.v1.request.shutdown",
-                        astrid_types::ipc::IpcPayload::RawJson(val),
-                        uuid::Uuid::nil(),
-                    );
-                    client.send_message(msg).await?;
-                    println!("{}", theme::Theme::success("Astrid daemon stopped."));
-                }
-            } else {
-                // Socket exists but can't connect — stale. Clean up.
-                let _ = std::fs::remove_file(&socket_path);
-                let _ = std::fs::remove_file(socket_client::readiness_path());
-                println!("{}", theme::Theme::info("Cleaned up stale daemon socket."));
-            }
+            commands::daemon::handle_stop().await?;
         },
         Some(Commands::SelfUpdate) => {
             commands::self_update::run_self_update()?;
@@ -483,101 +441,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Build a hint string pointing the user to the daemon log directory.
-fn daemon_log_hint() -> String {
-    astrid_core::dirs::AstridHome::resolve()
-        .map(|h| format!(" Check logs: {}", h.log_dir().display()))
-        .unwrap_or_default()
-}
-
-/// Locate a companion binary (e.g. `astrid-daemon`, `astrid-build`).
-///
-/// Search order:
-/// 1. Same directory as the current executable (co-installed)
-/// 2. `PATH` lookup
-pub(crate) fn find_companion_binary(name: &str) -> Result<std::path::PathBuf> {
-    // 1. Check next to the CLI binary
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-
-    // 2. PATH lookup
-    if let Ok(path) = which::which(name) {
-        return Ok(path);
-    }
-
-    anyhow::bail!(
-        "{name} not found. Ensure it is installed alongside the astrid CLI \
-         or available in PATH."
-    )
-}
-
-/// Spawn the daemon process and wait for it to signal readiness.
-///
-/// Returns the child process handle on success. The caller must `drop()` it
-/// after a successful handshake (to disown), or `kill()` + `wait()` on failure.
-///
-/// # Errors
-/// Returns an error if the daemon binary is not found, fails to spawn, or
-/// doesn't become ready within 10 seconds.
-async fn spawn_daemon(ready_path: &std::path::Path) -> Result<std::process::Child> {
-    println!("{}", theme::Theme::info("Booting Astrid daemon..."));
-    let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let daemon_bin = find_companion_binary("astrid-daemon")?;
-
-    let mut cmd = std::process::Command::new(daemon_bin);
-    cmd.arg("--ephemeral");
-
-    if let Some(ws_path) = ws.to_str() {
-        cmd.arg("--workspace").arg(ws_path);
-    }
-
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    // Remove stale readiness file before spawning so we don't
-    // mistake a leftover from a crashed daemon for the new one.
-    let _ = std::fs::remove_file(ready_path);
-
-    let mut child = cmd
-        .spawn()
-        .context("Failed to spawn background Kernel daemon")?;
-
-    // Poll for the readiness sentinel instead of the socket file.
-    // The readiness file is written only after load_all_capsules()
-    // completes (including await_capsule_readiness()), so the accept
-    // loop is guaranteed to be running by the time we connect.
-    let mut ready = false;
-    for _ in 0..200 {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        if ready_path.exists() {
-            ready = true;
-            break;
-        }
-        // If the daemon has already exited, stop polling immediately
-        // instead of waiting the full 10 seconds.
-        if let Ok(Some(status)) = child.try_wait() {
-            anyhow::bail!("Daemon exited prematurely ({status}).{}", daemon_log_hint());
-        }
-    }
-    if !ready {
-        // Kill the child to prevent an orphan daemon that lingers
-        // until its idle timeout expires.
-        let _ = child.kill();
-        let _ = child.wait();
-        anyhow::bail!(
-            "Daemon failed to become ready within 10 seconds.{}",
-            daemon_log_hint()
-        );
-    }
-    Ok(child)
-}
+// ─── Interactive session ─────────────────────────────────────────
 
 /// Resolves the session, checks for an existing socket, and boots the kernel locally if necessary.
 ///
@@ -636,7 +500,7 @@ pub(crate) async fn run_or_connect(
     let mut daemon_child: Option<std::process::Child> = None;
 
     if needs_boot {
-        match spawn_daemon(&ready_path).await {
+        match commands::daemon::spawn_daemon(&ready_path).await {
             Ok(child) => daemon_child = Some(child),
             Err(e) => return Err(e),
         }
@@ -673,334 +537,4 @@ pub(crate) async fn run_or_connect(
         .map_or_else(|| "unknown".to_string(), |r| r.config.model.model);
 
     crate::commands::chat::run_chat(&mut client, &session_id, &model_name, format).await
-}
-
-/// Spawn a persistent (non-ephemeral) daemon and wait for readiness.
-async fn spawn_persistent_daemon(ready_path: &std::path::Path) -> Result<()> {
-    println!(
-        "{}",
-        theme::Theme::info("Starting Astrid daemon (persistent mode)...")
-    );
-    let ws = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let daemon_bin = find_companion_binary("astrid-daemon")?;
-
-    let mut cmd = std::process::Command::new(daemon_bin);
-    // No --ephemeral flag = persistent mode
-
-    if let Some(ws_path) = ws.to_str() {
-        cmd.arg("--workspace").arg(ws_path);
-    }
-
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    let _ = std::fs::remove_file(ready_path);
-
-    let mut child = cmd.spawn().context("Failed to spawn Astrid daemon")?;
-
-    let mut ready = false;
-    for _ in 0..200 {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        if ready_path.exists() {
-            ready = true;
-            break;
-        }
-        if let Ok(Some(status)) = child.try_wait() {
-            anyhow::bail!("Daemon exited prematurely ({status}).{}", daemon_log_hint());
-        }
-    }
-    if !ready {
-        let _ = child.kill();
-        let _ = child.wait();
-        anyhow::bail!(
-            "Daemon failed to become ready within 10 seconds.{}",
-            daemon_log_hint()
-        );
-    }
-
-    // Disown the child — it runs independently.
-    drop(child);
-
-    println!(
-        "{}",
-        theme::Theme::success("Astrid daemon started (persistent mode).")
-    );
-    Ok(())
-}
-
-/// Ensure the daemon is running, spawning it if needed.
-///
-/// Checks the socket path, cleans up stale sockets, and spawns a fresh
-/// daemon when no live daemon is reachable.
-/// Run `astrid init` automatically if no distro has been installed yet.
-///
-/// Checks for `distro.lock` as the canonical signal. If absent, runs init
-/// with the default distro so first-time users don't need a separate step.
-fn ensure_initialized() -> Result<()> {
-    if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-        let principal = astrid_core::PrincipalId::default();
-        let lock_path = home
-            .principal_home(&principal)
-            .config_dir()
-            .join("distro.lock");
-        if !lock_path.exists() {
-            eprintln!(
-                "{}",
-                theme::Theme::info("First run detected — running astrid init...")
-            );
-            commands::init::run_init("astralis")?;
-            commands::self_update::ensure_path_setup()?;
-        }
-    }
-    Ok(())
-}
-
-async fn ensure_daemon(label: &str) -> Result<()> {
-    let socket_path = socket_client::proxy_socket_path();
-    let ready_path = socket_client::readiness_path();
-
-    let needs_boot = if socket_path.exists() {
-        if tokio::net::UnixStream::connect(&socket_path).await.is_ok() {
-            eprintln!("[{label}] Connected to existing daemon");
-            false
-        } else {
-            let _ = std::fs::remove_file(&socket_path);
-            let _ = std::fs::remove_file(&ready_path);
-            true
-        }
-    } else {
-        true
-    };
-    if needs_boot {
-        spawn_daemon(&ready_path).await?;
-    }
-    Ok(())
-}
-
-/// Snapshot TUI mode: render the TUI to stdout as text frames.
-///
-/// Uses the same daemon connection as headless mode, but renders through
-/// ratatui's `TestBackend` and dumps each significant event as a text frame.
-async fn run_snapshot_tui(
-    prompt: String,
-    auto_approve: bool,
-    session_name: Option<String>,
-    width: u16,
-    height: u16,
-) -> Result<()> {
-    use astrid_core::SessionId;
-
-    ensure_daemon("snapshot-tui").await?;
-
-    let session_id = if let Some(ref name) = session_name {
-        let ns = uuid::Uuid::NAMESPACE_URL;
-        SessionId::from_uuid(uuid::Uuid::new_v5(&ns, name.as_bytes()))
-    } else {
-        SessionId::from_uuid(uuid::Uuid::new_v4())
-    };
-
-    let mut client = socket_client::SocketClient::connect(session_id.clone())
-        .await
-        .context("Failed to connect to daemon")?;
-
-    let workspace = std::env::current_dir().ok();
-    tui::headless::run(tui::headless::HeadlessConfig {
-        client: &mut client,
-        session_id: &session_id,
-        workspace,
-        model_name: "",
-        prompt: &prompt,
-        width,
-        height,
-        auto_approve,
-    })
-    .await
-}
-
-/// Headless mode: send a single prompt, stream the response to stdout, exit.
-///
-/// Connects to the daemon (spawning if needed), sends the prompt as a
-/// `UserInput` IPC message, and reads response events until the final
-/// `AgentResponse` with `is_final = true`.
-///
-/// Output format:
-/// - `Pretty`: prints the raw response text to stdout.
-/// - `Json`: prints a JSON object with `response` and tool call details.
-async fn run_headless(
-    prompt: String,
-    format: formatter::OutputFormat,
-    auto_approve: bool,
-    session_name: Option<String>,
-    print_session: bool,
-) -> Result<()> {
-    use astrid_core::SessionId;
-
-    ensure_daemon("headless").await?;
-
-    // Use a named session (deterministic UUID v5 from name) or fresh UUID v4.
-    let session_id = if let Some(ref name) = session_name {
-        // Derive a stable UUID from the session name so the same name always
-        // maps to the same session ID across invocations.
-        let ns = uuid::Uuid::NAMESPACE_URL;
-        let id = uuid::Uuid::new_v5(&ns, name.as_bytes());
-        if print_session {
-            eprintln!("[headless] Session: {name} ({id})");
-        }
-        SessionId::from_uuid(id)
-    } else {
-        let id = uuid::Uuid::new_v4();
-        if print_session {
-            eprintln!("[headless] Session: {id}");
-        }
-        SessionId::from_uuid(id)
-    };
-    let mut client = socket_client::SocketClient::connect(session_id.clone())
-        .await
-        .context("Failed to connect to daemon")?;
-
-    // Also read stdin if there's piped content and -p was used
-    let full_prompt = if std::io::stdin().is_terminal() {
-        prompt
-    } else {
-        let mut stdin_text = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
-        if stdin_text.is_empty() {
-            prompt
-        } else {
-            format!("{stdin_text}\n\n{prompt}")
-        }
-    };
-
-    // Send the prompt and collect the streaming response
-    client.send_input(full_prompt).await?;
-    let (response_text, tool_calls) =
-        collect_headless_response(&mut client, &session_id, format, auto_approve).await?;
-
-    // Final output
-    match format {
-        formatter::OutputFormat::Pretty => {
-            if !response_text.ends_with('\n') {
-                println!();
-            }
-        },
-        formatter::OutputFormat::Json => {
-            let output = serde_json::json!({
-                "response": response_text,
-                "tool_calls": tool_calls,
-            });
-            println!("{}", serde_json::to_string_pretty(&output)?);
-        },
-    }
-
-    // Send disconnect
-    let disconnect = astrid_types::ipc::IpcMessage::new(
-        "client.v1.disconnect",
-        astrid_types::ipc::IpcPayload::Disconnect {
-            reason: Some("headless".to_string()),
-        },
-        session_id.0,
-    );
-    let _ = client.send_message(disconnect).await;
-
-    Ok(())
-}
-
-/// Collect the streaming response from the daemon in headless mode.
-///
-/// Returns `(response_text, tool_calls)`. Auto-denies any approval requests.
-/// Times out after 120 seconds of no data.
-async fn collect_headless_response(
-    client: &mut socket_client::SocketClient,
-    session_id: &astrid_core::SessionId,
-    format: formatter::OutputFormat,
-    auto_approve: bool,
-) -> Result<(String, Vec<serde_json::Value>)> {
-    let mut response_text = String::new();
-    let mut tool_calls: Vec<serde_json::Value> = Vec::new();
-    let timeout_duration = std::time::Duration::from_secs(120);
-
-    loop {
-        let message = match tokio::time::timeout(timeout_duration, client.read_message()).await {
-            Ok(Ok(Some(msg))) => msg,
-            Ok(Ok(None)) => break,
-            Ok(Err(e)) => return Err(e.context("Failed to read from daemon")),
-            Err(_) => {
-                eprintln!("[headless] Timed out waiting for response (120s)");
-                std::process::exit(53);
-            },
-        };
-
-        match &message.payload {
-            astrid_types::ipc::IpcPayload::AgentResponse { text, is_final, .. } => {
-                if format == formatter::OutputFormat::Pretty {
-                    print!("{text}");
-                    let _ = std::io::Write::flush(&mut std::io::stdout());
-                }
-                response_text.push_str(text);
-                if *is_final {
-                    break;
-                }
-            },
-            astrid_types::ipc::IpcPayload::LlmStreamEvent {
-                event: astrid_types::llm::StreamEvent::ToolCallStart { id, name },
-                ..
-            } => {
-                tool_calls.push(serde_json::json!({
-                    "type": "tool_call",
-                    "id": id,
-                    "name": name,
-                }));
-            },
-            astrid_types::ipc::IpcPayload::ToolExecuteResult { call_id, result } => {
-                tool_calls.push(serde_json::json!({
-                    "type": "tool_result",
-                    "call_id": call_id,
-                    "content": result.content,
-                    "is_error": result.is_error,
-                }));
-            },
-            astrid_types::ipc::IpcPayload::ApprovalRequired {
-                request_id, action, ..
-            } => {
-                let decision = if auto_approve { "approve" } else { "deny" };
-                eprintln!(
-                    "[headless] Auto-{} approval for: {action}",
-                    if auto_approve { "approved" } else { "denied" }
-                );
-                let response = astrid_types::ipc::IpcPayload::ApprovalResponse {
-                    request_id: request_id.clone(),
-                    decision: decision.to_string(),
-                    reason: Some(
-                        if auto_approve {
-                            "headless --yes mode"
-                        } else {
-                            "headless mode"
-                        }
-                        .to_string(),
-                    ),
-                };
-                let topic = format!("astrid.v1.approval.response.{request_id}");
-                let msg = astrid_types::ipc::IpcMessage::new(topic, response, session_id.0);
-                client.send_message(msg).await?;
-            },
-            _ => {},
-        }
-    }
-
-    Ok((response_text, tool_calls))
-}
-
-/// Format seconds into a human-readable uptime string.
-fn format_uptime(secs: u64) -> String {
-    let hours = secs / 3600;
-    let minutes = (secs % 3600) / 60;
-    let seconds = secs % 60;
-    if hours > 0 {
-        format!("{hours}h{minutes:02}m{seconds:02}s")
-    } else if minutes > 0 {
-        format!("{minutes}m{seconds:02}s")
-    } else {
-        format!("{seconds}s")
-    }
 }
