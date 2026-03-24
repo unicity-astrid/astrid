@@ -2,12 +2,18 @@
 
 use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, bail};
 use astrid_capsule::discovery::load_manifest;
 use astrid_core::dirs::AstridHome;
 
 use super::meta::{BakedTopic, CapsuleMeta, read_meta, write_meta};
+
+/// When true, import validation and env prompting are suppressed.
+/// Set by `install_capsule_batch` (called from distro init) where the
+/// distro handles env config and all capsules are installed together.
+static BATCH_MODE: AtomicBool = AtomicBool::new(false);
 
 /// Result of checking a remote source for a newer capsule version.
 enum UpdateCheck {
@@ -302,7 +308,25 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
     Ok(())
 }
 
+/// Install a capsule from a source.
+///
+/// When `batch` is true (called from `astrid init`), import validation and
+/// env prompting are skipped — the distro handles env config and all
+/// capsules are installed together so import checks are meaningless mid-batch.
 pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
+    install_capsule_inner(source, workspace)
+}
+
+/// Install a capsule in batch mode (from distro init) — skips import
+/// validation and env prompting.
+pub(crate) fn install_capsule_batch(source: &str, workspace: bool) -> anyhow::Result<()> {
+    BATCH_MODE.store(true, Ordering::Relaxed);
+    let result = install_capsule_inner(source, workspace);
+    BATCH_MODE.store(false, Ordering::Relaxed);
+    result
+}
+
+fn install_capsule_inner(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
     // 1. Explicit Local Path - no source tracking (re-fetch doesn't make sense)
@@ -351,16 +375,46 @@ pub(crate) fn install_from_github(
         anyhow::anyhow!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo")
     })?;
 
+    // Priority 1: direct download (no API call, no rate limit).
+    // Uses the well-known GitHub release URL pattern + raw Capsule.toml.
+    let wasm_name = format!("astrid_{}.wasm", repo.replace('-', "_"));
+    let direct_url =
+        format!("https://github.com/{org}/{repo}/releases/latest/download/{wasm_name}");
+    let capsule_toml_url =
+        format!("https://raw.githubusercontent.com/{org}/{repo}/HEAD/Capsule.toml");
+
+    if let Ok(wasm_resp) = client.get(&direct_url).send()
+        && wasm_resp.status().is_success()
+        && let Ok(toml_resp) = client.get(&capsule_toml_url).send()
+        && toml_resp.status().is_success()
+    {
+        if !BATCH_MODE.load(Ordering::Relaxed) {
+            eprintln!("Downloading {wasm_name}...");
+        }
+        let tmp_dir = tempfile::tempdir()?;
+        let wasm_path = tmp_dir.path().join(&wasm_name);
+        let mut file = std::fs::File::create(&wasm_path)?;
+        let mut limited = wasm_resp.take(50 * 1024 * 1024);
+        std::io::copy(&mut limited, &mut file)?;
+        drop(file);
+
+        let mut toml_content = String::new();
+        toml_resp
+            .take(1024 * 1024)
+            .read_to_string(&mut toml_content)?;
+        std::fs::write(tmp_dir.path().join("Capsule.toml"), &toml_content)?;
+
+        return install_from_local_path_inner(tmp_dir.path(), workspace, home, original_source);
+    }
+
+    // Priority 2: GitHub API (for .capsule archives or non-standard asset names).
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
-    let res = client.get(&api_url).send();
-
-    if let Ok(response) = res
+    if let Ok(response) = client.get(&api_url).send()
         && response.status().is_success()
         && let Ok(json) = response.json::<serde_json::Value>()
         && let Some(assets) = json.get("assets").and_then(serde_json::Value::as_array)
     {
-        // Priority 1: .capsule archive (fully packaged, preferred)
         for asset in assets {
             if let Some(name) = asset.get("name").and_then(serde_json::Value::as_str)
                 && name.ends_with(".capsule")
@@ -372,18 +426,13 @@ pub(crate) fn install_from_github(
                 let sanitized_name = Path::new(name).file_name().unwrap_or_default();
                 let download_path = tmp_dir.path().join(sanitized_name);
                 let mut file = std::fs::File::create(&download_path)?;
-
                 let download_res = client.get(download_url).send()?;
-
-                // Enforce a strict 50MB download limit to prevent DoS attacks
                 let mut limited_stream = download_res.take(50 * 1024 * 1024);
                 std::io::copy(&mut limited_stream, &mut file)?;
-
                 return unpack_and_install(&download_path, workspace, home, original_source);
             }
         }
 
-        // Priority 2: raw .wasm binary + Capsule.toml from repo at the tag
         let tag = json
             .get("tag_name")
             .and_then(serde_json::Value::as_str)
@@ -404,7 +453,7 @@ pub(crate) fn install_from_github(
         }
     }
 
-    // Fallback: clone + build from source
+    // Last resort: clone + build from source
     clone_and_build(url, repo, workspace, home, original_source)
 }
 
@@ -437,7 +486,9 @@ fn try_install_from_wasm_asset(
         Some((name.to_string(), url.to_string()))
     })?;
 
-    eprintln!("Downloading {wasm_name} from release {tag}...");
+    if !BATCH_MODE.load(Ordering::Relaxed) {
+        eprintln!("Downloading {wasm_name} from release {tag}...");
+    }
 
     // Download the .wasm binary
     let tmp_dir = match tempfile::tempdir() {
@@ -850,14 +901,17 @@ pub(crate) fn install_from_local_path_inner(
     write_meta(&target_dir, &meta)?;
 
     // Prompt for [env] fields only on first install (no prior .env.json).
-    // Env config lives in the principal's config dir, not the capsule dir.
-    let env_path = resolve_env_path(home, &manifest.package.name)?;
-    if !manifest.env.is_empty() && !env_path.exists() {
-        prompt_env_fields(&manifest.env, &env_path)?;
-    }
+    // In batch mode (distro init), env files are pre-written by the distro.
+    if !BATCH_MODE.load(Ordering::Relaxed) {
+        let env_path = resolve_env_path(home, &manifest.package.name)?;
+        if !manifest.env.is_empty() && !env_path.exists() {
+            prompt_env_fields(&manifest.env, &env_path)?;
+        }
 
-    // Warn if the newly installed capsule has unsatisfied imports.
-    validate_install_imports(&manifest);
+        // Warn if the newly installed capsule has unsatisfied imports.
+        // Skipped in batch mode since capsules are installed together.
+        validate_install_imports(&manifest);
+    }
 
     // Clean up backup
     if let Some(ref backup) = backup_dir {

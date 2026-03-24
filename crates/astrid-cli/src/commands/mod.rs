@@ -5,4 +5,5 @@ pub(crate) mod chat;
 pub(crate) mod config;
 pub(crate) mod distro;
 pub(crate) mod init;
+pub(crate) mod self_update;
 pub(crate) mod sessions;

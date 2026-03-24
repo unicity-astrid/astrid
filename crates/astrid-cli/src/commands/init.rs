@@ -83,14 +83,16 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     // Collect variables needed by selected capsules.
     let vars = collect_variables(&variables, &selected)?;
 
+    // Write per-capsule env files BEFORE installing capsules so that
+    // install_capsule's onboarding check finds existing values and
+    // doesn't re-prompt for fields the distro already configured.
+    write_env_files(&home, &selected, &vars)?;
+
     // Install each capsule with progress.
     let locked = install_capsules(&selected)?;
 
     // Install standard WIT interface definitions to the principal's home.
     install_standard_wit(&home, &principal);
-
-    // Write per-capsule env files with resolved variable templates.
-    write_env_files(&home, &selected, &vars)?;
 
     // Write Distro.lock.
     let lock = create_lock_from_parts(schema_version, &distro_id, &distro_version, locked);
@@ -464,7 +466,7 @@ fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCaps
     for cap in selected {
         pb.set_message(cap.name.clone());
 
-        if let Err(e) = super::capsule::install::install_capsule(&cap.source, false) {
+        if let Err(e) = super::capsule::install::install_capsule_batch(&cap.source, false) {
             eprintln!("\n  Failed to install {}: {e}", cap.name);
             failed.push(cap.name.clone());
             pb.inc(1);
@@ -527,10 +529,11 @@ fn write_env_files(
 
         let mut resolved: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
         for (key, template) in &cap.env {
+            // Write all keys — even empty values. An empty string means
+            // "use default" and prevents install-time onboarding from
+            // re-prompting for fields the distro already configured.
             let value = resolve_template(template, vars);
-            if !value.is_empty() {
-                resolved.insert(key.clone(), serde_json::Value::String(value));
-            }
+            resolved.insert(key.clone(), serde_json::Value::String(value));
         }
 
         if !resolved.is_empty() {

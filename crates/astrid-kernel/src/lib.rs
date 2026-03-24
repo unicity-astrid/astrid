@@ -257,6 +257,16 @@ impl Kernel {
         let manifest = astrid_capsule::discovery::load_manifest(&manifest_path)
             .map_err(|e| anyhow::anyhow!(e))?;
 
+        // Skip if already registered (prevents double-load from overlapping
+        // discovery paths like principal home + workspace capsules).
+        {
+            let registry = self.capsules.read().await;
+            let id = astrid_capsule::capsule::CapsuleId::from_static(&manifest.package.name);
+            if registry.get(&id).is_some() {
+                return Ok(());
+            }
+        }
+
         let loader = astrid_capsule::loader::CapsuleLoader::new(self.mcp.clone());
         let mut capsule = loader.create_capsule(manifest, dir.clone())?;
 
@@ -850,7 +860,10 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
         // Read ephemeral flag after grace period (set by daemon after boot).
         let ephemeral = kernel.ephemeral.load(Ordering::Relaxed);
         let idle_timeout = if ephemeral {
-            std::time::Duration::ZERO
+            // Give the CLI time to reconnect after brief disconnects (e.g.
+            // during tool execution when the TUI might momentarily drop
+            // the socket). Zero timeout caused premature shutdowns.
+            std::time::Duration::from_secs(30)
         } else {
             std::env::var("ASTRID_IDLE_TIMEOUT_SECS")
                 .ok()
@@ -874,17 +887,12 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
 
             let connections = kernel.connection_count();
 
-            // Secondary signal: broadcast subscriber count. Subtract the
-            // permanent internal subscribers: KernelRouter (kernel.request.*),
-            // ConnectionTracker (client.*), and EventDispatcher (all events).
-            let bus_subscribers = kernel
-                .event_bus
-                .subscriber_count()
-                .saturating_sub(INTERNAL_SUBSCRIBER_COUNT);
-
-            // Take the minimum: if a CLI died without Disconnect, the counter
-            // stays inflated but the subscriber count drops.
-            let effective_connections = connections.min(bus_subscribers);
+            // Use the explicit connection counter as the sole signal.
+            // The previous bus_subscribers heuristic (subscriber_count minus
+            // internal subscribers) was fragile: capsule run-loop crashes
+            // reduce subscriber_count, causing false "0 connections" readings
+            // that trigger premature idle shutdown while a client is active.
+            let effective_connections = connections;
 
             let has_daemons = {
                 let reg = kernel.capsules.read().await;
@@ -903,7 +911,6 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
                     idle_secs = elapsed.as_secs(),
                     timeout_secs = idle_timeout.as_secs(),
                     connections,
-                    bus_subscribers,
                     "Kernel idle, monitoring timeout"
                 );
 

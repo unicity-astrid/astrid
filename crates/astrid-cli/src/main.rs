@@ -136,6 +136,9 @@ enum Commands {
 
     /// Stop a running Astrid daemon
     Stop,
+
+    /// Update Astrid to the latest release
+    SelfUpdate,
 }
 
 #[derive(Subcommand)]
@@ -201,6 +204,8 @@ fn ensure_global_config() {
     if let Ok(home) = AstridHome::resolve() {
         let _ = home.ensure();
     }
+    // Auto-init on first run.
+    let _ = ensure_initialized();
 }
 
 fn init_logging(cli: &Cli) {
@@ -241,6 +246,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     init_logging(&cli);
+
+    // Check for updates (cached, non-blocking) on interactive commands.
+    if cli.prompt.is_none() && !matches!(cli.command, Some(Commands::SelfUpdate)) {
+        commands::self_update::print_update_banner();
+    }
 
     // Parse output format.
     let output_format = match cli.format.as_str() {
@@ -334,6 +344,7 @@ async fn main() -> Result<()> {
         },
         Some(Commands::Init { distro }) => {
             commands::init::run_init(&distro)?;
+            commands::self_update::ensure_path_setup()?;
         },
 
         Some(Commands::Capsule { command }) => match command {
@@ -463,6 +474,9 @@ async fn main() -> Result<()> {
                 let _ = std::fs::remove_file(socket_client::readiness_path());
                 println!("{}", theme::Theme::info("Cleaned up stale daemon socket."));
             }
+        },
+        Some(Commands::SelfUpdate) => {
+            commands::self_update::run_self_update()?;
         },
     }
 
@@ -719,6 +733,29 @@ async fn spawn_persistent_daemon(ready_path: &std::path::Path) -> Result<()> {
 ///
 /// Checks the socket path, cleans up stale sockets, and spawns a fresh
 /// daemon when no live daemon is reachable.
+/// Run `astrid init` automatically if no distro has been installed yet.
+///
+/// Checks for `distro.lock` as the canonical signal. If absent, runs init
+/// with the default distro so first-time users don't need a separate step.
+fn ensure_initialized() -> Result<()> {
+    if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+        let principal = astrid_core::PrincipalId::default();
+        let lock_path = home
+            .principal_home(&principal)
+            .config_dir()
+            .join("distro.lock");
+        if !lock_path.exists() {
+            eprintln!(
+                "{}",
+                theme::Theme::info("First run detected — running astrid init...")
+            );
+            commands::init::run_init("astralis")?;
+            commands::self_update::ensure_path_setup()?;
+        }
+    }
+    Ok(())
+}
+
 async fn ensure_daemon(label: &str) -> Result<()> {
     let socket_path = socket_client::proxy_socket_path();
     let ready_path = socket_client::readiness_path();
