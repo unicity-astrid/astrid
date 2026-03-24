@@ -66,11 +66,23 @@ fn validate_sandbox_path(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Returns the Darwin kernel major version (e.g. 25 for macOS 15 Sequoia).
+/// Used to detect macOS 15+ where `sandbox-exec` is deprecated.
+#[cfg(target_os = "macos")]
+fn darwin_major_version() -> u32 {
+    std::process::Command::new("uname")
+        .arg("-r")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.split('.').next()?.parse().ok())
+        .unwrap_or(0)
+}
+
 /// Wraps a standard OS command in a native kernel sandbox (bwrap or Seatbelt).
 ///
-/// This ensures that even if an agent executes a native tool (like `bash`, `npm`, or `python`),
-/// that process is physically restricted from writing to or reading from anything outside
-/// of the provided worktree sandbox.
+/// Ensures that agent-executed native tools are restricted from accessing
+/// anything outside the provided worktree sandbox.
 pub struct SandboxCommand;
 
 impl SandboxCommand {
@@ -92,6 +104,7 @@ impl SandboxCommand {
     /// Panics on macOS if `validate_sandbox_str` passes but the path is not
     /// valid UTF-8. This is unreachable because the validation rejects
     /// non-UTF-8 paths.
+    #[allow(clippy::needless_pass_by_value)] // Consumed on macOS early return, borrowed on Linux bwrap
     pub fn wrap(inner_cmd: Command, worktree_path: &Path) -> io::Result<Command> {
         // Validate on all platforms for defense in depth and API consistency.
         // On macOS the validated string is needed for SBPL interpolation.
@@ -137,20 +150,10 @@ impl SandboxCommand {
 
         #[cfg(target_os = "macos")]
         {
-            // sandbox-exec (Seatbelt) is deprecated and broken on macOS 15+ (Darwin 25+).
-            // Check the Darwin major version at runtime and skip sandboxing if >= 25.
-            let darwin_major: u32 = std::process::Command::new("uname")
-                .arg("-r")
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .and_then(|s| s.split('.').next()?.parse().ok())
-                .unwrap_or(0);
-
-            if darwin_major >= 24 {
+            // sandbox-exec (Seatbelt) is deprecated on macOS 15+ (Darwin >= 24).
+            if darwin_major_version() >= 24 {
                 tracing::warn!(
-                    "macOS 15+ detected (Darwin {darwin_major}): sandbox-exec is deprecated and \
-                     broken on this OS version. Running host process unsandboxed."
+                    "macOS 15+ detected: sandbox-exec is deprecated. Running host process unsandboxed."
                 );
                 return Ok(inner_cmd);
             }
@@ -664,15 +667,25 @@ mod tests {
         let cmd = Command::new("echo");
         let path = PathBuf::from("/tmp/safe-workspace");
         let wrapped = SandboxCommand::wrap(cmd, &path).unwrap();
-        let args: Vec<_> = wrapped.get_args().collect();
-        // First arg should be "-p" (inline profile), not "-f" (file).
-        assert_eq!(args[0], "-p", "expected -p for inline profile delivery");
-        // Second arg is the profile content, which should contain the worktree path.
-        let profile = args[1].to_string_lossy();
-        assert!(
-            profile.contains("/tmp/safe-workspace"),
-            "profile should contain the worktree path"
-        );
+
+        if super::darwin_major_version() >= 24 {
+            // Passthrough: the program is "echo" directly, not "sandbox-exec".
+            assert_eq!(
+                wrapped.get_program(),
+                "echo",
+                "on macOS 15+, command should pass through unwrapped"
+            );
+        } else {
+            let args: Vec<_> = wrapped.get_args().collect();
+            // First arg should be "-p" (inline profile), not "-f" (file).
+            assert_eq!(args[0], "-p", "expected -p for inline profile delivery");
+            // Second arg is the profile content, which should contain the worktree path.
+            let profile = args[1].to_string_lossy();
+            assert!(
+                profile.contains("/tmp/safe-workspace"),
+                "profile should contain the worktree path"
+            );
+        }
     }
 
     // --- ProcessSandboxConfig builder tests ---
