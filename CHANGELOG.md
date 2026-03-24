@@ -9,6 +9,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Added
+
+- `cargo install astrid` now also installs `astrid-build` (capsule compiler) alongside `astrid` and `astrid-daemon`. Previously required a separate `cargo install astrid-build`.
+
 ## [0.5.0] - 2026-03-24
 
 ### Changed
