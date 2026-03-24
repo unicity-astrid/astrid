@@ -455,7 +455,6 @@ mod tests {
             mcp_servers: Vec::new(),
             skills: Vec::new(),
             uplinks: Vec::new(),
-            llm_providers: Vec::new(),
             interceptors: Vec::new(),
             topics: Vec::new(),
         }

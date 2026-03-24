@@ -55,9 +55,6 @@ pub struct CapsuleManifest {
     /// Uplinks this capsule provides (e.g. Telegram, CLI).
     #[serde(default, rename = "uplink")]
     pub uplinks: Vec<UplinkDef>,
-    /// LLM Providers (Agents) this capsule exposes to the OS.
-    #[serde(default, rename = "llm_provider")]
-    pub llm_providers: Vec<LlmProviderDef>,
     /// Interceptors (eBPF-style hooks) this capsule registers.
     #[serde(default, rename = "interceptor")]
     pub interceptors: Vec<InterceptorDef>,
@@ -404,21 +401,6 @@ pub struct UplinkDef {
     pub platform: String,
     /// The interaction profile (e.g., "human", "bridge").
     pub profile: UplinkProfile,
-}
-
-/// An LLM Provider (Agent) exposed by the capsule.
-///
-/// This allows a capsule to act as the "brain" for a session, receiving prompts
-/// from the OS Event Bus and streaming text/tool-calls back.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmProviderDef {
-    /// Unique identifier for this provider/model (e.g., "claude-3-5-sonnet").
-    pub id: String,
-    /// Human-readable description.
-    pub description: Option<String>,
-    /// Capabilities this model supports (e.g., "text", "vision", "tools").
-    #[serde(default)]
-    pub capabilities: Vec<String>,
 }
 
 /// An event interceptor registered by the capsule.

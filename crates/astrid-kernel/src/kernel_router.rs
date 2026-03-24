@@ -214,15 +214,6 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                 let manifest = capsule.manifest();
                 entries.push(astrid_events::kernel_api::CapsuleMetadataEntry {
                     name: manifest.package.name.clone(),
-                    llm_providers: manifest
-                        .llm_providers
-                        .iter()
-                        .map(|p| astrid_events::kernel_api::LlmProviderInfo {
-                            id: p.id.clone(),
-                            description: p.description.clone().unwrap_or_default(),
-                            capabilities: p.capabilities.clone(),
-                        })
-                        .collect(),
                     interceptor_events: manifest
                         .interceptors
                         .iter()

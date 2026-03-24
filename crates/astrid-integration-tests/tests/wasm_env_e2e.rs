@@ -99,7 +99,6 @@ async fn test_wasm_capsule_e2e_env_config_injection() {
         mcp_servers: vec![],
         skills: vec![],
         uplinks: vec![],
-        llm_providers: vec![],
         interceptors: vec![],
         topics: vec![],
     };
