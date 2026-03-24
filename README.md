@@ -35,6 +35,8 @@ This is not a plugin system bolted onto an application. It is the application's 
 
 **Mix and match providers.** Run multiple provider capsules simultaneously. A routing capsule examines each request and picks the best provider by complexity, cost, or latency. Every provider speaks the same IPC event schema.
 
+**Self-modifying agents.** Capsules have filesystem access to `home://`, which includes their own configuration, environment, and persistent state. The identity capsule already does this — the LLM calls `save_identity` to rewrite its own `spark.toml` during onboarding. A capsule can adjust its own behaviour across sessions: tuning parameters, updating prompts, evolving its personality. The agent modifies its own harness — within the capability sandbox.
+
 **Ship custom distros.** Package a `Distro.toml` plus capsules. Enterprise A gets an approval-gated orchestrator. Startup B gets an autonomous worker with a local model. Security patches ship to everyone simultaneously.
 
 > These scenarios are architecturally possible today. The kernel, IPC bus, capsule manifest system, and dependency resolver all exist and are tested. What varies is how many capsules have been built on top of this foundation so far.
