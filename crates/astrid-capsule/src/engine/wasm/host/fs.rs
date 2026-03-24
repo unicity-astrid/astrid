@@ -256,9 +256,11 @@ pub(crate) fn astrid_fs_exists_impl(
     let capsule_id = state.capsule_id.as_str().to_owned();
 
     // Phase 1: resolve to physical path
-    let resolved = resolve_path(&state, &path)?;
+    let resolved = match resolve_path(&state, &path) {
+        Ok(r) => r,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
-    // Security gate check
     let security = state.security.clone();
     if let Some(gate) = security {
         let p = resolved.physical.to_string_lossy().to_string();
@@ -268,14 +270,18 @@ pub(crate) fn astrid_fs_exists_impl(
                 gate.check_file_read(&pid, &p).await
             });
         if let Err(reason) = check {
-            return Err(Error::msg(format!(
-                "security denied exists check: {reason}"
-            )));
+            return util::write_host_result(
+                plugin,
+                outputs,
+                Err(format!("security denied exists check: {reason}")),
+            );
         }
     }
 
-    // Phase 2: resolve to VFS
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    let vfs_path = match resolve_vfs(&state, &resolved) {
+        Ok(v) => v,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
     let exists = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
         vfs_path
@@ -293,9 +299,7 @@ pub(crate) fn astrid_fs_exists_impl(
     } else {
         b"".to_vec()
     };
-    let mem = plugin.memory_new(result)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    util::write_host_result(plugin, outputs, Ok(result))
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -361,7 +365,10 @@ pub(crate) fn astrid_fs_readdir_impl(
         .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
     let capsule_id = state.capsule_id.as_str().to_owned();
 
-    let resolved = resolve_path(&state, &path)?;
+    let resolved = match resolve_path(&state, &path) {
+        Ok(r) => r,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
     let security = state.security.clone();
     if let Some(gate) = security {
@@ -372,13 +379,20 @@ pub(crate) fn astrid_fs_readdir_impl(
                 gate.check_file_read(&pid, &p).await
             });
         if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied readdir: {reason}")));
+            return util::write_host_result(
+                plugin,
+                outputs,
+                Err(format!("security denied readdir: {reason}")),
+            );
         }
     }
 
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    let vfs_path = match resolve_vfs(&state, &resolved) {
+        Ok(v) => v,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
-    let entries = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+    match util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
         vfs_path
             .vfs
             .readdir(
@@ -386,18 +400,14 @@ pub(crate) fn astrid_fs_readdir_impl(
                 vfs_path.relative.to_string_lossy().as_ref(),
             )
             .await
-    })
-    .map_err(|e| Error::msg(format!("readdir failed: {e}")))?;
-
-    // We historically map this to an array of strings in extism
-    let string_entries: Vec<String> = entries.into_iter().map(|e| e.name).collect();
-
-    let json = serde_json::to_string(&string_entries)
-        .map_err(|e| Error::msg(format!("failed to serialize directory entries: {e}")))?;
-
-    let mem = plugin.memory_new(&json)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    }) {
+        Ok(entries) => {
+            let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
+            let json = serde_json::to_string(&names).unwrap_or_default();
+            util::write_host_result(plugin, outputs, Ok(json.into_bytes()))
+        },
+        Err(e) => util::write_host_result(plugin, outputs, Err(format!("readdir failed: {e}"))),
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -417,7 +427,10 @@ pub(crate) fn astrid_fs_stat_impl(
 
     let capsule_id = state.capsule_id.as_str().to_owned();
 
-    let resolved = resolve_path(&state, &path)?;
+    let resolved = match resolve_path(&state, &path) {
+        Ok(r) => r,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
     let security = state.security.clone();
     if let Some(gate) = security {
@@ -428,13 +441,20 @@ pub(crate) fn astrid_fs_stat_impl(
                 gate.check_file_read(&pid, &p).await
             });
         if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied stat: {reason}")));
+            return util::write_host_result(
+                plugin,
+                outputs,
+                Err(format!("security denied stat: {reason}")),
+            );
         }
     }
 
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    let vfs_path = match resolve_vfs(&state, &resolved) {
+        Ok(v) => v,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
-    let metadata = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+    match util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
         vfs_path
             .vfs
             .stat(
@@ -442,19 +462,18 @@ pub(crate) fn astrid_fs_stat_impl(
                 vfs_path.relative.to_string_lossy().as_ref(),
             )
             .await
-    })
-    .map_err(|e| Error::msg(format!("stat failed: {e}")))?;
-
-    let stat = serde_json::json!({
-        "size": metadata.size,
-        "isDir": metadata.is_dir,
-        "mtime": metadata.mtime
-    });
-
-    let json = stat.to_string();
-    let mem = plugin.memory_new(&json)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    }) {
+        Ok(metadata) => {
+            let json = serde_json::json!({
+                "size": metadata.size,
+                "isDir": metadata.is_dir,
+                "mtime": metadata.mtime
+            })
+            .to_string();
+            util::write_host_result(plugin, outputs, Ok(json.into_bytes()))
+        },
+        Err(e) => util::write_host_result(plugin, outputs, Err(format!("stat failed: {e}"))),
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -522,7 +541,10 @@ pub(crate) fn astrid_read_file_impl(
 
     let capsule_id = state.capsule_id.as_str().to_owned();
 
-    let resolved = resolve_path(&state, &path)?;
+    let resolved = match resolve_path(&state, &path) {
+        Ok(r) => r,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
     let security = state.security.clone();
     if let Some(gate) = security {
@@ -533,13 +555,20 @@ pub(crate) fn astrid_read_file_impl(
                 gate.check_file_read(&pid, &p).await
             });
         if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied read_file: {reason}")));
+            return util::write_host_result(
+                plugin,
+                outputs,
+                Err(format!("security denied read_file: {reason}")),
+            );
         }
     }
 
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    let vfs_path = match resolve_vfs(&state, &resolved) {
+        Ok(v) => v,
+        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
+    };
 
-    let content_bytes =
+    let content_result =
         util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
             let metadata = vfs_path
                 .vfs
@@ -568,12 +597,12 @@ pub(crate) fn astrid_read_file_impl(
             let data = vfs_path.vfs.read(&handle).await;
             let _ = vfs_path.vfs.close(&handle).await;
             data
-        })
-        .map_err(|e| Error::msg(format!("read_file failed: {e}")))?;
+        });
 
-    let mem = plugin.memory_new(&content_bytes)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    match content_result {
+        Ok(bytes) => util::write_host_result(plugin, outputs, Ok(bytes)),
+        Err(e) => util::write_host_result(plugin, outputs, Err(format!("IO error: {e}"))),
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]

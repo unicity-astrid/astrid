@@ -34,6 +34,7 @@ use theme::print_banner;
 #[derive(Parser)]
 #[command(name = "astrid")]
 #[command(author, version, about, long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     /// Enable verbose output
     #[arg(short, long, global = true)]
@@ -62,6 +63,20 @@ struct Cli {
     /// Print the session ID to stderr after the response, for use in scripts.
     #[arg(long = "print-session")]
     print_session: bool,
+
+    /// Render the TUI to stdout as text snapshots instead of an interactive terminal.
+    /// Each significant event (input, response, tool call, approval) produces a frame.
+    /// Requires --prompt. Useful for automated testing and CI.
+    #[arg(long = "snapshot-tui")]
+    snapshot_tui: bool,
+
+    /// Terminal width for --snapshot-tui rendering (default: 120).
+    #[arg(long = "tui-width", default_value = "120")]
+    tui_width: u16,
+
+    /// Terminal height for --snapshot-tui rendering (default: 40).
+    #[arg(long = "tui-height", default_value = "40")]
+    tui_height: u16,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -236,6 +251,16 @@ async fn main() -> Result<()> {
     // Headless mode: -p "prompt" sends a single prompt and exits.
     if let Some(prompt_text) = cli.prompt {
         ensure_global_config();
+        if cli.snapshot_tui {
+            return run_snapshot_tui(
+                prompt_text,
+                cli.auto_approve,
+                cli.session_name,
+                cli.tui_width,
+                cli.tui_height,
+            )
+            .await;
+        }
         return run_headless(
             prompt_text,
             output_format,
@@ -690,6 +715,72 @@ async fn spawn_persistent_daemon(ready_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+/// Ensure the daemon is running, spawning it if needed.
+///
+/// Checks the socket path, cleans up stale sockets, and spawns a fresh
+/// daemon when no live daemon is reachable.
+async fn ensure_daemon(label: &str) -> Result<()> {
+    let socket_path = socket_client::proxy_socket_path();
+    let ready_path = socket_client::readiness_path();
+
+    let needs_boot = if socket_path.exists() {
+        if tokio::net::UnixStream::connect(&socket_path).await.is_ok() {
+            eprintln!("[{label}] Connected to existing daemon");
+            false
+        } else {
+            let _ = std::fs::remove_file(&socket_path);
+            let _ = std::fs::remove_file(&ready_path);
+            true
+        }
+    } else {
+        true
+    };
+    if needs_boot {
+        spawn_daemon(&ready_path).await?;
+    }
+    Ok(())
+}
+
+/// Snapshot TUI mode: render the TUI to stdout as text frames.
+///
+/// Uses the same daemon connection as headless mode, but renders through
+/// ratatui's `TestBackend` and dumps each significant event as a text frame.
+async fn run_snapshot_tui(
+    prompt: String,
+    auto_approve: bool,
+    session_name: Option<String>,
+    width: u16,
+    height: u16,
+) -> Result<()> {
+    use astrid_core::SessionId;
+
+    ensure_daemon("snapshot-tui").await?;
+
+    let session_id = if let Some(ref name) = session_name {
+        let ns = uuid::Uuid::NAMESPACE_URL;
+        SessionId::from_uuid(uuid::Uuid::new_v5(&ns, name.as_bytes()))
+    } else {
+        SessionId::from_uuid(uuid::Uuid::new_v4())
+    };
+
+    let mut client = socket_client::SocketClient::connect(session_id.clone())
+        .await
+        .context("Failed to connect to daemon")?;
+
+    let workspace = std::env::current_dir().ok();
+    tui::headless::run(tui::headless::HeadlessConfig {
+        client: &mut client,
+        session_id: &session_id,
+        workspace,
+        model_name: "",
+        prompt: &prompt,
+        width,
+        height,
+        auto_approve,
+    })
+    .await
+}
+
 /// Headless mode: send a single prompt, stream the response to stdout, exit.
 ///
 /// Connects to the daemon (spawning if needed), sends the prompt as a
@@ -708,26 +799,7 @@ async fn run_headless(
 ) -> Result<()> {
     use astrid_core::SessionId;
 
-    let socket_path = socket_client::proxy_socket_path();
-    let ready_path = socket_client::readiness_path();
-
-    // Boot daemon if needed
-    let needs_boot = if socket_path.exists() {
-        if let Ok(_stream) = tokio::net::UnixStream::connect(&socket_path).await {
-            eprintln!("[headless] Connected to existing daemon");
-            false
-        } else {
-            eprintln!("[headless] Stale socket, respawning daemon...");
-            let _ = std::fs::remove_file(&socket_path);
-            let _ = std::fs::remove_file(&ready_path);
-            true
-        }
-    } else {
-        true
-    };
-    if needs_boot {
-        spawn_daemon(&ready_path).await?;
-    }
+    ensure_daemon("headless").await?;
 
     // Use a named session (deterministic UUID v5 from name) or fresh UUID v4.
     let session_id = if let Some(ref name) = session_name {

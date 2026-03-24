@@ -25,16 +25,15 @@ pub(crate) fn astrid_kv_get_impl(
         )
     };
 
-    let result = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
         kv.get(&key).await
-    })
-    .map_err(|e| Error::msg(format!("kv_get failed: {e}")))?;
-
-    let value_bytes = result.unwrap_or_default();
-
-    let mem = plugin.memory_new(&value_bytes)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    }) {
+        Ok(result) => {
+            let value_bytes = result.unwrap_or_default();
+            util::write_host_result(plugin, outputs, Ok(value_bytes))
+        },
+        Err(e) => util::write_host_result(plugin, outputs, Err(format!("kv_get failed: {e}"))),
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -124,15 +123,17 @@ pub(crate) fn astrid_kv_list_keys_impl(
         )
     };
 
-    let keys = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
         kv.list_keys_with_prefix(&prefix).await
-    })
-    .map_err(|e| Error::msg(format!("kv_list_keys failed: {e}")))?;
-
-    let result_bytes = serde_json::to_vec(&keys).unwrap_or_default();
-    let mem = plugin.memory_new(&result_bytes)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    }) {
+        Ok(keys) => {
+            let json = serde_json::to_vec(&keys).unwrap_or_default();
+            util::write_host_result(plugin, outputs, Ok(json))
+        },
+        Err(e) => {
+            util::write_host_result(plugin, outputs, Err(format!("kv_list_keys failed: {e}")))
+        },
+    }
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -158,13 +159,15 @@ pub(crate) fn astrid_kv_clear_prefix_impl(
         )
     };
 
-    let count = util::bounded_block_on(&runtime_handle, &host_semaphore, async {
+    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
         kv.clear_prefix(&prefix).await
-    })
-    .map_err(|e| Error::msg(format!("kv_clear_prefix failed: {e}")))?;
-
-    let result_bytes = serde_json::to_vec(&count).unwrap_or_default();
-    let mem = plugin.memory_new(&result_bytes)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+    }) {
+        Ok(count) => {
+            let json = serde_json::to_vec(&count).unwrap_or_default();
+            util::write_host_result(plugin, outputs, Ok(json))
+        },
+        Err(e) => {
+            util::write_host_result(plugin, outputs, Err(format!("kv_clear_prefix failed: {e}")))
+        },
+    }
 }

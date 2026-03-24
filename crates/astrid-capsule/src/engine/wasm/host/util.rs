@@ -77,6 +77,49 @@ pub(crate) fn get_safe_bytes(
     Ok(memory)
 }
 
+// ── HostResult wire format ──────────────────────────────────────────────
+//
+// Canonical encoding for all host→guest return values. Every host function
+// that returns data through `outputs[0]` uses this format so that guest
+// capsules can distinguish success from recoverable errors without WASM
+// traps. Unrecoverable errors (lock poisoning, memory exhaustion) still
+// trap — those represent kernel invariant violations, not capsule-level
+// failures.
+//
+// Wire format:
+//   0x00 + payload bytes  = Ok(payload)
+//   0x01 + UTF-8 message  = Err(message)
+//
+// The SDK decodes this in a single `host_result::decode()` function used
+// by fs, kv, http, and all other host-function wrappers.
+
+/// Status byte: successful result. Followed by the payload bytes.
+pub(crate) const HOST_RESULT_OK: u8 = 0x00;
+
+/// Status byte: recoverable error. Followed by UTF-8 error description.
+pub(crate) const HOST_RESULT_ERR: u8 = 0x01;
+
+/// Write a `HostResult`-encoded response to WASM guest memory.
+///
+/// On `Ok`, writes `[0x00][payload...]`. On `Err`, writes `[0x01][msg...]`.
+/// Only returns `Err` if the Extism memory allocation itself fails (fatal).
+pub(crate) fn write_host_result(
+    plugin: &mut CurrentPlugin,
+    outputs: &mut [Val],
+    result: Result<Vec<u8>, String>,
+) -> Result<(), Error> {
+    let (status, data) = match result {
+        Ok(payload) => (HOST_RESULT_OK, payload),
+        Err(msg) => (HOST_RESULT_ERR, msg.into_bytes()),
+    };
+    let mut buf = Vec::with_capacity(1 + data.len());
+    buf.push(status);
+    buf.extend_from_slice(&data);
+    let mem = plugin.memory_new(&buf)?;
+    outputs[0] = plugin.memory_to_val(mem);
+    Ok(())
+}
+
 /// Run an async future inside `block_in_place` / `block_on` with bounded
 /// concurrency. Acquires a permit from the host semaphore before executing,
 /// limiting concurrent blocking operations across all capsules.

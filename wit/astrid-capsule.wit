@@ -17,6 +17,24 @@
 /// and all structured returns are JSON-encoded byte buffers. The WIT types
 /// below describe the *logical* contract. Once the kernel migrates to the
 /// Component Model (WS-8), these become actual typed parameters.
+///
+/// ## HostResult encoding
+///
+/// All host functions that return data through the Extism output slot use the
+/// **HostResult** wire format so that capsules can distinguish success from
+/// recoverable errors without WASM traps:
+///
+///   byte 0:  0x00 (Ok)  | 0x01 (Err)
+///   bytes 1…N:  payload (Ok) or UTF-8 error message (Err)
+///
+/// Unrecoverable errors (lock poisoning, memory exhaustion) still trap — those
+/// represent kernel invariant violations. All other errors (file-not-found,
+/// permission denied, KV miss, network errors) are returned as HostResult::Err
+/// so the guest can handle them gracefully.
+///
+/// The SDK decodes this in `host_result::decode()`. Void-returning host
+/// functions (write, mkdir, delete) do NOT use this encoding — they still
+/// trap on error. A future ABI revision will extend HostResult to void ops.
 
 package astrid:capsule@0.1.0;
 

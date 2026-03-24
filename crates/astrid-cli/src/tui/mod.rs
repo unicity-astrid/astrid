@@ -2,6 +2,7 @@
 //!
 //! Connects the Nexus view to the real daemon via `DaemonClient`.
 
+pub(crate) mod headless;
 mod input;
 mod render;
 pub(crate) mod state;
@@ -210,7 +211,7 @@ async fn run_loop(
 
 /// Map a `KernelEvent` to TUI state changes.
 #[expect(clippy::too_many_lines)]
-fn handle_daemon_event(app: &mut App, message: &IpcMessage) {
+pub(crate) fn handle_daemon_event(app: &mut App, message: &IpcMessage) {
     {
         if let astrid_types::ipc::IpcPayload::AgentResponse { text, is_final, .. } =
             &message.payload
