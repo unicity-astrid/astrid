@@ -12,6 +12,10 @@ description = "Command-line interface for Astrid secure agent runtime"
 name = "astrid"
 path = "src/main.rs"
 
+[[bin]]
+name = "astrid-daemon"
+path = "src/daemon.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
@@ -21,6 +25,7 @@ astrid-core = { workspace = true }
 blake3 = { workspace = true }
 astrid-events = { workspace = true }
 astrid-types = { workspace = true }
+astrid-daemon = { path = "../astrid-daemon" }
 astrid-storage = { workspace = true, features = ["keychain"] }
 astrid-telemetry = { workspace = true, features = ["config"] }
 chrono = { workspace = true }

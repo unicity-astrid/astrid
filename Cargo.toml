@@ -102,7 +102,7 @@ tar = "0.4"
 teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 tempfile = "3"
 thiserror = "2.0"
-tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util"] }
+tokio = { version = "1.49", features = ["sync", "macros", "time", "rt", "rt-multi-thread", "net", "io-util", "signal"] }
 tokio-util = "0.7"
 toml = "0.8"
 tracing = "0.1"

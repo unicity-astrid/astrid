@@ -8,14 +8,87 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  # ── Build binaries for each platform ──────────────────────────────
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.94"
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binaries
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target ${{ matrix.target }} -p astrid
+
+      - name: Package binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIR="astrid-${VERSION}-${{ matrix.target }}"
+          mkdir "$DIR"
+          cp "target/${{ matrix.target }}/release/astrid" "$DIR/"
+          cp "target/${{ matrix.target }}/release/astrid-daemon" "$DIR/"
+          cp LICENSE* README.md "$DIR/" 2>/dev/null || true
+          tar czf "${DIR}.tar.gz" "$DIR"
+          echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  # ── Create the GitHub release with all binaries ───────────────────
   github-release:
     name: GitHub Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: binary-*
+          merge-multiple: true
 
       - name: Extract changelog for this version
         id: changelog
@@ -45,7 +118,6 @@ jobs:
           ASTRINAUTS=""
           while IFS= read -r name; do
             [ -z "$name" ] && continue
-            # Try to resolve GitHub username from commit email
             EMAIL=$(git log --format='%aE' --author="$name" -1)
             USERNAME=$(gh api "search/users?q=$EMAIL+in:email" --jq '.items[0].login // empty' 2>/dev/null || true)
             if [ -n "$USERNAME" ]; then
@@ -60,11 +132,36 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/SHA256SUMS.txt
           body: |
             ${{ steps.changelog.outputs.body }}
+
+            ## Install
+
+            **From source (requires Rust 1.94+):**
+            ```
+            cargo install astrid
+            ```
+
+            **Pre-built binaries:**
+            Download the archive for your platform, extract, and add to PATH:
+            ```
+            tar xzf astrid-*-$(uname -m)-*.tar.gz
+            sudo mv astrid-*/astrid astrid-*/astrid-daemon /usr/local/bin/
+            ```
+
+            Then run `astrid init` to set up capsules.
 
             ---
 
