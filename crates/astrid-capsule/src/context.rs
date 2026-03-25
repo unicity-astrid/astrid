@@ -12,6 +12,7 @@ use astrid_storage::ScopedKvStore;
 use astrid_core::session_token::SessionToken;
 
 use crate::registry::CapsuleRegistry;
+use crate::schema_catalog::SchemaCatalog;
 
 /// Context provided to a capsule during lifecycle operations (load/unload).
 ///
@@ -43,6 +44,11 @@ pub struct CapsuleContext {
     pub allowance_store: Option<Arc<astrid_approval::AllowanceStore>>,
     /// Shared identity store for resolving platform users to `AstridUserId`.
     pub identity_store: Option<Arc<dyn astrid_storage::IdentityStore>>,
+    /// Shared schema catalog for topic→schema mappings (A2UI Track 2).
+    ///
+    /// Updated on capsule load/unload. The A2UI bridge reads this to generate
+    /// schema context for the LLM system prompt.
+    pub schema_catalog: Arc<SchemaCatalog>,
 }
 
 impl CapsuleContext {
@@ -66,6 +72,7 @@ impl CapsuleContext {
             session_token: None,
             allowance_store: None,
             identity_store: None,
+            schema_catalog: Arc::new(SchemaCatalog::new()),
         }
     }
 

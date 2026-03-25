@@ -16,6 +16,7 @@ pub mod error;
 pub mod loader;
 pub mod manifest;
 pub mod registry;
+pub mod schema_catalog;
 pub mod security;
 pub mod topic;
 pub mod toposort;

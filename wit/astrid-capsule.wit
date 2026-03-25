@@ -321,7 +321,7 @@ interface types {
         /// The action being requested (e.g. "git push").
         action: string,
         /// Full resource description (e.g. "git push origin main").
-        resource: string,
+        target-resource: string,
         /// Risk classification ("low", "medium", "high", "critical").
         risk-level: string,
     }
