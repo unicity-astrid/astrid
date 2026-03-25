@@ -1,7 +1,8 @@
-use extism::{CurrentPlugin, Error, UserData, Val};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use crate::engine::wasm::bindings::astrid::capsule::fs;
+use crate::engine::wasm::bindings::astrid::capsule::types::FileStat;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
@@ -38,7 +39,7 @@ struct ResolvedPhysical {
 
 /// Compute the true physical absolute path for the security gate by canonicalizing on the host filesystem.
 /// This prevents symlink bypass attacks where a lexical path passes the gate but cap-std follows a symlink.
-fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhysical, Error> {
+fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhysical, String> {
     let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
 
     let relative_requested = make_relative(requested);
@@ -56,10 +57,10 @@ fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhy
                 final_path.push(comp);
             }
             if !final_path.starts_with(&canonical_root) {
-                return Err(Error::msg(format!(
+                return Err(format!(
                     "path escapes root boundary: {requested} resolves to {}",
                     final_path.display()
-                )));
+                ));
             }
             return Ok(ResolvedPhysical {
                 physical: final_path,
@@ -77,10 +78,10 @@ fn resolve_physical_absolute(root: &Path, requested: &str) -> Result<ResolvedPhy
     }
 
     if !joined.starts_with(&canonical_root) {
-        return Err(Error::msg(format!(
+        return Err(format!(
             "path escapes root boundary: {requested} resolves to {}",
             joined.display()
-        )));
+        ));
     }
 
     Ok(ResolvedPhysical {
@@ -124,13 +125,13 @@ struct ResolvedVfsPath {
 
 /// Phase 1: Resolve a raw guest path to a physical path and determine
 /// whether it targets the workspace or home VFS.
-fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error> {
+fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, String> {
     if let Some(stripped) = raw_path.strip_prefix(CWD_SCHEME) {
         let resolved = resolve_physical_absolute(&state.workspace_root, stripped)?;
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
-            .map_err(|_| Error::msg("resolved cwd path escaped canonical root"))?
+            .map_err(|_| "resolved cwd path escaped canonical root".to_string())?
             .to_path_buf();
         Ok(ResolvedPath {
             physical: resolved.physical,
@@ -139,16 +140,15 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         })
     } else if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
         let home_root = state.home_root.as_ref().ok_or_else(|| {
-            Error::msg(
-                "home:// scheme is not available: no home directory is configured. \
-                 Create the directory and restart the kernel.",
-            )
+            "home:// scheme is not available: no home directory is configured. \
+             Create the directory and restart the kernel."
+                .to_string()
         })?;
         let resolved = resolve_physical_absolute(home_root, stripped)?;
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
-            .map_err(|_| Error::msg("resolved home path escaped canonical root"))?
+            .map_err(|_| "resolved home path escaped canonical root".to_string())?
             .to_path_buf();
         Ok(ResolvedPath {
             physical: resolved.physical,
@@ -157,7 +157,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         })
     } else if raw_path.starts_with(TMP_PREFIX) || raw_path == "/tmp" {
         let tmp_root = state.tmp_dir.as_ref().ok_or_else(|| {
-            Error::msg("/tmp is not available: no tmp directory is configured for this principal.")
+            "/tmp is not available: no tmp directory is configured for this principal.".to_string()
         })?;
         let stripped = raw_path
             .strip_prefix(TMP_PREFIX)
@@ -167,7 +167,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
-            .map_err(|_| Error::msg("resolved /tmp path escaped canonical root"))?
+            .map_err(|_| "resolved /tmp path escaped canonical root".to_string())?
             .to_path_buf();
         Ok(ResolvedPath {
             physical: resolved.physical,
@@ -179,7 +179,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
         let relative = resolved
             .physical
             .strip_prefix(&resolved.canonical_root)
-            .map_err(|_| Error::msg("resolved path escaped canonical root"))?
+            .map_err(|_| "resolved path escaped canonical root".to_string())?
             .to_path_buf();
         Ok(ResolvedPath {
             physical: resolved.physical,
@@ -191,19 +191,18 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Error
 
 /// Phase 2: Given a first-phase result, select the correct VFS instance
 /// and capability handle.
-fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, Error> {
+fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, String> {
     match resolved.target {
         VfsTarget::Home => {
             let vfs = state.home_vfs.clone().ok_or_else(|| {
-                Error::msg(
-                    "home:// VFS is not mounted. \
-                     Create the directory and restart the kernel.",
-                )
+                "home:// VFS is not mounted. \
+                 Create the directory and restart the kernel."
+                    .to_string()
             })?;
             let handle = state
                 .home_vfs_root_handle
                 .clone()
-                .ok_or_else(|| Error::msg("home:// VFS root handle is not available"))?;
+                .ok_or_else(|| "home:// VFS root handle is not available".to_string())?;
             Ok(ResolvedVfsPath {
                 relative: resolved.relative.clone(),
                 vfs,
@@ -214,11 +213,11 @@ fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfs
             let vfs = state
                 .tmp_vfs
                 .clone()
-                .ok_or_else(|| Error::msg("/tmp VFS is not mounted for this principal."))?;
+                .ok_or_else(|| "/tmp VFS is not mounted for this principal.".to_string())?;
             let handle = state
                 .tmp_vfs_root_handle
                 .clone()
-                .ok_or_else(|| Error::msg("/tmp VFS root handle is not available"))?;
+                .ok_or_else(|| "/tmp VFS root handle is not available".to_string())?;
             Ok(ResolvedVfsPath {
                 relative: resolved.relative.clone(),
                 vfs,
@@ -233,343 +232,199 @@ fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfs
     }
 }
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_fs_exists_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
+impl fs::Host for HostState {
+    fn fs_exists(&mut self, path: String) -> Result<bool, String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    let ud = user_data.get()?;
-    // Safety: HostState lock is held across bounded_block_on. This is safe because
-    // WASM is single-threaded per plugin - the plugin mutex in invoke_interceptor /
-    // run loop serializes all host function calls, so no concurrent lock contention
-    // is possible on the same UserData. The lock is needed for resolve_path/resolve_vfs
-    // which reference multiple HostState fields.
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        // Phase 1: resolve to physical path
+        let resolved = resolve_path(self, &path)?;
 
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    // Phase 1: resolve to physical path
-    let resolved = match resolve_path(&state, &path) {
-        Ok(r) => r,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_read(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return util::write_host_result(
-                plugin,
-                outputs,
-                Err(format!("security denied exists check: {reason}")),
-            );
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_read(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied exists check: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        let exists = util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            vfs_path
+                .vfs
+                .exists(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
+        .unwrap_or(false);
+
+        Ok(exists)
     }
 
-    let vfs_path = match resolve_vfs(&state, &resolved) {
-        Ok(v) => v,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
+    fn fs_mkdir(&mut self, path: String) -> Result<(), String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    let exists = util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        vfs_path
-            .vfs
-            .exists(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-            )
-            .await
-    })
-    .unwrap_or(false);
+        let resolved = resolve_path(self, &path)?;
 
-    let result = if exists {
-        b"true".to_vec()
-    } else {
-        b"".to_vec()
-    };
-    util::write_host_result(plugin, outputs, Ok(result))
-}
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_fs_mkdir_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = resolve_path(&state, &path)?;
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_write(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied mkdir: {reason}")));
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_write(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied mkdir: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            vfs_path
+                .vfs
+                .mkdir(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
+        .map_err(|e| format!("mkdir failed: {e}"))
     }
 
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    fn fs_readdir(&mut self, path: String) -> Result<Vec<String>, String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        vfs_path
-            .vfs
-            .mkdir(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-            )
-            .await
-    })
-    .map_err(|e| Error::msg(format!("mkdir failed: {e}")))?;
+        let resolved = resolve_path(self, &path)?;
 
-    Ok(())
-}
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_fs_readdir_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = match resolve_path(&state, &path) {
-        Ok(r) => r,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_read(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return util::write_host_result(
-                plugin,
-                outputs,
-                Err(format!("security denied readdir: {reason}")),
-            );
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_read(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied readdir: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        let entries = util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            vfs_path
+                .vfs
+                .readdir(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
+        .map_err(|e| format!("readdir failed: {e}"))?;
+
+        Ok(entries.into_iter().map(|e| e.name).collect())
     }
 
-    let vfs_path = match resolve_vfs(&state, &resolved) {
-        Ok(v) => v,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
+    fn fs_stat(&mut self, path: String) -> Result<FileStat, String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    match util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        vfs_path
-            .vfs
-            .readdir(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-            )
-            .await
-    }) {
-        Ok(entries) => {
-            let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
-            let json = serde_json::to_string(&names).unwrap_or_default();
-            util::write_host_result(plugin, outputs, Ok(json.into_bytes()))
-        },
-        Err(e) => util::write_host_result(plugin, outputs, Err(format!("readdir failed: {e}"))),
-    }
-}
+        let resolved = resolve_path(self, &path)?;
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_fs_stat_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = match resolve_path(&state, &path) {
-        Ok(r) => r,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_read(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return util::write_host_result(
-                plugin,
-                outputs,
-                Err(format!("security denied stat: {reason}")),
-            );
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_read(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied stat: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        let metadata = util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            vfs_path
+                .vfs
+                .stat(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
+        .map_err(|e| format!("stat failed: {e}"))?;
+
+        Ok(FileStat {
+            size: metadata.size,
+            is_dir: metadata.is_dir,
+            mtime: Some(metadata.mtime),
+        })
     }
 
-    let vfs_path = match resolve_vfs(&state, &resolved) {
-        Ok(v) => v,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
+    fn fs_unlink(&mut self, path: String) -> Result<(), String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    match util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        vfs_path
-            .vfs
-            .stat(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-            )
-            .await
-    }) {
-        Ok(metadata) => {
-            let json = serde_json::json!({
-                "size": metadata.size,
-                "isDir": metadata.is_dir,
-                "mtime": metadata.mtime
-            })
-            .to_string();
-            util::write_host_result(plugin, outputs, Ok(json.into_bytes()))
-        },
-        Err(e) => util::write_host_result(plugin, outputs, Err(format!("stat failed: {e}"))),
-    }
-}
+        let resolved = resolve_path(self, &path)?;
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_fs_unlink_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = resolve_path(&state, &path)?;
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_write(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied unlink: {reason}")));
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_write(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied unlink: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            vfs_path
+                .vfs
+                .unlink(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                )
+                .await
+        })
+        .map_err(|e| format!("unlink failed: {e}"))
     }
 
-    let vfs_path = resolve_vfs(&state, &resolved)?;
+    fn read_file(&mut self, path: String) -> Result<Vec<u8>, String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        vfs_path
-            .vfs
-            .unlink(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-            )
-            .await
-    })
-    .map_err(|e| Error::msg(format!("unlink failed: {e}")))?;
+        let resolved = resolve_path(self, &path)?;
 
-    Ok(())
-}
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_read_file_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = match resolve_path(&state, &path) {
-        Ok(r) => r,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_read(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return util::write_host_result(
-                plugin,
-                outputs,
-                Err(format!("security denied read_file: {reason}")),
-            );
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_read(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied read_file: {reason}"));
+            }
         }
-    }
 
-    let vfs_path = match resolve_vfs(&state, &resolved) {
-        Ok(v) => v,
-        Err(e) => return util::write_host_result(plugin, outputs, Err(format!("{e}"))),
-    };
+        let vfs_path = resolve_vfs(self, &resolved)?;
 
-    let content_result =
-        util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
             let metadata = vfs_path
                 .vfs
                 .stat(
@@ -597,66 +452,45 @@ pub(crate) fn astrid_read_file_impl(
             let data = vfs_path.vfs.read(&handle).await;
             let _ = vfs_path.vfs.close(&handle).await;
             data
-        });
-
-    match content_result {
-        Ok(bytes) => util::write_host_result(plugin, outputs, Ok(bytes)),
-        Err(e) => util::write_host_result(plugin, outputs, Err(format!("IO error: {e}"))),
+        })
+        .map_err(|e| format!("IO error: {e}"))
     }
-}
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_write_file_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let path_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_PATH_LEN)?;
-    let content_bytes: Vec<u8> =
-        util::get_safe_bytes(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;
-    let path = String::from_utf8(path_bytes).unwrap_or_default();
+    fn write_file(&mut self, path: String, content: Vec<u8>) -> Result<(), String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
 
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let resolved = resolve_path(self, &path)?;
 
-    let capsule_id = state.capsule_id.as_str().to_owned();
-
-    let resolved = resolve_path(&state, &path)?;
-
-    let security = state.security.clone();
-    if let Some(gate) = security {
-        let p = resolved.physical.to_string_lossy().to_string();
-        let pid = capsule_id.clone();
-        let check =
-            util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async move {
-                gate.check_file_write(&pid, &p).await
-            });
-        if let Err(reason) = check {
-            return Err(Error::msg(format!("security denied write_file: {reason}")));
+        let security = self.security.clone();
+        if let Some(gate) = security {
+            let p = resolved.physical.to_string_lossy().to_string();
+            let pid = capsule_id.clone();
+            let check =
+                util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
+                    gate.check_file_write(&pid, &p).await
+                });
+            if let Err(reason) = check {
+                return Err(format!("security denied write_file: {reason}"));
+            }
         }
+
+        let vfs_path = resolve_vfs(self, &resolved)?;
+
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            // Note: pass truncate=true to emulate standard write behavior
+            let handle = vfs_path
+                .vfs
+                .open(
+                    &vfs_path.handle,
+                    vfs_path.relative.to_string_lossy().as_ref(),
+                    true,
+                    true,
+                )
+                .await?;
+            let res = vfs_path.vfs.write(&handle, &content).await;
+            let _ = vfs_path.vfs.close(&handle).await;
+            res
+        })
+        .map_err(|e| format!("write_file failed: {e}"))
     }
-
-    let vfs_path = resolve_vfs(&state, &resolved)?;
-
-    util::bounded_block_on(&state.runtime_handle, &state.host_semaphore, async {
-        // Note: pass truncate=true to emulate standard write behavior
-        let handle = vfs_path
-            .vfs
-            .open(
-                &vfs_path.handle,
-                vfs_path.relative.to_string_lossy().as_ref(),
-                true,
-                true,
-            )
-            .await?;
-        let res = vfs_path.vfs.write(&handle, &content_bytes).await;
-        let _ = vfs_path.vfs.close(&handle).await;
-        res
-    })
-    .map_err(|e| Error::msg(format!("write_file failed: {e}")))?;
-
-    Ok(())
 }

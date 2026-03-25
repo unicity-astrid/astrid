@@ -1,173 +1,48 @@
-use extism::{CurrentPlugin, Error, UserData, Val};
-
+use crate::engine::wasm::bindings::astrid::capsule::kv;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_kv_get_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let key_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let key = String::from_utf8(key_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let (kv, runtime_handle, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.effective_kv().clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
-        kv.get(&key).await
-    }) {
-        Ok(result) => {
-            let value_bytes = result.unwrap_or_default();
-            util::write_host_result(plugin, outputs, Ok(value_bytes))
-        },
-        Err(e) => util::write_host_result(plugin, outputs, Err(format!("kv_get failed: {e}"))),
+impl kv::Host for HostState {
+    fn kv_get(&mut self, key: String) -> Result<Option<Vec<u8>>, String> {
+        let kv = self.effective_kv().clone();
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            kv.get(&key).await
+        })
+        .map_err(|e| format!("kv_get failed: {e}"))
     }
-}
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_kv_set_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let key_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let value_bytes: Vec<u8> =
-        util::get_safe_bytes(plugin, &inputs[1], util::MAX_GUEST_PAYLOAD_LEN)?;
-
-    let key = String::from_utf8(key_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let (kv, runtime_handle, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.effective_kv().clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    util::bounded_block_on(&runtime_handle, &host_semaphore, async {
-        // KV storage takes Vec<u8> directly.
-        kv.set(&key, value_bytes).await
-    })
-    .map_err(|e| Error::msg(format!("kv_set failed: {e}")))?;
-
-    Ok(())
-}
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_kv_delete_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let key_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let key = String::from_utf8(key_bytes).unwrap_or_default();
-
-    let ud = user_data.get()?;
-    let (kv, runtime_handle, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.effective_kv().clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    util::bounded_block_on(&runtime_handle, &host_semaphore, async {
-        kv.delete(&key).await
-    })
-    .map_err(|e| Error::msg(format!("kv_delete failed: {e}")))?;
-
-    Ok(())
-}
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_kv_list_keys_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let prefix_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let prefix = String::from_utf8(prefix_bytes)
-        .map_err(|e| Error::msg(format!("kv_list_keys prefix is not valid UTF-8: {e}")))?;
-
-    let ud = user_data.get()?;
-    let (kv, runtime_handle, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.effective_kv().clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
-        kv.list_keys_with_prefix(&prefix).await
-    }) {
-        Ok(keys) => {
-            let json = serde_json::to_vec(&keys).unwrap_or_default();
-            util::write_host_result(plugin, outputs, Ok(json))
-        },
-        Err(e) => {
-            util::write_host_result(plugin, outputs, Err(format!("kv_list_keys failed: {e}")))
-        },
+    fn kv_set(&mut self, key: String, value: Vec<u8>) -> Result<(), String> {
+        let kv = self.effective_kv().clone();
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            kv.set(&key, value).await
+        })
+        .map_err(|e| format!("kv_set failed: {e}"))
     }
-}
 
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_kv_clear_prefix_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let prefix_bytes: Vec<u8> = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let prefix = String::from_utf8(prefix_bytes)
-        .map_err(|e| Error::msg(format!("kv_clear_prefix prefix is not valid UTF-8: {e}")))?;
+    fn kv_delete(&mut self, key: String) -> Result<(), String> {
+        let kv = self.effective_kv().clone();
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            kv.delete(&key).await
+        })
+        .map(|_| ())
+        .map_err(|e| format!("kv_delete failed: {e}"))
+    }
 
-    let ud = user_data.get()?;
-    let (kv, runtime_handle, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.effective_kv().clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
+    fn kv_list_keys(&mut self, prefix: String) -> Result<Vec<String>, String> {
+        let kv = self.effective_kv().clone();
+        util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            kv.list_keys_with_prefix(&prefix).await
+        })
+        .map_err(|e| format!("kv_list_keys failed: {e}"))
+    }
 
-    match util::bounded_block_on(&runtime_handle, &host_semaphore, async {
-        kv.clear_prefix(&prefix).await
-    }) {
-        Ok(count) => {
-            let json = serde_json::to_vec(&count).unwrap_or_default();
-            util::write_host_result(plugin, outputs, Ok(json))
-        },
-        Err(e) => {
-            util::write_host_result(plugin, outputs, Err(format!("kv_clear_prefix failed: {e}")))
-        },
+    fn kv_clear_prefix(&mut self, prefix: String) -> Result<u64, String> {
+        let kv = self.effective_kv().clone();
+        let count = util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async {
+            kv.clear_prefix(&prefix).await
+        })
+        .map_err(|e| format!("kv_clear_prefix failed: {e}"))?;
+
+        Ok(count)
     }
 }

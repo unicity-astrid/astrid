@@ -3,41 +3,21 @@
 //! These functions are called by WASM guests during `#[install]` or `#[upgrade]`
 //! hooks to interactively collect user input (secrets, text, selections, arrays).
 
+use crate::engine::wasm::bindings::astrid::capsule::elicit;
+use crate::engine::wasm::bindings::astrid::capsule::types::ElicitRequest;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use astrid_events::AstridEvent;
 use astrid_events::ipc::{IpcMessage, IpcPayload, OnboardingField, OnboardingFieldType};
-use extism::{CurrentPlugin, Error, UserData, Val};
-use serde::Deserialize;
 use uuid::Uuid;
 
 /// Maximum timeout for interactive elicitation (120 seconds).
 const MAX_ELICIT_TIMEOUT_MS: u64 = 120_000;
 
-/// The wire format sent by the SDK's `elicit` module.
-#[derive(Deserialize)]
-struct GuestElicitRequest {
-    #[serde(rename = "type")]
-    kind: String,
-    key: String,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    options: Option<Vec<String>>,
-    #[serde(default)]
-    default: Option<String>,
-}
-
-/// The wire format for `has_secret` requests from the SDK.
-#[derive(Deserialize)]
-struct GuestHasSecretRequest {
-    key: String,
-}
-
 /// Map the SDK's string-typed request into the `OnboardingField` schema
 /// used by the IPC layer and TUI.
-fn map_to_onboarding_field(req: &GuestElicitRequest) -> Result<OnboardingField, Error> {
-    let field_type = match req.kind.as_str() {
+fn map_to_onboarding_field(req: &ElicitRequest) -> Result<OnboardingField, String> {
+    let field_type = match req.elicit_type.as_str() {
         "text" => OnboardingFieldType::Text,
         "secret" => OnboardingFieldType::Secret,
         "select" => {
@@ -45,259 +25,221 @@ fn map_to_onboarding_field(req: &GuestElicitRequest) -> Result<OnboardingField, 
                 .options
                 .as_ref()
                 .filter(|o| !o.is_empty())
-                .ok_or_else(|| Error::msg("select elicit request requires non-empty options"))?;
+                .ok_or_else(|| "select elicit request requires non-empty options".to_string())?;
             OnboardingFieldType::Enum(options.clone())
         },
         "array" => OnboardingFieldType::Array,
-        other => return Err(Error::msg(format!("unknown elicit type: {other}"))),
+        other => return Err(format!("unknown elicit type: {other}")),
     };
 
     Ok(OnboardingField {
         key: req.key.clone(),
-        prompt: req.description.as_ref().unwrap_or(&req.key).clone(),
-        description: req.description.clone(),
+        prompt: if req.description.is_empty() {
+            req.key.clone()
+        } else {
+            req.description.clone()
+        },
+        description: if req.description.is_empty() {
+            None
+        } else {
+            Some(req.description.clone())
+        },
         field_type,
-        default: req.default.clone(),
+        default: req.default_value.clone(),
         placeholder: None,
     })
 }
 
-/// Host function: `astrid_elicit(request_json) -> response_json`
-///
-/// Blocks the WASM thread until the frontend (TUI or CLI) collects user input
-/// and publishes an `ElicitResponse` on the response topic.
-///
-/// Only callable during a lifecycle phase (install/upgrade). Returns an error
-/// if called during normal runtime.
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_elicit_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    // Parse the guest's JSON request
-    let request_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
-    let guest_req: GuestElicitRequest = serde_json::from_slice(&request_bytes)
-        .map_err(|e| Error::msg(format!("invalid elicit request JSON: {e}")))?;
-
-    let field = map_to_onboarding_field(&guest_req)?;
-    let request_id = Uuid::new_v4();
-    let response_topic = format!("astrid.v1.elicit.response.{request_id}");
-
-    let ud = user_data.get()?;
-
-    // Lock state: verify lifecycle phase, subscribe to response topic, extract
-    // what we need, then drop the lock before blocking.
-    let (
-        mut receiver,
-        runtime_handle,
-        event_bus,
-        capsule_id,
-        secret_store,
-        cancel_token,
-        host_semaphore,
-    ) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+impl elicit::Host for HostState {
+    /// Host function: `elicit(request) -> response_json`
+    ///
+    /// Blocks the WASM thread until the frontend (TUI or CLI) collects user input
+    /// and publishes an `ElicitResponse` on the response topic.
+    ///
+    /// Only callable during a lifecycle phase (install/upgrade). Returns an error
+    /// if called during normal runtime.
+    fn elicit(&mut self, request: ElicitRequest) -> Result<String, String> {
+        let field = map_to_onboarding_field(&request)?;
+        let request_id = Uuid::new_v4();
+        let response_topic = format!("astrid.v1.elicit.response.{request_id}");
 
         // Gate: elicit is only allowed during lifecycle hooks
-        if state.lifecycle_phase.is_none() {
-            return Err(Error::msg(
-                "elicit is only available during #[install] or #[upgrade] lifecycle hooks",
-            ));
+        if self.lifecycle_phase.is_none() {
+            return Err(
+                "elicit is only available during #[install] or #[upgrade] lifecycle hooks"
+                    .to_string(),
+            );
         }
 
         // Subscribe to the response topic BEFORE publishing the request
         // to prevent a race where the response arrives before we're listening.
-        let receiver = state.event_bus.subscribe_topic(&response_topic);
+        let mut receiver = self.event_bus.subscribe_topic(&response_topic);
 
-        let runtime_handle = state.runtime_handle.clone();
-        let event_bus = state.event_bus.clone();
-        let capsule_id = state.capsule_id.to_string();
-        let secret_store = state.secret_store.clone();
-        let cancel_token = state.cancel_token.clone();
-        let host_semaphore = state.host_semaphore.clone();
+        let runtime_handle = self.runtime_handle.clone();
+        let event_bus = self.event_bus.clone();
+        let capsule_id = self.capsule_id.to_string();
+        let secret_store = self.secret_store.clone();
+        let cancel_token = self.cancel_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
 
-        (
-            receiver,
-            runtime_handle,
-            event_bus,
-            capsule_id,
-            secret_store,
-            cancel_token,
-            host_semaphore,
+        // Publish the elicit request to the event bus
+        let request_payload = IpcPayload::ElicitRequest {
+            request_id,
+            capsule_id: capsule_id.clone(),
+            field,
+        };
+        let message = IpcMessage::new(
+            "astrid.v1.elicit",
+            request_payload,
+            Uuid::nil(), // Kernel-originated
+        );
+        event_bus.publish(AstridEvent::Ipc {
+            message,
+            metadata: astrid_events::EventMetadata::default(),
+        });
+
+        tracing::debug!(
+            capsule = %capsule_id,
+            key = %request.key,
+            kind = %request.elicit_type,
+            %request_id,
+            "Published elicit request, waiting for response"
+        );
+
+        // Block the WASM thread until a response arrives, timeout expires, or
+        // the capsule is unloaded (cancellation). Routed through the host
+        // semaphore to bound concurrent blocking operations across all capsules.
+        //
+        // Note: the helper uses a biased select that strictly prioritises
+        // cancellation over completion. If a response arrives in the same poll
+        // tick as cancellation, the response is discarded. This is acceptable
+        // during teardown and prevents delayed shutdown under high throughput.
+        let event = util::bounded_block_on_cancellable(
+            &runtime_handle,
+            &host_semaphore,
+            &cancel_token,
+            async {
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(MAX_ELICIT_TIMEOUT_MS),
+                    receiver.recv(),
+                )
+                .await
+                .ok()
+                .flatten()
+            },
         )
-    };
+        .flatten();
 
-    // Publish the elicit request to the event bus
-    let request_payload = IpcPayload::ElicitRequest {
-        request_id,
-        capsule_id: capsule_id.clone(),
-        field,
-    };
-    let message = IpcMessage::new(
-        "astrid.v1.elicit",
-        request_payload,
-        Uuid::nil(), // Kernel-originated
-    );
-    event_bus.publish(AstridEvent::Ipc {
-        message,
-        metadata: astrid_events::EventMetadata::default(),
-    });
+        // Extract the response
+        let response_json = match event {
+            Some(event) => {
+                if let AstridEvent::Ipc { message, .. } = &*event {
+                    match &message.payload {
+                        IpcPayload::ElicitResponse { value, values, .. } => {
+                            // Detect cancellation: both value and values are None
+                            if value.is_none() && values.is_none() {
+                                return Err("user cancelled elicit request".to_string());
+                            }
 
-    tracing::debug!(
-        capsule = %capsule_id,
-        key = %guest_req.key,
-        kind = %guest_req.kind,
-        %request_id,
-        "Published elicit request, waiting for response"
-    );
+                            // Build response JSON matching what the SDK expects
+                            match request.elicit_type.as_str() {
+                                "secret" => {
+                                    // Persist the secret via the SecretStore abstraction.
+                                    // This uses the OS keychain when available, falling
+                                    // back to KV storage in headless/CI environments.
+                                    let secret_val = value.clone().unwrap_or_default();
+                                    if secret_val.is_empty() {
+                                        return Err(
+                                            "received empty secret value from elicit response"
+                                                .to_string(),
+                                        );
+                                    }
+                                    secret_store
+                                        .set(&request.key, &secret_val)
+                                        .map_err(|e| format!("failed to persist secret: {e}"))?;
 
-    // Block the WASM thread until a response arrives, timeout expires, or
-    // the capsule is unloaded (cancellation). Routed through the host
-    // semaphore to bound concurrent blocking operations across all capsules.
-    //
-    // Note: the helper uses a biased select that strictly prioritises
-    // cancellation over completion. If a response arrives in the same poll
-    // tick as cancellation, the response is discarded. This is acceptable
-    // during teardown and prevents delayed shutdown under high throughput.
-    let event = util::bounded_block_on_cancellable(
-        &runtime_handle,
-        &host_semaphore,
-        &cancel_token,
-        async {
-            tokio::time::timeout(
-                std::time::Duration::from_millis(MAX_ELICIT_TIMEOUT_MS),
-                receiver.recv(),
-            )
-            .await
-            .ok()
-            .flatten()
-        },
-    )
-    .flatten();
-
-    // Extract the response
-    let response_json = match event {
-        Some(event) => {
-            if let AstridEvent::Ipc { message, .. } = &*event {
-                match &message.payload {
-                    IpcPayload::ElicitResponse { value, values, .. } => {
-                        // Detect cancellation: both value and values are None
-                        if value.is_none() && values.is_none() {
-                            return Err(Error::msg("user cancelled elicit request"));
-                        }
-
-                        // Build response JSON matching what the SDK expects
-                        match guest_req.kind.as_str() {
-                            "secret" => {
-                                // Persist the secret via the SecretStore abstraction.
-                                // This uses the OS keychain when available, falling
-                                // back to KV storage in headless/CI environments.
-                                let secret_val = value.clone().unwrap_or_default();
-                                if secret_val.is_empty() {
-                                    return Err(Error::msg(
-                                        "received empty secret value from elicit response",
-                                    ));
-                                }
-                                secret_store.set(&guest_req.key, &secret_val).map_err(|e| {
-                                    Error::msg(format!("failed to persist secret: {e}"))
-                                })?;
-
-                                // Secret: SDK expects {"ok": true}
-                                serde_json::to_vec(&serde_json::json!({"ok": true})).map_err(
-                                    |e| Error::msg(format!("failed to serialize response: {e}")),
-                                )?
-                            },
-                            "array" => {
-                                // Array: SDK expects {"values": [...]}
-                                let vals = values.clone().unwrap_or_default();
-                                serde_json::to_vec(&serde_json::json!({"values": vals})).map_err(
-                                    |e| Error::msg(format!("failed to serialize response: {e}")),
-                                )?
-                            },
-                            _ => {
-                                // Text/Select: SDK expects {"value": "..."}
-                                let val = value.clone().unwrap_or_default();
-                                serde_json::to_vec(&serde_json::json!({"value": val})).map_err(
-                                    |e| Error::msg(format!("failed to serialize response: {e}")),
-                                )?
-                            },
-                        }
-                    },
-                    _ => {
-                        return Err(Error::msg("unexpected IPC payload type in elicit response"));
-                    },
+                                    // Secret: SDK expects {"ok": true}
+                                    serde_json::to_string(&serde_json::json!({"ok": true}))
+                                        .map_err(|e| format!("failed to serialize response: {e}"))?
+                                },
+                                "array" => {
+                                    // Array: SDK expects {"values": [...]}
+                                    let vals = values.clone().unwrap_or_default();
+                                    serde_json::to_string(&serde_json::json!({"values": vals}))
+                                        .map_err(|e| format!("failed to serialize response: {e}"))?
+                                },
+                                _ => {
+                                    // Text/Select: SDK expects {"value": "..."}
+                                    let val = value.clone().unwrap_or_default();
+                                    serde_json::to_string(&serde_json::json!({"value": val}))
+                                        .map_err(|e| format!("failed to serialize response: {e}"))?
+                                },
+                            }
+                        },
+                        _ => {
+                            return Err(
+                                "unexpected IPC payload type in elicit response".to_string()
+                            );
+                        },
+                    }
+                } else {
+                    return Err("unexpected event type in elicit response".to_string());
                 }
-            } else {
-                return Err(Error::msg("unexpected event type in elicit response"));
-            }
-        },
-        None => {
-            // Timeout expired, capsule unloading (cancellation), or channel closed.
-            return Err(Error::msg(
-                "elicit request timed out, was cancelled, or response channel closed",
-            ));
-        },
-    };
+            },
+            None => {
+                // Timeout expired, capsule unloading (cancellation), or channel closed.
+                return Err(
+                    "elicit request timed out, was cancelled, or response channel closed"
+                        .to_string(),
+                );
+            },
+        };
 
-    let mem = plugin.memory_new(&response_json)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
-}
+        Ok(response_json)
+    }
 
-/// Host function: `astrid_has_secret(request_json) -> response_json`
-///
-/// Checks whether a secret key has been stored for this capsule.
-/// Uses the [`SecretStore`] abstraction (OS keychain with KV fallback).
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_has_secret_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let request_bytes = util::get_safe_bytes(plugin, &inputs[0], util::MAX_KEY_LEN)?;
-    let req: GuestHasSecretRequest = serde_json::from_slice(&request_bytes)
-        .map_err(|e| Error::msg(format!("invalid has_secret request JSON: {e}")))?;
+    /// Host function: `has_secret(key) -> bool`
+    ///
+    /// Checks whether a secret key has been stored for this capsule.
+    /// Uses the [`SecretStore`] abstraction (OS keychain with KV fallback).
+    fn has_secret(&mut self, key: String) -> Result<bool, String> {
+        let secret_store = self.secret_store.clone();
 
-    let ud = user_data.get()?;
-
-    // Extract secret store, then drop the lock.
-    let secret_store = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        state.secret_store.clone()
-    };
-
-    let exists = secret_store
-        .exists(&req.key)
-        .map_err(|e| Error::msg(format!("failed to check for secret: {e}")))?;
-
-    let response = serde_json::to_vec(&serde_json::json!({"exists": exists}))
-        .map_err(|e| Error::msg(format!("failed to serialize has_secret response: {e}")))?;
-
-    let mem = plugin.memory_new(&response)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
+        secret_store
+            .exists(&key)
+            .map_err(|e| format!("failed to check for secret: {e}"))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn make_elicit_request(
+        kind: &str,
+        key: &str,
+        description: &str,
+        options: Option<Vec<String>>,
+        default: Option<String>,
+    ) -> ElicitRequest {
+        ElicitRequest {
+            elicit_type: kind.to_string(),
+            key: key.to_string(),
+            description: description.to_string(),
+            options,
+            default_value: default,
+        }
+    }
+
     #[test]
     fn map_text_request() {
-        let req = GuestElicitRequest {
-            kind: "text".into(),
-            key: "api_url".into(),
-            description: Some("Enter API URL".into()),
-            options: None,
-            default: Some("https://example.com".into()),
-        };
+        let req = make_elicit_request(
+            "text",
+            "api_url",
+            "Enter API URL",
+            None,
+            Some("https://example.com".into()),
+        );
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(field.key, "api_url");
         assert_eq!(field.field_type, OnboardingFieldType::Text);
@@ -307,26 +249,20 @@ mod tests {
 
     #[test]
     fn map_secret_request() {
-        let req = GuestElicitRequest {
-            kind: "secret".into(),
-            key: "api_key".into(),
-            description: Some("Enter your API key".into()),
-            options: None,
-            default: None,
-        };
+        let req = make_elicit_request("secret", "api_key", "Enter your API key", None, None);
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(field.field_type, OnboardingFieldType::Secret);
     }
 
     #[test]
     fn map_select_request() {
-        let req = GuestElicitRequest {
-            kind: "select".into(),
-            key: "network".into(),
-            description: Some("Choose network".into()),
-            options: Some(vec!["mainnet".into(), "testnet".into()]),
-            default: None,
-        };
+        let req = make_elicit_request(
+            "select",
+            "network",
+            "Choose network",
+            Some(vec!["mainnet".into(), "testnet".into()]),
+            None,
+        );
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(
             field.field_type,
@@ -336,85 +272,37 @@ mod tests {
 
     #[test]
     fn map_select_request_empty_options_fails() {
-        let req = GuestElicitRequest {
-            kind: "select".into(),
-            key: "network".into(),
-            description: None,
-            options: Some(vec![]),
-            default: None,
-        };
+        let req = make_elicit_request("select", "network", "", Some(vec![]), None);
         let err = map_to_onboarding_field(&req).unwrap_err();
-        assert!(err.to_string().contains("non-empty options"));
+        assert!(err.contains("non-empty options"));
     }
 
     #[test]
     fn map_select_request_no_options_fails() {
-        let req = GuestElicitRequest {
-            kind: "select".into(),
-            key: "network".into(),
-            description: None,
-            options: None,
-            default: None,
-        };
+        let req = make_elicit_request("select", "network", "", None, None);
         let err = map_to_onboarding_field(&req).unwrap_err();
-        assert!(err.to_string().contains("non-empty options"));
+        assert!(err.contains("non-empty options"));
     }
 
     #[test]
     fn map_array_request() {
-        let req = GuestElicitRequest {
-            kind: "array".into(),
-            key: "relays".into(),
-            description: Some("Enter relay URLs".into()),
-            options: None,
-            default: None,
-        };
+        let req = make_elicit_request("array", "relays", "Enter relay URLs", None, None);
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(field.field_type, OnboardingFieldType::Array);
     }
 
     #[test]
     fn map_unknown_type_fails() {
-        let req = GuestElicitRequest {
-            kind: "checkbox".into(),
-            key: "foo".into(),
-            description: None,
-            options: None,
-            default: None,
-        };
+        let req = make_elicit_request("checkbox", "foo", "", None, None);
         let err = map_to_onboarding_field(&req).unwrap_err();
-        assert!(err.to_string().contains("unknown elicit type"));
+        assert!(err.contains("unknown elicit type"));
     }
 
     #[test]
     fn map_text_uses_key_as_prompt_when_no_description() {
-        let req = GuestElicitRequest {
-            kind: "text".into(),
-            key: "my_setting".into(),
-            description: None,
-            options: None,
-            default: None,
-        };
+        let req = make_elicit_request("text", "my_setting", "", None, None);
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(field.prompt, "my_setting");
         assert!(field.description.is_none());
-    }
-
-    #[test]
-    fn guest_elicit_request_deserializes() {
-        let json = r#"{"type":"text","key":"name","description":"Your name"}"#;
-        let req: GuestElicitRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.kind, "text");
-        assert_eq!(req.key, "name");
-        assert_eq!(req.description.as_deref(), Some("Your name"));
-        assert!(req.options.is_none());
-        assert!(req.default.is_none());
-    }
-
-    #[test]
-    fn guest_has_secret_request_deserializes() {
-        let json = r#"{"key":"api_key"}"#;
-        let req: GuestHasSecretRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.key, "api_key");
     }
 }

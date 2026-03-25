@@ -1,10 +1,12 @@
 //! Host function implementation for plugin-level approval requests.
 //!
-//! Called by WASM guests via the `astrid_request_approval` FFI when a plugin
+//! Called by WASM guests via the `request_approval` trait method when a plugin
 //! needs human consent for a sensitive action. Checks the shared
 //! [`AllowanceStore`] first (instant path), then publishes an
 //! [`ApprovalRequired`] IPC event and blocks until the frontend responds.
 
+use crate::engine::wasm::bindings::astrid::capsule::approval;
+use crate::engine::wasm::bindings::astrid::capsule::types::{ApprovalRequest, ApprovalResponse};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use astrid_approval::action::SensitiveAction;
@@ -13,8 +15,6 @@ use astrid_core::types::Timestamp;
 use astrid_crypto::KeyPair;
 use astrid_events::AstridEvent;
 use astrid_events::ipc::{IpcMessage, IpcPayload};
-use extism::{CurrentPlugin, Error, UserData, Val};
-use serde::Deserialize;
 use uuid::Uuid;
 
 /// Maximum timeout for approval requests (60 seconds).
@@ -40,14 +40,6 @@ const MAX_RESOURCE_LEN: usize = 1024;
 /// Risk levels are short classification labels ("low", "high", "critical").
 /// 64 characters is generous for any reasonable label.
 const MAX_RISK_LEVEL_LEN: usize = 64;
-
-/// The wire format sent by the SDK's `approval::request` function.
-#[derive(Deserialize)]
-struct GuestApprovalRequest {
-    action: String,
-    resource: String,
-    risk_level: String,
-}
 
 /// Check the allowance store for a matching pattern, consuming limited-use
 /// allowances.
@@ -75,10 +67,6 @@ fn check_allowance(
 /// Trims whitespace, strips control characters, and enforces a character-count
 /// length cap. Logs a warning (with plugin ID and field name) when control
 /// characters were stripped or the string was truncated.
-///
-/// Unlike [`sanitize_action_for_pattern`], this is a general-purpose sanitizer
-/// for fields that flow into IPC payloads and logs but do not participate in
-/// glob pattern matching.
 fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsule_id: &str) {
     let trimmed = s.trim();
     let sanitized: String = trimmed
@@ -88,8 +76,6 @@ fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsul
         .collect();
 
     // Only warn for control-char stripping or truncation, not whitespace trim.
-    // Use byte-length comparison for O(1) detection; compute char counts only
-    // inside the warning branch to avoid an O(N) scan on the full input.
     if sanitized.len() != trimmed.len() {
         let original_chars = trimmed.chars().count();
         let sanitized_chars = sanitized.chars().count();
@@ -110,12 +96,7 @@ fn sanitize_guest_field(s: &mut String, max_len: usize, field_name: &str, capsul
 /// Defense layer 1: strips control characters and enforces a length cap.
 /// Runs BEFORE [`escape_glob_metacharacters`] (layer 2). Together they
 /// guarantee that no guest input can produce a dangerous or oversized glob
-/// pattern. All printable characters are preserved - shell operators and
-/// glob wildcards are handled by downstream layers.
-///
-/// Logs a warning if control characters were stripped or the string was
-/// truncated, identifying the plugin for audit purposes. Does NOT warn
-/// for whitespace trimming alone (that is normal, not suspicious).
+/// pattern.
 fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
     let trimmed = action.trim();
     let sanitized: String = trimmed
@@ -124,9 +105,6 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
         .take(MAX_ACTION_LEN)
         .collect();
 
-    // Only warn for control-char stripping or truncation, not whitespace trim.
-    // Compare char counts (not byte lengths) so the log fields correlate with
-    // MAX_ACTION_LEN which is a char-count limit.
     let trimmed_chars = trimmed.chars().count();
     let sanitized_chars = sanitized.chars().count();
     if sanitized_chars != trimmed_chars {
@@ -143,13 +121,8 @@ fn sanitize_action_for_pattern(action: &str, capsule_id: &str) -> String {
 
 /// Escape glob metacharacters in a guest-supplied action string.
 ///
-/// Defense layer 2: escapes glob wildcards (`*`, `?`, `[`, `]`, `{`, `}`,
-/// `\`) so they are matched literally. Layer 1
-/// ([`sanitize_action_for_pattern`]) strips control characters and enforces
-/// length. Layer 3 ([`contains_shell_operators`] in `pattern.rs`) rejects
-/// shell injection at match time.
+/// Defense layer 2: escapes glob wildcards so they are matched literally.
 fn escape_glob_metacharacters(action: &str) -> String {
-    // Worst case: every char is a glob metacharacter needing a `\` prefix.
     let mut escaped = String::with_capacity(action.len() * 2);
     for c in action.chars() {
         if matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | '\\') {
@@ -161,10 +134,6 @@ fn escape_glob_metacharacters(action: &str) -> String {
 }
 
 /// Create a session-scoped allowance from an approval decision.
-///
-/// For `approve_session`, creates a `CommandPattern` with a subcommand-level
-/// glob (e.g. "git push" becomes "git push *"). For `approve_always`, uses
-/// the same pattern but with `session_only: false`.
 fn create_allowance_from_decision(
     store: &AllowanceStore,
     action: &str,
@@ -174,20 +143,12 @@ fn create_allowance_from_decision(
 ) {
     let session_only = match decision {
         "approve_session" => true,
-        // FIXME(#382): `approve_always` sets `session_only: false` but the
-        // signing key is ephemeral. Treat as session-scoped until the kernel
-        // runtime key is threaded through HostState for proper signatures.
         "approve_always" => false,
-        // "approve" (once) intentionally creates no allowance. The next
-        // identical call will re-prompt. Only "approve_session" and
-        // "approve_always" persist across calls.
         _ => return,
     };
 
     // Layer 1: strip control characters, enforce length cap.
     let sanitized_action = sanitize_action_for_pattern(action, capsule_id);
-    // Empty action after sanitization produces pattern " *" which is
-    // meaningless. Skip allowance creation rather than storing a useless entry.
     if sanitized_action.is_empty() {
         return;
     }
@@ -197,9 +158,6 @@ fn create_allowance_from_decision(
         command: format!("{escaped_action} *"),
     };
 
-    // Generate an ephemeral keypair for signing. Session allowances are
-    // ephemeral by nature; persistent allowances will get proper runtime
-    // key signing when the capability persistence layer is wired.
     let keypair = KeyPair::generate();
     let allowance = Allowance {
         id: AllowanceId::new(),
@@ -218,241 +176,174 @@ fn create_allowance_from_decision(
     }
 }
 
-/// Host function: `astrid_request_approval(request_json) -> response_json`
-///
-/// Blocks the WASM thread until the frontend user approves or denies, or
-/// the request times out. If an allowance already exists, returns immediately.
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_request_approval_impl(
-    capsule: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let request_bytes = util::get_safe_bytes(capsule, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
-    let mut guest_req: GuestApprovalRequest = serde_json::from_slice(&request_bytes)
-        .map_err(|e| Error::msg(format!("invalid approval request JSON: {e}")))?;
+impl approval::Host for HostState {
+    /// Host function: `request_approval(request) -> ApprovalResponse`
+    ///
+    /// Blocks the WASM thread until the frontend user approves or denies, or
+    /// the request times out. If an allowance already exists, returns immediately.
+    fn request_approval(
+        &mut self,
+        mut request: ApprovalRequest,
+    ) -> Result<ApprovalResponse, String> {
+        let allowance_store = self.allowance_store.clone();
+        let event_bus = self.event_bus.clone();
+        let runtime_handle = self.runtime_handle.clone();
+        let capsule_id = self.capsule_id.to_string();
+        let cancel_token = self.cancel_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
+        let workspace_root = self.workspace_root.clone();
 
-    let ud = user_data.get()?;
+        // Validate and sanitize all guest-supplied strings at the entry point.
+        let action_char_count = request.action.chars().count();
+        if action_char_count > MAX_ACTION_LEN {
+            return Err(format!(
+                "approval request action exceeds maximum length ({action_char_count} > {MAX_ACTION_LEN})",
+            ));
+        }
+        request.action = sanitize_action_for_pattern(&request.action, &capsule_id);
+        sanitize_guest_field(
+            &mut request.target_resource,
+            MAX_RESOURCE_LEN,
+            "resource",
+            &capsule_id,
+        );
+        sanitize_guest_field(
+            &mut request.risk_level,
+            MAX_RISK_LEVEL_LEN,
+            "risk_level",
+            &capsule_id,
+        );
 
-    // Extract what we need from HostState, then drop the lock before blocking.
-    // Extracted early so capsule_id is available for sanitization logging.
-    let (
-        allowance_store,
-        event_bus,
-        runtime_handle,
-        capsule_id,
-        cancel_token,
-        host_semaphore,
-        workspace_root,
-    ) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let ws_path = Some(workspace_root.as_path());
 
-        let store = state.allowance_store.clone();
-        let event_bus = state.event_bus.clone();
-        let runtime_handle = state.runtime_handle.clone();
-        let capsule_id = state.capsule_id.to_string();
-        let cancel_token = state.cancel_token.clone();
-        let host_semaphore = state.host_semaphore.clone();
-        let workspace = state.workspace_root.clone();
+        // Fast path: check existing allowances.
+        if let Some(ref store) = allowance_store
+            && check_allowance(store, &request.target_resource, ws_path)
+        {
+            tracing::debug!(
+                plugin = %capsule_id,
+                action = %request.action,
+                resource = %request.target_resource,
+                "Approval auto-granted via existing allowance"
+            );
 
-        (
-            store,
-            event_bus,
-            runtime_handle,
-            capsule_id,
-            cancel_token,
-            host_semaphore,
-            workspace,
-        )
-    };
+            return Ok(ApprovalResponse {
+                approved: true,
+                decision: "allowance".to_string(),
+            });
+        }
 
-    // Validate and sanitize all guest-supplied strings at the entry point.
-    // This ensures IPC payloads and log messages contain clean values.
-    let action_char_count = guest_req.action.chars().count();
-    if action_char_count > MAX_ACTION_LEN {
-        return Err(Error::msg(format!(
-            "approval request action exceeds maximum length ({action_char_count} > {MAX_ACTION_LEN})",
-        )));
-    }
-    // Single source of truth: sanitize_action_for_pattern strips control
-    // chars, trims whitespace, and enforces length. Applied here so the
-    // cleaned value flows through to IPC payloads and logs.
-    guest_req.action = sanitize_action_for_pattern(&guest_req.action, &capsule_id);
-    // Sanitize resource and risk_level: trim whitespace, strip control
-    // characters, and enforce length caps. These are guest-controlled and
-    // flow into IPC payloads, tracing logs, and terminal-rendered approval
-    // prompts. Without length caps, a 10 MB resource string (the upstream
-    // MAX_GUEST_PAYLOAD_LEN limit) would DoS IPC consumers and log sinks.
-    sanitize_guest_field(
-        &mut guest_req.resource,
-        MAX_RESOURCE_LEN,
-        "resource",
-        &capsule_id,
-    );
-    sanitize_guest_field(
-        &mut guest_req.risk_level,
-        MAX_RISK_LEVEL_LEN,
-        "risk_level",
-        &capsule_id,
-    );
+        // Slow path: publish ApprovalRequired and wait for response.
+        let request_id = Uuid::new_v4().to_string();
+        let response_topic = format!("astrid.v1.approval.response.{request_id}");
 
-    let ws_path = Some(workspace_root.as_path());
+        // Subscribe BEFORE publishing to prevent a race.
+        let mut receiver = event_bus.subscribe_topic(&response_topic);
 
-    // Fast path: check existing allowances.
-    if let Some(ref store) = allowance_store
-        && check_allowance(store, &guest_req.resource, ws_path)
-    {
-        let response = serde_json::to_vec(&serde_json::json!({
-            "approved": true,
-            "decision": "allowance",
-        }))
-        .map_err(|e| Error::msg(format!("failed to serialize response: {e}")))?;
+        let request_payload = IpcPayload::ApprovalRequired {
+            request_id: request_id.clone(),
+            action: request.action.clone(),
+            resource: request.target_resource.clone(),
+            reason: format!("Capsule '{capsule_id}' requests approval"),
+            risk_level: request.risk_level.clone(),
+        };
+        let message = IpcMessage::new(
+            "astrid.v1.approval",
+            request_payload,
+            Uuid::nil(), // Kernel-originated
+        );
+        event_bus.publish(AstridEvent::Ipc {
+            message,
+            metadata: astrid_events::EventMetadata::default(),
+        });
 
         tracing::debug!(
             plugin = %capsule_id,
-            action = %guest_req.action,
-            resource = %guest_req.resource,
-            "Approval auto-granted via existing allowance"
+            action = %request.action,
+            resource = %request.target_resource,
+            risk_level = %request.risk_level,
+            %request_id,
+            "Published approval request, waiting for response"
         );
 
-        let mem = capsule.memory_new(&response)?;
-        outputs[0] = capsule.memory_to_val(mem);
-        return Ok(());
-    }
+        // Block until response, timeout, or cancellation.
+        let event = util::bounded_block_on_cancellable(
+            &runtime_handle,
+            &host_semaphore,
+            &cancel_token,
+            async {
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(MAX_APPROVAL_TIMEOUT_MS),
+                    receiver.recv(),
+                )
+                .await
+                .ok()
+                .flatten()
+            },
+        )
+        .flatten();
 
-    // Slow path: publish ApprovalRequired and wait for response.
-    let request_id = Uuid::new_v4().to_string();
-    let response_topic = format!("astrid.v1.approval.response.{request_id}");
-
-    // Subscribe BEFORE publishing to prevent a race.
-    let mut receiver = event_bus.subscribe_topic(&response_topic);
-
-    let request_payload = IpcPayload::ApprovalRequired {
-        request_id: request_id.clone(),
-        action: guest_req.action.clone(),
-        resource: guest_req.resource.clone(),
-        reason: format!("Capsule '{capsule_id}' requests approval"),
-        risk_level: guest_req.risk_level.clone(),
-    };
-    let message = IpcMessage::new(
-        "astrid.v1.approval",
-        request_payload,
-        Uuid::nil(), // Kernel-originated
-    );
-    event_bus.publish(AstridEvent::Ipc {
-        message,
-        metadata: astrid_events::EventMetadata::default(),
-    });
-
-    tracing::debug!(
-        plugin = %capsule_id,
-        action = %guest_req.action,
-        resource = %guest_req.resource,
-        risk_level = %guest_req.risk_level,
-        %request_id,
-        "Published approval request, waiting for response"
-    );
-
-    // Block until response, timeout, or cancellation. Routed through the host
-    // semaphore to bound concurrent blocking operations across all plugins.
-    let event = util::bounded_block_on_cancellable(
-        &runtime_handle,
-        &host_semaphore,
-        &cancel_token,
-        async {
-            tokio::time::timeout(
-                std::time::Duration::from_millis(MAX_APPROVAL_TIMEOUT_MS),
-                receiver.recv(),
-            )
-            .await
-            .ok()
-            .flatten()
-        },
-    )
-    .flatten();
-
-    let response_json = match event {
-        Some(event) => {
-            if let AstridEvent::Ipc { message, .. } = &*event {
-                match &message.payload {
-                    IpcPayload::ApprovalResponse {
-                        decision, reason, ..
-                    } => {
-                        let approved = matches!(
-                            decision.as_str(),
-                            "approve" | "approve_session" | "approve_always"
-                        );
-
-                        // Create allowance for session/always decisions.
-                        if approved && let Some(ref store) = allowance_store {
-                            create_allowance_from_decision(
-                                store,
-                                &guest_req.action,
-                                decision,
-                                Some(workspace_root.clone()),
-                                &capsule_id,
+        match event {
+            Some(event) => {
+                if let AstridEvent::Ipc { message, .. } = &*event {
+                    match &message.payload {
+                        IpcPayload::ApprovalResponse {
+                            decision, reason, ..
+                        } => {
+                            let approved = matches!(
+                                decision.as_str(),
+                                "approve" | "approve_session" | "approve_always"
                             );
-                        }
 
-                        tracing::info!(
-                            plugin = %capsule_id,
-                            action = %guest_req.action,
-                            %decision,
-                            reason = reason.as_deref().unwrap_or("none"),
-                            "Approval response received"
-                        );
+                            // Create allowance for session/always decisions.
+                            if approved && let Some(ref store) = allowance_store {
+                                create_allowance_from_decision(
+                                    store,
+                                    &request.action,
+                                    decision,
+                                    Some(workspace_root.clone()),
+                                    &capsule_id,
+                                );
+                            }
 
-                        serde_json::to_vec(&serde_json::json!({
-                            "approved": approved,
-                            "decision": decision,
-                        }))
-                        .map_err(|e| Error::msg(format!("failed to serialize response: {e}")))?
-                    },
-                    _ => {
-                        return Err(Error::msg(
-                            "unexpected IPC payload type in approval response",
-                        ));
-                    },
+                            tracing::info!(
+                                plugin = %capsule_id,
+                                action = %request.action,
+                                %decision,
+                                reason = reason.as_deref().unwrap_or("none"),
+                                "Approval response received"
+                            );
+
+                            Ok(ApprovalResponse {
+                                approved,
+                                decision: decision.clone(),
+                            })
+                        },
+                        _ => Err("unexpected IPC payload type in approval response".to_string()),
+                    }
+                } else {
+                    Err("unexpected event type in approval response".to_string())
                 }
-            } else {
-                return Err(Error::msg("unexpected event type in approval response"));
-            }
-        },
-        None => {
-            tracing::warn!(
-                plugin = %capsule_id,
-                action = %guest_req.action,
-                "Approval request timed out or was cancelled"
-            );
-            // Timeout/cancellation = deny
-            serde_json::to_vec(&serde_json::json!({
-                "approved": false,
-                "decision": "deny",
-            }))
-            .map_err(|e| Error::msg(format!("failed to serialize response: {e}")))?
-        },
-    };
-
-    let mem = capsule.memory_new(&response_json)?;
-    outputs[0] = capsule.memory_to_val(mem);
-    Ok(())
+            },
+            None => {
+                tracing::warn!(
+                    plugin = %capsule_id,
+                    action = %request.action,
+                    "Approval request timed out or was cancelled"
+                );
+                // Timeout/cancellation = deny
+                Ok(ApprovalResponse {
+                    approved: false,
+                    decision: "deny".to_string(),
+                })
+            },
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn guest_approval_request_deserializes() {
-        let json = r#"{"action":"git push","resource":"git push origin main","risk_level":"high"}"#;
-        let req: GuestApprovalRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.action, "git push");
-        assert_eq!(req.resource, "git push origin main");
-        assert_eq!(req.risk_level, "high");
-    }
 
     #[test]
     fn check_allowance_matches_command_pattern() {
@@ -488,7 +379,6 @@ mod tests {
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "git push", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
-        // The created pattern should match "git push origin main"
         assert!(check_allowance(&store, "git push origin main", None));
     }
 
@@ -542,9 +432,7 @@ mod tests {
         };
         store.add_allowance(allowance).unwrap();
 
-        // Semicolon-injected command should NOT match "git push *"
         assert!(!check_allowance(&store, "git status; rm -rf /", None));
-        // Normal match still works
         assert!(check_allowance(
             &store,
             "git push --force origin main",
@@ -573,8 +461,6 @@ mod tests {
     #[test]
     fn create_allowance_with_wildcard_in_action_is_not_overly_broad() {
         let store = AllowanceStore::new();
-        // A malicious plugin sends action = "*" hoping to get pattern "* *"
-        // After escaping, pattern becomes "\* *" which won't match normal commands.
         create_allowance_from_decision(&store, "*", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
         assert!(!check_allowance(&store, "git push origin main", None));
@@ -582,8 +468,6 @@ mod tests {
 
     #[test]
     fn create_allowance_empty_action() {
-        // Empty action after sanitization produces no allowance - the pattern
-        // would be " *" which is meaningless.
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "", "approve_session", None, "test");
         assert_eq!(store.count(), 0);
@@ -592,8 +476,6 @@ mod tests {
 
     #[test]
     fn approve_once_does_not_create_allowance() {
-        // "approve" (one-time) should NOT create an allowance. The next
-        // identical call will re-prompt the user.
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "git push", "approve", None, "test");
         assert_eq!(store.count(), 0);
@@ -604,9 +486,6 @@ mod tests {
 
     #[test]
     fn sanitize_action_preserves_shell_fragments() {
-        // Legitimate commands with shell-like characters must pass through
-        // unchanged - they are handled by escape (layer 2) and
-        // contains_shell_operators (layer 3), not this layer.
         assert_eq!(
             sanitize_action_for_pattern("python -c 'print(\"hello\")'", "test"),
             "python -c 'print(\"hello\")'"
@@ -635,8 +514,6 @@ mod tests {
 
     #[test]
     fn sanitize_action_preserves_glob_chars_for_escaping() {
-        // Glob metacharacters are printable and pass through this layer.
-        // They are neutralized by escape_glob_metacharacters (layer 2).
         assert_eq!(sanitize_action_for_pattern("*", "test"), "*");
         assert_eq!(sanitize_action_for_pattern("git *", "test"), "git *");
         assert_eq!(sanitize_action_for_pattern("cmd?", "test"), "cmd?");
@@ -667,7 +544,6 @@ mod tests {
 
     #[test]
     fn sanitize_action_exact_limit_no_change() {
-        // Exactly MAX_ACTION_LEN printable chars should pass through unchanged.
         let action = "a".repeat(MAX_ACTION_LEN);
         let sanitized = sanitize_action_for_pattern(&action, "test");
         assert_eq!(sanitized, action);
@@ -676,8 +552,6 @@ mod tests {
 
     #[test]
     fn sanitize_action_truncates_multibyte_chars() {
-        // 200 ASCII + 100 x U+0100 ("Ā", 2 bytes each) = 300 chars.
-        // Truncation should produce exactly 256 chars.
         let action = "a".repeat(200) + &"\u{0100}".repeat(100);
         assert_eq!(action.chars().count(), 300);
         let sanitized = sanitize_action_for_pattern(&action, "test");
@@ -695,43 +569,29 @@ mod tests {
 
     #[test]
     fn create_allowance_whitespace_padded_action() {
-        // Whitespace-padded action should flow through both layers and
-        // produce a working session allowance.
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "  git push  ", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
-        // After trim: "git push", pattern: "git push *"
         assert!(check_allowance(&store, "git push origin main", None));
         assert!(!check_allowance(&store, "git status", None));
     }
 
     #[test]
     fn create_allowance_combined_attack() {
-        // A malicious plugin sends action with control chars + glob wildcards.
-        // Layer 1 strips control chars, layer 2 escapes glob chars.
-        // The resulting pattern must NOT match unintended commands.
         let store = AllowanceStore::new();
         let attack = "git\0 *\x1b[31m";
         create_allowance_from_decision(&store, attack, "approve_session", None, "test");
         assert_eq!(store.count(), 1);
-        // After sanitization: "git *[31m" (control chars stripped)
-        // After escaping: "git \*\[31m" (glob chars escaped)
-        // Pattern: "git \*\[31m *"
-        // This should NOT match normal git commands.
         assert!(!check_allowance(&store, "git push origin main", None));
         assert!(!check_allowance(&store, "git status", None));
     }
 
     #[test]
     fn create_allowance_null_byte_attack() {
-        // Null bytes stripped, pattern still safe.
         let store = AllowanceStore::new();
         create_allowance_from_decision(&store, "git\0push", "approve_session", None, "test");
         assert_eq!(store.count(), 1);
-        // After sanitization: "gitpush", pattern: "gitpush *"
-        // Does not match "git push" (different string).
         assert!(!check_allowance(&store, "git push origin main", None));
-        // Matches only literal "gitpush ..." which is not a real command.
         assert!(check_allowance(&store, "gitpush something", None));
     }
 
@@ -777,7 +637,6 @@ mod tests {
 
     #[test]
     fn sanitize_guest_field_truncates_multibyte() {
-        // 500 ASCII + 600 x U+0100 (2-byte) = 1100 chars, truncated to 1024.
         let mut s = "a".repeat(500) + &"\u{0100}".repeat(600);
         assert_eq!(s.chars().count(), 1100);
         sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
@@ -794,7 +653,6 @@ mod tests {
 
     #[test]
     fn sanitize_guest_field_combined_attack() {
-        // 2000 chars with embedded control chars and ANSI escapes.
         let mut s = format!("{}\x1b[31m{}", "A".repeat(1000), "B".repeat(1000));
         sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
         assert_eq!(s.chars().count(), MAX_RESOURCE_LEN);

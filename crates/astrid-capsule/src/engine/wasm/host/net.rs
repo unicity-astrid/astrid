@@ -2,29 +2,14 @@ use astrid_core::session_token::{
     HandshakeRequest, HandshakeResponse, PROTOCOL_VERSION, SessionToken,
 };
 
+use crate::engine::wasm::bindings::astrid::capsule::net;
+use crate::engine::wasm::bindings::astrid::capsule::types::NetReadStatus;
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
-use extism::{CurrentPlugin, Error, UserData, Val};
 
 /// Maximum concurrent socket connections per capsule.
 /// Prevents resource exhaustion from malicious or runaway clients.
 const MAX_ACTIVE_STREAMS: usize = 8;
-
-/// Status byte always prepended to every `astrid_net_read` response.
-///
-/// The first byte of every `net_read` return is one of these discriminants.
-/// The SDK strips it and maps to `TryRecvError` or `Ok(data)`. This makes
-/// the wire format self-describing — no magic sentinel values, no collisions
-/// with message payloads.
-#[repr(u8)]
-pub(crate) enum NetReadStatus {
-    /// A complete message follows the status byte.
-    Data = 0x00,
-    /// Peer disconnected cleanly (EOF / broken pipe). No data follows.
-    Closed = 0x01,
-    /// No message available before the poll timeout. No data follows.
-    Pending = 0x02,
-}
 
 /// Returns true for IO errors that represent a normal peer disconnect.
 /// These should NOT trap the WASM guest — the run loop handles dead streams.
@@ -36,561 +21,6 @@ fn is_peer_disconnect(e: &std::io::Error) -> bool {
             | std::io::ErrorKind::ConnectionAborted
             | std::io::ErrorKind::UnexpectedEof
     )
-}
-
-/// Gate `net_bind` capability once at bind time (session-scoped).
-///
-/// The kernel pre-binds the socket and provides it via `HostState`. This
-/// function enforces the security gate before the capsule can use the
-/// listener - subsequent `accept()` calls do not re-check.
-pub(crate) fn astrid_net_bind_unix_impl(
-    _: &mut CurrentPlugin,
-    _: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let ud = user_data.get()?;
-    let state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    // Security gate: only capsules with net_bind capability may bind sockets.
-    if let Some(ref gate) = state.security {
-        let capsule_id = state.capsule_id.as_str().to_owned();
-        let gate = gate.clone();
-        let handle = state.runtime_handle.clone();
-        let semaphore = state.host_semaphore.clone();
-        util::bounded_block_on(&handle, &semaphore, async move {
-            gate.check_net_bind(&capsule_id).await
-        })
-        .map_err(|e| Error::msg(format!("security denied net_bind: {e}")))?;
-    }
-
-    // Return a dummy handle, since the socket is pre-bound.
-    outputs[0] = Val::I64(1);
-    Ok(())
-}
-
-pub(crate) fn astrid_net_accept_impl(
-    plugin: &mut CurrentPlugin,
-    _: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let ud = user_data.get()?;
-
-    // We need to fetch the listener, runtime handle, cancel token, session
-    // token, and host semaphore out of the lock. Security gate was already
-    // enforced at bind time.
-    let (listener_arc, rt_handle, cancel_token, session_token, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-        // Pre-accept cap check: fast reject without blocking on accept().
-        let stream_count = state.active_streams.len();
-        if stream_count >= MAX_ACTIVE_STREAMS {
-            tracing::warn!(
-                max = MAX_ACTIVE_STREAMS,
-                current = stream_count,
-                "accept: connection cap reached, rejecting"
-            );
-            return Err(Error::msg(format!(
-                "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
-            )));
-        }
-
-        let listener = state
-            .cli_socket_listener
-            .clone()
-            .ok_or_else(|| Error::msg("No CLI Socket Listener available in HostState"))?;
-
-        (
-            listener,
-            state.runtime_handle.clone(),
-            state.cancel_token.clone(),
-            state.session_token.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    // Accept + authenticate loop. Authentication failures (wrong UID, bad
-    // token) retry accept immediately so a malicious client cannot gate
-    // legitimate connections behind the WASM-side 100ms backoff. Only real
-    // listener errors (EMFILE, EBADF) or cancellation propagate to the WASM
-    // capsule.
-    let stream = loop {
-        // Respects cancellation so unload doesn't hang waiting for a connection.
-        // The listener Mutex is held for the duration of accept(). This is
-        // correct because this is a single-client design - only one WASM
-        // capsule thread calls accept(), and no other code path contends.
-        //
-        // Cancel safety: accept() is cancel-safe - dropping mid-accept is
-        // harmless, the listener remains valid for subsequent calls.
-        let accept_result =
-            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
-                let l = listener_arc.lock().await;
-                l.accept().await
-            });
-        let (stream, _addr) = match accept_result {
-            Some(result) => result?,
-            None => return Err(Error::msg("capsule unloading")),
-        };
-
-        // Peer credential verification - reject connections from different UIDs.
-        // Runs before token handshake to prevent cross-UID DoS via the 5s timeout.
-        #[cfg(unix)]
-        if let Err(reason) = verify_peer_credentials(&stream) {
-            tracing::warn!(
-                security_event = true,
-                reason = %reason,
-                "Rejected socket connection: peer credential check failed"
-            );
-            drop(stream);
-            continue;
-        }
-
-        // Authenticate the connection via session token handshake.
-        // The stream is a local variable (not behind any lock), so this
-        // cannot deadlock. The 5s timeout prevents a malicious client from
-        // holding the accept loop hostage.
-        let mut stream = stream;
-        if let Some(ref token) = session_token {
-            let handshake_result = util::bounded_block_on_cancellable(
-                &rt_handle,
-                &host_semaphore,
-                &cancel_token,
-                validate_handshake(&mut stream, token),
-            );
-            match handshake_result {
-                None => return Err(Error::msg("capsule unloading")),
-                Some(Ok(())) => break stream,
-                Some(Err(reason)) => {
-                    tracing::warn!(
-                        security_event = true,
-                        reason = %reason,
-                        "Rejected socket connection: handshake failed"
-                    );
-                    drop(stream);
-                    continue;
-                },
-            }
-        } else {
-            // No session token configured (test/legacy mode) - accept without auth.
-            break stream;
-        }
-    };
-
-    // Now re-acquire the lock to store the active stream and generate a handle ID
-    let mut state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    // Defense-in-depth: re-check cap under lock before insertion.
-    // WASM is single-threaded so this should never fire, but the host
-    // must enforce the invariant regardless of guest behavior.
-    let stream_count = state.active_streams.len();
-    if stream_count >= MAX_ACTIVE_STREAMS {
-        tracing::warn!(
-            max = MAX_ACTIVE_STREAMS,
-            current = stream_count,
-            "accept: connection cap reached post-handshake, dropping authenticated stream"
-        );
-        drop(stream);
-        return Err(Error::msg(format!(
-            "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
-        )));
-    }
-
-    // Use a monotonic counter to avoid handle ID reuse after stream removal.
-    let handle_id = state.next_stream_id;
-    state.next_stream_id = state
-        .next_stream_id
-        .checked_add(1)
-        .ok_or_else(|| Error::msg("stream handle ID space exhausted"))?;
-    debug_assert!(
-        !state.active_streams.contains_key(&handle_id),
-        "stream handle ID collision"
-    );
-    state.active_streams.insert(
-        handle_id,
-        std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
-    );
-
-    // Notify the kernel that a new client connection was accepted so the
-    // idle monitor can track active connections.
-    let connected_msg = astrid_events::ipc::IpcMessage::new(
-        "client.v1.connected",
-        astrid_events::ipc::IpcPayload::Connect,
-        state.capsule_uuid,
-    );
-    let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
-        metadata: astrid_events::EventMetadata::new("net_accept"),
-        message: connected_msg,
-    });
-
-    // Return the handle ID as a string to the WASM plugin
-    let mem = plugin.memory_new(handle_id.to_string())?;
-    outputs[0] = plugin.memory_to_val(mem);
-
-    Ok(())
-}
-
-pub(crate) fn astrid_net_read_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str
-        .parse()
-        .map_err(|_| Error::msg("Invalid stream handle"))?;
-
-    let ud = user_data.get()?;
-    let (stream_arc, rt_handle, cancel_token, host_semaphore) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        let stream = state
-            .active_streams
-            .get(&handle_id)
-            .ok_or_else(|| Error::msg("Stream handle not found"))?
-            .clone();
-        (
-            stream,
-            state.runtime_handle.clone(),
-            state.cancel_token.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    // Cancel safety: read_exact is not cancel-safe, so cancellation mid-read
-    // may leave a partial frame on the socket. This is acceptable because the
-    // capsule is unloading - the socket will be closed by Drop on
-    // active_streams and the client will see a hard EOF / connection reset.
-    use tokio::io::AsyncReadExt;
-
-    // Wire format: every response begins with a NetReadStatus byte, followed
-    // by the payload (empty unless status = Data). This makes the protocol
-    // self-describing — no magic sentinels, no collisions with message bytes.
-    let status =
-        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
-            let mut stream = stream_arc.lock().await;
-            let mut len_buf = [0u8; 4];
-
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(50),
-                stream.read_exact(&mut len_buf),
-            )
-            .await
-            {
-                Err(_) => return Ok((NetReadStatus::Pending, Vec::new())),
-                Ok(Err(e)) if is_peer_disconnect(&e) => {
-                    return Ok((NetReadStatus::Closed, Vec::new()));
-                },
-                Ok(Err(e)) => return Err(Error::msg(format!("socket read error: {e}"))),
-                Ok(Ok(_)) => {},
-            }
-
-            let len = u32::from_be_bytes(len_buf) as usize;
-            if len > 10 * 1024 * 1024 {
-                return Err(Error::msg("Payload too large (max 10MB)"));
-            }
-
-            let mut payload = vec![0u8; len];
-            let timeout_ms = 5000 + (len as u64 / 1024);
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(timeout_ms),
-                stream.read_exact(&mut payload),
-            )
-            .await
-            {
-                Err(_) => return Err(Error::msg("Payload read timed out")),
-                Ok(Err(e)) if is_peer_disconnect(&e) => {
-                    return Ok((NetReadStatus::Closed, Vec::new()));
-                },
-                Ok(Err(e)) => return Err(Error::msg(format!("socket payload read error: {e}"))),
-                Ok(Ok(_)) => {},
-            }
-
-            Ok((NetReadStatus::Data, payload))
-        });
-
-    // Cancellation (capsule unloading) → Pending so the guest loop exits cleanly.
-    let (status, payload) = match status {
-        Some(r) => r?,
-        None => (NetReadStatus::Pending, Vec::new()),
-    };
-
-    // Prepend the status byte so the SDK can discriminate without any
-    // out-of-band channel.
-    let mut response = Vec::with_capacity(1 + payload.len());
-    response.push(status as u8);
-    response.extend_from_slice(&payload);
-
-    let mem = plugin.memory_new(&response)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
-}
-
-pub(crate) fn astrid_net_write_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str
-        .parse()
-        .map_err(|_| Error::msg("Invalid stream handle"))?;
-    let data = util::get_safe_bytes(plugin, &inputs[1], 10 * 1024 * 1024)?;
-
-    let ud = user_data.get()?;
-    let (stream_arc, rt_handle, host_semaphore, cancel_token) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        let stream = state
-            .active_streams
-            .get(&handle_id)
-            .ok_or_else(|| Error::msg("Stream handle not found"))?
-            .clone();
-        (
-            stream,
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-            state.cancel_token.clone(),
-        )
-    };
-
-    use tokio::io::AsyncWriteExt;
-    // Cancel safety: write_all is not cancel-safe, so cancellation mid-write
-    // may leave a partial frame on the socket. This is acceptable because the
-    // capsule is unloading - the socket will be closed by Drop on
-    // active_streams and the client will see a hard EOF / connection reset.
-    let result =
-        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
-            let mut stream = stream_arc.lock().await;
-            // In the CLI architecture, we expect length-prefixed writes back to the client as well
-            let len = u32::try_from(data.len())
-                .map_err(|_| std::io::Error::other("write payload too large for length prefix"))?;
-            stream.write_all(&len.to_be_bytes()).await?;
-            stream.write_all(&data).await?;
-            stream.flush().await?;
-            Ok::<(), std::io::Error>(())
-        });
-    match result {
-        Some(Ok(())) => {},
-        Some(Err(e)) => {
-            // Write failed — client likely disconnected. Log and continue;
-            // the dead stream will be cleaned up on the next read.
-            tracing::debug!(error = %e, "net write failed, client likely disconnected");
-        },
-        None => return Err(Error::msg("capsule unloading")),
-    }
-
-    Ok(())
-}
-
-pub(crate) fn astrid_net_close_stream_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str
-        .parse()
-        .map_err(|_| Error::msg("Invalid stream handle"))?;
-
-    let ud = user_data.get()?;
-    let mut state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    // Idempotent: silently ignore if the handle was already removed.
-    if state.active_streams.remove(&handle_id).is_some() {
-        let msg = astrid_events::ipc::IpcMessage::new(
-            "client.v1.disconnect",
-            astrid_events::ipc::IpcPayload::Disconnect {
-                reason: Some("stream_closed".to_string()),
-            },
-            state.capsule_uuid,
-        );
-        let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
-            metadata: astrid_events::EventMetadata::new("net_close_stream"),
-            message: msg,
-        });
-    }
-
-    Ok(())
-}
-
-/// Non-blocking accept with a short timeout.
-///
-/// # Design note
-///
-/// The listener handle argument from the WASM guest is intentionally ignored.
-/// The kernel provisions exactly one pre-bound `UnixListener` per capsule via
-/// `HostState::cli_socket_listener`. This matches the existing `accept_impl`
-/// pattern. If multi-listener support is ever added, this must be revisited.
-pub(crate) fn astrid_net_poll_accept_impl(
-    plugin: &mut CurrentPlugin,
-    _: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let ud = user_data.get()?;
-
-    let (listener_arc, rt_handle, cancel_token, session_token, host_semaphore, stream_count) = {
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-        let listener = state
-            .cli_socket_listener
-            .clone()
-            .ok_or_else(|| Error::msg("No CLI Socket Listener available in HostState"))?;
-
-        (
-            listener,
-            state.runtime_handle.clone(),
-            state.cancel_token.clone(),
-            state.session_token.clone(),
-            state.host_semaphore.clone(),
-            state.active_streams.len(),
-        )
-    };
-
-    // Enforce connection cap at the host level.
-    if stream_count >= MAX_ACTIVE_STREAMS {
-        tracing::warn!(
-            max = MAX_ACTIVE_STREAMS,
-            current = stream_count,
-            "poll_accept: connection cap reached, rejecting"
-        );
-        let mem = plugin.memory_new("")?;
-        outputs[0] = plugin.memory_to_val(mem);
-        return Ok(());
-    }
-
-    // Non-blocking accept with a short timeout. The 10ms window is long
-    // enough to catch a pending connection without meaningfully stalling
-    // the WASM loop.
-    let accept_result =
-        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
-            let l = listener_arc.lock().await;
-            tokio::time::timeout(std::time::Duration::from_millis(10), l.accept()).await
-        });
-
-    let (stream, _addr) = match accept_result {
-        // Cancellation: return empty (capsule unloading).
-        None => {
-            let mem = plugin.memory_new("")?;
-            outputs[0] = plugin.memory_to_val(mem);
-            return Ok(());
-        },
-        // Timeout: no pending connection.
-        Some(Err(_)) => {
-            let mem = plugin.memory_new("")?;
-            outputs[0] = plugin.memory_to_val(mem);
-            return Ok(());
-        },
-        // Accept error: propagate.
-        Some(Ok(Err(e))) => return Err(Error::msg(format!("accept error: {e}"))),
-        // Success: connection pending.
-        Some(Ok(Ok(pair))) => pair,
-    };
-
-    // Peer credential verification (same as accept_impl).
-    #[cfg(unix)]
-    if let Err(reason) = verify_peer_credentials(&stream) {
-        tracing::warn!(
-            security_event = true,
-            reason = %reason,
-            "poll_accept: rejected connection (peer credential check failed)"
-        );
-        drop(stream);
-        let mem = plugin.memory_new("")?;
-        outputs[0] = plugin.memory_to_val(mem);
-        return Ok(());
-    }
-
-    // Session token handshake. May block up to 5s in the worst case for
-    // a slow/malicious client. Bounded to one handshake per poll_accept
-    // call because the guest uses `if let` (not `while let`).
-    let mut stream = stream;
-    if let Some(ref token) = session_token {
-        let handshake_result = util::bounded_block_on_cancellable(
-            &rt_handle,
-            &host_semaphore,
-            &cancel_token,
-            validate_handshake(&mut stream, token),
-        );
-        match handshake_result {
-            None => {
-                let mem = plugin.memory_new("")?;
-                outputs[0] = plugin.memory_to_val(mem);
-                return Ok(());
-            },
-            Some(Err(reason)) => {
-                tracing::warn!(
-                    security_event = true,
-                    reason = %reason,
-                    "poll_accept: rejected connection (handshake failed)"
-                );
-                drop(stream);
-                let mem = plugin.memory_new("")?;
-                outputs[0] = plugin.memory_to_val(mem);
-                return Ok(());
-            },
-            Some(Ok(())) => {},
-        }
-    }
-
-    // Store the authenticated stream. Re-check cap under lock for defense
-    // in depth (WASM is single-threaded today, but the invariant should be
-    // self-contained at the insertion site).
-    let mut state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-    if state.active_streams.len() >= MAX_ACTIVE_STREAMS {
-        drop(stream);
-        let mem = plugin.memory_new("")?;
-        outputs[0] = plugin.memory_to_val(mem);
-        return Ok(());
-    }
-
-    let handle_id = state.next_stream_id;
-    state.next_stream_id = state
-        .next_stream_id
-        .checked_add(1)
-        .ok_or_else(|| Error::msg("stream handle ID space exhausted"))?;
-    debug_assert!(
-        !state.active_streams.contains_key(&handle_id),
-        "stream handle ID collision"
-    );
-    state.active_streams.insert(
-        handle_id,
-        std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
-    );
-
-    let connected_msg = astrid_events::ipc::IpcMessage::new(
-        "client.v1.connected",
-        astrid_events::ipc::IpcPayload::Connect,
-        state.capsule_uuid,
-    );
-    let _ = state.event_bus.publish(astrid_events::AstridEvent::Ipc {
-        metadata: astrid_events::EventMetadata::new("net_poll_accept"),
-        message: connected_msg,
-    });
-
-    let mem = plugin.memory_new(handle_id.to_string())?;
-    outputs[0] = plugin.memory_to_val(mem);
-
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -746,6 +176,395 @@ fn verify_peer_credentials(stream: &tokio::net::UnixStream) -> Result<(), String
             }
         },
         Err(e) => Err(format!("failed to check peer credentials: {e}")),
+    }
+}
+
+impl net::Host for HostState {
+    /// Gate `net_bind` capability once at bind time (session-scoped).
+    ///
+    /// The kernel pre-binds the socket and provides it via `HostState`. This
+    /// function enforces the security gate before the capsule can use the
+    /// listener - subsequent `accept()` calls do not re-check.
+    fn net_bind_unix(&mut self, _listener_handle: u64) -> Result<u64, String> {
+        // Security gate: only capsules with net_bind capability may bind sockets.
+        if let Some(ref gate) = self.security {
+            let capsule_id = self.capsule_id.as_str().to_owned();
+            let gate = gate.clone();
+            let handle = self.runtime_handle.clone();
+            let semaphore = self.host_semaphore.clone();
+            util::bounded_block_on(&handle, &semaphore, async move {
+                gate.check_net_bind(&capsule_id).await
+            })
+            .map_err(|e| format!("security denied net_bind: {e}"))?;
+        }
+
+        // Return a dummy handle, since the socket is pre-bound.
+        Ok(1)
+    }
+
+    fn net_accept(&mut self, _listener_handle: u64) -> Result<u64, String> {
+        // Pre-accept cap check: fast reject without blocking on accept().
+        let stream_count = self.active_streams.len();
+        if stream_count >= MAX_ACTIVE_STREAMS {
+            tracing::warn!(
+                max = MAX_ACTIVE_STREAMS,
+                current = stream_count,
+                "accept: connection cap reached, rejecting"
+            );
+            return Err(format!(
+                "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
+            ));
+        }
+
+        let listener_arc = self
+            .cli_socket_listener
+            .clone()
+            .ok_or_else(|| "No CLI Socket Listener available in HostState".to_string())?;
+        let rt_handle = self.runtime_handle.clone();
+        let cancel_token = self.cancel_token.clone();
+        let session_token = self.session_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
+        let capsule_uuid = self.capsule_uuid;
+        let event_bus = self.event_bus.clone();
+
+        // Accept + authenticate loop. Authentication failures (wrong UID, bad
+        // token) retry accept immediately so a malicious client cannot gate
+        // legitimate connections behind the WASM-side 100ms backoff.
+        let stream = loop {
+            let accept_result = util::bounded_block_on_cancellable(
+                &rt_handle,
+                &host_semaphore,
+                &cancel_token,
+                async {
+                    let l = listener_arc.lock().await;
+                    l.accept().await
+                },
+            );
+            let (stream, _addr) = match accept_result {
+                Some(result) => result.map_err(|e| format!("accept error: {e}"))?,
+                None => return Err("capsule unloading".to_string()),
+            };
+
+            // Peer credential verification - reject connections from different UIDs.
+            #[cfg(unix)]
+            if let Err(reason) = verify_peer_credentials(&stream) {
+                tracing::warn!(
+                    security_event = true,
+                    reason = %reason,
+                    "Rejected socket connection: peer credential check failed"
+                );
+                drop(stream);
+                continue;
+            }
+
+            // Authenticate the connection via session token handshake.
+            let mut stream = stream;
+            if let Some(ref token) = session_token {
+                let handshake_result = util::bounded_block_on_cancellable(
+                    &rt_handle,
+                    &host_semaphore,
+                    &cancel_token,
+                    validate_handshake(&mut stream, token),
+                );
+                match handshake_result {
+                    None => return Err("capsule unloading".to_string()),
+                    Some(Ok(())) => break stream,
+                    Some(Err(reason)) => {
+                        tracing::warn!(
+                            security_event = true,
+                            reason = %reason,
+                            "Rejected socket connection: handshake failed"
+                        );
+                        drop(stream);
+                        continue;
+                    },
+                }
+            } else {
+                // No session token configured (test/legacy mode) - accept without auth.
+                break stream;
+            }
+        };
+
+        // Defense-in-depth: re-check cap before insertion.
+        let stream_count = self.active_streams.len();
+        if stream_count >= MAX_ACTIVE_STREAMS {
+            tracing::warn!(
+                max = MAX_ACTIVE_STREAMS,
+                current = stream_count,
+                "accept: connection cap reached post-handshake, dropping authenticated stream"
+            );
+            drop(stream);
+            return Err(format!(
+                "connection cap reached ({stream_count}/{MAX_ACTIVE_STREAMS})"
+            ));
+        }
+
+        // Use a monotonic counter to avoid handle ID reuse after stream removal.
+        let handle_id = self.next_stream_id;
+        self.next_stream_id = self
+            .next_stream_id
+            .checked_add(1)
+            .ok_or_else(|| "stream handle ID space exhausted".to_string())?;
+        debug_assert!(
+            !self.active_streams.contains_key(&handle_id),
+            "stream handle ID collision"
+        );
+        self.active_streams.insert(
+            handle_id,
+            std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
+        );
+
+        // Notify the kernel that a new client connection was accepted so the
+        // idle monitor can track active connections.
+        let connected_msg = astrid_events::ipc::IpcMessage::new(
+            "client.v1.connected",
+            astrid_events::ipc::IpcPayload::Connect,
+            capsule_uuid,
+        );
+        let _ = event_bus.publish(astrid_events::AstridEvent::Ipc {
+            metadata: astrid_events::EventMetadata::new("net_accept"),
+            message: connected_msg,
+        });
+
+        Ok(handle_id)
+    }
+
+    fn net_poll_accept(&mut self, _listener_handle: u64) -> Result<Option<u64>, String> {
+        let listener_arc = self
+            .cli_socket_listener
+            .clone()
+            .ok_or_else(|| "No CLI Socket Listener available in HostState".to_string())?;
+        let rt_handle = self.runtime_handle.clone();
+        let cancel_token = self.cancel_token.clone();
+        let session_token = self.session_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
+        let stream_count = self.active_streams.len();
+
+        // Enforce connection cap at the host level.
+        if stream_count >= MAX_ACTIVE_STREAMS {
+            tracing::warn!(
+                max = MAX_ACTIVE_STREAMS,
+                current = stream_count,
+                "poll_accept: connection cap reached, rejecting"
+            );
+            return Ok(None);
+        }
+
+        // Non-blocking accept with a short timeout. The 10ms window is long
+        // enough to catch a pending connection without meaningfully stalling
+        // the WASM loop.
+        let accept_result =
+            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+                let l = listener_arc.lock().await;
+                tokio::time::timeout(std::time::Duration::from_millis(10), l.accept()).await
+            });
+
+        let (stream, _addr) = match accept_result {
+            // Cancellation: return None (capsule unloading).
+            None => return Ok(None),
+            // Timeout: no pending connection.
+            Some(Err(_)) => return Ok(None),
+            // Accept error: propagate.
+            Some(Ok(Err(e))) => return Err(format!("accept error: {e}")),
+            // Success: connection pending.
+            Some(Ok(Ok(pair))) => pair,
+        };
+
+        // Peer credential verification (same as accept_impl).
+        #[cfg(unix)]
+        if let Err(reason) = verify_peer_credentials(&stream) {
+            tracing::warn!(
+                security_event = true,
+                reason = %reason,
+                "poll_accept: rejected connection (peer credential check failed)"
+            );
+            drop(stream);
+            return Ok(None);
+        }
+
+        // Session token handshake.
+        let mut stream = stream;
+        if let Some(ref token) = session_token {
+            let handshake_result = util::bounded_block_on_cancellable(
+                &rt_handle,
+                &host_semaphore,
+                &cancel_token,
+                validate_handshake(&mut stream, token),
+            );
+            match handshake_result {
+                None => return Ok(None),
+                Some(Err(reason)) => {
+                    tracing::warn!(
+                        security_event = true,
+                        reason = %reason,
+                        "poll_accept: rejected connection (handshake failed)"
+                    );
+                    drop(stream);
+                    return Ok(None);
+                },
+                Some(Ok(())) => {},
+            }
+        }
+
+        // Store the authenticated stream. Re-check cap under lock for defense
+        // in depth.
+        if self.active_streams.len() >= MAX_ACTIVE_STREAMS {
+            drop(stream);
+            return Ok(None);
+        }
+
+        let handle_id = self.next_stream_id;
+        self.next_stream_id = self
+            .next_stream_id
+            .checked_add(1)
+            .ok_or_else(|| "stream handle ID space exhausted".to_string())?;
+        debug_assert!(
+            !self.active_streams.contains_key(&handle_id),
+            "stream handle ID collision"
+        );
+        self.active_streams.insert(
+            handle_id,
+            std::sync::Arc::new(tokio::sync::Mutex::new(stream)),
+        );
+
+        let connected_msg = astrid_events::ipc::IpcMessage::new(
+            "client.v1.connected",
+            astrid_events::ipc::IpcPayload::Connect,
+            self.capsule_uuid,
+        );
+        let _ = self.event_bus.publish(astrid_events::AstridEvent::Ipc {
+            metadata: astrid_events::EventMetadata::new("net_poll_accept"),
+            message: connected_msg,
+        });
+
+        Ok(Some(handle_id))
+    }
+
+    fn net_read(&mut self, stream_handle: u64) -> Result<NetReadStatus, String> {
+        let stream_arc = self
+            .active_streams
+            .get(&stream_handle)
+            .ok_or_else(|| "Stream handle not found".to_string())?
+            .clone();
+
+        let rt_handle = self.runtime_handle.clone();
+        let cancel_token = self.cancel_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
+
+        // Cancel safety: read_exact is not cancel-safe, so cancellation mid-read
+        // may leave a partial frame on the socket. This is acceptable because the
+        // capsule is unloading - the socket will be closed by Drop on
+        // active_streams and the client will see a hard EOF / connection reset.
+        use tokio::io::AsyncReadExt;
+
+        let status =
+            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+                let mut stream = stream_arc.lock().await;
+                let mut len_buf = [0u8; 4];
+
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(50),
+                    stream.read_exact(&mut len_buf),
+                )
+                .await
+                {
+                    Err(_) => return Ok(NetReadStatus::Pending),
+                    Ok(Err(e)) if is_peer_disconnect(&e) => {
+                        return Ok(NetReadStatus::Closed);
+                    },
+                    Ok(Err(e)) => return Err(format!("socket read error: {e}")),
+                    Ok(Ok(_)) => {},
+                }
+
+                let len = u32::from_be_bytes(len_buf) as usize;
+                if len > 10 * 1024 * 1024 {
+                    return Err("Payload too large (max 10MB)".to_string());
+                }
+
+                let mut payload = vec![0u8; len];
+                let timeout_ms = 5000 + (len as u64 / 1024);
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(timeout_ms),
+                    stream.read_exact(&mut payload),
+                )
+                .await
+                {
+                    Err(_) => return Err("Payload read timed out".to_string()),
+                    Ok(Err(e)) if is_peer_disconnect(&e) => {
+                        return Ok(NetReadStatus::Closed);
+                    },
+                    Ok(Err(e)) => return Err(format!("socket payload read error: {e}")),
+                    Ok(Ok(_)) => {},
+                }
+
+                Ok(NetReadStatus::Data(payload))
+            });
+
+        // Cancellation (capsule unloading) -> Pending so the guest loop exits cleanly.
+        match status {
+            Some(r) => r,
+            None => Ok(NetReadStatus::Pending),
+        }
+    }
+
+    fn net_write(&mut self, stream_handle: u64, data: Vec<u8>) -> Result<(), String> {
+        let stream_arc = self
+            .active_streams
+            .get(&stream_handle)
+            .ok_or_else(|| "Stream handle not found".to_string())?
+            .clone();
+
+        let rt_handle = self.runtime_handle.clone();
+        let host_semaphore = self.host_semaphore.clone();
+        let cancel_token = self.cancel_token.clone();
+
+        use tokio::io::AsyncWriteExt;
+        // Cancel safety: write_all is not cancel-safe, so cancellation mid-write
+        // may leave a partial frame on the socket. This is acceptable because the
+        // capsule is unloading - the socket will be closed by Drop on
+        // active_streams and the client will see a hard EOF / connection reset.
+        let result =
+            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+                let mut stream = stream_arc.lock().await;
+                // In the CLI architecture, we expect length-prefixed writes back to the client
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    std::io::Error::other("write payload too large for length prefix")
+                })?;
+                stream.write_all(&len.to_be_bytes()).await?;
+                stream.write_all(&data).await?;
+                stream.flush().await?;
+                Ok::<(), std::io::Error>(())
+            });
+        match result {
+            Some(Ok(())) => {},
+            Some(Err(e)) => {
+                // Write failed — client likely disconnected. Log and continue;
+                // the dead stream will be cleaned up on the next read.
+                tracing::debug!(error = %e, "net write failed, client likely disconnected");
+            },
+            None => return Err("capsule unloading".to_string()),
+        }
+
+        Ok(())
+    }
+
+    fn net_close_stream(&mut self, stream_handle: u64) -> Result<(), String> {
+        // Idempotent: silently ignore if the handle was already removed.
+        if self.active_streams.remove(&stream_handle).is_some() {
+            let msg = astrid_events::ipc::IpcMessage::new(
+                "client.v1.disconnect",
+                astrid_events::ipc::IpcPayload::Disconnect {
+                    reason: Some("stream_closed".to_string()),
+                },
+                self.capsule_uuid,
+            );
+            let _ = self.event_bus.publish(astrid_events::AstridEvent::Ipc {
+                metadata: astrid_events::EventMetadata::new("net_close_stream"),
+                message: msg,
+            });
+        }
+
+        Ok(())
     }
 }
 

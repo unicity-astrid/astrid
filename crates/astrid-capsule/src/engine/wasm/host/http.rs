@@ -1,32 +1,13 @@
-use extism::{CurrentPlugin, Error, UserData, Val};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::engine::wasm::bindings::astrid::capsule::http;
+use crate::engine::wasm::bindings::astrid::capsule::types::{
+    HttpRequestData, HttpResponseData, HttpStreamStartResponse, KeyValuePair,
+};
 use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
-
-#[derive(serde::Deserialize)]
-struct HttpRequest {
-    url: String,
-    #[serde(default = "default_method")]
-    method: String,
-    #[serde(default)]
-    headers: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    body: Option<String>,
-}
-
-fn default_method() -> String {
-    "GET".to_string()
-}
-
-#[derive(serde::Serialize)]
-struct HttpResponse {
-    status: u16,
-    headers: std::collections::HashMap<String, String>,
-    body: String,
-}
 
 // ── SSRF prevention ──────────────────────────────────────────────────
 
@@ -130,7 +111,7 @@ fn is_safe_ip(mut ip: std::net::IpAddr) -> bool {
 // ── Shared helpers ───────────────────────────────────────────────────
 
 /// Parse and validate an HTTP method string.
-fn parse_method(method: &str) -> Result<reqwest::Method, Error> {
+fn parse_method(method: &str) -> Result<reqwest::Method, String> {
     match method.to_uppercase().as_str() {
         "GET" => Ok(reqwest::Method::GET),
         "POST" => Ok(reqwest::Method::POST),
@@ -139,18 +120,18 @@ fn parse_method(method: &str) -> Result<reqwest::Method, Error> {
         "PATCH" => Ok(reqwest::Method::PATCH),
         "HEAD" => Ok(reqwest::Method::HEAD),
         "OPTIONS" => Ok(reqwest::Method::OPTIONS),
-        other => Err(Error::msg(format!("unsupported http method: {other}"))),
+        other => Err(format!("unsupported http method: {other}")),
     }
 }
 
-/// Build a `HeaderMap` from a string→string map.
-fn build_headers(raw: std::collections::HashMap<String, String>) -> Result<HeaderMap, Error> {
+/// Build a `HeaderMap` from a list of key-value pairs.
+fn build_headers(raw: &[KeyValuePair]) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
-    for (k, v) in raw {
-        let h_name = HeaderName::from_bytes(k.as_bytes())
-            .map_err(|e| Error::msg(format!("invalid header name {k}: {e}")))?;
-        let h_value = HeaderValue::from_str(&v)
-            .map_err(|e| Error::msg(format!("invalid header value {v}: {e}")))?;
+    for kv in raw {
+        let h_name = HeaderName::from_bytes(kv.key.as_bytes())
+            .map_err(|e| format!("invalid header name {}: {e}", kv.key))?;
+        let h_value = HeaderValue::from_str(&kv.value)
+            .map_err(|e| format!("invalid header value {}: {e}", kv.value))?;
         headers.insert(h_name, h_value);
     }
     Ok(headers)
@@ -160,134 +141,29 @@ fn build_headers(raw: std::collections::HashMap<String, String>) -> Result<Heade
 fn check_http_security(
     security: &Option<Arc<dyn crate::security::CapsuleSecurityGate>>,
     capsule_id: String,
-    req: &HttpRequest,
+    url: &str,
+    method: &str,
     runtime_handle: &tokio::runtime::Handle,
     host_semaphore: &Arc<tokio::sync::Semaphore>,
-) -> Result<(), Error> {
+) -> Result<(), String> {
     if let Some(gate) = security {
-        let url_obj = reqwest::Url::parse(&req.url)
-            .map_err(|e| Error::msg(format!("invalid url {}: {e}", req.url)))?;
+        let url_obj = reqwest::Url::parse(url).map_err(|e| format!("invalid url {url}: {e}"))?;
         let _ = url_obj
             .host_str()
-            .ok_or_else(|| Error::msg("URL missing host"))?;
+            .ok_or_else(|| "URL missing host".to_string())?;
 
-        let full_url = req.url.clone();
-        let m = req.method.clone();
+        let full_url = url.to_string();
+        let m = method.to_string();
         let gate = gate.clone();
         let check = util::bounded_block_on(runtime_handle, host_semaphore, async move {
             gate.check_http_request(&capsule_id, &m, &full_url).await
         });
         if let Err(reason) = check {
-            return Err(Error::msg(format!(
-                "security denied network access: {reason}"
-            )));
+            return Err(format!("security denied network access: {reason}"));
         }
     }
     Ok(())
 }
-
-// ── Host function implementation (buffered) ──────────────────────────
-
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_http_request_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    // Use get_safe_bytes instead of getting a UTF-8 string directly
-    let request_bytes: Vec<u8> =
-        util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
-
-    let request_json = String::from_utf8(request_bytes)
-        .map_err(|e| Error::msg(format!("failed to parse request as utf8: {e}")))?;
-
-    let req: HttpRequest = serde_json::from_str(&request_json)
-        .map_err(|e| Error::msg(format!("invalid http request json: {e}")))?;
-
-    let (capsule_id, security, runtime_handle, host_semaphore) = {
-        let ud = user_data.get()?;
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-        (
-            state.capsule_id.as_str().to_owned(),
-            state.security.clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    check_http_security(
-        &security,
-        capsule_id,
-        &req,
-        &runtime_handle,
-        &host_semaphore,
-    )?;
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .dns_resolver(Arc::new(SafeDnsResolver))
-        .build()
-        .map_err(|e| Error::msg(format!("failed to build http client: {e}")))?;
-
-    let method = parse_method(&req.method)?;
-    let headers = build_headers(req.headers)?;
-
-    let mut request_builder = client.request(method, &req.url).headers(headers);
-
-    if let Some(body) = req.body {
-        request_builder = request_builder.body(body);
-    }
-
-    let response = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
-        request_builder.send().await
-    })
-    .map_err(|e| Error::msg(format!("http request failed: {e}")))?;
-
-    let status = response.status().as_u16();
-
-    let mut resp_headers = std::collections::HashMap::new();
-    for (k, v) in response.headers() {
-        if let Ok(v_str) = v.to_str() {
-            resp_headers.insert(k.as_str().to_string(), v_str.to_string());
-        }
-    }
-
-    let body_result = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
-        let mut response = response;
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-            if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
-                return Err(format!(
-                    "HTTP response exceeded maximum payload limit ({} bytes)",
-                    util::MAX_GUEST_PAYLOAD_LEN
-                ));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
-    });
-
-    let body =
-        body_result.map_err(|e| Error::msg(format!("failed to read http response body: {e}")))?;
-
-    let resp_obj = HttpResponse {
-        status,
-        headers: resp_headers,
-        body,
-    };
-
-    let resp_json = serde_json::to_string(&resp_obj)
-        .map_err(|e| Error::msg(format!("failed to serialize http response: {e}")))?;
-
-    let mem = plugin.memory_new(&resp_json)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
-}
-
-// ── Host function implementation (streaming) ─────────────────────────
 
 /// Maximum concurrent HTTP streaming responses per capsule.
 const MAX_ACTIVE_HTTP_STREAMS: usize = 4;
@@ -296,216 +172,203 @@ const HTTP_STREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Per-chunk read timeout for streaming HTTP responses.
 const HTTP_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
-#[derive(serde::Serialize)]
-struct HttpStreamStartResponse {
-    handle: String,
-    status: u16,
-    headers: std::collections::HashMap<String, String>,
-}
+impl http::Host for HostState {
+    fn http_request(&mut self, request: HttpRequestData) -> Result<HttpResponseData, String> {
+        let capsule_id = self.capsule_id.as_str().to_owned();
+        let security = self.security.clone();
+        let runtime_handle = self.runtime_handle.clone();
+        let host_semaphore = self.host_semaphore.clone();
 
-/// Start a streaming HTTP request: send the request, wait for headers,
-/// store the response body stream in `HostState`, and return the handle
-/// along with status code and headers.
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_http_stream_start_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let request_bytes: Vec<u8> =
-        util::get_safe_bytes(plugin, &inputs[0], util::MAX_GUEST_PAYLOAD_LEN)?;
+        check_http_security(
+            &security,
+            capsule_id,
+            &request.url,
+            &request.method,
+            &runtime_handle,
+            &host_semaphore,
+        )?;
 
-    let request_json = String::from_utf8(request_bytes)
-        .map_err(|e| Error::msg(format!("failed to parse request as utf8: {e}")))?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .dns_resolver(Arc::new(SafeDnsResolver))
+            .build()
+            .map_err(|e| format!("failed to build http client: {e}"))?;
 
-    let req: HttpRequest = serde_json::from_str(&request_json)
-        .map_err(|e| Error::msg(format!("invalid http request json: {e}")))?;
+        let method = parse_method(&request.method)?;
+        let headers = build_headers(&request.headers)?;
 
-    let (capsule_id, security, runtime_handle, host_semaphore) = {
-        let ud = user_data.get()?;
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let mut request_builder = client.request(method, &request.url).headers(headers);
 
-        // Check stream cap before doing any network I/O.
-        if state.active_http_streams.len() >= MAX_ACTIVE_HTTP_STREAMS {
-            return Err(Error::msg(format!(
-                "HTTP stream cap reached ({}/{})",
-                state.active_http_streams.len(),
-                MAX_ACTIVE_HTTP_STREAMS
-            )));
+        if let Some(body) = request.body {
+            request_builder = request_builder.body(body);
         }
 
-        (
-            state.capsule_id.as_str().to_owned(),
-            state.security.clone(),
-            state.runtime_handle.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
+        let response = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+            request_builder.send().await
+        })
+        .map_err(|e| format!("http request failed: {e}"))?;
 
-    check_http_security(
-        &security,
-        capsule_id,
-        &req,
-        &runtime_handle,
-        &host_semaphore,
-    )?;
+        let status = response.status().as_u16();
 
-    let client = reqwest::Client::builder()
-        .connect_timeout(HTTP_STREAM_CONNECT_TIMEOUT)
-        .dns_resolver(Arc::new(SafeDnsResolver))
-        .build()
-        .map_err(|e| Error::msg(format!("failed to build http client: {e}")))?;
-
-    let method = parse_method(&req.method)?;
-    let headers = build_headers(req.headers)?;
-
-    let mut request_builder = client.request(method, &req.url).headers(headers);
-    if let Some(body) = req.body {
-        request_builder = request_builder.body(body);
-    }
-
-    // Send request and wait for headers (not body).
-    let response = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
-        request_builder.send().await
-    })
-    .map_err(|e| Error::msg(format!("http stream request failed: {e}")))?;
-
-    let status = response.status().as_u16();
-
-    let mut resp_headers = std::collections::HashMap::new();
-    for (k, v) in response.headers() {
-        if let Ok(v_str) = v.to_str() {
-            resp_headers.insert(k.as_str().to_string(), v_str.to_string());
+        let mut resp_headers = Vec::new();
+        for (k, v) in response.headers() {
+            if let Ok(v_str) = v.to_str() {
+                resp_headers.push(KeyValuePair {
+                    key: k.as_str().to_string(),
+                    value: v_str.to_string(),
+                });
+            }
         }
-    }
 
-    // Store the response body stream and allocate a handle.
-    let handle_id = {
-        let ud = user_data.get()?;
-        let mut state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-        let handle_id = state.next_http_stream_id;
-        state.next_http_stream_id = state
-            .next_http_stream_id
-            .checked_add(1)
-            .ok_or_else(|| Error::msg("HTTP stream handle ID space exhausted"))?;
-
-        debug_assert!(
-            !state.active_http_streams.contains_key(&handle_id),
-            "HTTP stream handle ID collision"
-        );
-        state
-            .active_http_streams
-            .insert(handle_id, Arc::new(tokio::sync::Mutex::new(response)));
-        handle_id
-    };
-
-    let resp = HttpStreamStartResponse {
-        handle: handle_id.to_string(),
-        status,
-        headers: resp_headers,
-    };
-    let resp_json = serde_json::to_string(&resp)
-        .map_err(|e| Error::msg(format!("failed to serialize stream start response: {e}")))?;
-
-    let mem = plugin.memory_new(&resp_json)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
-}
-
-/// Read the next chunk from a streaming HTTP response. Returns the raw
-/// bytes, or empty bytes when the stream is exhausted (EOF).
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_http_stream_read_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str
-        .parse()
-        .map_err(|e| Error::msg(format!("invalid HTTP stream handle: {e}")))?;
-
-    let (response_arc, rt_handle, cancel_token, host_semaphore) = {
-        let ud = user_data.get()?;
-        let state = ud
-            .lock()
-            .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
-
-        let response = state
-            .active_http_streams
-            .get(&handle_id)
-            .ok_or_else(|| Error::msg("HTTP stream handle not found"))?
-            .clone();
-
-        (
-            response,
-            state.runtime_handle.clone(),
-            state.cancel_token.clone(),
-            state.host_semaphore.clone(),
-        )
-    };
-
-    let result =
-        util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
-            let mut resp = response_arc.lock().await;
-            tokio::time::timeout(HTTP_STREAM_READ_TIMEOUT, resp.chunk()).await
+        let body_result = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+            let mut response = response;
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                if bytes.len() + chunk.len() > util::MAX_GUEST_PAYLOAD_LEN as usize {
+                    return Err(format!(
+                        "HTTP response exceeded maximum payload limit ({} bytes)",
+                        util::MAX_GUEST_PAYLOAD_LEN
+                    ));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
         });
 
-    let chunk_data = match result {
-        // Cancelled (capsule unloading).
-        None => Vec::new(),
-        // Timeout waiting for next chunk.
-        Some(Err(_elapsed)) => {
-            return Err(Error::msg(format!(
-                "HTTP stream read timed out after {}s",
-                HTTP_STREAM_READ_TIMEOUT.as_secs()
-            )));
-        },
-        // Network/body error.
-        Some(Ok(Err(e))) => {
-            return Err(Error::msg(format!("HTTP stream read error: {e}")));
-        },
-        // Got a chunk.
-        Some(Ok(Ok(Some(bytes)))) => bytes.to_vec(),
-        // EOF — stream exhausted.
-        Some(Ok(Ok(None))) => Vec::new(),
-    };
+        let body = body_result.map_err(|e| format!("failed to read http response body: {e}"))?;
 
-    let mem = plugin.memory_new(&chunk_data)?;
-    outputs[0] = plugin.memory_to_val(mem);
-    Ok(())
-}
+        Ok(HttpResponseData {
+            status,
+            headers: resp_headers,
+            body,
+        })
+    }
 
-/// Close a streaming HTTP response handle, releasing host-side resources.
-/// Idempotent — closing an already-closed handle is a no-op.
-#[expect(clippy::needless_pass_by_value)]
-pub(crate) fn astrid_http_stream_close_impl(
-    plugin: &mut CurrentPlugin,
-    inputs: &[Val],
-    _outputs: &mut [Val],
-    user_data: UserData<HostState>,
-) -> Result<(), Error> {
-    let handle_str = util::get_safe_string(plugin, &inputs[0], 1024)?;
-    let handle_id: u64 = handle_str
-        .parse()
-        .map_err(|e| Error::msg(format!("invalid HTTP stream handle: {e}")))?;
+    fn http_stream_start(
+        &mut self,
+        request: HttpRequestData,
+    ) -> Result<HttpStreamStartResponse, String> {
+        // Check stream cap before doing any network I/O.
+        if self.active_http_streams.len() >= MAX_ACTIVE_HTTP_STREAMS {
+            return Err(format!(
+                "HTTP stream cap reached ({}/{})",
+                self.active_http_streams.len(),
+                MAX_ACTIVE_HTTP_STREAMS
+            ));
+        }
 
-    let ud = user_data.get()?;
-    let mut state = ud
-        .lock()
-        .map_err(|e| Error::msg(format!("host state lock poisoned: {e}")))?;
+        let capsule_id = self.capsule_id.as_str().to_owned();
+        let security = self.security.clone();
+        let runtime_handle = self.runtime_handle.clone();
+        let host_semaphore = self.host_semaphore.clone();
 
-    // Idempotent: silently ignore if the handle was already removed.
-    let _ = state.active_http_streams.remove(&handle_id);
+        check_http_security(
+            &security,
+            capsule_id,
+            &request.url,
+            &request.method,
+            &runtime_handle,
+            &host_semaphore,
+        )?;
 
-    Ok(())
+        let client = reqwest::Client::builder()
+            .connect_timeout(HTTP_STREAM_CONNECT_TIMEOUT)
+            .dns_resolver(Arc::new(SafeDnsResolver))
+            .build()
+            .map_err(|e| format!("failed to build http client: {e}"))?;
+
+        let method = parse_method(&request.method)?;
+        let headers = build_headers(&request.headers)?;
+
+        let mut request_builder = client.request(method, &request.url).headers(headers);
+        if let Some(body) = request.body {
+            request_builder = request_builder.body(body);
+        }
+
+        // Send request and wait for headers (not body).
+        let response = util::bounded_block_on(&runtime_handle, &host_semaphore, async move {
+            request_builder.send().await
+        })
+        .map_err(|e| format!("http stream request failed: {e}"))?;
+
+        let status = response.status().as_u16();
+
+        let mut resp_headers = Vec::new();
+        for (k, v) in response.headers() {
+            if let Ok(v_str) = v.to_str() {
+                resp_headers.push(KeyValuePair {
+                    key: k.as_str().to_string(),
+                    value: v_str.to_string(),
+                });
+            }
+        }
+
+        // Store the response body stream and allocate a handle.
+        let handle_id = self.next_http_stream_id;
+        self.next_http_stream_id = self
+            .next_http_stream_id
+            .checked_add(1)
+            .ok_or_else(|| "HTTP stream handle ID space exhausted".to_string())?;
+
+        debug_assert!(
+            !self.active_http_streams.contains_key(&handle_id),
+            "HTTP stream handle ID collision"
+        );
+        self.active_http_streams
+            .insert(handle_id, Arc::new(tokio::sync::Mutex::new(response)));
+
+        Ok(HttpStreamStartResponse {
+            handle: handle_id,
+            status,
+            headers: resp_headers,
+        })
+    }
+
+    fn http_stream_read(&mut self, stream_handle: u64) -> Result<Vec<u8>, String> {
+        let response_arc = self
+            .active_http_streams
+            .get(&stream_handle)
+            .ok_or_else(|| "HTTP stream handle not found".to_string())?
+            .clone();
+
+        let rt_handle = self.runtime_handle.clone();
+        let cancel_token = self.cancel_token.clone();
+        let host_semaphore = self.host_semaphore.clone();
+
+        let result =
+            util::bounded_block_on_cancellable(&rt_handle, &host_semaphore, &cancel_token, async {
+                let mut resp = response_arc.lock().await;
+                tokio::time::timeout(HTTP_STREAM_READ_TIMEOUT, resp.chunk()).await
+            });
+
+        let chunk_data = match result {
+            // Cancelled (capsule unloading).
+            None => Vec::new(),
+            // Timeout waiting for next chunk.
+            Some(Err(_elapsed)) => {
+                return Err(format!(
+                    "HTTP stream read timed out after {}s",
+                    HTTP_STREAM_READ_TIMEOUT.as_secs()
+                ));
+            },
+            // Network/body error.
+            Some(Ok(Err(e))) => {
+                return Err(format!("HTTP stream read error: {e}"));
+            },
+            // Got a chunk.
+            Some(Ok(Ok(Some(bytes)))) => bytes.to_vec(),
+            // EOF — stream exhausted.
+            Some(Ok(Ok(None))) => Vec::new(),
+        };
+
+        Ok(chunk_data)
+    }
+
+    fn http_stream_close(&mut self, stream_handle: u64) -> Result<(), String> {
+        // Idempotent: silently ignore if the handle was already removed.
+        let _ = self.active_http_streams.remove(&stream_handle);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
