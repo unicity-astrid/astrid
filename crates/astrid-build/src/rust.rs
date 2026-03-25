@@ -2,10 +2,9 @@
 
 use crate::archiver::pack_capsule_archive;
 use anyhow::{Context, Result, bail};
-use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn};
+use tracing::info;
 
 /// Build a Rust capsule from a crate directory.
 ///
@@ -89,7 +88,7 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     }
 
     // 5. Extract capsule description using Extism
-    let capsule_description = extract_capsule_description(&wasm_path)?;
+    let capsule_description = extract_capsule_description(&wasm_path);
 
     // 6. Merge with developer's Capsule.toml
     let base_toml_path = dir.join("Capsule.toml");
@@ -137,35 +136,15 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
 
 /// Extract capsule description from a compiled WASM binary.
 ///
-/// Calls `astrid_export_schemas` via Extism and parses the result to extract
-/// the capsule description. Tool schemas are no longer extracted here (tools
-/// are registered via IPC convention, not manifest declarations).
-fn extract_capsule_description(wasm_path: &Path) -> Result<Option<String>> {
-    info!("   Extracting capsule metadata...");
-    let wasm_bytes = fs::read(wasm_path).context("Failed to read compiled WASM binary")?;
-    let manifest = extism::Manifest::new([extism::Wasm::data(wasm_bytes)]);
-    let mut plugin = extism::Plugin::new(&manifest, create_dummy_functions(), true)
-        .context("Failed to initialize Extism plugin for metadata extraction")?;
-
-    let schema_json = match plugin.call::<(), String>("astrid_export_schemas", ()) {
-        Ok(json) => json,
-        Err(e) => {
-            warn!(
-                "Capsule does not export metadata (astrid_export_schemas failed: {}). \
-                 Proceeding without auto-generated description.",
-                e
-            );
-            return Ok(None);
-        },
-    };
-
-    let schema_value: Value = serde_json::from_str(&schema_json)
-        .context("Failed to parse JSON from astrid_export_schemas")?;
-
-    Ok(schema_value
-        .get("description")
-        .and_then(Value::as_str)
-        .map(String::from))
+/// Extract capsule description from the compiled WASM binary.
+///
+/// Previously called `astrid_export_schemas` via Extism. With the Component
+/// Model migration, capsule metadata is extracted from `Capsule.toml` instead.
+/// Returns `None` — description is set from the manifest.
+fn extract_capsule_description(_wasm_path: &Path) -> Option<String> {
+    // Component Model capsules don't export `astrid_export_schemas`.
+    // Description comes from Capsule.toml [package] section instead.
+    None
 }
 
 fn create_default_manifest(
@@ -191,85 +170,4 @@ fn create_default_manifest(
     doc.insert("component", toml_edit::Item::ArrayOfTables(comp_arr));
 
     doc
-}
-
-/// Create dummy host functions for Extism schema extraction.
-///
-/// The WASM binary imports these host functions but we only need to call
-/// `astrid_export_schemas` which doesn't invoke any of them.
-fn create_dummy_functions() -> impl IntoIterator<Item = extism::Function> {
-    use extism::{Function, UserData};
-
-    let dummy = |name: &str, num_inputs: usize, num_outputs: usize| {
-        let inputs = vec![extism::PTR; num_inputs];
-        let outputs = vec![extism::PTR; num_outputs];
-        Function::new(name, inputs, outputs, UserData::new(()), |_, _, _, _| {
-            Err(extism::Error::msg("Dummy function called"))
-        })
-    };
-
-    // Keep in sync with WasmHostFunction in astrid-capsule/src/engine/wasm/host/mod.rs.
-    vec![
-        // Filesystem
-        dummy("astrid_fs_exists", 1, 1),
-        dummy("astrid_fs_mkdir", 1, 0),
-        dummy("astrid_fs_readdir", 1, 1),
-        dummy("astrid_fs_stat", 1, 1),
-        dummy("astrid_fs_unlink", 1, 0),
-        dummy("astrid_read_file", 1, 1),
-        dummy("astrid_write_file", 2, 0),
-        // IPC
-        dummy("astrid_ipc_publish", 2, 0),
-        dummy("astrid_ipc_subscribe", 1, 1),
-        dummy("astrid_ipc_unsubscribe", 1, 0),
-        dummy("astrid_ipc_poll", 1, 1),
-        dummy("astrid_ipc_recv", 2, 1),
-        // Uplink
-        dummy("astrid_uplink_register", 3, 1),
-        dummy("astrid_uplink_send", 3, 1),
-        // KV store
-        dummy("astrid_kv_get", 1, 1),
-        dummy("astrid_kv_set", 2, 0),
-        dummy("astrid_kv_delete", 1, 0),
-        dummy("astrid_kv_list_keys", 1, 1),
-        dummy("astrid_kv_clear_prefix", 1, 1),
-        // Config and HTTP
-        dummy("astrid_get_config", 1, 1),
-        dummy("astrid_http_request", 1, 1),
-        // Logging and hooks
-        dummy("astrid_log", 2, 0),
-        dummy("astrid_trigger_hook", 1, 1),
-        // Process spawning
-        dummy("astrid_spawn_host", 1, 1),
-        dummy("astrid_spawn_background_host", 1, 1),
-        dummy("astrid_read_process_logs_host", 1, 1),
-        dummy("astrid_kill_process_host", 1, 1),
-        // Networking
-        dummy("astrid_net_bind_unix", 1, 1),
-        dummy("astrid_net_accept", 1, 1),
-        dummy("astrid_net_poll_accept", 1, 1),
-        dummy("astrid_net_read", 1, 1),
-        dummy("astrid_net_write", 2, 0),
-        dummy("astrid_net_close_stream", 1, 0),
-        // Streaming HTTP
-        dummy("astrid_http_stream_start", 1, 1),
-        dummy("astrid_http_stream_read", 1, 1),
-        dummy("astrid_http_stream_close", 1, 0),
-        // Identity
-        dummy("astrid_get_caller", 0, 1),
-        dummy("astrid_identity_resolve", 1, 1),
-        dummy("astrid_identity_link", 1, 1),
-        dummy("astrid_identity_unlink", 1, 1),
-        dummy("astrid_identity_create_user", 1, 1),
-        dummy("astrid_identity_list_links", 1, 1),
-        // Runtime
-        dummy("astrid_signal_ready", 0, 0),
-        dummy("astrid_clock_ms", 0, 1),
-        dummy("astrid_get_interceptor_handles", 0, 1),
-        // Capabilities and approval
-        dummy("astrid_elicit", 1, 1),
-        dummy("astrid_has_secret", 1, 1),
-        dummy("astrid_request_approval", 1, 1),
-        dummy("astrid_check_capsule_capability", 1, 1),
-    ]
 }
