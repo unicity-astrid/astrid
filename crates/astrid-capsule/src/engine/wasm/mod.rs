@@ -11,6 +11,7 @@ use crate::engine::wasm::host_state::{HostState, LifecyclePhase};
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
 
+pub mod bindings;
 pub mod host;
 pub mod host_state;
 

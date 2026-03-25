@@ -113,6 +113,8 @@ uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
 walkdir = "2.5"
 wasm-encoder = "0.227"
 wasmparser = "0.227"
+wasmtime = { version = "43", features = ["component-model", "cranelift"] }
+wasmtime-wasi = "43"
 unicode-width = "0.2"
 which = "7"
 wizer = "10"
