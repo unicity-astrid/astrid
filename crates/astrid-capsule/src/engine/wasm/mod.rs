@@ -806,7 +806,7 @@ impl ExecutionEngine for WasmEngine {
 
     fn invoke_interceptor(
         &self,
-        _action: &str,
+        action: &str,
         payload: &[u8],
         caller: Option<&astrid_events::ipc::IpcMessage>,
     ) -> CapsuleResult<crate::capsule::InterceptResult> {
@@ -858,9 +858,19 @@ impl ExecutionEngine for WasmEngine {
                 });
         }
 
-        // Pass payload bytes directly to the Component Model export.
-        // The guest receives raw bytes via `list<u8>` and deserializes
-        // internally (the SDK `#[capsule]` macro handles dispatch).
+        // Build the interceptor request envelope. The guest SDK dispatches
+        // based on the `name` field. The `arguments` field contains the IPC
+        // event payload as a JSON value (not raw bytes — avoids integer-array
+        // encoding when serializing &[u8] through serde_json).
+        let payload_value: serde_json::Value =
+            serde_json::from_slice(payload).unwrap_or(serde_json::Value::Null);
+        let request = serde_json::json!({
+            "name": action,
+            "arguments": payload_value,
+        });
+        let input = serde_json::to_vec(&request).map_err(|e| {
+            CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
+        })?;
 
         // block_in_place is required because wasmtime host functions (fs, http,
         // kv, etc.) also call block_in_place internally during guest calls.
@@ -871,7 +881,7 @@ impl ExecutionEngine for WasmEngine {
                 .lock()
                 .map_err(|e| CapsuleError::WasmError(format!("store lock poisoned: {e}")))?;
             instance
-                .call_astrid_hook_trigger(&mut *s, payload)
+                .call_astrid_hook_trigger(&mut *s, &input)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         });
 
