@@ -7,34 +7,17 @@
 /// contract (WS-3); long-term it becomes direct Component Model imports/exports
 /// when migrating to the Component Model (WS-8).
 ///
-/// The host exposes 49 functions across 10 domain-specific interfaces. All
+/// The host exposes 49 functions across 11 domain-specific interfaces. All
 /// operations are capability-gated and audited by the Astrid runtime. Capsules
 /// never bypass the security model — the host enforces workspace boundaries,
 /// budget limits, capability tokens, and per-principal scoping on every call.
 ///
-/// Wire format note: Because the current transport is Extism (not Component
-/// Model), all structured arguments are passed as JSON-encoded byte buffers,
-/// and all structured returns are JSON-encoded byte buffers. The WIT types
-/// below describe the *logical* contract. Once the kernel migrates to the
-/// Component Model (WS-8), these become actual typed parameters.
-///
-/// ## HostResult encoding
-///
-/// All host functions that return data through the Extism output slot use the
-/// **HostResult** wire format so that capsules can distinguish success from
-/// recoverable errors without WASM traps:
-///
-///   byte 0:  0x00 (Ok)  | 0x01 (Err)
-///   bytes 1…N:  payload (Ok) or UTF-8 error message (Err)
-///
-/// Unrecoverable errors (lock poisoning, memory exhaustion) still trap — those
-/// represent kernel invariant violations. All other errors (file-not-found,
-/// permission denied, KV miss, network errors) are returned as HostResult::Err
-/// so the guest can handle them gracefully.
-///
-/// The SDK decodes this in `host_result::decode()`. Void-returning host
-/// functions (write, mkdir, delete) do NOT use this encoding — they still
-/// trap on error. A future ABI revision will extend HostResult to void ops.
+/// Error handling: Functions that can fail return `result<T, string>` where
+/// the error string describes the failure. Unrecoverable errors (lock
+/// poisoning, memory exhaustion) trap — those represent kernel invariant
+/// violations. All other errors (file-not-found, permission denied, KV miss,
+/// network errors) are returned as the error variant so the guest can handle
+/// them gracefully.
 
 package astrid:capsule@0.1.0;
 
@@ -106,7 +89,7 @@ interface types {
     }
 
     /// HTTP request sent by a capsule to the host.
-    record http-request {
+    record http-request-data {
         /// Target URL.
         url: string,
         /// HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS).
@@ -118,7 +101,7 @@ interface types {
     }
 
     /// HTTP response returned by the host.
-    record http-response {
+    record http-response-data {
         /// HTTP status code.
         status: u16,
         /// Response headers.
@@ -130,7 +113,7 @@ interface types {
     /// HTTP streaming response metadata returned on stream start.
     record http-stream-start-response {
         /// Opaque handle for subsequent read/close calls.
-        handle: string,
+        handle: u64,
         /// HTTP status code.
         status: u16,
         /// Response headers.
@@ -145,6 +128,14 @@ interface types {
         is-dir: bool,
         /// Last modification time (UNIX epoch seconds), if available.
         mtime: option<u64>,
+    }
+
+    /// Request to spawn a host process.
+    record spawn-request {
+        /// Command to execute.
+        cmd: string,
+        /// Command arguments.
+        args: list<string>,
     }
 
     /// Result of a synchronous process execution.
@@ -217,6 +208,48 @@ interface types {
         source-id: string,
     }
 
+    /// Pre-registered interceptor handle mapping.
+    record interceptor-handle {
+        /// Subscription handle ID.
+        handle-id: u64,
+        /// Interceptor action name.
+        action: string,
+        /// IPC topic pattern this handle is subscribed to.
+        topic: string,
+    }
+
+    /// Status of a network read operation.
+    variant net-read-status {
+        /// Data frame received.
+        data(list<u8>),
+        /// Stream closed by peer.
+        closed,
+        /// No data available (non-blocking).
+        pending,
+    }
+
+    /// Request to check a capsule's capability.
+    record capability-check-request {
+        /// UUID of the capsule to check.
+        source-uuid: string,
+        /// Capability name to check.
+        capability: string,
+    }
+
+    /// Response from a capability check.
+    record capability-check-response {
+        /// Whether the capability is allowed.
+        allowed: bool,
+    }
+
+    /// Request to resolve a platform identity to an Astrid user.
+    record identity-resolve-request {
+        /// External platform (e.g. "discord", "github").
+        platform: string,
+        /// User ID on the external platform.
+        platform-user-id: string,
+    }
+
     /// Result of an identity resolve operation.
     record identity-resolve-response {
         /// Whether a matching user was found.
@@ -229,12 +262,58 @@ interface types {
         error: option<string>,
     }
 
+    /// Request to link a platform identity to an Astrid user.
+    record identity-link-request {
+        /// External platform (e.g. "discord", "github").
+        platform: string,
+        /// User ID on the external platform.
+        platform-user-id: string,
+        /// Internal Astrid user ID to link to.
+        astrid-user-id: string,
+        /// Authentication method (e.g. "passkey", "token").
+        method: string,
+    }
+
+    /// Request to unlink a platform identity.
+    record identity-unlink-request {
+        /// External platform.
+        platform: string,
+        /// User ID on the external platform.
+        platform-user-id: string,
+    }
+
+    /// Request to create a new Astrid user.
+    record identity-create-user-request {
+        /// Optional display name for the new user.
+        display-name: option<string>,
+    }
+
+    /// Request to list platform links for an Astrid user.
+    record identity-list-links-request {
+        /// Internal Astrid user ID.
+        astrid-user-id: string,
+    }
+
     /// Result of an identity mutation (link, unlink, create-user, list-links).
     record identity-ok-response {
         /// Whether the operation succeeded.
         ok: bool,
         /// Error message, if the operation failed.
         error: option<string>,
+    }
+
+    /// Request for user input during capsule lifecycle.
+    record elicit-request {
+        /// Input type: "text", "secret", "select", or "array".
+        elicit-type: string,
+        /// Key for storing the collected value.
+        key: string,
+        /// Human-readable prompt description.
+        description: string,
+        /// Options for select-type inputs.
+        options: option<list<string>>,
+        /// Default value.
+        default-value: option<string>,
     }
 
     /// Approval request from a capsule to the host.
@@ -268,47 +347,46 @@ interface types {
 /// access per-principal temporary storage. Attempts to escape any boundary
 /// return an error. Symlink traversal is canonicalized to prevent bypass.
 interface fs {
+    use types.{file-stat};
+
     /// Check whether a file or directory exists at the given path.
     ///
-    /// Returns `"true"` (as a byte string) if the path exists, empty
-    /// bytes otherwise. Security-gated: requires file-read capability.
-    fs-exists: func(path: string) -> string;
+    /// Returns true if the path exists, false otherwise.
+    /// Security-gated: requires file-read capability.
+    fs-exists: func(path: string) -> result<bool, string>;
 
     /// Create a directory (and parents) at the given path.
     ///
     /// Security-gated: requires file-write capability.
-    fs-mkdir: func(path: string);
+    fs-mkdir: func(path: string) -> result<_, string>;
 
     /// List entries in a directory.
     ///
-    /// Returns a JSON array of entry name strings.
+    /// Returns a list of entry name strings.
     /// Security-gated: requires file-read capability.
-    fs-readdir: func(path: string) -> string;
+    fs-readdir: func(path: string) -> result<list<string>, string>;
 
     /// Get file metadata (size, type, mtime).
     ///
-    /// Returns a JSON object: `{"size": u64, "isDir": bool, "mtime": u64}`.
-    /// Note: the JSON field is camelCase `isDir` (matching current serialization),
-    /// while the WIT record uses kebab-case `is-dir` (WIT convention).
     /// Security-gated: requires file-read capability.
-    fs-stat: func(path: string) -> string;
+    fs-stat: func(path: string) -> result<file-stat, string>;
 
     /// Remove a file at the given path.
     ///
     /// Security-gated: requires file-write capability.
-    fs-unlink: func(path: string);
+    fs-unlink: func(path: string) -> result<_, string>;
 
     /// Read a file's contents as bytes.
     ///
     /// Files larger than 10 MB are rejected. Paths are resolved through
     /// the VFS layer with sandbox boundary enforcement.
     /// Security-gated: requires file-read capability.
-    read-file: func(path: string) -> string;
+    read-file: func(path: string) -> result<list<u8>, string>;
 
     /// Write content to a file (truncating if it exists, creating if not).
     ///
     /// Security-gated: requires file-write capability.
-    write-file: func(path: string, content: string);
+    write-file: func(path: string, content: list<u8>) -> result<_, string>;
 }
 
 /// Inter-Process Communication (IPC) event bus.
@@ -321,42 +399,43 @@ interface fs {
 /// Provenance is tracked via `IpcMessage::source_id` (the capsule's
 /// session UUID), not topic namespacing.
 interface ipc {
+    use types.{ipc-envelope, interceptor-handle};
+
     /// Publish a message to a topic.
     ///
     /// Payload must be valid JSON. Rate-limited per capsule. The principal
     /// is automatically propagated from the caller context.
-    ipc-publish: func(topic: string, payload: string);
+    ipc-publish: func(topic: string, payload: string) -> result<_, string>;
 
     /// Subscribe to a topic pattern and receive a handle.
     ///
     /// Supports exact matches and trailing-suffix wildcards (`foo.bar.*`).
     /// Mid-segment wildcards (`a.*.b`) are rejected. Returns a handle ID
-    /// string for use with `ipc-poll`, `ipc-recv`, and `ipc-unsubscribe`.
+    /// for use with `ipc-poll`, `ipc-recv`, and `ipc-unsubscribe`.
     /// Max 128 subscriptions per capsule.
-    ipc-subscribe: func(topic-pattern: string) -> string;
+    ipc-subscribe: func(topic-pattern: string) -> result<u64, string>;
 
     /// Unsubscribe from a topic by handle ID.
     ///
     /// Runtime-owned interceptor handles cannot be unsubscribed.
-    ipc-unsubscribe: func(handle-id: string);
+    ipc-unsubscribe: func(handle-id: u64) -> result<_, string>;
 
     /// Non-blocking poll for messages on a subscription.
     ///
-    /// Returns a JSON envelope: `{"messages": [...], "dropped": u64, "lagged": u64}`.
-    ipc-poll: func(handle-id: string) -> string;
+    /// Returns the messages received since last poll, plus drop/lag counts.
+    ipc-poll: func(handle-id: u64) -> result<ipc-envelope, string>;
 
     /// Blocking receive on a subscription with timeout.
     ///
     /// Blocks the WASM thread until a message arrives, the timeout expires
-    /// (capped at 60s), or the capsule is unloaded. Returns a JSON
-    /// envelope: `{"messages": [...], "dropped": u64, "lagged": u64}`.
-    ipc-recv: func(handle-id: string, timeout-ms: string) -> string;
+    /// (capped at 60s), or the capsule is unloaded.
+    ipc-recv: func(handle-id: u64, timeout-ms: u64) -> result<ipc-envelope, string>;
 
     /// Get pre-registered interceptor handle mappings for run-loop capsules.
     ///
-    /// Returns a JSON array of `InterceptorHandle` objects describing
-    /// which IPC subscription handles correspond to interceptor actions.
-    get-interceptor-handles: func() -> string;
+    /// Returns a list of interceptor handle objects describing which IPC
+    /// subscription handles correspond to interceptor actions.
+    get-interceptor-handles: func() -> result<list<interceptor-handle>, string>;
 }
 
 /// Uplink communications — inbound message ingestion from external platforms.
@@ -370,13 +449,13 @@ interface uplink {
     /// Arguments: name, platform identifier, profile ("chat", "interactive",
     /// "notify", "bridge"). Returns the assigned uplink UUID string.
     /// Security-gated: requires uplink-register capability.
-    uplink-register: func(name: string, platform: string, profile: string) -> string;
+    uplink-register: func(name: string, platform: string, profile: string) -> result<string, string>;
 
     /// Send an inbound message through a registered uplink.
     ///
-    /// Arguments: uplink UUID, platform user ID, message content.
-    /// Returns JSON: `{"ok": true}` or `{"ok": false, "dropped": true}`.
-    uplink-send: func(uplink-id: string, platform-user-id: string, content: string) -> string;
+    /// Returns true if sent, false if the message was intentionally dropped
+    /// (e.g. no active session for the principal).
+    uplink-send: func(uplink-id: string, platform-user-id: string, content: string) -> result<bool, string>;
 }
 
 /// Key-Value persistent storage.
@@ -388,24 +467,24 @@ interface uplink {
 interface kv {
     /// Read a value by key.
     ///
-    /// Returns the stored bytes, or empty bytes if the key does not exist.
-    kv-get: func(key: string) -> string;
+    /// Returns the stored bytes, or none if the key does not exist.
+    kv-get: func(key: string) -> result<option<list<u8>>, string>;
 
     /// Write a value by key.
-    kv-set: func(key: string, value: string);
+    kv-set: func(key: string, value: list<u8>) -> result<_, string>;
 
     /// Delete a key.
-    kv-delete: func(key: string);
+    kv-delete: func(key: string) -> result<_, string>;
 
     /// List all keys matching a prefix.
     ///
-    /// Returns a JSON array of key strings.
-    kv-list-keys: func(prefix: string) -> string;
+    /// Returns a list of matching key strings.
+    kv-list-keys: func(prefix: string) -> result<list<string>, string>;
 
     /// Delete all keys matching a prefix.
     ///
-    /// Returns the count of deleted keys as a JSON number.
-    kv-clear-prefix: func(prefix: string) -> string;
+    /// Returns the count of deleted keys.
+    kv-clear-prefix: func(prefix: string) -> result<u64, string>;
 }
 
 /// Unix domain socket networking.
@@ -417,44 +496,44 @@ interface kv {
 ///
 /// Max 8 concurrent streams per capsule.
 interface net {
+    use types.{net-read-status};
+
     /// Bind and activate the pre-provisioned Unix socket listener.
     ///
     /// Security-gated: requires net-bind capability. The listener handle
     /// argument is ignored (single pre-bound listener per capsule).
-    /// Returns a dummy handle (always 1).
-    net-bind-unix: func(listener-handle: string) -> string;
+    /// Returns a listener handle.
+    net-bind-unix: func(listener-handle: u64) -> result<u64, string>;
 
     /// Blocking accept: wait for the next client connection.
     ///
     /// Performs peer credential verification (UID match on Unix) and
     /// session token handshake. Blocks until a connection arrives or
-    /// the capsule is unloaded. Returns a stream handle ID string.
-    net-accept: func(listener-handle: string) -> string;
+    /// the capsule is unloaded. Returns a stream handle ID.
+    net-accept: func(listener-handle: u64) -> result<u64, string>;
 
     /// Non-blocking accept with a 10ms timeout.
     ///
-    /// Returns a stream handle ID string if a connection was accepted,
-    /// or empty string if no pending connections or the capsule is
-    /// unloading.
-    net-poll-accept: func(listener-handle: string) -> string;
+    /// Returns a stream handle ID if a connection was accepted,
+    /// or none if no pending connections or the capsule is unloading.
+    net-poll-accept: func(listener-handle: u64) -> result<option<u64>, string>;
 
     /// Read the next length-prefixed frame from a stream.
     ///
-    /// Returns bytes prefixed with a status discriminant:
-    /// `0x00` (Data) + payload, `0x01` (Closed), `0x02` (Pending).
-    /// Max frame size: 10 MB.
-    net-read: func(stream-handle: string) -> string;
+    /// Returns Data with payload, Closed if peer disconnected, or
+    /// Pending if no data available. Max frame size: 10 MB.
+    net-read: func(stream-handle: u64) -> result<net-read-status, string>;
 
     /// Write a length-prefixed frame to a stream.
     ///
     /// Non-fatal on failure (dead stream is cleaned up on next read).
-    net-write: func(stream-handle: string, data: string);
+    net-write: func(stream-handle: u64, data: list<u8>) -> result<_, string>;
 
     /// Close a stream handle, releasing host-side resources.
     ///
     /// Idempotent: closing an already-closed handle is a no-op.
     /// Publishes a `client.v1.disconnect` IPC event.
-    net-close-stream: func(stream-handle: string);
+    net-close-stream: func(stream-handle: u64) -> result<_, string>;
 }
 
 /// HTTP client operations with SSRF protection.
@@ -464,58 +543,55 @@ interface net {
 /// addresses are also checked. The security gate enforces per-capsule
 /// allow-lists and rate limits.
 interface http {
+    use types.{http-request-data, http-response-data, http-stream-start-response};
+
     /// Perform a buffered HTTP request (full response in memory).
     ///
-    /// Input: JSON `{"url", "method", "headers", "body"}`.
-    /// Returns JSON `{"status", "headers", "body"}`.
     /// 30s timeout, max response body 10 MB.
     /// Security-gated: requires http capability.
-    http-request: func(request-json: string) -> string;
+    http-request: func(request: http-request-data) -> result<http-response-data, string>;
 
     /// Start a streaming HTTP request (headers returned, body streamed).
     ///
-    /// Input: same JSON as `http-request`.
-    /// Returns JSON `{"handle", "status", "headers"}`.
     /// Max 4 concurrent HTTP streams per capsule.
     /// Security-gated: requires http capability.
-    http-stream-start: func(request-json: string) -> string;
+    http-stream-start: func(request: http-request-data) -> result<http-stream-start-response, string>;
 
     /// Read the next chunk from a streaming HTTP response.
     ///
-    /// Returns raw bytes of the next chunk, or empty bytes on EOF.
+    /// Returns the chunk bytes, or an empty list on EOF.
     /// 120s per-chunk timeout.
-    http-stream-read: func(stream-handle: string) -> string;
+    http-stream-read: func(stream-handle: u64) -> result<list<u8>, string>;
 
     /// Close a streaming HTTP response handle.
     ///
     /// Idempotent: closing an already-closed handle is a no-op.
-    http-stream-close: func(stream-handle: string);
+    http-stream-close: func(stream-handle: u64) -> result<_, string>;
 }
 
 /// System-level runtime functions.
 interface sys {
-    use types.{log-level};
+    use types.{log-level, caller-context, capability-check-request, capability-check-response};
 
     /// Read a configuration value from the capsule's manifest `[config]`.
     ///
     /// Returns the raw config value string, or empty string if not set.
     /// String values are returned without JSON-encoding (no extra quotes).
-    get-config: func(key: string) -> string;
+    get-config: func(key: string) -> result<string, string>;
 
     /// Get the caller context for the current invocation.
     ///
-    /// Returns JSON `{"principal", "source_id", "timestamp"}` with the
-    /// acting principal, originating capsule UUID, and message timestamp.
-    /// Returns `"{}"` if no caller context is available.
-    get-caller: func() -> string;
+    /// Returns the acting principal, originating capsule UUID, and message
+    /// timestamp. Returns an empty context if no caller is available.
+    get-caller: func() -> result<caller-context, string>;
 
     /// Trigger a hook/interceptor fan-out to other capsules.
     ///
-    /// Input: JSON `{"hook": "topic", "payload": {...}}`.
+    /// Input is a JSON request: `{"hook": "topic", "payload": {...}}`.
     /// Finds all capsules with interceptors matching the hook topic,
     /// invokes each (skipping the caller to prevent recursion), and
     /// returns a JSON array of their responses.
-    trigger-hook: func(request-json: string) -> string;
+    trigger-hook: func(request-json: string) -> result<string, string>;
 
     /// Emit a structured log message attributed to the calling capsule.
     ///
@@ -532,17 +608,13 @@ interface sys {
     signal-ready: func();
 
     /// Get the current wall-clock time as milliseconds since UNIX epoch.
-    ///
-    /// Returns the timestamp as a UTF-8 decimal string.
-    clock-ms: func() -> string;
+    clock-ms: func() -> u64;
 
     /// Check whether a capsule has a specific manifest capability.
     ///
-    /// Input: JSON `{"source_uuid": "...", "capability": "..."}`.
-    /// Returns JSON `{"allowed": bool}`.
-    /// Fail-closed: returns `{"allowed": false}` for unknown UUIDs,
+    /// Fail-closed: returns `allowed: false` for unknown UUIDs,
     /// unknown capabilities, or unavailable registry.
-    check-capsule-capability: func(request-json: string) -> string;
+    check-capsule-capability: func(request: capability-check-request) -> result<capability-check-response, string>;
 }
 
 /// Host-side process spawning with OS-level sandboxing.
@@ -552,35 +624,30 @@ interface sys {
 /// workspace directory. All processes are tracked for cancellation.
 /// Security-gated: requires host-process capability.
 interface process {
+    use types.{spawn-request, process-result, spawn-background-result, read-logs-result, kill-process-result};
+
     /// Spawn a synchronous (blocking) process.
     ///
-    /// Input: JSON `{"cmd": "...", "args": ["..."]}`.
     /// Blocks the WASM thread until the process exits or is cancelled.
-    /// Returns JSON `{"stdout", "stderr", "exit_code"}`.
     /// Cancelled processes return exit_code -1.
-    spawn: func(request-json: string) -> string;
+    spawn: func(request: spawn-request) -> result<process-result, string>;
 
     /// Spawn a background (non-blocking) process.
     ///
-    /// Input: JSON `{"cmd": "...", "args": ["..."]}`.
-    /// Returns JSON `{"id": u64}` — the process handle for log/kill.
+    /// Returns a process handle for subsequent log/kill calls.
     /// Max 8 concurrent background processes per capsule.
     /// stdout/stderr are buffered (1 MB per stream, ring buffer).
-    spawn-background: func(request-json: string) -> string;
+    spawn-background: func(request: spawn-request) -> result<spawn-background-result, string>;
 
     /// Read buffered logs from a background process.
     ///
-    /// Input: JSON `{"id": u64}`.
-    /// Returns JSON `{"stdout", "stderr", "running", "exit_code"}`.
     /// Drains the buffers (subsequent reads return only new data).
-    read-logs: func(request-json: string) -> string;
+    read-logs: func(process-id: u64) -> result<read-logs-result, string>;
 
     /// Kill a background process.
     ///
-    /// Input: JSON `{"id": u64}`.
     /// Sends SIGKILL to the process group (Unix) or kill (Windows).
-    /// Returns JSON `{"killed", "exit_code", "stdout", "stderr"}`.
-    kill: func(request-json: string) -> string;
+    kill: func(process-id: u64) -> result<kill-process-result, string>;
 }
 
 /// Interactive user input collection during lifecycle hooks.
@@ -589,22 +656,20 @@ interface process {
 /// Blocks the WASM thread until the frontend (TUI/CLI) collects user
 /// input and publishes a response, or the request times out (120s).
 interface elicit {
+    use types.{elicit-request};
+
     /// Prompt the user for input (text, secret, select, or array).
     ///
-    /// Input: JSON `{"type": "text|secret|select|array", "key": "...",
-    ///               "description": "...", "options": [...], "default": "..."}`.
-    /// Returns JSON depending on type:
+    /// Returns a JSON response depending on the request type:
     ///   text/select: `{"value": "..."}`,
     ///   secret: `{"ok": true}` (value stored in SecretStore),
     ///   array: `{"values": [...]}`.
-    elicit: func(request-json: string) -> string;
+    elicit: func(request: elicit-request) -> result<string, string>;
 
     /// Check whether a secret key has been stored for this capsule.
     ///
-    /// Input: JSON `{"key": "..."}`.
-    /// Returns JSON `{"exists": bool}`.
     /// Uses the SecretStore abstraction (OS keychain with KV fallback).
-    has-secret: func(request-json: string) -> string;
+    has-secret: func(key: string) -> result<bool, string>;
 }
 
 /// Human-in-the-loop approval for sensitive actions.
@@ -613,15 +678,15 @@ interface elicit {
 /// patterns), then publishes an ApprovalRequired IPC event and blocks
 /// until the frontend user responds or the request times out (60s).
 interface approval {
+    use types.{approval-request, approval-response};
+
     /// Request human approval for a sensitive action.
     ///
-    /// Input: JSON `{"action": "...", "resource": "...", "risk_level": "..."}`.
-    /// Returns JSON `{"approved": bool, "decision": "..."}`.
     /// Decision values: "approve" (once), "approve_session", "approve_always",
     /// "deny", "allowance" (auto-granted via existing allowance).
     /// Action strings are sanitized (control chars stripped, max 256 chars).
     /// Resource strings are sanitized (max 1024 chars).
-    request-approval: func(request-json: string) -> string;
+    request-approval: func(request: approval-request) -> result<approval-response, string>;
 }
 
 /// Multi-platform identity resolution and linking.
@@ -630,36 +695,33 @@ interface approval {
 /// to internal Astrid user IDs. All operations are security-gated per
 /// operation type (resolve, link, unlink, create-user, list-links).
 interface identity {
+    use types.{
+        identity-resolve-request, identity-resolve-response,
+        identity-link-request, identity-unlink-request,
+        identity-create-user-request, identity-list-links-request,
+        identity-ok-response,
+    };
+
     /// Resolve a platform identity to an Astrid user.
-    ///
-    /// Input: JSON `{"platform": "...", "platform_user_id": "..."}`.
-    /// Returns JSON `{"found": bool, "user_id": "...", "display_name": "...", "error": "..."}`.
-    identity-resolve: func(request-json: string) -> string;
+    identity-resolve: func(request: identity-resolve-request) -> result<identity-resolve-response, string>;
 
     /// Link a platform identity to an Astrid user.
-    ///
-    /// Input: JSON `{"platform": "...", "platform_user_id": "...",
-    ///               "astrid_user_id": "...", "method": "..."}`.
-    /// Returns JSON `{"ok": bool, "link": {...}, "error": "..."}`.
-    identity-link: func(request-json: string) -> string;
+    identity-link: func(request: identity-link-request) -> result<identity-ok-response, string>;
 
     /// Unlink a platform identity.
-    ///
-    /// Input: JSON `{"platform": "...", "platform_user_id": "..."}`.
-    /// Returns JSON `{"ok": bool, "removed": bool, "error": "..."}`.
-    identity-unlink: func(request-json: string) -> string;
+    identity-unlink: func(request: identity-unlink-request) -> result<identity-ok-response, string>;
 
     /// Create a new Astrid user.
     ///
-    /// Input: JSON `{"display_name": "..."}` (display_name is optional).
-    /// Returns JSON `{"ok": bool, "user_id": "...", "error": "..."}`.
-    identity-create-user: func(request-json: string) -> string;
+    /// Returns an ok-response; the created user ID is available in the
+    /// response JSON when accessed via the SDK.
+    identity-create-user: func(request: identity-create-user-request) -> result<identity-ok-response, string>;
 
     /// List all platform links for an Astrid user.
     ///
-    /// Input: JSON `{"astrid_user_id": "..."}`.
-    /// Returns JSON `{"ok": bool, "links": [{...}], "error": "..."}`.
-    identity-list-links: func(request-json: string) -> string;
+    /// Returns an ok-response; the links are available in the
+    /// response JSON when accessed via the SDK.
+    identity-list-links: func(request: identity-list-links-request) -> result<identity-ok-response, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +733,7 @@ interface identity {
 /// A conforming capsule imports the domain-specific host interfaces and
 /// exports the guest entry-point functions below.
 world capsule {
-    // Host-provided imports (49 functions across 10 interfaces).
+    // Host-provided imports (49 functions across 11 interfaces).
     import fs;
     import ipc;
     import uplink;
