@@ -189,24 +189,21 @@ impl WasmHandler {
                 HandlerError::WasmFailed(format!("failed to instantiate WASM component: {e}"))
             })?;
 
-        // Call the astrid-hook-trigger export.
-        // The Component Model has a single export; the hook name is embedded in
-        // the CapsuleAbiContext payload so the guest can dispatch internally.
-        let result_bytes = tokio::task::block_in_place(|| {
+        // Call the typed Component Model export. The function name is the
+        // action, the serialized context is the payload.
+        let capsule_result = tokio::task::block_in_place(|| {
             instance
-                .call_astrid_hook_trigger(&mut store, &input_bytes)
+                .call_astrid_hook_trigger(&mut store, function, &input_bytes)
                 .map_err(|e| {
                     HandlerError::WasmFailed(format!("astrid-hook-trigger call failed: {e}"))
                 })
         })?;
 
-        // Parse CapsuleAbiResult from the returned bytes
-        let capsule_result: HookAbiResult = serde_json::from_slice(&result_bytes).map_err(|e| {
-            HandlerError::ParseError(format!("failed to parse CapsuleAbiResult: {e}"))
-        })?;
-
-        // Map CapsuleAbiResult.action to HookResult
-        let hook_result = map_capsule_result_to_hook_result(&capsule_result);
+        // Map the typed CapsuleResult to HookResult.
+        let hook_result = map_capsule_result_to_hook_result(&HookAbiResult {
+            action: capsule_result.action,
+            data: capsule_result.data,
+        });
 
         Ok(HookExecutionResult::Success {
             result: hook_result,

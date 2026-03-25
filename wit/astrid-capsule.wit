@@ -733,6 +733,8 @@ interface identity {
 /// A conforming capsule imports the domain-specific host interfaces and
 /// exports the guest entry-point functions below.
 world capsule {
+    use types.{capsule-result};
+
     // Host-provided imports (49 functions across 11 interfaces).
     import fs;
     import ipc;
@@ -751,10 +753,10 @@ world capsule {
     /// Execute an interceptor hook.
     ///
     /// This is the primary entry point for hook/interceptor execution.
-    /// The kernel calls `astrid_hook_trigger` with a JSON payload
-    /// containing the action name and event data. The guest returns
-    /// a JSON response directing the kernel how to proceed.
-    export astrid-hook-trigger: func(input: list<u8>) -> list<u8>;
+    /// The kernel passes the action name (interceptor handler to invoke)
+    /// and the event payload as raw bytes. The guest returns a result
+    /// directing the kernel how to proceed.
+    export astrid-hook-trigger: func(action: string, payload: list<u8>) -> capsule-result;
 
     /// Background run loop for long-lived capsules.
     ///

@@ -59,6 +59,25 @@ impl InterceptResult {
             _ => Self::Continue(bytes),
         }
     }
+
+    /// Construct an `InterceptResult` from a typed Component Model `capsule-result`.
+    ///
+    /// The `action` field maps to the variant:
+    /// - `"continue"` → `Continue` (data as payload bytes)
+    /// - `"final"` → `Final` (data as payload bytes)
+    /// - `"deny"` / `"abort"` → `Deny` (data as reason string)
+    /// - anything else → `Continue` (forward compatibility)
+    pub fn from_capsule_result(action: &str, data: Option<&str>) -> Self {
+        let payload = data.map(|d| d.as_bytes().to_vec()).unwrap_or_default();
+        match action {
+            "continue" => Self::Continue(payload),
+            "final" => Self::Final(payload),
+            "deny" | "abort" => Self::Deny {
+                reason: data.unwrap_or("denied by interceptor").to_string(),
+            },
+            _ => Self::Continue(payload),
+        }
+    }
 }
 
 /// Unique, stable, human-readable capsule identifier.

@@ -858,30 +858,14 @@ impl ExecutionEngine for WasmEngine {
                 });
         }
 
-        // Build the interceptor request envelope. The guest SDK dispatches
-        // based on the `name` field. The `arguments` field contains the IPC
-        // event payload as a JSON value (not raw bytes — avoids integer-array
-        // encoding when serializing &[u8] through serde_json).
-        let payload_value: serde_json::Value =
-            serde_json::from_slice(payload).unwrap_or(serde_json::Value::Null);
-        let request = serde_json::json!({
-            "name": action,
-            "arguments": payload_value,
-        });
-        let input = serde_json::to_vec(&request).map_err(|e| {
-            CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
-        })?;
-
-        // block_in_place is required because wasmtime host functions (fs, http,
-        // kv, etc.) also call block_in_place internally during guest calls.
-        // The caller MUST invoke this from a Tokio worker thread (e.g. via
-        // tokio::task::spawn), never from spawn_blocking.
+        // Call the typed Component Model export. The action name and payload
+        // are passed as separate typed parameters (no JSON envelope needed).
         let result = tokio::task::block_in_place(|| {
             let mut s = store
                 .lock()
                 .map_err(|e| CapsuleError::WasmError(format!("store lock poisoned: {e}")))?;
             instance
-                .call_astrid_hook_trigger(&mut *s, &input)
+                .call_astrid_hook_trigger(&mut *s, action, payload)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         });
 
@@ -905,7 +889,10 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_kv = None;
         }
 
-        result.map(crate::capsule::InterceptResult::from_guest_bytes)
+        // Map the typed CapsuleResult to InterceptResult.
+        result.map(|cr| {
+            crate::capsule::InterceptResult::from_capsule_result(&cr.action, cr.data.as_deref())
+        })
     }
 
     fn check_health(&self) -> crate::capsule::CapsuleState {
