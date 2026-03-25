@@ -9,6 +9,26 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ## [Unreleased]
 
+### Breaking
+
+- **WASM engine migrated from Extism to wasmtime Component Model.** The kernel now loads Component Model binaries via `Component::from_binary`, not Extism modules. Existing capsules compiled with `extism-pdk` will not load — they must be rebuilt with the migrated SDK targeting `wasm32-wasip2`. This is a coordinated multi-repo migration (SDK + 16 capsule repos).
+- **WIT host function signatures retyped.** All 49 functions now use proper typed params/returns (`result<T, string>`, WIT records, `u64` handles) instead of `string`-based JSON blobs. The `HostResult` 0x00/0x01 prefix encoding is removed — errors are returned via WIT `result` types.
+- **Guest export `astrid-hook-trigger` signature changed.** Was `func(input: list<u8>) -> list<u8>`. Now `func(action: string, payload: list<u8>) -> capsule-result`. The action name and payload are separate typed parameters; the return is the typed `capsule-result` record.
+- **`capsule_abi` module removed from `astrid-core`.** Types (`CapsuleAbiContext`, `CapsuleAbiResult`, `LogLevel`, etc.) are replaced by `wasmtime::component::bindgen!` generated types.
+
+### Added
+
+- Schema catalog (`SchemaCatalog`) for A2UI Track 2 — maps IPC topics to schema definitions. Populated at capsule load time from `Capsule.toml` topic declarations. Empty infrastructure until capsules define WIT types for IPC payloads.
+- Epoch-based WASM timeout with `EpochTickerGuard` RAII type — replaces Extism wall-clock timeout. 5-minute deadline for interceptors, u64::MAX for daemons/run-loops, 10-minute safety net for lifecycle hooks.
+- 64MB per-capsule WASM memory limit via `StoreLimitsBuilder` (matches old Extism setting). Global budget for multi-tenant hosting is a follow-up (#639).
+- New WIT record types: `spawn-request`, `interceptor-handle`, `net-read-status` (variant), `capability-check-request/response`, `identity-*-request`, `elicit-request`.
+
+### Removed
+
+- `extism` dependency — replaced by direct `wasmtime` 43 + `wasmtime-wasi` 43.
+- `capsule_abi.rs` (252 lines) — hand-written WIT type mirrors.
+- `host/shim.rs` (430 lines) — Extism dispatch shim, `WasmHostFunction` enum, `register_host_functions()`, manual memory helpers.
+
 ## [0.5.1] - 2026-03-25
 
 ### Added
