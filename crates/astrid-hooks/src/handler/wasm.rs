@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use astrid_capsule::capsule::CapsuleId;
+#[expect(deprecated)]
 use astrid_capsule::engine::wasm::host::register_host_functions;
 use astrid_capsule::engine::wasm::host_state::HostState;
 use astrid_core::capsule_abi;
@@ -206,6 +207,8 @@ impl WasmHandler {
         );
 
         let host_state = HostState {
+            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
+            resource_table: wasmtime::component::ResourceTable::new(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -275,6 +278,7 @@ impl WasmHandler {
         extism_manifest = extism_manifest.with_memory_max(max_pages);
 
         let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
+        #[expect(deprecated)]
         let builder = register_host_functions(builder, user_data);
         let plugin = builder
             .build()

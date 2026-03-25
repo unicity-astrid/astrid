@@ -29,13 +29,24 @@ pub(crate) mod uplink;
 /// Utility functions for WASM host implementations.
 pub(crate) mod util;
 
+// Host registration is handled by `Capsule::add_to_linker()` which wires
+// all Host trait impls on `HostState` into the wasmtime `Linker`.
+
+// The `types` interface only defines shared WIT types (records, enums) — no
+// functions. The generated Host trait is empty but must still be implemented
+// for `Capsule::add_to_linker` to accept HostState.
+impl crate::engine::wasm::bindings::astrid::capsule::types::Host
+    for crate::engine::wasm::host_state::HostState
+{
+}
+
 // --- Extism compatibility stub ---
-// The old Extism dispatch code (WasmEngine, astrid-hooks WasmHandler) still calls
-// this function. It's a no-op stub until the engine is rewritten (commit 5) and
-// the hooks handler is migrated (commit 6).
+// The WasmHandler in astrid-hooks still uses Extism (commit 6 migrates it).
+// This no-op stub keeps that crate compiling until it is migrated.
 
 /// Stub: registers no host functions. The real registration happens via
 /// `Capsule::add_to_linker()` in the wasmtime Component Model path.
+#[deprecated(note = "Extism is being replaced by wasmtime Component Model")]
 pub fn register_host_functions(
     builder: extism::PluginBuilder,
     _user_data: extism::UserData<crate::engine::wasm::host_state::HostState>,

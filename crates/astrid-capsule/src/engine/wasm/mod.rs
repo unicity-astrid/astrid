@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use extism::{Manifest, PluginBuilder, UserData, Wasm};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tracing::info;
+use wasmtime::Store;
+use wasmtime::component::{Component, Linker};
 
 use crate::context::CapsuleContext;
 use crate::engine::ExecutionEngine;
-use crate::engine::wasm::host::register_host_functions;
 use crate::engine::wasm::host_state::{HostState, LifecyclePhase};
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
@@ -101,15 +101,27 @@ fn resolve_content_addressed_wasm(capsule_dir: &std::path::Path) -> Option<PathB
 /// while still catching runaways.
 const WASM_CAPSULE_TIMEOUT_SECS: u64 = 5 * 60;
 
-/// Executes Pure WASM Components and AstridClaw transpiled OpenClaw plugins.
+/// Epoch tick interval for the background epoch incrementer thread.
+/// Each tick increments the engine epoch by 1, so the effective timeout
+/// granularity is `EPOCH_TICK_INTERVAL * epoch_deadline`.
+const EPOCH_TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Executes WASM Components via the wasmtime Component Model.
 ///
-/// This engine sandboxes the execution in Extism/Wasmtime and injects the
-/// `astrid-sys` Airlocks (host functions) so the component can interact
+/// This engine sandboxes execution in wasmtime and wires the
+/// `astrid-sys` host interfaces (WIT imports) so the component can interact
 /// securely with the OS Event Bus and VFS.
 pub struct WasmEngine {
     manifest: CapsuleManifest,
     _capsule_dir: PathBuf,
-    plugin: Option<Arc<Mutex<extism::Plugin>>>,
+    /// The wasmtime engine shared between the store and epoch incrementer.
+    wasmtime_engine: Option<wasmtime::Engine>,
+    /// The wasmtime store holding HostState. Wrapped in Arc<Mutex<>> so the
+    /// run loop task and invoke_interceptor can both access it (though never
+    /// concurrently for run-loop capsules — those use IPC auto-subscribe).
+    store: Option<Arc<Mutex<Store<HostState>>>>,
+    /// The instantiated guest component with typed export accessors.
+    instance: Option<bindings::Capsule>,
     inbound_rx: Option<tokio::sync::mpsc::Receiver<astrid_core::InboundMessage>>,
     run_handle: Option<tokio::task::JoinHandle<()>>,
     /// Receiver for the readiness signal from the run loop.
@@ -122,12 +134,11 @@ pub struct WasmEngine {
     /// Cancellation token for cooperative shutdown of blocking host functions.
     /// Triggered during `unload()` before aborting the run handle.
     cancel_token: Option<tokio_util::sync::CancellationToken>,
-    /// Reference to the shared HostState for setting per-invocation context.
-    ///
-    /// Cloned from `UserData<HostState>` during `load()`. Used in
-    /// `invoke_interceptor` to set `caller_context` and `invocation_kv`
-    /// before calling into the WASM plugin (clear-before-set pattern).
-    host_state: Option<UserData<host_state::HostState>>,
+    /// Handle for the background epoch incrementer thread.
+    /// Dropped during unload to stop the ticker.
+    epoch_handle: Option<std::thread::JoinHandle<()>>,
+    /// Flag to signal the epoch incrementer thread to stop.
+    epoch_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl WasmEngine {
@@ -135,14 +146,65 @@ impl WasmEngine {
         Self {
             manifest,
             _capsule_dir: capsule_dir,
-            plugin: None,
+            wasmtime_engine: None,
+            store: None,
+            instance: None,
             inbound_rx: None,
             run_handle: None,
             ready_rx: None,
             cancel_token: None,
-            host_state: None,
+            epoch_handle: None,
+            epoch_stop: None,
         }
     }
+}
+
+/// Build a `wasmtime::Engine` configured for Component Model execution
+/// with epoch-based interruption.
+fn build_wasmtime_engine() -> CapsuleResult<wasmtime::Engine> {
+    let mut config = wasmtime::Config::new();
+    config.wasm_component_model(true).epoch_interruption(true);
+    wasmtime::Engine::new(&config).map_err(|e| {
+        CapsuleError::UnsupportedEntryPoint(format!("Failed to create wasmtime engine: {e}"))
+    })
+}
+
+/// Build a minimal `WasiCtx` for capsule sandboxing.
+///
+/// Only stderr is inherited so capsule panic messages reach the host.
+/// No filesystem, network, or environment access is granted — all I/O
+/// goes through the Astrid host interfaces (WIT imports).
+fn build_wasi_ctx() -> wasmtime_wasi::WasiCtx {
+    wasmtime_wasi::WasiCtxBuilder::new()
+        .inherit_stderr()
+        .build()
+}
+
+/// Spawn a background OS thread that periodically increments the engine
+/// epoch. Returns the thread handle and a stop flag.
+///
+/// The caller sets `store.epoch_deadline_trap(deadline)` before calling
+/// into the guest. Each tick increments the epoch by 1, so a deadline of
+/// `N` means the guest traps after approximately `N * EPOCH_TICK_INTERVAL`.
+fn spawn_epoch_ticker(
+    engine: &wasmtime::Engine,
+) -> (
+    std::thread::JoinHandle<()>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let engine = engine.clone();
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_clone = stop.clone();
+    let handle = std::thread::Builder::new()
+        .name("wasm-epoch-ticker".into())
+        .spawn(move || {
+            while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(EPOCH_TICK_INTERVAL);
+                engine.increment_epoch();
+            }
+        })
+        .expect("failed to spawn epoch ticker thread");
+    (handle, stop)
 }
 
 #[async_trait]
@@ -150,7 +212,7 @@ impl ExecutionEngine for WasmEngine {
     async fn load(&mut self, ctx: &CapsuleContext) -> CapsuleResult<()> {
         info!(
             capsule = %self.manifest.package.name,
-            "Loading Pure WASM component"
+            "Loading WASM component (Component Model)"
         );
 
         let component = self.manifest.components.first().ok_or_else(|| {
@@ -208,7 +270,7 @@ impl ExecutionEngine for WasmEngine {
         let process_tracker_for_listener = process_tracker.clone();
 
         let capsule_dir_for_verify = self._capsule_dir.clone();
-        let (plugin, rx, has_run, ready_rx, user_data_ref) =
+        let (store_arc, instance, rx, has_run, ready_rx, wt_engine) =
             tokio::task::block_in_place(move || {
                 let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| {
                     CapsuleError::UnsupportedEntryPoint(format!("Failed to read WASM: {e}"))
@@ -387,6 +449,8 @@ impl ExecutionEngine for WasmEngine {
                 );
 
                 let host_state = HostState {
+                    wasi_ctx: build_wasi_ctx(),
+                    resource_table: wasmtime::component::ResourceTable::new(),
                     principal: ctx.principal.clone(),
                     capsule_uuid,
                     caller_context: None,
@@ -451,69 +515,79 @@ impl ExecutionEngine for WasmEngine {
                     process_tracker: process_tracker.clone(),
                 };
 
-                // ready_tx starts as None; only set after plugin build if
-                // the WASM binary exports a run() function (see below).
-                let user_data = UserData::new(host_state);
-                let user_data_ref = user_data.clone();
-
-                // Pre-scan WASM exports to detect run() before plugin build.
-                // The Extism timeout must be set on the Manifest before build,
-                // but function_exists() requires a built plugin, so we parse
-                // the raw binary's export section instead.
+                // Pre-scan WASM exports to detect run() before instantiation.
+                // Component Model instantiation requires all exports to be present,
+                // but we need to know about run() ahead of time for timeout config.
                 //
                 // On parse failure, default to true (no timeout) - the safe
-                // direction. A truly corrupt binary will fail Extism build
+                // direction. A truly corrupt binary will fail Component::from_binary
                 // moments later anyway.
                 let has_run_export = wasm_exports_contain_run(&wasm_bytes);
 
-                let extism_wasm = Wasm::data(wasm_bytes);
-                let mut extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024); // 64MB
+                // Build wasmtime engine, store, linker, and instantiate the component.
+                let wt_engine = build_wasmtime_engine()?;
+                let mut store = Store::new(&wt_engine, host_state);
 
+                // Epoch-based timeout for non-daemon capsules.
                 // Long-lived capsules (uplinks, run-loop daemons) must not
-                // have a wall-clock timeout. Other capsules get a 5-minute safety
+                // have a wall-clock timeout. Other capsules get a safety
                 // timeout — generous enough for interceptors that do streaming HTTP
                 // (e.g. LLM providers) while still catching runaways.
                 let is_daemon = !manifest.uplinks.is_empty() || manifest.capabilities.uplink;
                 if !is_daemon && !has_run_export {
-                    extism_manifest = extism_manifest
-                        .with_timeout(std::time::Duration::from_secs(WASM_CAPSULE_TIMEOUT_SECS));
+                    // Each epoch tick is EPOCH_TICK_INTERVAL (100ms). Set the
+                    // deadline so total timeout ≈ WASM_CAPSULE_TIMEOUT_SECS.
+                    let deadline =
+                        WASM_CAPSULE_TIMEOUT_SECS * 1000 / EPOCH_TICK_INTERVAL.as_millis() as u64;
+                    store.set_epoch_deadline(deadline);
                 }
 
-                let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
-                let builder = register_host_functions(builder, user_data);
+                let mut linker: Linker<HostState> = Linker::new(&wt_engine);
 
-                let plugin = builder.build().map_err(|e| {
+                // Wire WASI imports (clocks, random, stderr).
+                wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| {
                     CapsuleError::UnsupportedEntryPoint(format!(
-                        "Failed to build Extism plugin: {e}"
+                        "Failed to add WASI to linker: {e}"
                     ))
                 })?;
 
-                let has_run = plugin.function_exists("run");
-                if has_run != has_run_export {
-                    return Err(CapsuleError::UnsupportedEntryPoint(format!(
-                        "pre-scan/post-build run() export mismatch \
-                     (pre-scan: {has_run_export}, post-build: {has_run}). \
-                     Cannot safely determine timeout."
-                    )));
-                }
+                // Wire all 11 Astrid host interfaces from the WIT world.
+                bindings::Capsule::add_to_linker::<
+                    HostState,
+                    wasmtime::component::HasSelf<HostState>,
+                >(&mut linker, |state| state)
+                .map_err(|e| {
+                    CapsuleError::UnsupportedEntryPoint(format!(
+                        "Failed to add Capsule host to linker: {e}"
+                    ))
+                })?;
 
-                // Only allocate the watch channel for run-loop capsules.
-                // UserData is Arc-based so the clone lets us inject the sender
-                // into HostState after the plugin build.
-                let ready_rx = if has_run {
-                    let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
-                    let ud = user_data_ref.get().map_err(|e| {
+                // Compile and instantiate the WASM component.
+                let wasm_component =
+                    Component::from_binary(&wt_engine, &wasm_bytes).map_err(|e| {
                         CapsuleError::UnsupportedEntryPoint(format!(
-                            "Failed to access HostState: {e}"
+                            "Failed to compile WASM component: {e}"
                         ))
                     })?;
-                    ud.lock()
-                        .map_err(|e| {
-                            CapsuleError::UnsupportedEntryPoint(format!(
-                                "HostState lock poisoned: {e}"
-                            ))
-                        })?
-                        .ready_tx = Some(ready_tx);
+
+                let instance = bindings::Capsule::instantiate(&mut store, &wasm_component, &linker)
+                    .map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!(
+                            "Failed to instantiate WASM component: {e}"
+                        ))
+                    })?;
+
+                let has_run = has_run_export;
+
+                let store_arc = Arc::new(Mutex::new(store));
+
+                // Only allocate the watch channel for run-loop capsules.
+                let ready_rx = if has_run {
+                    let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+                    let mut s = store_arc.lock().map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!("Store lock poisoned: {e}"))
+                    })?;
+                    s.data_mut().ready_tx = Some(ready_tx);
                     Some(ready_rx)
                 } else {
                     None
@@ -551,14 +625,10 @@ impl ExecutionEngine for WasmEngine {
                         }
                     }
 
-                    let ud = user_data_ref.get().map_err(|e| {
-                        CapsuleError::UnsupportedEntryPoint(format!(
-                            "Failed to access HostState: {e}"
-                        ))
+                    let mut s = store_arc.lock().map_err(|e| {
+                        CapsuleError::UnsupportedEntryPoint(format!("Store lock poisoned: {e}"))
                     })?;
-                    let mut state = ud.lock().map_err(|e| {
-                        CapsuleError::UnsupportedEntryPoint(format!("HostState lock poisoned: {e}"))
-                    })?;
+                    let state = s.data_mut();
                     // Interceptors are auto-subscribed without check_subscribe_acl.
                     // Their event patterns are declared in [[interceptor]] blocks in
                     // Capsule.toml (operator-controlled, same trust level as ipc_subscribe).
@@ -583,7 +653,7 @@ impl ExecutionEngine for WasmEngine {
                     );
                 }
 
-                Ok::<_, CapsuleError>((plugin, rx, has_run, ready_rx, user_data_ref))
+                Ok::<_, CapsuleError>((store_arc, instance, rx, has_run, ready_rx, wt_engine))
             })?;
 
         // Register UUID-to-CapsuleId mapping so host functions can resolve
@@ -604,8 +674,13 @@ impl ExecutionEngine for WasmEngine {
                 .register_uuid(capsule_uuid, capsule_id);
         }
 
-        let plugin_arc = Arc::new(Mutex::new(plugin));
         self.cancel_token = Some(cancel_token.clone());
+        self.wasmtime_engine = Some(wt_engine.clone());
+
+        // Start the epoch ticker for timeout enforcement.
+        let (epoch_handle, epoch_stop) = spawn_epoch_ticker(&wt_engine);
+        self.epoch_handle = Some(epoch_handle);
+        self.epoch_stop = Some(epoch_stop);
 
         // Spawn a background cancel listener for capsules that can spawn
         // host processes. When `tool.v1.request.cancel` arrives, the listener
@@ -646,41 +721,38 @@ impl ExecutionEngine for WasmEngine {
         if has_run {
             self.ready_rx = ready_rx.map(tokio::sync::Mutex::new);
 
-            // The run loop holds the plugin mutex for its entire lifetime.
-            // We must NOT store the plugin in self.plugin, because the
-            // dispatcher's invoke_interceptor() would try to acquire the same
-            // mutex - causing a deadlock. Run-loop capsules with interceptors
-            // receive events via auto-subscribed IPC channels instead.
+            // The run loop holds the store mutex for its entire lifetime.
+            // We must NOT store the instance for direct invoke_interceptor use,
+            // because run-loop capsules receive events via auto-subscribed IPC
+            // channels instead — no external invoke_interceptor calls.
             let capsule_name = self.manifest.package.name.clone();
+            let run_store = Arc::clone(&store_arc);
+            let run_instance = instance;
             // Must spawn on a worker thread (not spawn_blocking) because WASM
             // host functions (fs, http, kv, etc.) use block_in_place internally,
             // which panics on spawn_blocking threads. Requires multi-thread runtime.
             self.run_handle = Some(tokio::task::spawn(async move {
                 tracing::info!(capsule = %capsule_name, "Starting background WASM run loop");
                 tokio::task::block_in_place(|| {
-                    let mut p = match plugin_arc.lock() {
+                    let mut s = match run_store.lock() {
                         Ok(guard) => guard,
                         Err(e) => {
-                            tracing::error!(capsule = %capsule_name, error = %e, "WASM plugin lock was poisoned");
+                            tracing::error!(capsule = %capsule_name, error = %e, "WASM store lock was poisoned");
                             return;
                         },
                     };
-                    if let Err(e) = p.call::<(), ()>("run", ()) {
+                    if let Err(e) = run_instance.call_run(&mut *s) {
                         tracing::error!(capsule = %capsule_name, error = %e, "WASM background loop failed");
                     }
                 });
             }));
-            // plugin_arc moved into the spawn — self.plugin stays None.
+            // store_arc is also held by run loop — self.store/instance stay None
+            // for run-loop capsules to prevent deadlock in invoke_interceptor.
         } else {
-            self.plugin = Some(plugin_arc);
+            self.store = Some(store_arc);
+            self.instance = Some(instance);
         }
         self.inbound_rx = rx;
-
-        // Store HostState reference for per-invocation context setting.
-        // For run-loop capsules, invoke_interceptor returns NotSupported
-        // (events flow through IPC auto-subscribe), so this is only used
-        // by non-run-loop capsules. Store it unconditionally for simplicity.
-        self.host_state = Some(user_data_ref);
 
         Ok(())
     }
@@ -698,7 +770,16 @@ impl ExecutionEngine for WasmEngine {
         if let Some(handle) = self.run_handle.take() {
             handle.abort();
         }
-        self.plugin = None; // Drop releases WASM memory
+        // Stop the epoch ticker thread.
+        if let Some(stop) = self.epoch_stop.take() {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(handle) = self.epoch_handle.take() {
+            let _ = handle.join();
+        }
+        self.store = None; // Drop releases WASM memory
+        self.instance = None;
+        self.wasmtime_engine = None;
         self.ready_rx = None; // Prevent stale channel observation post-unload
         Ok(())
     }
@@ -729,27 +810,30 @@ impl ExecutionEngine for WasmEngine {
         payload: &[u8],
         caller: Option<&astrid_events::ipc::IpcMessage>,
     ) -> CapsuleResult<crate::capsule::InterceptResult> {
-        let plugin = self.plugin.as_ref().ok_or_else(|| {
+        let store = self.store.as_ref().ok_or_else(|| {
             CapsuleError::NotSupported(
                 "plugin handles interceptors internally via IPC auto-subscribe".into(),
             )
         })?;
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or_else(|| CapsuleError::NotSupported("WASM component not instantiated".into()))?;
 
         // Set per-invocation caller context and KV scope. Recovers from
         // poisoned mutex to prevent stale principal context from persisting.
-        if let Some(ref ud) = self.host_state
-            && let Ok(ud) = ud.get()
         {
-            let mut state = match ud.lock() {
+            let mut s = match store.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
                     tracing::error!(
-                        "HostState lock poisoned during set; recovering to prevent \
+                        "Store lock poisoned during set; recovering to prevent \
                          principal context leak"
                     );
                     poisoned.into_inner()
                 },
             };
+            let state = s.data_mut();
             state.caller_context = caller.cloned();
 
             // Dynamic KV scoping: if the invocation principal differs
@@ -784,16 +868,16 @@ impl ExecutionEngine for WasmEngine {
             CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
         })?;
 
-        // block_in_place is required because Extism host functions (fs, http,
-        // kv, etc.) also call block_in_place internally during plugin.call().
+        // block_in_place is required because wasmtime host functions (fs, http,
+        // kv, etc.) also call block_in_place internally during guest calls.
         // The caller MUST invoke this from a Tokio worker thread (e.g. via
         // tokio::task::spawn), never from spawn_blocking.
         let result = tokio::task::block_in_place(|| {
-            let mut plugin = plugin
+            let mut s = store
                 .lock()
-                .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))?;
-            plugin
-                .call::<&[u8], Vec<u8>>("astrid_hook_trigger", &input)
+                .map_err(|e| CapsuleError::WasmError(format!("store lock poisoned: {e}")))?;
+            instance
+                .call_astrid_hook_trigger(&mut *s, &input)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         });
 
@@ -801,19 +885,18 @@ impl ExecutionEngine for WasmEngine {
         // Prevents stale principal/KV from leaking to any subsequent
         // call path (tool execution, run-loop subscriptions).
         // Recovers from poisoned mutex — principal isolation is critical.
-        if let Some(ref ud) = self.host_state
-            && let Ok(ud) = ud.get()
         {
-            let mut state = match ud.lock() {
+            let mut s = match store.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
                     tracing::error!(
-                        "HostState lock poisoned during post-invocation clear; \
+                        "Store lock poisoned during post-invocation clear; \
                          recovering to prevent principal context leak"
                     );
                     poisoned.into_inner()
                 },
             };
+            let state = s.data_mut();
             state.caller_context = None;
             state.invocation_kv = None;
         }
@@ -856,14 +939,14 @@ pub struct LifecycleConfig {
 
 /// Run a capsule's lifecycle hook (install or upgrade).
 ///
-/// Builds a temporary, short-lived plugin instance with no wall-clock timeout
+/// Builds a temporary, short-lived component instance with no epoch deadline
 /// (lifecycle hooks involve human interaction via `elicit`). If the WASM binary
 /// does not export the relevant function (`astrid_install` or `astrid_upgrade`),
 /// returns `Ok(())` silently.
 ///
 /// # Errors
 ///
-/// Returns an error if the WASM plugin fails to build or the lifecycle hook
+/// Returns an error if the WASM component fails to build or the lifecycle hook
 /// returns an error.
 pub fn run_lifecycle(
     cfg: LifecycleConfig,
@@ -909,6 +992,8 @@ pub fn run_lifecycle(
     };
 
     let host_state = HostState {
+        wasi_ctx: build_wasi_ctx(),
+        resource_table: wasmtime::component::ResourceTable::new(),
         principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
         caller_context: None,
@@ -960,23 +1045,48 @@ pub fn run_lifecycle(
         process_tracker: Arc::new(host::process::ProcessTracker::new()),
     };
 
-    let user_data = UserData::new(host_state);
+    // Build wasmtime engine and store for lifecycle execution.
+    // No epoch deadline — lifecycle hooks involve human interaction via elicit.
+    let wt_engine = build_wasmtime_engine()?;
+    let mut store = Store::new(&wt_engine, host_state);
 
-    let extism_wasm = Wasm::data(cfg.wasm_bytes);
-    // No timeout - lifecycle hooks involve human interaction via elicit.
-    let extism_manifest = Manifest::new([extism_wasm]).with_memory_max(1024);
-
-    let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
-    let builder = register_host_functions(builder, user_data);
-
-    let mut plugin = builder.build().map_err(|e| {
+    let mut linker: Linker<HostState> = Linker::new(&wt_engine);
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| {
         CapsuleError::UnsupportedEntryPoint(format!(
-            "Failed to build Extism plugin for lifecycle: {e}"
+            "Failed to add WASI to linker for lifecycle: {e}"
+        ))
+    })?;
+    bindings::Capsule::add_to_linker::<HostState, wasmtime::component::HasSelf<HostState>>(
+        &mut linker,
+        |state| state,
+    )
+    .map_err(|e| {
+        CapsuleError::UnsupportedEntryPoint(format!(
+            "Failed to add Capsule host to linker for lifecycle: {e}"
         ))
     })?;
 
-    // Check if the export exists - lifecycle hooks are optional
-    if !plugin.function_exists(export_name) {
+    let wasm_component = Component::from_binary(&wt_engine, &cfg.wasm_bytes).map_err(|e| {
+        CapsuleError::UnsupportedEntryPoint(format!(
+            "Failed to compile WASM component for lifecycle: {e}"
+        ))
+    })?;
+
+    let instance =
+        bindings::Capsule::instantiate(&mut store, &wasm_component, &linker).map_err(|e| {
+            CapsuleError::UnsupportedEntryPoint(format!(
+                "Failed to instantiate WASM component for lifecycle: {e}"
+            ))
+        })?;
+
+    // Check if the export exists via pre-scan — lifecycle hooks are optional.
+    // Component Model instantiation requires all exports present in the world,
+    // so we pre-scan the binary to decide whether to call the hook.
+    let has_export = match phase {
+        LifecyclePhase::Install => wasm_exports_contain("astrid-install", &cfg.wasm_bytes),
+        LifecyclePhase::Upgrade => wasm_exports_contain("astrid-upgrade", &cfg.wasm_bytes),
+    };
+    if !has_export {
         tracing::debug!(
             capsule = %cfg.capsule_id,
             export = export_name,
@@ -992,11 +1102,18 @@ pub fn run_lifecycle(
         "Running lifecycle hook"
     );
 
-    // Call the lifecycle export
-    let input = previous_version.unwrap_or("");
-    plugin.call::<&str, ()>(export_name, input).map_err(|e| {
-        CapsuleError::ExecutionFailed(format!("lifecycle hook {export_name} failed: {e}"))
-    })?;
+    // Call the lifecycle export.
+    // Note: Component Model lifecycle exports take no arguments (unlike Extism
+    // which passed previous_version as a string). The previous_version can be
+    // made available via config or a dedicated host function if needed.
+    match phase {
+        LifecyclePhase::Install => instance.call_astrid_install(&mut store).map_err(|e| {
+            CapsuleError::ExecutionFailed(format!("lifecycle hook {export_name} failed: {e}"))
+        })?,
+        LifecyclePhase::Upgrade => instance.call_astrid_upgrade(&mut store).map_err(|e| {
+            CapsuleError::ExecutionFailed(format!("lifecycle hook {export_name} failed: {e}"))
+        })?,
+    }
 
     tracing::info!(
         capsule = %cfg.capsule_id,
@@ -1009,21 +1126,38 @@ pub fn run_lifecycle(
 
 /// Pre-scans a WASM binary's export section to check whether it exports a
 /// function named `run`. This is used to decide whether to apply the
-/// short-lived tool timeout *before* building the Extism plugin (which is
-/// the only point at which `function_exists` becomes available).
+/// short-lived tool timeout *before* instantiating the component.
 ///
 /// On any parse error, returns `true` (no timeout) - the safe direction.
-/// A truly corrupt binary will fail the subsequent Extism build anyway.
+/// A truly corrupt binary will fail the subsequent Component::from_binary anyway.
 fn wasm_exports_contain_run(wasm_bytes: &[u8]) -> bool {
+    wasm_exports_contain("run", wasm_bytes)
+}
+
+/// Pre-scans a WASM binary's export section to check whether it exports a
+/// function with the given name.
+///
+/// On any parse error, returns `true` (safe default: assume export exists).
+fn wasm_exports_contain(name: &str, wasm_bytes: &[u8]) -> bool {
     for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
         match payload {
             Ok(wasmparser::Payload::ExportSection(reader)) => {
                 // Only one export section per module; return immediately.
                 return reader.into_iter().any(|export| match export {
-                    Ok(e) => e.name == "run" && e.kind == wasmparser::ExternalKind::Func,
+                    Ok(e) => e.name == name && e.kind == wasmparser::ExternalKind::Func,
                     Err(e) => {
                         tracing::warn!("failed to parse WASM export entry: {e}");
                         true // safe default: skip timeout
+                    },
+                });
+            },
+            // Component Model binaries have a ComponentExportSection.
+            Ok(wasmparser::Payload::ComponentExportSection(reader)) => {
+                return reader.into_iter().any(|export| match export {
+                    Ok(e) => e.name.0 == name,
+                    Err(e) => {
+                        tracing::warn!("failed to parse component export entry: {e}");
+                        true
                     },
                 });
             },
@@ -1056,15 +1190,15 @@ mod tests {
     /// without panicking — matching the lock error handling in `load()`.
     #[tokio::test]
     async fn poisoned_lock_in_run_loop_does_not_panic() {
-        let plugin_arc: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_plugin".into()));
-        poison_mutex(&plugin_arc);
+        let store_arc: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_store".into()));
+        poison_mutex(&store_arc);
 
         let handle = tokio::task::spawn_blocking(move || {
             let capsule_name = "test-capsule";
-            let _p = match plugin_arc.lock() {
+            let _s = match store_arc.lock() {
                 Ok(guard) => guard,
                 Err(e) => {
-                    tracing::error!(capsule = %capsule_name, error = %e, "WASM plugin lock was poisoned");
+                    tracing::error!(capsule = %capsule_name, error = %e, "WASM store lock was poisoned");
                     return false;
                 },
             };
@@ -1077,15 +1211,15 @@ mod tests {
     }
 
     /// Verifies that a poisoned mutex in the invoke_interceptor pattern
-    /// returns a WasmError instead of panicking — matching lines 320-322.
+    /// returns a WasmError instead of panicking.
     #[test]
     fn poisoned_lock_in_interceptor_returns_error() {
-        let plugin: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_plugin".into()));
-        poison_mutex(&plugin);
+        let store: Arc<Mutex<String>> = Arc::new(Mutex::new("fake_store".into()));
+        poison_mutex(&store);
 
-        let result: CapsuleResult<Vec<u8>> = plugin
+        let result: CapsuleResult<Vec<u8>> = store
             .lock()
-            .map_err(|e| CapsuleError::WasmError(format!("plugin lock poisoned: {e}")))
+            .map_err(|e| CapsuleError::WasmError(format!("store lock poisoned: {e}")))
             .map(|_guard| vec![]);
 
         assert!(result.is_err());

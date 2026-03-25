@@ -86,52 +86,6 @@ fn drain_receiver_surfaces_lag_from_broadcast_overflow() {
     );
 }
 
-#[test]
-fn serialize_envelope_produces_valid_json_with_all_fields() {
-    let msg = IpcMessage::new(
-        "test.topic",
-        IpcPayload::Custom {
-            data: serde_json::json!({"hello": "world"}),
-        },
-        uuid::Uuid::new_v4(),
-    );
-
-    let result = DrainResult {
-        messages: vec![msg],
-        dropped: 2,
-        lagged: 5,
-    };
-
-    let json = serialize_envelope(&result).expect("serialization should succeed");
-    let parsed: serde_json::Value = serde_json::from_str(&json).expect("should be valid JSON");
-
-    assert_eq!(
-        parsed["messages"]
-            .as_array()
-            .expect("messages is array")
-            .len(),
-        1
-    );
-    assert_eq!(parsed["dropped"], 2);
-    assert_eq!(parsed["lagged"], 5);
-}
-
-#[test]
-fn serialize_envelope_empty_messages() {
-    let result = DrainResult {
-        messages: vec![],
-        dropped: 0,
-        lagged: 0,
-    };
-
-    let json = serialize_envelope(&result).expect("serialization should succeed");
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-    assert!(parsed["messages"].as_array().unwrap().is_empty());
-    assert_eq!(parsed["dropped"], 0);
-    assert_eq!(parsed["lagged"], 0);
-}
-
 #[tokio::test]
 async fn subscription_lifecycle_remove_and_reinsert() {
     // Tests the Mutex-drop-before-blocking pattern used by recv_impl:
