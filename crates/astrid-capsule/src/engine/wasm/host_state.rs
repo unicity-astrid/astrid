@@ -52,6 +52,8 @@ pub struct HostState {
     pub wasi_ctx: wasmtime_wasi::WasiCtx,
     /// Resource table for WASI resource types (streams, descriptors, etc.).
     pub resource_table: wasmtime::component::ResourceTable,
+    /// Memory limits for the WASM store (64 MB cap).
+    pub store_limits: wasmtime::StoreLimits,
     /// The principal this capsule is running on behalf of.
     pub principal: astrid_core::principal::PrincipalId,
     /// The plugin this state belongs to.
@@ -339,6 +341,7 @@ mod tests {
         let state = HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -415,6 +418,7 @@ mod tests {
         let mut state = HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -496,6 +500,7 @@ mod tests {
         let mut state = HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -573,6 +578,7 @@ mod tests {
         let mut state = HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -666,6 +672,7 @@ mod tests {
         let mut state = HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,

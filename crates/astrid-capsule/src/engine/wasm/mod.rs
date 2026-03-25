@@ -134,11 +134,8 @@ pub struct WasmEngine {
     /// Cancellation token for cooperative shutdown of blocking host functions.
     /// Triggered during `unload()` before aborting the run handle.
     cancel_token: Option<tokio_util::sync::CancellationToken>,
-    /// Handle for the background epoch incrementer thread.
-    /// Dropped during unload to stop the ticker.
-    epoch_handle: Option<std::thread::JoinHandle<()>>,
-    /// Flag to signal the epoch incrementer thread to stop.
-    epoch_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// RAII guard that stops the epoch ticker thread on drop.
+    epoch_ticker: Option<EpochTickerGuard>,
 }
 
 impl WasmEngine {
@@ -153,14 +150,17 @@ impl WasmEngine {
             run_handle: None,
             ready_rx: None,
             cancel_token: None,
-            epoch_handle: None,
-            epoch_stop: None,
+            epoch_ticker: None,
         }
     }
 }
 
 /// Build a `wasmtime::Engine` configured for Component Model execution
 /// with epoch-based interruption.
+/// Maximum WASM linear memory per capsule (64 MB).
+/// Matches the old Extism `with_memory_max(1024)` (1024 pages * 64KB).
+const WASM_MAX_MEMORY_BYTES: usize = 64 * 1024 * 1024;
+
 fn build_wasmtime_engine() -> CapsuleResult<wasmtime::Engine> {
     let mut config = wasmtime::Config::new();
     config.wasm_component_model(true).epoch_interruption(true);
@@ -180,18 +180,30 @@ fn build_wasi_ctx() -> wasmtime_wasi::WasiCtx {
         .build()
 }
 
-/// Spawn a background OS thread that periodically increments the engine
-/// epoch. Returns the thread handle and a stop flag.
+/// RAII guard that stops the epoch ticker thread when dropped.
 ///
-/// The caller sets `store.epoch_deadline_trap(deadline)` before calling
+/// Ensures the ticker is cleaned up even on early error returns.
+pub struct EpochTickerGuard {
+    handle: Option<std::thread::JoinHandle<()>>,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Drop for EpochTickerGuard {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+}
+
+/// Spawn a background OS thread that periodically increments the engine
+/// epoch. Returns an RAII guard that stops the thread when dropped.
+///
+/// The caller sets `store.set_epoch_deadline(deadline)` before calling
 /// into the guest. Each tick increments the epoch by 1, so a deadline of
 /// `N` means the guest traps after approximately `N * EPOCH_TICK_INTERVAL`.
-fn spawn_epoch_ticker(
-    engine: &wasmtime::Engine,
-) -> (
-    std::thread::JoinHandle<()>,
-    Arc<std::sync::atomic::AtomicBool>,
-) {
+fn spawn_epoch_ticker(engine: &wasmtime::Engine) -> EpochTickerGuard {
     let engine = engine.clone();
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stop_clone = stop.clone();
@@ -204,7 +216,10 @@ fn spawn_epoch_ticker(
             }
         })
         .expect("failed to spawn epoch ticker thread");
-    (handle, stop)
+    EpochTickerGuard {
+        handle: Some(handle),
+        stop,
+    }
 }
 
 #[async_trait]
@@ -451,6 +466,9 @@ impl ExecutionEngine for WasmEngine {
                 let host_state = HostState {
                     wasi_ctx: build_wasi_ctx(),
                     resource_table: wasmtime::component::ResourceTable::new(),
+                    store_limits: wasmtime::StoreLimitsBuilder::new()
+                        .memory_size(WASM_MAX_MEMORY_BYTES)
+                        .build(),
                     principal: ctx.principal.clone(),
                     capsule_uuid,
                     caller_context: None,
@@ -528,6 +546,9 @@ impl ExecutionEngine for WasmEngine {
                 let wt_engine = build_wasmtime_engine()?;
                 let mut store = Store::new(&wt_engine, host_state);
 
+                // Memory limit: 64 MB per capsule (matches old Extism setting).
+                store.limiter(|state| &mut state.store_limits);
+
                 // Epoch-based timeout for non-daemon capsules.
                 // Long-lived capsules (uplinks, run-loop daemons) must not
                 // have a wall-clock timeout. Other capsules get a safety
@@ -540,6 +561,11 @@ impl ExecutionEngine for WasmEngine {
                     let deadline =
                         WASM_CAPSULE_TIMEOUT_SECS * 1000 / EPOCH_TICK_INTERVAL.as_millis() as u64;
                     store.set_epoch_deadline(deadline);
+                } else {
+                    // Long-lived capsules: set deadline to u64::MAX so the epoch
+                    // ticker doesn't trap them. Without this, the default deadline
+                    // of 0 would cause an immediate trap on the first tick.
+                    store.set_epoch_deadline(u64::MAX);
                 }
 
                 let mut linker: Linker<HostState> = Linker::new(&wt_engine);
@@ -678,9 +704,7 @@ impl ExecutionEngine for WasmEngine {
         self.wasmtime_engine = Some(wt_engine.clone());
 
         // Start the epoch ticker for timeout enforcement.
-        let (epoch_handle, epoch_stop) = spawn_epoch_ticker(&wt_engine);
-        self.epoch_handle = Some(epoch_handle);
-        self.epoch_stop = Some(epoch_stop);
+        self.epoch_ticker = Some(spawn_epoch_ticker(&wt_engine));
 
         // Spawn a background cancel listener for capsules that can spawn
         // host processes. When `tool.v1.request.cancel` arrives, the listener
@@ -770,13 +794,8 @@ impl ExecutionEngine for WasmEngine {
         if let Some(handle) = self.run_handle.take() {
             handle.abort();
         }
-        // Stop the epoch ticker thread.
-        if let Some(stop) = self.epoch_stop.take() {
-            stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        if let Some(handle) = self.epoch_handle.take() {
-            let _ = handle.join();
-        }
+        // Stop the epoch ticker thread (RAII guard joins on drop).
+        drop(self.epoch_ticker.take());
         self.store = None; // Drop releases WASM memory
         self.instance = None;
         self.wasmtime_engine = None;
@@ -996,6 +1015,9 @@ pub fn run_lifecycle(
 
     let host_state = HostState {
         wasi_ctx: build_wasi_ctx(),
+        store_limits: wasmtime::StoreLimitsBuilder::new()
+            .memory_size(WASM_MAX_MEMORY_BYTES)
+            .build(),
         resource_table: wasmtime::component::ResourceTable::new(),
         principal: astrid_core::PrincipalId::default(),
         capsule_uuid: uuid::Uuid::new_v4(),
@@ -1056,7 +1078,7 @@ pub fn run_lifecycle(
     let mut store = Store::new(&wt_engine, host_state);
     let deadline_ticks = LIFECYCLE_TIMEOUT_SECS * 10; // 100ms per tick
     store.set_epoch_deadline(deadline_ticks);
-    let (epoch_handle, epoch_stop) = spawn_epoch_ticker(&wt_engine);
+    let _epoch_guard = spawn_epoch_ticker(&wt_engine);
 
     let mut linker: Linker<HostState> = Linker::new(&wt_engine);
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| {
@@ -1107,9 +1129,7 @@ pub fn run_lifecycle(
         })?,
     }
 
-    // Stop the safety-net epoch ticker.
-    epoch_stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    let _ = epoch_handle.join();
+    // Epoch ticker guard drops automatically (RAII).
 
     tracing::info!(
         capsule = %cfg.capsule_id,

@@ -56,8 +56,9 @@ pub(crate) struct WasmHandler {
     kv: Option<ScopedKvStore>,
     /// Workspace root for file operations.
     workspace_root: PathBuf,
-    /// Signal to stop the epoch ticker thread on drop.
-    _epoch_stop: Arc<std::sync::atomic::AtomicBool>,
+    /// Epoch ticker stop signal + thread handle (cleaned up on drop).
+    epoch_stop: Arc<std::sync::atomic::AtomicBool>,
+    epoch_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WasmHandler {
@@ -75,7 +76,7 @@ impl WasmHandler {
         let epoch_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop_clone = epoch_stop.clone();
         let ticker_engine = engine.clone();
-        std::thread::Builder::new()
+        let epoch_handle = std::thread::Builder::new()
             .name("hook-epoch-ticker".into())
             .spawn(move || {
                 while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
@@ -91,7 +92,8 @@ impl WasmHandler {
             config: WasmConfig::default(),
             kv: None,
             workspace_root,
-            _epoch_stop: epoch_stop,
+            epoch_stop,
+            epoch_handle: Some(epoch_handle),
         }
     }
 
@@ -288,6 +290,9 @@ impl WasmHandler {
         Ok(HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new()
+                .memory_size(usize::try_from(self.config.max_memory_bytes).unwrap_or(usize::MAX))
+                .build(),
             principal: astrid_core::PrincipalId::default(),
             capsule_uuid: uuid::Uuid::new_v4(),
             caller_context: None,
@@ -345,6 +350,16 @@ impl WasmHandler {
                 astrid_capsule::engine::wasm::host::process::ProcessTracker::new(),
             ),
         })
+    }
+}
+
+impl Drop for WasmHandler {
+    fn drop(&mut self) {
+        self.epoch_stop
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.epoch_handle.take() {
+            let _ = h.join();
+        }
     }
 }
 
