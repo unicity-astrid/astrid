@@ -410,7 +410,10 @@ impl process::Host for HostState {
         }
 
         let process_id = self.next_process_id;
-        self.next_process_id += 1;
+        self.next_process_id = self
+            .next_process_id
+            .checked_add(1)
+            .ok_or_else(|| "process handle ID space exhausted".to_string())?;
 
         if let Some(child) = managed.child.as_mut() {
             if let Some(stdout) = child.stdout.take() {

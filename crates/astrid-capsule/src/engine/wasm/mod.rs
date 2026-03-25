@@ -806,7 +806,7 @@ impl ExecutionEngine for WasmEngine {
 
     fn invoke_interceptor(
         &self,
-        action: &str,
+        _action: &str,
         payload: &[u8],
         caller: Option<&astrid_events::ipc::IpcMessage>,
     ) -> CapsuleResult<crate::capsule::InterceptResult> {
@@ -858,15 +858,9 @@ impl ExecutionEngine for WasmEngine {
                 });
         }
 
-        // Build the same __AstridToolRequest the macro expects:
-        // { "name": "<action>", "arguments": [<payload bytes>] }
-        let request = serde_json::json!({
-            "name": action,
-            "arguments": payload,
-        });
-        let input = serde_json::to_vec(&request).map_err(|e| {
-            CapsuleError::ExecutionFailed(format!("failed to serialize interceptor request: {e}"))
-        })?;
+        // Pass payload bytes directly to the Component Model export.
+        // The guest receives raw bytes via `list<u8>` and deserializes
+        // internally (the SDK `#[capsule]` macro handles dispatch).
 
         // block_in_place is required because wasmtime host functions (fs, http,
         // kv, etc.) also call block_in_place internally during guest calls.
@@ -877,7 +871,7 @@ impl ExecutionEngine for WasmEngine {
                 .lock()
                 .map_err(|e| CapsuleError::WasmError(format!("store lock poisoned: {e}")))?;
             instance
-                .call_astrid_hook_trigger(&mut *s, &input)
+                .call_astrid_hook_trigger(&mut *s, payload)
                 .map_err(|e| CapsuleError::WasmError(format!("astrid_hook_trigger failed: {e:?}")))
         });
 
@@ -954,9 +948,21 @@ pub fn run_lifecycle(
     previous_version: Option<&str>,
 ) -> CapsuleResult<()> {
     let export_name = match phase {
-        LifecyclePhase::Install => "astrid_install",
-        LifecyclePhase::Upgrade => "astrid_upgrade",
+        LifecyclePhase::Install => "astrid-install",
+        LifecyclePhase::Upgrade => "astrid-upgrade",
     };
+
+    // Pre-scan: check if the export exists before expensive compilation.
+    // Lifecycle hooks are optional — most capsules don't have them.
+    let has_export = wasm_exports_contain(export_name, &cfg.wasm_bytes);
+    if !has_export {
+        tracing::debug!(
+            capsule = %cfg.capsule_id,
+            export = export_name,
+            "Capsule does not export lifecycle hook, skipping"
+        );
+        return Ok(());
+    }
 
     // Build a minimal VFS for workspace
     let vfs = astrid_vfs::HostVfs::new();
@@ -1046,9 +1052,14 @@ pub fn run_lifecycle(
     };
 
     // Build wasmtime engine and store for lifecycle execution.
-    // No epoch deadline — lifecycle hooks involve human interaction via elicit.
+    // Lifecycle hooks may block on elicit (human interaction), so use a generous
+    // 10-minute safety-net deadline to catch runaway/malicious install hooks.
+    const LIFECYCLE_TIMEOUT_SECS: u64 = 10 * 60;
     let wt_engine = build_wasmtime_engine()?;
     let mut store = Store::new(&wt_engine, host_state);
+    let deadline_ticks = LIFECYCLE_TIMEOUT_SECS * 10; // 100ms per tick
+    store.set_epoch_deadline(deadline_ticks);
+    let (epoch_handle, epoch_stop) = spawn_epoch_ticker(&wt_engine);
 
     let mut linker: Linker<HostState> = Linker::new(&wt_engine);
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| {
@@ -1079,22 +1090,6 @@ pub fn run_lifecycle(
             ))
         })?;
 
-    // Check if the export exists via pre-scan — lifecycle hooks are optional.
-    // Component Model instantiation requires all exports present in the world,
-    // so we pre-scan the binary to decide whether to call the hook.
-    let has_export = match phase {
-        LifecyclePhase::Install => wasm_exports_contain("astrid-install", &cfg.wasm_bytes),
-        LifecyclePhase::Upgrade => wasm_exports_contain("astrid-upgrade", &cfg.wasm_bytes),
-    };
-    if !has_export {
-        tracing::debug!(
-            capsule = %cfg.capsule_id,
-            export = export_name,
-            "Capsule does not export lifecycle hook, skipping"
-        );
-        return Ok(());
-    }
-
     tracing::info!(
         capsule = %cfg.capsule_id,
         phase = ?phase,
@@ -1114,6 +1109,10 @@ pub fn run_lifecycle(
             CapsuleError::ExecutionFailed(format!("lifecycle hook {export_name} failed: {e}"))
         })?,
     }
+
+    // Stop the safety-net epoch ticker.
+    epoch_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = epoch_handle.join();
 
     tracing::info!(
         capsule = %cfg.capsule_id,

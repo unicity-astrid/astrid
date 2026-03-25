@@ -56,6 +56,8 @@ pub(crate) struct WasmHandler {
     kv: Option<ScopedKvStore>,
     /// Workspace root for file operations.
     workspace_root: PathBuf,
+    /// Signal to stop the epoch ticker thread on drop.
+    _epoch_stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl WasmHandler {
@@ -69,12 +71,27 @@ impl WasmHandler {
         let engine =
             wasmtime::Engine::new(&wt_config).expect("failed to create wasmtime engine for hooks");
 
+        // Spawn epoch ticker so that epoch deadlines on Store actually fire.
+        let epoch_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_clone = epoch_stop.clone();
+        let ticker_engine = engine.clone();
+        std::thread::Builder::new()
+            .name("hook-epoch-ticker".into())
+            .spawn(move || {
+                while !stop_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(100));
+                    ticker_engine.increment_epoch();
+                }
+            })
+            .expect("failed to spawn hook epoch ticker");
+
         Self {
             engine,
             cached_components: Mutex::new(HashMap::new()),
             config: WasmConfig::default(),
             kv: None,
             workspace_root,
+            _epoch_stop: epoch_stop,
         }
     }
 
