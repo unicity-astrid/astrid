@@ -1,11 +1,12 @@
-//! WASM hook handler powered by Extism.
+//! WASM hook handler powered by wasmtime Component Model.
 //!
-//! Loads a WASM module and calls its `run-hook` export, passing a serialized
-//! [`CapsuleAbiContext`](capsule_abi::CapsuleAbiContext) and interpreting
-//! the returned [`CapsuleAbiResult`](capsule_abi::CapsuleAbiResult).
+//! Loads a WASM component and calls its `astrid-hook-trigger` export, passing a
+//! serialized [`CapsuleAbiContext`](capsule_abi::CapsuleAbiContext) as `list<u8>`
+//! and interpreting the returned bytes as a
+//! [`CapsuleAbiResult`](capsule_abi::CapsuleAbiResult).
 //!
-//! Host functions are shared with the capsule system via
-//! [`astrid_capsule::engine::wasm`].
+//! Host functions are provided via `Capsule::add_to_linker` (wasmtime bindgen)
+//! and `wasmtime_wasi::p2::add_to_linker_sync`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,25 +14,28 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use astrid_capsule::capsule::CapsuleId;
-#[expect(deprecated)]
-use astrid_capsule::engine::wasm::host::register_host_functions;
+use astrid_capsule::engine::wasm::bindings;
 use astrid_capsule::engine::wasm::host_state::HostState;
 use astrid_core::capsule_abi;
 use astrid_storage::kv::ScopedKvStore;
-use extism::{Manifest, PluginBuilder, UserData, Wasm};
 use tracing::{debug, warn};
+use wasmtime::Store;
+use wasmtime::component::{Component, Linker};
 
 use super::{HandlerError, HandlerResult};
 use crate::hook::HookHandler;
 use crate::result::{HookContext, HookExecutionResult, HookResult};
 
-/// Handler for WASM modules.
+/// Handler for WASM components.
 ///
-/// Lazily loads the WASM module on first invocation and caches the Extism
-/// plugin instance for subsequent calls.
+/// Lazily compiles the WASM component on first invocation and caches the
+/// compiled [`Component`] (immutable, thread-safe) for subsequent calls.
+/// A fresh [`Store`] is created for each invocation.
 pub(crate) struct WasmHandler {
-    /// Cached Extism plugin (lazy-loaded).
-    cached_plugin: Mutex<HashMap<String, Arc<Mutex<extism::Plugin>>>>,
+    /// Cached wasmtime engine (shared across all components).
+    engine: wasmtime::Engine,
+    /// Cached compiled components (lazy-loaded, keyed by module path).
+    cached_components: Mutex<HashMap<String, Arc<Component>>>,
     /// Configuration for WASM execution.
     config: WasmConfig,
     /// KV store for hook state (scoped to `hook:wasm`).
@@ -44,8 +48,16 @@ impl WasmHandler {
     /// Create a new WASM handler.
     #[must_use]
     pub(crate) fn new(workspace_root: PathBuf) -> Self {
+        let mut wt_config = wasmtime::Config::new();
+        wt_config
+            .wasm_component_model(true)
+            .epoch_interruption(true);
+        let engine =
+            wasmtime::Engine::new(&wt_config).expect("failed to create wasmtime engine for hooks");
+
         Self {
-            cached_plugin: Mutex::new(HashMap::new()),
+            engine,
+            cached_components: Mutex::new(HashMap::new()),
             config: WasmConfig::default(),
             kv: None,
             workspace_root,
@@ -68,8 +80,9 @@ impl WasmHandler {
 
     /// Execute a WASM handler.
     ///
-    /// Loads the WASM module (or uses the cached instance), then calls the
-    /// specified function with a serialized `CapsuleAbiContext`.
+    /// Compiles the component (or uses the cached one), creates a fresh
+    /// [`Store`], instantiates, and calls `astrid-hook-trigger` with a
+    /// JSON-serialized `CapsuleAbiContext`.
     ///
     /// # Errors
     ///
@@ -93,9 +106,9 @@ impl WasmHandler {
 
         debug!(module_path = %module_path, function = %function, "executing WASM hook handler");
 
-        // Get or create cached plugin instance
-        let plugin = self
-            .get_or_load_plugin(module_path)
+        // Get or compile cached component
+        let component = self
+            .get_or_compile_component(module_path)
             .map_err(|e| HandlerError::WasmFailed(format!("failed to load WASM module: {e}")))?;
 
         // Build CapsuleAbiContext from HookContext
@@ -112,24 +125,55 @@ impl WasmHandler {
             },
         };
 
-        let input_json = serde_json::to_string(&capsule_context)
+        let input_bytes = serde_json::to_vec(&capsule_context)
             .map_err(|e| HandlerError::WasmFailed(format!("failed to serialize context: {e}")))?;
 
-        // Call the WASM function
-        let result = tokio::task::block_in_place(|| {
-            let mut plugin_guard = plugin
-                .lock()
-                .map_err(|e| HandlerError::WasmFailed(format!("plugin lock poisoned: {e}")))?;
-            plugin_guard
-                .call::<&str, String>(function, &input_json)
-                .map_err(|e| HandlerError::WasmFailed(format!("{function} call failed: {e}")))
+        // Build a fresh Store + HostState for this invocation
+        let host_state = self.build_host_state(module_path)?;
+        let mut store = Store::new(&self.engine, host_state);
+
+        // Set epoch deadline for timeout enforcement.
+        // Epoch ticks at 100ms intervals; convert max_execution_time to ticks.
+        let deadline_ticks =
+            u64::try_from(self.config.max_execution_time.as_millis() / 100).unwrap_or(u64::MAX);
+        store.set_epoch_deadline(deadline_ticks.max(1));
+
+        // Build linker with WASI + Astrid host interfaces
+        let mut linker: Linker<HostState> = Linker::new(&self.engine);
+
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+            .map_err(|e| HandlerError::WasmFailed(format!("failed to add WASI to linker: {e}")))?;
+
+        bindings::Capsule::add_to_linker::<HostState, wasmtime::component::HasSelf<HostState>>(
+            &mut linker,
+            |state| state,
+        )
+        .map_err(|e| {
+            HandlerError::WasmFailed(format!("failed to add Capsule host to linker: {e}"))
         })?;
 
-        // Parse CapsuleAbiResult
-        let capsule_result: capsule_abi::CapsuleAbiResult =
-            serde_json::from_str(&result).map_err(|e| {
-                HandlerError::ParseError(format!("failed to parse CapsuleAbiResult: {e}"))
+        // Instantiate the component
+        let instance =
+            bindings::Capsule::instantiate(&mut store, &component, &linker).map_err(|e| {
+                HandlerError::WasmFailed(format!("failed to instantiate WASM component: {e}"))
             })?;
+
+        // Call the astrid-hook-trigger export.
+        // The Component Model has a single export; the hook name is embedded in
+        // the CapsuleAbiContext payload so the guest can dispatch internally.
+        let result_bytes = tokio::task::block_in_place(|| {
+            instance
+                .call_astrid_hook_trigger(&mut store, &input_bytes)
+                .map_err(|e| {
+                    HandlerError::WasmFailed(format!("astrid-hook-trigger call failed: {e}"))
+                })
+        })?;
+
+        // Parse CapsuleAbiResult from the returned bytes
+        let capsule_result: capsule_abi::CapsuleAbiResult = serde_json::from_slice(&result_bytes)
+            .map_err(|e| {
+            HandlerError::ParseError(format!("failed to parse CapsuleAbiResult: {e}"))
+        })?;
 
         // Map CapsuleAbiResult.action to HookResult
         let hook_result = map_capsule_result_to_hook_result(&capsule_result);
@@ -146,22 +190,18 @@ impl WasmHandler {
         true
     }
 
-    /// Get a cached plugin or load it from disk.
-    #[expect(clippy::too_many_lines)]
-    fn get_or_load_plugin(
-        &self,
-        module_path: &str,
-    ) -> Result<Arc<Mutex<extism::Plugin>>, HandlerError> {
+    /// Get a cached compiled component or compile it from disk.
+    fn get_or_compile_component(&self, module_path: &str) -> Result<Arc<Component>, HandlerError> {
         let mut cache = self
-            .cached_plugin
+            .cached_components
             .lock()
             .map_err(|e| HandlerError::WasmFailed(format!("cache lock poisoned: {e}")))?;
 
-        if let Some(plugin) = cache.get(module_path) {
-            return Ok(Arc::clone(plugin));
+        if let Some(component) = cache.get(module_path) {
+            return Ok(Arc::clone(component));
         }
 
-        // Load the WASM module
+        // Resolve the WASM module path
         let wasm_path = PathBuf::from(module_path);
         let resolved = if wasm_path.is_absolute() {
             wasm_path
@@ -176,7 +216,19 @@ impl WasmHandler {
             ))
         })?;
 
-        // Build host state (hooks get a simple HostState with no security gate)
+        // Compile the WASM component
+        let component = Component::from_binary(&self.engine, &wasm_bytes).map_err(|e| {
+            HandlerError::WasmFailed(format!("failed to compile WASM component: {e}"))
+        })?;
+
+        let component_arc = Arc::new(component);
+        cache.insert(module_path.to_string(), Arc::clone(&component_arc));
+
+        Ok(component_arc)
+    }
+
+    /// Build a [`HostState`] with minimal permissions for hook execution.
+    fn build_host_state(&self, module_path: &str) -> Result<HostState, HandlerError> {
         let kv = if let Some(kv) = &self.kv {
             kv.clone()
         } else {
@@ -206,7 +258,7 @@ impl WasmHandler {
             tokio::runtime::Handle::current(),
         );
 
-        let host_state = HostState {
+        Ok(HostState {
             wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
             resource_table: wasmtime::component::ResourceTable::new(),
             principal: astrid_core::PrincipalId::default(),
@@ -265,29 +317,7 @@ impl WasmHandler {
             process_tracker: Arc::new(
                 astrid_capsule::engine::wasm::host::process::ProcessTracker::new(),
             ),
-        };
-        let user_data = UserData::new(host_state);
-
-        // Build Extism plugin
-        let extism_wasm = Wasm::data(wasm_bytes);
-        let mut extism_manifest = Manifest::new([extism_wasm]);
-        extism_manifest = extism_manifest.with_timeout(self.config.max_execution_time);
-        // WASM pages are 64KB each; cap at u32::MAX pages if the byte limit is very large
-        let pages = self.config.max_memory_bytes / (64 * 1024);
-        let max_pages = u32::try_from(pages).unwrap_or(u32::MAX);
-        extism_manifest = extism_manifest.with_memory_max(max_pages);
-
-        let builder = PluginBuilder::new(extism_manifest).with_wasi(true);
-        #[expect(deprecated)]
-        let builder = register_host_functions(builder, user_data);
-        let plugin = builder
-            .build()
-            .map_err(|e| HandlerError::WasmFailed(format!("failed to build Extism plugin: {e}")))?;
-
-        let plugin_arc = Arc::new(Mutex::new(plugin));
-        cache.insert(module_path.to_string(), Arc::clone(&plugin_arc));
-
-        Ok(plugin_arc)
+        })
     }
 }
 
