@@ -69,7 +69,6 @@ dashmap = "6.1.0"
 dialoguer = "0.11"
 directories = "5.0"
 ed25519-dalek = { version = "2.1", features = ["rand_core", "zeroize", "serde"] }
-extism = "1"
 flate2 = "1.0"
 fs2 = "0.4"
 futures = "0.3"

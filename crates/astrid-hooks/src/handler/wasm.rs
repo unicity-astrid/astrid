@@ -1,9 +1,8 @@
 //! WASM hook handler powered by wasmtime Component Model.
 //!
 //! Loads a WASM component and calls its `astrid-hook-trigger` export, passing a
-//! serialized [`CapsuleAbiContext`](capsule_abi::CapsuleAbiContext) as `list<u8>`
-//! and interpreting the returned bytes as a
-//! [`CapsuleAbiResult`](capsule_abi::CapsuleAbiResult).
+//! serialized [`HookAbiContext`] as `list<u8>` and interpreting the returned
+//! bytes as a [`HookAbiResult`].
 //!
 //! Host functions are provided via `Capsule::add_to_linker` (wasmtime bindgen)
 //! and `wasmtime_wasi::p2::add_to_linker_sync`.
@@ -16,7 +15,6 @@ use std::time::Duration;
 use astrid_capsule::capsule::CapsuleId;
 use astrid_capsule::engine::wasm::bindings;
 use astrid_capsule::engine::wasm::host_state::HostState;
-use astrid_core::capsule_abi;
 use astrid_storage::kv::ScopedKvStore;
 use tracing::{debug, warn};
 use wasmtime::Store;
@@ -25,6 +23,22 @@ use wasmtime::component::{Component, Linker};
 use super::{HandlerError, HandlerResult};
 use crate::hook::HookHandler;
 use crate::result::{HookContext, HookExecutionResult, HookResult};
+
+/// Context passed to a WASM hook (serialized as JSON bytes).
+#[derive(serde::Serialize)]
+struct HookAbiContext {
+    event: String,
+    session_id: String,
+    user_id: Option<String>,
+    data: Option<String>,
+}
+
+/// Result returned by a WASM hook (deserialized from JSON bytes).
+#[derive(serde::Deserialize)]
+struct HookAbiResult {
+    action: String,
+    data: Option<String>,
+}
 
 /// Handler for WASM components.
 ///
@@ -112,7 +126,7 @@ impl WasmHandler {
             .map_err(|e| HandlerError::WasmFailed(format!("failed to load WASM module: {e}")))?;
 
         // Build CapsuleAbiContext from HookContext
-        let capsule_context = capsule_abi::CapsuleAbiContext {
+        let capsule_context = HookAbiContext {
             event: context.event.to_string(),
             session_id: context
                 .session_id
@@ -170,8 +184,7 @@ impl WasmHandler {
         })?;
 
         // Parse CapsuleAbiResult from the returned bytes
-        let capsule_result: capsule_abi::CapsuleAbiResult = serde_json::from_slice(&result_bytes)
-            .map_err(|e| {
+        let capsule_result: HookAbiResult = serde_json::from_slice(&result_bytes).map_err(|e| {
             HandlerError::ParseError(format!("failed to parse CapsuleAbiResult: {e}"))
         })?;
 
@@ -331,7 +344,7 @@ impl std::fmt::Debug for WasmHandler {
 }
 
 /// Map a `CapsuleAbiResult` action string to a `HookResult`.
-fn map_capsule_result_to_hook_result(result: &capsule_abi::CapsuleAbiResult) -> HookResult {
+fn map_capsule_result_to_hook_result(result: &HookAbiResult) -> HookResult {
     match result.action.as_str() {
         "continue" => HookResult::Continue,
         "block" => {
@@ -401,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_map_capsule_result_continue() {
-        let result = capsule_abi::CapsuleAbiResult {
+        let result = HookAbiResult {
             action: "continue".into(),
             data: None,
         };
@@ -411,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_map_capsule_result_block() {
-        let result = capsule_abi::CapsuleAbiResult {
+        let result = HookAbiResult {
             action: "block".into(),
             data: Some("policy violation".into()),
         };
@@ -421,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_map_capsule_result_ask() {
-        let result = capsule_abi::CapsuleAbiResult {
+        let result = HookAbiResult {
             action: "ask".into(),
             data: Some("Are you sure?".into()),
         };
@@ -431,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_map_capsule_result_unknown() {
-        let result = capsule_abi::CapsuleAbiResult {
+        let result = HookAbiResult {
             action: "unknown".into(),
             data: None,
         };

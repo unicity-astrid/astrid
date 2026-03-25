@@ -20,7 +20,6 @@ astrid-vfs = { workspace = true }
 astrid-workspace = { workspace = true }
 async-trait = { workspace = true }
 blake3 = { workspace = true }
-extism = { workspace = true }
 notify = "7"
 reqwest = { workspace = true }
 semver = { workspace = true }

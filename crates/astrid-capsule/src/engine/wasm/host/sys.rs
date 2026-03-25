@@ -169,14 +169,6 @@ impl sys::Host for HostState {
     }
 
     fn log(&mut self, level: LogLevel, message: String) {
-        let parsed_level = match level {
-            LogLevel::Trace => astrid_core::capsule_abi::LogLevel::Trace,
-            LogLevel::Debug => astrid_core::capsule_abi::LogLevel::Debug,
-            LogLevel::Info => astrid_core::capsule_abi::LogLevel::Info,
-            LogLevel::Warn => astrid_core::capsule_abi::LogLevel::Warn,
-            LogLevel::Error => astrid_core::capsule_abi::LogLevel::Error,
-        };
-
         // Single extraction: get everything we need from self before any
         // filesystem I/O (critical for cross-principal path which does
         // create_dir_all + open).
@@ -189,12 +181,12 @@ impl sys::Host for HostState {
             .filter(|p| *p != self.principal);
         let log_file = self.capsule_log.clone();
 
-        let level_str = match parsed_level {
-            astrid_core::capsule_abi::LogLevel::Trace => "TRACE",
-            astrid_core::capsule_abi::LogLevel::Debug => "DEBUG",
-            astrid_core::capsule_abi::LogLevel::Info => "INFO",
-            astrid_core::capsule_abi::LogLevel::Warn => "WARN",
-            astrid_core::capsule_abi::LogLevel::Error => "ERROR",
+        let level_str = match level {
+            LogLevel::Trace => "TRACE",
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info => "INFO",
+            LogLevel::Warn => "WARN",
+            LogLevel::Error => "ERROR",
         };
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -225,22 +217,12 @@ impl sys::Host for HostState {
                 let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
             }
         } else {
-            match parsed_level {
-                astrid_core::capsule_abi::LogLevel::Trace => {
-                    tracing::trace!(plugin = %capsule_id, "{message}")
-                },
-                astrid_core::capsule_abi::LogLevel::Debug => {
-                    tracing::debug!(plugin = %capsule_id, "{message}")
-                },
-                astrid_core::capsule_abi::LogLevel::Info => {
-                    tracing::info!(plugin = %capsule_id, "{message}")
-                },
-                astrid_core::capsule_abi::LogLevel::Warn => {
-                    tracing::warn!(plugin = %capsule_id, "{message}")
-                },
-                astrid_core::capsule_abi::LogLevel::Error => {
-                    tracing::error!(plugin = %capsule_id, "{message}")
-                },
+            match level {
+                LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
+                LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
+                LogLevel::Info => tracing::info!(plugin = %capsule_id, "{message}"),
+                LogLevel::Warn => tracing::warn!(plugin = %capsule_id, "{message}"),
+                LogLevel::Error => tracing::error!(plugin = %capsule_id, "{message}"),
             }
         }
     }

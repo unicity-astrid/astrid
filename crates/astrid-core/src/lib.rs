@@ -4,7 +4,6 @@
 //! - Identity management across platforms
 //! - Uplink types for capsule integration
 //! - Approval and elicitation primitives
-//! - Capsule ABI types (WASM host-guest interface)
 //! - Common types used throughout the runtime
 //! - Retry configuration with exponential backoff
 
@@ -17,7 +16,6 @@
 
 pub mod prelude;
 
-pub mod capsule_abi;
 pub mod dirs;
 pub mod elicitation;
 pub mod env_policy;
