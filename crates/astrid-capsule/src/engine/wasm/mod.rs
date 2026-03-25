@@ -158,7 +158,13 @@ impl WasmEngine {
 /// Build a `wasmtime::Engine` configured for Component Model execution
 /// with epoch-based interruption.
 /// Maximum WASM linear memory per capsule (64 MB).
+///
 /// Matches the old Extism `with_memory_max(1024)` (1024 pages * 64KB).
+/// This is a per-capsule limit enforced via `StoreLimits`. A global
+/// memory budget across all capsules is not yet implemented — when
+/// hosting providers run many capsules, a global pool limit with
+/// per-capsule shares would be more appropriate than N * 64MB headroom.
+/// See #639 for the resource telemetry tracking issue.
 const WASM_MAX_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
 fn build_wasmtime_engine() -> CapsuleResult<wasmtime::Engine> {
