@@ -729,20 +729,22 @@ impl ExecutionEngine for WasmEngine {
         // This is safe because the capsule cannot publish IPC (and thus
         // cannot appear as a hook response `source_id`) until it is fully
         // loaded and running.
+        let capsule_id = crate::capsule::CapsuleId::new(&self.manifest.package.name)
+            .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?;
+
         if let Some(registry) = &ctx.capsule_registry {
-            let capsule_id = crate::capsule::CapsuleId::new(&self.manifest.package.name)
-                .map_err(|e| CapsuleError::UnsupportedEntryPoint(e.to_string()))?;
             registry
                 .write()
                 .await
                 .register_uuid(capsule_uuid, capsule_id.clone());
-
-            // Register topic schemas in the catalog from baked meta.json.
-            let baked_schemas = read_baked_schemas(&self._capsule_dir);
-            ctx.schema_catalog
-                .register_topics(&capsule_id, &self.manifest.topics, &baked_schemas)
-                .await;
         }
+
+        // Register topic schemas unconditionally — schema_catalog is always
+        // present, even when capsule_registry is None (e.g. in tests).
+        let baked_schemas = read_baked_schemas(&self._capsule_dir);
+        ctx.schema_catalog
+            .register_topics(&capsule_id, &self.manifest.topics, &baked_schemas)
+            .await;
 
         self.cancel_token = Some(cancel_token.clone());
         self.wasmtime_engine = Some(wt_engine.clone());

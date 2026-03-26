@@ -37,31 +37,25 @@ impl WitSchemas {
             return Ok(Self { records });
         }
 
-        let mut resolve = Resolve::default();
+        // Check if there are any .wit files before calling push_dir
+        // (push_dir errors on directories with no WIT package).
+        let has_wit = std::fs::read_dir(wit_dir).ok().is_some_and(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .any(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("wit"))
+        });
 
-        // Parse each .wit file individually.
-        let entries = std::fs::read_dir(wit_dir)
-            .with_context(|| format!("failed to read WIT directory: {}", wit_dir.display()))?;
-
-        let mut has_wit_files = false;
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("wit") {
-                continue;
-            }
-            has_wit_files = true;
-            let contents = std::fs::read_to_string(&path)
-                .with_context(|| format!("failed to read WIT file: {}", path.display()))?;
-            // push_str parses and resolves in one step, returning the PackageId.
-            resolve
-                .push_str(path.display().to_string(), &contents)
-                .with_context(|| format!("failed to parse WIT file: {}", path.display()))?;
-        }
-
-        if !has_wit_files {
+        if !has_wit {
             return Ok(Self { records });
         }
+
+        let mut resolve = Resolve::default();
+
+        // push_dir handles multi-file packages correctly (a single package
+        // split across several .wit files in the same directory).
+        resolve
+            .push_dir(wit_dir)
+            .with_context(|| format!("failed to parse WIT directory: {}", wit_dir.display()))?;
 
         // Extract all record type definitions.
         for (_, type_def) in &resolve.types {
@@ -94,17 +88,31 @@ impl WitSchemas {
     }
 }
 
+/// Maximum recursion depth for type resolution. Prevents stack overflow on
+/// deeply nested type aliases or (hypothetical) circular references.
+const MAX_TYPE_DEPTH: u32 = 32;
+
 /// Convert a WIT record to a JSON Schema object.
 fn record_to_json_schema(
     resolve: &Resolve,
     record: &wit_parser::Record,
     docs: &wit_parser::Docs,
 ) -> serde_json::Value {
+    record_to_json_schema_depth(resolve, record, docs, 0)
+}
+
+/// Depth-limited record → JSON Schema conversion.
+fn record_to_json_schema_depth(
+    resolve: &Resolve,
+    record: &wit_parser::Record,
+    docs: &wit_parser::Docs,
+    depth: u32,
+) -> serde_json::Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 
     for field in &record.fields {
-        let (field_schema, is_optional) = type_to_json_schema(resolve, &field.ty);
+        let (field_schema, is_optional) = type_to_json_schema(resolve, &field.ty, depth);
 
         let mut schema = field_schema;
         if let Some(ref doc) = field.docs.contents {
@@ -153,7 +161,10 @@ fn record_to_json_schema(
 /// Convert a WIT type to a JSON Schema type object.
 ///
 /// Returns `(schema, is_optional)` where `is_optional` is true for `option<T>`.
-fn type_to_json_schema(resolve: &Resolve, ty: &Type) -> (serde_json::Value, bool) {
+fn type_to_json_schema(resolve: &Resolve, ty: &Type, depth: u32) -> (serde_json::Value, bool) {
+    if depth > MAX_TYPE_DEPTH {
+        return (serde_json::json!({"type": "string"}), false);
+    }
     match ty {
         Type::Bool => (serde_json::json!({"type": "boolean"}), false),
         Type::U8 | Type::U16 | Type::U32 | Type::S8 | Type::S16 | Type::S32 => {
@@ -167,7 +178,9 @@ fn type_to_json_schema(resolve: &Resolve, ty: &Type) -> (serde_json::Value, bool
         Type::Char | Type::String | Type::ErrorContext => {
             (serde_json::json!({"type": "string"}), false)
         },
-        Type::Id(id) => typedef_to_json_schema(resolve, &resolve.types[*id]),
+        Type::Id(id) => {
+            typedef_to_json_schema(resolve, &resolve.types[*id], depth.saturating_add(1))
+        },
     }
 }
 
@@ -175,28 +188,29 @@ fn type_to_json_schema(resolve: &Resolve, ty: &Type) -> (serde_json::Value, bool
 fn typedef_to_json_schema(
     resolve: &Resolve,
     type_def: &wit_parser::TypeDef,
+    depth: u32,
 ) -> (serde_json::Value, bool) {
     match &type_def.kind {
         TypeDefKind::Record(record) => (
-            record_to_json_schema(resolve, record, &type_def.docs),
+            record_to_json_schema_depth(resolve, record, &type_def.docs, depth),
             false,
         ),
         TypeDefKind::List(inner) => {
-            let (item_schema, _) = type_to_json_schema(resolve, inner);
+            let (item_schema, _) = type_to_json_schema(resolve, inner, depth);
             (
                 serde_json::json!({"type": "array", "items": item_schema}),
                 false,
             )
         },
         TypeDefKind::Option(inner) => {
-            let (inner_schema, _) = type_to_json_schema(resolve, inner);
+            let (inner_schema, _) = type_to_json_schema(resolve, inner, depth);
             (inner_schema, true)
         },
         TypeDefKind::Tuple(tuple) => {
             let items: Vec<serde_json::Value> = tuple
                 .types
                 .iter()
-                .map(|t| type_to_json_schema(resolve, t).0)
+                .map(|t| type_to_json_schema(resolve, t, depth).0)
                 .collect();
             (
                 serde_json::json!({"type": "array", "prefixItems": items}),
@@ -214,15 +228,15 @@ fn typedef_to_json_schema(
                 false,
             )
         },
-        TypeDefKind::Variant(variant) => (variant_to_json_schema(resolve, variant), false),
+        TypeDefKind::Variant(variant) => (variant_to_json_schema(resolve, variant, depth), false),
         TypeDefKind::Result(result_ty) => {
             let ok = result_ty.ok.as_ref().map_or_else(
                 || serde_json::json!({}),
-                |t| type_to_json_schema(resolve, t).0,
+                |t| type_to_json_schema(resolve, t, depth).0,
             );
             let err = result_ty.err.as_ref().map_or_else(
                 || serde_json::json!({"type": "string"}),
-                |t| type_to_json_schema(resolve, t).0,
+                |t| type_to_json_schema(resolve, t, depth).0,
             );
             (
                 serde_json::json!({
@@ -235,20 +249,24 @@ fn typedef_to_json_schema(
             )
         },
         // Type aliases — follow the chain.
-        TypeDefKind::Type(inner) => type_to_json_schema(resolve, inner),
+        TypeDefKind::Type(inner) => type_to_json_schema(resolve, inner, depth),
         // Anything else (resource, handle, future, stream) — opaque.
         _ => (serde_json::json!({"type": "string"}), false),
     }
 }
 
 /// Convert a WIT variant to a JSON Schema `oneOf` with tag discriminators.
-fn variant_to_json_schema(resolve: &Resolve, variant: &wit_parser::Variant) -> serde_json::Value {
+fn variant_to_json_schema(
+    resolve: &Resolve,
+    variant: &wit_parser::Variant,
+    depth: u32,
+) -> serde_json::Value {
     let schemas: Vec<serde_json::Value> = variant
         .cases
         .iter()
         .map(|case| {
             if let Some(ref ty) = case.ty {
-                let (inner, _) = type_to_json_schema(resolve, ty);
+                let (inner, _) = type_to_json_schema(resolve, ty, depth);
                 serde_json::json!({
                     "type": "object",
                     "properties": {"tag": {"const": case.name}, "value": inner},
