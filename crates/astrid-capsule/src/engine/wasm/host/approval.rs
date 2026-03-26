@@ -35,12 +35,6 @@ const MAX_ACTION_LEN: usize = 256;
 /// drive glob pattern compilation.
 const MAX_RESOURCE_LEN: usize = 1024;
 
-/// Maximum length for risk-level labels from WASM guests.
-///
-/// Risk levels are short classification labels ("low", "high", "critical").
-/// 64 characters is generous for any reasonable label.
-const MAX_RISK_LEVEL_LEN: usize = 64;
-
 /// Check the allowance store for a matching pattern, consuming limited-use
 /// allowances.
 ///
@@ -207,12 +201,6 @@ impl approval::Host for HostState {
             "resource",
             &capsule_id,
         );
-        sanitize_guest_field(
-            &mut request.risk_level,
-            MAX_RISK_LEVEL_LEN,
-            "risk_level",
-            &capsule_id,
-        );
 
         let ws_path = Some(workspace_root.as_path());
 
@@ -227,10 +215,7 @@ impl approval::Host for HostState {
                 "Approval auto-granted via existing allowance"
             );
 
-            return Ok(ApprovalResponse {
-                approved: true,
-                decision: "allowance".to_string(),
-            });
+            return Ok(ApprovalResponse { approved: true });
         }
 
         // Slow path: publish ApprovalRequired and wait for response.
@@ -245,7 +230,8 @@ impl approval::Host for HostState {
             action: request.action.clone(),
             resource: request.target_resource.clone(),
             reason: format!("Capsule '{capsule_id}' requests approval"),
-            risk_level: request.risk_level.clone(),
+            // The kernel classifies risk; guests no longer supply risk_level.
+            risk_level: "medium".to_string(),
         };
         let message = IpcMessage::new(
             "astrid.v1.approval",
@@ -261,7 +247,6 @@ impl approval::Host for HostState {
             plugin = %capsule_id,
             action = %request.action,
             resource = %request.target_resource,
-            risk_level = %request.risk_level,
             %request_id,
             "Published approval request, waiting for response"
         );
@@ -314,10 +299,7 @@ impl approval::Host for HostState {
                                 "Approval response received"
                             );
 
-                            Ok(ApprovalResponse {
-                                approved,
-                                decision: decision.clone(),
-                            })
+                            Ok(ApprovalResponse { approved })
                         },
                         _ => Err("unexpected IPC payload type in approval response".to_string()),
                     }
@@ -332,10 +314,7 @@ impl approval::Host for HostState {
                     "Approval request timed out or was cancelled"
                 );
                 // Timeout/cancellation = deny
-                Ok(ApprovalResponse {
-                    approved: false,
-                    decision: "deny".to_string(),
-                })
+                Ok(ApprovalResponse { approved: false })
             },
         }
     }
@@ -617,22 +596,6 @@ mod tests {
         let mut s = original.clone();
         sanitize_guest_field(&mut s, MAX_RESOURCE_LEN, "resource", "test");
         assert_eq!(s, original);
-    }
-
-    #[test]
-    fn sanitize_guest_field_truncates_risk_level() {
-        let mut s = "x".repeat(200);
-        sanitize_guest_field(&mut s, MAX_RISK_LEVEL_LEN, "risk_level", "test");
-        assert_eq!(s.chars().count(), MAX_RISK_LEVEL_LEN);
-    }
-
-    #[test]
-    fn sanitize_guest_field_preserves_normal_risk_levels() {
-        for level in &["low", "medium", "high", "critical"] {
-            let mut s = level.to_string();
-            sanitize_guest_field(&mut s, MAX_RISK_LEVEL_LEN, "risk_level", "test");
-            assert_eq!(s, *level);
-        }
     }
 
     #[test]

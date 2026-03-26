@@ -317,22 +317,20 @@ interface types {
     }
 
     /// Approval request from a capsule to the host.
+    ///
+    /// The capsule declares the action and resource. The kernel classifies
+    /// risk and manages approval policy — the capsule sees only approved/denied.
     record approval-request {
         /// The action being requested (e.g. "git push").
         action: string,
         /// Full resource description (e.g. "git push origin main").
         target-resource: string,
-        /// Risk classification ("low", "medium", "high", "critical").
-        risk-level: string,
     }
 
     /// Approval response from the host.
     record approval-response {
         /// Whether the action was approved.
         approved: bool,
-        /// Decision type ("approve", "approve_session", "approve_always",
-        /// "deny", "allowance").
-        decision: string,
     }
 }
 
