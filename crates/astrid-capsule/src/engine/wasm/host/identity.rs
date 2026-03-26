@@ -75,6 +75,9 @@ impl identity::Host for HostState {
                 return Ok(IdentityOkResponse {
                     ok: false,
                     error: Some(format!("invalid UUID: {e}")),
+                    user_id: None,
+                    removed: None,
+                    links_json: None,
                 });
             },
         };
@@ -114,10 +117,16 @@ impl identity::Host for HostState {
             Ok(_link) => Ok(IdentityOkResponse {
                 ok: true,
                 error: None,
+                user_id: None,
+                removed: None,
+                links_json: None,
             }),
             Err(e) => Ok(IdentityOkResponse {
                 ok: false,
                 error: Some(e.to_string()),
+                user_id: None,
+                removed: None,
+                links_json: None,
             }),
         }
     }
@@ -153,13 +162,19 @@ impl identity::Host for HostState {
         });
 
         match result {
-            Ok(_removed) => Ok(IdentityOkResponse {
+            Ok(was_removed) => Ok(IdentityOkResponse {
                 ok: true,
                 error: None,
+                user_id: None,
+                removed: Some(was_removed),
+                links_json: None,
             }),
             Err(e) => Ok(IdentityOkResponse {
                 ok: false,
                 error: Some(e.to_string()),
+                user_id: None,
+                removed: None,
+                links_json: None,
             }),
         }
     }
@@ -195,13 +210,19 @@ impl identity::Host for HostState {
         });
 
         match result {
-            Ok(_user) => Ok(IdentityOkResponse {
+            Ok(created_user) => Ok(IdentityOkResponse {
                 ok: true,
                 error: None,
+                user_id: Some(created_user.id.to_string()),
+                removed: None,
+                links_json: None,
             }),
             Err(e) => Ok(IdentityOkResponse {
                 ok: false,
                 error: Some(e.to_string()),
+                user_id: None,
+                removed: None,
+                links_json: None,
             }),
         }
     }
@@ -216,6 +237,9 @@ impl identity::Host for HostState {
                 return Ok(IdentityOkResponse {
                     ok: false,
                     error: Some(format!("invalid UUID: {e}")),
+                    user_id: None,
+                    removed: None,
+                    links_json: None,
                 });
             },
         };
@@ -247,13 +271,23 @@ impl identity::Host for HostState {
         });
 
         match result {
-            Ok(_links) => Ok(IdentityOkResponse {
-                ok: true,
-                error: None,
-            }),
+            Ok(links) => {
+                let links_json = serde_json::to_string(&links)
+                    .unwrap_or_else(|e| format!("{{\"error\":\"serialization failed: {e}\"}}"));
+                Ok(IdentityOkResponse {
+                    ok: true,
+                    error: None,
+                    user_id: None,
+                    removed: None,
+                    links_json: Some(links_json),
+                })
+            },
             Err(e) => Ok(IdentityOkResponse {
                 ok: false,
                 error: Some(e.to_string()),
+                user_id: None,
+                removed: None,
+                links_json: None,
             }),
         }
     }

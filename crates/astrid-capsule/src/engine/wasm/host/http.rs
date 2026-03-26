@@ -232,7 +232,7 @@ impl http::Host for HostState {
                 }
                 bytes.extend_from_slice(&chunk);
             }
-            String::from_utf8(bytes).map_err(|_| "response body is not valid UTF-8".to_string())
+            Ok(bytes)
         });
 
         let body = body_result.map_err(|e| format!("failed to read http response body: {e}"))?;
