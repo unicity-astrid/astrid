@@ -20,8 +20,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
-use astrid_core::types::RiskLevel;
-
 use crate::action::SensitiveAction;
 use crate::request::RiskAssessment;
 
@@ -121,20 +119,14 @@ impl SecurityPolicy {
             SensitiveAction::FileDelete { path } => self.check_file_delete(path),
             SensitiveAction::NetworkRequest { host, .. } => self.check_network(host),
             SensitiveAction::TransmitData { destination, .. } => self.check_network(destination),
-            SensitiveAction::FinancialTransaction { .. } => {
-                PolicyResult::RequiresApproval(RiskAssessment::new(
-                    RiskLevel::Critical,
-                    "Financial transactions always require approval",
-                ))
-            },
-            SensitiveAction::AccessControlChange { .. } => {
-                PolicyResult::RequiresApproval(RiskAssessment::new(
-                    RiskLevel::Critical,
-                    "Access control changes always require approval",
-                ))
-            },
+            SensitiveAction::FinancialTransaction { .. } => PolicyResult::RequiresApproval(
+                RiskAssessment::new("Financial transactions always require approval"),
+            ),
+            SensitiveAction::AccessControlChange { .. } => PolicyResult::RequiresApproval(
+                RiskAssessment::new("Access control changes always require approval"),
+            ),
             SensitiveAction::CapabilityGrant { .. } => PolicyResult::RequiresApproval(
-                RiskAssessment::new(RiskLevel::High, "Capability grants require approval"),
+                RiskAssessment::new("Capability grants require approval"),
             ),
             SensitiveAction::CapsuleExecution { capsule_id, .. }
             | SensitiveAction::CapsuleHttpRequest { capsule_id, .. }
@@ -182,8 +174,7 @@ impl SecurityPolicy {
         }
 
         PolicyResult::RequiresApproval(RiskAssessment::new(
-            RiskLevel::High,
-            format!("command execution: {command}"),
+            format!("command execution: {command}",),
         ))
     }
 
@@ -205,10 +196,9 @@ impl SecurityPolicy {
         if self.approval_required_tools.contains(&qualified)
             || self.approval_required_tools.contains(server)
         {
-            return PolicyResult::RequiresApproval(RiskAssessment::new(
-                RiskLevel::Medium,
-                format!("tool '{qualified}' requires approval"),
-            ));
+            return PolicyResult::RequiresApproval(RiskAssessment::new(format!(
+                "tool '{qualified}' requires approval",
+            )));
         }
 
         PolicyResult::Allowed
@@ -240,10 +230,7 @@ impl SecurityPolicy {
             };
         }
 
-        PolicyResult::RequiresApproval(RiskAssessment::new(
-            RiskLevel::High,
-            format!("{operation}: {path}"),
-        ))
+        PolicyResult::RequiresApproval(RiskAssessment::new(format!("{operation}: {path}",)))
     }
 
     /// Check a file delete action.
@@ -256,10 +243,9 @@ impl SecurityPolicy {
 
         // File deletion always requires approval if configured
         if self.require_approval_for_delete {
-            return PolicyResult::RequiresApproval(RiskAssessment::new(
-                RiskLevel::High,
-                format!("file deletion requires approval: {path}"),
-            ));
+            return PolicyResult::RequiresApproval(RiskAssessment::new(format!(
+                "file deletion requires approval: {path}",
+            )));
         }
 
         path_result
@@ -304,10 +290,9 @@ impl SecurityPolicy {
         }
 
         // 4. Plugins always require approval
-        PolicyResult::RequiresApproval(RiskAssessment::new(
-            RiskLevel::High,
-            format!("capsule '{capsule_id}' action requires approval"),
-        ))
+        PolicyResult::RequiresApproval(RiskAssessment::new(format!(
+            "capsule '{capsule_id}' action requires approval",
+        )))
     }
 
     /// Check a network host.
@@ -327,10 +312,9 @@ impl SecurityPolicy {
         }
 
         if self.require_approval_for_network {
-            return PolicyResult::RequiresApproval(RiskAssessment::new(
-                RiskLevel::Medium,
-                format!("network access requires approval: {host}"),
-            ));
+            return PolicyResult::RequiresApproval(RiskAssessment::new(format!(
+                "network access requires approval: {host}",
+            )));
         }
 
         PolicyResult::Allowed

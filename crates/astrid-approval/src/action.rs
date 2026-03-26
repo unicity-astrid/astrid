@@ -4,7 +4,7 @@
 //! human approval before execution. Each variant captures the relevant
 //! context needed for informed decision-making.
 
-use astrid_core::types::{Permission, RiskLevel};
+use astrid_core::types::Permission;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -150,31 +150,6 @@ impl SensitiveAction {
         }
     }
 
-    /// Get the default risk level for this action type.
-    ///
-    /// This provides a baseline; the actual risk assessment may be
-    /// adjusted based on context (e.g., deleting a temp file vs a config file).
-    #[must_use]
-    pub fn default_risk_level(&self) -> RiskLevel {
-        match self {
-            Self::FinancialTransaction { .. } | Self::AccessControlChange { .. } => {
-                RiskLevel::Critical
-            },
-            Self::FileDelete { .. }
-            | Self::FileWriteOutsideSandbox { .. }
-            | Self::ExecuteCommand { .. }
-            | Self::TransmitData { .. }
-            | Self::CapabilityGrant { .. }
-            | Self::CapsuleExecution { .. }
-            | Self::CapsuleHttpRequest { .. }
-            | Self::CapsuleFileAccess { .. }
-            | Self::CapsuleNetBind { .. } => RiskLevel::High,
-            Self::FileRead { .. } | Self::NetworkRequest { .. } | Self::McpToolCall { .. } => {
-                RiskLevel::Medium
-            },
-        }
-    }
-
     /// Get a human-readable summary of the action.
     #[must_use]
     pub fn summary(&self) -> String {
@@ -259,33 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_risk_levels() {
-        assert_eq!(
-            SensitiveAction::FileDelete {
-                path: String::new()
-            }
-            .default_risk_level(),
-            RiskLevel::High
-        );
-        assert_eq!(
-            SensitiveAction::FinancialTransaction {
-                amount: String::new(),
-                recipient: String::new()
-            }
-            .default_risk_level(),
-            RiskLevel::Critical
-        );
-        assert_eq!(
-            SensitiveAction::NetworkRequest {
-                host: String::new(),
-                port: 0
-            }
-            .default_risk_level(),
-            RiskLevel::Medium
-        );
-    }
-
-    #[test]
     fn test_action_summary() {
         let action = SensitiveAction::FileDelete {
             path: "/home/user/important.txt".to_string(),
@@ -321,7 +269,6 @@ mod tests {
             capsule_id: "cli-proxy".to_string(),
         };
         assert_eq!(action.action_type(), "capsule_net_bind");
-        assert_eq!(action.default_risk_level(), RiskLevel::High);
         assert_eq!(
             action.summary(),
             "Capsule 'cli-proxy' wants to accept socket connections (net_bind)"
@@ -361,36 +308,6 @@ mod tests {
             }
             .action_type(),
             "capsule_file_access"
-        );
-    }
-
-    #[test]
-    fn test_capsule_risk_levels_are_high() {
-        assert_eq!(
-            SensitiveAction::CapsuleExecution {
-                capsule_id: "p".to_string(),
-                capability: "c".to_string(),
-            }
-            .default_risk_level(),
-            RiskLevel::High
-        );
-        assert_eq!(
-            SensitiveAction::CapsuleHttpRequest {
-                capsule_id: "p".to_string(),
-                url: "https://example.com".to_string(),
-                method: "GET".to_string(),
-            }
-            .default_risk_level(),
-            RiskLevel::High
-        );
-        assert_eq!(
-            SensitiveAction::CapsuleFileAccess {
-                capsule_id: "p".to_string(),
-                path: "/tmp/f".to_string(),
-                mode: Permission::Read,
-            }
-            .default_risk_level(),
-            RiskLevel::High
         );
     }
 

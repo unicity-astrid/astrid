@@ -20,12 +20,10 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
         SensitiveAction::ExecuteCommand { command, args } => AuditAction::ApprovalRequested {
             action_type: "execute_command".to_string(),
             resource: format!("{command} {}", args.join(" ")),
-            risk_level: action.default_risk_level(),
         },
         SensitiveAction::NetworkRequest { host, port } => AuditAction::ApprovalRequested {
             action_type: "network_request".to_string(),
             resource: format!("{host}:{port}"),
-            risk_level: action.default_risk_level(),
         },
         SensitiveAction::CapsuleExecution {
             capsule_id,
@@ -33,7 +31,6 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
         } => AuditAction::ApprovalRequested {
             action_type: "capsule_execution".to_string(),
             resource: format!("capsule://{capsule_id}:{capability}"),
-            risk_level: action.default_risk_level(),
         },
         SensitiveAction::CapsuleHttpRequest {
             capsule_id,
@@ -42,7 +39,6 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
         } => AuditAction::ApprovalRequested {
             action_type: "capsule_http_request".to_string(),
             resource: format!("capsule://{capsule_id}:http_request ({method} {url})"),
-            risk_level: action.default_risk_level(),
         },
         SensitiveAction::CapsuleFileAccess {
             capsule_id,
@@ -58,13 +54,11 @@ pub fn sensitive_action_to_audit(action: &SensitiveAction) -> AuditAction {
             AuditAction::ApprovalRequested {
                 action_type: "capsule_file_access".to_string(),
                 resource: format!("capsule://{capsule_id}:{cap} ({path})"),
-                risk_level: action.default_risk_level(),
             }
         },
         _ => AuditAction::ApprovalRequested {
             action_type: action.action_type().to_string(),
             resource: action.summary(),
-            risk_level: action.default_risk_level(),
         },
     }
 }

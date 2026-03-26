@@ -5,7 +5,6 @@
 //! and signed by the runtime.
 
 use astrid_capabilities::AuditEntryId;
-use astrid_core::types::RiskLevel;
 use astrid_core::{Permission, SessionId, Timestamp, TokenId};
 use astrid_crypto::{ContentHash, KeyPair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
@@ -295,8 +294,6 @@ pub enum AuditAction {
         action_type: String,
         /// Resource being accessed.
         resource: String,
-        /// Risk level of the action.
-        risk_level: RiskLevel,
     },
 
     /// User granted approval.
@@ -393,8 +390,6 @@ pub enum AuditAction {
         violation_type: String,
         /// Details.
         details: String,
-        /// Risk level.
-        risk_level: RiskLevel,
     },
 
     /// Sub-agent was spawned (parent→child linkage).

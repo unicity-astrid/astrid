@@ -24,7 +24,6 @@
 //!
 //! ```
 //! use astrid_approval::{SensitiveAction, ApprovalRequest, ApprovalDecision, RiskAssessment};
-//! use astrid_core::types::RiskLevel;
 //!
 //! // Classify a risky action
 //! let action = SensitiveAction::FileDelete {
@@ -33,7 +32,6 @@
 //!
 //! // Create a request with context
 //! let request = ApprovalRequest::new(action, "Cleaning up temporary files");
-//! assert_eq!(request.assessment.level, RiskLevel::High);
 //!
 //! // Decisions
 //! let approved = ApprovalDecision::Approve;

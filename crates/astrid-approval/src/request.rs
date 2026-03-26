@@ -7,7 +7,7 @@
 //! The approval manager converts between internal and frontend types
 //! when presenting requests to users.
 
-use astrid_core::types::{RiskLevel, Timestamp};
+use astrid_core::types::Timestamp;
 use astrid_crypto::Signature;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -42,13 +42,11 @@ impl fmt::Display for RequestId {
 
 /// Assessment of the risk posed by a sensitive action.
 ///
-/// Provides the risk level along with a human-readable explanation
+/// Provides a human-readable explanation of why the action is sensitive
 /// and any available mitigations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskAssessment {
-    /// The assessed risk level.
-    pub level: RiskLevel,
-    /// Human-readable explanation of why this risk level was assigned.
+    /// Human-readable explanation of why this action requires approval.
     pub reason: String,
     /// Available mitigations that could reduce the risk.
     pub mitigations: Vec<String>,
@@ -57,9 +55,8 @@ pub struct RiskAssessment {
 impl RiskAssessment {
     /// Create a new risk assessment.
     #[must_use]
-    pub fn new(level: RiskLevel, reason: impl Into<String>) -> Self {
+    pub fn new(reason: impl Into<String>) -> Self {
         Self {
-            level,
             reason: reason.into(),
             mitigations: Vec::new(),
         }
@@ -78,17 +75,11 @@ impl RiskAssessment {
         self.mitigations.extend(mitigations);
         self
     }
-
-    /// Check if this assessment requires user approval.
-    #[must_use]
-    pub fn requires_approval(&self) -> bool {
-        self.level.requires_approval()
-    }
 }
 
 impl fmt::Display for RiskAssessment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.level, self.reason)
+        write!(f, "{}", self.reason)
     }
 }
 
@@ -114,12 +105,11 @@ impl ApprovalRequest {
     /// Create a new approval request.
     #[must_use]
     pub fn new(action: SensitiveAction, context: impl Into<String>) -> Self {
-        let level = action.default_risk_level();
         let reason = format!("{} operation", action.action_type());
         Self {
             id: RequestId::new(),
             action,
-            assessment: RiskAssessment::new(level, reason),
+            assessment: RiskAssessment::new(reason),
             context: context.into(),
             timestamp: Timestamp::now(),
         }
@@ -135,11 +125,7 @@ impl ApprovalRequest {
 
 impl fmt::Display for ApprovalRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}] {} - {}",
-            self.assessment.level, self.action, self.context
-        )
+        write!(f, "{} - {}", self.action, self.context)
     }
 }
 
@@ -288,12 +274,10 @@ mod tests {
 
     #[test]
     fn test_risk_assessment() {
-        let assessment = RiskAssessment::new(RiskLevel::High, "File deletion is irreversible")
+        let assessment = RiskAssessment::new("File deletion is irreversible")
             .with_mitigation("Check file is not in use".to_string())
             .with_mitigation("Verify backup exists".to_string());
 
-        assert_eq!(assessment.level, RiskLevel::High);
-        assert!(assessment.requires_approval());
         assert_eq!(assessment.mitigations.len(), 2);
         assert!(
             assessment
@@ -303,19 +287,12 @@ mod tests {
     }
 
     #[test]
-    fn test_risk_assessment_low_no_approval() {
-        let assessment = RiskAssessment::new(RiskLevel::Low, "Reading a file");
-        assert!(!assessment.requires_approval());
-    }
-
-    #[test]
     fn test_approval_request_creation() {
         let action = SensitiveAction::FileDelete {
             path: "/home/user/important.txt".to_string(),
         };
         let request = ApprovalRequest::new(action, "Cleaning up temporary files");
 
-        assert_eq!(request.assessment.level, RiskLevel::High);
         assert_eq!(request.context, "Cleaning up temporary files");
         assert!(!request.timestamp.is_future());
     }
@@ -326,11 +303,11 @@ mod tests {
             server: "filesystem".to_string(),
             tool: "read_file".to_string(),
         };
-        let assessment = RiskAssessment::new(RiskLevel::Low, "Reading a known safe file");
+        let assessment = RiskAssessment::new("Reading a known safe file");
         let request =
             ApprovalRequest::new(action, "Need file contents").with_assessment(assessment);
 
-        assert_eq!(request.assessment.level, RiskLevel::Low);
+        assert_eq!(request.assessment.reason, "Reading a known safe file");
     }
 
     #[test]
