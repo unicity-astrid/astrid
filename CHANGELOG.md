@@ -19,7 +19,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Added
 
-- Schema catalog (`SchemaCatalog`) for A2UI Track 2 — maps IPC topics to schema definitions. Populated at capsule load time from `Capsule.toml` topic declarations. Empty infrastructure until capsules define WIT types for IPC payloads. (#632)
+- **WIT-driven IPC topic schemas.** Capsules declare `wit_type = "record-name"` on `[[topic]]` entries in `Capsule.toml`. At install time, `wit-parser` reads the record from the capsule's `wit/` directory, extracts field names, types, and `///` doc comments into JSON Schema, and bakes it into `meta.json`. At runtime, `WasmEngine::load()` populates the `SchemaCatalog` from baked schemas. The LLM sees typed field descriptions without capsule authors writing JSON Schema by hand. (#643)
+- `astrid-build::wit_schema` module — converts WIT records to JSON Schema. Handles primitives, `option<T>`, `list<T>`, tuple, enum, flags, variant, result, nested records, and type aliases. (#643)
+- `wit_type: Option<String>` field on `TopicDef` in `Capsule.toml` — references a WIT record by kebab-case name. (#643)
+- Schema catalog (`SchemaCatalog`) for A2UI Track 2 — maps IPC topics to schema definitions. Populated at capsule load time from baked `meta.json` schemas. (#632, #643)
 - Epoch-based WASM timeout with `EpochTickerGuard` RAII type — replaces Extism wall-clock timeout. 5-minute deadline for interceptors, u64::MAX for daemons/run-loops, 10-minute safety net for lifecycle hooks. (#632)
 - 64MB per-capsule WASM memory limit via `StoreLimitsBuilder` (matches old Extism setting). Global budget for multi-tenant hosting is a follow-up (#639). (#632)
 - New WIT record types: `spawn-request`, `interceptor-handle`, `net-read-status` (variant), `capability-check-request/response`, `identity-*-request`, `elicit-request`. (#632)
