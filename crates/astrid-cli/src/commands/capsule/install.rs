@@ -1444,8 +1444,8 @@ fn read_schema_file(
             MAX_SCHEMA_FILE_SIZE
         );
     }
-    let capacity =
-        usize::try_from(file_len).expect("MAX_SCHEMA_FILE_SIZE is small enough to fit in usize");
+    let capacity = usize::try_from(file_len)
+        .with_context(|| format!("schema file size {file_len} exceeds platform usize limit"))?;
     let mut content = String::with_capacity(capacity);
     std::io::Read::read_to_string(
         &mut std::io::Read::take(file, MAX_SCHEMA_FILE_SIZE + 1),

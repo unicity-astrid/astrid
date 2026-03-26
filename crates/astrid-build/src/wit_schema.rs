@@ -231,11 +231,11 @@ fn typedef_to_json_schema(
         TypeDefKind::Variant(variant) => (variant_to_json_schema(resolve, variant, depth), false),
         TypeDefKind::Result(result_ty) => {
             let ok = result_ty.ok.as_ref().map_or_else(
-                || serde_json::json!({}),
+                || serde_json::json!({"type": "null"}),
                 |t| type_to_json_schema(resolve, t, depth).0,
             );
             let err = result_ty.err.as_ref().map_or_else(
-                || serde_json::json!({"type": "string"}),
+                || serde_json::json!({"type": "null"}),
                 |t| type_to_json_schema(resolve, t, depth).0,
             );
             (
