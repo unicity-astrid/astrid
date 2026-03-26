@@ -103,8 +103,6 @@ pub enum IpcPayload {
         resource: String,
         /// Justification.
         reason: String,
-        /// Risk classification: "low", "medium", "high", or "critical".
-        risk_level: String,
     },
     /// Response to an [`ApprovalRequired`](IpcPayload::ApprovalRequired).
     ApprovalResponse {
@@ -441,7 +439,6 @@ mod tests {
                 action: String::new(),
                 resource: String::new(),
                 reason: String::new(),
-                risk_level: "high".into(),
             },
             IpcPayload::ApprovalResponse {
                 request_id: "req-1".into(),

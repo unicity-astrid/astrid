@@ -10,7 +10,7 @@
 //! // Now you have access to:
 //! // - Uplink types
 //! // - Identity types
-//! // - Common types like SessionId, Permission, RiskLevel
+//! // - Common types like SessionId, Permission
 //! ```
 
 // Elicitation (MCP server-initiated user input)
@@ -21,8 +21,8 @@ pub use crate::{
 
 // Common types (approval, permissions, IDs)
 pub use crate::{
-    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
-    Timestamp, TokenId,
+    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, SessionId, Timestamp,
+    TokenId,
 };
 
 // Retry utilities

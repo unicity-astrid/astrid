@@ -34,8 +34,8 @@ pub use elicitation::{
 pub use principal::{PrincipalId, PrincipalIdError};
 pub use retry::RetryConfig;
 pub use types::{
-    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, RiskLevel, SessionId,
-    Timestamp, TokenId,
+    AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, SessionId, Timestamp,
+    TokenId,
 };
 pub use utils::truncate_to_boundary;
 

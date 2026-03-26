@@ -5,7 +5,8 @@
 //! and signed by the runtime.
 
 use astrid_capabilities::AuditEntryId;
-use astrid_core::{Permission, RiskLevel, SessionId, Timestamp, TokenId};
+use astrid_core::types::RiskLevel;
+use astrid_core::{Permission, SessionId, Timestamp, TokenId};
 use astrid_crypto::{ContentHash, KeyPair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 

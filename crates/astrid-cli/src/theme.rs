@@ -47,13 +47,8 @@ impl Theme {
     }
 
     /// Format a box around text using box-drawing characters.
-    pub(crate) fn approval_box(title: &str, content: &str, risk: astrid_core::RiskLevel) -> String {
-        let color_fn = match risk {
-            astrid_core::RiskLevel::Low => |s: &str| s.green().to_string(),
-            astrid_core::RiskLevel::Medium => |s: &str| s.yellow().to_string(),
-            astrid_core::RiskLevel::High => |s: &str| s.red().to_string(),
-            astrid_core::RiskLevel::Critical => |s: &str| s.red().bold().to_string(),
-        };
+    pub(crate) fn approval_box(title: &str, content: &str) -> String {
+        let color_fn = |s: &str| s.yellow().to_string();
 
         let width = 60;
         let top = format!("╭{}╮", "─".repeat(width - 2));
@@ -84,16 +79,6 @@ impl Theme {
     /// Format a key-value pair for display in approval boxes.
     pub(crate) fn kv(key: &str, value: &str) -> String {
         format!("{}: {}", key.bold(), value)
-    }
-
-    /// Format a risk level.
-    pub(crate) fn risk_level(level: astrid_core::RiskLevel) -> String {
-        match level {
-            astrid_core::RiskLevel::Low => "Low".green().to_string(),
-            astrid_core::RiskLevel::Medium => "Medium".yellow().to_string(),
-            astrid_core::RiskLevel::High => "High".red().to_string(),
-            astrid_core::RiskLevel::Critical => "Critical".red().bold().to_string(),
-        }
     }
 
     /// Format a session ID (shortened).

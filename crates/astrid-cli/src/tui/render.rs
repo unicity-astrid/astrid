@@ -1,8 +1,8 @@
 //! Rendering logic for the TUI — single-view Nexus layout.
 
 use super::state::{
-    App, InputSegment, MessageKind, MessageRole, NexusEntry, PALETTE_MAX_VISIBLE, RiskLevel,
-    ToolStatusKind, UiState,
+    App, InputSegment, MessageKind, MessageRole, NexusEntry, PALETTE_MAX_VISIBLE, ToolStatusKind,
+    UiState,
 };
 
 use super::theme::Theme;
@@ -1546,7 +1546,6 @@ fn render_status(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 // ─── Approval Overlay ────────────────────────────────────────────
 
-#[expect(clippy::too_many_lines)]
 fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
     if app.pending_approvals.is_empty() {
         return;
@@ -1563,11 +1562,7 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
     // Inner width after borders (left + right = 2 chars)
     let inner_width = width.saturating_sub(2) as usize;
 
-    let risk_color = match approval.risk_level {
-        RiskLevel::Low => theme.success,
-        RiskLevel::Medium => theme.warning,
-        RiskLevel::High | RiskLevel::Critical => theme.error,
-    };
+    let approval_color = theme.warning;
 
     let mut lines = vec![
         Line::from(vec![
@@ -1575,13 +1570,6 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
             Span::styled(
                 &approval.tool_name,
                 Style::default().fg(theme.tool).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("Risk: ", Style::default().fg(theme.muted)),
-            Span::styled(
-                format!("{:?}", approval.risk_level),
-                Style::default().fg(risk_color),
             ),
         ]),
         Line::from(""),
@@ -1655,7 +1643,7 @@ fn render_approval_overlay(frame: &mut Frame, app: &App, theme: &Theme) {
         .title(" Approval Required ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(risk_color))
+        .border_style(Style::default().fg(approval_color))
         .style(Style::default().bg(Color::Black));
 
     let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });

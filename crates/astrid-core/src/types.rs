@@ -198,6 +198,9 @@ impl fmt::Display for Permission {
 }
 
 /// Risk level classification for operations.
+///
+/// Used internally by the approval and audit subsystems for policy assessment.
+/// Not part of the kernel's public API or IPC protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskLevel {
@@ -245,8 +248,6 @@ pub struct ApprovalRequest {
     pub operation: String,
     /// Human-readable description
     pub description: String,
-    /// Risk level
-    pub risk_level: RiskLevel,
     /// Resource being accessed (if applicable)
     pub resource: Option<String>,
     /// Suggested options
@@ -261,7 +262,6 @@ impl ApprovalRequest {
             request_id: Uuid::new_v4(),
             operation: operation.into(),
             description: description.into(),
-            risk_level: RiskLevel::Medium,
             resource: None,
             options: vec![
                 ApprovalOption::AllowOnce,
@@ -271,13 +271,6 @@ impl ApprovalRequest {
                 ApprovalOption::Deny,
             ],
         }
-    }
-
-    /// Set the risk level.
-    #[must_use]
-    pub fn with_risk_level(mut self, level: RiskLevel) -> Self {
-        self.risk_level = level;
-        self
     }
 
     /// Set the resource.
@@ -416,20 +409,5 @@ mod tests {
         assert_eq!(Permission::Read.to_string(), "read");
         assert_eq!(Permission::Write.to_string(), "write");
         assert_eq!(Permission::Execute.to_string(), "execute");
-    }
-
-    #[test]
-    fn test_risk_level_ordering() {
-        assert!(RiskLevel::Low < RiskLevel::Medium);
-        assert!(RiskLevel::Medium < RiskLevel::High);
-        assert!(RiskLevel::High < RiskLevel::Critical);
-    }
-
-    #[test]
-    fn test_risk_level_requires_approval() {
-        assert!(!RiskLevel::Low.requires_approval());
-        assert!(!RiskLevel::Medium.requires_approval());
-        assert!(RiskLevel::High.requires_approval());
-        assert!(RiskLevel::Critical.requires_approval());
     }
 }

@@ -333,20 +333,12 @@ pub(crate) fn handle_daemon_event(app: &mut App, message: &IpcMessage) {
             action,
             resource,
             reason,
-            risk_level,
         } = &message.payload
         {
-            let tui_risk = match risk_level.as_str() {
-                "low" => state::RiskLevel::Low,
-                "medium" => state::RiskLevel::Medium,
-                "critical" => state::RiskLevel::Critical,
-                _ => state::RiskLevel::High,
-            };
             let approval = state::ApprovalRequest {
                 id: request_id.clone(),
                 tool_name: action.clone(),
                 description: resource.clone(),
-                risk_level: tui_risk,
                 details: vec![
                     ("Action".into(), action.clone()),
                     ("Resource".into(), resource.clone()),

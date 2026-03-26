@@ -680,17 +680,7 @@ pub(crate) struct ApprovalRequest {
     pub id: String,
     pub tool_name: String,
     pub description: String,
-    pub risk_level: RiskLevel,
     pub details: Vec<(String, String)>,
-}
-
-/// Risk level for tool calls.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum RiskLevel {
-    Low,
-    Medium,
-    High,
-    Critical,
 }
 
 // ─── Pending Actions ─────────────────────────────────────────────

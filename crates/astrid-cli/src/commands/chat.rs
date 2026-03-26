@@ -137,19 +137,10 @@ async fn drain_agent_response(
                 action,
                 resource,
                 reason,
-                risk_level,
             } => {
                 formatter.flush_markdown();
-                auto_deny_approval(
-                    client,
-                    session_id,
-                    &request_id,
-                    &action,
-                    &resource,
-                    &reason,
-                    &risk_level,
-                )
-                .await?;
+                auto_deny_approval(client, session_id, &request_id, &action, &resource, &reason)
+                    .await?;
             },
             astrid_types::ipc::IpcPayload::SelectionRequired {
                 request_id,
@@ -192,12 +183,11 @@ async fn auto_deny_approval(
     action: &str,
     resource: &str,
     reason: &str,
-    risk_level: &str,
 ) -> anyhow::Result<()> {
     println!(
         "{}",
         Theme::warning(&format!(
-            "Approval required [{risk_level}]: {action} on {resource} ({reason})"
+            "Approval required: {action} on {resource} ({reason})"
         ))
     );
     client

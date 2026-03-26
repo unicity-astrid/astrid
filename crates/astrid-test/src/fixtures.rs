@@ -2,9 +2,7 @@
 
 use uuid::Uuid;
 
-use astrid_core::{
-    AgentId, ApprovalRequest, ElicitationRequest, ElicitationSchema, RiskLevel, SessionId,
-};
+use astrid_core::{AgentId, ApprovalRequest, ElicitationRequest, ElicitationSchema, SessionId};
 
 /// Create a test agent ID.
 #[must_use]
@@ -34,7 +32,6 @@ pub fn test_session_id_from(uuid: Uuid) -> SessionId {
 #[must_use]
 pub fn test_approval_request() -> ApprovalRequest {
     ApprovalRequest::new("test_operation", "This is a test operation")
-        .with_risk_level(RiskLevel::Medium)
 }
 
 /// Create a test approval request for a specific operation.
@@ -50,7 +47,6 @@ pub fn test_approval_request_for(
 #[must_use]
 pub fn test_high_risk_approval() -> ApprovalRequest {
     ApprovalRequest::new("delete_files", "Delete multiple files from the system")
-        .with_risk_level(RiskLevel::High)
         .with_resource("/home/user/important")
 }
 
@@ -105,13 +101,11 @@ mod tests {
     fn test_approval_request_fixture() {
         let req = test_approval_request();
         assert_eq!(req.operation, "test_operation");
-        assert_eq!(req.risk_level, RiskLevel::Medium);
     }
 
     #[test]
     fn test_high_risk_approval_fixture() {
         let req = test_high_risk_approval();
-        assert_eq!(req.risk_level, RiskLevel::High);
         assert!(req.resource.is_some());
     }
 
