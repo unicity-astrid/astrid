@@ -453,8 +453,10 @@ impl fmt::Display for TopicDirection {
 /// A topic API declaration describing the payload shape of an IPC topic.
 ///
 /// Capsules declare each published or subscribed topic with an optional
-/// JSON Schema file that describes the payload structure. Schema files
-/// are baked into `meta.json` at install time for tooling consumption.
+/// JSON Schema file or a reference to a WIT record type. At install time,
+/// the schema is baked into `meta.json` for tooling and A2UI consumption.
+///
+/// If both `schema` and `wit_type` are set, `wit_type` takes precedence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopicDef {
     /// The concrete topic name (e.g. `"llm.v1.response.chunk.anthropic"`).
@@ -466,4 +468,8 @@ pub struct TopicDef {
     pub description: Option<String>,
     /// Path to a JSON Schema file (relative to the capsule directory).
     pub schema: Option<PathBuf>,
+    /// Name of a WIT record type (kebab-case) defined in the capsule's `wit/` directory.
+    /// At install time, the record is parsed from WIT and converted to JSON Schema
+    /// with field descriptions from `///` doc comments.
+    pub wit_type: Option<String>,
 }

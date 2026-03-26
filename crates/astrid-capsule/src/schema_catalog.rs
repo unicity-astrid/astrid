@@ -46,13 +46,15 @@ impl SchemaCatalog {
 
     /// Register topic schemas from a capsule's manifest declarations.
     ///
-    /// Called during `WasmEngine::load()`. Topics without schema metadata
-    /// are still registered (with `schema: None`) so the catalog knows
-    /// they exist.
+    /// Called during `WasmEngine::load()`. The `baked_schemas` map contains
+    /// JSON Schemas derived from WIT records at install time (keyed by topic
+    /// name). Topics without a baked schema are still registered with
+    /// `schema: None` so the catalog knows they exist.
     pub async fn register_topics(
         &self,
         capsule_id: &CapsuleId,
         topics: &[crate::manifest::TopicDef],
+        baked_schemas: &HashMap<String, serde_json::Value>,
     ) {
         let mut schemas = self.schemas.write().await;
         for topic in topics {
@@ -61,7 +63,7 @@ impl SchemaCatalog {
                 TopicSchema {
                     capsule_id: capsule_id.clone(),
                     description: topic.description.clone(),
-                    schema: None, // Populated by Phase 3 (capsule WIT schemas)
+                    schema: baked_schemas.get(&topic.name).cloned(),
                 },
             );
         }
@@ -114,16 +116,53 @@ mod tests {
             direction: TopicDirection::Publish,
             description: Some("Published when the active model changes".into()),
             schema: None,
+            wit_type: None,
         }];
 
-        catalog.register_topics(&test_capsule_id(), &topics).await;
+        catalog
+            .register_topics(&test_capsule_id(), &topics, &HashMap::new())
+            .await;
 
         let schema = catalog.get("registry.v1.active_model_changed").await;
         assert!(schema.is_some());
         let schema = schema.unwrap();
         assert_eq!(schema.capsule_id, test_capsule_id());
         assert!(schema.description.is_some());
-        assert!(schema.schema.is_none()); // No WIT schema yet
+        assert!(schema.schema.is_none());
+    }
+
+    #[tokio::test]
+    async fn register_with_baked_schema() {
+        let catalog = SchemaCatalog::new();
+        let topics = vec![TopicDef {
+            name: "registry.v1.active_model_changed".into(),
+            direction: TopicDirection::Publish,
+            description: Some("Published when the active model changes".into()),
+            schema: None,
+            wit_type: Some("provider-entry".into()),
+        }];
+
+        let mut baked = HashMap::new();
+        baked.insert(
+            "registry.v1.active_model_changed".into(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "Model ID"}
+                }
+            }),
+        );
+
+        catalog
+            .register_topics(&test_capsule_id(), &topics, &baked)
+            .await;
+
+        let schema = catalog.get("registry.v1.active_model_changed").await;
+        assert!(schema.is_some());
+        let schema = schema.unwrap();
+        assert!(schema.schema.is_some());
+        let json_schema = schema.schema.unwrap();
+        assert_eq!(json_schema["properties"]["id"]["type"], "string");
     }
 
     #[tokio::test]
@@ -136,16 +175,18 @@ mod tests {
                 direction: TopicDirection::Publish,
                 description: None,
                 schema: None,
+                wit_type: None,
             },
             TopicDef {
                 name: "a.v1.bar".into(),
                 direction: TopicDirection::Subscribe,
                 description: None,
                 schema: None,
+                wit_type: None,
             },
         ];
 
-        catalog.register_topics(&id, &topics).await;
+        catalog.register_topics(&id, &topics, &HashMap::new()).await;
         assert_eq!(catalog.len().await, 2);
 
         catalog.unregister_capsule(&id).await;
@@ -166,7 +207,9 @@ mod tests {
                     direction: TopicDirection::Publish,
                     description: None,
                     schema: None,
+                    wit_type: None,
                 }],
+                &HashMap::new(),
             )
             .await;
 
@@ -178,7 +221,9 @@ mod tests {
                     direction: TopicDirection::Publish,
                     description: None,
                     schema: None,
+                    wit_type: None,
                 }],
+                &HashMap::new(),
             )
             .await;
 

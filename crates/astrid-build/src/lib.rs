@@ -17,6 +17,8 @@ mod build;
 mod mcp;
 mod openclaw;
 mod rust;
+/// WIT record → JSON Schema conversion for IPC topic schemas.
+pub mod wit_schema;
 
 /// CLI arguments for `astrid-build`.
 #[derive(Parser)]

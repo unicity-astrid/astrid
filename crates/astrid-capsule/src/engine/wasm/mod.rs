@@ -96,6 +96,38 @@ fn resolve_content_addressed_wasm(capsule_dir: &std::path::Path) -> Option<PathB
         None
     }
 }
+
+/// Read baked topic schemas from `meta.json` in a capsule's install directory.
+///
+/// Returns a map of topic name → JSON Schema. Topics without a baked schema
+/// are omitted. If `meta.json` is missing or unparseable, returns an empty map.
+fn read_baked_schemas(
+    capsule_dir: &std::path::Path,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    let meta_path = capsule_dir.join("meta.json");
+    let content = match std::fs::read_to_string(&meta_path) {
+        Ok(c) => c,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+    let meta: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+
+    let mut schemas = std::collections::HashMap::new();
+    if let Some(topics) = meta.get("topics").and_then(|t| t.as_array()) {
+        for topic in topics {
+            if let (Some(name), Some(schema)) = (
+                topic.get("name").and_then(|n| n.as_str()),
+                topic.get("schema").filter(|s| !s.is_null()),
+            ) {
+                schemas.insert(name.to_string(), schema.clone());
+            }
+        }
+    }
+    schemas
+}
+
 /// Wall-clock timeout for short-lived (non-daemon) WASM capsules.
 /// Generous enough for interceptors doing streaming HTTP (e.g. LLM providers)
 /// while still catching runaways.
@@ -703,7 +735,13 @@ impl ExecutionEngine for WasmEngine {
             registry
                 .write()
                 .await
-                .register_uuid(capsule_uuid, capsule_id);
+                .register_uuid(capsule_uuid, capsule_id.clone());
+
+            // Register topic schemas in the catalog from baked meta.json.
+            let baked_schemas = read_baked_schemas(&self._capsule_dir);
+            ctx.schema_catalog
+                .register_topics(&capsule_id, &self.manifest.topics, &baked_schemas)
+                .await;
         }
 
         self.cancel_token = Some(cancel_token.clone());
