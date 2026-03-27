@@ -175,6 +175,9 @@ enum CapsuleCommands {
         /// Force removal even if other capsules depend on it
         #[arg(long)]
         force: bool,
+        /// Also delete saved configuration (API keys, env vars)
+        #[arg(long)]
+        purge: bool,
     },
     /// Show the capsule imports/exports dependency tree
     Tree,
@@ -413,8 +416,9 @@ async fn main() -> Result<()> {
                 name,
                 workspace,
                 force,
+                purge,
             } => {
-                commands::capsule::remove::remove_capsule(&name, workspace, force)?;
+                commands::capsule::remove::remove_capsule(&name, workspace, force, purge)?;
             },
             CapsuleCommands::Tree | CapsuleCommands::Deps => {
                 commands::capsule::deps::show_tree()?;
