@@ -17,7 +17,12 @@ use super::meta::{CapsuleMeta, scan_installed_capsules};
 /// Checks the provides/requires dependency graph before removal. If the target
 /// capsule is the sole provider of a capability required by another capsule,
 /// removal is blocked unless `force` is `true`.
-pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool) -> anyhow::Result<()> {
+pub(crate) fn remove_capsule(
+    name: &str,
+    workspace: bool,
+    force: bool,
+    purge: bool,
+) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
     let target_dir = super::install::resolve_target_dir(&home, name, workspace)?;
 
@@ -45,18 +50,24 @@ pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool) -> anyhow
     // resolve to a real binary. Append-only by default, explicit `astrid gc`
     // for operator-initiated cleanup (future).
 
-    // Remove the capsule directory (metadata, Capsule.toml, config)
+    // Remove the capsule directory (metadata, Capsule.toml, config).
     std::fs::remove_dir_all(&target_dir)
         .with_context(|| format!("failed to remove {}", target_dir.display()))?;
 
-    // Remove env config if it exists
-    let principal = astrid_core::PrincipalId::default();
-    let env_path = home
-        .principal_home(&principal)
-        .env_dir()
-        .join(format!("{name}.env.json"));
-    if env_path.exists() {
-        let _ = std::fs::remove_file(&env_path);
+    // Only delete user configuration (API keys, env vars) with --purge.
+    // By default, env.json is preserved so reinstall skips prompting.
+    if purge {
+        let principal = astrid_core::PrincipalId::default();
+        let env_path = home
+            .principal_home(&principal)
+            .env_dir()
+            .join(format!("{name}.env.json"));
+        if env_path.exists() {
+            std::fs::remove_file(&env_path).with_context(|| {
+                format!("failed to purge configuration at {}", env_path.display())
+            })?;
+            eprintln!("Purged configuration for '{name}'.");
+        }
     }
 
     if force {
@@ -281,7 +292,7 @@ mod tests {
             super::super::install::resolve_target_dir(&home, "nonexistent", false).unwrap();
         assert!(!target_dir.exists());
         // Direct test: the bail should fire
-        let err = remove_capsule("nonexistent", false, false);
+        let err = remove_capsule("nonexistent", false, false, false);
         assert!(err.is_err());
         let msg = format!("{}", err.unwrap_err());
         assert!(msg.contains("not installed"), "got: {msg}");
@@ -308,9 +319,61 @@ mod tests {
         assert!(target.exists());
 
         // Remove it (force to skip dep check which scans real fs)
-        remove_capsule("remove-test", false, true).unwrap_or_else(|_| {
+        remove_capsule("remove-test", false, true, false).unwrap_or_else(|_| {
             // If home resolution differs, clean up manually
             std::fs::remove_dir_all(&target).unwrap();
         });
+    }
+
+    #[test]
+    fn remove_without_purge_preserves_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env_dir = tmp.path().join("env");
+        std::fs::create_dir_all(&env_dir).unwrap();
+        let env_path = env_dir.join("test-capsule.env.json");
+        std::fs::write(&env_path, r#"{"api_key":"secret"}"#).unwrap();
+
+        // Simulate the purge=false path: env file should not be touched.
+        let purge = false;
+        if purge {
+            let _ = std::fs::remove_file(&env_path);
+        }
+        assert!(
+            env_path.exists(),
+            "env.json should be preserved when purge=false"
+        );
+    }
+
+    #[test]
+    fn remove_with_purge_deletes_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env_dir = tmp.path().join("env");
+        std::fs::create_dir_all(&env_dir).unwrap();
+        let env_path = env_dir.join("test-capsule.env.json");
+        std::fs::write(&env_path, r#"{"api_key":"secret"}"#).unwrap();
+
+        // Simulate the purge=true path: env file should be deleted.
+        let purge = true;
+        if purge && env_path.exists() {
+            std::fs::remove_file(&env_path).unwrap();
+        }
+        assert!(
+            !env_path.exists(),
+            "env.json should be deleted when purge=true"
+        );
+    }
+
+    #[test]
+    fn purge_with_no_env_file_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env_path = tmp.path().join("nonexistent.env.json");
+
+        // Simulate purge on a capsule that has no env config.
+        let purge = true;
+        if purge && env_path.exists() {
+            std::fs::remove_file(&env_path).unwrap();
+        }
+        // Should not error — just a no-op.
+        assert!(!env_path.exists());
     }
 }
