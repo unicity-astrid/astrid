@@ -17,7 +17,12 @@ use super::meta::{CapsuleMeta, scan_installed_capsules};
 /// Checks the provides/requires dependency graph before removal. If the target
 /// capsule is the sole provider of a capability required by another capsule,
 /// removal is blocked unless `force` is `true`.
-pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool, purge: bool) -> anyhow::Result<()> {
+pub(crate) fn remove_capsule(
+    name: &str,
+    workspace: bool,
+    force: bool,
+    purge: bool,
+) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
     let target_dir = super::install::resolve_target_dir(&home, name, workspace)?;
 
@@ -58,8 +63,9 @@ pub(crate) fn remove_capsule(name: &str, workspace: bool, force: bool, purge: bo
             .env_dir()
             .join(format!("{name}.env.json"));
         if env_path.exists() {
-            std::fs::remove_file(&env_path)
-                .with_context(|| format!("failed to purge configuration at {}", env_path.display()))?;
+            std::fs::remove_file(&env_path).with_context(|| {
+                format!("failed to purge configuration at {}", env_path.display())
+            })?;
             eprintln!("Purged configuration for '{name}'.");
         }
     }
@@ -332,7 +338,10 @@ mod tests {
         if purge {
             let _ = std::fs::remove_file(&env_path);
         }
-        assert!(env_path.exists(), "env.json should be preserved when purge=false");
+        assert!(
+            env_path.exists(),
+            "env.json should be preserved when purge=false"
+        );
     }
 
     #[test]
@@ -348,7 +357,10 @@ mod tests {
         if purge && env_path.exists() {
             std::fs::remove_file(&env_path).unwrap();
         }
-        assert!(!env_path.exists(), "env.json should be deleted when purge=true");
+        assert!(
+            !env_path.exists(),
+            "env.json should be deleted when purge=true"
+        );
     }
 
     #[test]

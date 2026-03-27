@@ -17,6 +17,10 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - **`capsule_abi` module removed from `astrid-core`.** Types (`CapsuleAbiContext`, `CapsuleAbiResult`, `LogLevel`, etc.) are replaced by `wasmtime::component::bindgen!` generated types. (#632)
 - **Approval API simplified.** `risk-level` removed from `approval-request` WIT record. `decision` removed from `approval-response`. Capsules declare action + resource, get back approved/denied. Risk classification was speculative complexity — the kernel manages allowance-based approval without risk levels. (#641)
 
+### Fixed
+
+- **`capsule remove` no longer deletes env config by default.** User configuration (API keys, secrets) in `env.json` is preserved across uninstall/reinstall cycles. Use `--purge` to explicitly delete saved configuration. (#647)
+
 ### Added
 
 - **WIT-driven IPC topic schemas.** Capsules declare `wit_type = "record-name"` on `[[topic]]` entries in `Capsule.toml`. At install time, `wit-parser` reads the record from the capsule's `wit/` directory, extracts field names, types, and `///` doc comments into JSON Schema, and bakes it into `meta.json`. At runtime, `WasmEngine::load()` populates the `SchemaCatalog` from baked schemas. The LLM sees typed field descriptions without capsule authors writing JSON Schema by hand. (#643)
