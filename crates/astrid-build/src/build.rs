@@ -208,8 +208,15 @@ mod tests {
         }
         let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
 
-        pack_capsule_archive(&capsule_path, &toml_content, None, build_dir.path(), &refs)
-            .expect("archiving should succeed");
+        pack_capsule_archive(
+            &capsule_path,
+            &toml_content,
+            None,
+            build_dir.path(),
+            &refs,
+            None,
+        )
+        .expect("archiving should succeed");
 
         assert!(capsule_path.exists(), ".capsule file should exist");
         assert!(
@@ -365,6 +372,7 @@ mod tests {
             None,
             base,
             &[&base.join("node_modules")],
+            None,
         )
         .expect("archiving should succeed");
 
@@ -436,6 +444,7 @@ mod tests {
             None,
             base,
             &[&base.join("node_modules")],
+            None,
         )
         .expect("archiving must not hang on symlink cycles");
 

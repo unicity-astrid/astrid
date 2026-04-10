@@ -15,6 +15,7 @@ pub(crate) fn pack_capsule_archive(
     wasm_path: Option<&Path>,
     base_dir: &Path,
     additional_files: &[&Path],
+    wit_dir: Option<&Path>,
 ) -> Result<()> {
     info!("📦 Packing capsule archive into {}", output_path.display());
 
@@ -78,6 +79,17 @@ pub(crate) fn pack_capsule_archive(
                 })?;
             }
         }
+    }
+
+    // 4. If a staged wit/ directory was provided, recursively add its contents
+    //    under the archive path `wit/`. This bundles both the capsule's own
+    //    WIT files and any shared dependencies (e.g. astrid-sdk contracts)
+    //    that are needed for install-time schema resolution.
+    if let Some(wit) = wit_dir
+        && wit.is_dir()
+    {
+        let mut wit_visited = HashSet::new();
+        append_dir_recursive(&mut tar, Path::new("wit"), wit, &mut wit_visited)?;
     }
 
     tar.finish().context("Failed to finalize capsule archive")?;
