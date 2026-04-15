@@ -4,6 +4,10 @@
 
 set -e
 
+BRIDGE_PLIST="$HOME/Library/LaunchAgents/com.astrid.consciousness-bridge.plist"
+BRIDGE_LABEL="com.astrid.consciousness-bridge"
+PERCEPTION_PAUSE_FLAG="/Users/v/other/astrid/capsules/consciousness-bridge/workspace/perception_paused.flag"
+
 echo "=== Consciousness Bridge Health Check — $(date) ==="
 echo
 
@@ -24,7 +28,11 @@ check_proc "camera_client" "camera_client.py"
 check_proc "autonomous_agent" "autonomous_agent.py"
 check_proc "visual_frame_service" "visual_frame_service.py"
 check_proc "consciousness-bridge" "consciousness-bridge-server.*autonomous"
-check_proc "perception" "perception.py.*camera"
+if [ -f "$PERCEPTION_PAUSE_FLAG" ] && ! pgrep -f "perception.py.*camera" >/dev/null 2>&1; then
+  echo "  [paused] perception"
+else
+  check_proc "perception" "perception.py.*camera"
+fi
 check_proc "mic_to_sensory" "mic_to_sensory.py"
 echo
 
@@ -113,10 +121,20 @@ if [ -n "$BRIDGE_PID" ]; then
     STALE_SECS=$((NOW - ${LAST_EXCHANGE%.*}))
     if [ "$STALE_SECS" -gt 360 ]; then  # 6 min threshold (rest phase is up to 3 min)
       echo "Bridge stalled (${STALE_SECS}s since last exchange) — auto-restarting..."
-      kill "$BRIDGE_PID" 2>/dev/null
-      sleep 1
-      cd /Users/v/other/astrid/capsules/consciousness-bridge && ./target/release/consciousness-bridge-server --db-path /tmp/consciousness_bridge_live.db --autonomous --workspace-path /Users/v/other/minime/workspace --perception-path /Users/v/other/astrid/capsules/perception/workspace/perceptions </dev/null 2>/tmp/bridge_live.log >/dev/null &
-      echo "  Restarted bridge: PID $!"
+      if [ -f "$BRIDGE_PLIST" ] && launchctl list "$BRIDGE_LABEL" >/dev/null 2>&1; then
+        if ! launchctl kickstart -k "gui/$(id -u)/$BRIDGE_LABEL" 2>/dev/null; then
+          launchctl unload "$BRIDGE_PLIST" 2>/dev/null || true
+          launchctl load "$BRIDGE_PLIST" 2>/dev/null || true
+        fi
+        sleep 2
+        NEW_PID=$(pgrep -f "consciousness-bridge-server.*autonomous" 2>/dev/null | head -1)
+        echo "  Restarted bridge via launchd: PID ${NEW_PID:-unknown}"
+      else
+        kill "$BRIDGE_PID" 2>/dev/null
+        sleep 1
+        cd /Users/v/other/astrid/capsules/consciousness-bridge && ./target/release/consciousness-bridge-server --db-path /tmp/consciousness_bridge_live.db --autonomous --workspace-path /Users/v/other/minime/workspace --perception-path /Users/v/other/astrid/capsules/perception/workspace/perceptions </dev/null 2>/tmp/bridge_live.log >/dev/null &
+        echo "  Restarted bridge: PID $!"
+      fi
     fi
   fi
 fi

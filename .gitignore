@@ -70,7 +70,6 @@ capsules/consciousness-bridge/workspace/research/
 capsules/consciousness-bridge/workspace/reservoir_config.json
 capsules/perception/workspace/perceptions/
 capsules/perception/workspace/visual/
-
 # Python cache
 **/__pycache__/
 *.pyc

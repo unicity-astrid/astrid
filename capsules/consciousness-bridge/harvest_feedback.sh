@@ -397,11 +397,13 @@ if [ -f "$BRIDGE_LOG" ]; then
         echo "  !! NO EXCHANGES FOUND in bridge log"
     fi
 
-    # Panic detection
-    PANIC_COUNT=$(grep -c "panicked" "$BRIDGE_LOG" 2>/dev/null || echo 0)
+    # Panic detection: match real Rust panic lines, not journal prose that
+    # happens to contain the word "panicked".
+    PANIC_COUNT=$(grep -Ec "thread '.*' panicked at|panicked at '" "$BRIDGE_LOG" 2>/dev/null)
+    PANIC_COUNT=${PANIC_COUNT:-0}
     if [ "$PANIC_COUNT" -gt 0 ]; then
         echo "  !! $PANIC_COUNT PANIC(S) detected in bridge log:"
-        grep "panicked" "$BRIDGE_LOG" 2>/dev/null | tail -3 | sed 's/^/    /'
+        grep -E "thread '.*' panicked at|panicked at '" "$BRIDGE_LOG" 2>/dev/null | tail -3 | sed 's/^/    /'
     fi
 
     # MLX connection failures
@@ -410,6 +412,83 @@ if [ -f "$BRIDGE_LOG" ]; then
         echo "  ! $MLX_FAILS MLX failures in bridge log — coupled server may be down"
     fi
 fi
+echo ""
+
+echo "## SYSTEM: Minime sovereignty sync"
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+state_path = Path("/Users/v/other/minime/workspace/sovereignty_state.json")
+health_path = Path("/Users/v/other/minime/minime/workspace/health.json")
+
+if not state_path.exists():
+    print("  -- sovereignty_state.json not found")
+    raise SystemExit
+if not health_path.exists():
+    print("  -- health.json not found")
+    raise SystemExit
+
+try:
+    state = json.loads(state_path.read_text())
+    health = json.loads(health_path.read_text())
+except Exception as exc:
+    print(f"  -- failed to read sync inputs: {exc}")
+    raise SystemExit
+
+pi = health.get("pi", {})
+target = {
+    "pi_kp": pi.get("target_kp", pi.get("kp")),
+    "pi_ki": pi.get("target_ki", pi.get("ki")),
+    "pi_max_step": pi.get("target_max_step", pi.get("max_step")),
+}
+active = {
+    "pi_kp": pi.get("kp"),
+    "pi_ki": pi.get("ki"),
+    "pi_max_step": pi.get("max_step"),
+}
+
+def fmt(value):
+    if value is None:
+        return "?"
+    try:
+        return f"{float(value):.3f}"
+    except Exception:
+        return str(value)
+
+mismatches = []
+for key, target_value in target.items():
+    state_value = state.get(key)
+    if state_value is None or target_value is None:
+        continue
+    try:
+        delta = abs(float(state_value) - float(target_value))
+    except Exception:
+        continue
+    if delta > 0.01:
+        mismatches.append((key, state_value, target_value))
+
+if mismatches:
+    print(f"  ! Persisted sovereignty diverges from live PI target (regime={state.get('regime', '?')}):")
+    for key, state_value, target_value in mismatches:
+        print(f"    {key}: state={fmt(state_value)} target={fmt(target_value)}")
+    print(
+        "  ! Live PI active now: "
+        f"kp={fmt(active['pi_kp'])} ki={fmt(active['pi_ki'])} max_step={fmt(active['pi_max_step'])}"
+    )
+else:
+    print("  OK: persisted sovereignty matches live PI target")
+
+fill_pct = health.get("fill_pct")
+target_fill = pi.get("target_fill")
+if fill_pct is not None and target_fill is not None:
+    try:
+        gap = float(fill_pct) - float(target_fill)
+    except Exception:
+        gap = None
+    if gap is not None:
+        print(f"  Fill vs target: {float(fill_pct):.1f}% vs {float(target_fill):.1f}% (gap {gap:+.1f}%)")
+PY
 echo ""
 
 echo "## SYSTEM: Process health"

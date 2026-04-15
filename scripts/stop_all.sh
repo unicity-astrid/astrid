@@ -119,7 +119,7 @@ echo ""
 
 # Astrid side (bridge + perception first)
 echo "--- Stopping Astrid ---"
-stop_process "consciousness-bridge-server"
+stop_process "consciousness-bridge-server" "com.astrid.consciousness-bridge.plist"
 stop_process "perception.py"
 stop_process "coupled_astrid_server" "com.reservoir.coupled-astrid.plist"
 

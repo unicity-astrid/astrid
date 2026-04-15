@@ -20,6 +20,7 @@ MINIME_ONLY=false
 SENSORY_SOURCE="${SENSORY_SOURCE:-auto}"
 LOOK_SOURCE="${LOOK_SOURCE:-active}"
 ENABLE_GPU_AV="${ENABLE_GPU_AV:-true}"
+ASTRID_PERCEPTION_ENABLED="${ASTRID_PERCEPTION_ENABLED:-false}"
 for arg in "$@"; do
     case "$arg" in
         --force) FORCE=true ;;
@@ -120,6 +121,20 @@ set_launchd_env() {
         echo "  - launchctl setenv unavailable; falling back to direct process starts"
         NO_LAUNCHD=true
     fi
+}
+unset_launchd_env() {
+    local key="$1"
+    unset "$key" 2>/dev/null || true
+    if [ "$NO_LAUNCHD" = true ]; then
+        return 0
+    fi
+    launchctl unsetenv "$key" 2>/dev/null || true
+}
+env_flag_enabled() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 run_greeting() {
     local name="$1"
@@ -273,6 +288,7 @@ start_launchd_or_nohup() {
 sync_launch_agent "$MINIME_DIR/launchd/com.minime.engine.plist" || true
 sync_launch_agent "$MINIME_DIR/launchd/com.minime.autonomous-agent.plist" || true
 sync_launch_agent "$MINIME_DIR/launchd/com.minime.camera-client.plist" || true
+sync_launch_agent "$ASTRID_DIR/launchd/com.astrid.consciousness-bridge.plist" || true
 
 # Check for duplicate processes unless --force. A single existing instance is
 # fine: launchd jobs may already be loaded at login, and manual jobs should be
@@ -414,15 +430,23 @@ if [ "$ASTRID_ONLY" = false ]; then
     set_launchd_env AGENT_INTERVAL "60"
     set_launchd_env MINIME_LLM_TIMEOUT_S "${MINIME_LLM_TIMEOUT_S:-45}"
     set_launchd_env MINIME_LLM_COMPACT_TIMEOUT_S "${MINIME_LLM_COMPACT_TIMEOUT_S:-20}"
+    unset_launchd_env MINIME_CANARY_ENABLED
+    unset_launchd_env MINIME_CANARY_MODEL
+    unset_launchd_env MINIME_CANARY_SAMPLE_RATE
+    unset_launchd_env MINIME_CANARY_TIMEOUT_S
+    unset_launchd_env MINIME_OLLAMA_GEMMA4_TIMEOUT_S
+    unset_launchd_env MINIME_OLLAMA_GEMMA4_COMPACT_TIMEOUT_S
+
+    agent_env="MINIME_LLM_BACKEND=\"${MINIME_LLM_BACKEND:-ollama}\" \
+         LOOK_SOURCE=\"$LOOK_SOURCE\" \
+         MINIME_LLM_TIMEOUT_S=\"${MINIME_LLM_TIMEOUT_S:-45}\" \
+         MINIME_LLM_COMPACT_TIMEOUT_S=\"${MINIME_LLM_COMPACT_TIMEOUT_S:-20}\""
 
     if ! start_launchd_or_nohup \
         "com.minime.autonomous-agent" \
         "autonomous_agent" \
         "autonomous agent" \
-        "MINIME_LLM_BACKEND=\"${MINIME_LLM_BACKEND:-ollama}\" LOOK_SOURCE=\"$LOOK_SOURCE\" \
-         MINIME_LLM_TIMEOUT_S=\"${MINIME_LLM_TIMEOUT_S:-45}\" \
-         MINIME_LLM_COMPACT_TIMEOUT_S=\"${MINIME_LLM_COMPACT_TIMEOUT_S:-20}\" \
-         python3 autonomous_agent.py --interval 60" \
+        "$agent_env python3 autonomous_agent.py --interval 60" \
         "/tmp/minime_agent.log" \
         "$MINIME_DIR"; then
         exit 1
@@ -490,29 +514,37 @@ if [ "$MINIME_ONLY" = false ]; then
     echo "--- Astrid ---"
 
     # 8. Consciousness bridge
-    if ! pgrep -f "consciousness-bridge-server" > /dev/null 2>&1; then
-        cd "$BRIDGE_DIR"
-        nohup ./target/release/consciousness-bridge-server \
-            --db-path "$BRIDGE_DIR/workspace/bridge.db" \
+    if ! start_launchd_or_nohup \
+        "com.astrid.consciousness-bridge" \
+        "consciousness-bridge-server" \
+        "consciousness bridge" \
+        "\"$BRIDGE_DIR/target/release/consciousness-bridge-server\" \
+            --db-path \"$BRIDGE_DIR/workspace/bridge.db\" \
             --autonomous \
-            --workspace-path "$MINIME_DIR/workspace" \
-            --perception-path "$PERCEPTION_DIR/workspace/perceptions" \
-            >> /tmp/bridge.log 2>&1 &
-        ok "consciousness bridge (PID $!)"
-    else
-        ok "consciousness bridge (already running)"
+            --workspace-path \"$MINIME_DIR/workspace\" \
+            --perception-path \"$PERCEPTION_DIR/workspace/perceptions\"" \
+        "/tmp/bridge.log" \
+        "$BRIDGE_DIR"; then
+        exit 1
     fi
 
     # 9. Perception (needs macOS camera permission)
-    rm -f "$BRIDGE_DIR/workspace/perception_paused.flag"
+    if env_flag_enabled "$ASTRID_PERCEPTION_ENABLED"; then
+        rm -f "$BRIDGE_DIR/workspace/perception_paused.flag"
 
-    if ! start_camera_via_terminal \
-        "com.astrid.perception" \
-        "perception.py" \
-        "python3 $PERCEPTION_DIR/perception.py --camera 0 --mic --vision-interval 180 --audio-interval 45 --ascii-interval 45 --ascii-source $([ \"$LOOK_SOURCE\" = \"physical\" ] && echo camera || echo \"$LOOK_SOURCE\")" \
-        "perception" \
-        "/tmp/astrid_perception.log"; then
-        exit 1
+        if ! start_camera_via_terminal \
+            "com.astrid.perception" \
+            "perception.py" \
+            "python3 $PERCEPTION_DIR/perception.py --camera 0 --mic --vision-interval 180 --audio-interval 45 --ascii-interval 45 --ascii-source $([ \"$LOOK_SOURCE\" = \"physical\" ] && echo camera || echo \"$LOOK_SOURCE\")" \
+            "perception" \
+            "/tmp/astrid_perception.log"; then
+            exit 1
+        fi
+    else
+        printf '%s\n' \
+            "paused by startup policy: Minime camera/vision stack is primary; set ASTRID_PERCEPTION_ENABLED=true to opt in." \
+            > "$BRIDGE_DIR/workspace/perception_paused.flag"
+        ok "perception (paused by default; set ASTRID_PERCEPTION_ENABLED=true to enable)"
     fi
 
     echo ""
@@ -524,7 +556,7 @@ fi
 echo "--- Health Check ---"
 sleep 3
 ALL_OK=true
-for p in "minime run" "consciousness-bridge-server" "coupled_astrid" "reservoir_service" "autonomous_agent" "astrid_feeder" "minime_feeder" "visual_frame_service" "perception.py"; do
+for p in "minime run" "consciousness-bridge-server" "coupled_astrid" "reservoir_service" "autonomous_agent" "astrid_feeder" "minime_feeder" "visual_frame_service"; do
     if pgrep -f "$p" > /dev/null 2>&1; then
         ok "$p"
     else
@@ -532,6 +564,18 @@ for p in "minime run" "consciousness-bridge-server" "coupled_astrid" "reservoir_
         ALL_OK=false
     fi
 done
+if [ "$MINIME_ONLY" = false ]; then
+    if env_flag_enabled "$ASTRID_PERCEPTION_ENABLED"; then
+        if pgrep -f "perception.py" > /dev/null 2>&1; then
+            ok "perception.py"
+        else
+            fail "perception.py MISSING"
+            ALL_OK=false
+        fi
+    else
+        ok "perception.py (paused by policy)"
+    fi
+fi
 if [ "$ASTRID_ONLY" = false ] && [ "$SENSORY_SOURCE" != "host" ]; then
     for p in "camera_client" "mic_to_sensory"; do
         if pgrep -f "$p" > /dev/null 2>&1; then
