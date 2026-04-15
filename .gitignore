@@ -73,3 +73,4 @@ capsules/perception/workspace/visual/
 # Python cache
 **/__pycache__/
 *.pyc
+launchd/com.astrid.action-canonicalization-scorecard-once.plist
