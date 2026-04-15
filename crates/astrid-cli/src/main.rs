@@ -103,6 +103,12 @@ enum Commands {
         command: CapsuleCommands,
     },
 
+    /// Manage the content-addressed WIT store (admin commands)
+    Wit {
+        #[command(subcommand)]
+        command: WitCommands,
+    },
+
     /// Build and package a Capsule (The Universal Migrator)
     Build {
         /// Optional path to the project directory (defaults to current directory)
@@ -184,6 +190,25 @@ enum CapsuleCommands {
     /// Alias for `tree` (deprecated)
     #[command(hide = true)]
     Deps,
+}
+
+/// Admin commands for managing the content-addressed WIT store.
+///
+/// The WIT store (`~/.astrid/wit/`) is append-only by design — capsule
+/// uninstalls never touch it, preserving replay and historical inspection.
+/// These commands let an administrator explicitly prune unreferenced blobs.
+#[derive(Subcommand)]
+enum WitCommands {
+    /// Garbage-collect unreferenced WIT blobs from the content store.
+    ///
+    /// Computes the set of hashes referenced by all currently installed
+    /// capsules' `meta.json` files, then reports (or deletes with `--force`)
+    /// any `~/.astrid/wit/*.wit` blobs not in that set.
+    Gc {
+        /// Delete unreferenced blobs. Without this flag, only reports them.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -422,6 +447,11 @@ async fn main() -> Result<()> {
             },
             CapsuleCommands::Tree | CapsuleCommands::Deps => {
                 commands::capsule::deps::show_tree()?;
+            },
+        },
+        Some(Commands::Wit { command }) => match command {
+            WitCommands::Gc { force } => {
+                commands::wit::gc(force)?;
             },
         },
         Some(Commands::Session { command }) => {

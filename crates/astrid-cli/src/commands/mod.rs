@@ -9,3 +9,4 @@ pub(crate) mod headless;
 pub(crate) mod init;
 pub(crate) mod self_update;
 pub(crate) mod sessions;
+pub(crate) mod wit;

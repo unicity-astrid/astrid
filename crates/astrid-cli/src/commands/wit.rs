@@ -1,0 +1,200 @@
+//! Admin commands for the content-addressed WIT store.
+//!
+//! The WIT store at `~/.astrid/wit/{blake3}.wit` is append-only from the
+//! installer's perspective — `astrid capsule install` writes blobs but
+//! `astrid capsule remove` never deletes them. This preserves replay:
+//! historic capsule states can be reconstructed as long as their WIT blobs
+//! still exist.
+//!
+//! These admin commands let an operator explicitly prune unreferenced blobs
+//! when they're certain no pending replays need the content.
+//!
+//! # Security
+//!
+//! - GC is admin-only (no automatic sweeps on uninstall)
+//! - Dry-run by default; `--force` required to actually delete
+//! - Mark set is derived from every `meta.json` found under every principal's
+//!   capsules directory plus workspace-level capsules
+//! - A blob is deleted only if no currently installed capsule references
+//!   its hash via `wit_files`
+
+use std::collections::HashSet;
+use std::path::Path;
+
+use anyhow::Context;
+use astrid_core::dirs::AstridHome;
+use colored::Colorize;
+
+use super::capsule::meta::{CapsuleMeta, read_meta};
+use crate::theme::Theme;
+
+/// Garbage-collect unreferenced WIT blobs from the content store.
+///
+/// With `force = false` (default), reports orphans without deleting.
+/// With `force = true`, deletes unreferenced blobs and reports the count.
+pub(crate) fn gc(force: bool) -> anyhow::Result<()> {
+    let home = AstridHome::resolve().context("failed to resolve Astrid home")?;
+    let wit_store = home.wit_dir();
+
+    if !wit_store.is_dir() {
+        println!(
+            "{}",
+            Theme::info(&format!(
+                "WIT store does not exist: {}",
+                wit_store.display()
+            ))
+        );
+        return Ok(());
+    }
+
+    // Build the mark set: every WIT hash referenced by any installed capsule.
+    let marks = collect_marks(&home)?;
+
+    // Scan the store and identify orphans.
+    let mut orphans = Vec::new();
+    let mut total_blobs = 0_usize;
+    let mut total_bytes = 0_u64;
+    let mut orphan_bytes = 0_u64;
+
+    for entry in std::fs::read_dir(&wit_store)
+        .with_context(|| format!("failed to read WIT store: {}", wit_store.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("wit") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // Skip temp files left by concurrent installs (format: `{hash}.tmp.{pid}`)
+        if stem.contains(".tmp.") {
+            continue;
+        }
+
+        total_blobs = total_blobs.saturating_add(1);
+        if let Ok(meta) = std::fs::metadata(&path) {
+            total_bytes = total_bytes.saturating_add(meta.len());
+        }
+
+        if !marks.contains(stem) {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                orphan_bytes = orphan_bytes.saturating_add(meta.len());
+            }
+            orphans.push(path);
+        }
+    }
+
+    println!("{}", Theme::header("WIT content store"));
+    println!("  Location: {}", wit_store.display());
+    println!("  Total blobs: {total_blobs}");
+    println!(
+        "  Referenced: {}",
+        total_blobs.saturating_sub(orphans.len())
+    );
+    println!("  Orphaned:   {}", orphans.len());
+    println!("  Total size: {total_bytes} bytes ({orphan_bytes} reclaimable)");
+
+    if orphans.is_empty() {
+        println!("{}", Theme::success("Nothing to do — no orphaned blobs."));
+        return Ok(());
+    }
+
+    if !force {
+        println!();
+        println!("{}", Theme::header("Orphaned blobs (dry run):"));
+        for path in &orphans {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                println!("  {}", name.yellow());
+            }
+        }
+        println!();
+        println!(
+            "{}",
+            Theme::info("Run with --force to actually delete these blobs.")
+        );
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", Theme::warning("Deleting orphaned blobs..."));
+    let mut deleted = 0_usize;
+    for path in &orphans {
+        match std::fs::remove_file(path) {
+            Ok(()) => deleted = deleted.saturating_add(1),
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    Theme::warning(&format!("Failed to delete {}: {e}", path.display()))
+                );
+            },
+        }
+    }
+
+    println!(
+        "{} Deleted {deleted} blob(s), reclaimed {orphan_bytes} bytes",
+        Theme::success("OK")
+    );
+    Ok(())
+}
+
+/// Collect the set of hashes referenced by every installed capsule's
+/// `meta.json` across all principals and the workspace.
+fn collect_marks(home: &AstridHome) -> anyhow::Result<HashSet<String>> {
+    let mut marks = HashSet::new();
+
+    // Walk every principal home under ~/.astrid/home/
+    let home_root = home.home_dir();
+    if home_root.is_dir() {
+        for entry in std::fs::read_dir(&home_root)
+            .with_context(|| format!("failed to read {}", home_root.display()))?
+        {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let principal_root = entry.path();
+            if !principal_root.is_dir() {
+                continue;
+            }
+            // Each principal home's capsules directory
+            let capsules_dir = principal_root.join(".local").join("capsules");
+            if capsules_dir.is_dir() {
+                collect_from_capsules_dir(&capsules_dir, &mut marks);
+            }
+        }
+    }
+
+    // Workspace-level capsules (if running from a workspace)
+    if let Ok(cwd) = std::env::current_dir() {
+        let ws_caps = cwd.join(".astrid").join("capsules");
+        if ws_caps.is_dir() {
+            collect_from_capsules_dir(&ws_caps, &mut marks);
+        }
+    }
+
+    Ok(marks)
+}
+
+/// For every capsule subdirectory under `dir`, load `meta.json` and add its
+/// `wit_files` hash values to `marks`.
+fn collect_from_capsules_dir(dir: &Path, marks: &mut HashSet<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let capsule_dir = entry.path();
+        if !capsule_dir.is_dir() {
+            continue;
+        }
+        if let Some(meta) = read_meta(&capsule_dir) {
+            add_meta_marks(&meta, marks);
+        }
+    }
+}
+
+/// Add every hash from a capsule's `wit_files` map to `marks`.
+fn add_meta_marks(meta: &CapsuleMeta, marks: &mut HashSet<String>) {
+    for hash in meta.wit_files.values() {
+        marks.insert(hash.clone());
+    }
+}

@@ -983,6 +983,28 @@ fn content_address_wasm(
 /// Content-address WIT files from a capsule's `wit/` directory into the
 /// shared `wit/` store. Each `.wit` file is BLAKE3-hashed and stored as
 /// `wit/{hash}.wit`. Returns a map of original filename → hash.
+/// Content-address all `.wit` files under `target_dir/wit/` (recursively)
+/// into the system-wide append-only BLAKE3 store at `home.wit_dir()`.
+///
+/// The content store is a single source of truth shared across all principals
+/// and all capsules — identical WIT content (e.g. the SDK's shared contracts
+/// bundled into every capsule archive) is deduped to a single blob on disk.
+///
+/// # Append-only semantics
+///
+/// The store is append-only from the installer's perspective. Blobs are never
+/// deleted on uninstall — only an explicit admin GC (`astrid wit gc`) sweeps
+/// unreferenced blobs. This preserves replay: a historic capsule state can be
+/// reconstructed as long as the blobs it referenced still exist.
+///
+/// # Returns
+///
+/// A `HashMap<String, String>` mapping each WIT file's **relative path** under
+/// `wit/` (e.g. `"deps/astrid-contracts/astrid-contracts.wit"`) to its BLAKE3
+/// hex hash. This is stored in `meta.json` as the capsule's WIT manifest.
+///
+/// After content addressing succeeds, the per-capsule `target_dir/wit/`
+/// directory is deleted — `wit_files` is the authoritative reference.
 fn content_address_wit(
     home: &AstridHome,
     target_dir: &Path,
@@ -997,13 +1019,42 @@ fn content_address_wit(
     let wit_store = home.wit_dir();
     std::fs::create_dir_all(&wit_store)?;
 
-    let entries = std::fs::read_dir(&wit_source)
-        .with_context(|| format!("failed to read {}", wit_source.display()))?;
+    content_address_wit_recursive(&wit_source, &wit_source, &wit_store, &mut hashes)?;
+
+    // The per-capsule wit/ directory is no longer needed — the content store
+    // holds the blobs and meta.json holds the relative-path → hash manifest.
+    std::fs::remove_dir_all(&wit_source).with_context(|| {
+        format!(
+            "failed to remove per-capsule wit dir: {}",
+            wit_source.display()
+        )
+    })?;
+
+    Ok(hashes)
+}
+
+/// Recursive helper for `content_address_wit`. Walks the tree and hashes every
+/// `.wit` file, keying the returned map by path relative to `wit_root`.
+fn content_address_wit_recursive(
+    wit_root: &Path,
+    current: &Path,
+    wit_store: &Path,
+    hashes: &mut std::collections::HashMap<String, String>,
+) -> anyhow::Result<()> {
+    let entries = std::fs::read_dir(current)
+        .with_context(|| format!("failed to read {}", current.display()))?;
 
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("wit") {
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            content_address_wit_recursive(wit_root, &path, wit_store, hashes)?;
+            continue;
+        }
+
+        if !file_type.is_file() || path.extension().and_then(|e| e.to_str()) != Some("wit") {
             continue;
         }
 
@@ -1018,9 +1069,17 @@ fn content_address_wit(
             );
         }
 
-        let filename = path
-            .file_name()
-            .ok_or_else(|| anyhow::anyhow!("WIT file has no filename: {}", path.display()))?
+        // Key by path relative to the capsule's wit/ root so tree shape is
+        // preserved (e.g. "deps/astrid-contracts/astrid-contracts.wit").
+        let rel_path = path
+            .strip_prefix(wit_root)
+            .with_context(|| {
+                format!(
+                    "WIT path {} not under wit root {}",
+                    path.display(),
+                    wit_root.display()
+                )
+            })?
             .to_string_lossy()
             .into_owned();
 
@@ -1030,14 +1089,33 @@ fn content_address_wit(
         let hash = blake3::hash(&content).to_hex().to_string();
         let dest = wit_store.join(format!("{hash}.wit"));
 
+        // Atomic write: only write if absent, and use a temp file + rename
+        // so concurrent installers writing the same hash don't observe
+        // partial content. Multiple writers converge on identical bytes.
         if !dest.exists() {
-            std::fs::write(&dest, &content)?;
+            let tmp = wit_store.join(format!("{hash}.tmp.{}", std::process::id()));
+            std::fs::write(&tmp, &content)
+                .with_context(|| format!("failed to write temp file: {}", tmp.display()))?;
+            // rename is atomic on POSIX when source and dest are in the same dir.
+            // If another writer beat us to it, we lose the race harmlessly.
+            match std::fs::rename(&tmp, &dest) {
+                Ok(()) => {},
+                Err(_) if dest.exists() => {
+                    let _ = std::fs::remove_file(&tmp);
+                },
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(e).with_context(|| {
+                        format!("failed to rename temp file to {}", dest.display())
+                    });
+                },
+            }
         }
 
-        hashes.insert(filename, hash);
+        hashes.insert(rel_path, hash);
     }
 
-    Ok(hashes)
+    Ok(())
 }
 
 /// Convert a nested namespace→interface→T map to namespace→interface→String
