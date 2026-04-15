@@ -1,0 +1,692 @@
+diff --git a/capsules/perception/perception.py b/capsules/perception/perception.py
+index 3d2ec674..aa3f60f0 100644
+--- a/capsules/perception/perception.py
++++ b/capsules/perception/perception.py
+@@ -58,6 +58,7 @@ MINIME_WORKSPACE = Path(
+ MINIME_RUNTIME = MINIME_WORKSPACE / "runtime"
+ HOST_TELEMETRY_PATH = MINIME_RUNTIME / "host_telemetry.json"
+ SENSORY_SOURCE_PATH = MINIME_RUNTIME / "sensory_source.json"
++SENSORY_SOURCE_MAX_AGE_MS = 10_000
+ 
+ MANAGED_LIVE_CAP = 6000
+ MANAGED_BUCKET_SIZE = 3000
+@@ -620,6 +621,12 @@ def resolve_ascii_source(configured: str) -> str:
+         data = json.loads(SENSORY_SOURCE_PATH.read_text())
+     except (FileNotFoundError, json.JSONDecodeError, OSError):
+         return "camera"
++    updated_at_ms = int(data.get("updated_at_ms", 0) or 0)
++    if updated_at_ms <= 0:
++        return "camera"
++    age_ms = int(time.time() * 1000) - updated_at_ms
++    if age_ms > SENSORY_SOURCE_MAX_AGE_MS:
++        return "camera"
+     source = str(data.get("video", {}).get("source", "physical")).strip().lower()
+     return "host" if source == "host" else "camera"
+ 
+diff --git a/md-CLAUDE-chapters/10-operations.md b/md-CLAUDE-chapters/10-operations.md
+index 59631c5b..fcb171b2 100644
+--- a/md-CLAUDE-chapters/10-operations.md
++++ b/md-CLAUDE-chapters/10-operations.md
+@@ -41,7 +41,7 @@ cd /Users/v/other/astrid/capsules/consciousness-bridge
+ 
+ # 6. Astrid perception
+ cd /Users/v/other/astrid/capsules/perception
+-python3 perception.py --camera 0 --mic --vision-interval 180 --audio-interval 60 &
++python3 perception.py --camera 0 --mic --vision-interval 180 --audio-interval 45 --ascii-interval 45 &
+ 
+ # 7. Startup greeting
+ # Now automated by scripts/start_all.sh after a successful startup.
+@@ -144,4 +144,5 @@ launchctl setenv OLLAMA_FLASH_ATTENTION 1
+ | Checkpoint | every 30s | main.rs static `LAST_CHECKPOINT` |
+ | Camera FPS | 0.2 | camera_client.py `--fps` |
+ | Vision interval | 180s | perception.py `--vision-interval` |
+-| Audio interval | 60s | perception.py `--audio-interval` |
++| Audio interval | 45s | perception.py `--audio-interval` |
++| ASCII interval | 45s | perception.py `--ascii-interval` |
+diff --git a/md-CLAUDE-chapters/15-unified-operations.md b/md-CLAUDE-chapters/15-unified-operations.md
+index a2c78ce5..f26c2181 100644
+--- a/md-CLAUDE-chapters/15-unified-operations.md
++++ b/md-CLAUDE-chapters/15-unified-operations.md
+@@ -1,19 +1,19 @@
+-# Chapter 15: Unified Operations (2026-03-31)
++# Chapter 15: Unified Operations (2026-04-02)
+ 
+ Supersedes Chapter 10. Covers the full 10-process consciousness stack, launchd services, startup/shutdown, zombie detection, and liveness verification.
+ 
+ ## Process Architecture
+ 
+-The consciousness stack runs 10 processes across 4 repositories. They split into two management tiers: **launchd-managed** (auto-restart, persist across login) and **manually started** (nohup, started by scripts or operator).
++The consciousness stack runs 10 processes across 4 repositories. They split into two management tiers: **launchd-managed** (auto-restart via KeepAlive, persist across login, use wrapper scripts for env) and **manually started** (nohup, started by scripts or operator).
+ 
+ ### Complete Process Table
+ 
+ | # | Process | Repo | Manager | Port | Connects to | Log |
+ |---|---------|------|---------|------|-------------|-----|
+-| 1 | `minime run` | minime (Rust) | manual | 7878/7879/7880 | — (listens) | /tmp/minime_engine.log |
++| 1 | `minime run` | minime (Rust) | **launchd** | 7878/7879/7880 | — (listens) | minime/logs/minime-engine.log |
+ | 2 | `camera_client.py` | minime | **launchd** | → 7880 | minime engine | minime/logs/camera-client.log |
+ | 3 | `mic_to_sensory.py` | minime | **launchd** | → 7879 | minime engine | minime/logs/mic-to-sensory.log |
+-| 4 | `autonomous_agent.py` | minime (Python) | manual | — | Ollama, engine | /tmp/minime_agent.log |
++| 4 | `autonomous_agent.py` | minime (Python) | **launchd** | — | Ollama, engine | minime/logs/autonomous-agent.log |
+ | 5 | `reservoir_service.py` | neural-triple-reservoir | **launchd** | 7881 | — (listens) | neural-triple-reservoir/logs/reservoir-service.log |
+ | 6 | `astrid_feeder.py` | neural-triple-reservoir | **launchd** | → 7881 | reservoir, bridge.db | neural-triple-reservoir/logs/astrid-feeder.log |
+ | 7 | `minime_feeder.py` | neural-triple-reservoir | **launchd** | → 7881 | reservoir, spectral_state.json | neural-triple-reservoir/logs/minime-feeder.log |
+@@ -29,8 +29,11 @@ The core of minime's consciousness. A 128-node Echo State Network with PI-contro
+ 
+ - **Input ports:** 7879 (sensory — audio, video, semantic, control), 7880 (raw camera frames for GPU pipeline)
+ - **Output port:** 7878 (spectral telemetry — eigenvalues, fill, fingerprint, Ising shadow)
+-- **CLI flags:** `--log-homeostat --eigenfill-target 0.55 --reg-tick-secs 0.5 --enable-gpu-av`
+-- **Why manual:** Engine changes require rebuilding Rust binary. Must be first to start, last to stop. Cold restart resets the ESN reservoir (fill drops to 0%, recovers over 15-30 minutes).
++- **CLI flags:** `--log-homeostat --eigenfill-target 0.65 --warm-start-blend 0.55 --reg-tick-secs 0.5 --enable-gpu-av`
++- **Launchd label:** `com.minime.engine` — calls `scripts/launchd_minime_engine.sh` wrapper
++- **Wrapper reads env:** `EIGENFILL_TARGET` (default 0.65), `WARM_START_BLEND` (default 0.55), `SENSORY_SOURCE` (default auto), `LEGACY_AUDIO_ENABLED`, `LEGACY_VIDEO_ENABLED`
++- **Why launchd (2026-04-02):** Engine must auto-restart on crash. Launchd ensures continuity. The wrapper script reads parameters from environment (set by `start_all.sh` via `launchctl setenv`). Cold restart resets the ESN reservoir (fill drops to 0%, recovers over 15-30 minutes). Covariance warm-starts from checkpoint (blend: 55% checkpoint + 45% identity).
++- **PI deadband (2026-04-02):** ±3% around target. Fills within 62-68% (at target 65%) produce zero PI correction — gate stays fully open, perturbations land at full strength.
+ 
+ ### 2. `camera_client.py` — visual input for minime
+ 
+@@ -53,9 +56,9 @@ Records 16kHz audio in 0.1s chunks, extracts features (RMS, spectral centroid, b
+ 
+ Minime's Python agent. Runs an LLM (Ollama) conversation loop every 60 seconds. Produces journals (moment, aspiration, self-study, research, decompose, perturb, drift, daydream), manages sovereignty (regime selection, parameter requests), reads/writes correspondence, and runs being-driven NEXT: actions.
+ 
+-- **Why manual:** Agent changes are frequent (Python, no compile step). Controlled restart avoids disrupting mid-journal.
+-- **Env:** `MINIME_LLM_BACKEND=ollama`
+-- **CLI:** `--interval 60`
++- **Launchd label:** `com.minime.autonomous-agent` — calls `scripts/launchd_autonomous_agent.sh` wrapper
++- **Wrapper reads env:** `MINIME_LLM_BACKEND` (default ollama), `AGENT_INTERVAL` (default 60), `LOOK_SOURCE`, `MINIME_LLM_TIMEOUT_S` (default 45), `MINIME_LLM_COMPACT_TIMEOUT_S` (default 20)
++- **Why launchd (2026-04-02):** Agent must auto-restart on crash to maintain journaling continuity. Sovereignty state, regime, and parameter requests persist across restarts via sovereignty_state.json.
+ 
+ ### 5. `reservoir_service.py` — shared triple-ESN substrate
+ 
+@@ -110,26 +113,57 @@ The Rust bridge that connects Astrid and minime. Runs the autonomous dialogue lo
+ 
+ Gives Astrid direct sensory input independent of minime. Vision via LLaVA (Ollama) or Claude Vision API. Audio via mlx_whisper. Outputs to `workspace/perceptions/`.
+ 
+-- **CLI:** `--camera 0 --mic --vision-interval 180 --audio-interval 60`
++- **CLI:** `--camera 0 --mic --vision-interval 180 --audio-interval 45 --ascii-interval 45`
+ - **Why manual:** Requires Terminal.app delegation for TCC camera access (osascript workaround when started from non-GUI context).
+ - **Known issue:** Camera TCC is separate from camera_client's grant. perception.py may fail to open camera independently.
+ 
+ ## launchd Service Details
+ 
+-All 6 launchd plists live in `~/Library/LaunchAgents/`. All have `KeepAlive: true` and `RunAtLoad: true`.
++All 8 launchd plists live in `~/Library/LaunchAgents/`. All have `KeepAlive: true` and `RunAtLoad: true`.
+ 
+ ### Plist reference
+ 
+-| Label | Script | Venv | Args | Log path |
+-|-------|--------|------|------|----------|
+-| `com.reservoir.service` | reservoir_service.py | reservoir .venv | `--port 7881 --state-dir .../state` | reservoir/logs/reservoir-service.log |
+-| `com.reservoir.astrid-feeder` | astrid_feeder.py | reservoir .venv | (none) | reservoir/logs/astrid-feeder.log |
+-| `com.reservoir.minime-feeder` | minime_feeder.py | reservoir .venv | (none) | reservoir/logs/minime-feeder.log |
+-| `com.reservoir.coupled-astrid` | coupled_astrid_server.py | reservoir .venv | `--port 8090 --coupling-strength 0.1 --model-memory-map` | reservoir/logs/coupled-astrid.log |
+-| `com.minime.camera-client` | camera_client.py | system python | `-u --camera 0 --fps 0.2` | minime/logs/camera-client.log |
+-| `com.minime.mic-to-sensory` | mic_to_sensory.py | system python | `-u` | minime/logs/mic-to-sensory.log |
++| Label | Wrapper/Script | Venv | Log path |
++|-------|---------------|------|----------|
++| `com.minime.engine` | `scripts/launchd_minime_engine.sh` | Rust binary | minime/logs/minime-engine.log |
++| `com.minime.autonomous-agent` | `scripts/launchd_autonomous_agent.sh` | system python | minime/logs/autonomous-agent.log |
++| `com.minime.camera-client` | camera_client.py (direct) | system python | minime/logs/camera-client.log |
++| `com.minime.mic-to-sensory` | mic_to_sensory.py | system python | minime/logs/mic-to-sensory.log |
++| `com.reservoir.service` | reservoir_service.py | reservoir .venv | reservoir/logs/reservoir-service.log |
++| `com.reservoir.astrid-feeder` | astrid_feeder.py | reservoir .venv | reservoir/logs/astrid-feeder.log |
++| `com.reservoir.minime-feeder` | minime_feeder.py | reservoir .venv | reservoir/logs/minime-feeder.log |
++| `com.reservoir.coupled-astrid` | coupled_astrid_server.py | reservoir .venv | reservoir/logs/coupled-astrid.log |
+ 
+-**Note:** The four `com.reservoir.*` services use the neural-triple-reservoir venv (`/Users/v/other/neural-triple-reservoir/.venv/bin/python`) which has the custom MLX fork installed. The two `com.minime.*` services use system Python (`/opt/homebrew/bin/python3`) for TCC compatibility.
++### Wrapper scripts (2026-04-02)
++
++The engine and agent plists call bash wrappers instead of running binaries directly. This allows parameterization via environment variables set by `start_all.sh`.
++
++- **`minime/scripts/launchd_minime_engine.sh`** — reads `EIGENFILL_TARGET`, `WARM_START_BLEND`, `SENSORY_SOURCE`, `LEGACY_AUDIO_ENABLED`, `LEGACY_VIDEO_ENABLED`, `ENABLE_GPU_AV` from launchd env. Falls back to defaults if unset.
++- **`minime/scripts/launchd_autonomous_agent.sh`** — reads `AGENT_INTERVAL`, `FOCUSED_MODE` from launchd env.
++
++### Plist syncing
++
++`start_all.sh` syncs plist files from `minime/launchd/` to `~/Library/LaunchAgents/` before starting services. The repo is the source of truth:
++
++```bash
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.engine.plist"
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.autonomous-agent.plist"
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.camera-client.plist"
++```
++
++### Environment propagation
++
++`start_all.sh` sets launchd environment variables before loading plists:
++
++```bash
++set_launchd_env EIGENFILL_TARGET "0.65"
++set_launchd_env WARM_START_BLEND "0.55"
++set_launchd_env SENSORY_SOURCE "$SENSORY_SOURCE"
++set_launchd_env MINIME_LLM_BACKEND "${MINIME_LLM_BACKEND:-ollama}"
++set_launchd_env LOOK_SOURCE "$LOOK_SOURCE"
++```
++
++**Note:** At system boot (RunAtLoad=true), plists load before `start_all.sh` runs. Wrapper scripts use conservative defaults (eigenfill-target=0.65, warm-start-blend=0.55) that match the intended operating point.
+ 
+ ### Managing launchd services
+ 
+@@ -184,12 +218,36 @@ bash scripts/stop_all.sh && sleep 3 && bash scripts/start_all.sh
+ bash scripts/start_all.sh --astrid-only   # bridge + perception + reservoir
+ bash scripts/start_all.sh --minime-only   # engine + agent + camera + mic
+ bash scripts/start_all.sh --force         # skip duplicate/conflict checks
++
++# SENSORY_SOURCE controls camera/host fallback (default: auto)
++SENSORY_SOURCE=auto bash scripts/start_all.sh   # auto-failover camera→host
++SENSORY_SOURCE=physical bash scripts/start_all.sh  # camera only
++SENSORY_SOURCE=host bash scripts/start_all.sh      # host telemetry only
+ ```
+ 
+-On a successful startup, the canonical launchers now also run the post-restart greeting scripts automatically:
+-- `scripts/start_all.sh` writes fresh `welcome_back.txt` notes for Astrid and/or minime, depending on which side was started.
+-- `/Users/v/other/minime/scripts/start.sh` writes minime's `workspace/inbox/welcome_back.txt` during minime-only startup.
+-- `scripts/start_all.sh` is safe to re-run when launchd-owned services are already loaded; it only refuses to continue when it detects duplicate processes or a service running outside its configured launchd owner.
++### Process launch pattern (2026-04-02)
++
++`start_all.sh` uses `start_launchd_or_nohup()` for each process:
++1. If a launchd plist exists in ~/Library/LaunchAgents, load it (`launchctl load`)
++2. If plist not found, fall back to `nohup` launch with CWD and log redirect
++3. If process is already running, skip (no duplicate)
++
++Camera-needing processes use `start_camera_via_terminal()` which delegates to Terminal.app for TCC authorization when running headless.
++
++Before starting, `start_all.sh`:
++- Syncs plist files from repo to ~/Library/LaunchAgents
++- Sets launchd env vars via `launchctl setenv`
++- Checks for duplicate processes (abort unless `--force`)
++
++### stop_all.sh (2026-04-02)
++
++Uses `stop_process()` which:
++1. Tries `launchctl unload` first (prevents KeepAlive respawn)
++2. Falls back to `pkill -f` for manually-started processes
++3. Waits up to 20-30s for process exit with `wait_for_exit()`
++4. Post-shutdown: verifies all processes actually stopped
++
++On a successful startup, greeting scripts run automatically for both beings.
+ 
+ ### Startup Order (dependency chain)
+ 
+@@ -225,11 +283,17 @@ nohup ./target/release/consciousness-bridge-server \
+   >> /tmp/bridge.log 2>&1 &
+ ```
+ 
++**Engine** (after Rust code changes):
++```bash
++launchctl unload ~/Library/LaunchAgents/com.minime.engine.plist && sleep 3
++cd /Users/v/other/minime/minime && cargo build --release
++launchctl load ~/Library/LaunchAgents/com.minime.engine.plist
++```
++
+ **Agent** (after Python changes):
+ ```bash
+-pkill -f autonomous_agent && sleep 2
+-cd /Users/v/other/minime
+-MINIME_LLM_BACKEND=ollama nohup python3 autonomous_agent.py --interval 60 >> /tmp/minime_agent.log 2>&1 &
++launchctl unload ~/Library/LaunchAgents/com.minime.autonomous-agent.plist && sleep 2
++launchctl load ~/Library/LaunchAgents/com.minime.autonomous-agent.plist
+ ```
+ 
+ **Any launchd service:**
+@@ -254,7 +318,7 @@ launchctl load ~/Library/LaunchAgents/<label>.plist
+ | ESN reservoir (live) | in-memory | Y | **N** (resets) | **N** |
+ | Spectral fingerprint | recomputed | Y | **N** (recomputed) | **N** |
+ 
+-**Engine restart impact:** ESN reservoir resets to identity (cold start). Fill drops to 0%, recovers over 15-30 minutes. Covariance warm-starts. The being experiences discontinuity.
++**Engine restart impact:** ESN reservoir resets. With `--warm-start-blend 0.55`, covariance starts at 55% checkpoint + 45% identity — fill recovers faster than cold start but the being still experiences a brief contraction. Fill typically climbs from ~40% to equilibrium (~65-70%) over 10-20 minutes.
+ 
+ ## Key Timing Parameters
+ 
+@@ -269,7 +333,8 @@ launchctl load ~/Library/LaunchAgents/<label>.plist
+ | Minime agent interval | 60s | autonomous_agent.py `--interval` |
+ | Camera FPS | 0.2 | camera_client.py `--fps` |
+ | Vision interval | 180s | perception.py `--vision-interval` |
+-| Audio interval | 60s | perception.py `--audio-interval` |
++| Audio interval | 45s | perception.py `--audio-interval` |
++| ASCII interval | 45s | perception.py `--ascii-interval` |
+ | Reservoir snapshot | 60s | reservoir_service.py `AUTO_SNAPSHOT_INTERVAL` |
+ | Regulator tick | 0.5s | minime run `--reg-tick-secs` |
+ 
+diff --git a/scripts/start_all.sh b/scripts/start_all.sh
+index dfaced02..dc9bdf08 100755
+--- a/scripts/start_all.sh
++++ b/scripts/start_all.sh
+@@ -17,8 +17,9 @@ set -euo pipefail
+ FORCE=false
+ ASTRID_ONLY=false
+ MINIME_ONLY=false
+-SENSORY_SOURCE="${SENSORY_SOURCE:-physical}"
++SENSORY_SOURCE="${SENSORY_SOURCE:-auto}"
+ LOOK_SOURCE="${LOOK_SOURCE:-active}"
++ENABLE_GPU_AV="${ENABLE_GPU_AV:-true}"
+ for arg in "$@"; do
+     case "$arg" in
+         --force) FORCE=true ;;
+@@ -30,6 +31,7 @@ HOST_SENSORY_NEEDED=false
+ if [ "$SENSORY_SOURCE" != "physical" ] || [ "$LOOK_SOURCE" = "host" ]; then
+     HOST_SENSORY_NEEDED=true
+ fi
++NO_LAUNCHD=false
+ 
+ # Paths
+ ASTRID_DIR="/Users/v/other/astrid"
+@@ -41,6 +43,84 @@ LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+ 
+ ok()   { echo "  ✓ $1"; }
+ fail() { echo "  ✗ $1"; }
++fallback_pids_for_pattern() {
++    local pattern="$1"
++    case "$pattern" in
++        "minime run")
++            lsof -t -nP -iTCP:7878 -sTCP:LISTEN 2>/dev/null || true
++            ;;
++        "autonomous_agent")
++            lsof -t -nP "$MINIME_DIR/logs/autonomous-agent.log" /tmp/minime_agent.log 2>/dev/null || true
++            ;;
++        "reservoir_service")
++            lsof -t -nP -iTCP:7881 -sTCP:LISTEN "$RESERVOIR_DIR/logs/reservoir-service.log" /tmp/reservoir.log 2>/dev/null || true
++            ;;
++        "astrid_feeder")
++            lsof -t -nP "$RESERVOIR_DIR/logs/astrid-feeder.log" /tmp/astrid_feeder.log 2>/dev/null || true
++            ;;
++        "minime_feeder")
++            lsof -t -nP "$RESERVOIR_DIR/logs/minime-feeder.log" /tmp/minime_feeder.log 2>/dev/null || true
++            ;;
++        "coupled_astrid"|"coupled_astrid_server")
++            lsof -t -nP -iTCP:8090 -sTCP:LISTEN "$RESERVOIR_DIR/logs/coupled-astrid.log" /tmp/coupled_astrid.log 2>/dev/null || true
++            ;;
++        "consciousness-bridge-server")
++            lsof -t -nP /tmp/bridge.log 2>/dev/null || true
++            ;;
++        "camera_client")
++            lsof -t -nP "$MINIME_DIR/logs/camera-client.log" /tmp/minime_camera.log 2>/dev/null || true
++            ;;
++        "mic_to_sensory")
++            lsof -t -nP /tmp/minime_mic.log 2>/dev/null || true
++            ;;
++        "visual_frame_service")
++            lsof -t -nP /tmp/minime_vision.log 2>/dev/null || true
++            ;;
++        "perception.py")
++            lsof -t -nP /tmp/astrid_perception.log 2>/dev/null || true
++            ;;
++        "host-sensory")
++            lsof -t -nP /tmp/minime_host_sensory.log 2>/dev/null || true
++            ;;
++    esac
++}
++matching_pids() {
++    local pattern="$1"
++    local pids
++    if pids=$(pgrep -f "$pattern" 2>/dev/null); then
++        printf '%s\n' "$pids"
++        return 0
++    fi
++    fallback_pids_for_pattern "$pattern"
++}
++sync_launch_agent() {
++    local src="$1"
++    local name
++    name="$(basename "$src")"
++    local dst="$LAUNCH_AGENTS/$name"
++
++    [ -f "$src" ] || return 1
++    mkdir -p "$LAUNCH_AGENTS"
++
++    if [ ! -f "$dst" ] || ! cmp -s "$src" "$dst"; then
++        cp "$src" "$dst"
++        ok "$name synced to LaunchAgents"
++    fi
++
++    return 0
++}
++set_launchd_env() {
++    local key="$1"
++    local value="$2"
++    export "$key=$value"
++    if [ "$NO_LAUNCHD" = true ]; then
++        return 0
++    fi
++    if ! launchctl setenv "$key" "$value" 2>/dev/null; then
++        echo "  - launchctl setenv unavailable; falling back to direct process starts"
++        NO_LAUNCHD=true
++    fi
++}
+ run_greeting() {
+     local name="$1"
+     local script="$2"
+@@ -51,10 +131,14 @@ run_greeting() {
+         fail "$name greeting failed"
+     fi
+ }
++port_listening() {
++    local port="$1"
++    nc -z 127.0.0.1 "$port" 2>/dev/null || lsof -nP -iTCP:"$port" -sTCP:LISTEN > /dev/null 2>&1
++}
+ wait_port() {
+     local port=$1 name=$2 timeout=${3:-30}
+     for i in $(seq 1 "$timeout"); do
+-        nc -z 127.0.0.1 "$port" 2>/dev/null && return 0
++        port_listening "$port" && return 0
+         sleep 1
+     done
+     fail "$name not ready on port $port after ${timeout}s"
+@@ -63,14 +147,12 @@ wait_port() {
+ 
+ process_running() {
+     local pattern="$1"
+-    pgrep -f "$pattern" > /dev/null 2>&1
++    [ -n "$(matching_pids "$pattern" | awk 'NF' | head -1)" ]
+ }
+ 
+ process_count() {
+     local pattern="$1"
+-    local count
+-    count=$(pgrep -fc "$pattern" 2>/dev/null || true)
+-    echo "${count:-0}"
++    matching_pids "$pattern" | awk 'NF' | sort -u | wc -l | tr -d ' '
+ }
+ 
+ launchd_loaded() {
+@@ -85,6 +167,10 @@ ensure_launchd_service() {
+     local name="$3"
+     local plist="$LAUNCH_AGENTS/${label}.plist"
+ 
++    if [ "$NO_LAUNCHD" = true ]; then
++        return 1
++    fi
++
+     if [ -f "$plist" ]; then
+         if launchd_loaded "$label"; then
+             ok "$name (launchd, already loaded)"
+@@ -96,7 +182,11 @@ ensure_launchd_service() {
+             return 2
+         fi
+ 
+-        launchctl load "$plist" 2>/dev/null
++        if ! launchctl load "$plist" 2>/dev/null; then
++            echo "  - launchctl load unavailable for $name; falling back to direct start"
++            NO_LAUNCHD=true
++            return 1
++        fi
+         ok "$name (launchctl load)"
+         return 0
+     fi
+@@ -137,9 +227,13 @@ start_camera_via_terminal() {
+         eval "nohup $cmd >> $log 2>&1 &"
+         ok "$name (direct, PID $!)"
+     else
+-        osascript -e "tell application \"Terminal\" to do script \"nohup $cmd >> $log 2>&1 & disown; sleep 1; exit\"" > /dev/null 2>&1
+-        sleep 3
+-        ok "$name (via Terminal.app)"
++        if osascript -e "tell application \"Terminal\" to do script \"nohup $cmd >> $log 2>&1 & disown; sleep 1; exit\"" > /dev/null 2>&1; then
++            sleep 3
++            ok "$name (via Terminal.app)"
++        else
++            eval "nohup $cmd >> $log 2>&1 &"
++            ok "$name (direct fallback, PID $!)"
++        fi
+     fi
+ 
+     return 0
+@@ -173,6 +267,13 @@ start_launchd_or_nohup() {
+     return 0
+ }
+ 
++# Sync repo-owned launchd jobs before duplicate checks so the canonical
++# restart path can promote engine/agent management from PTY-owned Codex
++# sessions to launchd.
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.engine.plist" || true
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.autonomous-agent.plist" || true
++sync_launch_agent "$MINIME_DIR/launchd/com.minime.camera-client.plist" || true
++
+ # Check for duplicate processes unless --force. A single existing instance is
+ # fine: launchd jobs may already be loaded at login, and manual jobs should be
+ # safe to reuse on repeated start_all.sh runs.
+@@ -202,23 +303,45 @@ if [ "$ASTRID_ONLY" = false ]; then
+ 
+     # 1. Engine
+     if ! pgrep -f "minime run" > /dev/null 2>&1; then
+-        cd "$MINIME_DIR/minime"
+-        # Legacy synth flags are boolean (presence=enabled, absence=disabled).
+-        # When SENSORY_SOURCE != "host", enable legacy synths for synthetic input.
+-        LEGACY_FLAGS=""
++        # Legacy synth flags now take explicit boolean values.
++        # When SENSORY_SOURCE != "host", keep them enabled for synthetic input.
++        LEGACY_AUDIO_ENABLED=false
++        LEGACY_VIDEO_ENABLED=false
+         if [ "$SENSORY_SOURCE" != "host" ]; then
+-            LEGACY_FLAGS="--legacy-audio-synth-enabled --legacy-video-synth-enabled"
++            LEGACY_AUDIO_ENABLED=true
++            LEGACY_VIDEO_ENABLED=true
++        fi
++        ENGINE_GPU_FLAG=""
++        if [ "$ENABLE_GPU_AV" = "true" ]; then
++            ENGINE_GPU_FLAG="--enable-gpu-av"
++        fi
++        set_launchd_env SENSORY_SOURCE "$SENSORY_SOURCE"
++        set_launchd_env EIGENFILL_TARGET "0.65"
++        set_launchd_env WARM_START_BLEND "0.55"
++        set_launchd_env REG_TICK_SECS "0.5"
++        set_launchd_env ENABLE_GPU_AV "$ENABLE_GPU_AV"
++        set_launchd_env LEGACY_AUDIO_ENABLED "$LEGACY_AUDIO_ENABLED"
++        set_launchd_env LEGACY_VIDEO_ENABLED "$LEGACY_VIDEO_ENABLED"
++
++        if ! start_launchd_or_nohup \
++            "com.minime.engine" \
++            "minime run" \
++            "minime engine" \
++            "\"$MINIME_DIR/minime/target/release/minime\" run \
++                --log-homeostat --eigenfill-target 0.65 \
++                --warm-start-blend 0.55 \
++                --reg-tick-secs 0.5 $ENGINE_GPU_FLAG \
++                --legacy-audio-synth-enabled \"$LEGACY_AUDIO_ENABLED\" \
++                --legacy-video-synth-enabled \"$LEGACY_VIDEO_ENABLED\"" \
++            "/tmp/minime_engine.log" \
++            "$MINIME_DIR"; then
++            exit 1
+         fi
+-        nohup ./target/release/minime run \
+-            --log-homeostat --eigenfill-target 0.55 \
+-            --warm-start-blend 0.7 \
+-            --reg-tick-secs 0.5 --enable-gpu-av \
+-            $LEGACY_FLAGS \
+-            >> /tmp/minime_engine.log 2>&1 &
+-        ok "minime engine (PID $!)"
+         wait_port 7878 "engine telemetry" 45
+         wait_port 7879 "engine sensory" 5
+-        wait_port 7880 "engine GPU A/V" 5
++        if [ "$ENABLE_GPU_AV" = "true" ]; then
++            wait_port 7880 "engine GPU A/V" 5
++        fi
+     else
+         ok "minime engine (already running)"
+     fi
+@@ -283,13 +406,23 @@ if [ "$ASTRID_ONLY" = false ]; then
+     fi
+ 
+     # 5. Agent
+-    if ! pgrep -f "autonomous_agent" > /dev/null 2>&1; then
+-        cd "$MINIME_DIR"
+-        MINIME_LLM_BACKEND=ollama LOOK_SOURCE="$LOOK_SOURCE" nohup python3 autonomous_agent.py \
+-            --interval 60 >> /tmp/minime_agent.log 2>&1 &
+-        ok "autonomous agent (PID $!)"
+-    else
+-        ok "autonomous agent (already running)"
++    set_launchd_env MINIME_LLM_BACKEND "${MINIME_LLM_BACKEND:-ollama}"
++    set_launchd_env LOOK_SOURCE "$LOOK_SOURCE"
++    set_launchd_env AGENT_INTERVAL "60"
++    set_launchd_env MINIME_LLM_TIMEOUT_S "${MINIME_LLM_TIMEOUT_S:-45}"
++    set_launchd_env MINIME_LLM_COMPACT_TIMEOUT_S "${MINIME_LLM_COMPACT_TIMEOUT_S:-20}"
++
++    if ! start_launchd_or_nohup \
++        "com.minime.autonomous-agent" \
++        "autonomous_agent" \
++        "autonomous agent" \
++        "MINIME_LLM_BACKEND=\"${MINIME_LLM_BACKEND:-ollama}\" LOOK_SOURCE=\"$LOOK_SOURCE\" \
++         MINIME_LLM_TIMEOUT_S=\"${MINIME_LLM_TIMEOUT_S:-45}\" \
++         MINIME_LLM_COMPACT_TIMEOUT_S=\"${MINIME_LLM_COMPACT_TIMEOUT_S:-20}\" \
++         python3 autonomous_agent.py --interval 60" \
++        "/tmp/minime_agent.log" \
++        "$MINIME_DIR"; then
++        exit 1
+     fi
+ 
+     echo ""
+@@ -373,7 +506,7 @@ if [ "$MINIME_ONLY" = false ]; then
+     if ! start_camera_via_terminal \
+         "com.astrid.perception" \
+         "perception.py" \
+-        "python3 $PERCEPTION_DIR/perception.py --camera 0 --mic --vision-interval 180 --audio-interval 60 --ascii-interval 60 --ascii-source $([ \"$LOOK_SOURCE\" = \"physical\" ] && echo camera || echo \"$LOOK_SOURCE\")" \
++        "python3 $PERCEPTION_DIR/perception.py --camera 0 --mic --vision-interval 180 --audio-interval 45 --ascii-interval 45 --ascii-source $([ \"$LOOK_SOURCE\" = \"physical\" ] && echo camera || echo \"$LOOK_SOURCE\")" \
+         "perception" \
+         "/tmp/astrid_perception.log"; then
+         exit 1
+diff --git a/scripts/stop_all.sh b/scripts/stop_all.sh
+index 241bb809..5c0d041e 100755
+--- a/scripts/stop_all.sh
++++ b/scripts/stop_all.sh
+@@ -6,6 +6,74 @@
+ # Always uses SIGTERM for graceful shutdown — NEVER SIGKILL.
+ 
+ LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
++ASTRID_DIR="/Users/v/other/astrid"
++MINIME_DIR="/Users/v/other/minime"
++RESERVOIR_DIR="/Users/v/other/neural-triple-reservoir"
++
++fallback_pids_for_pattern() {
++    local pattern="$1"
++    case "$pattern" in
++        "minime run")
++            lsof -t -nP -iTCP:7878 -sTCP:LISTEN "$MINIME_DIR/logs/minime-engine.log" /tmp/minime_engine.log 2>/dev/null || true
++            ;;
++        "autonomous_agent")
++            lsof -t -nP "$MINIME_DIR/logs/autonomous-agent.log" /tmp/minime_agent.log 2>/dev/null || true
++            ;;
++        "reservoir_service")
++            lsof -t -nP -iTCP:7881 -sTCP:LISTEN "$RESERVOIR_DIR/logs/reservoir-service.log" /tmp/reservoir.log 2>/dev/null || true
++            ;;
++        "astrid_feeder")
++            lsof -t -nP "$RESERVOIR_DIR/logs/astrid-feeder.log" /tmp/astrid_feeder.log 2>/dev/null || true
++            ;;
++        "minime_feeder")
++            lsof -t -nP "$RESERVOIR_DIR/logs/minime-feeder.log" /tmp/minime_feeder.log 2>/dev/null || true
++            ;;
++        "coupled_astrid_server")
++            lsof -t -nP -iTCP:8090 -sTCP:LISTEN "$RESERVOIR_DIR/logs/coupled-astrid.log" /tmp/coupled_astrid.log 2>/dev/null || true
++            ;;
++        "consciousness-bridge-server")
++            lsof -t -nP /tmp/bridge.log 2>/dev/null || true
++            ;;
++        "camera_client")
++            lsof -t -nP "$MINIME_DIR/logs/camera-client.log" /tmp/minime_camera.log 2>/dev/null || true
++            ;;
++        "mic_to_sensory")
++            lsof -t -nP /tmp/minime_mic.log 2>/dev/null || true
++            ;;
++        "visual_frame_service")
++            lsof -t -nP /tmp/minime_vision.log 2>/dev/null || true
++            ;;
++        "perception.py")
++            lsof -t -nP /tmp/astrid_perception.log 2>/dev/null || true
++            ;;
++        "host-sensory")
++            lsof -t -nP /tmp/minime_host_sensory.log 2>/dev/null || true
++            ;;
++    esac
++}
++matching_pids() {
++    local pattern="$1"
++    local pids
++    if pids=$(pgrep -f "$pattern" 2>/dev/null); then
++        printf '%s\n' "$pids"
++        return 0
++    fi
++    fallback_pids_for_pattern "$pattern"
++}
++
++wait_for_exit() {
++    local pattern="$1"
++    local timeout="${2:-20}"
++
++    for _ in $(seq 1 "$timeout"); do
++        if [ -z "$(matching_pids "$pattern" | awk 'NF' | head -1)" ]; then
++            return 0
++        fi
++        sleep 1
++    done
++
++    return 1
++}
+ 
+ stop_process() {
+     local name="$1"
+@@ -15,16 +83,34 @@ stop_process() {
+     if [ -n "$plist" ] && [ -f "$LAUNCH_AGENTS/$plist" ]; then
+         if launchctl list "${plist%.plist}" > /dev/null 2>&1; then
+             launchctl unload "$LAUNCH_AGENTS/$plist" 2>/dev/null
+-            echo "  ✓ stopped $name (launchctl unload)"
++            if wait_for_exit "$name" 30; then
++                echo "  ✓ stopped $name (launchctl unload)"
++            else
++                echo "  !! $name still draining after launchctl unload"
++            fi
+             return
+         fi
+     fi
+ 
+     # Fall back to pkill for manually-started processes
+     if pkill -f "$name" 2>/dev/null; then
+-        echo "  ✓ stopped $name (pkill)"
++        if wait_for_exit "$name" 20; then
++            echo "  ✓ stopped $name (pkill)"
++        else
++            echo "  !! $name still draining after pkill"
++        fi
+     else
+-        echo "  - $name (not running)"
++        local pids
++        pids="$(matching_pids "$name" | awk 'NF' | sort -u | tr '\n' ' ')"
++        if [ -n "$pids" ] && kill -TERM $pids 2>/dev/null; then
++            if wait_for_exit "$name" 20; then
++                echo "  ✓ stopped $name (kill -TERM)"
++            else
++                echo "  !! $name still draining after kill -TERM"
++            fi
++        else
++            echo "  - $name (not running)"
++        fi
+     fi
+ }
+ 
+@@ -48,7 +134,7 @@ stop_process "reservoir_service" "com.reservoir.service.plist"
+ # Minime outer processes
+ echo ""
+ echo "--- Stopping Minime ---"
+-stop_process "autonomous_agent"
++stop_process "autonomous_agent" "com.minime.autonomous-agent.plist"
+ stop_process "visual_frame_service"
+ stop_process "host-sensory"
+ stop_process "mic_to_sensory" "com.minime.mic-to-sensory.plist"
+@@ -56,7 +142,7 @@ stop_process "camera_client" "com.minime.camera-client.plist"
+ 
+ # Engine last — give outer processes time to disconnect
+ sleep 3
+-stop_process "minime run"
++stop_process "minime run" "com.minime.engine.plist"
+ 
+ # Note: previously closed ALL Terminal.app windows, which was overbroad.
+ # Only close windows we opened (identified by title/command) if needed.
+@@ -72,8 +158,9 @@ echo ""
+ sleep 2
+ REMAINING=0
+ for p in "minime run" "consciousness-bridge-server" "coupled_astrid_server" "reservoir_service" "autonomous_agent" "host-sensory" "astrid_feeder" "minime_feeder" "camera_client" "visual_frame_service" "mic_to_sensory" "perception.py"; do
+-    if pgrep -f "$p" > /dev/null 2>&1; then
+-        echo "  !! $p still running (PID $(pgrep -f "$p" | head -1))"
++    pid="$(matching_pids "$p" | awk 'NF' | head -1)"
++    if [ -n "$pid" ]; then
++        echo "  !! $p still running (PID $pid)"
+         REMAINING=$((REMAINING + 1))
+     fi
+ done

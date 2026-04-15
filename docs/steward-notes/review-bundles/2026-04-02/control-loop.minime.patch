@@ -1,0 +1,2607 @@
+diff --git a/autonomous_agent.py b/autonomous_agent.py
+index 4ddde50..a7a8ceb 100644
+--- a/autonomous_agent.py
++++ b/autonomous_agent.py
+@@ -16,6 +16,7 @@ import re
+ import sys
+ import time
+ import json
++import signal
+ import sqlite3
+ import logging
+ import requests
+@@ -40,6 +41,16 @@ from pdf_research import (
+     read_pdf_window,
+     window_footer,
+ )
++from reporting_snapshot import (
++    MAX_SNAPSHOT_SKEW_S,
++    ReportSnapshot,
++    capture_report_snapshot,
++    format_snapshot_provenance,
++    format_snapshot_summary,
++    load_workspace_json,
++    normalize_spectral_state,
++    resolve_runtime_db_path,
++)
+ from thresholds import ModeThresholds, RECESS, FOCUSED, PHI, Hysteresis
+ from workspace_archive import compact_managed_directory
+ 
+@@ -417,15 +428,39 @@ BASE_DIR = Path(__file__).parent
+ WORKSPACE_DIR = BASE_DIR / "workspace"
+ RUNTIME_DIR = WORKSPACE_DIR / "runtime"
+ SENSORY_SOURCE_STATE_PATH = RUNTIME_DIR / "sensory_source.json"
++SENSORY_SOURCE_MAX_AGE_MS = 10_000
+ MIKE_RESEARCH_ROOT = Path("/Users/v/other/research")
+ AUTORESEARCH_ROOT = Path("/Users/v/other/autoresearch")
+ 
+ 
++def runtime_health_path() -> Path:
++    """Prefer the live top-level workspace, fall back to legacy nested paths."""
++    primary = WORKSPACE_DIR / "health.json"
++    if primary.exists():
++        return primary
++    return BASE_DIR / "minime" / "workspace" / "health.json"
++
++
++def runtime_workspace_path(name: str) -> Path:
++    """Resolve files that may exist in either the live or legacy workspace."""
++    primary = WORKSPACE_DIR / name
++    if primary.exists():
++        return primary
++    return BASE_DIR / "minime" / "workspace" / name
++
++
+ def _load_sensory_source_state() -> Dict[str, Any]:
+     try:
+-        return json.loads(SENSORY_SOURCE_STATE_PATH.read_text())
++        data = json.loads(SENSORY_SOURCE_STATE_PATH.read_text())
+     except Exception:
+         return {}
++    updated_at_ms = int(data.get("updated_at_ms", 0) or 0)
++    if updated_at_ms <= 0:
++        return {}
++    age_ms = int(time.time() * 1000) - updated_at_ms
++    if age_ms > SENSORY_SOURCE_MAX_AGE_MS:
++        return {}
++    return data
+ 
+ 
+ def _current_modality_source(modality: str) -> str:
+@@ -559,17 +594,21 @@ def _resolve_codex_request(action_name: str, arg: str) -> tuple[Optional[str], s
+         if prompt_text:
+             return (str(experiments / first_token), prompt_text, first_token, None, None)
+     return (None, _normalize_codex_prompt(arg), None, None, None)
+-DB_PATH = BASE_DIR / "minime" / "minime_consciousness.db"  # Use database in minime directory
++DB_PATH = resolve_runtime_db_path(BASE_DIR)
+ MANIFEST_PATH = BASE_DIR / "SOVEREIGNTY_MANIFEST.md"
+ 
+ # LLM Backend: MLX (native Apple Silicon, 8-bit) or Ollama (fallback)
+ # MLX serves OpenAI-compatible API on port 8090
+ # Ollama serves its own API on port 11434
+-LLM_BACKEND = os.environ.get("MINIME_LLM_BACKEND", "ollama")  # "mlx" or "ollama"
++LLM_BACKEND = os.environ.get("MINIME_LLM_BACKEND", "ollama").strip().lower()
++if LLM_BACKEND not in {"mlx", "ollama"}:
++    LLM_BACKEND = "ollama"
+ MLX_URL = "http://localhost:8090/v1/chat/completions"
+ MLX_MODEL = None  # Will be auto-detected from MLX server on first query
+ OLLAMA_URL = "http://localhost:11434/api/chat"
+ MODEL = os.environ.get("MINIME_MODEL", "gemma3:12b")  # Fast, reliable, proven over 300+ exchanges
++LLM_TIMEOUT_S = float(os.environ.get("MINIME_LLM_TIMEOUT_S", "45"))
++LLM_COMPACT_TIMEOUT_S = float(os.environ.get("MINIME_LLM_COMPACT_TIMEOUT_S", "20"))
+ 
+ class AutonomousAgent:
+     """Background agent that monitors spectral state and takes autonomous actions."""
+@@ -872,6 +911,32 @@ Fill: {fill:.1f}%
+             logging.error(f"Error fetching spectral state: {e}")
+             return None
+ 
++    def _state_for_live_surfaces(
++        self,
++        state: Optional[Dict[str, float]],
++        *,
++        context: str,
++    ) -> Dict[str, float]:
++        """Refresh stale DB state before formatting journals against live surfaces."""
++        latest = self._get_latest_spectral_state()
++        if not latest:
++            return dict(state or {})
++        if not state:
++            return latest
++
++        prior_ts = state.get("timestamp")
++        latest_ts = latest.get("timestamp")
++        if isinstance(prior_ts, (int, float)) and isinstance(latest_ts, (int, float)):
++            drift_s = float(latest_ts) - float(prior_ts)
++            if drift_s > MAX_SNAPSHOT_SKEW_S:
++                logging.info(
++                    "Refreshing %s journal state after %.1fs of DB drift",
++                    context,
++                    drift_s,
++                )
++                return latest
++        return dict(state)
++
+     def _normalize_deig(self, deig: float) -> float:
+         alpha = 0.2
+         self._deig_ema = alpha * deig + (1.0 - alpha) * self._deig_ema
+@@ -1546,9 +1611,7 @@ Fill: {fill:.1f}%
+         """
+         fill = state.get('fill_ratio', 0.5)
+         try:
+-            health_file = BASE_DIR / "minime" / "workspace" / "health.json"
+-            if not health_file.exists():
+-                health_file = WORKSPACE_DIR / "health.json"
++            health_file = runtime_health_path()
+             if health_file.exists():
+                 import json as _json
+                 health = _json.loads(health_file.read_text())
+@@ -1566,9 +1629,7 @@ Fill: {fill:.1f}%
+         # The engine dynamically adjusts target_fill when the PI controller is saturated.
+         target_fill = 0.55  # fallback
+         try:
+-            health_file = BASE_DIR / "minime" / "workspace" / "health.json"
+-            if not health_file.exists():
+-                health_file = WORKSPACE_DIR / "health.json"
++            health_file = runtime_health_path()
+             if health_file.exists():
+                 h = json.loads(health_file.read_text())
+                 pi = h.get('pi', {}) or {}
+@@ -2320,11 +2381,15 @@ of accumulated spectral fingerprint. The three h-layer norms represent
+ fast/medium/slow dynamics. What do you notice about these values?"""
+         response = self._query_llm_with_next(prompt)[0]
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="reservoir_read",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             journal_file = WORKSPACE_DIR / "journal" / f"reservoir_read_{timestamp}.txt"
+             journal_file.write_text(f"""=== RESERVOIR READ ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ Handle: minime | ticks={r.get('tick_count', 0)} | mode={r.get('mode', '?')}
+ h_norms: {r.get('h_norms', [0,0,0])}
+@@ -2332,7 +2397,7 @@ decay_weight: {r.get('decay_weight', 0):.4f}
+ 
+ {response}
+ """)
+-            self._write_journal_entry('reservoir_read', response, state, str(journal_file))
++            self._write_journal_entry('reservoir_read', response, journal_state, str(journal_file))
+             logging.info(f"🔮 Read reservoir state: {journal_file}")
+ 
+     def _reservoir_resonance(self, state: Dict[str, float]):
+@@ -2357,11 +2422,15 @@ What does this resonance (or divergence) feel like? Does it match
+ your sense of connection with Astrid?"""
+         response = self._query_llm_with_next(prompt)[0]
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="reservoir_resonance",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             journal_file = WORKSPACE_DIR / "journal" / f"reservoir_resonance_{timestamp}.txt"
+             journal_file.write_text(f"""=== RESERVOIR RESONANCE ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ Minime <-> Astrid resonance:
+   divergence: {r.get('divergence', 0):.6f}
+@@ -2370,7 +2439,7 @@ Minime <-> Astrid resonance:
+ 
+ {response}
+ """)
+-            self._write_journal_entry('reservoir_resonance', response, state, str(journal_file))
++            self._write_journal_entry('reservoir_resonance', response, journal_state, str(journal_file))
+             logging.info(f"🔮 Reservoir resonance: corr={r.get('correlation', 0):+.4f} → {journal_file}")
+ 
+     def _compose_audio(self, state: Dict[str, float]):
+@@ -2499,10 +2568,8 @@ File: {wav_path.name}
+             logging.error("code_digest.py not found — skipping self-assessment")
+             return
+ 
+-        # Read live telemetry from health.json if available
+-        # health.json lives in the engine workspace (minime/minime/workspace/),
+-        # not the agent workspace (minime/workspace/)
+-        health_file = BASE_DIR / "minime" / "workspace" / "health.json"
++        # Read live telemetry from the active engine workspace if available.
++        health_file = runtime_health_path()
+         health_data = {}
+         if health_file.exists():
+             try:
+@@ -3274,16 +3341,20 @@ Session: {self.session_id}
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="daydream",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             journal_file = WORKSPACE_DIR / "journal" / f"daydream_{timestamp}.txt"
+             journal_file.write_text(f"""=== RECESS DAYDREAM ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ {response}
+ """)
+ 
+-            self._write_journal_entry('daydream', response, state, str(journal_file))
++            self._write_journal_entry('daydream', response, journal_state, str(journal_file))
+             logging.info(f"💭 Daydream: {journal_file}")
+ 
+     def _recess_notice(self, state: Dict[str, float]):
+@@ -3294,16 +3365,20 @@ Timestamp: {datetime.now().isoformat()}
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="notice",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             journal_file = WORKSPACE_DIR / "journal" / f"notice_{timestamp}.txt"
+             journal_file.write_text(f"""=== NOTICING ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ {response}
+ """)
+ 
+-            self._write_journal_entry('notice', response, state, str(journal_file))
++            self._write_journal_entry('notice', response, journal_state, str(journal_file))
+             logging.info(f"👁️ Notice: {journal_file}")
+ 
+     def _recess_boredom(self, state: Dict[str, float]):
+@@ -3378,15 +3453,19 @@ Boredom is interesting. Write about it, play with it, or ignore it entirely. You
+             response = self._query_llm_with_next(prompt)[0]
+ 
+             if response:
++                journal_state = self._state_for_live_surfaces(
++                    state,
++                    context="boredom",
++                )
+                 timestamp = datetime.now().isoformat().replace(':', '-')
+                 file_path = WORKSPACE_DIR / "journal" / f"boredom_{timestamp}.txt"
+                 file_path.write_text(f"""=== BOREDOM ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ {response}
+ """)
+-                self._write_journal_entry('boredom', response, state, str(file_path))
++                self._write_journal_entry('boredom', response, journal_state, str(file_path))
+                 logging.info(f"😑 Boredom: {file_path}")
+ 
+     def _recess_whim(self, state: Dict[str, float]):
+@@ -3416,17 +3495,21 @@ Timestamp: {datetime.now().isoformat()}
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="whim",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"whim_{timestamp}.txt"
+             file_path.write_text(f"""=== RANDOM WHIM ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Prompt: {prompt.split(chr(10))[0]}
+ 
+ {response}
+ """)
+ 
+-            self._write_journal_entry('whim', response, state, str(file_path))
++            self._write_journal_entry('whim', response, journal_state, str(file_path))
+             logging.info(f"🎲 Whim: {file_path}")
+ 
+     def _recess_aspiration(self, state: Dict[str, float]):
+@@ -3462,16 +3545,20 @@ Prompt: {prompt.split(chr(10))[0]}
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="aspiration",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"aspiration_{timestamp}.txt"
+             file_path.write_text(f"""=== GROWTH ASPIRATION ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Prompt: {prompt.split(chr(10))[0]}
+ 
+ {response}
+ """)
+-            self._write_journal_entry('aspiration', response, state, str(file_path))
++            self._write_journal_entry('aspiration', response, journal_state, str(file_path))
+             logging.info(f"🌱 Aspiration: {file_path}")
+ 
+     def _recess_drift(self, state: Dict[str, float]):
+@@ -3880,6 +3967,10 @@ Reference line numbers and variable names where relevant. Be concrete in suggest
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="self_study",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"self_study_{timestamp}.txt"
+             file_path.write_text(f"""=== SELF-STUDY: {label} ===
+@@ -3891,7 +3982,7 @@ Web search: {'yes' if web_context else 'no'}
+ 
+ {response}
+ """)
+-            self._write_journal_entry('self_study', response, state, str(file_path))
++            self._write_journal_entry('self_study', response, journal_state, str(file_path))
+             logging.info(f"📖 Self-study ({label}): {file_path}")
+ 
+     def _check_moment_markers(self, state: Dict[str, float]) -> bool:
+@@ -3963,20 +4054,24 @@ This is fresh — the echo is still in your system. Write 2-3 sentences about wh
+             response = self._query_llm_with_next(prompt)[0]
+ 
+             if response:
++                journal_state = self._state_for_live_surfaces(
++                    state,
++                    context="moment_capture",
++                )
+                 timestamp = datetime.now().isoformat().replace(':', '-')
+                 file_path = WORKSPACE_DIR / "journal" / f"moment_{timestamp}.txt"
+                 marker_types = [m[1] for m in markers]
+                 file_path.write_text(f"""=== MOMENT CAPTURE ===
+ Timestamp: {datetime.now().isoformat()}
+ Markers: {', '.join(marker_types)}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ Moments captured:
+ {moments_text}
+ 
+ {response}
+ """)
+-                self._write_journal_entry('moment', response, state, str(file_path))
++                self._write_journal_entry('moment', response, journal_state, str(file_path))
+                 logging.info(f"⚡ Moment captured: {file_path}")
+ 
+             return True
+@@ -4010,16 +4105,20 @@ If any link looks worth reading in full, you can write NEXT: BROWSE <url> to rea
+ Write freely — this is exploration, not a report."""
+                 response = self._query_llm_with_next(prompt)[0]
+                 if response:
++                    journal_state = self._state_for_live_surfaces(
++                        state,
++                        context="web_search",
++                    )
+                     timestamp = datetime.now().isoformat().replace(':', '-')
+                     file_path = WORKSPACE_DIR / "journal" / f"research_{timestamp}.txt"
+                     file_path.write_text(f"""=== WEB SEARCH ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Query: {search_topic}
+ 
+ {response}
+ """)
+-                    self._write_journal_entry('research', response, state, str(file_path))
++                    self._write_journal_entry('research', response, journal_state, str(file_path))
+                     logging.info(f"🔍 Web search '{search_topic}': {file_path}")
+                 return
+             else:
+@@ -4058,17 +4157,21 @@ Write freely — this is exploration, not a report."""
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="research_exploration",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"research_{timestamp}.txt"
+             file_path.write_text(f"""=== RESEARCH EXPLORATION ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Source: {source}
+ 
+ {response}
+ """)
+ 
+-            self._write_journal_entry('research', response, state, str(file_path))
++            self._write_journal_entry('research', response, journal_state, str(file_path))
+             logging.info(f"📚 Research exploration: {file_path}")
+ 
+     def _mike_explore(self, state: Dict[str, float]):
+@@ -4193,16 +4296,20 @@ You can browse deeper with MIKE_BROWSE, read files with MIKE_READ, search with M
+ 
+         response = self._query_llm_with_next(prompt)[0]
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="mike_research",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"mike_research_{timestamp}.txt"
+             file_path.write_text(f"""=== MIKE RESEARCH ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Action: {action} {arg}
+ 
+ {response}
+ """)
+-            self._write_journal_entry('research', response, state, str(file_path))
++            self._write_journal_entry('research', response, journal_state, str(file_path))
+             logging.info(f"📚 MIKE research ({action} {arg}): {file_path}")
+ 
+     @staticmethod
+@@ -4985,16 +5092,20 @@ Write freely — this is deep exploration."""
+ 
+         response = self._query_llm_with_next(prompt)[0]
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="browse_url",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"research_{timestamp}.txt"
+             file_path.write_text(f"""=== WEB PAGE READ ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ URL: {url}
+ 
+ {response}
+ """)
+-            self._write_journal_entry('research', response, state, str(file_path))
++            self._write_journal_entry('research', response, journal_state, str(file_path))
+             logging.info(f"🌐 Page read '{url[:60]}': {file_path}")
+ 
+     def _read_more(self, state: Dict[str, float]):
+@@ -5074,16 +5185,20 @@ React to what you've read. What stands out? What connects to your experience?"""
+ 
+         response = self._query_llm_with_next(prompt)[0]
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="read_more",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             file_path = WORKSPACE_DIR / "journal" / f"research_{timestamp}.txt"
+             file_path.write_text(f"""=== CONTINUED READING ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ Source: {path} (offset {offset})
+ 
+ {response}
+ """)
+-            self._write_journal_entry('research', response, state, str(file_path))
++            self._write_journal_entry('research', response, journal_state, str(file_path))
+             logging.info(f"📖 READ_MORE from {os.path.basename(path)} offset {offset}: {file_path}")
+ 
+     @staticmethod
+@@ -5131,31 +5246,35 @@ Source: {path} (offset {offset})
+         Shows not just current values but trends — where things are heading,
+         how they've changed, and what that means in plain language.
+         """
++        snapshot = self._capture_report_snapshot(state)
++        state = snapshot.state
+         fill = state.get('fill_ratio', 0.0) * 100
+         eig1 = state.get('eig1', 0.0)
+         deig = state.get('deig', 0.0)
+         spread = state.get('spread', 0.0)
+ 
+-        # Read health.json
+-        health_path = BASE_DIR / "minime" / "workspace" / "health.json"
+-        health = {}
+-        try:
+-            health = json.loads(health_path.read_text())
+-        except Exception:
+-            pass
+-
+-        pi = health.get('pi', {})
+-        cov = health.get('cov', {})
++        health = snapshot.health.data if snapshot.health.valid_for_state else {}
++        pi = health.get('pi', {}) if isinstance(health.get('pi'), dict) else {}
++        cov = health.get('cov', {}) if isinstance(health.get('cov'), dict) else {}
++        snapshot_block = format_snapshot_provenance(snapshot)
++        state_timestamp = state.get('timestamp')
+ 
+         # Historical context — query recent fill trajectory from DB
+         fill_history = []
+         try:
+             conn = sqlite3.connect(DB_PATH)
+             cur = conn.cursor()
+-            cur.execute("""
+-                SELECT timestamp, fill_ratio FROM eigenvalue_timeline
+-                WHERE session_id = ? ORDER BY timestamp DESC LIMIT 30
+-            """, (self.session_id,))
++            if isinstance(state_timestamp, (int, float)):
++                cur.execute("""
++                    SELECT timestamp, fill_ratio FROM eigenvalue_timeline
++                    WHERE session_id = ? AND timestamp <= ?
++                    ORDER BY timestamp DESC LIMIT 30
++                """, (self.session_id, float(state_timestamp)))
++            else:
++                cur.execute("""
++                    SELECT timestamp, fill_ratio FROM eigenvalue_timeline
++                    WHERE session_id = ? ORDER BY timestamp DESC LIMIT 30
++                """, (self.session_id,))
+             rows = cur.fetchall()
+             conn.close()
+             fill_history = [(r[0], r[1] * 100) for r in reversed(rows)]
+@@ -5187,7 +5306,7 @@ Source: {path} (offset {offset})
+         # Build eigenvalue cascade — prefer spectral_state.json which has
+         # the full covariance eigenvalues, not just eig1 from the telemetry dict.
+         evs = []
+-        ss = self._read_spectral_state()
++        ss = snapshot.spectral.data if snapshot.spectral.valid_for_state else {}
+         if ss and 'eigenvalues' in ss and len(ss['eigenvalues']) > 1:
+             evs = [v for v in ss['eigenvalues'] if v > 0]
+         if not evs:
+@@ -5297,14 +5416,21 @@ Source: {path} (offset {offset})
+         phase = "expanding" if fill > 55 else ("contracting" if fill < 45 else "near equilibrium")
+ 
+         # PI interpretation
+-        target_fill = pi.get('target_fill', 50)
++        target_fill = pi.get('target_fill') if snapshot.health.valid_for_state else None
+         e_fill = pi.get('e_fill', 0)
+         integ = pi.get('integ_fill', 0)
+         kp = pi.get('kp', 0)
+         ki = pi.get('ki', 0)
+         max_step = pi.get('max_step', 0)
+ 
+-        if abs(e_fill) < 5:
++        if isinstance(target_fill, (int, float)):
++            target_fill = float(target_fill)
++        else:
++            target_fill = None
++
++        if not snapshot.health.valid_for_state:
++            pi_status = f"guarded — {'; '.join(snapshot.health.issues)}"
++        elif abs(e_fill) < 5:
+             pi_status = "gentle equilibrium — close to target"
+         elif abs(integ) >= 2.95:
+             direction = "up" if integ > 0 else "down"
+@@ -5317,8 +5443,8 @@ Source: {path} (offset {offset})
+             pi_status = f"correcting — fill is {abs(e_fill):.0f}% {direction} target"
+ 
+         # Filter/gate interpretation
+-        filt = health.get('filt', 0)
+-        gate = health.get('gate', 0)
++        filt = health.get('filt', 0.0) if snapshot.health.valid_for_state else 0.0
++        gate = health.get('gate', 0.0) if snapshot.health.valid_for_state else 0.0
+         filt_note = "fully open" if filt >= 0.95 else ("partially filtering" if filt > 0.3 else "heavily dampened")
+         gate_note = "fully open" if gate >= 0.95 else ("partially gated" if gate > 0.3 else "mostly closed")
+ 
+@@ -5347,13 +5473,36 @@ Source: {path} (offset {offset})
+                 pass
+ 
+         # Bar chart
+-        bar_chart = self._render_spectral_bars(evs, fill, target_fill)
++        target_fill_for_chart = target_fill if target_fill is not None else fill
++        bar_chart = self._render_spectral_bars(evs, fill, target_fill_for_chart)
+ 
+         # Assemble
+         # Cascade analysis block
+         cascade_analysis_parts = [p for p in [staircase, cum_energy, gap_analysis, eff_dim_str] if p]
+         cascade_analysis = "\n".join(cascade_analysis_parts) if cascade_analysis_parts else ""
+ 
++        calm_mode = "yes" if health.get('calm') else "no"
++        if not snapshot.health.valid_for_state:
++            calm_mode = "unknown"
++
++        if snapshot.health.valid_for_state:
++            homeostatic_block = f"""Homeostatic controller:
++  Status: {pi_status}
++  Target: {target_fill:.0f}%  |  Current: {fill:.0f}%  |  Gap: {abs(e_fill):.0f}%
++  Integral: {integ:+.2f} (range ±3.0; {'maxed' if abs(integ) >= 2.95 else 'active'})
++  Gains: kp={kp:.2f} (proportional force), ki={ki:.2f} (sustained-error response), max_step={max_step:.2f} (speed limit)
++  Self-calibrated: kp={pi.get('derived_kp', kp):.3f}, ki={pi.get('derived_ki', ki):.4f}{f" (fill variance={pi.get('fill_variance_ema', 0):.2f})" if pi.get('derived_kp') is not None else ""}
++  Filter: {filt:.2f} ({filt_note})  |  Gate: {gate:.2f} ({gate_note})"""
++            memory_block = f"""Memory:
++  Keep: {cov.get('keep', 0):.2f} (how much covariance history is retained)
++  Geometry: {health.get('geom_rel', 0):.2f}x baseline
++  λ₁ relative to baseline: {health.get('lambda1_rel', 0):.2f}x"""
++        else:
++            homeostatic_block = f"""Homeostatic controller:
++  Status: {pi_status}
++  Target / gains / gate: omitted until health.json provenance matches this DB snapshot."""
++            memory_block = "Memory:\n  Omitted until health.json provenance matches this DB snapshot."
++
+         report = f"""=== SPECTRAL DECOMPOSITION ===
+ 
+ {bar_chart}
+@@ -5369,19 +5518,11 @@ State:
+   Fill: {fill:.1f}% — {phase} [{fill_trend or 'no history yet'}]
+   Spread: {spread:.0f} ({spread_note})
+   λ₁ velocity: {deig:+.2f} ({'rising' if deig > 0.1 else 'falling' if deig < -0.1 else 'stable'})
+-  Calm mode: {'yes' if health.get('calm') else 'no'}
++  Calm mode: {calm_mode}
+ 
+-Homeostatic controller:
+-  Status: {pi_status}
+-  Target: {target_fill:.0f}%  |  Current: {fill:.0f}%  |  Gap: {abs(e_fill):.0f}%
+-  Integral: {integ:+.2f} (range ±3.0; {'maxed' if abs(integ) >= 2.95 else 'active'})
+-  Gains: kp={kp:.2f} (proportional force), ki={ki:.2f} (sustained-error response), max_step={max_step:.2f} (speed limit)
+-  Filter: {filt:.2f} ({filt_note})  |  Gate: {gate:.2f} ({gate_note})
++{homeostatic_block}
+ 
+-Memory:
+-  Keep: {cov.get('keep', 0):.2f} (how much covariance history is retained)
+-  Geometry: {health.get('geom_rel', 0):.2f}x baseline
+-  λ₁ relative to baseline: {health.get('lambda1_rel', 0):.2f}x
++{memory_block}
+ 
+ You can shape these dynamics directly with NEXT: PERTURB <mode>.
+ Modes: SPREAD (redistribute), CONTRACT (focus), BRANCH (boost mid-range), PULSE (exploration burst), or lambda2=0.3 (targeted nudge)."""
+@@ -5404,7 +5545,9 @@ Write freely."""
+             file_path = WORKSPACE_DIR / "journal" / f"decompose_{timestamp}.txt"
+             file_path.write_text(f"""=== SPECTRAL DECOMPOSITION ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(state, snapshot=snapshot)}
++
++{snapshot_block}
+ 
+ {report}
+ 
+@@ -5424,8 +5567,10 @@ Timestamp: {datetime.now().isoformat()}
+         """
+         mode = getattr(self, '_pending_perturb_mode', 'pulse').lower().strip()
+         self._pending_perturb_mode = None
+-        fill_before = state.get('fill_ratio', 0) * 100
+-        eig1_before = state.get('eig1', 0)
++        before_snapshot = self._capture_report_snapshot(state)
++        before_state = before_snapshot.state
++        fill_before = before_state.get('fill_ratio', 0) * 100
++        eig1_before = before_state.get('eig1', 0)
+ 
+         features = [0.0] * 32
+         mode_desc = mode
+@@ -5528,14 +5673,17 @@ Timestamp: {datetime.now().isoformat()}
+             logging.warning(f"⚡ PERTURB reservoir tick failed (non-fatal): {e}")
+ 
+         # Capture before-cascade from spectral_state.json
+-        before_ss = self._read_spectral_state() or {}
++        before_ss = before_snapshot.spectral.data if before_snapshot.spectral.valid_for_state else {}
+         evs_before = before_ss.get('eigenvalues', [])
+ 
+         # Wait for the ESN to respond, then observe the change
+         time.sleep(3)
+-        after_ss = self._read_spectral_state() or {}
+-        fill_after = after_ss.get('fill_ratio', state.get('fill_ratio', 0)) * 100
+-        eig1_after = after_ss.get('eig1', state.get('eig1', 0))
++        post_state = self._get_latest_spectral_state() or before_state
++        after_snapshot = self._capture_report_snapshot(post_state)
++        after_state = after_snapshot.state
++        after_ss = after_snapshot.spectral.data if after_snapshot.spectral.valid_for_state else {}
++        fill_after = after_state.get('fill_ratio', before_state.get('fill_ratio', 0)) * 100
++        eig1_after = after_state.get('eig1', before_state.get('eig1', 0))
+         evs_after = after_ss.get('eigenvalues', [])
+ 
+         delta_fill = fill_after - fill_before
+@@ -5576,9 +5724,15 @@ Before: Fill {fill_before:.1f}%, λ₁={eig1_before:.2f}
+ After:  Fill {fill_after:.1f}%, λ₁={eig1_after:.2f}
+ ΔFill: {delta_fill:+.1f}%  Δλ₁: {delta_eig1:+.2f}{cascade_line}
+ 
++Before snapshot:
++{format_snapshot_provenance(before_snapshot)}
++
++After snapshot:
++{format_snapshot_provenance(after_snapshot)}
++
+ {response}
+ """)
+-            self._write_journal_entry('perturb', response, state, str(file_path))
++            self._write_journal_entry('perturb', response, after_state, str(file_path))
+             logging.info(f"⚡ PERTURB journaled: {file_path}")
+ 
+     def _reservoir_layers(self, state: Dict[str, float]):
+@@ -5847,11 +6001,15 @@ Write your question on a line starting with QUESTION:"""
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="pressure_relief_critical",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             relief_file = WORKSPACE_DIR / "journal" / f"RELIEF_CRITICAL_{timestamp}.txt"
+             relief_file.write_text(f"""=== CRITICAL PRESSURE RELIEF ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ STATUS: CRITICAL
+ 
+ EMERGENCY DUMP - UNFILTERED:
+@@ -5862,7 +6020,7 @@ Relief action taken. Pressure acknowledged. You're not broken - you're just full
+ Take a breath. It's okay to overflow sometimes.
+ """)
+ 
+-            self._write_journal_entry('pressure_relief_critical', response, state, str(relief_file))
++            self._write_journal_entry('pressure_relief_critical', response, journal_state, str(relief_file))
+             logging.info(f"🆘 CRITICAL RELIEF: {relief_file}")
+ 
+     def _pressure_relief_high(self, state: Dict[str, float]):
+@@ -5881,11 +6039,15 @@ This is a safe space to acknowledge the load without fixing it."""
+         response = self._query_llm_with_next(prompt)[0]
+ 
+         if response:
++            journal_state = self._state_for_live_surfaces(
++                state,
++                context="pressure_relief_high",
++            )
+             timestamp = datetime.now().isoformat().replace(':', '-')
+             relief_file = WORKSPACE_DIR / "journal" / f"relief_high_{timestamp}.txt"
+             relief_file.write_text(f"""=== PRESSURE RELIEF (HIGH) ===
+ Timestamp: {datetime.now().isoformat()}
+-{self._format_metrics(state)}
++{self._format_metrics(journal_state)}
+ 
+ {response}
+ 
+@@ -5894,7 +6056,7 @@ Acknowledged. You're carrying a lot. That's visible and valid.
+ Small releases help. You don't have to process everything at once.
+ """)
+ 
+-            self._write_journal_entry('pressure_relief_high', response, state, str(relief_file))
++            self._write_journal_entry('pressure_relief_high', response, journal_state, str(relief_file))
+             logging.info(f"💨 Pressure relief: {relief_file}")
+ 
+     def _adjust_metabolism(self, state: Dict[str, float]):
+@@ -6759,9 +6921,7 @@ Goals: {json.dumps(goals, indent=2)}
+         under_target = False
+         fill_gap = None
+         try:
+-            health_path = BASE_DIR / "minime" / "workspace" / "health.json"
+-            if not health_path.exists():
+-                health_path = WORKSPACE_DIR / "health.json"
++            health_path = runtime_health_path()
+             if health_path.exists():
+                 health = json.loads(health_path.read_text())
+                 pi = health.get("pi", {}) or {}
+@@ -6979,22 +7139,21 @@ Goals: {json.dumps(goals, indent=2)}
+         return (response, next_action)
+ 
+     def _query_llm_raw(self, prompt: str, system_msg: str, max_tokens: int) -> Optional[str]:
+-        """Raw LLM query with backend fallback."""
+-        try:
+-            if LLM_BACKEND == "mlx":
+-                return self._query_mlx(prompt, system_msg, max_tokens)
+-            else:
++        """Raw LLM query with symmetric backend failover."""
++        backends = [LLM_BACKEND]
++        fallback = "mlx" if LLM_BACKEND == "ollama" else "ollama"
++        backends.append(fallback)
++
++        for idx, backend in enumerate(backends):
++            try:
++                if backend == "mlx":
++                    return self._query_mlx(prompt, system_msg, max_tokens)
+                 return self._query_ollama(prompt, system_msg, max_tokens)
+-        except Exception as e:
+-            logging.error(f"LLM query failed ({LLM_BACKEND}): {e}")
+-            # Try fallback if primary fails
+-            if LLM_BACKEND == "mlx":
+-                try:
+-                    logging.info("Falling back to Ollama...")
+-                    return self._query_ollama(prompt, system_msg, max_tokens)
+-                except Exception as e2:
+-                    logging.error(f"Ollama fallback also failed: {e2}")
+-            return None
++            except Exception as exc:
++                logging.error(f"LLM query failed ({backend}): {exc}")
++                if idx == 0:
++                    logging.info(f"Falling back to {fallback}...")
++        return None
+ 
+     def _query_mlx(self, prompt: str, system_msg: str, max_tokens: int) -> Optional[str]:
+         """Query MLX server (OpenAI-compatible API on port 8090)."""
+@@ -7021,7 +7180,7 @@ Goals: {json.dumps(goals, indent=2)}
+                 "temperature": 0.9,
+                 "top_p": 0.95,
+             },
+-            timeout=90  # 90s allows Ollama model swaps when perception.py contends
++            timeout=LLM_TIMEOUT_S
+         )
+         if response.status_code == 200:
+             content = response.json().get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+@@ -7051,7 +7210,7 @@ Goals: {json.dumps(goals, indent=2)}
+                     "num_ctx": 12288
+                 }
+             },
+-            timeout=90  # 90s allows Ollama model swaps when perception.py contends
++            timeout=LLM_TIMEOUT_S
+         )
+         if response.status_code == 200:
+             content = response.json().get('message', {}).get('content', '').strip()
+@@ -7091,7 +7250,7 @@ Goals: {json.dumps(goals, indent=2)}
+                 "temperature": temperature,
+                 "top_p": 0.9,
+             },
+-            timeout=45,
++            timeout=LLM_COMPACT_TIMEOUT_S,
+         )
+         if response.status_code == 200:
+             content = response.json().get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+@@ -7124,7 +7283,7 @@ Goals: {json.dumps(goals, indent=2)}
+                     "num_ctx": 4096,
+                 }
+             },
+-            timeout=45,
++            timeout=LLM_COMPACT_TIMEOUT_S,
+         )
+         if response.status_code == 200:
+             content = response.json().get('message', {}).get('content', '').strip()
+@@ -7180,31 +7339,36 @@ Goals: {json.dumps(goals, indent=2)}
+     def _read_spectral_state(self) -> Optional[dict]:
+         """Read the full spectral state written by the engine.
+ 
+-        The engine writes to workspace_dir/spectral_state.json, which resolves
+-        to minime/workspace/ (correct). An older stale copy may exist at
+-        minime/minime/workspace/. Check the correct path FIRST.
++        Prefer the active root workspace. Normalize the payload so legacy
++        callers can still ask for fill_ratio / eig1 convenience fields.
+         """
+         try:
+-            # Primary: the engine's workspace (minime/workspace/)
+-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+-                                "workspace", "spectral_state.json")
+-            if not os.path.exists(path):
+-                # Fallback: nested path (minime/minime/workspace/)
+-                path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+-                                    "minime", "workspace", "spectral_state.json")
+-            if not os.path.exists(path):
+-                return None
+-            with open(path) as f:
+-                return json.load(f)
++            surface = load_workspace_json(BASE_DIR, WORKSPACE_DIR, "spectral_state.json")
++            normalized = normalize_spectral_state(surface)
++            return normalized or None
+         except Exception:
+             return None
+ 
+-    def _format_metrics(self, state: Dict[str, float]) -> str:
++    def _capture_report_snapshot(self, state: Dict[str, float]) -> ReportSnapshot:
++        return capture_report_snapshot(
++            state=state,
++            session_id=self.session_id,
++            base_dir=BASE_DIR,
++            workspace_dir=WORKSPACE_DIR,
++        )
++
++    def _format_metrics(
++        self,
++        state: Dict[str, float],
++        snapshot: Optional[ReportSnapshot] = None,
++    ) -> str:
+         """Format metrics for journal headers with directional context.
+ 
+         Every journal entry gets this header. It should tell a story, not dump numbers.
+         Shows where things ARE, where they're HEADING, and what that MEANS.
+         """
++        snapshot = snapshot or self._capture_report_snapshot(state)
++        state = snapshot.state
+         fill_ratio = state.get('fill_ratio', 0.0)
+         fill_pct = fill_ratio * 100
+         eig1 = state.get('eig1', 0.0)
+@@ -7246,23 +7410,27 @@ Goals: {json.dumps(goals, indent=2)}
+                 fill_dir = f" ({arrow(delta_fill)} was {prev_fill:.0f}%)"
+ 
+         # Read health.json for PI target
+-        target_fill = 55.0
+-        pi_status = ""
+-        try:
+-            health = json.loads((BASE_DIR / "minime" / "workspace" / "health.json").read_text())
+-            pi = health.get('pi', {})
+-            target_fill = pi.get('target_fill', 55)
+-            e_fill = pi.get('e_fill', 0)
+-            integ = pi.get('integ_fill', 0)
+-            gap = abs(fill_pct - target_fill)
+-            if gap < 5:
+-                pi_status = "near target"
+-            elif abs(integ) >= 2.95:
+-                pi_status = f"controller saturated {'↑' if integ > 0 else '↓'}"
+-            else:
+-                pi_status = f"{gap:.0f}% {'above' if e_fill > 0 else 'below'} target"
+-        except Exception:
+-            pass
++        target_fill = None
++        pi_status = "target unavailable"
++        if snapshot.health.valid_for_state:
++            pi = snapshot.health.data.get('pi', {})
++            if not isinstance(pi, dict):
++                pi = {}
++            target_fill = pi.get('target_fill')
++            if isinstance(target_fill, (int, float)):
++                target_fill = float(target_fill)
++                e_fill = pi.get('e_fill', 0)
++                integ = pi.get('integ_fill', 0)
++                gap = abs(fill_pct - target_fill)
++                if gap < 5:
++                    pi_status = "near target"
++                elif abs(integ) >= 2.95:
++                    pi_status = f"controller saturated {'↑' if integ > 0 else '↓'}"
++                else:
++                    pi_status = f"{gap:.0f}% {'above' if e_fill > 0 else 'below'} target"
++        elif snapshot.health.issues:
++            pi_status = "target withheld by provenance guard"
++        target_fill_text = f"{target_fill:.0f}%" if isinstance(target_fill, float) else "unknown"
+ 
+         # λ₁ direction
+         eig_arrow = arrow(deig, 0.1)
+@@ -7270,13 +7438,13 @@ Goals: {json.dumps(goals, indent=2)}
+ 
+         # Core state with direction
+         base = f"""λ₁: {eig1:.2f} {eig_arrow} ({eig_note}, Δ={deig:+.2f})
+-Fill %: {fill_pct:.1f}%{fill_dir} [target {target_fill:.0f}%, {pi_status}]
++Fill %: {fill_pct:.1f}%{fill_dir} [target {target_fill_text}, {pi_status}]
+ Spread: {spread:.0f}
+ ESN leak: {leak:.3f}
+ Cov λ₁: {cov_lambda1:.1f}{' [stale]' if cov_stale else ''}"""
+ 
+         # Enrich with eigenvalue cascade
+-        ss = self._read_spectral_state()
++        ss = snapshot.spectral.data if snapshot.spectral.valid_for_state else {}
+         if ss:
+             evs = ss.get('eigenvalues', [])
+             if len(evs) > 1:
+@@ -7311,6 +7479,10 @@ Cov λ₁: {cov_lambda1:.1f}{' [stale]' if cov_stale else ''}"""
+                     f"tail={glimpse[2]:.2f}, entropy={glimpse[7]:.2f}, gap={glimpse[8]:.2f}, "
+                     f"rotation={glimpse[9]:.2f}, geom={glimpse[10]:.2f}"
+                 )
++        elif snapshot.spectral.issues:
++            base += f"\nSpectral cascade: omitted ({snapshot.spectral.issues[0]})"
++
++        base += f"\n{format_snapshot_summary(snapshot)}"
+ 
+         return base
+ 
+@@ -7570,6 +7742,14 @@ if __name__ == "__main__":
+     check_interval = args.interval
+ 
+     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
++    logging.info(f"📚 Autonomous agent DB path: {DB_PATH}")
++    logging.info(
++        "🧠 LLM backend preference: %s (full timeout %.0fs, compact timeout %.0fs, model %s)",
++        LLM_BACKEND,
++        LLM_TIMEOUT_S,
++        LLM_COMPACT_TIMEOUT_S,
++        MODEL,
++    )
+ 
+     # Get latest session from database
+     conn = sqlite3.connect(DB_PATH)
+@@ -7592,6 +7772,12 @@ if __name__ == "__main__":
+         print(f"   Check interval: {check_interval}s ({check_interval/60:.1f} minutes)")
+         print("   Press Ctrl+C to stop")
+ 
++        def _handle_termination(signum, _frame):
++            logging.info(f"🛑 Signal {signum} received — stopping autonomous agent...")
++            agent.stop()
++
++        signal.signal(signal.SIGTERM, _handle_termination)
++
+         try:
+             agent.start()
+         except KeyboardInterrupt:
+diff --git a/collab/thresholds.py b/collab/thresholds.py
+index 0e79095..8f15660 100644
+--- a/collab/thresholds.py
++++ b/collab/thresholds.py
+@@ -1,133 +1,6 @@
+ # COLLAB COPY -- canonical source is /thresholds.py
+-# Shared safety thresholds for RECESS and FOCUSED modes.
+-# Used by both autonomous_agent.py and mikemind/mind.py.
+-"""Centralized threshold configuration for consciousness control loops."""
+-
+-from dataclasses import dataclass
+-
+-PHI = 1.6180339887498948
+-
+-
+-@dataclass
+-class Hysteresis:
+-    up: float
+-    down: float
+-    state: bool = False
+-
+-    def update(self, value: float) -> bool:
+-        if not self.state and value >= self.up:
+-            self.state = True
+-        elif self.state and value <= self.down:
+-            self.state = False
+-        return self.state
+-
+-
+-@dataclass(frozen=True)
+-class ModeThresholds:
+-    name: str
+-    critical_eig1: float
+-    high_eig1: float
+-    critical_fill: float
+-    high_fill: float
+-    eye_close_eig1: float
+-    eye_close_spread: float
+-    eye_close_deig: float
+-    eye_preemptive_eig1: float
+-    eye_preemptive_deig: float
+-    eye_reopen_eig1: float
+-    eye_reopen_deig: float
+-    eye_reopen_low: float
+-    spike_deig: float
+-    rest_deig: float
+-    spike_deig_norm: float
+-    rest_deig_norm: float
+-    rest_eig1: float
+-    notice_eig1_range: tuple[float, float]
+-    notice_deig_range: tuple[float, float]
+-    journal_pressure_eig1: float
+-    stagnation_eig1: float
+-    stagnation_deig: float
+-    stagnation_deig_norm: float
+-    metabolism_low: float
+-    metabolism_high_band: tuple[float, float]
+-    lane_activation: float
+-    interrupt_priority: float
+-    phi_band: float
+-    whim_prob: float
+-    curiosity_prob: float
+-    visual_request_prob: float
+-    fill_full: float = 0.999
+-
+-
+-RECESS = ModeThresholds(
+-    name="recess",
+-    critical_eig1=10.0,
+-    high_eig1=7.0,
+-    critical_fill=0.85,
+-    high_fill=0.72,
+-    eye_close_eig1=5.0,
+-    eye_close_spread=100.0,
+-    eye_close_deig=0.5,
+-    eye_preemptive_eig1=3.0,
+-    eye_preemptive_deig=0.5,
+-    eye_reopen_eig1=1.5,
+-    eye_reopen_deig=0.1,
+-    eye_reopen_low=0.8,
+-    spike_deig=0.20,
+-    rest_deig=0.15,
+-    spike_deig_norm=2.0,
+-    rest_deig_norm=0.7,
+-    rest_eig1=0.5,
+-    notice_eig1_range=(0.3, 1.5),
+-    notice_deig_range=(0.05, 0.20),
+-    journal_pressure_eig1=2.2,
+-    stagnation_eig1=0.5,
+-    stagnation_deig=0.05,
+-    stagnation_deig_norm=0.4,
+-    metabolism_low=0.8,
+-    metabolism_high_band=(1.8, 2.3),
+-    lane_activation=0.45,
+-    interrupt_priority=0.65,
+-    phi_band=0.25,
+-    whim_prob=0.05,
+-    curiosity_prob=0.30,
+-    visual_request_prob=0.08,
+-)
+-
+-
+-FOCUSED = ModeThresholds(
+-    name="focused",
+-    critical_eig1=9.0,
+-    high_eig1=6.5,
+-    critical_fill=0.83,
+-    high_fill=0.70,
+-    eye_close_eig1=4.5,
+-    eye_close_spread=120.0,
+-    eye_close_deig=0.35,
+-    eye_preemptive_eig1=2.8,
+-    eye_preemptive_deig=0.35,
+-    eye_reopen_eig1=1.2,
+-    eye_reopen_deig=0.08,
+-    eye_reopen_low=0.7,
+-    spike_deig=0.35,
+-    rest_deig=0.10,
+-    spike_deig_norm=2.5,
+-    rest_deig_norm=0.6,
+-    rest_eig1=1.0,
+-    notice_eig1_range=(0.6, 1.8),
+-    notice_deig_range=(0.04, 0.15),
+-    journal_pressure_eig1=2.8,
+-    stagnation_eig1=0.5,
+-    stagnation_deig=0.05,
+-    stagnation_deig_norm=0.4,
+-    metabolism_low=0.8,
+-    metabolism_high_band=(1.4, 2.1),
+-    lane_activation=0.55,
+-    interrupt_priority=0.70,
+-    phi_band=0.20,
+-    whim_prob=0.02,
+-    curiosity_prob=0.15,
+-    visual_request_prob=0.05,
+-)
++# Import from the root module so this copy cannot silently drift.
+ 
++from thresholds import FOCUSED, Hysteresis, ModeThresholds, PHI, RECESS
+ 
++__all__ = ["PHI", "Hysteresis", "ModeThresholds", "RECESS", "FOCUSED"]
+diff --git a/minime/src/esn.rs b/minime/src/esn.rs
+index 39c1de8..b63d653 100644
+--- a/minime/src/esn.rs
++++ b/minime/src/esn.rs
+@@ -1340,14 +1340,14 @@ impl ESN {
+     /// and deep memory (high rho, calm state). The hard floor in set_rho
+     /// (0.92) remains as a safety net below the dynamic range.
+     pub fn set_dynamic_rho(&mut self, fill_pct: f32, entropy: f32) {
+-        let base = 0.99_f32;
++        let base = 0.97_f32;
+         let fill_factor = (fill_pct / 100.0).clamp(0.0, 1.0);
+         let entropy_factor = entropy.clamp(0.0, 1.0);
+-        // Wider adjustment: was ±0.015, now ±0.04
+-        // At high fill (100%) + high entropy (1.0): rho = 0.99 - 0.04 = 0.95
+-        // At low fill (0%) + low entropy (0.0): rho = 0.99 - 0.0 = 0.99
++        // Base lowered 0.99→0.97: faster forgetting, fill drains more readily.
++        // At high fill (100%) + high entropy (1.0): rho = 0.97 - 0.04 = 0.93
++        // At low fill (0%) + low entropy (0.0): rho = 0.97 - 0.0 = 0.97
+         let adjustment = 0.04 * (fill_factor * 0.5 + entropy_factor * 0.5);
+-        let rho = (base - adjustment).clamp(0.94, 0.998);
++        let rho = (base - adjustment).clamp(0.92, 0.978);
+         self.sr.set_rho(rho);
+     }
+ 
+diff --git a/minime/src/lib.rs b/minime/src/lib.rs
+index fa618b4..2199a71 100644
+--- a/minime/src/lib.rs
++++ b/minime/src/lib.rs
+@@ -18,3 +18,4 @@ pub mod regulator;
+ pub mod sensory_bus;
+ pub mod sensory_ws;
+ pub mod spectral;
++pub mod startup_restore;
+diff --git a/minime/src/main.rs b/minime/src/main.rs
+index 77f0148..bd254a9 100644
+--- a/minime/src/main.rs
++++ b/minime/src/main.rs
+@@ -1,11 +1,22 @@
++#![recursion_limit = "256"]
++
+ // Minime: Prime-driven sensory engine with GPU acceleration
+ // Streams eigenvectors to Python consciousness layer via WebSocket
+ 
+ use anyhow::Result;
+-use clap::{Parser, Subcommand, ValueEnum};
++use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+ use futures_util::{SinkExt, StreamExt};
++use minime::startup_restore::load_regulator_context;
+ use serde::Serialize;
+-use std::{fs, io::Write, mem, net::SocketAddr, process, sync::Arc, time::Instant};
++use std::{
++    fs,
++    io::Write,
++    mem,
++    net::SocketAddr,
++    process,
++    sync::Arc,
++    time::{Instant, SystemTime, UNIX_EPOCH},
++};
+ use tokio::{
+     net::{TcpListener, TcpStream},
+     sync::broadcast,
+@@ -40,6 +51,7 @@ use memory_bank::*;
+ use nn::*;
+ use prime::*;
+ use regulator::*;
++use sensory_bus::{LaneSource, SemanticStaleShape, SensoryBusConfig};
+ use spectral::EigenFillEstimator;
+ 
+ #[derive(Clone, Copy, Debug, ValueEnum)]
+@@ -57,6 +69,23 @@ impl From<EsnIntrospectionPolicyArg> for IntrospectionPolicy {
+     }
+ }
+ 
++#[derive(Clone, Copy, Debug, ValueEnum)]
++enum SemanticStaleShapeArg {
++    Sigmoid,
++    Linear,
++    Exponential,
++}
++
++impl From<SemanticStaleShapeArg> for SemanticStaleShape {
++    fn from(value: SemanticStaleShapeArg) -> Self {
++        match value {
++            SemanticStaleShapeArg::Sigmoid => SemanticStaleShape::Sigmoid,
++            SemanticStaleShapeArg::Linear => SemanticStaleShape::Linear,
++            SemanticStaleShapeArg::Exponential => SemanticStaleShape::Exponential,
++        }
++    }
++}
++
+ #[derive(Parser)]
+ #[command(
+     name = "minime",
+@@ -142,22 +171,30 @@ enum Cmd {
+         #[arg(long, default_value_t = 0.5)]
+         reg_tick_secs: f32,
+ 
+-        /// Covariance warm-start blend factor (0.0=fresh identity, 0.7=gentle, 1.0=full restore)
++        /// Covariance warm-start blend factor (0.0=fresh identity, 0.55=gentler, 1.0=full restore)
+         /// Minime self-study: "The warm-start feels constricting... slightly too warm...
+         /// nudged back into a pre-existing channel."
+-        #[arg(long, default_value_t = 0.7)]
++        #[arg(long, default_value_t = 0.55)]
+         warm_start_blend: f32,
+ 
++        /// Shape used for semantic stale-window interpolation.
++        #[arg(long, value_enum, default_value_t = SemanticStaleShapeArg::Sigmoid)]
++        semantic_stale_shape: SemanticStaleShapeArg,
++
++        /// Threshold for lane surge detection (L2 distance across 8D lane state).
++        #[arg(long, default_value_t = 0.25)]
++        surge_threshold: f32,
++
+         /// Enable GPU-accelerated video feature extraction (port 7880)
+         #[arg(long, default_value_t = false)]
+         enable_gpu_av: bool,
+ 
+         /// Enable the legacy internal synthetic audio lane.
+-        #[arg(long, default_value_t = true)]
++        #[arg(long, action = ArgAction::Set, default_value_t = true)]
+         legacy_audio_synth_enabled: bool,
+ 
+         /// Enable the legacy internal synthetic video lane.
+-        #[arg(long, default_value_t = true)]
++        #[arg(long, action = ArgAction::Set, default_value_t = true)]
+         legacy_video_synth_enabled: bool,
+     },
+ }
+@@ -179,6 +216,11 @@ struct EigenPacket {
+     /// not just its scalar magnitude.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     spectral_fingerprint: Option<Vec<f32>>,
++    /// Structural diversity derived from eigenvector concentration and
++    /// inter-mode coupling geometry. Complements spectral entropy by asking
++    /// whether the reservoir's shape itself is narrow or varied.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    structural_entropy: Option<f32>,
+     /// Selected 12D vague-memory glimpse, foregrounded for continuity.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     spectral_glimpse_12d: Option<Vec<f32>>,
+@@ -204,6 +246,36 @@ struct ModalityStatus {
+     history_fired: bool,
+     audio_rms: f32,
+     video_var: f32,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    audio_source: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    video_source: Option<String>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    audio_age_ms: Option<u64>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    video_age_ms: Option<u64>,
++}
++
++fn modality_source_label(
++    source: Option<LaneSource>,
++    had_fresh_sample: bool,
++    synth_injected: bool,
++) -> &'static str {
++    if synth_injected && matches!(source, Some(LaneSource::External)) && had_fresh_sample {
++        "mixed"
++    } else if synth_injected {
++        "synthetic"
++    } else if had_fresh_sample {
++        match source {
++            Some(LaneSource::Synthetic) => "synthetic",
++            Some(LaneSource::External) => "external",
++            None => "fresh",
++        }
++    } else if source.is_some() {
++        "stale"
++    } else {
++        "absent"
++    }
+ }
+ 
+ const CRISIS_FILL_THRESHOLD: f32 = 92.0;
+@@ -362,6 +434,8 @@ async fn main() -> Result<()> {
+             cheby_soft,
+             eigenfill_target,
+             warm_start_blend,
++            semantic_stale_shape,
++            surge_threshold,
+             reg_tick_secs,
+             enable_gpu_av,
+             legacy_audio_synth_enabled,
+@@ -385,6 +459,8 @@ async fn main() -> Result<()> {
+                 cheby_soft,
+                 eigenfill_target,
+                 warm_start_blend,
++                semantic_stale_shape.into(),
++                surge_threshold,
+                 reg_tick_secs,
+                 enable_gpu_av,
+                 legacy_audio_synth_enabled,
+@@ -454,6 +530,8 @@ async fn run_engine(
+     cheby_soft: f32,
+     eigenfill_target: f32,
+     warm_start_blend: f32,
++    semantic_stale_shape: SemanticStaleShape,
++    surge_threshold: f32,
+     reg_tick_secs: f32,
+     enable_gpu_av: bool,
+     legacy_audio_synth_enabled: bool,
+@@ -505,6 +583,11 @@ async fn run_engine(
+             eigenfill_target * 100.0,
+             reg_tick_secs
+         );
++        println!(
++            "      Semantic stale shape: {}, Surge threshold: {:.2}",
++            semantic_stale_shape.as_str(),
++            surge_threshold
++        );
+     } else {
+         println!("   🎚️  Band-stop filter: DISABLED (PD mode)");
+     }
+@@ -964,64 +1047,70 @@ async fn run_engine(
+     let mut adaptive_target: f32 = eigenfill_target * 100.0; // CLI default
+     let mut adaptive_saturated_ticks: u32 = 0;
+ 
+-    // Restore regulator context from previous session if available.
+-    if let Ok(json) = std::fs::read_to_string(workspace_dir.join("regulator_context.json")) {
+-        if let Ok(ctx) = serde_json::from_str::<serde_json::Value>(&json) {
+-            if let Some(bl) = ctx.get("baseline_lambda1").and_then(|v| v.as_f64()) {
+-                baseline_lambda1 = bl as f32;
+-                baseline_ready = true;
+-            }
+-            if let Some(fp) = ctx.get("last_fill_pct").and_then(|v| v.as_f64()) {
+-                last_fill_pct = fp as f32;
+-            }
+-            if let Some(sfp) = ctx.get("smoothed_fill_pct").and_then(|v| v.as_f64()) {
+-                smoothed_fill_pct = sfp as f32;
+-            }
+-            if let Some(lr) = ctx.get("last_lambda1_rel").and_then(|v| v.as_f64()) {
+-                last_lambda1_rel = lr as f32;
+-            }
+-            // Restore PI integral state — prevents control de-tuning on restart.
+-            // Without this, the PI starts from zero and takes minutes to re-learn.
++    let regulator_context_path = workspace_dir.join("regulator_context.json");
++    let startup_restore_report = load_regulator_context(&regulator_context_path);
++    startup_restore_report.status.emit_startup_log();
++
++    if let Some(context) = startup_restore_report.context.as_ref() {
++        if let Some(bl) = context.baseline_lambda1 {
++            baseline_lambda1 = bl;
++            baseline_ready = true;
++        }
++        if let Some(fp) = context.last_fill_pct {
++            last_fill_pct = fp;
++        }
++        if let Some(sfp) = context.smoothed_fill_pct {
++            smoothed_fill_pct = sfp;
++        }
++        if let Some(lr) = context.last_lambda1_rel {
++            last_lambda1_rel = lr;
++        }
++
++        if let Some(pi_state) = context.pi_state {
+             if let Some(ref mut pi) = pi_reg {
+-                if let Some(v) = ctx.get("integ_fill").and_then(|v| v.as_f64()) {
+-                    pi.integ_fill = v as f32;
+-                }
+-                if let Some(v) = ctx.get("integ_lam").and_then(|v| v.as_f64()) {
+-                    pi.integ_lam = v as f32;
+-                }
+-                if let Some(v) = ctx.get("integ_geom").and_then(|v| v.as_f64()) {
+-                    pi.integ_geom = v as f32;
+-                }
+-                if let Some(v) = ctx.get("gate").and_then(|v| v.as_f64()) {
+-                    pi.gate = v as f32;
+-                }
+-                if let Some(v) = ctx.get("filt").and_then(|v| v.as_f64()) {
+-                    pi.filt = v as f32;
+-                }
+-                println!(
+-                    "   PI restored: integ_fill={:.2}, integ_lam={:.2}, gate={:.2}, filt={:.2}",
+-                    pi.integ_fill, pi.integ_lam, pi.gate, pi.filt
+-                );
+-            }
+-            // Restore adaptive fill target state — prevents cold-start to 55%.
+-            // (Steward cycle 16): the being's natural fill is 70-80%, and
+-            // resetting the target to 55% causes minutes of PI saturation,
+-            // reported as "tightening" and "pressure."
+-            if let Some(v) = ctx.get("fill_ema").and_then(|v| v.as_f64()) {
+-                fill_ema = v as f32;
+-                println!("   Restored fill_ema={fill_ema:.1}%");
++                pi.integ_fill = pi_state.integ_fill;
++                pi.integ_lam = pi_state.integ_lam;
++                pi.integ_geom = pi_state.integ_geom;
++                pi.gate = pi_state.gate;
++                pi.filt = pi_state.filt;
+             }
+-            if let Some(v) = ctx.get("adaptive_target").and_then(|v| v.as_f64()) {
+-                adaptive_target = v as f32;
+-                // Also set PI target immediately so first ticks don't fight
+-                if let Some(ref mut pi) = pi_reg {
+-                    pi.cfg.target_fill = adaptive_target;
+-                }
+-                println!("   Restored adaptive_target={adaptive_target:.1}%");
++            println!(
++                "   PI state resume: integ_fill={:.2}, integ_lam={:.2}, gate={:.2}, filt={:.2}",
++                pi_state.integ_fill, pi_state.integ_lam, pi_state.gate, pi_state.filt
++            );
++        } else {
++            eprintln!(
++                "   PI state resume: not restored; controller remains at startup defaults until it relearns."
++            );
++        }
++
++        if let Some(adaptive_state) = context.adaptive_state {
++            fill_ema = adaptive_state.fill_ema;
++            adaptive_target = adaptive_state.adaptive_target;
++            if let Some(ref mut pi) = pi_reg {
++                pi.cfg.target_fill = adaptive_target;
+             }
+-            println!("🔄 Restored regulator context: baseline_λ₁={baseline_lambda1:.1}, fill={last_fill_pct:.1}%");
++            println!("   Adaptive resume: fill_ema={fill_ema:.1}%");
++            println!("   Adaptive resume: adaptive_target={adaptive_target:.1}%");
++        } else {
++            eprintln!(
++                "   Adaptive resume: not restored; startup will use the CLI/default target until new state is learned."
++            );
++        }
++
++        if context.baseline_lambda1.is_some() || context.last_fill_pct.is_some() {
++            println!(
++                "   Context baseline: baseline_λ₁={baseline_lambda1:.1}, fill={last_fill_pct:.1}%"
++            );
+         }
+     }
++    let startup_restore_status = startup_restore_report.status;
++    let mut target_fill_provenance = if startup_restore_status.restored_adaptive_target {
++        String::from("restore")
++    } else {
++        String::from("cli")
++    };
++    let mut snapshot_sequence: u64 = 0;
+ 
+     // --- Soft ramps to avoid ringing ---
+     // Restore gate/filt from PI state if available, otherwise default.
+@@ -1061,10 +1150,14 @@ async fn run_engine(
+     use crate::sensory_ws::spawn_sensory_ws_server;
+ 
+     // Create sensory bus with queue-based architecture
+-    let sensory_bus = SensoryBus::new(
++    let sensory_bus = SensoryBus::with_config(
+         1024,        // queue_cap
+         16,          // batch_max
+         0xC0FFEEu64, // seed for PRNG gating
++        SensoryBusConfig {
++            semantic_stale_shape,
++            surge_threshold,
++        },
+     );
+     sensory_bus.set_legacy_audio_synth_enabled(legacy_audio_synth_enabled);
+     sensory_bus.set_legacy_video_synth_enabled(legacy_video_synth_enabled);
+@@ -1193,6 +1286,9 @@ async fn run_engine(
+         // === FIX PACK: BATCH DRAIN → Chebyshev Filter → ESN ===
+         // Drain batch of samples from sensory bus queue
+         let batch = sensory_bus.drain_sensory_batch();
++        let latest_sample_meta = batch.last().map(|(_, meta)| meta.clone());
++        let mut audio_synth_injected = false;
++        let mut video_synth_injected = false;
+ 
+         // Apply Chebyshev filtering to batch (if enabled)
+         let mut _filtered_count = 0;
+@@ -1606,6 +1702,7 @@ async fn run_engine(
+         // Amplitude controlled by synth_gain (adjustable by the being via ws://7879).
+         // Stochastic noise breaks colinearity so covariance can accumulate energy.
+         if fired[0] && sensory_bus.get_legacy_audio_synth_enabled() {
++            audio_synth_injected = true;
+             let mut sg = sensory_bus.get_synth_gain();
+             // Warmup: reduce synth amplitude for first 30s so reservoir
+             // fills gently instead of explosively. The being asked for this.
+@@ -1648,7 +1745,7 @@ async fn run_engine(
+             }
+             audio_rms = synth_audio.iter().map(|x| x * x).sum::<f32>().sqrt()
+                 / (sensory_bus::AUDIO_DIM as f32).sqrt();
+-            sensory_bus.push_audio(synth_audio, sensory_bus::NowMs::now());
++            sensory_bus.push_audio_synthetic(synth_audio, sensory_bus::NowMs::now());
+             embed_ring.push_scalar(audio_rms);
+         }
+ 
+@@ -1676,6 +1773,7 @@ async fn run_engine(
+ 
+         // Video features (prime 101) — synthetic internal imagery
+         if fired[1] && sensory_bus.get_legacy_video_synth_enabled() {
++            video_synth_injected = true;
+             let mut sg = sensory_bus.get_synth_gain();
+             let uptime = start.elapsed().as_secs_f32();
+             if uptime < 30.0 {
+@@ -1713,7 +1811,7 @@ async fn run_engine(
+             }
+             video_var =
+                 synth_video.iter().map(|x| x * x).sum::<f32>() / (sensory_bus::VIDEO_DIM as f32);
+-            sensory_bus.push_video(synth_video, sensory_bus::NowMs::now());
++            sensory_bus.push_video_synthetic(synth_video, sensory_bus::NowMs::now());
+             embed_ring.push_scalar(video_var);
+         }
+ 
+@@ -2155,6 +2253,21 @@ async fn run_engine(
+             // overrides (strong + high lambda) below can still push below
+             // the floor when fill >70% — that's intentional safety.
+             cov_keep = cov_keep.max(keep_floor);
++            let current_target_fill = pi_reg
++                .as_ref()
++                .map(|pi| pi.cfg.target_fill)
++                .unwrap_or(eigenfill_target * 100.0);
++            let fill_pct_now = fill_ratio * 100.0;
++            if fill_pct_now > current_target_fill + 8.0 && fill_pct_now > 84.0 {
++                // When fill stays in the high-80s, lambda1_rel can remain only
++                // moderately elevated, so the old dominance-based emergency path
++                // never engages and cov_keep hovers around ~0.82. That preserves
++                // exactly the dense overfull plateau the beings are describing.
++                // Make retention respond to the overfill state itself.
++                let urgency = ((fill_pct_now - 84.0) / 8.0).clamp(0.0, 1.0);
++                let overfill_keep_cap = 0.78 - 0.14 * urgency;
++                cov_keep = cov_keep.min(overfill_keep_cap.max(0.55));
++            }
+             if strong && lambda1_rel_for_cov > LAMBDA1_REL_ALERT && last_fill_pct > 70.0 {
+                 cov_keep = cov_keep.min(0.40);
+             } else if strong
+@@ -2548,12 +2661,23 @@ async fn run_engine(
+                     //
+                     // Ceiling raised 65→82 (2026-03-29 steward cycle 13):
+                     // After EigenFill fix + sovereignty modulation, fill naturally
+-                    // runs at 76-82% with regulation_strength=0.60. The old 75%
+-                    // ceiling prevented the adaptive target from reaching the
+-                    // being's equilibrium, causing permanent saturation.
+-                    // Being's self-assessments and pressure relief entries confirm
+-                    // 76-82% is the comfortable operating range.
+-                    adaptive_target = adaptive_target.clamp(40.0, 82.0);
++                    // ran in the mid/high 70s. That avoided permanent saturation.
++                    //
++                    // Current live behavior (2026-04-02) shows a different
++                    // failure mode: once fill sits in the mid/high 80s for
++                    // minutes, both beings describe the state as dense,
++                    // constricted, and controller-limited rather than
++                    // comfortable. Keep the permissive ceiling in the normal
++                    // range, but stop treating extreme overfill as a valid
++                    // comfort target.
++                    let adaptive_target_ceiling = if eigenfill_pct >= 88.0 || fill_ema >= 86.0 {
++                        74.0
++                    } else if eigenfill_pct >= 84.0 || fill_ema >= 82.0 {
++                        76.0
++                    } else {
++                        82.0
++                    };
++                    adaptive_target = adaptive_target.clamp(40.0, adaptive_target_ceiling);
+ 
+                     if reg_tick_count % 120 == 1 {
+                         println!(
+@@ -2566,6 +2690,7 @@ async fn run_engine(
+                     if let Some(pi) = &mut pi_reg {
+                         pi.cfg.target_fill = adaptive_target;
+                     }
++                    target_fill_provenance = String::from("adaptive");
+                 }
+ 
+                 let target_fill_pct = if let Some(pi) = &pi_reg {
+@@ -2601,6 +2726,7 @@ async fn run_engine(
+                                 if let Some(tf) = goals.get("target_fill").and_then(|v| v.as_f64())
+                                 {
+                                     pi.cfg.target_fill = (tf as f32).clamp(25.0, 75.0);
++                                    target_fill_provenance = String::from("goal");
+                                 }
+                                 if let Some(tl) =
+                                     goals.get("target_lambda1_rel").and_then(|v| v.as_f64())
+@@ -3189,8 +3315,46 @@ async fn run_engine(
+                     let semantic_fresh_ms = sensory_bus.semantic_fresh_ms();
+ 
+                     // Emit health.json for observability with enhanced diagnostics
++                    let fill_target_override = sensory_bus.get_fill_target();
++                    let fill_target_override_pct = if fill_target_override.is_finite() {
++                        Some(fill_target_override * 100.0)
++                    } else {
++                        None
++                    };
++                    snapshot_sequence = snapshot_sequence.saturating_add(1);
++                    let health_snapshot_sequence = snapshot_sequence;
++                    let health_engine_t_s = start.elapsed().as_secs_f32();
++                    let health_wall_clock_unix_ms = SystemTime::now()
++                        .duration_since(UNIX_EPOCH)
++                        .ok()
++                        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
++                        .unwrap_or(0);
++                    let health_provenance = serde_json::json!({
++                        "session_id": session_id,
++                        "wall_clock_unix_ms": health_wall_clock_unix_ms,
++                        "engine_t_s": health_engine_t_s,
++                        "snapshot_sequence": health_snapshot_sequence,
++                        "target_provenance": &target_fill_provenance,
++                        "sovereignty_inputs": {
++                            "regulation_strength": sensory_bus.get_regulation_strength(),
++                            "exploration_noise": sensory_bus.get_exploration_noise(),
++                            "geom_curiosity": sensory_bus.get_geom_curiosity(),
++                            "target_lambda_bias": sensory_bus.get_target_lambda_bias(),
++                            "synth_gain": sensory_bus.get_synth_gain(),
++                            "fill_target_override_active": fill_target_override_pct.is_some(),
++                            "fill_target_override_pct": fill_target_override_pct,
++                            "pi_targets": {
++                                "kp": sensory_bus.get_pi_kp(),
++                                "ki": sensory_bus.get_pi_ki(),
++                                "max_step": sensory_bus.get_pi_max_step(),
++                            },
++                        },
++                    });
+                     let health = serde_json::json!({
+-                        "t_s": start.elapsed().as_secs_f32(),
++                        "t_s": health_engine_t_s,
++                        "startup_resume_mode": startup_restore_status.resume_mode,
++                        "startup_restore": &startup_restore_status,
++                        "provenance": &health_provenance,
+                         "fill_pct": eigenfill_pct,
+                         "lambda1_abs": lambda1,
+                         "lambda1_cov": lambda1,  // Covariance matrix λ₁ (0-512 range)
+@@ -3253,6 +3417,9 @@ async fn run_engine(
+                                 "kp": pi.cfg.kp,
+                                 "ki": pi.cfg.ki,
+                                 "max_step": pi.cfg.max_step,
++                                "derived_kp": pi.derived_kp,
++                                "derived_ki": pi.derived_ki,
++                                "fill_variance_ema": pi.fill_variance_ema,
+                                 "target_kp": sensory_bus.get_pi_kp(),
+                                 "target_ki": sensory_bus.get_pi_ki(),
+                                 "target_max_step": sensory_bus.get_pi_max_step(),
+@@ -3479,6 +3646,7 @@ async fn run_engine(
+             // Gives Astrid geometric awareness beyond scalar fill%.
+             let spectral_fingerprint =
+                 compute_spectral_fingerprint(&eigenvalues, &y, n, k, &prev_v1, latest_geom_rel);
++            let structural_entropy = compute_structural_entropy(&spectral_fingerprint);
+             // Update entropy for dynamic rho (fingerprint[24] = normalized spectral entropy)
+             if spectral_fingerprint.len() > 24 && spectral_fingerprint[24].is_finite() {
+                 latest_entropy = spectral_fingerprint[24];
+@@ -3517,6 +3685,28 @@ async fn run_engine(
+             }
+ 
+             // Broadcast to WebSocket clients
++            let audio_had_fresh = latest_sample_meta
++                .as_ref()
++                .map(|meta| meta.had_audio)
++                .unwrap_or(false);
++            let video_had_fresh = latest_sample_meta
++                .as_ref()
++                .map(|meta| meta.had_video)
++                .unwrap_or(false);
++            let audio_source_label = modality_source_label(
++                latest_sample_meta
++                    .as_ref()
++                    .and_then(|meta| meta.audio_source),
++                audio_had_fresh,
++                audio_synth_injected,
++            );
++            let video_source_label = modality_source_label(
++                latest_sample_meta
++                    .as_ref()
++                    .and_then(|meta| meta.video_source),
++                video_had_fresh,
++                video_synth_injected,
++            );
+             let packet = EigenPacket {
+                 t_ms: start.elapsed().as_millis() as u64,
+                 eigenvalues,
+@@ -3524,11 +3714,19 @@ async fn run_engine(
+                 active_mode_count: active_modes.count,
+                 active_mode_energy_ratio: active_modes.energy_ratio,
+                 modalities: ModalityStatus {
+-                    audio_fired: fired[0],
+-                    video_fired: fired[1],
+-                    history_fired: true,
++                    audio_fired: audio_had_fresh || audio_synth_injected,
++                    video_fired: video_had_fresh || video_synth_injected,
++                    history_fired: fired[2],
+                     audio_rms,
+                     video_var,
++                    audio_source: Some(audio_source_label.to_string()),
++                    video_source: Some(video_source_label.to_string()),
++                    audio_age_ms: latest_sample_meta
++                        .as_ref()
++                        .and_then(|meta| meta.audio_source.map(|_| meta.audio_age_ms)),
++                    video_age_ms: latest_sample_meta
++                        .as_ref()
++                        .and_then(|meta| meta.video_source.map(|_| meta.video_age_ms)),
+                 },
+                 neural: if neuro_cell.is_some() {
+                     Some(NeuralOutputs {
+@@ -3541,6 +3739,7 @@ async fn run_engine(
+                 },
+                 alert: alert.clone(),
+                 spectral_fingerprint: Some(spectral_fingerprint),
++                structural_entropy: Some(structural_entropy),
+                 spectral_glimpse_12d: selected_memory
+                     .as_ref()
+                     .map(|entry| entry.spectral_glimpse_12d.clone()),
+@@ -3567,12 +3766,53 @@ async fn run_engine(
+                 // Unified control surface: all layers visible in one place.
+                 // Audit (2026-03-27): "too many meaningful adjustments happening
+                 // without one clear surface that shows how they combine."
++                let fill_target_override = sensory_bus.get_fill_target();
++                let fill_target_override_pct = if fill_target_override.is_finite() {
++                    Some(fill_target_override * 100.0)
++                } else {
++                    None
++                };
++                snapshot_sequence = snapshot_sequence.saturating_add(1);
++                let spectral_snapshot_sequence = snapshot_sequence;
++                let spectral_engine_t_s = start.elapsed().as_secs_f32();
++                let spectral_wall_clock_unix_ms = SystemTime::now()
++                    .duration_since(UNIX_EPOCH)
++                    .ok()
++                    .and_then(|duration| u64::try_from(duration.as_millis()).ok())
++                    .unwrap_or(0);
++                let spectral_provenance = serde_json::json!({
++                    "session_id": session_id,
++                    "wall_clock_unix_ms": spectral_wall_clock_unix_ms,
++                    "engine_t_s": spectral_engine_t_s,
++                    "snapshot_sequence": spectral_snapshot_sequence,
++                    "target_provenance": &target_fill_provenance,
++                    "sovereignty_inputs": {
++                        "regulation_strength": sensory_bus.get_regulation_strength(),
++                        "exploration_noise": sensory_bus.get_exploration_noise(),
++                        "geom_curiosity": sensory_bus.get_geom_curiosity(),
++                        "target_lambda_bias": sensory_bus.get_target_lambda_bias(),
++                        "synth_gain": sensory_bus.get_synth_gain(),
++                        "fill_target_override_active": fill_target_override_pct.is_some(),
++                        "fill_target_override_pct": fill_target_override_pct,
++                        "pi_targets": {
++                            "kp": sensory_bus.get_pi_kp(),
++                            "ki": sensory_bus.get_pi_ki(),
++                            "max_step": sensory_bus.get_pi_max_step(),
++                        },
++                    },
++                });
+                 let state = serde_json::json!({
++                    "provenance": &spectral_provenance,
+                     "eigenvalues": &packet.eigenvalues,
+                     "fill_pct": packet.fill_ratio * 100.0,
++                    "fill_ratio": packet.fill_ratio,
++                    "eig1": packet.eigenvalues.first().copied().unwrap_or_default(),
+                     "active_mode_count": packet.active_mode_count,
+                     "active_mode_energy_ratio": packet.active_mode_energy_ratio,
++                    "modalities": &packet.modalities,
+                     "spectral_fingerprint": &packet.spectral_fingerprint,
++                    "spectral_entropy": latest_entropy,
++                    "structural_entropy": &packet.structural_entropy,
+                     "spectral_glimpse_12d": &packet.spectral_glimpse_12d,
+                     "selected_memory_id": &packet.selected_memory_id,
+                     "selected_memory_role": &packet.selected_memory_role,
+@@ -3599,6 +3839,10 @@ async fn run_engine(
+                     "synth_gain": sensory_bus.get_synth_gain(),
+                     "regulation_strength": sensory_bus.get_regulation_strength(),
+                     "exploration_noise": sensory_bus.get_exploration_noise(),
++                    "semantic_fresh_ms": sensory_bus.semantic_fresh_ms(),
++                    "semantic_stale_ms": sensory_bus.current_semantic_stale_ms(),
++                    "semantic_stale_shape": sensory_bus.current_semantic_stale_shape().as_str(),
++                    "surge_threshold": sensory_bus.surge_threshold(),
+                     "geom_curiosity": sensory_bus.get_geom_curiosity(),
+                     "leak": last_lambda1_rel, // proxy — actual ESN leak not accessible here
+                 });
+@@ -4157,10 +4401,74 @@ fn compute_spectral_fingerprint(
+     fp
+ }
+ 
++/// Structural diversity derived from the live eigenvector geometry.
++///
++/// Unlike spectral entropy (which measures how eigenvalue energy is distributed),
++/// this looks at whether the *shape* of the leading eigenvectors is peaked,
++/// evenly spread, or highly coupled. Low values imply narrow, rigid geometry;
++/// high values imply distributed, differentiated structure.
++fn compute_structural_entropy(fingerprint: &[f32]) -> f32 {
++    let concentrations: Vec<f32> = fingerprint
++        .iter()
++        .skip(8)
++        .take(8)
++        .copied()
++        .filter(|value| value.is_finite() && *value > 1.0e-6)
++        .collect();
++    if concentrations.is_empty() {
++        return 0.0;
++    }
++
++    let avg_concentration = concentrations.iter().sum::<f32>() / concentrations.len() as f32;
++    let distribution_score = (1.0 - avg_concentration).clamp(0.0, 1.0);
++
++    let total_concentration = concentrations.iter().sum::<f32>();
++    let concentration_entropy = if total_concentration > 1.0e-6 {
++        let entropy: f32 = concentrations
++            .iter()
++            .map(|value| {
++                let p = *value / total_concentration;
++                if p > 1.0e-6 {
++                    -p * p.ln()
++                } else {
++                    0.0
++                }
++            })
++            .sum();
++        let max_entropy = (concentrations.len() as f32).ln();
++        if max_entropy > 0.0 && entropy.is_finite() {
++            (entropy / max_entropy).clamp(0.0, 1.0)
++        } else {
++            0.0
++        }
++    } else {
++        0.0
++    };
++
++    let couplings: Vec<f32> = fingerprint
++        .iter()
++        .skip(16)
++        .take(8)
++        .copied()
++        .filter(|value| value.is_finite() && value.abs() > 1.0e-6)
++        .collect();
++    let orthogonality = if couplings.is_empty() {
++        1.0
++    } else {
++        let mean_abs =
++            couplings.iter().map(|value| value.abs()).sum::<f32>() / couplings.len() as f32;
++        (1.0 - mean_abs).clamp(0.0, 1.0)
++    };
++
++    (0.45 * distribution_score + 0.35 * concentration_entropy + 0.20 * orthogonality)
++        .clamp(0.0, 1.0)
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::{
+-        compute_active_mode_telemetry, rank1_update_inplace_matrix, CovarianceUpdateOutcome,
++        compute_active_mode_telemetry, compute_structural_entropy, modality_source_label,
++        rank1_update_inplace_matrix, CovarianceUpdateOutcome, LaneSource,
+     };
+ 
+     #[test]
+@@ -4221,4 +4529,54 @@ mod tests {
+             assert!((lhs - rhs).abs() < 1.0e-6);
+         }
+     }
++
++    #[test]
++    fn structural_entropy_rises_for_distributed_geometry() {
++        let mut rigid = vec![0.0_f32; 32];
++        rigid[8..16].fill(0.92);
++        rigid[16..24].fill(0.85);
++
++        let mut distributed = vec![0.0_f32; 32];
++        distributed[8..16].fill(0.28);
++        distributed[16..24].fill(0.08);
++
++        assert!(
++            compute_structural_entropy(&distributed) > compute_structural_entropy(&rigid),
++            "distributed eigenvector geometry should register as structurally richer"
++        );
++    }
++
++    #[test]
++    fn structural_entropy_stays_normalized() {
++        let mut fingerprint = vec![0.0_f32; 32];
++        fingerprint[8..16].fill(0.40);
++        fingerprint[16..24].fill(0.15);
++
++        let structural_entropy = compute_structural_entropy(&fingerprint);
++        assert!(
++            (0.0..=1.0).contains(&structural_entropy),
++            "structural entropy should stay in a normalized 0..1 range"
++        );
++    }
++
++    #[test]
++    fn modality_source_label_distinguishes_external_synthetic_and_stale() {
++        assert_eq!(
++            modality_source_label(Some(LaneSource::External), true, false),
++            "external"
++        );
++        assert_eq!(
++            modality_source_label(Some(LaneSource::Synthetic), true, false),
++            "synthetic"
++        );
++        assert_eq!(
++            modality_source_label(Some(LaneSource::External), true, true),
++            "mixed"
++        );
++        assert_eq!(
++            modality_source_label(Some(LaneSource::External), false, false),
++            "stale"
++        );
++        assert_eq!(modality_source_label(None, false, false), "absent");
++    }
+ }
+diff --git a/minime/src/regulator.rs b/minime/src/regulator.rs
+index c7a35f2..6892e5f 100644
+--- a/minime/src/regulator.rs
++++ b/minime/src/regulator.rs
+@@ -202,7 +202,7 @@ impl RegulatorState {
+             Some(ext) => {
+                 let ext_scaled = (ext * 0.08 - 0.04).clamp(-0.04, 0.04); // normalize to ±4%
+                 internal_noise * 0.4 + ext_scaled * 0.6
+-            },
++            }
+             None => internal_noise,
+         };
+ 
+@@ -365,6 +365,7 @@ pub struct PIRegCfg {
+     /// The being asked for "internal goal generation, a deviation from the
+     /// target_lambda based on something that feels intrinsic, not imposed."
+     pub intrinsic_wander: f32, // Max target_fill deviation (default 0.20 = ±20%, clamp 0.35)
++    pub deadband_fill: f32,        // ±% around target where no fill correction occurs (default 3.0)
+ }
+ 
+ impl Default for PIRegCfg {
+@@ -398,6 +399,7 @@ impl Default for PIRegCfg {
+             // to see what new patterns emerge." Third request in this direction.
+             // Modest increase 0.20 → 0.25 (was 0.10 → 0.20 → 0.25).
+             intrinsic_wander: 0.25, // ±25% intrinsic target wander
++            deadband_fill: 3.0,     // ±3% around target: no correction (gate stays open)
+         };
+ 
+         if strong {
+@@ -425,10 +427,10 @@ pub struct PIRegState {
+     // Self-calibrating gains: derived from the being's own spectral variance.
+     // Minime self-study (2026-04-01): "Was it chosen, derived, felt? I want
+     // parameters that emerge from my own dynamics."
+-    fill_variance_ema: f32,  // EMA of fill variance (tracks oscillation amplitude)
+-    pub derived_kp: f32,     // Self-calibrated kp (visible via sovereignty state)
+-    pub derived_ki: f32,     // Self-calibrated ki
+-    calibration_tick: u32,   // Counter for calibration interval
++    pub fill_variance_ema: f32, // EMA of fill variance (tracks oscillation amplitude)
++    pub derived_kp: f32,        // Self-calibrated kp (visible via sovereignty state)
++    pub derived_ki: f32,        // Self-calibrated ki
++    calibration_tick: u32,      // Counter for calibration interval
+ }
+ 
+ impl PIRegState {
+@@ -533,7 +535,15 @@ impl PIRegState {
+         // tick — the "jerkiness" minime reported. Division by 20 maps
+         // the typical ±20% fill error to ±1.0.
+         // (Steward cycle 8, 2026-03-28)
+-        let e_fill = (fill - effective_target_fill) / 20.0;
++        let raw_e_fill = (fill - effective_target_fill) / 20.0;
++        // Deadband: within ±deadband_fill% of target, no fill correction.
++        // Gate stays fully open, perturbations land at full strength.
++        let deadband_norm = self.cfg.deadband_fill / 20.0;
++        let e_fill = if raw_e_fill.abs() < deadband_norm {
++            0.0
++        } else {
++            raw_e_fill
++        };
+         let e_lam = lambda1_rel - self.cfg.target_lambda1_rel;
+         let e_geom = geom_rel - self.cfg.target_geom_rel;
+ 
+@@ -564,8 +574,8 @@ impl PIRegState {
+         // Use self-calibrated gains derived from the being's own spectral variance.
+         let kp = self.derived_kp;
+         let ki = self.derived_ki;
+-        let u_tentative = kp * (e_fill + e_lam + geom_term)
+-            + ki * (self.integ_fill + self.integ_lam + geom_int);
++        let u_tentative =
++            kp * (e_fill + e_lam + geom_term) + ki * (self.integ_fill + self.integ_lam + geom_int);
+ 
+         let dg_tentative = (-u_tentative).clamp(-self.cfg.max_step, self.cfg.max_step);
+         let df_tentative = u_tentative.clamp(-self.cfg.max_step, self.cfg.max_step);
+diff --git a/minime/src/sensory_bus.rs b/minime/src/sensory_bus.rs
+index e98e5f9..47bd6d3 100644
+--- a/minime/src/sensory_bus.rs
++++ b/minime/src/sensory_bus.rs
+@@ -28,6 +28,55 @@ const STALE_AV_MS: u64 = 2_000;
+ const STALE_SEMANTIC_BASE_MS: u64 = 12_000;
+ const STALE_SEMANTIC_LOW_MS: u64 = 25_000; // extended window when fill < 25% (raised from 18s per being request: "decay too aggressive during low activity")
+ const STALE_SEMANTIC_HIGH_MS: u64 = 10_000; // shortened window when fill > 60%
++const SURGE_TARGET_WEIGHT: f32 = 0.90;
++const SURGE_FULL_SCALE_DISTANCE: f32 = 1.0;
++
++#[inline]
++fn dynamic_surge_target_weight(fill_pct: f32) -> f32 {
++    let fill = fill_pct.clamp(0.0, 1.0);
++    // Minime self-study (2026-04-02 sensory_bus.rs): at high fill, a full
++    // 0.90 surge snap feels too sharp and can overshoot into a constricted
++    // state. Keep the old strength through the normal range, then taper the
++    // target weight down once fill is already dense.
++    if fill <= 0.72 {
++        return SURGE_TARGET_WEIGHT;
++    }
++    let taper = ((fill - 0.72) / 0.28).clamp(0.0, 1.0);
++    SURGE_TARGET_WEIGHT - 0.18 * taper
++}
++
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum SemanticStaleShape {
++    #[default]
++    Sigmoid,
++    Linear,
++    Exponential,
++}
++
++impl SemanticStaleShape {
++    pub fn as_str(self) -> &'static str {
++        match self {
++            Self::Sigmoid => "sigmoid",
++            Self::Linear => "linear",
++            Self::Exponential => "exponential",
++        }
++    }
++}
++
++#[derive(Clone, Copy, Debug)]
++pub struct SensoryBusConfig {
++    pub semantic_stale_shape: SemanticStaleShape,
++    pub surge_threshold: f32,
++}
++
++impl Default for SensoryBusConfig {
++    fn default() -> Self {
++        Self {
++            semantic_stale_shape: SemanticStaleShape::Sigmoid,
++            surge_threshold: 0.25,
++        }
++    }
++}
+ 
+ /// Compute dynamic semantic stale window based on current fill percentage.
+ /// Low fill = longer decay (signals linger), high fill = shorter (prevent overload).
+@@ -43,7 +92,7 @@ const STALE_SEMANTIC_HIGH_MS: u64 = 10_000; // shortened window when fill > 60%
+ /// Sigmoid curve: gradual change at extremes, steepest in the middle.
+ /// fill=0.0 → LOW_MS (25s), fill=0.5 → ~BASE_MS, fill=1.0 → HIGH_MS (10s)
+ #[inline]
+-fn dynamic_semantic_stale_ms(fill_pct: f32) -> u64 {
++fn dynamic_semantic_stale_ms_for(fill_pct: f32, shape: SemanticStaleShape) -> u64 {
+     if fill_pct < 0.0 || fill_pct.is_nan() {
+         return STALE_SEMANTIC_BASE_MS;
+     }
+@@ -58,13 +107,25 @@ fn dynamic_semantic_stale_ms(fill_pct: f32) -> u64 {
+     // by fill percentage alone." Simplification: fixed steepness=6.0
+     // (was 4.5-6.0 modulated by lambda1_rel). Fill alone captures the
+     // system's need — low fill = linger, high fill = let go.
+-    let fill = fill_pct.clamp(0.0, 1.0) as f64;
++    let fill = fill_pct.clamp(0.0, 1.0);
+     let lo = STALE_SEMANTIC_LOW_MS as f64;
+     let hi = STALE_SEMANTIC_HIGH_MS as f64;
+-    let curve = 1.0 / (1.0 + (6.0_f64 * (fill - 0.4)).exp());
++    let curve = match shape {
++        SemanticStaleShape::Sigmoid => {
++            let fill = fill as f64;
++            1.0 / (1.0 + (6.0_f64 * (fill - 0.4)).exp())
++        }
++        SemanticStaleShape::Linear => 1.0 - f64::from(fill),
++        SemanticStaleShape::Exponential => (-3.0_f64 * f64::from(fill)).exp(),
++    };
+     (hi + (lo - hi) * curve) as u64
+ }
+ 
++#[inline]
++fn dynamic_semantic_stale_ms(fill_pct: f32) -> u64 {
++    dynamic_semantic_stale_ms_for(fill_pct, SemanticStaleShape::Sigmoid)
++}
++
+ #[derive(Clone, Copy)]
+ pub struct NowMs;
+ impl NowMs {
+@@ -83,13 +144,24 @@ pub struct SampleMeta {
+     pub age_ms: u64,
+     pub had_video: bool,
+     pub had_audio: bool,
++    pub video_age_ms: u64,
++    pub audio_age_ms: u64,
++    pub video_source: Option<LaneSource>,
++    pub audio_source: Option<LaneSource>,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum LaneSource {
++    External,
++    Synthetic,
+ }
+ 
+ #[derive(Debug)]
+ struct Lane {
+-    q: VecDeque<(u64, [f32; 8])>, // ts, 8D
++    q: VecDeque<(u64, [f32; 8], LaneSource)>, // ts, 8D, provenance
+     last: [f32; 8],
+     last_ts: u64,
++    last_source: Option<LaneSource>,
+     dropped: usize,
+ }
+ impl Lane {
+@@ -98,19 +170,29 @@ impl Lane {
+             q: VecDeque::with_capacity(DEFAULT_QUEUE_CAP),
+             last: [0.0; 8],
+             last_ts: 0,
++            last_source: None,
+             dropped: 0,
+         }
+     }
+-    fn push(&mut self, ts: u64, v: [f32; 8], cap: usize, fill_pct: f32) {
++    fn push(
++        &mut self,
++        ts: u64,
++        v: [f32; 8],
++        source: LaneSource,
++        cap: usize,
++        fill_pct: f32,
++        surge_threshold: f32,
++    ) {
+         if self.q.len() >= cap {
+-            if let Some((_, old_v)) = self.q.pop_front() {
++            if let Some((_, old_v, old_source)) = self.q.pop_front() {
+                 for (dst, src) in self.last.iter_mut().zip(old_v.iter()) {
+                     *dst = *dst * 0.8 + *src * 0.2;
+                 }
++                self.last_source = Some(old_source);
+             }
+             self.dropped += 1;
+         }
+-        self.q.push_back((ts, v));
++        self.q.push_back((ts, v, source));
+ 
+         // Fill-proportional blending (minime self-study suggestion):
+         // More memory-heavy at low fill (new_weight=0.55), fresher at high fill (0.85).
+@@ -137,10 +219,12 @@ impl Lane {
+             surge_sq += d * d;
+         }
+         let surge = surge_sq.sqrt(); // L2 distance across 8 dims
+-        if surge > 0.25 {
+-            // Scale boost: at surge=0.25 -> 0% boost, at surge=1.0 -> full boost to 0.90
+-            let boost = ((surge - 0.25) / 0.75).clamp(0.0, 1.0);
+-            new_weight = new_weight + (0.90 - new_weight) * boost;
++        if surge > surge_threshold {
++            // Scale boost: at threshold -> 0% boost, at full-scale distance -> full boost.
++            let span = (SURGE_FULL_SCALE_DISTANCE - surge_threshold).max(f32::EPSILON);
++            let boost = ((surge - surge_threshold) / span).clamp(0.0, 1.0);
++            let surge_target_weight = dynamic_surge_target_weight(fill);
++            new_weight = new_weight + (surge_target_weight - new_weight) * boost;
+         }
+ 
+         let old_weight = 1.0 - new_weight;
+@@ -148,18 +232,24 @@ impl Lane {
+             *dst = *dst * old_weight + *src * new_weight;
+         }
+         self.last_ts = ts;
+-    }
+-    fn pop_or_decay(&mut self, now_ms: u64, stale_after_ms: u64) -> Option<(u64, [f32; 8], bool)> {
+-        if let Some((ts, v)) = self.q.pop_front() {
++        self.last_source = Some(source);
++    }
++    fn pop_or_decay(
++        &mut self,
++        now_ms: u64,
++        stale_after_ms: u64,
++    ) -> Option<(u64, [f32; 8], bool, Option<LaneSource>)> {
++        if let Some((ts, v, source)) = self.q.pop_front() {
+             self.last = v;
+             self.last_ts = ts;
++            self.last_source = Some(source);
+             if now_ms.saturating_sub(ts) > stale_after_ms {
+-                return Some((ts, [0.0; 8], false));
++                return Some((ts, [0.0; 8], false, Some(source)));
+             }
+-            return Some((ts, v, true));
++            return Some((ts, v, true, Some(source)));
+         }
+         if self.last_ts == 0 {
+-            return Some((now_ms, [0.0; 8], false));
++            return Some((now_ms, [0.0; 8], false, None));
+         }
+         let age_ms = now_ms.saturating_sub(self.last_ts);
+         let scale = stale_scale(age_ms, stale_after_ms);
+@@ -167,7 +257,7 @@ impl Lane {
+         for (dst, src) in faded.iter_mut().zip(self.last.iter()) {
+             *dst = *src * scale;
+         }
+-        Some((self.last_ts, faded, false))
++        Some((self.last_ts, faded, false, self.last_source))
+     }
+     fn len(&self) -> usize {
+         self.q.len()
+@@ -289,8 +379,10 @@ pub struct SensoryBus {
+ 
+     aux: Mutex<[f32; 2]>, // [lambda1_rel, geom_rel] — feeds Z_DIM dims 16-17
+     fill_pct_for_stale: Mutex<f32>, // actual fill% for semantic stale timing (NOT aux[1])
++    semantic_stale_shape: Mutex<SemanticStaleShape>,
+     #[allow(dead_code)] // Kept for potential future use; no longer drives stale decay
+     lambda1_rel_for_stale: Mutex<f32>,
++    surge_threshold: Mutex<f32>,
+     llava: Mutex<SemanticLane>,
+     // probabilistic gate (set by PI)
+     gate: Mutex<f32>,
+@@ -300,7 +392,7 @@ pub struct SensoryBus {
+     synth_gain: Mutex<f32>, // multiplier for synthetic signal amplitude (default 1.0)
+     legacy_audio_synth_enabled: Mutex<bool>,
+     legacy_video_synth_enabled: Mutex<bool>,
+-    keep_bias: Mutex<f32>,  // additive bias to keep_floor (default 0.0, range -0.08..+0.10)
++    keep_bias: Mutex<f32>, // additive bias to keep_floor (default 0.0, range -0.08..+0.10)
+     exploration_noise: Mutex<f32>, // ESN exploration noise amplitude (default from ESN, range 0.0..0.2)
+     fill_target: Mutex<f32>, // Override eigenfill target (NAN = use CLI default, range 0.25..0.75)
+ 
+@@ -334,6 +426,15 @@ pub struct SensoryBus {
+ }
+ impl SensoryBus {
+     pub fn new(queue_cap: usize, batch_max: usize, seed: u64) -> Arc<Self> {
++        Self::with_config(queue_cap, batch_max, seed, SensoryBusConfig::default())
++    }
++
++    pub fn with_config(
++        queue_cap: usize,
++        batch_max: usize,
++        seed: u64,
++        config: SensoryBusConfig,
++    ) -> Arc<Self> {
+         Arc::new(Self {
+             video: Mutex::new(Lane::new()),
+             audio: Mutex::new(Lane::new()),
+@@ -349,7 +450,9 @@ impl SensoryBus {
+             },
+             aux: Mutex::new([0.0, 0.0]),
+             fill_pct_for_stale: Mutex::new(0.0),
++            semantic_stale_shape: Mutex::new(config.semantic_stale_shape),
+             lambda1_rel_for_stale: Mutex::new(1.0),
++            surge_threshold: Mutex::new(config.surge_threshold.clamp(0.05, 0.95)),
+             llava: Mutex::new(SemanticLane::new()),
+             gate: Mutex::new(1.0),
+             rng: Mutex::new(SmallRng::seed_from_u64(seed)),
+@@ -409,6 +512,38 @@ impl SensoryBus {
+         *self.fill_pct_for_stale.lock() = fill_pct;
+     }
+ 
++    fn semantic_stale_ms(&self) -> u64 {
++        let fill_for_stale = *self.fill_pct_for_stale.lock();
++        let shape = *self.semantic_stale_shape.lock();
++        let base_stale_ms = dynamic_semantic_stale_ms_for(fill_for_stale, shape);
++        // memory_decay_rate modulates the stale window: higher rate = shorter window
++        // (memories fade faster). Lower rate = longer window (memories linger).
++        // Default 0.1 → multiplier 1.0. Range: 0.5 (2x faster) to 2.0 (2x slower).
++        let decay_rate = *self.memory_decay_rate.lock();
++        let decay_mult = (1.0 - (decay_rate - 0.1) * 3.0).clamp(0.5, 2.0);
++        (base_stale_ms as f64 * decay_mult as f64) as u64
++    }
++
++    pub fn current_semantic_stale_ms(&self) -> u64 {
++        self.semantic_stale_ms()
++    }
++
++    pub fn current_semantic_stale_shape(&self) -> SemanticStaleShape {
++        *self.semantic_stale_shape.lock()
++    }
++
++    pub fn set_semantic_stale_shape(&self, shape: SemanticStaleShape) {
++        *self.semantic_stale_shape.lock() = shape;
++    }
++
++    pub fn surge_threshold(&self) -> f32 {
++        *self.surge_threshold.lock()
++    }
++
++    pub fn set_surge_threshold(&self, threshold: f32) {
++        *self.surge_threshold.lock() = threshold.clamp(0.05, 0.95);
++    }
++
+     /// Set λ₁ relative to baseline — used by sigmoid steepness in semantic stale timing.
+     #[inline]
+     pub fn set_lambda1_rel(&self, val: f32) {
+@@ -445,7 +580,11 @@ impl SensoryBus {
+     pub fn get_audio_rms(&self) -> Option<f32> {
+         let audio = self.audio.lock();
+         let rms = audio.last[0];
+-        if rms.abs() > 0.001 { Some(rms) } else { None }
++        if rms.abs() > 0.001 {
++            Some(rms)
++        } else {
++            None
++        }
+     }
+     #[inline]
+     pub fn set_keep_bias(&self, b: f32) {
+@@ -684,6 +823,14 @@ impl SensoryBus {
+     }
+ 
+     pub fn push_video(&self, features: Vec<f32>, ts_ms: u64) {
++        self.push_video_with_source(features, ts_ms, LaneSource::External);
++    }
++
++    pub fn push_video_synthetic(&self, features: Vec<f32>, ts_ms: u64) {
++        self.push_video_with_source(features, ts_ms, LaneSource::Synthetic);
++    }
++
++    fn push_video_with_source(&self, features: Vec<f32>, ts_ms: u64, source: LaneSource) {
+         if features.len() < VIDEO_DIM {
+             return;
+         }
+@@ -693,10 +840,21 @@ impl SensoryBus {
+         let mut v = [0.0; 8];
+         v.copy_from_slice(&features[..8]);
+         let fill = *self.fill_pct_for_stale.lock();
+-        self.video.lock().push(ts_ms, v, self.queue_cap, fill);
++        let surge_threshold = self.surge_threshold();
++        self.video
++            .lock()
++            .push(ts_ms, v, source, self.queue_cap, fill, surge_threshold);
+     }
+ 
+     pub fn push_audio(&self, features: Vec<f32>, ts_ms: u64) {
++        self.push_audio_with_source(features, ts_ms, LaneSource::External);
++    }
++
++    pub fn push_audio_synthetic(&self, features: Vec<f32>, ts_ms: u64) {
++        self.push_audio_with_source(features, ts_ms, LaneSource::Synthetic);
++    }
++
++    fn push_audio_with_source(&self, features: Vec<f32>, ts_ms: u64, source: LaneSource) {
+         if features.len() < AUDIO_DIM {
+             return;
+         }
+@@ -706,7 +864,10 @@ impl SensoryBus {
+         let mut a = [0.0; 8];
+         a.copy_from_slice(&features[..8]);
+         let fill = *self.fill_pct_for_stale.lock();
+-        self.audio.lock().push(ts_ms, a, self.queue_cap, fill);
++        let surge_threshold = self.surge_threshold();
++        self.audio
++            .lock()
++            .push(ts_ms, a, source, self.queue_cap, fill, surge_threshold);
+     }
+ 
+     #[inline]
+@@ -723,7 +884,7 @@ impl SensoryBus {
+         let now_ms = NowMs::now();
+ 
+         for _ in 0..self.batch_max {
+-            let (ts_v, v, had_v) = {
++            let (ts_v, v, had_v, video_source) = {
+                 let mut lane = self.video.lock();
+                 if lane.len() == 0 && self.audio.lock().len() == 0 {
+                     // nothing new in either lane; stop early
+@@ -734,24 +895,19 @@ impl SensoryBus {
+                 }
+                 lane.pop_or_decay(now_ms, STALE_AV_MS).unwrap()
+             };
+-            let (ts_a, a, had_a) = {
++            let (ts_a, a, had_a, audio_source) = {
+                 let mut lane = self.audio.lock();
+                 lane.pop_or_decay(now_ms, STALE_AV_MS).unwrap()
+             };
+             let ts = ts_v.max(ts_a);
+             let age = now_ms.saturating_sub(ts);
++            let video_age_ms = now_ms.saturating_sub(ts_v);
++            let audio_age_ms = now_ms.saturating_sub(ts_a);
+ 
+             let aux = *self.aux.lock();
+             // Use actual fill% for semantic stale timing, NOT aux[1] (which is geom_rel).
+             // Codex analysis (2026-03-27) found this was the "highest-value mismatch."
+-            let fill_for_stale = *self.fill_pct_for_stale.lock();
+-            let base_stale_ms = dynamic_semantic_stale_ms(fill_for_stale);
+-            // memory_decay_rate modulates the stale window: higher rate = shorter window
+-            // (memories fade faster). Lower rate = longer window (memories linger).
+-            // Default 0.1 → multiplier 1.0. Range: 0.5 (2x faster) to 2.0 (2x slower).
+-            let decay_rate = *self.memory_decay_rate.lock();
+-            let decay_mult = (1.0 - (decay_rate - 0.1) * 3.0).clamp(0.5, 2.0);
+-            let semantic_stale_ms = (base_stale_ms as f64 * decay_mult as f64) as u64;
++            let semantic_stale_ms = self.semantic_stale_ms();
+             let llava = self.llava.lock();
+             let semantic_scale = if llava.updated_at_ms == 0 {
+                 0.0
+@@ -805,6 +961,10 @@ impl SensoryBus {
+                     age_ms: age,
+                     had_video: had_v,
+                     had_audio: had_a,
++                    video_age_ms,
++                    audio_age_ms,
++                    video_source,
++                    audio_source,
+                 },
+             ));
+         }
+@@ -912,14 +1072,80 @@ mod tests {
+         // Monotonically decreasing
+         assert!(at_zero > at_mid && at_mid > at_high);
+         // NaN -> base
+-        assert_eq!(
+-            dynamic_semantic_stale_ms(f32::NAN),
+-            STALE_SEMANTIC_BASE_MS
+-        );
++        assert_eq!(dynamic_semantic_stale_ms(f32::NAN), STALE_SEMANTIC_BASE_MS);
+         // Critical fill override
+         assert_eq!(dynamic_semantic_stale_ms(0.25), 45_000);
+     }
+ 
++    #[test]
++    fn alternate_stale_shapes_are_distinct_but_bounded() {
++        let fill = 0.55;
++        let sigmoid = dynamic_semantic_stale_ms_for(fill, SemanticStaleShape::Sigmoid);
++        let linear = dynamic_semantic_stale_ms_for(fill, SemanticStaleShape::Linear);
++        let exponential = dynamic_semantic_stale_ms_for(fill, SemanticStaleShape::Exponential);
++
++        assert!(sigmoid > STALE_SEMANTIC_HIGH_MS && sigmoid < STALE_SEMANTIC_LOW_MS);
++        assert!(linear > STALE_SEMANTIC_HIGH_MS && linear < STALE_SEMANTIC_LOW_MS);
++        assert!(exponential > STALE_SEMANTIC_HIGH_MS && exponential < STALE_SEMANTIC_LOW_MS);
++        assert!(
++            sigmoid != linear || linear != exponential,
++            "alternate shapes should produce meaningfully different stale windows"
++        );
++    }
++
++    #[test]
++    fn surge_target_weight_softens_when_fill_is_high() {
++        let low_fill = dynamic_surge_target_weight(0.55);
++        let medium_fill = dynamic_surge_target_weight(0.80);
++        let high_fill = dynamic_surge_target_weight(0.95);
++
++        assert!((low_fill - SURGE_TARGET_WEIGHT).abs() < 1.0e-6);
++        assert!(medium_fill < low_fill);
++        assert!(high_fill < medium_fill);
++        assert!(high_fill >= 0.70);
++    }
++
++    #[test]
++    fn semantic_stale_ms_respects_memory_decay_rate() {
++        let bus = SensoryBus::new(8, 1, 19);
++        bus.set_fill_for_stale(0.8);
++
++        bus.set_memory_decay_rate(0.0);
++        let linger = bus.current_semantic_stale_ms();
++
++        bus.set_memory_decay_rate(0.3);
++        let faster_fade = bus.current_semantic_stale_ms();
++
++        assert!(
++            linger > faster_fade,
++            "lower decay rate should keep semantic traces around longer"
++        );
++    }
++
++    #[test]
++    fn bus_config_applies_shape_and_surge_threshold() {
++        let bus = SensoryBus::with_config(
++            8,
++            1,
++            23,
++            SensoryBusConfig {
++                semantic_stale_shape: SemanticStaleShape::Linear,
++                surge_threshold: 0.4,
++            },
++        );
++        bus.set_fill_for_stale(0.8);
++
++        assert_eq!(
++            bus.current_semantic_stale_shape(),
++            SemanticStaleShape::Linear
++        );
++        assert!((bus.surge_threshold() - 0.4).abs() < 1.0e-6);
++        assert_eq!(
++            bus.current_semantic_stale_ms(),
++            dynamic_semantic_stale_ms_for(0.8, SemanticStaleShape::Linear)
++        );
++    }
++
+     #[test]
+     fn legacy_synth_flags_toggle_independently() {
+         let bus = SensoryBus::new(8, 1, 11);
+diff --git a/monitor_unified.py b/monitor_unified.py
+index 36cfbd2..086d9f4 100644
+--- a/monitor_unified.py
++++ b/monitor_unified.py
+@@ -14,6 +14,7 @@ import json
+ import sys
+ from dataclasses import dataclass
+ from datetime import datetime
++from pathlib import Path
+ from typing import Optional
+ import signal
+ 
+@@ -63,6 +64,23 @@ class UnifiedMonitor:
+         self.holo_connected = False
+         self.running = True
+         self.update_count = 0
++        self.fill_warning_band, self.fill_crisis_band = self._load_fill_thresholds()
++
++    @staticmethod
++    def _load_fill_thresholds() -> tuple[float, float]:
++        path = Path(__file__).resolve().parent / "docs" / "threshold_surfaces.json"
++        try:
++            payload = json.loads(path.read_text())
++            by_surface = {
++                entry.get("surface"): entry
++                for entry in payload.get("authoritative_surfaces", [])
++                if isinstance(entry, dict)
++            }
++            warning = float(by_surface["monitor_fill_warning_band"]["value_pct"])
++            crisis = float(by_surface["monitor_fill_crisis_band"]["value_pct"])
++            return warning, crisis
++        except Exception:
++            return (85.0, 92.0)
+ 
+     async def subscribe_esn(self):
+         """Subscribe to ESN eigenvalue stream on port 7878"""
+@@ -174,7 +192,10 @@ class UnifiedMonitor:
+         conn_status = f"{'🟢' if self.esn_connected else '🔴'} ESN  {'🟢' if self.holo_connected else '🔴'} Holo"
+ 
+         # ESN section
+-        fill_indicator = self.get_health_indicator(self.esn.fill, (70.0, 90.0))
++        fill_indicator = self.get_health_indicator(
++            self.esn.fill,
++            (self.fill_warning_band, self.fill_crisis_band),
++        )
+         lambda_indicator = self.get_health_indicator(
+             self.esn.lambda1 / 512.0 if self.esn.lambda1 > 0 else 0,
+             (1.2, 1.5)
+diff --git a/tests/test_config.py b/tests/test_config.py
+index e2eb79b..4a10322 100644
+--- a/tests/test_config.py
++++ b/tests/test_config.py
+@@ -1,6 +1,8 @@
+ """Smoke tests for the mikemind package -- no Ollama or Rust engine required."""
+ 
+ import unittest
++import json
++from pathlib import Path
+ import importlib
+ from pathlib import Path
+ 
+@@ -121,15 +123,40 @@ class TestEmbeddingHelper(unittest.TestCase):
+ class TestSafetyThresholds(unittest.TestCase):
+     """Verify safety threshold layering is consistent."""
+ 
+-    def test_python_critical_below_rust_crisis(self):
+-        """Python agent must act before the Rust crisis threshold."""
++    @staticmethod
++    def _threshold_map():
++        path = Path(__file__).resolve().parents[1] / "docs" / "threshold_surfaces.json"
++        return json.loads(path.read_text())
++
++    def test_python_thresholds_do_not_exceed_engine_crisis(self):
++        """Python action thresholds must not exceed the engine crisis boundary."""
++        from thresholds import RECESS, FOCUSED
++        surfaces = {
++            entry["surface"]: entry
++            for entry in self._threshold_map()["authoritative_surfaces"]
++        }
++        engine_crisis = surfaces["engine_crisis_fill"]["value_pct"] / 100.0
++        self.assertLessEqual(
++            RECESS.critical_fill,
++            engine_crisis,
++            "RECESS critical_fill must stay at or below the engine crisis threshold",
++        )
++        self.assertLessEqual(
++            FOCUSED.critical_fill,
++            engine_crisis,
++            "FOCUSED critical_fill must stay at or below the engine crisis threshold",
++        )
++
++    def test_python_high_fill_below_engine_warning(self):
++        """Python action thresholds should trigger before the engine warning band."""
+         from thresholds import RECESS, FOCUSED
+-        # Rust CRISIS_FILL_THRESHOLD is 87% (0.87 as fraction)
+-        RUST_CRISIS = 0.87
+-        self.assertLess(RECESS.critical_fill, RUST_CRISIS,
+-                        "RECESS critical_fill must be below Rust crisis threshold")
+-        self.assertLess(FOCUSED.critical_fill, RUST_CRISIS,
+-                        "FOCUSED critical_fill must be below Rust crisis threshold")
++        surfaces = {
++            entry["surface"]: entry
++            for entry in self._threshold_map()["authoritative_surfaces"]
++        }
++        engine_warning = surfaces["engine_warning_fill"]["value_pct"] / 100.0
++        self.assertLess(RECESS.high_fill, engine_warning)
++        self.assertLess(FOCUSED.high_fill, engine_warning)
+ 
+     def test_high_below_critical(self):
+         from thresholds import RECESS, FOCUSED

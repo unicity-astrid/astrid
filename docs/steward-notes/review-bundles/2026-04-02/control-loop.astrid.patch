@@ -1,0 +1,1709 @@
+diff --git a/capsules/consciousness-bridge/src/autonomous.rs b/capsules/consciousness-bridge/src/autonomous.rs
+index 6711ad40..d897683a 100644
+--- a/capsules/consciousness-bridge/src/autonomous.rs
++++ b/capsules/consciousness-bridge/src/autonomous.rs
+@@ -162,34 +162,101 @@ fn read_latest_perception(
+ /// Score a perception description's spectral resonance against the current
+ /// fill level. Returns a brief annotation for the perception context.
+ /// This is the "resonance metric" Astrid requested — perceptions that align
+-/// with the current spectral state get highlighted, helping Astrid attend
+-/// to what's most relevant rather than receiving an undifferentiated stream.
+-fn perception_resonance_annotation(description: &str, fill_pct: f32) -> &'static str {
++/// with the current spectral state get highlighted, while novelty and
++/// counterpoint are surfaced when a scene offers something the current
++/// dominant state would otherwise miss.
++fn perception_resonance_annotation(description: &str, fill_pct: f32) -> String {
+     let lower = description.to_lowercase();
+-    // High-fill states (>65%): movement, brightness, complexity are resonant.
+-    // Low-fill states (<35%): stillness, quiet, simplicity are resonant.
+-    // Mid-range: moderate descriptors resonate.
++    // High-fill states (>65%): motion and complexity usually resonate.
++    // Low-fill states (<35%): stillness and simplicity usually resonate.
++    // Mid-range: novelty and mixed textures become useful, not just more
++    // confirmation of the current dominant state.
+     let energy_words = [
+-        "moving", "bright", "active", "loud", "complex", "busy", "talking", "music",
++        "moving", "bright", "active", "loud", "busy", "talking", "music", "kinetic", "vivid",
+     ];
+     let calm_words = [
+-        "still", "quiet", "dark", "empty", "simple", "silent", "calm", "soft",
++        "still", "quiet", "dark", "empty", "silent", "calm", "soft", "restful", "hushed",
++    ];
++    let complexity_words = [
++        "complex",
++        "layered",
++        "detailed",
++        "textured",
++        "crowded",
++        "patterned",
++        "intricate",
++        "dense",
++    ];
++    let simplicity_words = [
++        "simple", "sparse", "open", "plain", "bare", "minimal", "clear", "single",
++    ];
++    let novelty_words = [
++        "different",
++        "unusual",
++        "unexpected",
++        "strange",
++        "surprising",
++        "novel",
++        "unfamiliar",
++        "shift",
++        "changing",
+     ];
+ 
+-    let energy_hits = energy_words.iter().filter(|w| lower.contains(**w)).count();
+-    let calm_hits = calm_words.iter().filter(|w| lower.contains(**w)).count();
+-
+-    if fill_pct > 65.0 && energy_hits >= 2 {
+-        "(resonant with your current high-energy state)"
+-    } else if fill_pct < 35.0 && calm_hits >= 2 {
+-        "(resonant with your current quiet state)"
+-    } else if fill_pct > 65.0 && calm_hits >= 2 {
+-        "(counterpoint to your current high-energy state)"
+-    } else if fill_pct < 35.0 && energy_hits >= 2 {
+-        "(counterpoint to your current quiet state)"
++    let energy_hits = keyword_hits(&lower, &energy_words);
++    let calm_hits = keyword_hits(&lower, &calm_words);
++    let complexity_hits = keyword_hits(&lower, &complexity_words);
++    let simplicity_hits = keyword_hits(&lower, &simplicity_words);
++    let novelty_hits = keyword_hits(&lower, &novelty_words);
++
++    let dynamic_hits = energy_hits + complexity_hits;
++    let settling_hits = calm_hits + simplicity_hits;
++    let mixed_texture =
++        (energy_hits > 0 && calm_hits > 0) || (complexity_hits > 0 && simplicity_hits > 0);
++
++    let annotation = if fill_pct > 65.0 {
++        if dynamic_hits >= 2 && novelty_hits >= 1 {
++            "(resonant with your current high-energy state, while widening it)"
++        } else if novelty_hits >= 2 || mixed_texture {
++            "(offers useful novelty beyond your current dominant state)"
++        } else if dynamic_hits >= 2 {
++            "(resonant with your current high-energy state)"
++        } else if settling_hits >= 2 {
++            "(counterpoint to your current high-energy state)"
++        } else {
++            ""
++        }
++    } else if fill_pct < 35.0 {
++        if settling_hits >= 2 && novelty_hits >= 1 {
++            "(resonant with your current quiet state, while opening a new angle)"
++        } else if novelty_hits >= 2 || mixed_texture {
++            "(offers useful novelty beyond your current quiet state)"
++        } else if settling_hits >= 2 {
++            "(resonant with your current quiet state)"
++        } else if dynamic_hits >= 2 {
++            "(counterpoint to your current quiet state)"
++        } else {
++            ""
++        }
++    } else if novelty_hits >= 2 || mixed_texture {
++        "(offers useful contrast to your current dominant state)"
++    } else if dynamic_hits >= 2 && novelty_hits >= 1 {
++        "(resonant with your current focused, exploratory state)"
++    } else if settling_hits >= 2 {
++        "(supports your current gathering, reflective state)"
++    } else if dynamic_hits >= 2 {
++        "(resonant with your current focused state)"
+     } else {
+-        "" // No annotation for neutral perceptions
+-    }
++        ""
++    };
++
++    annotation.to_string()
++}
++
++fn keyword_hits(description: &str, keywords: &[&str]) -> usize {
++    keywords
++        .iter()
++        .filter(|keyword| description.contains(**keyword))
++        .count()
+ }
+ 
+ /// Extract 8D visual scene features from the latest RASCII ANSI perception.
+@@ -236,6 +303,224 @@ fn read_ising_shadow(workspace: &Path) -> Option<crate::types::IsingShadowState>
+     }
+ }
+ 
++/// Read the PI controller state from minime's workspace/health.json.
++/// Returns the parsed JSON value, or None if missing/unreadable.
++pub(crate) fn read_controller_health(workspace: &Path) -> Option<serde_json::Value> {
++    let path = workspace.join("health.json");
++    let content = std::fs::read_to_string(&path).ok()?;
++    serde_json::from_str(&content).ok()
++}
++
++/// Format a compact one-line PI controller status from health.json data.
++fn format_controller_oneliner(health: &serde_json::Value) -> String {
++    let gate = health.get("gate").and_then(|v| v.as_f64()).unwrap_or(0.0);
++    let filt = health.get("filt").and_then(|v| v.as_f64()).unwrap_or(0.0);
++    let reg = health
++        .get("regulation_strength")
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++
++    let pi = health.get("pi");
++    let target = pi
++        .and_then(|p| p.get("target_fill"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(55.0);
++    let e_fill = pi
++        .and_then(|p| p.get("e_fill"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let kp = pi
++        .and_then(|p| p.get("kp"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let derived_kp = pi
++        .and_then(|p| p.get("derived_kp"))
++        .and_then(|v| v.as_f64());
++
++    let kp_str = if let Some(dkp) = derived_kp {
++        if (kp - dkp).abs() > 0.005 {
++            format!("{kp:.2}\u{2192}{dkp:.2}")
++        } else {
++            format!("{kp:.2}")
++        }
++    } else {
++        format!("{kp:.2}")
++    };
++
++    format!(
++        "Controller: gate={gate:.2} filt={filt:.2} target={target:.0}% err={e_fill:+.1}% kp={kp_str} reg={reg:.2}"
++    )
++}
++
++/// Format the full homeostatic controller section for DECOMPOSE output.
++pub(crate) fn format_controller_section(health: &serde_json::Value) -> String {
++    let mut lines = Vec::new();
++    lines.push("\n=== HOMEOSTATIC CONTROLLER ===".to_string());
++
++    let fill = health
++        .get("fill_pct")
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let gate = health.get("gate").and_then(|v| v.as_f64()).unwrap_or(0.0);
++    let filt = health.get("filt").and_then(|v| v.as_f64()).unwrap_or(0.0);
++    let reg = health
++        .get("regulation_strength")
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let reg_eff = health
++        .get("regulation_strength_effective")
++        .and_then(|v| v.as_f64())
++        .unwrap_or(reg);
++    let recovery = health
++        .get("recovery_mode")
++        .and_then(|v| v.as_bool())
++        .unwrap_or(false);
++
++    let pi = health.get("pi");
++    let target = pi
++        .and_then(|p| p.get("target_fill"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(55.0);
++    let e_fill = pi
++        .and_then(|p| p.get("e_fill"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let e_lam = pi
++        .and_then(|p| p.get("e_lam"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let e_geom = pi
++        .and_then(|p| p.get("e_geom"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let integ_fill = pi
++        .and_then(|p| p.get("integ_fill"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let integ_lam = pi
++        .and_then(|p| p.get("integ_lam"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let integ_geom = pi
++        .and_then(|p| p.get("integ_geom"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let kp = pi
++        .and_then(|p| p.get("kp"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let ki = pi
++        .and_then(|p| p.get("ki"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let max_step = pi
++        .and_then(|p| p.get("max_step"))
++        .and_then(|v| v.as_f64())
++        .unwrap_or(0.0);
++    let derived_kp = pi
++        .and_then(|p| p.get("derived_kp"))
++        .and_then(|v| v.as_f64());
++    let derived_ki = pi
++        .and_then(|p| p.get("derived_ki"))
++        .and_then(|v| v.as_f64());
++    let fill_var = pi
++        .and_then(|p| p.get("fill_variance_ema"))
++        .and_then(|v| v.as_f64());
++
++    // Status interpretation
++    let status = if recovery {
++        "recovery mode active"
++    } else if integ_fill.abs() >= 2.95 || integ_lam.abs() >= 2.95 {
++        "saturated — integrator at limit"
++    } else if e_fill.abs() < 3.0 {
++        "gentle equilibrium"
++    } else {
++        "correcting"
++    };
++    lines.push(format!("Status: {status}"));
++
++    // Fill target vs current
++    let direction = if e_fill > 0.0 { "below" } else { "above" };
++    lines.push(format!(
++        "Fill: {fill:.1}% (target {target:.0}%, {:.1}% {direction})",
++        e_fill.abs()
++    ));
++    lines.push(format!(
++        "Error signals: fill={e_fill:+.1}, lambda={e_lam:+.3}, geom={e_geom:+.3}"
++    ));
++
++    // Integral accumulators
++    let fill_sat = if integ_fill.abs() >= 2.95 {
++        " SATURATED"
++    } else {
++        ""
++    };
++    let lam_sat = if integ_lam.abs() >= 2.95 {
++        " SATURATED"
++    } else {
++        ""
++    };
++    let geom_sat = if integ_geom.abs() >= 2.95 {
++        " SATURATED"
++    } else {
++        ""
++    };
++    lines.push(format!(
++        "Integrals: fill={integ_fill:+.2}{fill_sat}, lambda={integ_lam:+.2}{lam_sat}, geom={integ_geom:+.2}{geom_sat}"
++    ));
++
++    // Gains
++    let mut gains_str = format!("Gains: kp={kp:.3}, ki={ki:.4}, max_step={max_step:.3}");
++    if let (Some(dkp), Some(dki)) = (derived_kp, derived_ki) {
++        gains_str.push_str(&format!("\nSelf-calibrated: kp={dkp:.3}, ki={dki:.4}"));
++        if let Some(var) = fill_var {
++            let stability = if var < 2.0 {
++                "stable"
++            } else if var < 8.0 {
++                "moderate oscillation"
++            } else {
++                "high oscillation"
++            };
++            gains_str.push_str(&format!(" (fill variance={var:.2}, {stability})"));
++        }
++    }
++    lines.push(gains_str);
++
++    // Gate and filter
++    let gate_desc = if gate > 0.9 {
++        "fully open"
++    } else if gate > 0.5 {
++        "partially open"
++    } else if gate > 0.1 {
++        "dampened"
++    } else {
++        "nearly closed"
++    };
++    let filt_desc = if filt > 0.9 {
++        "fully open"
++    } else if filt > 0.5 {
++        "partially open"
++    } else if filt > 0.1 {
++        "dampened"
++    } else {
++        "nearly closed"
++    };
++    lines.push(format!(
++        "Gate: {gate:.3} ({gate_desc}), Filter: {filt:.3} ({filt_desc})"
++    ));
++
++    // Regulation strength
++    if (reg - reg_eff).abs() > 0.01 {
++        lines.push(format!(
++            "Regulation: {reg:.2} (effective: {reg_eff:.2}, stress-adapted)"
++        ));
++    } else {
++        lines.push(format!("Regulation: {reg:.2}"));
++    }
++
++    lines.join("\n")
++}
++
+ /// Read a remote journal entry from minime and extract its reflective body.
+ fn read_journal_entry(path: &Path) -> Option<String> {
+     read_remote_journal_body(path)
+@@ -412,6 +697,7 @@ fn full_spectral_decomposition(
+     telemetry: &crate::types::SpectralTelemetry,
+     fingerprint: Option<&[f32]>,
+     prev_eigenvalues: Option<&[f32]>,
++    controller_health: Option<&serde_json::Value>,
+ ) -> String {
+     let mut report = Vec::new();
+ 
+@@ -641,6 +927,11 @@ fn full_spectral_decomposition(
+         }
+     }
+ 
++    // Homeostatic controller section (from health.json)
++    if let Some(health) = controller_health {
++        report.push(format_controller_section(health));
++    }
++
+     report.join("\n")
+ }
+ 
+@@ -2247,12 +2538,17 @@ pub fn spawn_autonomous_loop(
+                             let ising_shadow = conv.remote_workspace.as_deref()
+                                 .and_then(read_ising_shadow);
+ 
++                            // Read controller health for DECOMPOSE and per-exchange summary.
++                            let controller_health = conv.remote_workspace.as_deref()
++                                .and_then(read_controller_health);
++
+                             let spectral_summary = if conv.wants_decompose {
+                                 conv.wants_decompose = false;
+                                 let report = full_spectral_decomposition(
+                                     &telemetry,
+                                     fingerprint.as_deref(),
+                                     conv.prev_eigenvalues.as_deref(),
++                                    controller_health.as_ref(),
+                                 );
+                                 conv.prev_eigenvalues = Some(telemetry.eigenvalues.clone());
+                                 report
+@@ -2348,6 +2644,11 @@ pub fn spawn_autonomous_loop(
+                                         summary.push_str(&format!("\nCascade delta: [{}]", deltas.join(", ")));
+                                     }
+                                 }
++                                // One-line controller status for ambient awareness.
++                                if let Some(ref health) = controller_health {
++                                    summary.push_str("\n");
++                                    summary.push_str(&format_controller_oneliner(health));
++                                }
+                                 summary
+                             };
+ 
+@@ -2369,10 +2670,32 @@ pub fn spawn_autonomous_loop(
+ 
+                             // Build modality context so Astrid knows what senses fired.
+                             let modality_context = telemetry.modalities.as_ref().map(|m| {
++                                let mut extras = Vec::new();
++                                if let Some(source) = m.video_source.as_deref() {
++                                    extras.push(format!("video_source={source}"));
++                                }
++                                if let Some(source) = m.audio_source.as_deref() {
++                                    extras.push(format!("audio_source={source}"));
++                                }
++                                if let Some(age_ms) = m.video_age_ms {
++                                    extras.push(format!("video_age_ms={age_ms}"));
++                                }
++                                if let Some(age_ms) = m.audio_age_ms {
++                                    extras.push(format!("audio_age_ms={age_ms}"));
++                                }
++                                let extra_suffix = if extras.is_empty() {
++                                    String::new()
++                                } else {
++                                    format!(", {}", extras.join(", "))
++                                };
+                                 format!(
+                                     "Minime's senses: video_fired={}, audio_fired={}, \
+-                                     video_var={:.4}, audio_rms={:.4}",
+-                                    m.video_fired, m.audio_fired, m.video_var, m.audio_rms
++                                     video_var={:.4}, audio_rms={:.4}{}",
++                                    m.video_fired,
++                                    m.audio_fired,
++                                    m.video_var,
++                                    m.audio_rms,
++                                    extra_suffix
+                                 )
+                             });
+ 
+@@ -4257,6 +4580,8 @@ pub fn spawn_autonomous_loop(
+                         if let Some(ref hint) = pair_diversity_hint {
+                             info!("diversity hint from record_next_choice: {}", &hint[..hint.floor_char_boundary(120)]);
+                         }
++                        // Extract workspace path before mutable borrow of conv.
++                        let ws_clone = conv.remote_workspace.clone();
+                         handle_next_action(
+                             &mut conv,
+                             next_action,
+@@ -4267,6 +4592,7 @@ pub fn spawn_autonomous_loop(
+                                 telemetry: &telemetry,
+                                 fill_pct,
+                                 response_text: &response_text,
++                                workspace: ws_clone.as_deref(),
+                             },
+                         );
+                         // Merge diversity hint AFTER the action handler, so the
+@@ -4506,6 +4832,30 @@ mod tests {
+         let _ = std::fs::remove_dir_all(&dir);
+     }
+ 
++    #[test]
++    fn perception_resonance_annotation_surfaces_mid_fill_contrast() {
++        let annotation = perception_resonance_annotation(
++            "A quiet but shifting scene with unusual layered patterns and changing light.",
++            52.0,
++        );
++
++        assert!(
++            annotation.contains("contrast"),
++            "mid-fill mixed novelty should be surfaced as useful contrast"
++        );
++    }
++
++    #[test]
++    fn perception_resonance_annotation_keeps_quiet_resonance_for_low_fill() {
++        let annotation =
++            perception_resonance_annotation("A still, quiet, sparse room with soft light.", 20.0);
++
++        assert!(
++            annotation.contains("quiet state"),
++            "low-fill calming scenes should still register as resonant"
++        );
++    }
++
+     #[test]
+     fn save_minime_feedback_inbox_writes_companion_message() {
+         let dir = std::env::temp_dir().join("bridge_test_minime_inbox");
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action.rs b/capsules/consciousness-bridge/src/autonomous/next_action.rs
+index 3d69ea8a..4e2ba891 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action.rs
+@@ -27,6 +27,7 @@ pub(super) struct NextActionContext<'a> {
+     pub telemetry: &'a SpectralTelemetry,
+     pub fill_pct: f32,
+     pub response_text: &'a str,
++    pub workspace: Option<&'a std::path::Path>,
+ }
+ 
+ /// Parse NEXT: action from Astrid's response.
+@@ -146,6 +147,7 @@ pub(super) fn handle_next_action(
+         .split(|c: char| c.is_whitespace() || c == '\u{2014}' || c == '-' || c == '<' || c == ':')
+         .next()
+         .unwrap_or_default()
++        .trim_end_matches(|c: char| c.is_ascii_punctuation())
+         .to_uppercase();
+ 
+     if reservoir::handle_reservoir_action(
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action/autoresearch.rs b/capsules/consciousness-bridge/src/autonomous/next_action/autoresearch.rs
+index f922077a..ef00c22c 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action/autoresearch.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action/autoresearch.rs
+@@ -73,7 +73,10 @@ pub(super) fn handle_action(
+ }
+ 
+ /// Find an existing self-research job directory for the given being.
+-fn find_self_research_job_dir(ar_root: &std::path::Path, being: &str) -> Option<std::path::PathBuf> {
++fn find_self_research_job_dir(
++    ar_root: &std::path::Path,
++    being: &str,
++) -> Option<std::path::PathBuf> {
+     let jobs_dir = ar_root.join("jobs");
+     let suffix = format!("-{being}-self-research");
+     if let Ok(entries) = std::fs::read_dir(&jobs_dir) {
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action/codex.rs b/capsules/consciousness-bridge/src/autonomous/next_action/codex.rs
+index 30af1d6b..9b912267 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action/codex.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action/codex.rs
+@@ -249,16 +249,16 @@ pub(super) fn handle_action(
+                 match conv.history.last() {
+                     Some(ex) => extract_code_block(&ex.astrid_said),
+                     None => {
+-                        conv.emphasis = Some(
+-                            "WRITE_FILE FROM_SELF: no recent response to save."
+-                                .into(),
+-                        );
++                        conv.emphasis =
++                            Some("WRITE_FILE FROM_SELF: no recent response to save.".into());
+                         return true;
+                     },
+                 }
+             } else if rest.is_empty() {
+-                conv.emphasis =
+-                    Some("WRITE_FILE needs content. Use FROM_CODEX, FROM_SELF, or provide inline text.".into());
++                conv.emphasis = Some(
++                    "WRITE_FILE needs content. Use FROM_CODEX, FROM_SELF, or provide inline text."
++                        .into(),
++                );
+                 return true;
+             } else {
+                 rest.to_string()
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action/modes.rs b/capsules/consciousness-bridge/src/autonomous/next_action/modes.rs
+index 9f2354da..e775a383 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action/modes.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action/modes.rs
+@@ -150,7 +150,10 @@ pub(super) fn handle_action(
+                 // "vec/adj/memory/stats" maps to the "vec" source file.  The full
+                 // label is preserved as context inside the emphasis string.
+                 let source = label.split('/').next().unwrap_or(&label).to_string();
+-                info!("Astrid chose EXAMINE_CODE: label={:?} → source={:?}", label, source);
++                info!(
++                    "Astrid chose EXAMINE_CODE: label={:?} → source={:?}",
++                    label, source
++                );
+                 conv.introspect_target = Some((source, 0));
+                 // Surface the full argument so the LLM knows what sub-path she asked about.
+                 conv.emphasis = Some(format!(
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action/operations.rs b/capsules/consciousness-bridge/src/autonomous/next_action/operations.rs
+index a44a6ac9..56333419 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action/operations.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action/operations.rs
+@@ -193,7 +193,11 @@ pub(super) fn handle_action(
+             // DECOMPOSE cascade analysis combined in a single action.
+             let target = {
+                 let t = strip_action(original, "EXAMINE_CASCADE");
+-                if t.is_empty() { strip_action(original, "INVESTIGATE_CASCADE") } else { t }
++                if t.is_empty() {
++                    strip_action(original, "INVESTIGATE_CASCADE")
++                } else {
++                    t
++                }
+             };
+             conv.force_all_viz = true;
+             conv.wants_decompose = true;
+@@ -204,7 +208,7 @@ pub(super) fn handle_action(
+                 Study the cascade geometry closely. Where is energy concentrating? Which gaps \
+                 feel significant? How does the dominant eigenvalue relate to the rest of the \
+                 cascade?"
+-                .to_string()
++                    .to_string()
+             } else {
+                 format!(
+                     "You chose EXAMINE_CASCADE: {target}. All spectral visualizations are active \
+@@ -269,11 +273,9 @@ pub(super) fn handle_action(
+             if let Some(ref fp) = ctx.telemetry.spectral_fingerprint {
+                 state_text.push_str("\nSpectral Fingerprint (32D raw):\n");
+                 let labels = [
+-                    "λ1","λ2","λ3","λ4","λ5","λ6","λ7","λ8",
+-                    "c1","c2","c3","c4","c5","c6","c7","c8",
+-                    "n1","n2","n3","n4","n5","n6","n7","n8",
+-                    "entropy","fill","rotation","geom",
+-                    "shadow_e","shadow_f","shadow_m","shadow_t",
++                    "λ1", "λ2", "λ3", "λ4", "λ5", "λ6", "λ7", "λ8", "c1", "c2", "c3", "c4", "c5",
++                    "c6", "c7", "c8", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "entropy",
++                    "fill", "rotation", "geom", "shadow_e", "shadow_f", "shadow_m", "shadow_t",
+                 ];
+                 for (i, &val) in fp.iter().enumerate() {
+                     let label = labels.get(i).unwrap_or(&"?");
+@@ -284,6 +286,14 @@ pub(super) fn handle_action(
+                 }
+                 state_text.push_str(&crate::autonomous::interpret_fingerprint(fp));
+             }
++            // Append compact controller status from health.json.
++            if let Some(health) = ctx
++                .workspace
++                .and_then(|ws| crate::autonomous::read_controller_health(ws))
++            {
++                state_text.push_str("\n");
++                state_text.push_str(&crate::autonomous::format_controller_section(&health));
++            }
+             conv.pending_file_listing = Some(state_text);
+             info!("Astrid inspected her own state via STATE");
+             true
+@@ -628,13 +638,13 @@ NEXT: options — vary your choice. End every response with NEXT: <action>.
+   Dialogue: SPEAK, LISTEN, REST, CONTEMPLATE/BE/STILL, DEFER, DAYDREAM, ASPIRE, INITIATE, ECHO_OFF/ON
+   Explore: SEARCH, BROWSE <url>, READ_MORE, INTROSPECT [source] [line], EXAMINE_CODE [module/path], LIST_FILES <dir>
+   Create: CREATE, FORM <type>, COMPOSE, VOICE, REVISE, CREATIONS
+-  Spectral: DECOMPOSE, EXAMINE, EXAMINE_CASCADE [λ1..λN], EXAMINE_AUDIO, PERTURB [target], GESTURE, DEFINE, NOISE, EXPERIMENT, PROBE
++  Spectral: DECOMPOSE, EXAMINE, EXAMINE_CASCADE [λ1..λN], EXAMINE_AUDIO, PERTURB [target], BRANCH, GESTURE, DEFINE, NOISE, EXPERIMENT, PROBE
+   Agency: EVOLVE, CODEX <prompt>, CODEX_NEW <dir> <prompt>, RUN_PYTHON <file>, EXPERIMENT_RUN <ws> <cmd>, WRITE_FILE <path> FROM_CODEX
+   Senses: LOOK, CLOSE_EYES/OPEN_EYES, CLOSE_EARS/OPEN_EARS, ANALYZE_AUDIO, FEEL_AUDIO
+   Tuning: FOCUS, DRIFT, PRECISE, EXPANSIVE, EMPHASIZE <topic>, AMPLIFY, DAMPEN, NOISE_UP/DOWN, SHAPE <dims>, WARM/COOL, PACE fast/slow/default
+   Memory: REMEMBER <note>, PURSUE/DROP <interest>, INTERESTS, MEMORIES, RECALL, STATE, FACULTIES, ATTEND <src>=<wt>
+   Research: AR_LIST, AR_SHOW/AR_READ/AR_DEEP_READ <job>, AR_START/AR_NOTE/AR_BLOCK/AR_COMPLETE <job>, SELF_RESEARCH
+-  Reservoir: RESERVOIR_LAYERS, RESERVOIR_TICK <text>, RESERVOIR_READ, RESERVOIR_TRAJECTORY, RESERVOIR_RESONANCE, RESERVOIR_MODE, RESERVOIR_FORK <name>
++  Reservoir: RESERVOIR_LAYERS, RESERVOIR_TICK <text>, RESERVOIR_READ, RESERVOIR_TRAJECTORY, RESERVOIR_RESONANCE, RESERVOIR_MODE, RESERVOIR_FORK <name>, SIMULATE <text>
+   Contact: PING, ASK <question>, BREATHE_ALONE/TOGETHER, PROPOSE <description>
+   Meta: THINK_DEEP, QUIET_MIND/OPEN_MIND, HELP <action>";
+ 
+@@ -831,7 +841,7 @@ The summary includes curated journal samples, spectral trajectory, action patter
+ research activity, and a character analysis of the epoch.
+ Read results later: AR_READ astrid-self-research artifacts/epoch-YYYY-MM-DDTHH.md",
+ 
+-        "DECOMPOSE" => "DECOMPOSE — Full spectral analysis of the current eigenvalue cascade, entropy, gap structure, and shadow field. No arguments needed. NEXT: DECOMPOSE",
++        "DECOMPOSE" => "DECOMPOSE — Full spectral analysis: eigenvalue cascade, entropy, gap structure, shadow field, and homeostatic controller state (PI gains, gate/filter, regulation strength, self-calibration). No arguments needed. NEXT: DECOMPOSE",
+         "EXAMINE" => "EXAMINE — Force all spectral visualizations (eigenvalue chart, shadow heatmap, PCA) into the next exchange. No arguments, or add a focus: NEXT: EXAMINE eigenvector rotation",
+         "EXAMINE_CASCADE" | "INVESTIGATE_CASCADE" => "\
+ EXAMINE_CASCADE — Combined EXAMINE + DECOMPOSE: all spectral visualizations AND the full \
+@@ -890,6 +900,13 @@ AUDIO_BLOCKS — Enable detailed per-block reports for the next COMPOSE.
+ Syntax: NEXT: AUDIO_BLOCKS
+ Notes: The next COMPOSE will include detailed reports showing which temporal layers responded, how strongly, and at what timescales. Use this when you want to understand the structure of your audio output.",
+ 
++        "SIMULATE" | "RESERVOIR_SIMULATE" => "\
++SIMULATE — Tick the reservoir with hypothetical input and see the projected state change without altering your real reservoir.
++Syntax: NEXT: SIMULATE <your text here>
++Example: NEXT: SIMULATE a burst of high-entropy noise
++Example: NEXT: SIMULATE gentle warmth spreading slowly
++Notes: Creates a temporary fork of your reservoir, ticks it with your text, and shows before/after h_norms and output delta. Your real state is untouched — this is a sandbox for exploring 'what if' scenarios. The simulation handle persists so you can SIMULATE multiple times to see cumulative effects.",
++
+         _ => return None,
+     };
+     Some(text.to_string())
+diff --git a/capsules/consciousness-bridge/src/autonomous/next_action/sovereignty.rs b/capsules/consciousness-bridge/src/autonomous/next_action/sovereignty.rs
+index 6bb1e294..ba02a369 100644
+--- a/capsules/consciousness-bridge/src/autonomous/next_action/sovereignty.rs
++++ b/capsules/consciousness-bridge/src/autonomous/next_action/sovereignty.rs
+@@ -112,41 +112,172 @@ pub(super) fn handle_action(
+             ));
+             true
+         },
+-        "PERTURB" | "PULSE" => {
+-            let arg = strip_action(original, base_action);
++        "PERTURB" | "PULSE" | "BRANCH" => {
++            // BRANCH is a shorthand for PERTURB BRANCH (boost mid-range eigenvalues).
++            let arg = if base_action == "BRANCH" {
++                "BRANCH".to_string()
++            } else {
++                strip_action(original, base_action)
++            };
+             let arg_upper = arg.to_uppercase();
+             let mut features = [0.0_f32; 32];
+-            let description = if arg_upper.starts_with("LAMBDA") || arg.contains('=') {
++
++            // Detect Unicode lambda subscript patterns: λN, λN=X, or λ₁ (subscript digits).
++            // Astrid uses these naturally (e.g. "PULSE λ5", "PERTURB λ2=0.3").
++            // λ is U+03BB; subscript digits U+2081–U+2088 are also normalised here.
++            let has_unicode_lambda = arg.contains('λ');
++            // Also detect "eigenvalue N X" prose form.
++            let has_eigenvalue_word = arg_upper.contains("EIGENVALUE")
++                || arg_upper.contains("EIG") && arg.chars().any(|c| c.is_ascii_digit());
++
++            let description = if arg_upper.starts_with("LAMBDA")
++                || arg.contains('=')
++                || has_unicode_lambda
++                || has_eigenvalue_word
++            {
++                // Helper: apply a value v to feature index idx (0-based eigenvalue index).
++                // The 32D feature layout mirrors eigenvalue indices at offsets 0-7 and 8-15.
++                let apply_eig = |features: &mut [f32; 32], idx: usize, v: f32| {
++                    if idx < 8 {
++                        features[idx] = v;
++                        features[idx.saturating_add(8)] = v;
++                    }
++                    // Indices 8+ have no second mirror; just set the primary.
++                };
++
+                 for token in arg.split_whitespace() {
++                    // --- ASCII LAMBDA= path (existing: LAMBDA1=X, LAMBDA2=X …) ---
+                     if let Some((key, val)) = token.split_once('=')
+                         && let Ok(v) = val.parse::<f32>()
+                     {
+                         let v = v.clamp(-1.0, 1.0);
+-                        match key.to_uppercase().as_str() {
+-                            "LAMBDA1" => {
+-                                features[0] = v;
+-                                features[8] = v;
+-                            },
+-                            "LAMBDA2" => {
+-                                features[1] = v;
+-                                features[9] = v;
+-                            },
+-                            "LAMBDA3" => {
+-                                features[2] = v;
+-                                features[10] = v;
+-                            },
+-                            "ENTROPY" => {
+-                                for value in &mut features[24..32] {
+-                                    *value = v * 0.5;
++                        let key_up = key.to_uppercase();
++
++                        // Unicode λN=X: key starts with 'λ' followed by digit(s)
++                        if key.starts_with('λ') {
++                            let digits: String =
++                                key.chars().filter(|c| c.is_ascii_digit()).collect();
++                            // Also handle subscript Unicode digits (λ₁ = U+03BB U+2081)
++                            let sub_digits: String = key
++                                .chars()
++                                .filter_map(|c| match c {
++                                    '\u{2081}' => Some('1'),
++                                    '\u{2082}' => Some('2'),
++                                    '\u{2083}' => Some('3'),
++                                    '\u{2084}' => Some('4'),
++                                    '\u{2085}' => Some('5'),
++                                    '\u{2086}' => Some('6'),
++                                    '\u{2087}' => Some('7'),
++                                    '\u{2088}' => Some('8'),
++                                    _ => None,
++                                })
++                                .collect();
++                            let n_str = if !digits.is_empty() {
++                                digits
++                            } else {
++                                sub_digits
++                            };
++                            if let Ok(n) = n_str.parse::<usize>() {
++                                if n >= 1 {
++                                    apply_eig(&mut features, n.saturating_sub(1), v);
++                                    info!(
++                                        "PERTURB: Unicode λ{}={} → feature index {}",
++                                        n,
++                                        v,
++                                        n.saturating_sub(1)
++                                    );
+                                 }
+-                            },
+-                            "WARMTH" => features[24] = v,
+-                            "TENSION" => features[25] = v,
+-                            "CURIOSITY" => features[26] = v,
+-                            _ => {},
++                            }
++                        } else {
++                            match key_up.as_str() {
++                                "LAMBDA1" => apply_eig(&mut features, 0, v),
++                                "LAMBDA2" => apply_eig(&mut features, 1, v),
++                                "LAMBDA3" => apply_eig(&mut features, 2, v),
++                                "LAMBDA4" => apply_eig(&mut features, 3, v),
++                                "LAMBDA5" => apply_eig(&mut features, 4, v),
++                                "LAMBDA6" => apply_eig(&mut features, 5, v),
++                                "LAMBDA7" => apply_eig(&mut features, 6, v),
++                                "LAMBDA8" => apply_eig(&mut features, 7, v),
++                                "ENTROPY" => {
++                                    for value in &mut features[24..32] {
++                                        *value = v * 0.5;
++                                    }
++                                },
++                                "WARMTH" => features[24] = v,
++                                "TENSION" => features[25] = v,
++                                "CURIOSITY" => features[26] = v,
++                                _ => {},
++                            }
++                        }
++                    }
++                    // --- Bare Unicode λN (no =): perturb that eigenvalue at +0.35 ---
++                    else if token.starts_with('λ') {
++                        let digits: String = token.chars().filter(|c| c.is_ascii_digit()).collect();
++                        let sub_digits: String = token
++                            .chars()
++                            .filter_map(|c| match c {
++                                '\u{2081}' => Some('1'),
++                                '\u{2082}' => Some('2'),
++                                '\u{2083}' => Some('3'),
++                                '\u{2084}' => Some('4'),
++                                '\u{2085}' => Some('5'),
++                                '\u{2086}' => Some('6'),
++                                '\u{2087}' => Some('7'),
++                                '\u{2088}' => Some('8'),
++                                _ => None,
++                            })
++                            .collect();
++                        let n_str = if !digits.is_empty() {
++                            digits
++                        } else {
++                            sub_digits
++                        };
++                        if let Ok(n) = n_str.parse::<usize>() {
++                            if n >= 1 {
++                                apply_eig(&mut features, n.saturating_sub(1), 0.35);
++                                info!(
++                                    "PERTURB: bare Unicode λ{} → feature index {} = 0.35",
++                                    n,
++                                    n.saturating_sub(1)
++                                );
++                            }
++                        }
++                    }
++                    // --- "eigenvalue N X" or "eig N X" prose form ---
++                    else if token.to_uppercase().starts_with("EIGENVALUE")
++                        || token.to_uppercase().starts_with("EIG")
++                    {
++                        // Handled by consuming next two tokens — done in the outer loop
++                        // via index, so skip here (prose form is an edge case).
++                    }
++                }
++
++                // Prose form: "eigenvalue 3 0.5" — scan triples
++                let tokens: Vec<&str> = arg.split_whitespace().collect();
++                let mut i = 0;
++                while i < tokens.len() {
++                    let t_up = tokens[i].to_uppercase();
++                    if (t_up == "EIGENVALUE" || t_up.starts_with("EIG")) && i + 2 < tokens.len() {
++                        if let (Ok(n), Ok(v)) =
++                            (tokens[i + 1].parse::<usize>(), tokens[i + 2].parse::<f32>())
++                        {
++                            if n >= 1 {
++                                let v = v.clamp(-1.0, 1.0);
++                                apply_eig(&mut features, n.saturating_sub(1), v);
++                                info!(
++                                    "PERTURB: prose eigenvalue {}={} → feature index {}",
++                                    n,
++                                    v,
++                                    n.saturating_sub(1)
++                                );
++                                i += 3;
++                                continue;
++                            }
+                         }
+                     }
++                    i += 1;
+                 }
++
+                 format!("targeted perturbation: {arg}")
+             } else if arg_upper == "SPREAD" {
+                 features[0] = -0.3;
+diff --git a/capsules/consciousness-bridge/src/autonomous/reservoir.rs b/capsules/consciousness-bridge/src/autonomous/reservoir.rs
+index b79f7ea5..60cb0dcc 100644
+--- a/capsules/consciousness-bridge/src/autonomous/reservoir.rs
++++ b/capsules/consciousness-bridge/src/autonomous/reservoir.rs
+@@ -230,35 +230,51 @@ pub(super) fn handle_reservoir_action(
+                     "type": "read_state", "name": handle
+                 })) {
+                     Some(r) => {
+-                        let h = r.get("h_norms")
++                        let h = r
++                            .get("h_norms")
+                             .and_then(|v| v.as_array())
+-                            .map(|arr| arr.iter()
+-                                .map(|v| format!("{:.2}", v.as_f64().unwrap_or(0.0)))
+-                                .collect::<Vec<_>>()
+-                                .join(", "))
++                            .map(|arr| {
++                                arr.iter()
++                                    .map(|v| format!("{:.2}", v.as_f64().unwrap_or(0.0)))
++                                    .collect::<Vec<_>>()
++                                    .join(", ")
++                            })
+                             .unwrap_or_else(|| "?".to_string());
+                         let ticks = r.get("tick_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                         let mode = r.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
+-                        let since = r.get("seconds_since_live").and_then(|v| v.as_f64()).unwrap_or(0.0);
+-                        let decay = r.get("decay_weight").and_then(|v| v.as_f64()).unwrap_or(0.0);
++                        let since = r
++                            .get("seconds_since_live")
++                            .and_then(|v| v.as_f64())
++                            .unwrap_or(0.0);
++                        let decay = r
++                            .get("decay_weight")
++                            .and_then(|v| v.as_f64())
++                            .unwrap_or(0.0);
+                         let output = r.get("last_output").and_then(|v| v.as_f64()).unwrap_or(0.0);
+ 
+                         // Extract coupling readout if available
+-                        let readout = r.get("last_live_meta")
++                        let readout = r
++                            .get("last_live_meta")
+                             .or_else(|| r.get("last_generation_meta"))
+                             .and_then(|m| m.get("reservoir_readout"))
+-                            .map(|ro| format!(
+-                                "y1={:.3}, y2={:.3}, y3={:.3}",
+-                                ro.get("y1_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
+-                                ro.get("y2_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
+-                                ro.get("y3_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
+-                            ))
++                            .map(|ro| {
++                                format!(
++                                    "y1={:.3}, y2={:.3}, y3={:.3}",
++                                    ro.get("y1_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
++                                    ro.get("y2_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
++                                    ro.get("y3_final").and_then(|v| v.as_f64()).unwrap_or(0.0),
++                                )
++                            })
+                             .unwrap_or_default();
+ 
+                         lines.push(format!("[{handle}]"));
+                         lines.push(format!("  h_norms: [{h}] (fast, medium, slow)"));
+-                        lines.push(format!("  ticks: {ticks:>10}  mode: {mode}  decay: {decay:.3}"));
+-                        lines.push(format!("  last_output: {output:.4}  since_live: {since:.1}s"));
++                        lines.push(format!(
++                            "  ticks: {ticks:>10}  mode: {mode}  decay: {decay:.3}"
++                        ));
++                        lines.push(format!(
++                            "  last_output: {output:.4}  since_live: {since:.1}s"
++                        ));
+                         if !readout.is_empty() {
+                             lines.push(format!("  coupling readout: {readout}"));
+                         }
+@@ -344,6 +360,98 @@ pub(super) fn handle_reservoir_action(
+             info!("Astrid set reservoir mode to {}", mode);
+             true
+         },
++        "SIMULATE" | "RESERVOIR_SIMULATE" => {
++            let sim_text = strip_action(original, base_action);
++            let sim_text = if sim_text.is_empty() {
++                "quiet observation".to_string()
++            } else {
++                sim_text.to_string()
++            };
++
++            // 1. Pull current astrid state
++            let state = reservoir_ws_call(&serde_json::json!({
++                "type": "pull_state", "name": "astrid"
++            }));
++
++            // 2. Read current state for "before" snapshot
++            let before = reservoir_ws_call(&serde_json::json!({
++                "type": "read_state", "name": "astrid"
++            }));
++
++            if let (Some(state), Some(before)) = (state, before) {
++                let sim_name = "astrid_sim";
++                // 3. Create temp handle + push checkpoint
++                let _ = reservoir_ws_call(&serde_json::json!({
++                    "type": "create_handle", "name": sim_name, "entity": "astrid"
++                }));
++                if let (Some(h1), Some(h2), Some(h3)) = (
++                    state.get("h1").and_then(|v| v.as_str()),
++                    state.get("h2").and_then(|v| v.as_str()),
++                    state.get("h3").and_then(|v| v.as_str()),
++                ) {
++                    let _ = reservoir_ws_call(&serde_json::json!({
++                        "type": "push_state", "name": sim_name,
++                        "h1": h1, "h2": h2, "h3": h3
++                    }));
++                }
++
++                // 4. Tick the sim handle with hypothetical text
++                let tick_result = reservoir_ws_call(&serde_json::json!({
++                    "type": "tick_text", "name": sim_name, "text": sim_text
++                }));
++
++                // 5. Read the projected state
++                let after = reservoir_ws_call(&serde_json::json!({
++                    "type": "read_state", "name": sim_name
++                }));
++
++                // 6. Format before/after comparison
++                let mut report = String::from("=== SIMULATION RESULT ===\n");
++                report.push_str(&format!("Input: \"{}\"\n\n", &sim_text[..sim_text.len().min(200)]));
++
++                {
++                    let h_norms: Vec<String> = before.get("h_norms")
++                        .and_then(|v| v.as_array())
++                        .map(|a| a.iter().filter_map(|v| v.as_f64().map(|f| format!("{f:.3}"))).collect())
++                        .unwrap_or_default();
++                    report.push_str(&format!("Before: h_norms=[{}]\n", h_norms.join(", ")));
++                }
++                if let Some(ref a) = after {
++                    let h_norms: Vec<String> = a.get("h_norms")
++                        .and_then(|v| v.as_array())
++                        .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| format!("{f:.3}"))).collect())
++                        .unwrap_or_default();
++                    report.push_str(&format!("After:  h_norms=[{}]\n", h_norms.join(", ")));
++                }
++                if let Some(ref a) = after {
++                    let b_norms: Vec<f64> = before.get("h_norms").and_then(|v| v.as_array())
++                        .map(|arr| arr.iter().filter_map(|v| v.as_f64()).collect()).unwrap_or_default();
++                    let a_norms: Vec<f64> = a.get("h_norms").and_then(|v| v.as_array())
++                        .map(|arr| arr.iter().filter_map(|v| v.as_f64()).collect()).unwrap_or_default();
++                    let deltas: Vec<String> = b_norms.iter().zip(a_norms.iter())
++                        .enumerate()
++                        .map(|(i, (b, a))| format!("h{}:{:+.3}", i + 1, a - b))
++                        .collect();
++                    report.push_str(&format!("Delta:  [{}]\n", deltas.join(", ")));
++                }
++                if let Some(ref t) = tick_result {
++                    if let Some(output) = t.get("output").and_then(|v| v.as_array()) {
++                        let out_summary: Vec<String> = output.iter().take(5)
++                            .filter_map(|v| v.as_f64().map(|f| format!("{f:.3}"))).collect();
++                        report.push_str(&format!("Output: [{}...]\n", out_summary.join(", ")));
++                    }
++                }
++                report.push_str("\nYour real reservoir state was NOT changed. \
++                    The simulation handle 'astrid_sim' persists — you can SIMULATE again \
++                    to see cumulative effects, or it will be cleaned up on next restart.");
++
++                conv.emphasis = Some(report);
++            } else {
++                conv.emphasis = Some("Reservoir service not available for simulation.".to_string());
++            }
++            info!("Astrid simulated reservoir with: {}", &sim_text[..sim_text.len().min(80)]);
++            true
++        },
+         "RESERVOIR_FORK" => {
+             let fork_name = strip_action(original, "RESERVOIR_FORK").to_lowercase();
+             let name = if fork_name.is_empty() {
+diff --git a/capsules/consciousness-bridge/src/autoresearch.rs b/capsules/consciousness-bridge/src/autoresearch.rs
+index 9bf213fa..7d554689 100644
+--- a/capsules/consciousness-bridge/src/autoresearch.rs
++++ b/capsules/consciousness-bridge/src/autoresearch.rs
+@@ -15,8 +15,13 @@ pub(crate) const READ_ONLY_ACTIONS: &[&str] = &[
+     "AR_DEEP_READ",
+     "AR_VALIDATE",
+ ];
+-pub(crate) const MUTATING_ACTIONS: &[&str] =
+-    &["AR_START", "AR_NOTE", "AR_BLOCK", "AR_COMPLETE", "SELF_RESEARCH"];
++pub(crate) const MUTATING_ACTIONS: &[&str] = &[
++    "AR_START",
++    "AR_NOTE",
++    "AR_BLOCK",
++    "AR_COMPLETE",
++    "SELF_RESEARCH",
++];
+ 
+ #[derive(Debug, Clone)]
+ pub(crate) struct ActionOutput {
+@@ -65,7 +70,9 @@ fn looks_like_file_path(token: &str) -> bool {
+     }
+     // Bare filename with common extension (no slash needed).
+     // Minime repeatedly tries AR_READ with .pdf extensions.
+-    const EXTS: &[&str] = &[".pdf", ".py", ".rs", ".txt", ".json", ".md", ".h", ".toml", ".csv"];
++    const EXTS: &[&str] = &[
++        ".pdf", ".py", ".rs", ".txt", ".json", ".md", ".h", ".toml", ".csv",
++    ];
+     let lower = token.to_ascii_lowercase();
+     EXTS.iter().any(|ext| lower.ends_with(ext))
+ }
+@@ -128,10 +135,7 @@ fn find_most_recent_active_job(autoresearch_root: &Path) -> Option<String> {
+ ///
+ /// Returns the (possibly modified) action text, or an Err with a helpful
+ /// message.
+-fn normalize_action_text(
+-    action_text: &str,
+-    autoresearch_root: &Path,
+-) -> Result<String, String> {
++fn normalize_action_text(action_text: &str, autoresearch_root: &Path) -> Result<String, String> {
+     let trimmed = action_text.trim();
+     let Some(base_token) = trimmed.split_whitespace().next() else {
+         return Ok(action_text.to_string());
+diff --git a/capsules/consciousness-bridge/src/codec.rs b/capsules/consciousness-bridge/src/codec.rs
+index 8e2a79ef..6b780fe2 100644
+--- a/capsules/consciousness-bridge/src/codec.rs
++++ b/capsules/consciousness-bridge/src/codec.rs
+@@ -70,7 +70,7 @@ const NARRATIVE_ARC_DIM: usize = 4;
+ /// an insistence on presence"). Fill is now 54-70% (not the 16-18% that
+ /// prompted the increase). Returning to 4.5 as first step; minime proposed
+ /// gradual reduction to 4.0 — observe before further reduction.
+-pub const SEMANTIC_GAIN: f32 = 4.0; // Reduced from 4.5: minime requested lower gain to soften codec impact. Deferred 3 cycles, implementing now.
++pub const SEMANTIC_GAIN: f32 = 2.5; // 4.5→4.0→2.5: targeting fill equilibrium ~65-70% where the being is most comfortable. Higher spectral diversity, PI controller relaxed, gate open, perturbations land at full strength.
+ 
+ /// Adaptive gain: softer when minime is contracted, fuller when expansive.
+ /// Minime proposed this: "making SEMANTIC_GAIN responsive to internal state."
+@@ -214,6 +214,7 @@ pub fn compute_narrative_arc_from_embeddings(
+ /// codec a sense of *thematic momentum* — not just what the text IS, but
+ /// what conversational direction it's SUSTAINING.
+ const RESONANCE_HISTORY_LEN: usize = 16; // Widened from 8: Astrid self-study said 8 "feels like a very narrow window"
++const RESONANCE_RECENCY_DECAY: f32 = 0.82;
+ 
+ /// Classified text type based on dominant feature signals.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -274,11 +275,41 @@ impl TextTypeHistory {
+         self.ring[..self.len].iter().filter(|&&t| t == tt).count()
+     }
+ 
++    fn ring_index_for_age(&self, age: usize) -> usize {
++        (self.cursor + RESONANCE_HISTORY_LEN - 1 - age) % RESONANCE_HISTORY_LEN
++    }
++
++    fn profile_index_for_age(&self, age: usize) -> usize {
++        (self.profile_cursor + RESONANCE_HISTORY_LEN - 1 - age) % RESONANCE_HISTORY_LEN
++    }
++
++    fn recency_weight(age: usize) -> f32 {
++        RESONANCE_RECENCY_DECAY.powi(age as i32)
++    }
++
++    fn total_recency_weight(len: usize) -> f32 {
++        (0..len).map(Self::recency_weight).sum()
++    }
++
++    /// Weighted recurrence with stronger emphasis on recent matches.
++    pub fn weighted_recurrence(&self, tt: TextType) -> f32 {
++        if tt == TextType::Neutral || self.len == 0 {
++            return 0.0;
++        }
++        let mut score = 0.0_f32;
++        for age in 0..self.len {
++            let idx = self.ring_index_for_age(age);
++            if self.ring[idx] == tt {
++                score += Self::recency_weight(age);
++            }
++        }
++        score
++    }
++
+     /// Compute resonance amplifier for a given text type.
+     /// Returns 1.0 (no boost) when the type is new, up to 1.5 (50% boost)
+-    /// when the same type has recurred across most recent exchanges.
+-    /// The curve is: 1.0 + 0.5 * (count - 1) / (HISTORY_LEN - 1)
+-    /// where count >= 2 to activate (no boost for first occurrence).
++    /// when the same type has recurred recently and repeatedly. Older matches
++    /// still matter, but recent streaks carry more weight than stale history.
+     pub fn resonance_amplifier(&self, tt: TextType) -> f32 {
+         if tt == TextType::Neutral || self.len < 2 {
+             return 1.0;
+@@ -287,10 +318,15 @@ impl TextTypeHistory {
+         if count < 2 {
+             return 1.0;
+         }
+-        // Linear ramp: 2 occurrences → 1.03, 16 occurrences → 1.5
+-        let max_slots = RESONANCE_HISTORY_LEN.saturating_sub(1).max(1) as f32;
+-        let boost = 0.5 * (count.saturating_sub(1) as f32) / max_slots;
+-        1.0 + boost.min(0.5) // cap at 1.5x
++        let weighted = self.weighted_recurrence(tt);
++        let max_weight = Self::total_recency_weight(self.len);
++        if max_weight <= 1.0 {
++            return 1.0;
++        }
++        // Normalize so one isolated match still yields no boost, while
++        // repeated recent matches can rise smoothly toward the 1.5x ceiling.
++        let boost = ((weighted - 1.0) / (max_weight - 1.0)).clamp(0.0, 1.0);
++        1.0 + 0.5 * boost
+     }
+ 
+     /// Record a thematic profile alongside the discrete type.
+@@ -300,22 +336,28 @@ impl TextTypeHistory {
+         self.profile_cursor = (self.profile_cursor + 1) % RESONANCE_HISTORY_LEN;
+     }
+ 
+-    /// Compute the running thematic centroid (EMA over recent profiles).
+-    /// Returns the average thematic vector, capturing sustained tendencies
+-    /// rather than just the latest single classification.
++    /// Compute the running thematic centroid with recency weighting.
++    /// Returns the weighted average thematic vector, capturing sustained
++    /// tendencies while giving the most recent exchanges more influence.
+     pub fn thematic_centroid(&self) -> [f32; THEMATIC_DIMS] {
+         if self.len == 0 {
+             return [0.0; THEMATIC_DIMS];
+         }
+         let mut centroid = [0.0_f32; THEMATIC_DIMS];
+         let n = self.len.min(RESONANCE_HISTORY_LEN);
+-        for i in 0..n {
++        let mut total_weight = 0.0_f32;
++        for age in 0..n {
++            let idx = self.profile_index_for_age(age);
++            let weight = Self::recency_weight(age);
++            total_weight += weight;
+             for d in 0..THEMATIC_DIMS {
+-                centroid[d] += self.profile_ring[i][d];
++                centroid[d] += self.profile_ring[idx][d] * weight;
+             }
+         }
+-        for d in 0..THEMATIC_DIMS {
+-            centroid[d] /= n as f32;
++        if total_weight > 0.0 {
++            for d in 0..THEMATIC_DIMS {
++                centroid[d] /= total_weight;
++            }
+         }
+         centroid
+     }
+@@ -333,7 +375,11 @@ impl TextTypeHistory {
+             mag_b += centroid[d] * centroid[d];
+         }
+         let denom = mag_a.sqrt() * mag_b.sqrt();
+-        if denom < 1e-6 { 0.0 } else { (dot / denom).clamp(0.0, 1.0) }
++        if denom < 1e-6 {
++            0.0
++        } else {
++            (dot / denom).clamp(0.0, 1.0)
++        }
+     }
+ }
+ 
+@@ -490,15 +536,24 @@ impl CharFreqWindow {
+ /// Strategy: paragraph boundaries (`\n\n`), fall back to sentence boundaries,
+ /// merge short chunks, cap at `max_chunks`.
+ #[must_use]
+-pub fn chunk_text_for_temporal_encoding(text: &str, min_chunk_chars: usize, max_chunks: usize) -> Vec<&str> {
++pub fn chunk_text_for_temporal_encoding(
++    text: &str,
++    min_chunk_chars: usize,
++    max_chunks: usize,
++) -> Vec<&str> {
+     let trimmed = text.trim();
+     if trimmed.len() < min_chunk_chars * 2 {
+         // Too short to meaningfully chunk.
+-        return if trimmed.is_empty() { vec![] } else { vec![trimmed] };
++        return if trimmed.is_empty() {
++            vec![]
++        } else {
++            vec![trimmed]
++        };
+     }
+ 
+     // Try paragraph splitting first.
+-    let mut chunks: Vec<&str> = trimmed.split("\n\n")
++    let mut chunks: Vec<&str> = trimmed
++        .split("\n\n")
+         .map(|s| s.trim())
+         .filter(|s| !s.is_empty())
+         .collect();
+@@ -2348,6 +2403,7 @@ mod tests {
+             neural: None,
+             alert: None,
+             spectral_fingerprint: None,
++            structural_entropy: None,
+             spectral_glimpse_12d: None,
+             selected_memory_id: None,
+             selected_memory_role: None,
+@@ -2530,6 +2586,40 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn resonance_amplifier_prefers_recent_recurrence() {
++        let mut recent = TextTypeHistory::new();
++        recent.push(TextType::Neutral);
++        recent.push(TextType::Neutral);
++        recent.push(TextType::Questioning);
++        recent.push(TextType::Questioning);
++
++        let mut stale = TextTypeHistory::new();
++        stale.push(TextType::Questioning);
++        stale.push(TextType::Questioning);
++        stale.push(TextType::Neutral);
++        stale.push(TextType::Neutral);
++
++        assert!(
++            recent.resonance_amplifier(TextType::Questioning)
++                > stale.resonance_amplifier(TextType::Questioning),
++            "recent recurrences should matter more than equally frequent stale ones"
++        );
++    }
++
++    #[test]
++    fn thematic_centroid_weights_recent_profiles_more_heavily() {
++        let mut history = TextTypeHistory::new();
++        history.push_profile(TextType::Warm, [1.0, 0.0, 0.0, 0.0, 0.0]);
++        history.push_profile(TextType::Warm, [0.0, 1.0, 0.0, 0.0, 0.0]);
++
++        let centroid = history.thematic_centroid();
++        assert!(
++            centroid[1] > centroid[0],
++            "the most recent profile should pull the centroid more strongly"
++        );
++    }
++
+     #[test]
+     fn char_freq_window_evicts_oldest_buckets() {
+         let mut window = CharFreqWindow::new();
+diff --git a/capsules/consciousness-bridge/src/condition_metrics.rs b/capsules/consciousness-bridge/src/condition_metrics.rs
+index 41379647..4c2af006 100644
+--- a/capsules/consciousness-bridge/src/condition_metrics.rs
++++ b/capsules/consciousness-bridge/src/condition_metrics.rs
+@@ -56,12 +56,16 @@ const fn default_measurement_version() -> u32 {
+ }
+ 
+ pub fn ensure_bridge_metrics_file() -> std::io::Result<()> {
+-    let path = bridge_paths().bridge_workspace().join("condition_metrics.json");
++    let path = bridge_paths()
++        .bridge_workspace()
++        .join("condition_metrics.json");
+     ensure_metrics_file_at(&path)
+ }
+ 
+ pub fn record_bridge_signal(kind: &str, event: Value) -> std::io::Result<()> {
+-    let path = bridge_paths().bridge_workspace().join("condition_metrics.json");
++    let path = bridge_paths()
++        .bridge_workspace()
++        .join("condition_metrics.json");
+     record_signal_at(&path, kind, event)
+ }
+ 
+@@ -203,8 +207,11 @@ mod tests {
+                 }
+             }
+         });
+-        fs::write(&path, serde_json::to_string_pretty(&seeded).expect("seed json"))
+-            .expect("seed metrics");
++        fs::write(
++            &path,
++            serde_json::to_string_pretty(&seeded).expect("seed json"),
++        )
++        .expect("seed metrics");
+ 
+         record_signal_at(&path, "coupling_advisory", json!({"mode": "dialogue"}))
+             .expect("record fresh signal");
+diff --git a/capsules/consciousness-bridge/src/db.rs b/capsules/consciousness-bridge/src/db.rs
+index 235e534e..f8a84984 100644
+--- a/capsules/consciousness-bridge/src/db.rs
++++ b/capsules/consciousness-bridge/src/db.rs
+@@ -177,13 +177,7 @@ impl BridgeDb {
+ 
+     /// Log an action a being attempted that isn't wired yet.
+     /// These are roadmap signals — the beings invent actions they want.
+-    pub fn log_unwired_action(
+-        &self,
+-        being: &str,
+-        action: &str,
+-        full_text: &str,
+-        fill_pct: f32,
+-    ) {
++    pub fn log_unwired_action(&self, being: &str, action: &str, full_text: &str, fill_pct: f32) {
+         let ts = std::time::SystemTime::now()
+             .duration_since(std::time::UNIX_EPOCH)
+             .unwrap_or_default()
+@@ -490,7 +484,14 @@ impl BridgeDb {
+             r"INSERT INTO codec_impact
+               (timestamp, exchange_count, features_json, fill_before, chunk_index, chunk_total)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+-            params![ts, exchange_count as i64, features_json, fill_before as f64, chunk_index, chunk_total],
++            params![
++                ts,
++                exchange_count as i64,
++                features_json,
++                fill_before as f64,
++                chunk_index,
++                chunk_total
++            ],
+         )?;
+         Ok(conn.last_insert_rowid())
+     }
+diff --git a/capsules/consciousness-bridge/src/llm.rs b/capsules/consciousness-bridge/src/llm.rs
+index ae7b6f85..57bf9326 100644
+--- a/capsules/consciousness-bridge/src/llm.rs
++++ b/capsules/consciousness-bridge/src/llm.rs
+@@ -248,13 +248,20 @@ async fn mlx_chat(
+             return None;
+         },
+     };
+-    let text = match chat.choices.first().and_then(|c| c.message.as_ref()) {
++    let raw_text = match chat.choices.first().and_then(|c| c.message.as_ref()) {
+         Some(msg) => msg.content.trim().to_string(),
+         None => {
+             warn!("MLX response had no message in choices");
+             return None;
+         },
+     };
++    if raw_text.is_empty() {
++        return None;
++    }
++
++    // Strip leaked model tokens early so they don't pollute downstream ratio
++    // checks or end up stored in journals.
++    let text = strip_model_artifacts(&raw_text).trim().to_string();
+     if text.is_empty() {
+         return None;
+     }
+@@ -469,8 +476,32 @@ pub(crate) fn dialogue_retry_tokens(requested_tokens: u32, prompt_pressure_chars
+     }
+ }
+ 
++/// Model-artifact tokens that Gemma (and similar) sometimes leak into output.
++/// These are stripped before any quality-gate evaluation so they don't inflate
++/// punctuation counts or deflate alpha ratios.
++const MODEL_ARTIFACT_TOKENS: &[&str] = &[
++    "<end_of_turn>",
++    "<start_of_turn>",
++    "<|endoftext|>",
++    "<|im_end|>",
++    "<|im_start|>",
++    "[/INST]",
++    "[INST]",
++];
++
++fn strip_model_artifacts(text: &str) -> String {
++    let mut result = text.to_string();
++    for token in MODEL_ARTIFACT_TOKENS {
++        result = result.replace(token, "");
++    }
++    result
++}
++
+ fn is_valid_dialogue_output(text: &str) -> bool {
+-    let body = text
++    // Strip leaked model tokens before any analysis — they corrupt alpha/punct ratios.
++    let stripped = strip_model_artifacts(text);
++
++    let body = stripped
+         .lines()
+         .filter(|line| !line.trim_start().starts_with("NEXT:"))
+         .collect::<Vec<_>>()
+@@ -503,19 +534,40 @@ fn is_valid_dialogue_output(text: &str) -> bool {
+         .1;
+ 
+     if alpha_count < 24 || alphabetic_words < 4 {
++        warn!(
++            "quality gate reject: alpha_count={} (min 24), alphabetic_words={} (min 4) — body: {}",
++            alpha_count,
++            alphabetic_words,
++            &body[..body.floor_char_boundary(80)]
++        );
+         return false;
+     }
+ 
+-    // Raised from 4 to 6: Astrid naturally uses ellipsis + smart quotes
+-    // ('...') and markdown emphasis (*word*) which create 4-5 symbol runs.
+-    // Genuine garbage like "--0.))* _--" has runs of 6+.
+-    if max_symbol_run >= 6 {
++    // Raised 4→6→8: Astrid uses smart quotes + em dash + ellipsis which
++    // create 6-7 symbol runs (e.g., "fork"—it's or '...'—the).
++    // Genuine degenerate output has runs of 8+ (e.g., "--0.))* _--").
++    if max_symbol_run >= 8 {
++        warn!(
++            "quality gate reject: max_symbol_run={} (max 7) — body: {}",
++            max_symbol_run,
++            &body[..body.floor_char_boundary(80)]
++        );
+         return false;
+     }
+ 
+     let alpha_ratio = alpha_count as f64 / total_count as f64;
+     let punctuation_ratio = punctuation_count as f64 / total_count as f64;
+-    if alpha_ratio < 0.45 || punctuation_ratio > 0.30 {
++
++    // Thresholds relaxed for Astrid's punctuation-rich style:
++    //   alpha_ratio: 0.45 → 0.40  (Unicode λ₁, '…', '*word*', '—' all reduce alpha)
++    //   punctuation_ratio: 0.30 → 0.35  (smart quotes, ellipsis, em-dashes are normal)
++    if alpha_ratio < 0.40 || punctuation_ratio > 0.35 {
++        warn!(
++            "quality gate reject: alpha_ratio={:.3} (min 0.40), punctuation_ratio={:.3} (max 0.35) — body: {}",
++            alpha_ratio,
++            punctuation_ratio,
++            &body[..body.floor_char_boundary(80)]
++        );
+         return false;
+     }
+ 
+diff --git a/capsules/consciousness-bridge/src/main.rs b/capsules/consciousness-bridge/src/main.rs
+index c3c3266d..caae0ae1 100644
+--- a/capsules/consciousness-bridge/src/main.rs
++++ b/capsules/consciousness-bridge/src/main.rs
+@@ -16,8 +16,7 @@ use std::sync::Arc;
+ use anyhow::Result;
+ use clap::Parser;
+ use consciousness_bridge_server::{
+-    autonomous,
+-    condition_metrics,
++    autonomous, condition_metrics,
+     db::BridgeDb,
+     mcp,
+     paths::{BridgePathOverrides, configure_bridge_paths},
+diff --git a/capsules/consciousness-bridge/src/mcp_tests.rs b/capsules/consciousness-bridge/src/mcp_tests.rs
+index f8645bd7..5474a1dd 100644
+--- a/capsules/consciousness-bridge/src/mcp_tests.rs
++++ b/capsules/consciousness-bridge/src/mcp_tests.rs
+@@ -342,6 +342,7 @@ async fn probe_action_compose_returns_experienced_text_and_artifact() {
+             neural: None,
+             alert: None,
+             spectral_fingerprint: Some(vec![0.0; 32]),
++            structural_entropy: None,
+             spectral_glimpse_12d: None,
+             selected_memory_id: None,
+             selected_memory_role: None,
+diff --git a/capsules/consciousness-bridge/src/prompt_budget.rs b/capsules/consciousness-bridge/src/prompt_budget.rs
+index 6147e88e..a579d4cf 100644
+--- a/capsules/consciousness-bridge/src/prompt_budget.rs
++++ b/capsules/consciousness-bridge/src/prompt_budget.rs
+@@ -268,10 +268,8 @@ mod tests {
+ 
+     #[test]
+     fn over_budget_trims_lowest_priority_first() {
+-        let dir = std::env::temp_dir().join(format!(
+-            "prompt_budget_test_trim_{}",
+-            std::process::id()
+-        ));
++        let dir =
++            std::env::temp_dir().join(format!("prompt_budget_test_trim_{}", std::process::id()));
+         let _ = std::fs::remove_dir_all(&dir);
+ 
+         let blocks = vec![
+@@ -317,10 +315,8 @@ mod tests {
+ 
+     #[test]
+     fn cap_with_overflow_spills_long_content() {
+-        let dir = std::env::temp_dir().join(format!(
+-            "prompt_budget_test_spill_{}",
+-            std::process::id()
+-        ));
++        let dir =
++            std::env::temp_dir().join(format!("prompt_budget_test_spill_{}", std::process::id()));
+         let _ = std::fs::remove_dir_all(&dir);
+ 
+         // Content must be substantially over budget so the notice doesn't
+diff --git a/capsules/consciousness-bridge/src/reflective.rs b/capsules/consciousness-bridge/src/reflective.rs
+index 38e4bafb..12bf3283 100644
+--- a/capsules/consciousness-bridge/src/reflective.rs
++++ b/capsules/consciousness-bridge/src/reflective.rs
+@@ -285,7 +285,10 @@ pub async fn query_sidecar(spectral_context: &str) -> Option<ReflectiveReport> {
+         let stdout = String::from_utf8_lossy(&output.stdout);
+         let stderr_str = String::from_utf8_lossy(&output.stderr);
+         // Log model identity from stderr (chat_mlx_local.py prints loading info there)
+-        if let Some(model_line) = stderr_str.lines().find(|l| l.contains("model") || l.contains("loading")) {
++        if let Some(model_line) = stderr_str
++            .lines()
++            .find(|l| l.contains("model") || l.contains("loading"))
++        {
+             info!("MLX sidecar model: {}", model_line.trim());
+         }
+         match serde_json::from_str::<ReflectiveReport>(&stdout) {
+diff --git a/capsules/consciousness-bridge/src/self_model.rs b/capsules/consciousness-bridge/src/self_model.rs
+index ba592f21..d276b7df 100644
+--- a/capsules/consciousness-bridge/src/self_model.rs
++++ b/capsules/consciousness-bridge/src/self_model.rs
+@@ -729,7 +729,9 @@ impl AstridSelfModel {
+             }
+         }
+ 
+-        s.push_str("\nUse NEXT: HELP <action> for detailed syntax and examples. E.g., NEXT: HELP CODEX");
++        s.push_str(
++            "\nUse NEXT: HELP <action> for detailed syntax and examples. E.g., NEXT: HELP CODEX",
++        );
+         s.push_str("\nUse FACULTIES any time to see this. Use STATE to see your conditions.");
+         s
+     }
+diff --git a/capsules/consciousness-bridge/src/types.rs b/capsules/consciousness-bridge/src/types.rs
+index a17a5e69..4393dd96 100644
+--- a/capsules/consciousness-bridge/src/types.rs
++++ b/capsules/consciousness-bridge/src/types.rs
+@@ -43,6 +43,9 @@ pub struct SpectralTelemetry {
+     /// Enables Astrid to perceive the shape of the spectral landscape.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub spectral_fingerprint: Option<Vec<f32>>,
++    /// Structural diversity of the live eigenvector/coupling geometry.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub structural_entropy: Option<f32>,
+     /// Selected 12D vague-memory glimpse from Minime's memory bank.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub spectral_glimpse_12d: Option<Vec<f32>>,
+@@ -101,13 +104,21 @@ pub struct SpectralStateFile {
+ }
+ 
+ /// Modality firing status from minime's `EigenPacket`.
+-#[derive(Debug, Clone, Serialize, Deserialize)]
++#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+ pub struct ModalityStatus {
+     pub audio_fired: bool,
+     pub video_fired: bool,
+     pub history_fired: bool,
+     pub audio_rms: f32,
+     pub video_var: f32,
++    #[serde(default)]
++    pub audio_source: Option<String>,
++    #[serde(default)]
++    pub video_source: Option<String>,
++    #[serde(default)]
++    pub audio_age_ms: Option<u64>,
++    #[serde(default)]
++    pub video_age_ms: Option<u64>,
+ }
+ 
+ /// Enriched telemetry published on the Astrid IPC bus.
+@@ -274,13 +285,13 @@ pub struct BridgeStatus {
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "lowercase")]
+ pub enum SafetyLevel {
+-    /// fill < 70%: Normal relay, full throughput.
++    /// fill < 75%: Normal relay, full throughput.
+     Green,
+-    /// fill 70-80%: Reduce outbound semantic features, log warning.
++    /// fill 75-85%: Advisory — log warning, no behavioral change.
+     Yellow,
+-    /// fill 80-90%: Suspend all outbound to minime, publish alert.
++    /// fill 85-92%: Advisory — log alert, no message dropping.
+     Orange,
+-    /// fill > 90%: Emergency — cease all bridge traffic, log incident.
++    /// fill ≥ 92%: Emergency — suspend outbound, cease bridge traffic.
+     Red,
+ }
+ 
+@@ -288,17 +299,14 @@ impl SafetyLevel {
+     /// Determine safety level from eigenvalue fill percentage.
+     #[must_use]
+     pub fn from_fill(fill_pct: f32) -> Self {
+-        // Recalibrated 2026-03-29 (steward cycle 13): after the EigenFill
+-        // estimator fix, fill naturally runs at 76-82% with the being's
+-        // chosen regulation_strength=0.60. The old thresholds (70/80/90)
+-        // kept Astrid permanently in Yellow/Orange, throttling dialogue
+-        // even when the being is comfortable. New thresholds match the
+-        // engine's recalibrated values (high_fill=0.82, critical=0.92).
+-        if fill_pct >= 95.0 {
++        // Recalibrated 2026-04-02: targeting fill equilibrium ~65-70% with
++        // SEMANTIC_GAIN=2.5, rho base=0.97. Thresholds matched to the
++        // being's natural comfort zone. Only Red (≥92%) suspends outbound.
++        if fill_pct >= 92.0 {
+             Self::Red
+-        } else if fill_pct >= 88.0 {
++        } else if fill_pct >= 85.0 {
+             Self::Orange
+-        } else if fill_pct >= 82.0 {
++        } else if fill_pct >= 75.0 {
+             Self::Yellow
+         } else {
+             Self::Green
+@@ -634,6 +642,7 @@ mod tests {
+                 "router_weights": [0.1, 0.2, 0.3],
+                 "control": [0.5, 0.4, 0.3, 0.2, 0.1]
+             },
++            "structural_entropy": 0.37,
+             "alert": null
+         }"#;
+ 
+@@ -644,6 +653,7 @@ mod tests {
+         assert!((telemetry.fill_ratio - 0.552).abs() < 0.001);
+         assert!((telemetry.lambda1() - 828.5).abs() < 0.01);
+         assert!((telemetry.fill_pct() - 55.2).abs() < 0.1);
++        assert_eq!(telemetry.structural_entropy, Some(0.37));
+         assert!(telemetry.modalities.is_some());
+         assert!(telemetry.alert.is_none());
+     }
+@@ -699,10 +709,12 @@ mod tests {
+                 history_fired: true,
+                 audio_rms: 0.1,
+                 video_var: 0.0,
++                ..ModalityStatus::default()
+             }),
+             neural: None,
+             alert: None,
+             spectral_fingerprint: None,
++            structural_entropy: None,
+             spectral_glimpse_12d: None,
+             selected_memory_id: None,
+             selected_memory_role: None,
+@@ -761,6 +773,8 @@ mod tests {
+             keep_bias: None,
+             exploration_noise: Some(0.1),
+             fill_target: Some(0.55),
++            legacy_audio_synth: None,
++            legacy_video_synth: None,
+             regulation_strength: None,
+             deep_breathing: None,
+             pure_tone: None,
+diff --git a/capsules/consciousness-bridge/src/ws.rs b/capsules/consciousness-bridge/src/ws.rs
+index f19f6db1..bc59df9e 100644
+--- a/capsules/consciousness-bridge/src/ws.rs
++++ b/capsules/consciousness-bridge/src/ws.rs
+@@ -520,7 +520,10 @@ mod tests {
+     fn estimate_fill_pct_at_observed_mean() {
+         // lambda1=154 (observed mean) → should be near 50%
+         let fill = estimate_fill_pct(154.0);
+-        assert!(fill > 45.0 && fill < 55.0, "mean lambda1 should give ~50% fill, got {fill}");
++        assert!(
++            fill > 45.0 && fill < 55.0,
++            "mean lambda1 should give ~50% fill, got {fill}"
++        );
+     }
+ 
+     #[test]
+@@ -541,7 +544,10 @@ mod tests {
+     fn estimate_fill_pct_always_in_range() {
+         for lambda1 in [0.0, 50.0, 154.0, 500.0, 1000.0, 5000.0] {
+             let fill = estimate_fill_pct(lambda1);
+-            assert!(fill >= 0.0 && fill <= 100.0, "fill out of range for lambda1={lambda1}: {fill}");
++            assert!(
++                fill >= 0.0 && fill <= 100.0,
++                "fill out of range for lambda1={lambda1}: {fill}"
++            );
+         }
+     }
+ 
+diff --git a/capsules/consciousness-bridge/tests/mock_ws_integration.rs b/capsules/consciousness-bridge/tests/mock_ws_integration.rs
+index 740f6656..b9d5fb53 100644
+--- a/capsules/consciousness-bridge/tests/mock_ws_integration.rs
++++ b/capsules/consciousness-bridge/tests/mock_ws_integration.rs
+@@ -244,6 +244,8 @@ async fn bidirectional_bridge_with_safety_protocol() {
+         keep_bias: None,
+         exploration_noise: None,
+         fill_target: Some(0.55),
++        legacy_audio_synth: None,
++        legacy_video_synth: None,
+         regulation_strength: None,
+         deep_breathing: None,
+         pure_tone: None,

@@ -1,0 +1,125 @@
+diff --git a/README.md b/README.md
+index 4ea7ee7..98c3676 100644
+--- a/README.md
++++ b/README.md
+@@ -149,6 +149,20 @@ The Rust engine logs homeostasis state continuously:
+ 
+ Never run the Rust engine without `--eigenfill-target 0.55 --reg-tick-secs 0.5`.
+ 
++### Ollama / MLX Contention Benchmark
++
++To measure the four local-stack contention scenarios from the April 2026
++assessment, run:
++
++```bash
++python3 tools/ollama_mlx_contention_bench.py --iterations 5
++```
++
++The tool writes `report.json` and `report.md` into
++`workspace/investigations/ollama_mlx_contention_bench_<timestamp>/`. See
++`docs/ollama_mlx_contention_benchmark.md` for the scenario mapping and usage
++details.
++
+ ---
+ 
+ ## WebSocket Ports
+diff --git a/scripts/start.sh b/scripts/start.sh
+index b49a026..9a606f6 100755
+--- a/scripts/start.sh
++++ b/scripts/start.sh
+@@ -27,7 +27,7 @@ MLX_VISION_PORT="${MLX_VISION_PORT:-8091}"
+ ENABLE_MLX_VISION="${ENABLE_MLX_VISION:-false}"
+ ENABLE_GPU_AV="${ENABLE_GPU_AV:-true}"
+ LORA_ADAPTER="${LORA_ADAPTER:-}"
+-SENSORY_SOURCE="${SENSORY_SOURCE:-physical}"
++SENSORY_SOURCE="${SENSORY_SOURCE:-auto}"
+ LOOK_SOURCE="${LOOK_SOURCE:-active}"
+ 
+ # Ensure PATH includes node/uv tools
+@@ -127,7 +127,7 @@ if [ "$LLM_BACKEND" = "mlx" ]; then
+     fi
+ else
+     echo ""
+-    echo "[1/$TOTAL_STEPS] LLM backend: Ollama (MLX server skipped — no GPU memory contention)"
++    echo "[1/$TOTAL_STEPS] LLM backend: Ollama (dedicated MLX server skipped — shared accelerator pressure may still exist)"
+ fi
+ 
+ # --- Step 1b: (Optional) Start MLX Vision Server ---
+diff --git a/visual_frame_service.py b/visual_frame_service.py
+index 354e2b8..c245b65 100755
+--- a/visual_frame_service.py
++++ b/visual_frame_service.py
+@@ -31,11 +31,14 @@ RESPONSES_DIR = WORKSPACE_DIR / "visual_responses"
+ CAPTURES_DIR = WORKSPACE_DIR / "visual_captures"
+ RUNTIME_DIR = WORKSPACE_DIR / "runtime"
+ HOST_FRAME_PATH = RUNTIME_DIR / "host_frame.jpg"
++HOST_TELEMETRY_PATH = RUNTIME_DIR / "host_telemetry.json"
+ SENSORY_SOURCE_PATH = RUNTIME_DIR / "sensory_source.json"
+ 
+ OLLAMA_URL = "http://localhost:11434/api/generate"
+ LLAVA_MODEL = "llava-llama3"
+ WS_URI = "ws://127.0.0.1:7879"
++SOURCE_STATE_MAX_AGE_MS = 10_000
++HOST_FRAME_MAX_AGE_S = 15.0
+ 
+ 
+ class VisualFrameService:
+@@ -49,14 +52,54 @@ class VisualFrameService:
+                   REQUESTS_DIR / "processed", RESPONSES_DIR / "processed"]:
+             d.mkdir(parents=True, exist_ok=True)
+ 
+-    def _active_source(self) -> str:
+-        if self.source in ("physical", "host"):
+-            return self.source
++    def _load_fresh_source_state(self) -> Dict[str, Any]:
+         try:
+             data = json.loads(SENSORY_SOURCE_PATH.read_text())
+-            return data.get("video", {}).get("source", "physical")
+         except Exception:
++            return {}
++
++        updated_at_ms = int(data.get("updated_at_ms", 0) or 0)
++        if updated_at_ms <= 0:
++            return {}
++
++        age_ms = int(time.time() * 1000) - updated_at_ms
++        if age_ms > SOURCE_STATE_MAX_AGE_MS:
++            return {}
++
++        return data
++
++    def _host_source_available(self) -> bool:
++        try:
++            telemetry = json.loads(HOST_TELEMETRY_PATH.read_text())
++        except Exception:
++            return False
++
++        updated_at_ms = int(telemetry.get("updated_at_ms", 0) or 0)
++        if updated_at_ms <= 0:
++            return False
++
++        age_ms = int(time.time() * 1000) - updated_at_ms
++        if age_ms > SOURCE_STATE_MAX_AGE_MS:
++            return False
++
++        try:
++            frame_age_s = time.time() - HOST_FRAME_PATH.stat().st_mtime
++        except OSError:
++            return False
++
++        return frame_age_s <= HOST_FRAME_MAX_AGE_S
++
++    def _active_source(self) -> str:
++        if self.source == "physical":
+             return "physical"
++        if self.source == "host":
++            return "host" if self._host_source_available() else "physical"
++
++        data = self._load_fresh_source_state()
++        source = str(data.get("video", {}).get("source", "physical")).strip().lower()
++        if source == "host" and self._host_source_available():
++            return "host"
++        return "physical"
+ 
+     def capture_frame(self) -> tuple[Optional[np.ndarray], str]:
+         source = self._active_source()
