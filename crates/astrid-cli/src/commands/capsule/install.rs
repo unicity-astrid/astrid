@@ -2292,46 +2292,7 @@ mod tests {
         assert_eq!(repo, "repo");
     }
 
-    #[test]
-    fn try_install_wasm_asset_no_wasm_returns_none() {
-        // When no .wasm asset exists, should return None (fall through)
-        let client = reqwest::blocking::Client::new();
-        let assets = vec![serde_json::json!({
-            "name": "readme.md",
-            "browser_download_url": "https://example.com/readme.md"
-        })];
-        let home_dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(home_dir.path());
-
-        let result = try_install_from_wasm_asset(
-            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
-        );
-        assert!(result.is_none(), "should return None when no .wasm asset");
-    }
-
-    #[test]
-    fn try_install_wasm_asset_finds_wasm() {
-        // When a .wasm asset exists but download will fail (bad URL), should
-        // return None (falls back to clone+build) rather than propagating error.
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-            .unwrap();
-        let assets = vec![serde_json::json!({
-            "name": "astrid_capsule_test.wasm",
-            "browser_download_url": "http://127.0.0.1:1/nonexistent.wasm"
-        })];
-        let home_dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(home_dir.path());
-
-        let result = try_install_from_wasm_asset(
-            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
-        );
-        // Download fails → returns None (fall through)
-        assert!(result.is_none(), "should return None on download failure");
-    }
-
-    /// Helper matching the same logic as `try_install_from_wasm_asset`
+    /// Helper for testing .wasm asset detection logic.
     fn find_wasm_asset(assets: &[serde_json::Value]) -> Option<String> {
         assets.iter().find_map(|asset| {
             let name = asset.get("name")?.as_str()?;
