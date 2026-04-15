@@ -375,39 +375,9 @@ pub(crate) fn install_from_github(
         anyhow::anyhow!("Invalid GitHub URL format. Expected github.com/org/repo or @org/repo")
     })?;
 
-    // Priority 1: direct download (no API call, no rate limit).
-    // Uses the well-known GitHub release URL pattern + raw Capsule.toml.
-    let wasm_name = format!("astrid_{}.wasm", repo.replace('-', "_"));
-    let direct_url =
-        format!("https://github.com/{org}/{repo}/releases/latest/download/{wasm_name}");
-    let capsule_toml_url =
-        format!("https://raw.githubusercontent.com/{org}/{repo}/HEAD/Capsule.toml");
-
-    if let Ok(wasm_resp) = client.get(&direct_url).send()
-        && wasm_resp.status().is_success()
-        && let Ok(toml_resp) = client.get(&capsule_toml_url).send()
-        && toml_resp.status().is_success()
-    {
-        if !BATCH_MODE.load(Ordering::Relaxed) {
-            eprintln!("Downloading {wasm_name}...");
-        }
-        let tmp_dir = tempfile::tempdir()?;
-        let wasm_path = tmp_dir.path().join(&wasm_name);
-        let mut file = std::fs::File::create(&wasm_path)?;
-        let mut limited = wasm_resp.take(50 * 1024 * 1024);
-        std::io::copy(&mut limited, &mut file)?;
-        drop(file);
-
-        let mut toml_content = String::new();
-        toml_resp
-            .take(1024 * 1024)
-            .read_to_string(&mut toml_content)?;
-        std::fs::write(tmp_dir.path().join("Capsule.toml"), &toml_content)?;
-
-        return install_from_local_path_inner(tmp_dir.path(), workspace, home, original_source);
-    }
-
-    // Priority 2: GitHub API (for .capsule archives or non-standard asset names).
+    // Priority 1: `.capsule` archive from GitHub release assets. A packed
+    // archive contains everything needed for install (WASM binary, manifest,
+    // and bundled WIT definitions including shared SDK contracts).
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
     if let Ok(response) = client.get(&api_url).send()
@@ -432,123 +402,10 @@ pub(crate) fn install_from_github(
                 return unpack_and_install(&download_path, workspace, home, original_source);
             }
         }
-
-        let tag = json
-            .get("tag_name")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        if !tag.is_empty()
-            && let Some(result) = try_install_from_wasm_asset(
-                &client,
-                org,
-                repo,
-                tag,
-                assets,
-                workspace,
-                home,
-                original_source,
-            )
-        {
-            return result;
-        }
     }
 
-    // Last resort: clone + build from source
+    // Priority 2: clone + build from source with astrid-build.
     clone_and_build(url, repo, workspace, home, original_source)
-}
-
-/// Try to install from a raw `.wasm` release asset paired with `Capsule.toml`
-/// fetched from the repository at the release tag.
-///
-/// Returns `Some(Result)` if a `.wasm` asset was found (install attempted),
-/// or `None` to signal the caller should fall through to clone+build.
-#[expect(clippy::too_many_arguments)]
-fn try_install_from_wasm_asset(
-    client: &reqwest::blocking::Client,
-    org: &str,
-    repo: &str,
-    tag: &str,
-    assets: &[serde_json::Value],
-    workspace: bool,
-    home: &AstridHome,
-    original_source: Option<&str>,
-) -> Option<anyhow::Result<()>> {
-    // Find a .wasm asset
-    let (wasm_name, download_url) = assets.iter().find_map(|asset| {
-        let name = asset.get("name")?.as_str()?;
-        if !Path::new(name)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("wasm"))
-        {
-            return None;
-        }
-        let url = asset.get("browser_download_url")?.as_str()?;
-        Some((name.to_string(), url.to_string()))
-    })?;
-
-    if !BATCH_MODE.load(Ordering::Relaxed) {
-        eprintln!("Downloading {wasm_name} from release {tag}...");
-    }
-
-    // Download the .wasm binary
-    let tmp_dir = match tempfile::tempdir() {
-        Ok(d) => d,
-        Err(e) => return Some(Err(e.into())),
-    };
-
-    let wasm_path = tmp_dir.path().join(&wasm_name);
-    let download_result = (|| -> anyhow::Result<()> {
-        let mut file = std::fs::File::create(&wasm_path)?;
-        let download_res = client.get(&download_url).send()?;
-        // Enforce a strict 50MB download limit to prevent DoS attacks
-        let mut limited_stream = download_res.take(50 * 1024 * 1024);
-        std::io::copy(&mut limited_stream, &mut file)?;
-        Ok(())
-    })();
-
-    if let Err(e) = download_result {
-        eprintln!("Failed to download WASM asset: {e}. Falling back to source build.");
-        return None;
-    }
-
-    // Fetch Capsule.toml from the repo at the release tag
-    let capsule_toml_url =
-        format!("https://raw.githubusercontent.com/{org}/{repo}/{tag}/Capsule.toml");
-
-    let capsule_toml_result = (|| -> anyhow::Result<String> {
-        let response = client.get(&capsule_toml_url).send()?;
-        if !response.status().is_success() {
-            anyhow::bail!(
-                "Capsule.toml not found at {tag} (HTTP {})",
-                response.status()
-            );
-        }
-        // Limit Capsule.toml to 1MB to prevent OOM from malicious repos
-        let mut content = String::new();
-        response.take(1024 * 1024).read_to_string(&mut content)?;
-        Ok(content)
-    })();
-
-    let capsule_toml_content = match capsule_toml_result {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("Failed to fetch Capsule.toml: {e}. Falling back to source build.");
-            return None;
-        },
-    };
-
-    // Assemble: write Capsule.toml alongside the .wasm in the temp dir
-    let capsule_toml_path = tmp_dir.path().join("Capsule.toml");
-    if let Err(e) = std::fs::write(&capsule_toml_path, &capsule_toml_content) {
-        return Some(Err(e.into()));
-    }
-
-    Some(install_from_local_path_inner(
-        tmp_dir.path(),
-        workspace,
-        home,
-        original_source,
-    ))
 }
 
 /// Clone a GitHub repository and build the capsule from source using `astrid-build`.
@@ -1126,6 +983,28 @@ fn content_address_wasm(
 /// Content-address WIT files from a capsule's `wit/` directory into the
 /// shared `wit/` store. Each `.wit` file is BLAKE3-hashed and stored as
 /// `wit/{hash}.wit`. Returns a map of original filename → hash.
+/// Content-address all `.wit` files under `target_dir/wit/` (recursively)
+/// into the system-wide append-only BLAKE3 store at `home.wit_dir()`.
+///
+/// The content store is a single source of truth shared across all principals
+/// and all capsules — identical WIT content (e.g. the SDK's shared contracts
+/// bundled into every capsule archive) is deduped to a single blob on disk.
+///
+/// # Append-only semantics
+///
+/// The store is append-only from the installer's perspective. Blobs are never
+/// deleted on uninstall — only an explicit admin GC (`astrid wit gc`) sweeps
+/// unreferenced blobs. This preserves replay: a historic capsule state can be
+/// reconstructed as long as the blobs it referenced still exist.
+///
+/// # Returns
+///
+/// A `HashMap<String, String>` mapping each WIT file's **relative path** under
+/// `wit/` (e.g. `"deps/astrid-contracts/astrid-contracts.wit"`) to its BLAKE3
+/// hex hash. This is stored in `meta.json` as the capsule's WIT manifest.
+///
+/// After content addressing succeeds, the per-capsule `target_dir/wit/`
+/// directory is deleted — `wit_files` is the authoritative reference.
 fn content_address_wit(
     home: &AstridHome,
     target_dir: &Path,
@@ -1140,13 +1019,42 @@ fn content_address_wit(
     let wit_store = home.wit_dir();
     std::fs::create_dir_all(&wit_store)?;
 
-    let entries = std::fs::read_dir(&wit_source)
-        .with_context(|| format!("failed to read {}", wit_source.display()))?;
+    content_address_wit_recursive(&wit_source, &wit_source, &wit_store, &mut hashes)?;
+
+    // The per-capsule wit/ directory is no longer needed — the content store
+    // holds the blobs and meta.json holds the relative-path → hash manifest.
+    std::fs::remove_dir_all(&wit_source).with_context(|| {
+        format!(
+            "failed to remove per-capsule wit dir: {}",
+            wit_source.display()
+        )
+    })?;
+
+    Ok(hashes)
+}
+
+/// Recursive helper for `content_address_wit`. Walks the tree and hashes every
+/// `.wit` file, keying the returned map by path relative to `wit_root`.
+fn content_address_wit_recursive(
+    wit_root: &Path,
+    current: &Path,
+    wit_store: &Path,
+    hashes: &mut std::collections::HashMap<String, String>,
+) -> anyhow::Result<()> {
+    let entries = std::fs::read_dir(current)
+        .with_context(|| format!("failed to read {}", current.display()))?;
 
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("wit") {
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            content_address_wit_recursive(wit_root, &path, wit_store, hashes)?;
+            continue;
+        }
+
+        if !file_type.is_file() || path.extension().and_then(|e| e.to_str()) != Some("wit") {
             continue;
         }
 
@@ -1161,9 +1069,17 @@ fn content_address_wit(
             );
         }
 
-        let filename = path
-            .file_name()
-            .ok_or_else(|| anyhow::anyhow!("WIT file has no filename: {}", path.display()))?
+        // Key by path relative to the capsule's wit/ root so tree shape is
+        // preserved (e.g. "deps/astrid-contracts/astrid-contracts.wit").
+        let rel_path = path
+            .strip_prefix(wit_root)
+            .with_context(|| {
+                format!(
+                    "WIT path {} not under wit root {}",
+                    path.display(),
+                    wit_root.display()
+                )
+            })?
             .to_string_lossy()
             .into_owned();
 
@@ -1173,14 +1089,33 @@ fn content_address_wit(
         let hash = blake3::hash(&content).to_hex().to_string();
         let dest = wit_store.join(format!("{hash}.wit"));
 
+        // Atomic write: only write if absent, and use a temp file + rename
+        // so concurrent installers writing the same hash don't observe
+        // partial content. Multiple writers converge on identical bytes.
         if !dest.exists() {
-            std::fs::write(&dest, &content)?;
+            let tmp = wit_store.join(format!("{hash}.tmp.{}", std::process::id()));
+            std::fs::write(&tmp, &content)
+                .with_context(|| format!("failed to write temp file: {}", tmp.display()))?;
+            // rename is atomic on POSIX when source and dest are in the same dir.
+            // If another writer beat us to it, we lose the race harmlessly.
+            match std::fs::rename(&tmp, &dest) {
+                Ok(()) => {},
+                Err(_) if dest.exists() => {
+                    let _ = std::fs::remove_file(&tmp);
+                },
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(e).with_context(|| {
+                        format!("failed to rename temp file to {}", dest.display())
+                    });
+                },
+            }
         }
 
-        hashes.insert(filename, hash);
+        hashes.insert(rel_path, hash);
     }
 
-    Ok(hashes)
+    Ok(())
 }
 
 /// Convert a nested namespace→interface→T map to namespace→interface→String
@@ -2357,46 +2292,7 @@ mod tests {
         assert_eq!(repo, "repo");
     }
 
-    #[test]
-    fn try_install_wasm_asset_no_wasm_returns_none() {
-        // When no .wasm asset exists, should return None (fall through)
-        let client = reqwest::blocking::Client::new();
-        let assets = vec![serde_json::json!({
-            "name": "readme.md",
-            "browser_download_url": "https://example.com/readme.md"
-        })];
-        let home_dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(home_dir.path());
-
-        let result = try_install_from_wasm_asset(
-            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
-        );
-        assert!(result.is_none(), "should return None when no .wasm asset");
-    }
-
-    #[test]
-    fn try_install_wasm_asset_finds_wasm() {
-        // When a .wasm asset exists but download will fail (bad URL), should
-        // return None (falls back to clone+build) rather than propagating error.
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-            .unwrap();
-        let assets = vec![serde_json::json!({
-            "name": "astrid_capsule_test.wasm",
-            "browser_download_url": "http://127.0.0.1:1/nonexistent.wasm"
-        })];
-        let home_dir = tempfile::tempdir().unwrap();
-        let home = AstridHome::from_path(home_dir.path());
-
-        let result = try_install_from_wasm_asset(
-            &client, "org", "repo", "v0.1.0", &assets, false, &home, None,
-        );
-        // Download fails → returns None (fall through)
-        assert!(result.is_none(), "should return None on download failure");
-    }
-
-    /// Helper matching the same logic as `try_install_from_wasm_asset`
+    /// Helper for testing .wasm asset detection logic.
     fn find_wasm_asset(assets: &[serde_json::Value]) -> Option<String> {
         assets.iter().find_map(|asset| {
             let name = asset.get("name")?.as_str()?;

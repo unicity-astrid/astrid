@@ -91,9 +91,6 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     // Install each capsule with progress.
     let locked = install_capsules(&selected)?;
 
-    // Install standard WIT interface definitions to the principal's home.
-    install_standard_wit(&home, &principal);
-
     // Write Distro.lock.
     let lock = create_lock_from_parts(schema_version, &distro_id, &distro_version, locked);
     write_lock(&lock_path, &lock)?;
@@ -103,124 +100,6 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     eprintln!("  Run {} to start.", Theme::prompt("astrid"),);
 
     Ok(())
-}
-
-/// Standard WIT interface files to install during init.
-///
-/// Fetched from the canonical WIT repo at `raw.githubusercontent.com`. These
-/// define the typed contracts between capsules (llm, session, spark, etc.).
-/// Installed to `~/.astrid/home/{principal}/wit/` so capsules and the LLM
-/// can read them via `home://wit/`.
-const STANDARD_WIT_FILES: &[&str] = &[
-    "context.wit",
-    "hook.wit",
-    "llm.wit",
-    "prompt.wit",
-    "registry.wit",
-    "session.wit",
-    "spark.wit",
-    "tool.wit",
-    "types.wit",
-];
-
-/// Canonical WIT repo base URL for fetching interface definitions.
-const WIT_BASE_URL: &str = "https://raw.githubusercontent.com/unicity-astrid/wit/main/interfaces";
-
-/// Install standard WIT interface definitions to `~/.astrid/home/{principal}/wit/`.
-///
-/// Per-principal install (Nix-aligned): a principal's `home://wit/` reflects
-/// the interfaces available to their installed capsules. Best-effort: logs
-/// warnings on failure but does not block init.
-fn install_standard_wit(home: &AstridHome, principal: &astrid_core::PrincipalId) {
-    let wit_dir = home.principal_home(principal).root().join("wit");
-    if let Err(e) = std::fs::create_dir_all(&wit_dir) {
-        eprintln!(
-            "{}",
-            Theme::warning(&format!("Failed to create WIT directory: {e}"))
-        );
-        return;
-    }
-
-    // Skip if all expected files already exist (idempotent, resilient to partial installs).
-    let all_files_exist = STANDARD_WIT_FILES
-        .iter()
-        .all(|&file| wit_dir.join(file).exists());
-    if all_files_exist {
-        return;
-    }
-
-    eprintln!("  Installing standard WIT interfaces...");
-
-    let client = match reqwest::blocking::Client::builder()
-        .user_agent("astrid-cli")
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!(
-                "{}",
-                Theme::warning(&format!("Failed to create HTTP client for WIT fetch: {e}"))
-            );
-            return;
-        },
-    };
-
-    let mut installed = 0u32;
-    for filename in STANDARD_WIT_FILES {
-        let url = format!("{WIT_BASE_URL}/{filename}");
-        let target = wit_dir.join(filename);
-
-        let response = match client.get(&url).send() {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!(
-                    "{}",
-                    Theme::warning(&format!("Failed to fetch {filename}: {e}"))
-                );
-                continue;
-            },
-        };
-
-        if !response.status().is_success() {
-            eprintln!(
-                "{}",
-                Theme::warning(&format!(
-                    "Failed to fetch {filename} (HTTP {})",
-                    response.status()
-                ))
-            );
-            continue;
-        }
-
-        let content = match response.text() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "{}",
-                    Theme::warning(&format!("Failed to read response body for {filename}: {e}"))
-                );
-                continue;
-            },
-        };
-
-        if let Err(e) = std::fs::write(&target, &content) {
-            eprintln!(
-                "{}",
-                Theme::warning(&format!("Failed to write {filename}: {e}"))
-            );
-        } else {
-            installed = installed.saturating_add(1);
-        }
-    }
-
-    if installed > 0 {
-        eprintln!(
-            "  {} {installed}/{} WIT interfaces installed",
-            Theme::success("OK"),
-            STANDARD_WIT_FILES.len()
-        );
-    }
 }
 
 /// Initialize the current directory as an Astrid workspace (if not already).
@@ -601,28 +480,5 @@ mod tests {
     fn distro_source_resolution_full_url() {
         let url = "https://example.com/Distro.toml";
         assert_eq!(resolve_distro_url(url), url);
-    }
-
-    #[test]
-    fn install_standard_wit_creates_principal_wit_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let home = astrid_core::dirs::AstridHome::from_path(tmp.path());
-        let principal = astrid_core::PrincipalId::default();
-
-        // Best-effort: network calls fail in CI, but directory creation
-        // happens before the HTTP fetch so the side-effect is testable.
-        install_standard_wit(&home, &principal);
-
-        let expected = home.principal_home(&principal).root().join("wit");
-        assert!(
-            expected.exists(),
-            "WIT directory must be created inside the principal home"
-        );
-
-        let old_path = home.wit_dir().join("astrid");
-        assert!(
-            !old_path.exists(),
-            "WIT must not be written to the old root-level location"
-        );
     }
 }

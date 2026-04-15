@@ -20,8 +20,21 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 ### Fixed
 
 - **`capsule remove` no longer deletes env config by default.** User configuration (API keys, secrets) in `env.json` is preserved across uninstall/reinstall cycles. Use `--purge` to explicitly delete saved configuration. (#647)
+- **`astrid-build` targets `wasm32-wasip2`** for Component Model capsules. Was still targeting `wasm32-wasip1`, producing plain WASM modules. (#649)
+- **`astrid-build` bundles SDK shared WIT** (`astrid-contracts.wit`) into capsule archives as a WIT dep, so `wit_type` references in `Capsule.toml` resolve at install time without manual WIT duplication. (#649)
+- **JSON Schema field names converted to snake_case** in `wit_schema` to match `serde(rename_all = "snake_case")` wire convention. (#649)
 
 ### Added
+
+- **Content-addressed WIT store** at `~/.astrid/wit/{blake3}.wit`. Install-time WIT files (including `deps/`) are recursively hashed, deduped, and stored with atomic writes. Per-capsule `wit/` is removed after addressing; `meta.json.wit_files` is the authoritative manifest. Append-only by design for replay preservation. (#649)
+- **`astrid wit gc`** — admin-only mark-sweep GC for the WIT content store. Dry-run by default, `--force` to delete. Scans all principal homes + workspace. (#649)
+
+### Removed
+
+- **Raw `.wasm` release asset install paths.** Capsule distribution is now `.capsule` archive or clone+build. Raw WASM assets can't carry WIT dependencies. (#649)
+- **`install_standard_wit()` from init.** Fetched stale per-interface WIT from upstream repo; shared contracts are now bundled by `astrid-build` into each capsule archive. (#649)
+
+### Added (prior)
 
 - **WIT-driven IPC topic schemas.** Capsules declare `wit_type = "record-name"` on `[[topic]]` entries in `Capsule.toml`. At install time, `wit-parser` reads the record from the capsule's `wit/` directory, extracts field names, types, and `///` doc comments into JSON Schema, and bakes it into `meta.json`. At runtime, `WasmEngine::load()` populates the `SchemaCatalog` from baked schemas. The LLM sees typed field descriptions without capsule authors writing JSON Schema by hand. (#643)
 - `astrid-build::wit_schema` module — converts WIT records to JSON Schema. Handles primitives, `option<T>`, `list<T>`, tuple, enum, flags, variant, result, nested records, and type aliases. (#643)

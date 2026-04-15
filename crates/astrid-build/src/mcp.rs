@@ -100,7 +100,7 @@ pub(crate) fn convert(dir: &Path, json_filename: &str, output: Option<&str>) -> 
         .map(std::path::PathBuf::as_path)
         .collect();
 
-    pack_capsule_archive(&out_file, &toml, None, dir, &refs)?;
+    pack_capsule_archive(&out_file, &toml, None, dir, &refs, None)?;
 
     info!("Successfully converted to capsule: {}", out_file.display());
     Ok(())

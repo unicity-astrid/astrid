@@ -60,7 +60,7 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     match result.tier {
         PluginTier::Wasm => {
             let wasm_path = build_dir.path().join("plugin.wasm");
-            pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[])?;
+            pack_capsule_archive(&out_file, &toml_content, Some(&wasm_path), dir, &[], None)?;
         },
         PluginTier::Node => {
             // Tier 2: include the entire build output (source tree, node_modules,
@@ -78,7 +78,14 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
                 additional.push(entry.path());
             }
             let refs: Vec<&Path> = additional.iter().map(PathBuf::as_path).collect();
-            pack_capsule_archive(&out_file, &toml_content, None, build_dir.path(), &refs)?;
+            pack_capsule_archive(
+                &out_file,
+                &toml_content,
+                None,
+                build_dir.path(),
+                &refs,
+                None,
+            )?;
         },
     }
 

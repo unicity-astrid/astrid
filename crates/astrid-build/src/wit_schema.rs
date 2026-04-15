@@ -125,11 +125,16 @@ fn record_to_json_schema_depth(
             }
         }
 
+        // Convert WIT kebab-case field names to snake_case to match the
+        // serde `rename_all = "snake_case"` convention used by wit_events!
+        // generated Rust structs on the wire.
+        let rust_field_name = field.name.replace('-', "_");
+
         if !is_optional {
-            required.push(field.name.clone());
+            required.push(rust_field_name.clone());
         }
 
-        properties.insert(field.name.clone(), schema);
+        properties.insert(rust_field_name, schema);
     }
 
     let mut schema = serde_json::json!({
