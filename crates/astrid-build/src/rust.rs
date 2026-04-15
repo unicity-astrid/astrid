@@ -36,7 +36,7 @@ pub(crate) fn build(dir: &Path, output: Option<&str>) -> Result<()> {
     // Stage the wit/ directory — merges the capsule's own wit/ (if any) with
     // the astrid-sdk shared contracts as a WIT dependency so capsule authors
     // can reference shared records via `wit_type` without duplication.
-    let wit_staging = stage_wit_directory(dir)?;
+    let wit_staging = stage_wit_directory(dir, &meta)?;
 
     pack_capsule_archive(
         &out_file,
@@ -67,9 +67,10 @@ fn verify_cargo_available() -> Result<()> {
 fn resolve_package_metadata(
     dir: &Path,
 ) -> Result<(cargo_metadata::Metadata, String, String, String)> {
+    // Resolve the full dependency graph (not no_deps) so we can locate
+    // the astrid-sdk source directory for WIT file bundling.
     let meta = cargo_metadata::MetadataCommand::new()
         .current_dir(dir)
-        .no_deps()
         .exec()
         .context("Failed to parse Cargo metadata")?;
 
@@ -88,7 +89,7 @@ fn resolve_package_metadata(
         .or_else(|| meta.root_package())
         .context("No package found matching the target directory in Cargo.toml")?;
 
-    let crate_name = package.name.clone().to_string();
+    let crate_name = package.name.to_string();
     let package_version = package.version.to_string();
     let wasm_name = crate_name.replace('-', "_");
 
@@ -206,8 +207,11 @@ fn resolve_output_dir(output: Option<&str>) -> Result<PathBuf> {
 ///     astrid-contracts/
 ///       astrid-contracts.wit       ← shared SDK contracts
 /// ```
-fn stage_wit_directory(capsule_dir: &Path) -> Result<Option<PathBuf>> {
-    let sdk_contracts = find_sdk_contracts_wit(capsule_dir);
+fn stage_wit_directory(
+    capsule_dir: &Path,
+    meta: &cargo_metadata::Metadata,
+) -> Result<Option<PathBuf>> {
+    let sdk_contracts = find_sdk_contracts_wit(meta);
 
     // If the capsule has neither its own wit/ nor we can find shared SDK
     // contracts, there's nothing to stage.
@@ -216,8 +220,12 @@ fn stage_wit_directory(capsule_dir: &Path) -> Result<Option<PathBuf>> {
         return Ok(None);
     }
 
-    // Stage under target/ so it's cleaned by `cargo clean`.
-    let staging = capsule_dir.join("target").join(".astrid-wit-staging");
+    // Stage under the resolved target directory so it works in workspaces
+    // and gets cleaned by `cargo clean`.
+    let staging = meta
+        .target_directory
+        .as_std_path()
+        .join(".astrid-wit-staging");
     if staging.exists() {
         fs::remove_dir_all(&staging)
             .with_context(|| format!("failed to clean staging dir: {}", staging.display()))?;
@@ -262,12 +270,13 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> Result<()> {
         let entry = entry?;
         let from = entry.path();
         let to = dst.join(entry.file_name());
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
+        // Use metadata() which follows symlinks, consistent with the archiver.
+        let meta = entry.metadata()?;
+        if meta.is_dir() {
             fs::create_dir_all(&to)
                 .with_context(|| format!("failed to create dir: {}", to.display()))?;
             copy_dir_contents(&from, &to)?;
-        } else if ty.is_file() {
+        } else if meta.is_file() {
             fs::copy(&from, &to)
                 .with_context(|| format!("failed to copy {} → {}", from.display(), to.display()))?;
         }
@@ -278,15 +287,9 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> Result<()> {
 /// Locate the `astrid-sdk` crate source directory and return the path to its
 /// bundled `wit/astrid-contracts.wit`, or `None` if unavailable.
 ///
-/// Uses `cargo metadata` (with deps) to resolve the exact version of
-/// `astrid-sdk` this capsule depends on, then reads the WIT file from the
-/// corresponding registry source directory.
-fn find_sdk_contracts_wit(capsule_dir: &Path) -> Option<PathBuf> {
-    let meta = cargo_metadata::MetadataCommand::new()
-        .current_dir(capsule_dir)
-        .exec()
-        .ok()?;
-
+/// Searches the already-resolved cargo metadata for the `astrid-sdk` package
+/// and reads the WIT file from the corresponding registry source directory.
+fn find_sdk_contracts_wit(meta: &cargo_metadata::Metadata) -> Option<PathBuf> {
     let sdk_pkg = meta
         .packages
         .iter()
