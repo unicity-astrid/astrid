@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import base64
 from collections import deque
+from io import BytesIO
 import json
 import logging
 import math
@@ -58,6 +59,7 @@ MINIME_WORKSPACE = Path(
 MINIME_RUNTIME = MINIME_WORKSPACE / "runtime"
 HOST_TELEMETRY_PATH = MINIME_RUNTIME / "host_telemetry.json"
 SENSORY_SOURCE_PATH = MINIME_RUNTIME / "sensory_source.json"
+SENSORY_SOURCE_MAX_AGE_MS = 10_000
 
 MANAGED_LIVE_CAP = 6000
 MANAGED_BUCKET_SIZE = 3000
@@ -254,12 +256,17 @@ def perceive_visual(camera_index: int, use_claude: bool = False) -> Optional[dic
     if description is None:
         return None
 
+    visual_features = extract_visual_features(frame_bytes)
+
     perception = {
         "type": "visual",
         "timestamp": datetime.now().isoformat(),
         "backend": backend,
         "description": description,
         "frame_path": str(frame_path),
+        "feature_schema": "visual8_v1",
+        "feature_keys": list(visual_features.keys()),
+        "features": visual_features,
     }
 
     # Write to perceptions directory for the bridge to read.
@@ -269,6 +276,111 @@ def perceive_visual(camera_index: int, use_claude: bool = False) -> Optional[dic
     log.info(f"Visual perception: {out_path}")
 
     return perception
+
+
+def _zero_visual_features() -> dict[str, float]:
+    return {
+        "luminance": 0.0,
+        "temperature": 0.0,
+        "contrast": 0.0,
+        "hue": 0.0,
+        "saturation": 0.0,
+        "complexity": 0.0,
+        "red_green_balance": 0.0,
+        "chromatic_energy": 0.0,
+    }
+
+
+def extract_visual_features(frame_bytes: bytes) -> dict[str, float]:
+    """Compute deterministic 8D scene features from the raw camera frame."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        log.debug(f"Visual feature extraction unavailable (Pillow missing): {exc}")
+        return _zero_visual_features()
+
+    try:
+        with Image.open(BytesIO(frame_bytes)) as image:
+            rgb = image.convert("RGB").resize((48, 48))
+            width, height = rgb.size
+            pixels = list(rgb.getdata())
+    except Exception as exc:
+        log.debug(f"Visual feature extraction failed: {exc}")
+        return _zero_visual_features()
+
+    if not pixels:
+        return _zero_visual_features()
+
+    count = float(len(pixels))
+    luminances = [
+        0.2126 * r + 0.7152 * g + 0.0722 * b
+        for (r, g, b) in pixels
+    ]
+    mean_r = sum(r for (r, _, _) in pixels) / count
+    mean_g = sum(g for (_, g, _) in pixels) / count
+    mean_b = sum(b for (_, _, b) in pixels) / count
+    mean_luminance = (sum(luminances) / count) / 255.0
+
+    luminance = math.tanh((mean_luminance - 0.5) * 3.0) * 1.8
+    temperature = math.tanh((((mean_r + 0.5 * mean_g - mean_b) / 255.0) * 2.0)) * 1.8
+
+    luminance_var = sum(
+        ((lum / 255.0) - mean_luminance) ** 2
+        for lum in luminances
+    ) / count
+    contrast = math.tanh(math.sqrt(luminance_var) * 5.0) * 1.8
+
+    max_c = max(mean_r, mean_g, mean_b)
+    min_c = min(mean_r, mean_g, mean_b)
+    delta = max_c - min_c
+    if delta < 1.0:
+        hue_deg = 0.0
+    elif abs(max_c - mean_r) < 0.01:
+        hue_deg = 60.0 * (((mean_g - mean_b) / delta) % 6.0)
+    elif abs(max_c - mean_g) < 0.01:
+        hue_deg = 60.0 * (((mean_b - mean_r) / delta) + 2.0)
+    else:
+        hue_deg = 60.0 * (((mean_r - mean_g) / delta) + 4.0)
+    if hue_deg < 0.0:
+        hue_deg += 360.0
+    hue = math.tanh((hue_deg / 180.0) - 1.0) * 1.8
+
+    mean_saturation = sum(
+        ((max(r, g, b) - min(r, g, b)) / max(r, g, b)) if max(r, g, b) > 0 else 0.0
+        for (r, g, b) in pixels
+    ) / count
+    saturation = math.tanh(mean_saturation * 3.0) * 1.8
+
+    transitions = 0
+    for row in range(height):
+        start = row * width
+        end = start + width
+        row_pixels = pixels[start:end]
+        for idx in range(1, len(row_pixels)):
+            r1, g1, b1 = row_pixels[idx - 1]
+            r2, g2, b2 = row_pixels[idx]
+            diff = abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2)
+            if diff > 60:
+                transitions += 1
+    complexity = math.tanh((transitions / max(height, 1)) / 15.0) * 1.8
+
+    red_green_balance = math.tanh((mean_r - mean_g) / 128.0) * 1.8
+
+    r_var = sum((r - mean_r) ** 2 for (r, _, _) in pixels) / count
+    g_var = sum((g - mean_g) ** 2 for (_, g, _) in pixels) / count
+    b_var = sum((b - mean_b) ** 2 for (_, _, b) in pixels) / count
+    chromatic_energy = math.tanh((math.sqrt((r_var + g_var + b_var) / 3.0) / 80.0)) * 1.8
+
+    return {
+        "luminance": round(luminance, 4),
+        "temperature": round(temperature, 4),
+        "contrast": round(contrast, 4),
+        "hue": round(hue, 4),
+        "saturation": round(saturation, 4),
+        "complexity": round(complexity, 4),
+        "red_green_balance": round(red_green_balance, 4),
+        "chromatic_energy": round(chromatic_energy, 4),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +731,12 @@ def resolve_ascii_source(configured: str) -> str:
     try:
         data = json.loads(SENSORY_SOURCE_PATH.read_text())
     except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return "camera"
+    updated_at_ms = int(data.get("updated_at_ms", 0) or 0)
+    if updated_at_ms <= 0:
+        return "camera"
+    age_ms = int(time.time() * 1000) - updated_at_ms
+    if age_ms > SENSORY_SOURCE_MAX_AGE_MS:
         return "camera"
     source = str(data.get("video", {}).get("source", "physical")).strip().lower()
     return "host" if source == "host" else "camera"
