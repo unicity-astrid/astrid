@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:09:23.570168",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dark room with two windows. The window on the left is veiled by curtains, while the one on the right remains open, allowing a soft glow to seep into the room. A white door stands slightly ajar on the left wall, perhaps leading to another part of the dwelling.\n\nA black couch rests against the left wall, its dark color contrasting with the lighter walls and floor. On it, a single blue bottle sits atop a red bag, their vibrant colors standing out against the night's shadow. The objects' positions suggest a quiet night in, with everything neatly arranged.\n\nThe room exudes an air of tranquility and solitude, the darkness interrupted only by the windows and door. It's as if time has paused for a while, allowing one to take in the scene at their own pace.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-09-18.084841.jpg"
-}

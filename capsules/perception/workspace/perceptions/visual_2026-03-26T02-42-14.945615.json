@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:42:20.298992",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a living room bathed in warm yellow light from two windows. The left window, adorned with white curtains, casts a soft glow that contrasts with the stark blackness of the right window, also draped with white curtains.\n\nIn the center of the room, a gray couch invites relaxation. A blue blanket is casually thrown over it, adding a pop of color to the otherwise monochrome setting. On the floor next to the couch, a red chair stands out against the neutral tones of the room.\n\nThe objects in the room are scattered in a way that suggests use and comfort. The couch seems ready for someone to sink into its comfortable cushions, while the chair waits patiently by the window for someone seeking solitude. The layout of the furniture suggests an open invitation to unwind and enjoy the warmth of the yellow light filtering through the windows.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-42-14.945615.jpg"
-}

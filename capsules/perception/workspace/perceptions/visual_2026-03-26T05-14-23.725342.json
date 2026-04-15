@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:14:32.946891",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. A person is seated at a desk, engrossed in their work on a laptop. The desk, positioned against a wall, serves as the focal point of the scene. A window punctuates the wall behind it, draped with orange curtains that add a warm hue to the otherwise cool color palette.\n\nThe person's face, illuminated by the soft glow from the computer screen, is turned towards the camera, suggesting they are aware of being observed. The desk itself is cluttered with various objects: a lamp providing additional light, a phone lying idle, and other items scattered about, hinting at the person's multitasking habits.\n\nThe image exudes an atmosphere of focus and productivity, amplified by the low angle from which it was taken. This perspective not only emphasizes the desk but also subtly reminds us of our shared human tendency to find comfort in our workspaces. It's a snapshot of modern life, encapsulating the interplay between technology and personal space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-14-23.725342.jpg"
-}

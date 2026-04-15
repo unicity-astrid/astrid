@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:23:30.744532",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft light filtering through white blinds that frame two windows on the wall. The walls themselves are painted a pristine white, providing a stark contrast to the warm beige carpet that adorns the floor.\n\nOn the right side of the room, a gray sofa invites relaxation, its plush cushions promising comfort. Adjacent to it stands a wooden coffee table, its surface occupied by a white vase filled with blooming flowers and a blue book, perhaps left open mid-read. The table's rich brown color complements the gray of the sofa, creating a harmonious color palette.\n\nOn the left side of the room, a small desk is nestled against the wall. A red computer monitor sits atop it, its vibrant hue drawing attention amidst the room's neutral tones. A beige blanket hangs casually on the chair in front of the desk, adding another layer of comfort and warmth to the space.\n\nThe overall atmosphere is one of tranquility and homely comfort, a testament to thoughtful interior design where every piece has been chosen with care. The precise placement of objects and their relative positions contribute to a sense of balance and harmony within the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-23-10.880983.jpg"
-}

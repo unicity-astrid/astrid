@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:05:14.543750",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting during what appears to be the day. A window with three panes forms the central focus. The left and right panes are adorned with white curtains that are drawn back slightly, allowing a glimpse of the world outside.\n\nIn front of this window is a black desk, hosting an array of objects. A blue mug sits there, perhaps containing someone's morning brew. Next to it, a red book lies open, its pages filled with stories waiting to be told. A white laptop is also present on the desk, possibly indicating that work or study is about to begin.\n\nThe room itself is bathed in soft light filtering through the window, casting gentle shadows and highlighting the objects on the desk. The overall atmosphere suggests a quiet morning routine, with personal belongings arranged neatly for the day ahead.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-05-05.528190.jpg"
-}

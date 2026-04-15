@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:04:47.128704",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room at night. A person is seated on a chair, their back facing us, engrossed in the glow of a laptop screen. The room is softly illuminated by a window in the background, which is adorned with orange curtains and blinds that hang down like silent sentinels. The overall atmosphere is one of tranquility and focus, as if time itself has paused to allow for this moment of concentration.\n\nIn terms of object count, there's one person, one chair, one laptop, and one window in the frame. The person appears to be alone, with no other individuals visible in the image. The laptop is the primary source of light in the room, casting a warm glow that contrasts with the cool darkness outside. The window serves as a portal to another world, its orange curtains adding a splash of color to the scene.\n\nAs for actions and locations, the person is seated on the chair next to the window, with the laptop resting on their lap. The laptop is open, indicating it's in use. The window is positioned directly behind the person, its position suggesting that they might be looking out into the night from this vantage point.\n\nThe relative positions of the objects are such that the chair and the",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-04-34.742315.jpg"
-}

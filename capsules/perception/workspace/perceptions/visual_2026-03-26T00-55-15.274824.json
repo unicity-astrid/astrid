@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:55:24.496403",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft orange lighting from a window on the left side. The room exudes an air of tranquility and solitude. A solitary figure sits on a bed covered with a black blanket, their identity hidden by the shadows. Their presence is subtly revealed by the reflection of light on the floor beneath them.\n\nThe room itself is painted in a soothing shade of yellow, creating a warm contrast against the cool darkness outside. The left wall houses two windows, one of which is adorned with white curtains that flutter gently with the night breeze. The right wall features a single window, its view obscured by a dark curtain.\n\nOn the floor next to the bed, a black bag rests quietly, perhaps containing the occupant's belongings or personal items. The overall atmosphere of the room is peaceful and serene, a quiet retreat from the hustle and bustle of life outside.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-55-15.274824.jpg"
-}

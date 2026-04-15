@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:37:31.051918",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. The room is bathed in soft light filtering through two windows, each adorned with vibrant orange curtains that add a warm hue to the otherwise cool tones of the room. \n\nA black couch sits against one wall, its dark color contrasting sharply with the lighter surroundings. On it rests a blue cup, perhaps once filled with a hot beverage. Adjacent to the couch, a table stands laden with various objects - a white vase, possibly holding fresh flowers or perhaps just decorative; a black bottle, its contents unknown but its presence adding to the lived-in feel of the room; and a blue soda can, hinting at a recent snack or celebration.\n\nThe walls of the room are painted in a pristine white color, providing a stark contrast to the darker elements within the room. A door is visible on one side of the room, suggesting an entrance or exit point. The precise arrangement of objects and their relative positions create a sense of harmony and balance in the room. \n\nDespite the numerous objects present, there's an underlying simplicity to the scene - no clutter or excessive decor. It's as if each item has been thoughtfully placed, contributing to the overall aesthetic of the room. There's no text visible in the image",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-37-23.890264.jpg"
-}

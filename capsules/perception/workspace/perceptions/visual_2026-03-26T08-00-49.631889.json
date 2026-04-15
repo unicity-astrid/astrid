@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:00:55.037264",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft, natural light filtering through two windows on the right wall. The left window is veiled by a curtain, while the right one stands open, inviting the sunlight to dance across the room.\n\nIn the heart of this room is a coffee table, its surface adorned with a blue vase that adds a pop of color to the otherwise neutral palette. A white blanket casually drapes over the armrest of a black leather couch, suggesting a cozy atmosphere perfect for relaxation or intimate conversations.\n\nThe couch itself is positioned on the left side of the room, providing an unobstructed view of the windows and their incoming light. The overall scene paints a picture of comfort and tranquility, an inviting space where one can unwind after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-00-49.631889.jpg"
-}

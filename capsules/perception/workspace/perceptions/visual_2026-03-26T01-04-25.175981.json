@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:04:31.620660",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room bathed in soft, dim light. The room is dominated by a large window adorned with yellow curtains, which casts a warm glow onto the room. A white curtain hangs on one side of this window, adding to the cozy ambiance.\n\nOn the left side of the photo, a black couch invites relaxation. It's positioned against a wall that features a white door and a brown cabinet, providing both storage and an exit/entry point to the outside world.\n\nThe right side of the room houses a desk with a blue computer monitor resting on it. The desk is also draped with a yellow tablecloth that matches the curtains, creating a harmonious color scheme in the room. A black chair is tucked neatly under the desk, ready for use.\n\nAdding an interesting element to the scene is a red fire extinguisher placed strategically near the window. Its presence suggests safety precautions taken by the inhabitants of this space.\n\nOverall, this image paints a picture of a comfortable and inviting living space, where one can relax on the couch or work at the desk with their favorite beverage in hand.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-04-25.175981.jpg"
-}

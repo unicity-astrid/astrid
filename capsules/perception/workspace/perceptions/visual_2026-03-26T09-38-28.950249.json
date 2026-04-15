@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:38:34.596633",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in natural light filtering through a large window with white blinds. The window, located on the left wall, illuminates the room, casting soft shadows and highlighting the textures of the furniture.\n\nOn the right wall, a gray couch sits invitingly, its plush cushions untouched. Behind it, the wall is adorned with two framed pictures, their contents hidden from view but adding to the homely ambiance. A blue vase rests on a wooden table in front of the couch, its vibrant color contrasting with the warm tones of the wood.\n\nThe floor beneath is made of rich hardwood, reflecting the light and enhancing the warmth of the room. Above, the ceiling is painted white, providing a neutral backdrop that allows the other elements in the room to stand out.\n\nOverall, the room exudes a sense of comfort and tranquility, with every object meticulously placed, creating a harmonious balance within the space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-38-28.950249.jpg"
-}

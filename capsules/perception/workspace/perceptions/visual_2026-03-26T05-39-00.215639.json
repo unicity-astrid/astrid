@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:39:11.575711",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room during nighttime. The dominant color scheme is black and white, punctuated by occasional splashes of blue and yellow. \n\nIn the foreground, a table stands against the wall. Upon it rests a laptop computer, its screen glowing with life. A single can of soda sits next to it, untouched and full. Behind this table, a desk is visible, draped in an orange blanket that adds a warm contrast to the cool tones of the room.\n\nThe walls of the room are painted white, providing a stark backdrop for the scene. Two windows punctuate these walls - one on each side. The left window is veiled with curtains, while the right window is covered by a sheet, both adding an air of mystery to the room.\n\nOn the left wall, there's a solitary light switch, its purpose hinted at but not fulfilled in the image. The overall atmosphere is one of tranquility and solitude, as if waiting for someone to return home and bring it back to life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-39-00.215639.jpg"
-}

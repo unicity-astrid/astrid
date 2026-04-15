@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:06:17.596880",
-  "backend": "llava",
-  "description": "This image captures a serene scene set in a dimly lit living room. The room is bathed in a soft, warm glow that emanates from the windows on the left wall. These windows are covered with orange curtains, adding a vibrant splash of color to the otherwise muted tones of the room.\n\nOn the right wall, there's a window draped with white curtains, providing a stark contrast to its orange counterparts. The curtains hang still, undisturbed by any breeze or movement.\n\nIn front of this window, on the right side of the image, sits a black couch. It's unoccupied, waiting for someone to sink into its comfortable cushions and enjoy the view outside. \n\nTo the left of the couch, there's a small table holding two objects: a white lamp casting a gentle light and a blue candle standing tall next to it. The candle is unlit, its wick untouched.\n\nThe walls of the room are painted in a dark color, providing a neutral backdrop that allows the other elements in the room to stand out. Despite the darkness, there's an air of tranquility about this space, as if inviting one to sit down and lose themselves in thought or conversation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-06-10.791722.jpg"
-}

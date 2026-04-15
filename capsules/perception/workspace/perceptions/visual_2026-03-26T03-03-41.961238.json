@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:03:47.938726",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The main focus is a black table, which stands out against the darkness. On the table, there's a blue soda can and an empty beer bottle, hinting at a recent gathering or solitary evening spent in front of the television.\n\nIn front of the window, a black curtain hangs, partially obscuring the view outside. The window itself is divided into three panes, with one pane being covered by a yellow curtain that adds a splash of color to the otherwise monochrome setting.\n\nThe room's lighting is minimalistic, coming from a single light source located on the wall in the background. This light casts long shadows and highlights the textures of the objects in the room, creating an atmosphere of tranquility and solitude.\n\nOverall, the image paints a picture of a quiet evening spent alone, with remnants of a past night's activities still visible on the table. The precise arrangement of objects and their relative positions contribute to the overall narrative of the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-03-41.961238.jpg"
-}

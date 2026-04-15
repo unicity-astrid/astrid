@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:23:45.554838",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light. Dominating the scene is a wooden coffee table, its rich brown hues contrasting with the black couch that sits behind it. The table hosts three objects: two blue bottles and an orange soda can, their colors popping against the muted tones of the room.\n\nA window punctuates one wall, draped with white curtains that filter the outside light, casting gentle shadows on the floor. The night sky is visible through the window, its dark expanse adding a sense of tranquility to the scene.\n\nThe walls are painted in a soothing shade of gray, complementing the black couch and wooden table. The overall atmosphere is one of comfort and relaxation, as if waiting for someone to sit down with a drink and enjoy the quiet evening by the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-23-40.481159.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:38:01.328151",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The dominant colors are black and white, creating an atmosphere of tranquility. A window with yellow curtains punctuates one wall, allowing a soft light to seep into the room. \n\nOn a table draped with a blue tablecloth, three objects stand out against the monochrome background. There's a glass bottle, possibly containing water or soda, its transparency contrasting with the surrounding darkness. Next to it is a white plastic cup, perhaps waiting to be filled with a beverage. A black ashtray completes this tableau, hinting at recent human activity.\n\nThe room itself is sparsely furnished, its simplicity adding to the serene ambiance. The objects on the table are stationary, suggesting that the person who used them has stepped away for a moment. The overall scene paints a picture of solitude and calm in an everyday setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-37-52.446553.jpg"
-}

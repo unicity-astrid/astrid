@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:45:52.127872",
-  "backend": "llava",
-  "description": "In the image, a man is comfortably seated in a gray chair inside a room bathed in sunlight filtering through white blinds on two windows. He's wearing headphones, perhaps listening to his favorite tunes or an interesting podcast. His attention seems to be focused on something off-camera, as he holds a blue cup with a straw in his hand.\n\nThe room appears to be a cozy living space, furnished with a brown coffee table and a gray couch against one wall. A white curtain hangs from the window next to the couch, adding to the homely atmosphere. The man is positioned near the window on the right side of the image, enjoying the natural light that illuminates his surroundings.\n\nThe objects in the room are arranged harmoniously, creating a balanced composition. The man's position on the gray chair and his interaction with the cup suggest he might be taking a break or about to enjoy a hot beverage. The relative positions of the objects indicate thoughtful placement for comfort and functionality within the space.\n\nOverall, this image captures a quiet moment in someone's day, filled with tranquility and relaxation as they soak up the sun and their surroundings.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-45-10.300597.jpg"
-}

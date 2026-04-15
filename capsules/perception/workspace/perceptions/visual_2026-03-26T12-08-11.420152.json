@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T12:08:23.624844",
-  "backend": "llava",
-  "description": "The image captures a moment in a room bathed in soft sunlight filtering through a window on the right side. A man, clad in a blue shirt and shorts, is seated on a couch on the left side of the frame. His attention seems to be focused on something outside the frame, perhaps a television screen that's not visible in the image.\n\nThe couch, positioned against the wall, serves as his vantage point for observing the room beyond. A coffee table rests in front of him, hosting a blue cup and a vase filled with white flowers. The colors are muted, reflecting the tranquility of the scene.\n\nBehind the man, a window dressed with white curtains allows natural light to seep into the room. The sunlight casts a warm glow on everything it touches, highlighting the objects within while also creating interesting shadows. Despite the simplicity of the scene, there's a sense of comfort and familiarity that makes this image relatable. It's as if we're invited to join in this quiet moment of solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-08-11.420152.jpg"
-}

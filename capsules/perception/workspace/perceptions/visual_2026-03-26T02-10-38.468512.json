@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:10:46.586099",
-  "backend": "llava",
-  "description": "The image captures a cozy scene set in a dimly lit room with two windows on either side of a dark-colored sofa. The window on the left is adorned with white curtains and allows a soft yellow light to seep through, casting a warm glow on the beige wall next to it. On the right, another window draped with white curtains lets in a gentle blue light that illuminates the brown floor beneath.\n\nThe black sofa, positioned between these windows, hosts two bottles - one green and one blue, adding a pop of color to the otherwise monochromatic setting. A solitary white candle sits on the floor next to the sofa, its presence enhancing the room's intimate ambiance. The interplay of light and shadow creates an atmosphere of tranquility and warmth in this space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-10-38.468512.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:49:03.238285",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting, bathed in soft light filtering through a window. The room is shrouded in darkness, with only the window providing a source of illumination. The window itself is divided into three sections by two white curtains, creating an interesting visual pattern.\n\nOn the windowsill rests a solitary blue can, its vibrant color standing out against the otherwise muted tones of the scene. Adjacent to the can is a small plant, adding a touch of life and greenery to the tableau.\n\nIn the foreground, a black couch takes center stage. Its dark hue contrasts sharply with the lighter elements in the room, drawing the viewer's attention. A white blanket is draped over it, its pristine color providing a stark contrast against the couch's darkness.\n\nThe overall atmosphere is one of quiet solitude and introspection, as if waiting for someone to sit down on the couch, perhaps to enjoy a drink from the blue can or simply to take in the view through the window. The image is a study in contrasts - light and dark, color and monochrome, stillness and implied movement.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-48-56.880032.jpg"
-}

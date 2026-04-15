@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:49:59.250519",
-  "backend": "llava",
-  "description": "This image captures a serene moment in a cozy living room. The main focus is a **gray dog**, comfortably lying on its side on a **white couch**. The dog's head is resting on the armrest of the couch, suggesting it is in deep sleep.\n\nThe room itself is bright and airy, with a large window allowing natural light to flood in. A **wooden coffee table** sits in front of the couch, hosting two items: a **black vase** and a **blue mug**, possibly indicating a quiet afternoon tea time.\n\nOn one side of the room, there's a **bookshelf filled with books**, hinting at a love for reading in this household. On another side, there's a **wooden dresser**, adding to the warm and homely atmosphere.\n\nThe walls are painted white, providing a neutral backdrop that enhances the colors within the room. The overall scene exudes tranquility and comfort, typical of a quiet afternoon spent indoors with one's beloved pet.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-49-35.525500.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:55:03.921671",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting during the day. Dominating the scene is a black coffee table, positioned centrally in the room. Atop the table, an open laptop sits, its screen facing upwards, inviting use. A pink towel casually drapes over the armrest of the couch that surrounds the table, adding a pop of color to the otherwise monochrome setting.\n\nOn one side of the room, a white wall stands against which a window is installed. The window is adorned with white curtains, partially drawn back to let in natural light that illuminates the room. On the other side, a black door can be seen, providing an exit or entrance to this tranquil space.\n\nThe image is taken from the perspective of someone sitting on the couch, offering a view of these objects arranged within their home. The relative positions of these objects suggest a well-organized and comfortable living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-54-58.076098.jpg"
-}

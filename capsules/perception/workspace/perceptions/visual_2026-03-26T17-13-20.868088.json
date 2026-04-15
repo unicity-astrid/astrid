@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:13:31.649440",
-  "backend": "llava",
-  "description": "The image captures a serene domestic scene set in a living room bathed in soft natural light filtering through white curtains. Dominating the left side of the frame is a comfortable gray couch, its plush cushions inviting relaxation. A black cat, embodying tranquility, is curled up on the couch, fast asleep.\n\nIn front of the couch, serving as a functional centerpiece, is a brown coffee table. It's here that one might enjoy their morning cup of coffee or engage in a casual conversation. The table hosts several objects: a blue book lying closed, perhaps waiting to be read; and a white mug, its contents hidden from view.\n\nOn the right side of the image, a beige rug adds warmth to the room, its texture contrasting with the smooth surfaces of the couch and coffee table. Its placement balances the composition, creating a harmonious visual rhythm.\n\nEvery object in this image has been meticulously placed, their positions relative to each other carefully considered to create a scene that is both aesthetically pleasing and functionally practical. It's an everyday tableau transformed into art through the lens of the camera.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-13-20.868088.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:25:36.414281",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting. Dominating the center of the frame is a wooden coffee table, its surface adorned with various items that add to the homely atmosphere. A laptop, possibly indicating recent use, rests on top of the table, accompanied by a blue mug and a pink book, perhaps waiting to be picked up for reading.\n\nTo the right of the table, a white armchair invites relaxation. It's currently occupied by a person, their face blurred out, adding an air of mystery to the scene. The armchair is positioned in front of a window that opens up to a view of trees, bringing a touch of nature into the room.\n\nThe room itself is painted white, providing a neutral backdrop that enhances the colors of the objects within it. A beige rug underfoot adds warmth and comfort to the space. Overall, the image paints a picture of a cozy living area where one might spend time in quiet contemplation or engaging in leisurely activities.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-25-30.578555.jpg"
-}

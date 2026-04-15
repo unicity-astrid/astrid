@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:01:38.607748",
-  "backend": "llava",
-  "description": "This image captures a tranquil scene in a living room at night. The room is dimly lit, creating an atmosphere of calm and serenity. The main source of light comes from a large window on the right wall, adorned with orange curtains that add a warm hue to the otherwise cool-toned room.\n\nIn front of this window, there's a black couch draped with a white blanket, inviting one to snuggle up for a cozy night in. A coffee table sits in front of the couch, hosting a blue vase and a white candle, adding a touch of elegance and tranquility to the space.\n\nOn the left wall, another window can be seen, this one dressed with yellow curtains that contrast nicely with their orange counterpart on the opposite side. The relative positions of these objects create a harmonious balance in the room, making it appear both cozy and spacious.\n\nOverall, this image paints a picture of a peaceful evening spent in the comfort of one's own home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-01-29.214778.jpg"
-}

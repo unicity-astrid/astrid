@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:47:54.266108",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft sunlight filtering through two windows draped with white curtains. The sun casts a warm glow on the walls and floor, enhancing the cozy atmosphere.\n\nDominating the scene is a gray sofa, comfortably nestled against one wall. It faces the right side of the image, inviting relaxation and conversation. A black coffee table sits before it, hosting a blue water bottle and a small plant that adds a touch of green to the room.\n\nOn the left side of the image, a brown armchair with a gray cushion offers additional seating. A cat is curled up on it in peaceful slumber, embodying tranquility. The armchair's position creates a warm conversation nook between the sofa and the armchair.\n\nThe relative positions of the objects suggest thoughtful design - the sofa and armchair form an L shape around the coffee table, fostering interaction while maintaining separate spaces for relaxation or work. The sunlight streaming in from the windows illuminates every corner of this inviting living room scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-47-18.208674.jpg"
-}

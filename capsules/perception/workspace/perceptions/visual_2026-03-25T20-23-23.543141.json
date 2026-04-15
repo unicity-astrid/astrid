@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:23:28.740131",
-  "backend": "llava",
-  "description": "The image captures a moment of solitude in an otherwise empty room. The sole source of light comes from a person standing in the bottom left corner of the frame. The individual, clad in a white shirt and blue jeans, casts a soft glow that illuminates their face but leaves the rest of the room shrouded in darkness. Their head is turned towards the right side of the image, suggesting they might be looking at something off-frame.\n\nThe room itself is devoid of furniture or other objects, amplifying the sense of isolation. The black background serves to highlight the person and their light source, creating a stark contrast that draws attention to them. Despite the darkness, there's a certain intrigue to the scene - one wonders about the story behind this image, what it might represent in terms of emotion or atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-23-23.543141.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:46:55.856331",
-  "backend": "llava",
-  "description": "In the image, a man with sunglasses is sitting on a wooden bench in a room that appears to be a living area. He is wearing a blue shirt and is seated on his left leg. The wooden bench he's sitting on has a black metal frame. \n\nThe room is bright and airy, with white walls and a window letting in natural light. A table covered with a white cloth is visible in the background. On the floor next to the man, there's a black suitcase. \n\nThe overall atmosphere of the image suggests a casual setting, perhaps someone waiting or taking a break. The sunglasses on his face might indicate it's bright outside or he's just back from an outdoor activity. The presence of the suitcase could suggest travel or moving.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-46-47.752376.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:36:06.687120",
-  "backend": "llava",
-  "description": "The image captures a serene and dimly lit room bathed in soft yellow light filtering through two windows. The room is adorned with two couches, one gray and the other blue, positioned parallel to each other. A black coffee table sits between them, draped with a white cloth that adds a touch of elegance to the setting. \n\nA lamp casts its warm glow on the table, creating an inviting ambiance. On the right side of the room, a brown curtain hangs gracefully, adding depth and texture to the space. The precise positioning of these objects creates a harmonious balance within the room, making it appear both cozy and sophisticated.\n\nPlease note that this description is based solely on the visible elements in the image and does not include any speculative or imaginary content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-36-01.781475.jpg"
-}

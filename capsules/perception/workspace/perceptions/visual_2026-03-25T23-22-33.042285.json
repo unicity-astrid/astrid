@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:22:39.262421",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting at night. The main focus is on a dark room with two windows and an open door leading to another room.\n\nThe first window, located on the left side of the room, has its blinds partially drawn. A faint light glows through the gaps in the blinds, illuminating the interior of the room subtly. This light reveals a white wall adorned with a picture frame hanging above it.\n\nOn the right side of the image, there's another window. Unlike the first one, this one is entirely dark, with no visible light or objects inside. It stands as a stark contrast to its counterpart.\n\nThe door, located on the left side of the image near the dark window, is slightly ajar. A sliver of light from the adjacent room can be seen through it, suggesting another space beyond this room.\n\nOverall, the image paints a picture of tranquility and quiet solitude within a home at night. The play of light and shadow adds depth to the scene, creating an atmosphere that's both cozy and mysterious.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-22-33.042285.jpg"
-}

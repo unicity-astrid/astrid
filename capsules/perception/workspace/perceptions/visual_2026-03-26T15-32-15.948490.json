@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:32:28.933149",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window on the wall. The window is adorned with white curtains that frame the view outside, adding a touch of elegance to the room. A beige carpet covers the floor, providing a warm and cozy atmosphere.\n\nAgainst one wall stands a gray couch, inviting and comfortable. On top of it rests a blue vase, its vibrant color contrasting beautifully with the neutral tones of the room. In front of the couch, a black coffee table holds a white tray that cradles a red candle, ready to cast a soft glow when lit.\n\nTo one side of the room, there's a bookshelf filled with various books, suggesting a love for reading in this household. The relative positions of these objects create a harmonious balance within the space, making it not just a living room, but a reflection of personal taste and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-32-15.948490.jpg"
-}

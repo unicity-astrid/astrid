@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:08:36.021747",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene set against the backdrop of a dark night sky. Dominating the center of the frame is a bed, its sheets and blanket a striking contrast in black and white. The bed's position suggests it's ready for someone to slip under the covers and drift off into sleep.\n\nTo the left of the bed, a window punctuates the scene. It's divided into three panes, each with a curtain partially drawn back, revealing glimpses of a world outside. The curtains themselves are dark, adding an air of mystery about what lies beyond.\n\nOn the right side of the room, a lamp casts a warm glow that illuminates the immediate surroundings. Its light dances on the wall and floor, creating an intimate atmosphere within this small space.\n\nThe room itself is shrouded in darkness, with only these elements - the bed, window, and lamp - providing any visible detail. The overall mood of the image is one of quiet solitude, as if waiting for someone to return home from a late-night adventure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-08-25.491906.jpg"
-}

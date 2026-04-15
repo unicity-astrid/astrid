@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:56:16.180046",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room bathed in soft, warm light. The room, painted in soothing shades of gray and white, exudes an air of tranquility. A dark green couch sits invitingly against one wall, a black coffee table resting in front of it.\n\nTwo windows punctuate the walls, their glass panes reflecting the ambient light. One window is veiled with a white curtain, while the other reveals a glimpse of the world outside - a tree standing tall under the night sky.\n\nThe room is not devoid of life though. A black cat has found its perch on the coffee table, its dark silhouette contrasting sharply against the lighter surface. It sits there, perhaps lost in thought or simply enjoying the quietude of the room.\n\nEvery object in this room tells a story, from the comfortable couch that promises rest and relaxation to the curious cat exploring its surroundings. Together, they paint a picture of a peaceful night spent indoors.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-56-10.385330.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:03:56.882193",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from two windows adorned with white curtains. The furniture, crafted from dark wood, adds a touch of elegance to the room. A gray couch invites relaxation, while a black coffee table sits ready for use.\n\nA beige blanket, casually draped over the back of the couch, suggests recent human activity. On the table, a blue mug and a pink book lie next to each other, hinting at someone's leisurely morning or afternoon. The precise placement of these objects creates a harmonious balance within the room.\n\nDespite the presence of man-made elements like the furniture and decor, there's an inherent simplicity that pervades the scene. The white walls contrast with the dark wood furniture, while the beige blanket adds warmth to the space. The image is devoid of any text or discernible actions by objects.\n\nOverall, this living room exudes a sense of tranquility and orderliness, each object meticulously placed in its designated spot, contributing to a well-organized and inviting space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-03-49.468008.jpg"
-}

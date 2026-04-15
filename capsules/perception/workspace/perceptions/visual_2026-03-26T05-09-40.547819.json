@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:09:52.935952",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. At the center of the scene is a man, dressed in a vibrant yellow shirt and a crisp white hat, seated at a desk that's shrouded in darkness. His attention seems to be absorbed by something on the desk, which houses a computer monitor and a lamp.\n\nThe room itself is modest, with a window punctuating one wall adorned with beige curtains. The window allows for some natural light to seep into the room, casting long shadows and adding depth to the scene. Despite the darkness, there's an air of tranquility that pervades the image, as if time has paused in this corner of the world.\n\nThe man's position at the desk suggests he might be working or perhaps engaged in some form of leisure activity on the computer screen. His focused demeanor and the lit window suggest it could be either early morning or late evening.\n\nOverall, the image paints a picture of solitude and introspection, encapsulating a single moment frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-09-40.547819.jpg"
-}

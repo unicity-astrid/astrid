@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:19:01.384723",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a room bathed in soft, dim lighting. At the center of the frame, a man is seated at a desk, his figure illuminated by the glow of the laptop screen he's engrossed in. He's dressed in a black shirt, and his attention is focused on the task at hand.\n\nThe desk, cluttered with various objects, suggests a space that's well-used and lived-in. A blue water bottle stands out amidst the chaos, perhaps indicating the man's commitment to hydration even during long work hours.\n\nIn the background, a window draped with yellow curtains lets in a soft light that adds warmth to the scene. The curtains are drawn slightly back, allowing some of the outside world to seep into this intimate space.\n\nThe room itself is small and cozy, with walls painted white that reflect the dim lighting. On one wall hangs a mirror, adding depth and dimension to the space. The overall atmosphere is one of calm concentration, as if time has paused in this corner of the world for the man at his desk.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-18-51.231179.jpg"
-}

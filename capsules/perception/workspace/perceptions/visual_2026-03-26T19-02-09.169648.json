@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:02:22.682195",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting, bathed in soft natural light filtering through two windows adorned with white curtains. The room is painted in a soothing shade of beige, creating a warm and inviting atmosphere.\n\nIn the foreground, a black couch rests comfortably against the wall, its plush cushions untouched. A red blanket, vibrant against the monochrome furniture, drapes over it, adding a pop of color to the scene. \n\nAdjacent to the couch, a wooden coffee table holds court. Upon it sits a laptop computer, its screen glowing with unseen data. Beside it, a glass filled with water catches the light, reflecting the room's ambiance.\n\nThe room itself is devoid of any human presence, adding an air of tranquility. The objects within are static, each in their own space yet contributing to a harmonious composition. The couch and table stand close to each other, suggesting frequent interaction or shared use.\n\nOverall, this image paints a picture of quiet domesticity, where every object has its place and purpose.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-02-09.169648.jpg"
-}

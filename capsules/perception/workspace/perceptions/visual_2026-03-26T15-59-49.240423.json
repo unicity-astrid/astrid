@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:59:55.187460",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft sunlight streaming in from two windows on the wall. The windows are dressed with white curtains that hang still, adding to the serene ambiance of the room.\n\nIn the foreground, there's a brown wooden coffee table that holds a single book and a remote control, perhaps indicating a quiet afternoon spent reading or watching TV. Adjacent to the coffee table is a gray couch, inviting and comfortable with a beige blanket casually draped over its backrest.\n\nThe floor beneath these pieces of furniture is covered in a brown carpet that adds warmth to the room. On one side of the wall, there's a door leading out of this tranquil space.\n\nOn the right side of the image, there's an intriguing detail - the reflection of a person on the window pane. This subtle detail adds a layer of depth and mystery to the scene.\n\nOverall, the image portrays a peaceful living room where one can relax and unwind amidst the soft glow of sunlight filtering through the windows.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-59-49.240423.jpg"
-}

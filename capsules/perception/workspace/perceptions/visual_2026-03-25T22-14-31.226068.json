@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:14:37.297146",
-  "backend": "llava",
-  "description": "The image captures a tranquil night scene inside a bedroom. The room is bathed in soft, dim light that accentuates the warm glow emanating from the two windows on either side of the bed. The left window is adorned with a white curtain, while the right one is shielded by a beige curtain. \n\nA black table stands between these windows, serving as a makeshift desk. Upon it rests an open laptop, its screen glowing softly in the ambient light. The laptop, along with two other objects - a blue water bottle and a red soda can - adds a pop of color to the otherwise monochrome setting.\n\nThe bed, covered with a black comforter, sits against the wall on the left side of the image. Its dark hue contrasts sharply with the lighter tones of the room, creating an interesting visual dynamic.\n\nThe overall atmosphere is one of quiet solitude and introspection, as if someone has just stepped out for a moment but will soon return to their laptop and continue their work under the soft glow of the nightlight.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-14-31.226068.jpg"
-}

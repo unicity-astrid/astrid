@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:35:46.183391",
-  "backend": "llava",
-  "description": "The image captures a serene and well-organized living room bathed in natural light from two windows adorned with white curtains. The wooden floor adds a warm touch to the room, complementing the pristine white walls.\n\nOn the left side of the image, a gray couch invites relaxation, its soft cushions promising comfort. A beige blanket casually thrown over it suggests recent use, adding a lived-in feel to the space. \n\nAdjacent to the couch, a black coffee table stands as a centerpiece on the wooden floor. It holds a blue water bottle and a pink book, perhaps indicating the leisurely activities of the inhabitants.\n\nOn the right side of the image, a white desk sits against the wall. A red scarf is draped over it, adding a pop of color to the otherwise neutral palette of the room. The desk's position suggests it might be used for work or study purposes.\n\nThe natural light streaming in from the windows illuminates the room, casting soft shadows and highlighting the textures of the furniture and floor. The overall atmosphere is one of tranquility and order, a perfect retreat at the end of a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-35-35.595381.jpg"
-}

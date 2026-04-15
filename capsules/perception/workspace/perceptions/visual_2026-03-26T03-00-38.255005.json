@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:00:44.309627",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room. Dominating the left side of the frame is a window with frosted glass panes that are illuminated by an unseen light source from outside, casting a warm glow into the room. The right side of the image features another window, this one equipped with blinds, suggesting a different mood or atmosphere.\n\nIn front of these windows, there's a black couch, its dark color contrasting with the lighter hues of the room. On top of the couch rests a blue can, its vibrant color standing out against the monochrome surroundings. The precise positioning of these objects suggests a quiet evening spent in solitude or companionship.\n\nDespite the darkness of the night and the absence of human figures, the image exudes a sense of calm and tranquility. The interplay between light and shadow, the play of colors, and the arrangement of objects all contribute to this peaceful ambiance. It's as if time has paused for a moment, allowing us to take in the quiet beauty of this everyday scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-00-38.255005.jpg"
-}

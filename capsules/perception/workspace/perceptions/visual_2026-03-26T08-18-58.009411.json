@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:19:19.369034",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a gray couch in a living room. He's wearing a yellow sweater and has headphones on his head, suggesting he might be listening to something. On the table in front of him, there are two objects: a blue can and a white cloth, possibly indicating that he was just reading or relaxing.\n\nThe living room is well-lit with natural light streaming through the windows and entering from an open door located on the right side of the image. The light creates a warm and inviting atmosphere in the room. The man seems to be enjoying his time in this comfortable setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-18-58.009411.jpg"
-}

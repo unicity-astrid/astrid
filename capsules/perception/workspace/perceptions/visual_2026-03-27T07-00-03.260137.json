@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T07:00:06.921913",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft light from a window on the left wall. The right wall features a white brick fireplace, adding a touch of rustic charm to the space. Mounted above the fireplace is a flat-screen TV, which is displaying what appears to be a video game menu with options such as \"Options\" and \"Game Center\". The TV, fireplace, and window create a warm and inviting atmosphere in the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-00-03.260137.jpg"
-}

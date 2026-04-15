@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:17:18.610206",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in soft natural light filtering through a window with white curtains. The room is shrouded in darkness, creating a stark contrast that accentuates the objects within. A solitary figure stands near this window, adding a sense of life and movement to the otherwise still scene.\n\nThe room itself appears to be quite spacious, its vastness suggested by the expansive area illuminated by the light from the window. The darkness envelops the majority of the room, creating an atmosphere of tranquility and solitude.\n\nDespite the lack of vibrant colors or intricate patterns, there's a certain simplicity that makes this image captivating. It's as if time has stood still in this room, preserving it in its current state forever.\n\nPlease note that this description is based on the information provided and does not include any assumptions or interpretations beyond what can be confidently determined from the image itself.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-17-13.184401.jpg"
-}

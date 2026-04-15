@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:54:50.465783",
-  "backend": "llava",
-  "description": "This image captures a serene living room bathed in soft light. The walls are painted a pristine white, providing a stark contrast to the beige carpet that covers the floor. A large window on the right wall allows natural light to flood into the room, casting a warm glow on the wooden coffee table situated near it.\n\nA gray sofa and matching armchair are arranged around a wooden coffee table, creating an inviting space for relaxation or conversation. The furniture is positioned in such a way that they face each other, encouraging interaction between those who occupy the space.\n\nOn the left wall, there's another window with white blinds partially drawn, filtering the sunlight entering the room and adding depth to the scene. A lamp sits on the table next to the sofa, ready to provide light when needed.\n\nIn the background, a bookshelf filled with various items adds a personal touch to the room. The objects on the shelf are not clearly visible but their presence contributes to the overall homely atmosphere of the space.\n\nOverall, this image portrays a cozy and comfortable living area where one can relax or socialize while enjoying the natural light from the windows.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-54-43.986502.jpg"
-}

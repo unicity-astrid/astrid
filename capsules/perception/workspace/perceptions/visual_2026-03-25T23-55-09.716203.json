@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:55:19.940510",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dark room with a window. The room, illuminated by a soft glow from the window, exudes an air of tranquility. A solitary figure sits on a chair at a table, engrossed in their own world. Their face is hidden from view, adding an element of mystery to the scene.\n\nThe table is adorned with two objects - a can and a bottle. The can, possibly a soda or energy drink, stands next to the bottle, their colors muted in the dim light. They are silent companions to the person at the table, sharing space but not conversation.\n\nBehind the figure, a curtain hangs from the window, its fabric partially visible against the dark backdrop. It adds depth to the scene and hints at privacy for the person within.\n\nThe overall atmosphere is one of solitude and introspection, as if time has slowed down in this corner of the world. The darkness outside contrasts with the soft light inside, creating a safe haven amidst the vast expanse of night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-55-09.716203.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:09:33.052060",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room at night. The room is characterized by its white walls and black furniture, creating a stark contrast that adds depth to the scene. A window, adorned with white curtains, offers a glimpse into an outside world where a yellow light casts a warm glow.\n\nIn the foreground, a dark couch invites relaxation. It's covered in a blanket, suggesting comfort and coziness. On top of the couch rests a blue mug, perhaps left behind after a long day or night. The couch is positioned in front of a white wall, which features a picture hanging just above it, adding an artistic touch to the room.\n\nTo the side of the couch stands a black desk, its surface home to a red lamp and a black chair. The lamp, ready to shed light on late-night projects or early morning reading sessions, shares space with the chair that awaits its occupant.\n\nThe floor beneath these pieces of furniture is carpeted in gray, softening each step taken within the room. Despite the darkness outside, the room exudes warmth and tranquility, making it a perfect retreat from the world beyond the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-09-26.453336.jpg"
-}

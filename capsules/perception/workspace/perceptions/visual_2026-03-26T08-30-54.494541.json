@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:31:06.445915",
-  "backend": "llava",
-  "description": "In this image, a man is sitting on a blue couch in a living room. He is wearing a yellow shirt and headphones, suggesting he might be listening to something or perhaps preparing for a video call. The couch he's sitting on has a wooden coffee table placed in front of it. On the coffee table, there are two items: a white mug and a blue water bottle.\n\nThe living room itself has a window with white blinds, allowing some natural light to filter into the room. In the background, you can see a bookshelf filled with various books, indicating that this might be a space for relaxation or intellectual pursuits.\n\nPlease note that there is no text present in the image. This description is based on the visible elements in the image and their relative positions.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-30-54.494541.jpg"
-}

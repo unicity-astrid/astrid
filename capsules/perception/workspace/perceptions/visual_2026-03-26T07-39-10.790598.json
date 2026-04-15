@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:39:22.169758",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a black leather couch in a room bathed in natural light from a large window draped with white curtains. He's casually dressed in a yellow sweater and blue jeans, leaning back comfortably against the armrest of the couch.\n\nA wooden coffee table occupies the foreground of the scene. On it, there are two objects: a blue water bottle and an open book. The man appears to be engrossed in reading the book, his gaze fixed on the pages.\n\nThe room exudes a sense of tranquility and leisure, with the man's relaxed posture suggesting he is enjoying some downtime. The natural light streaming through the window illuminates the space, casting soft shadows and highlighting the textures of the objects within the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-39-10.790598.jpg"
-}

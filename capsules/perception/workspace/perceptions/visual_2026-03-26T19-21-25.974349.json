@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:21:32.509505",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The room is bathed in a soft glow that emanates from an unseen source on the right side of the frame, casting long shadows and creating a sense of depth. The foreground is dominated by two indistinct figures, their identities hidden in the darkness. One figure stands closer to the viewer, while the other is situated further away, adding perspective to the scene.\n\nThe background features a large window that spans almost the entire width of the image. The window is veiled with curtains, their texture and pattern obscured by the low light. Through this window, one can discern the silhouettes of trees and buildings, suggesting an urban landscape outside. The curtain's position relative to these structures indicates it might be night time.\n\nThe overall atmosphere of the image is one of mystery and solitude, evoked by the interplay of shadows and the blurred figures in the foreground against the faintly lit background. The absence of any discernible text or action further enhances this sense of tranquility. The image seems to invite the viewer to step into this quiet world and explore its unseen corners.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-21-25.974349.jpg"
-}

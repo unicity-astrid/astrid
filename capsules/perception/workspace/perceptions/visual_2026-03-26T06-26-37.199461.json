@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:27:09.734445",
-  "backend": "llava",
-  "description": "In the image, a person is sitting in a chair, engrossed in their work at a desk. The room is dimly lit, with the only source of light emanating from the computer screen in front of them. On the left side of the desk, there's a lamp providing additional illumination. \n\nThe desk itself is cluttered with various objects, including several bottles and a coffee cup, suggesting that the person has been working for an extended period. The chair they're sitting on appears to be black.\n\nIn the background, there's another window adorned with curtains, adding depth to the scene. Despite the overall darkness of the room, it's clear that this is a workspace designed for focused work or study.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-26-37.199461.jpg"
-}

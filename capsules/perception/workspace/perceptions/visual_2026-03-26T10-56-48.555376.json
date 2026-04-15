@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:56:58.130754",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a wooden table in what appears to be a living room or bedroom. He is wearing a blue shirt and black shorts with white polka dots on his lower legs. His hands are resting on the table as he looks towards the left side of the image.\n\nThe table hosts two objects: a blue can and a white cloth, possibly a towel. The man seems to be in a relaxed state, perhaps taking a break or waiting for something.\n\nOn the right side of the image, there's a gray couch that adds to the homely ambiance of the room. The background is simple and uncluttered, featuring a white wall with a door on the left side, suggesting an exit or entrance to this cozy space.\n\nThe overall scene paints a picture of a casual, comfortable setting where the man might be enjoying some downtime.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-56-48.555376.jpg"
-}

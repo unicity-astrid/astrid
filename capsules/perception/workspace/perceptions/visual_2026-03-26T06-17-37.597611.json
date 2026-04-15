@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:17:44.385753",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dimly lit room. A person, dressed in a vibrant yellow shirt, is seated at a desk, engrossed in their work on a laptop computer. The desk also holds two black cups and a blue water bottle, suggesting that this could be a late-night study session or perhaps an early morning start.\n\nThe room itself has a window with orange curtains framing the view of another building. A white lamp on the desk casts a soft glow, adding to the serene atmosphere. The overall scene suggests focus and determination, as the person delves into their work under the quietude of the night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-17-37.597611.jpg"
-}

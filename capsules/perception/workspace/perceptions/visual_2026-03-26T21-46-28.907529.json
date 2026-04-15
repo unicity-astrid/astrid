@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:46:33.499116",
-  "backend": "llava",
-  "description": "In the image, a person is seated at a desk in a dimly lit room, engrossed in their work on a computer. The individual, whose face is obscured by the shadow, is wearing a black t-shirt. The desk, positioned against a wall, holds a single object - a blue mug. \n\nThe room itself is shrouded in darkness, save for two windows that punctuate the background. One window is adorned with yellow curtains, while the other features white blinds. The overall atmosphere of the image suggests a quiet and focused work environment. The precise positioning of objects and their interactions create a narrative of solitude and dedication to one's task.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-46-28.907529.jpg"
-}

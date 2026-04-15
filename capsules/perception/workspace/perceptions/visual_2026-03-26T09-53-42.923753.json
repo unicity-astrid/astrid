@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:53:53.158134",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the left wall. The walls are painted in a soothing shade of white, providing a stark contrast to the gray couch that sits invitingly against it. A wooden coffee table occupies the center of the room, its surface home to a blue mug and a stack of books, suggesting a quiet afternoon spent in leisurely reading.\n\nThe right side of the image is dominated by a beige curtain, partially drawn back to reveal glimpses of another room beyond. The overall scene paints a picture of comfort and tranquility, an ideal setting for relaxation and contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-53-42.923753.jpg"
-}

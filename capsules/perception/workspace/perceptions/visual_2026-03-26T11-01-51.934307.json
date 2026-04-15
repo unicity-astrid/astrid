@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:01:56.789985",
-  "backend": "llava",
-  "description": "The image depicts a tranquil indoor scene. At the center of the image, a man is seated at a desk, engrossed in his work. He is dressed casually in a blue shirt and black shorts, with sunglasses adding an air of mystery to his persona.\n\nThe desk, made of dark wood, holds a computer monitor displaying a blue screen and a white keyboard, suggesting that he might be working on some digital task. A lamp casts a warm glow over the desk area, illuminating the workspace and creating an inviting atmosphere.\n\nThe room itself is softly lit by natural light filtering in from a window in the background, casting gentle shadows around the room. The overall ambiance of the image suggests a quiet afternoon spent in focus and productivity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-01-51.934307.jpg"
-}

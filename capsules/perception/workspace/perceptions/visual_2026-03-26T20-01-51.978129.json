@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T20:01:57.584267",
-  "backend": "llava",
-  "description": "The image captures a moment in an indoor setting, where the dominant feature is a black banner hanging on a wall. The banner, which is slightly tilted to the right, spans almost the entire width of the frame. It's positioned against a backdrop that has a gradient effect, transitioning from white at the top to blue towards the bottom.\n\nThe background is not bare but contains elements that add depth to the scene. There are shapes in varying shades of black and gray, adding an abstract touch to the composition. These shapes are scattered across the background, their random arrangement contrasting with the precision of the banner's placement on the wall.\n\nAdding a human element to the scene is a silhouette of a person, located near the top right corner of the image. The figure is discernible despite its simplicity due to the contrast against the lighter hues of the background. The overall composition suggests a modern and minimalist aesthetic.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-01-51.978129.jpg"
-}

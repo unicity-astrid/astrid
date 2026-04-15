@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T19:59:03.112500",
-  "backend": "llava",
-  "description": "The image presents a stark contrast between two rectangular blocks set against a black background. The block on the left is slightly smaller in size and has a lighter coloration compared to its counterpart on the right. Both blocks are uniformly colored, suggesting they might be made of the same material or have been painted uniformly. The simplicity of the image is striking, with no other objects present and no discernible actions taking place. It's a minimalist representation of two shapes, their relative sizes, and their contrasting colors against a black backdrop.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T19-58-59.183132.jpg"
-}

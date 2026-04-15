@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:10:31.619180",
-  "backend": "llava",
-  "description": "In the image, a man is captured in the midst of an action - he's bending over to pick up a red object from a wooden table. His blue shirt contrasts with the warm tones of the room around him. The room itself is bathed in natural light filtering through a window adorned with white curtains.\n\nThe wooden table, positioned against the wall, hosts a few other objects including a coffee cup and a remote control, suggesting a lived-in space. A couch sits in the background, adding to the homely atmosphere of the scene. The man's focused demeanor as he reaches for the red object adds a dynamic element to this otherwise serene setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-10-21.218382.jpg"
-}

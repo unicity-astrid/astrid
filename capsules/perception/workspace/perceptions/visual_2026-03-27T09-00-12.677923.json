@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T09:00:21.844476",
-  "backend": "llava",
-  "description": "The image showcases a modern living room setting with a focus on a large flat-screen TV mounted on the wall. The TV is currently turned on, displaying an image of a person wearing a green shirt and seated in front of a black piano. The person's face is clearly visible, suggesting that they might be playing the piano.\n\nThe TV itself is black, matching the color of the piano in the displayed image, creating a harmonious visual connection between the two objects. Below the TV, there's a white brick fireplace adding a traditional touch to the otherwise modern decor.\n\nOn the right side of the photo, you can see part of a curtain and a window, indicating that this room is likely located in a residential building. The overall atmosphere suggests a comfortable and stylish living space where someone might enjoy watching piano performances on TV or perhaps even playing one themselves.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-00-12.677923.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:53:05.034940",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft yellow light. Dominating the left side of the frame is a window, its glass panes reflecting the ambient glow. A blue curtain hangs from it, adding a pop of color to the otherwise muted palette.\n\nOn the right, a bed draped with a beige comforter invites rest and relaxation. The comforter's texture suggests warmth and coziness. Nearby, a black chair stands, partially obscured by a white tablecloth that covers its surface.\n\nThe room itself is dimly lit, enhancing the tranquility of the scene. In the background, another window can be seen, its view hidden from our perspective. The interplay of light and shadow adds depth to the image, creating an atmosphere of quiet repose.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-53-00.040091.jpg"
-}

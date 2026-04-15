@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:45:42.509461",
-  "backend": "llava",
-  "description": "The image captures a serene and well-organized living room bathed in soft natural light filtering through a window on the right wall. The window, dressed with white curtains, casts a gentle glow across the room, illuminating the light gray walls and highlighting the wooden floor.\n\nIn the heart of the room stands a black coffee table, acting as a central piece that unifies the space. A beige blanket casually draped over it adds a touch of warmth to the otherwise stark black surface. \n\nTo the left of the coffee table, a gray couch invites relaxation. It's adorned with a cozy blue and white striped throw pillow, offering a pop of color against its neutral tones.\n\nOn the right side of the room, a wooden bookshelf stands tall, filled to the brim with books that hint at a love for reading in this household. The precise arrangement of these objects creates an atmosphere of comfort and tranquility, making this living room not just a space, but a home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-45-35.576925.jpg"
-}

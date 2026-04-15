@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:00:16.827974",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting. At the heart of the scene is a **black cat**, comfortably curled up on a **gray couch**. The cat's peaceful slumber adds a sense of tranquility to the room.\n\nTo the side, there's a small wooden table draped with a **white tablecloth**. On it sits an open laptop, its screen glowing with unseen information. Beside the laptop, there's a blue cup, perhaps once filled with a warm beverage that accompanied work or study.\n\nThe room itself is bathed in natural light filtering through two windows adorned with white curtains. The light illuminates the scene, casting soft shadows and highlighting the textures of the couch and table. \n\nOverall, this image paints a picture of a quiet moment frozen in time - a cat enjoying its nap amidst the remnants of human activity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-00-11.576053.jpg"
-}

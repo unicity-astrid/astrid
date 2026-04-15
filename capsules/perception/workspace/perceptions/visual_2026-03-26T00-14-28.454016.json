@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:14:34.828315",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dimly lit room. The central focus is a black table that sits against a wall, its surface illuminated by a single candle. The flame from the candle casts a warm glow on the surrounding area, creating an atmosphere of tranquility and solitude.\n\nOn the table, there are several objects. A blue glass stands out due to its vibrant color, while a white bottle adds a contrasting element to the scene. Additionally, a red toy car is present, adding a playful touch to the otherwise serene setting.\n\nIn the background, two windows with yellow curtains can be seen. One of these windows has a closed white curtain partially covering it, suggesting that privacy is valued here. The walls of the room are painted in shades of beige and gray, providing a neutral backdrop that enhances the other colors in the room.\n\nThe overall scene evokes a sense of peace and quietude, with each object and color contributing to this atmosphere. The precise locations and actions of these objects are not discernible from this single image. However, their presence and arrangement suggest careful consideration and attention to detail.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-14-28.454016.jpg"
-}

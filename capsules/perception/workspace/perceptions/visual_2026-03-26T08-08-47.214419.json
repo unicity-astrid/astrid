@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:08:59.803636",
-  "backend": "llava",
-  "description": "In the image, a young man is comfortably seated on a gray couch in a cozy living room. He's wearing a vibrant yellow shirt that stands out against his black headphones and pants. The couch he's sitting on has a wooden coffee table placed right in front of him.\n\nThe coffee table holds an array of objects including a blue book, a white mug, and a brown remote control, suggesting the man might be preparing for some quiet reading time or perhaps watching TV. A white curtain hangs in the background, adding to the homely atmosphere of the room.\n\nIn terms of object count, there's one person (the young man), multiple objects on the coffee table (book, mug, remote control), and one couch. The relative positions of these objects are such that the man is behind the coffee table while he appears to be in front of it from our perspective as viewers.\n\nThis image captures a moment of tranquility, possibly before or after a long day. It's a snapshot of everyday life filled with simple details that make up our daily routines.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-08-47.214419.jpg"
-}

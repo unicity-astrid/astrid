@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:46:08.786681",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room is bathed in soft yellow light filtering through two windows adorned with white curtains. On one side, the left window has its curtain partially drawn back, revealing a glimpse of the world outside. The right window, on the other hand, is fully veiled by its curtain.\n\nIn the foreground, a black chair sits quietly, accompanied by a black table draped with a matching cloth. A blue cup rests on the table, adding a pop of color to the otherwise monochrome setting. \n\nThe background reveals more windows and doors, suggesting that this room might be part of a larger living space. The entire scene exudes an air of calmness and serenity, as if inviting you to sit down, relax, and perhaps enjoy a cup of tea from the blue cup on the table.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-46-00.322247.jpg"
-}

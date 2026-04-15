@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:24:43.253432",
-  "backend": "llava",
-  "description": "The image captures a cozy indoor setting, bathed in the soft glow of ambient light. Dominating the scene is a television screen, its surface alive with the vibrant hues of a video game. The game itself appears to be a racing simulation, as suggested by the presence of multiple cars scattered across the screen.\n\nThe television is mounted on a white wall, standing out against the dark backdrop. It's positioned slightly off-center to the left, creating an interesting asymmetry in the composition. Above it, a black fireplace mantel extends, adding a touch of rustic charm to the otherwise modern setting.\n\nThe room itself seems dimly lit, further accentuating the vivid colors on the television screen. The contrast between the dark room and the brightly lit screen creates a captivating visual dynamic. Despite the presence of numerous elements in the image, each object holds its place without competing for attention - they all contribute to painting a picture of a tranquil evening spent engrossed in an exciting video game.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-24-29.180102.jpg"
-}

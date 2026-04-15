@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:31:02.086177",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dark room. The dominant colors are black and white, punctuated by a window that glows with yellow light. The room itself is sparse, featuring only a single bed positioned against the wall. The bed appears unmade, suggesting recent use or perhaps just morning.\n\nOn top of the bed, there's an object that stands out due to its color - it's blue and bears a striking resemblance to a soda can. Its presence adds an element of intrigue to the scene, making one wonder about its significance.\n\nThe window is adorned with white curtains that hang still, their fabric undisturbed by movement or wind. The yellow light from the window casts a warm glow onto the bed and nearby wall, creating an atmosphere that's both cozy and serene.\n\nOverall, this image paints a picture of solitude and tranquility, with each element contributing to a sense of calm and peace.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-30-56.523999.jpg"
-}

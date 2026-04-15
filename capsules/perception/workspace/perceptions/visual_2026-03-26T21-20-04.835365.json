@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:20:13.816443",
-  "backend": "llava",
-  "description": "The image captures a scene in a dimly lit room, bathed in soft orange light from two windows. The room is awash with shadows that dance across its surface, adding an air of mystery to the scene. On the left side of the frame, a television screen glows with a blue hue, casting a cool contrast against the warm tones of the room. \n\nOn the right, a person clad in black sits on a chair, their figure illuminated by the ambient light. They are facing away from the camera, adding an element of intrigue to the scene. The person's dark attire stands out starkly against the lighter background, creating a striking visual contrast.\n\nThe overall atmosphere is one of quiet introspection, as if time itself has paused within this captured moment. The interplay between light and shadow, color and contrast, creates a captivating tableau that invites viewers to delve deeper into its depths.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-20-04.835365.jpg"
-}

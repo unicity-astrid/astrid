@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:52:27.991463",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room at night. The room is bathed in an orange glow that seeps through two windows on the right side of the frame. Each window is adorned with white blinds, partially closed to let in just enough light to illuminate the room's interior.\n\nIn the heart of the room stands a black desk, its surface home to a solitary computer monitor and keyboard. The objects are silhouetted against the soft orange glow, their details lost in shadow. To the left of this central tableau is a white door, closed and standing as a silent sentinel amidst the darkness.\n\nThe scene is one of tranquility and solitude, a snapshot of life captured in stillness. The precise locations and relative positions of the objects - the desk centrally located with windows to its right and a door to its left - create a sense of balance and harmony within the frame. Despite the absence of human presence, there's an inherent sense of life and activity that pervades the image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-52-21.893831.jpg"
-}

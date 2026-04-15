@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:41:00.579331",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting at night. The room, bathed in soft light from two windows adorned with white curtains and yellow blinds, exudes a warm and inviting ambiance. A black couch sits in the foreground, its plush cushions untouched and inviting. On it rests a blue book, its spine facing upwards, suggesting someone might have been engrossed in reading just moments ago.\n\nIn front of the couch, a coffee table holds a single white candle, its flame flickering gently in the soft light filtering through the windows. The candle's presence adds an element of tranquility to the scene, as if time has momentarily paused within this room.\n\nThe walls, painted in a pristine white, reflect the light from the windows and the candle, enhancing the overall warmth of the room. The relative positions of the objects suggest careful thought into their placement - the couch facing one of the windows, the coffee table conveniently placed for easy reach from the couch, and the candle centrally located on the table.\n\nOverall, this image paints a picture of a quiet evening spent in solitude or in conversation with a loved one, surrounded by the comforting familiarity of home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-40-49.897352.jpg"
-}

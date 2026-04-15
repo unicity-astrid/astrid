@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:33:33.203197",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft light filtering through two windows adorned with white curtains. A comfortable gray couch invites relaxation, positioned against one wall. On the right side of the room, a black coffee table takes center stage. It hosts an array of objects: a blue water bottle standing upright, a pink towel casually draped over its edge, and a stack of books suggesting recent activity.\n\nThe walls of the room are painted in a pristine white, contrasting with the warm beige carpet underfoot. On the left wall, there's a door leading to unseen parts of the home. The overall atmosphere is one of comfort and tranquility, a perfect space for rest and leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-33-16.719911.jpg"
-}

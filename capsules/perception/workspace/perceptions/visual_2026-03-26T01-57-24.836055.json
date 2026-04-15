@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:57:30.877466",
-  "backend": "llava",
-  "description": "The image captures a tranquil night scene in a room bathed in the soft glow of a single light source from the left side. The room is painted in hues of darkness and mystery, with only a few objects breaking the monotony.\n\nIn the center of the image, a bed draped in a white sheet stands as the main object. It's positioned against a wall adorned with two windows. One window is veiled by curtains, while the other remains bare, basking in the light that filters through it. The floor beneath them is shrouded in darkness, adding to the overall ambiance of the room.\n\nThe objects within the room are few but significant. A solitary chair sits empty on the right side of the image, its purpose unclear but its presence undeniable. On the left side, a lone bottle stands tall against the wall, its contents hidden from view.\n\nDespite the simplicity of the scene, there's an air of intrigue that surrounds it - a silent story waiting to be told in this quiet room under the night sky.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-57-24.836055.jpg"
-}

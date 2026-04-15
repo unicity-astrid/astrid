@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:30:30.595495",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in what appears to be a living room. The man is dressed casually, wearing blue shorts and a blue shirt. His attire is complemented by a pair of sunglasses that he's wearing.\n\nThe desk, which serves as the focal point of the image, hosts a few items. A computer monitor rests on it, suggesting that the man might be working or studying. Next to the monitor, there's a blue water bottle and a white cloth, possibly used for cleaning purposes.\n\nThe room in which the man is seated has a minimalist aesthetic with its white walls and wooden floor. The positioning of the objects suggests a well-organized space, with everything within easy reach.\n\nOverall, the image captures a moment of quiet concentration, perhaps during a work-from-home setup or a study session.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-30-18.431444.jpg"
-}

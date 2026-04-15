@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:44:10.995934",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft orange light filtering through three windows. The windows are adorned with white curtains that sway gently, adding a sense of tranquility to the scene.\n\nIn the foreground, a black couch rests against the wall, offering a cozy spot for rest or perhaps deep thought. A lone can of soda sits on the armrest of the couch, hinting at a quiet evening spent in solitude.\n\nOn the floor, near the couch, lies a blue backpack. Its presence suggests recent activity or an impending journey. It's as if someone has just returned home from school or work and settled down for a peaceful night in.\n\nThe relative positions of these objects paint a picture of everyday life - a quiet evening at home, perhaps after a long day. The room is not cluttered but arranged with purpose, each object in its place contributing to the overall narrative of restful solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-44-02.699118.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:25:03.424893",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room bathed in soft blue light from two windows on either side of a wooden table. The person sitting at the table, clad in a yellow shirt and sporting dark hair, adds a touch of human presence to the scene.\n\nOn the left window, a green curtain hangs, partially obscuring the view outside but not enough to entirely hide it. Through this window, one can see another building adorned with red curtains and lit windows, creating an intriguing contrast between the interior and exterior spaces.\n\nThe wooden table hosts two objects - a black laptop and a white cup. The laptop, closed and seemingly inactive at this moment, suggests a pause in work or perhaps the end of a long day. The white cup, empty but for a small amount of liquid residue on its rim, hints at a recent beverage consumed.\n\nThe overall atmosphere is one of tranquility and solitude, with each object and element contributing to this serene tableau.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-24-57.644126.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:48:55.031141",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in what appears to be a bedroom or office setting. He's wearing a blue shirt and has sunglasses perched on his nose. The desk in front of him is equipped with a computer monitor and keyboard. A white towel is draped over the back of his chair, adding a personal touch to the scene.\n\nThe room itself is painted white, creating a clean and bright atmosphere. A window can be seen in the background, suggesting that the room might be located on an upper floor or in a well-lit area of the building. The man seems focused on his work, indicating a professional environment.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-48-47.825317.jpg"
-}

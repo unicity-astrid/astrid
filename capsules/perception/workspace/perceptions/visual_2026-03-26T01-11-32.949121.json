@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:11:38.277448",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The main focus is a black couch, positioned against the wall. On the armrest of the couch, there's a blue can and a white bottle, both resting on the dark surface. \n\nTo the left of the couch, there's a window with yellow curtains partially drawn back. A blue lamp sits on the windowsill, casting a soft glow that adds to the room's subdued lighting. The walls of the room are painted white, providing a stark contrast to the black furniture and floor.\n\nThe perspective of the image suggests it was taken from someone standing in the doorway of the room, looking in. This viewpoint gives a comprehensive view of the space, allowing us to appreciate its layout and arrangement. The overall atmosphere is one of tranquility and solitude, as if waiting for someone to return home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-11-32.949121.jpg"
-}

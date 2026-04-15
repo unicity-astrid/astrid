@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:15:49.990245",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room at night. The room is bathed in a soft glow from two windows with bars on them, one of which is also adorned with yellow curtains. A table stands between these windows, draped with a black cloth that contrasts with the room's subdued lighting. \n\nScattered across the table are various objects, including a blue soda can and a white coffee cup, adding a touch of everyday life to the scene. The background is swallowed by darkness, while the foreground remains slightly illuminated, creating a sense of depth and space.\n\nThe image also seems to be taken from a low angle, perhaps as if you're sitting on a couch in front of the table, looking up at the windows against the night sky. This perspective adds an intimate feel to the scene, making it seem as though you're right there in that quiet room, sharing in this peaceful moment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-15-44.436927.jpg"
-}

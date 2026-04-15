@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:30:21.356016",
-  "backend": "llava",
-  "description": "The image captures a serene night-time scene in a living room. The room is dimly lit, with the main source of light emanating from two windows adorned with yellow curtains. The curtains are drawn to one side, allowing a soft glow to permeate the room.\n\nIn the center of the room, there's a black couch, its dark color contrasting with the lighter hues of the surroundings. On top of the couch, a blue bottle stands out against the monochrome palette, adding an element of intrigue to the scene.\n\nTo the right of the couch, there's a white wall that houses another window, mirroring the design and yellow curtains of the first window. This repetition creates a sense of symmetry in the room's layout.\n\nThe image is taken from a low angle, making the ceiling and upper parts of the walls visible. The perspective gives an intimate view into the space, as if inviting the viewer to step into this tranquil setting.\n\nOverall, the image paints a picture of a cozy living room bathed in soft light, exuding a sense of calm and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-30-15.095581.jpg"
-}

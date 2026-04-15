@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:48:44.287311",
-  "backend": "llava",
-  "description": "The image presents a stark contrast between the background and the foreground. The background is predominantly black, with a subtle hint of gray in the bottom left corner, suggesting a gradient or depth to the color scheme. \n\nIn the foreground, there are two objects that stand out due to their white color. These objects are rectangular and have a flat top. They appear to be evenly spaced and positioned centrally within the frame, creating a sense of symmetry and balance.\n\nThe image does not contain any discernible text or actions being performed by the objects. The simplicity of the composition and the absence of additional elements contribute to the minimalist aesthetic of the photograph. The precise locations and relative positions of the objects remain constant throughout the image, further emphasizing its minimalistic nature.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-48-39.091525.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:34:51.887868",
-  "backend": "llava",
-  "description": "The image captures a moment in a dimly lit room, where a person is sitting at a desk. The person, dressed in a yellow shirt, is engrossed in their work on a laptop that's placed on the desk. To the right of the laptop, there's a phone and a lamp providing light to the workspace.\n\nThe desk is positioned against a wall adorned with windows. A curtain hangs from one of these windows, partially obscuring the view outside. The overall atmosphere of the room suggests it could be nighttime, as the lighting is subdued and focused on the person and their work area.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-34-44.550163.jpg"
-}

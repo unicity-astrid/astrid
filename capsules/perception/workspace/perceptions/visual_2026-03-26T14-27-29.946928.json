@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:27:38.151174",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft natural light filtering through a window on the left wall. The walls are painted white, providing a neutral backdrop for the room's furnishings.\n\nIn the center of the frame, a gray couch invites relaxation. A red blanket is casually draped over it, adding a pop of color to the scene. To the right of the couch, a wooden coffee table stands. Atop the table, a blue water bottle and a pink book lie side by side, suggesting someone's recent activities.\n\nThe window on the left wall is partially covered by white curtains, allowing for control over the amount of light entering the room. The overall atmosphere is one of comfort and tranquility, an ideal space for rest and leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-27-29.946928.jpg"
-}

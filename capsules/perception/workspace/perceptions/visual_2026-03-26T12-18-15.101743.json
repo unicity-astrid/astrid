@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T12:18:25.356409",
-  "backend": "llava",
-  "description": "The image portrays a man sitting on a blue couch in a living room setting. He is dressed in a blue sweater and black pants adorned with white stripes. His attention is directed towards a wooden coffee table placed in front of him. On the table, there is a book open to a page featuring a blue cover. The man appears to be engrossed in reading this book.\n\nThe living room is furnished with a white chair positioned to the left of the couch and a beige curtain that can be seen on the right side of the image. The background reveals a window dressed with a white curtain, through which sunlight is streaming into the room, illuminating the scene.\n\nPlease note that this description is based on the visible elements in the image and their relative positions. It does not include any assumptions or interpretations beyond what can be confidently determined from the image itself.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-18-15.101743.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:30:01.719981",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at night. The room is illuminated by a warm glow from two windows in the background, their yellow curtains partially drawn to let in the soft light. A black couch rests against the wall, its dark hue contrasting with the lighter surroundings. On it, a lone red beer can stands out, adding a pop of color to the scene.\n\nIn the foreground, a coffee table holds a blue glass and a white bottle, their colors muted under the ambient lighting. The objects are arranged in such a way that they seem to invite one to sit down, perhaps for a quiet evening in with a good book or a favorite show.\n\nThe overall atmosphere is cozy and inviting, a snapshot of everyday life captured in an image. The precise arrangement of objects and their relative positions suggest careful thought put into creating this space, turning it into more than just a room - it's a personal sanctuary.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-29-56.195680.jpg"
-}

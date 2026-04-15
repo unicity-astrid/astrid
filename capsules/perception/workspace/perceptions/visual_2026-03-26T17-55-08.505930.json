@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:55:14.281722",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in natural light filtering through two windows adorned with white curtains. The room's beige walls harmonize with the gray carpet underfoot, creating a warm and inviting ambiance.\n\nIn the heart of the room, a wooden coffee table takes center stage, its surface occupied by a laptop and a blue water bottle. The laptop, open and active, suggests recent use, while the water bottle adds a touch of color to the otherwise neutral palette.\n\nTo the left of the frame, a gray couch offers a comfortable seating option. A cat, curled up in peaceful slumber on one side of the couch, adds a sense of tranquility to the scene. The precise location of each object and their relative positions contribute to the overall harmony of the room.\n\nEvery element in this image - from the furniture to the objects and even the colors - comes together to paint a picture of a quiet moment frozen in time within a cozy living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-55-08.505930.jpg"
-}

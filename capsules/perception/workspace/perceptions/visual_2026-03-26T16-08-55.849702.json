@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:09:01.699303",
-  "backend": "llava",
-  "description": "This image captures a serene living room bathed in soft, natural light filtering through two windows on the left wall. The window on the left is veiled by curtains, while the one on the right stands open, inviting the daylight to pour in.\n\nDominating the center of the room is a wooden coffee table, its surface adorned with a blue bottle and a red book, perhaps indicating recent human activity. Flanking this central piece are two armchairs, their black upholstery contrasting sharply with the room's light walls. The armchair on the left sports a gray blanket casually draped over it, adding a touch of coziness to the scene.\n\nThe floor beneath is carpeted in beige, complementing the overall color scheme and enhancing the warm ambiance of the room. The relative positions of these objects create a harmonious balance within the space, making this living room not just a collection of furniture, but a well-thought-out design that speaks volumes about its inhabitants' taste and lifestyle.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-08-55.849702.jpg"
-}

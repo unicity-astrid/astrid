@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:49:25.854173",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room is bathed in darkness, with a single window serving as the primary source of illumination. The window, adorned with a white curtain, casts a soft glow that illuminates the objects within the room.\n\nA bed, draped in a black comforter, sits against one wall of the room. On it, a blue water bottle stands out against the dark fabric. Adjacent to the bed is a nightstand, upon which rests a lamp, its light adding to the overall ambiance of the room.\n\nThe walls of the room are painted white, providing a stark contrast to the black ceiling above. The floor beneath mirrors this color scheme with its own black surface.\n\nIn one corner of the room, a person can be seen sitting on a chair. Their face is obscured by their hand, which they hold up in front of them, adding an air of mystery to the scene.\n\nOverall, the image paints a picture of a quiet night spent within the confines of a darkened room, punctuated only by the soft glow from the window and the occasional light from the lamp on the nightstand.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-49-14.849431.jpg"
-}

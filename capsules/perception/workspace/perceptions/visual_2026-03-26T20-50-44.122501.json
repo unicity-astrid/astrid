@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T20:50:50.473132",
-  "backend": "llava",
-  "description": "The image captures a moment in a room bathed in darkness, with an individual seated at a desk. The person is illuminated by the soft glow of a lamp on their face, casting long shadows and creating a stark contrast against the surrounding darkness. They are turned away from us, engrossed in something unseen on the computer screen before them.\n\nThe desk itself is a study in minimalism, with only a single object - a glass - resting on it. The room's window, partially obscured by curtains, lets in slivers of light that dance across the walls and floor, adding depth to the scene.\n\nDespite the darkness enveloping much of the room, the person at the desk seems focused and absorbed in their task. The precise location of each object and their relative positions contribute to a sense of solitude and quiet concentration. There is no text visible in the image, and the overall atmosphere suggests a late-night work session or study.\n\nPlease note that this description is based on the provided image and does not include any assumptions or interpretations beyond what can be confidently determined from the image itself.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-50-44.122501.jpg"
-}

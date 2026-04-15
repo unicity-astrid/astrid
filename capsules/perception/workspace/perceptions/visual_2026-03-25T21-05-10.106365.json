@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:05:18.874464",
-  "backend": "llava",
-  "description": "The image captures a serene night-time scene in a bedroom. The room is bathed in a soft glow from two windows, each adorned with orange curtains that add a warm hue to the room. These windows are situated on the left wall of the room.\n\nA bed, dressed in dark sheets, occupies a significant portion of the space. It's positioned against the right wall of the room, offering a stark contrast to the light emanating from the windows.\n\nIn the foreground of the image, a desk holds a single object - a white lamp with a black base. The desk is located centrally within the frame, providing a sense of balance to the composition.\n\nThe overall atmosphere of the room is calm and quiet, enhanced by the darkness outside visible through the windows. The interplay of light and shadow adds depth to the scene, creating an intimate snapshot of this peaceful night-time setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-05-10.106365.jpg"
-}

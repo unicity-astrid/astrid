@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:08:54.299358",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a living room bathed in the soft glow of a single lamp. The room is dominated by a large window that spans almost the entire wall, its frame painted a stark white against the blackness outside. Through this window, a glimpse of a street can be seen, the outlines of buildings and trees faintly illuminated under the light.\n\nThe lamp casts long shadows around the room, painting an intricate pattern on the walls and floor. Its light dances off the glass surface of the table in front of it, creating a mirror-like effect that adds depth to the scene.\n\nOn this table, two objects stand out - a blue soda can and a black coffee mug, both adding a touch of everyday life to the otherwise serene setting. They are positioned towards the left side of the table, their colors contrasting with the overall darkness of the room.\n\nIn the background, a couch draped in a white blanket invites relaxation and comfort. It's positioned on the right side of the image, its plush cushions promising warmth and rest. The blanket is partially visible, adding an element of mystery to this tranquil scene.\n\nOverall, this image paints a picture of solitude and peace, a snapshot of everyday life captured in one quiet moment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-08-47.320877.jpg"
-}

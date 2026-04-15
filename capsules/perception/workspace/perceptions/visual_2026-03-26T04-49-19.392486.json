@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:49:24.791064",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a dimly lit room at night. The primary source of light comes from a window adorned with orange curtains, casting a warm glow that illuminates the space. \n\nOn a desk, which occupies the foreground of the image, there are two objects: a laptop and a can of soda. The laptop is open, its screen facing towards the viewer, suggesting it's in use. The soda can, standing upright on the desk, adds a casual element to the scene.\n\nThe background features a bed covered with a blanket, creating a cozy atmosphere typical of a bedroom setting. The relative positions of these objects suggest a lived-in space where someone has settled down after what appears to be a long day. \n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-49-19.392486.jpg"
-}

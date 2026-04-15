@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:39:25.575374",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a vibrant green couch in a cozy living room setting. He's wearing a warm yellow sweater and headphones are nestled over his ears, suggesting he might be listening to something or perhaps taking a break from an activity that involves sound. \n\nDirectly in front of him is a wooden coffee table, which holds a single item - a blue can. The can's color contrasts nicely with the wood's natural tones. To his side on the couch rests a black and white striped pillow, adding a touch of pattern to the scene.\n\nThe room itself has a clean and bright atmosphere. A window dressed in white curtains lets in natural light that illuminates the space, casting soft shadows and highlighting the textures around the room. The precise locations of objects and their relative positions create a harmonious balance within this domestic setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-39-06.370818.jpg"
-}

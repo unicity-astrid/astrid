@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:39:11.722645",
-  "backend": "llava",
-  "description": "The image captures a serene domestic scene bathed in soft natural light. Dominating the left side of the frame is a gray couch, its plush cushions inviting relaxation. A black and brown cat, embodying the essence of tranquility, has chosen this spot for its nap. The feline's peaceful slumber adds a sense of warmth to the room.\n\nOn the right side of the image, a table draped in a beige tablecloth stands against a white wall. The table is adorned with various items that hint at daily life - a blue mug waiting to be filled with coffee, and a pink bag possibly containing groceries or other essentials.\n\nThe room itself is painted in a light color, enhancing its airy feel. A window punctuates the right side of the image, allowing sunlight to filter in and illuminate the scene. The interplay of light and shadow adds depth to the image, creating an atmosphere that is both cozy and inviting.\n\nOverall, this image paints a picture of a quiet moment frozen in time - a snapshot of everyday life with elements like furniture and objects that tell a story of their own.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-39-00.045836.jpg"
-}

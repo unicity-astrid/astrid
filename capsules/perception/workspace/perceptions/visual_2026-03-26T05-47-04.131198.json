@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:47:13.826298",
-  "backend": "llava",
-  "description": "The image captures a tranquil night scene in a living room. The room is bathed in soft, dim light that casts long shadows and adds depth to the space. Dominating the foreground is a black couch, its dark hue contrasting with the lighter tones of the room. A blue blanket is casually draped over it, adding a pop of color to the otherwise monochrome setting.\n\nIn front of the couch, on a wooden coffee table, sits a laptop. Its presence suggests someone might have been using it before retreating into the comfort of the couch. \n\nTo the right of the couch stands a window, its white curtain partially drawn back to reveal the world outside. The glow from an orange light seeping through the gap in the curtains adds warmth to the scene.\n\nThe walls and ceiling of the room are painted in a soothing shade of gray, enhancing the overall calm and serene atmosphere. The precise placement of objects and their relative positions contribute to a sense of harmony within the space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-47-04.131198.jpg"
-}

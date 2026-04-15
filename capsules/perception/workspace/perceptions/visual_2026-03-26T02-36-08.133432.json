@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:36:14.894358",
-  "backend": "llava",
-  "description": "The image captures a serene night in a room bathed in soft light. Dominating the left side of the frame is a window with two panes, each adorned with orange curtains that add a warm glow to the scene. The curtains are drawn back slightly, revealing slivers of the world outside.\n\nIn front of this window, occupying the center of the image, is a desk. It's a simple piece of furniture, made of wood, standing solitary in the room. On its surface rests a blue cup and a red candle holder, their colors contrasting with the muted tones of the room.\n\nOn the right side of the image, partially obscured by the window frame, is a bed covered with a white sheet. The bed seems inviting and comfortable, adding to the overall coziness of the scene.\n\nThe background is shrouded in darkness, with only hints of other furniture visible through the gaps created by the light from the window. This contrast between light and dark adds depth to the image, making it feel as though you're standing right there in that room.\n\nOverall, this image paints a picture of tranquility and comfort, inviting viewers to step into this peaceful world.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-36-08.133432.jpg"
-}

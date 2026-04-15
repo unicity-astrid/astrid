@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:06:09.819158",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting. The room is bathed in soft light filtering through two windows adorned with white blinds and curtains. A desk sits against one wall, its surface home to a single object - a black mug. The chair next to the desk stands empty, adding to the tranquility of the scene.\n\nIn the foreground, an open door offers a tantalizing glimpse into another room, inviting curiosity about what lies beyond. The overall atmosphere is one of calm and quietude, as if waiting for its occupant to return.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-06-05.841243.jpg"
-}

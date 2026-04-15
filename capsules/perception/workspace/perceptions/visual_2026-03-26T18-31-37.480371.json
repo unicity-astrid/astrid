@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:31:43.934108",
-  "backend": "llava",
-  "description": "This image captures a serene and cozy living room bathed in soft, natural light filtering through two windows adorned with white blinds. The walls, painted in a soothing shade of beige, harmonize beautifully with the wooden floor beneath.\n\nDominating the scene is a gray couch, comfortably nestled against one wall. It's draped with a beige blanket that matches the walls, creating an inviting atmosphere. A brown coffee table sits before the couch, hosting a laptop and a pink book - perhaps left behind by someone engrossed in their work or lost in a captivating read.\n\nTo the side of the room stands a wooden desk, its surface covered with a blue cloth. A white lamp graces the desk, ready to provide light when needed. The relative positions of these objects suggest a space designed for comfort and productivity, where one can relax on the couch while working at the coffee table or find inspiration at the desk.\n\nEvery object in this room tells a story, contributing to an overall narrative of tranquility and warmth. It's more than just a collection of furniture; it's a snapshot of someone's life, captured within four walls.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-31-37.480371.jpg"
-}

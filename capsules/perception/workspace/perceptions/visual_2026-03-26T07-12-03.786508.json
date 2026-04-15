@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:12:27.322788",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft sunlight filtering through a window with white blinds. The primary subject is a man, comfortably seated on a gray couch. He's casually dressed in a vibrant yellow sweater that contrasts beautifully with the muted tones of the room.\n\nIn front of him, there's a wooden coffee table, which holds two items: a sleek black laptop and an elegant silver bottle. The man appears to be engrossed in something on his laptop screen, perhaps working or browsing the internet.\n\nThe overall atmosphere is one of tranquility and focus, as if time has slowed down within this space. The natural light from the window illuminates the room, casting soft shadows and highlighting the textures of the furniture and objects within. It's a snapshot of everyday life, yet it holds a certain timeless quality to it.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-12-03.786508.jpg"
-}

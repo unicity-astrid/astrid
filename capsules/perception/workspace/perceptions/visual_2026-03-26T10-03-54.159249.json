@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:04:03.246373",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in natural light from a large window on the right side. The wall, painted in a soothing shade of white, serves as a backdrop for two windows on the left side. \n\nIn the foreground, a gray couch and a black coffee table command attention. A beige blanket is casually draped over the armrest of the couch, adding a touch of warmth to the scene. The coffee table stands between the couch and the window, serving as an ideal spot for placing items or enjoying a cup of coffee.\n\nA wooden bookshelf stands against the wall in the background, its shelves filled with various books and knick-knacks, hinting at the interests of the inhabitants. A white curtain hangs from the window, partially drawn to let in just enough light to illuminate the room without creating shadows.\n\nOverall, the image portrays a cozy living space where one can relax on the couch, enjoy their favorite book from the collection on the shelf, or simply bask in the natural light streaming in through the windows.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-03-54.159249.jpg"
-}

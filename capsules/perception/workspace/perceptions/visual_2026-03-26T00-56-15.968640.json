@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:56:22.645427",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene, bathed in the soft glow of ambient lighting. Dominating the left side of the frame is a window, divided into three sections by white bars. The middle section is concealed behind a curtain, while the other two sections are illuminated from within, casting a warm orange light that contrasts with the overall darkness of the room.\n\nIn the foreground, a black coffee table takes center stage, its dark surface providing a stark contrast to the lighter surroundings. Upon it rests a blue vase and a white candle, their colors standing out against the monochrome background. The objects are stationary, suggesting a quiet moment frozen in time.\n\nThe background is shrouded in darkness, with only a few hints of light piercing through on the right side of the frame. This interplay of light and shadow adds depth to the scene, hinting at more unseen spaces beyond what's immediately visible.\n\nDespite the simplicity of its elements - a window, a table, some objects - the image paints a picture of serene domesticity, each object precisely placed and contributing to the overall composition. It's a snapshot of everyday life, yet it holds within it a certain timeless beauty.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-56-15.968640.jpg"
-}

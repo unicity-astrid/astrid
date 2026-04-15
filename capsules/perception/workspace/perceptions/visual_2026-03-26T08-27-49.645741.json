@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:27:57.933547",
-  "backend": "llava",
-  "description": "In the image, there is a man sitting on a gray couch in a living room. He is wearing a yellow shirt and headphones, holding a blue cup in his hand. The couch he's sitting on has a white blanket draped over it. In front of him is a wooden coffee table where a dog is lying down.\n\nThe room itself features a window with blinds partially closed, allowing some light to filter into the room. A white curtain hangs from this window, adding to the homely atmosphere. On the floor next to the couch, there's a black trash bag.\n\nThe overall scene suggests a peaceful domestic setting where the man might be enjoying a quiet moment at home, possibly listening to music or watching something on his computer. The presence of the dog adds to the warmth and coziness of the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-27-49.645741.jpg"
-}

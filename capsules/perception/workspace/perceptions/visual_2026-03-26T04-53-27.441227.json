@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:53:42.434951",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting, bathed in the soft glow of a single light source located on the left side of the frame. The room exudes an air of tranquility and solitude, with a bed comfortably nestled in the background. A window punctuates the right wall, its glass panes reflecting the flickering light from the lamp.\n\nThe foreground is dominated by a desk, upon which rests a laptop, closed and silent. The desk's surface gleams under the ambient light, suggesting it might be made of polished wood or perhaps smooth stone. \n\nOn the left wall, a door stands slightly ajar, its presence adding an element of intrigue to the scene. The overall composition of the image suggests a quiet evening spent in solitude, with technology and traditional elements coexisting harmoniously.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-53-27.441227.jpg"
-}

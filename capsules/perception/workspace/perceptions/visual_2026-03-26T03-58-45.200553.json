@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:58:55.571132",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room. The dominant color scheme is black and orange, creating a warm and cozy atmosphere. \n\nIn the center of the image, a wooden table with a glass top stands prominently. On it, a blue soda can and a white candle are visible, adding a touch of everyday life to the scene. The table's position in the room suggests it might be used for dining or other activities.\n\nTo the left of the table, there's a window adorned with yellow curtains that let in soft light, illuminating the room subtly. A black chair is tucked neatly under this window, inviting someone to sit and perhaps enjoy a drink from the soda can on the table.\n\nThe walls of the room are painted white, providing a neutral backdrop for the furniture and decorations. To the right of the table, there's another window dressed with green curtains, offering additional natural light to the space.\n\nOverall, this image portrays a tranquil indoor setting with carefully arranged objects that suggest human activity and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-58-45.200553.jpg"
-}

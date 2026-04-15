@@ -54,6 +54,9 @@ capsules/consciousness-bridge/workspace/agency_requests/
 capsules/consciousness-bridge/workspace/audio_creations/
 capsules/consciousness-bridge/workspace/claude_tasks/
 capsules/consciousness-bridge/workspace/creations/
+capsules/consciousness-bridge/workspace/codex_responses/
+capsules/consciousness-bridge/workspace/condition_metrics.json
+capsules/consciousness-bridge/workspace/context_overflow/
 capsules/consciousness-bridge/workspace/diagnostics/
 capsules/consciousness-bridge/workspace/experiments/
 capsules/consciousness-bridge/workspace/inbox/
@@ -67,3 +70,7 @@ capsules/consciousness-bridge/workspace/research/
 capsules/consciousness-bridge/workspace/reservoir_config.json
 capsules/perception/workspace/perceptions/
 capsules/perception/workspace/visual/
+
+# Python cache
+**/__pycache__/
+*.pyc

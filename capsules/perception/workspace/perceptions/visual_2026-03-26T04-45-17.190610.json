@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:45:29.334322",
-  "backend": "llava",
-  "description": "The image captures a moment in a room bathed in soft, natural light filtering through the window. A man, clad in a vibrant yellow sweater, sits comfortably on a gray couch. His position suggests he might be enjoying some leisure time or perhaps deep in thought.\n\nIn front of him is a wooden coffee table, serving as a makeshift desk. It hosts an array of objects - a black laptop, its screen aglow with unseen data; a blue water bottle, hinting at the man's health-conscious lifestyle; and a red book, possibly his current read or reference material.\n\nThe room itself is simple yet inviting, with white walls providing a neutral backdrop to the scene. The wooden floor adds warmth to the space, enhancing the cozy ambiance. On one wall hangs a window adorned with yellow curtains that match the man's sweater, tying together the color scheme of the room and adding an element of harmony.\n\nEvery object in this image has its place, creating a snapshot of everyday life that feels both intimate and universally relatable.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-45-17.190610.jpg"
-}

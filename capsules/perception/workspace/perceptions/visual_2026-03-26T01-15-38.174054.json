@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:15:44.050294",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene at night. The primary focus is on a dark wooden table, which holds two items: a blue candle and a white candle. The candles are unlit, suggesting they have not been used yet or have been extinguished.\n\nIn the background, there's a window with three panes. Two of them are covered by curtains, while one remains bare, revealing a glimpse of the world outside. The window is located on the right side of the image, providing a contrast to the dark interior.\n\nOn the left side of the image, there's a door leading to another room or perhaps an exit. Its presence adds depth to the scene and suggests that this space is part of a larger living area.\n\nThe overall atmosphere is one of quiet solitude, as if waiting for someone to return home and bring life back into the room. The absence of any human figures in the image further emphasizes this sense of calm and stillness.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-15-38.174054.jpg"
-}

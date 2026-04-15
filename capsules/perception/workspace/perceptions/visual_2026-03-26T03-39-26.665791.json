@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:39:32.401385",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a bedroom bathed in soft, ambient light. The room is dominated by the dark hues of the night, punctuated only by the warm glow from two windows on the right wall. Each window is adorned with a white curtain that cascades down its length, partially concealing the interior of the room.\n\nThe left side of the image provides a glimpse into another space - a hallway. A door stands in the background, slightly ajar, inviting curiosity about what lies beyond. The hallway's presence adds depth to the image, creating a sense of continuity and connection between spaces.\n\nIn the foreground, a black couch commands attention. It sits unoccupied but for a single object: a blue water bottle resting on its armrest. The bottle's color contrasts with the dark surroundings, drawing focus towards it.\n\nThe overall atmosphere is one of tranquility and solitude, as if time has paused in this quiet corner of the world.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-39-26.665791.jpg"
-}

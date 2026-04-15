@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:14:19.363149",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark setting, where a person's face is illuminated by a single light source from the left side. The face, which is the main subject of the image, is turned towards the right side, as if looking into the distance or at something out of frame. The background is completely black, providing a stark contrast to the face and highlighting its features. In the bottom right corner of the image, there's a small white logo, although its details are not discernible due to the low contrast. The overall atmosphere of the image is mysterious and intriguing, as it leaves much to the viewer's imagination about the person's identity and what they might be looking at or thinking about.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-14-14.629038.jpg"
-}

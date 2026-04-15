@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:41:52.956728",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting. The room is bathed in natural light filtering through a window that spans the entire wall. The white blinds on the window add a touch of elegance to the space.\n\nIn the center of the room, there's a wooden coffee table that adds warmth to the otherwise cool-toned room. On top of the table, there's a laptop and a pink bag, suggesting someone might be working or studying here. A gray blanket is also draped over the arm of a couch in the foreground, adding a cozy touch to the scene.\n\nThe overall atmosphere of the image suggests a peaceful and comfortable living space. The precise arrangement of objects and their relative positions contribute to this homely feel.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-41-47.875519.jpg"
-}

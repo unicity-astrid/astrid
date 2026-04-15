@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:29:43.272049",
-  "backend": "llava",
-  "description": "The image presents a striking contrast between light and darkness. The background is completely black, providing a stark canvas for the main elements in the image. On the right side of the image, there are three white lines that curve upwards, creating an arc shape. These lines stand out vividly against the dark background, their white color making them easily visible.\n\nOn the left side of the image, there's a bright light source. This light is shining towards the right side of the image, illuminating the three white lines and casting long shadows on the black surface. The intensity of the light creates an atmospheric effect, adding depth to the image.\n\nThe overall composition of the image suggests a sense of mystery and intrigue, as the viewer's eye is drawn from the bright light source on the left to the curving white lines on the right. Despite its simplicity, the image conveys a powerful visual impact due to its use of contrasting colors and shapes.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-29-33.139504.jpg"
-}

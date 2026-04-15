@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:00:04.298909",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in a room with a window. The man is wearing a yellow shirt and has dark hair. He is looking to his left, and his expression is one of sadness or deep thought.\n\nThe desk he is sitting at is black and holds several objects. There's a lamp providing light on the desk, a black chair that the man is seated in, and a pink jacket draped over the back of the chair.\n\nThe window behind the desk has yellow curtains, which match the color of the man's shirt. The curtains are drawn, suggesting it might be evening or night outside.\n\nThe overall atmosphere of the image is quiet and introspective, with the man seemingly lost in thought amidst the simple yet colorful surroundings.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-59-59.290705.jpg"
-}

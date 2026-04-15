@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:30:36.731214",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft light filtering through two windows adorned with white curtains. A black leather couch rests against one wall, its polished surface reflecting the muted tones of the room. Adjacent to it, a wooden coffee table stands firm, hosting an array of items including a blue soda can and a red toy car, adding splashes of color to the otherwise neutral palette.\n\nA beige blanket casually drapes over the armrest of the couch, inviting one to sink into its plush folds. The floor beneath is carpeted in gray, providing a soft contrast to the dark furniture. In the background, partially obscured by the couch and coffee table, is a bookshelf brimming with books, suggesting a love for literature within this household.\n\nThe room exudes warmth and comfort, each object meticulously placed, creating an inviting space that speaks volumes about its inhabitants' taste and lifestyle.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-30-31.171252.jpg"
-}

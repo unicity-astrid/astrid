@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:28:27.870334",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark room, where three small lights punctuate the blackness. These lights are arranged in a straight line across the center of the image, with each one slightly offset from the others. The leftmost light is the brightest, casting a soft glow that gradually fades as it extends to the right. Each light has a blue tint, adding a touch of coolness to the scene. Despite the darkness, there's a sense of calm and tranquility emanating from this simple yet intriguing composition.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-28-21.537193.jpg"
-}

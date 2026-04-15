@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:48:42.511098",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through two windows adorned with white blinds. The light dances on the pristine white walls, creating an inviting ambiance. A comfortable gray couch invites relaxation, its plush cushions promising warmth. \n\nAdjacent to the couch, a sturdy wooden coffee table stands as a functional centerpiece. It hosts a single blue vase and a pink stuffed animal, adding a touch of color to the room's neutral palette. The precise positioning of these objects suggests careful thought went into their placement.\n\nIn the background, a window draped with white curtains allows more sunlight to seep in, enhancing the room's brightness. A door on the right side offers an exit or entrance point, its presence subtly hinted at rather than overtly stated.\n\nEvery object in this room has its place, creating a harmonious balance between functionality and aesthetics. The image exudes a sense of tranquility, making one feel at home amidst the familiar comforts.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-48-36.703084.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:29:48.750031",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting. The main focus is a wooden coffee table, which is centrally placed in the room. On the table, there's a blue and white vase, adding a pop of color to the otherwise neutral palette. \n\nTo the left of the frame, a gray couch rests against the wall. A black cat is sitting on it, its gaze directed towards the floor, perhaps observing something that has caught its interest.\n\nThe room itself is well-lit, with natural light streaming in from two windows located behind the coffee table. The walls are painted white, providing a bright and airy atmosphere to the space.\n\nIn front of the couch, there's a wooden chair with a beige cushion on it, inviting someone to sit down and enjoy the comfortable ambiance of the room. The precise arrangement of these objects creates a harmonious balance within the space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-29-36.967180.jpg"
-}

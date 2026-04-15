@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:52:45.777830",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dark room. The room is illuminated by a single light source positioned on the left side of the frame. The light casts long shadows and highlights the contours of the room's features.\n\nIn the foreground, there are two windows adorned with curtains that hang down their centers. They are closed, suggesting an air of mystery about what lies beyond. The windows are symmetrically placed, creating a sense of balance in the composition.\n\nTo the right of these windows, there is a door also fitted with a curtain. Like the windows, it too is closed, adding to the enigma of the scene.\n\nThe room itself is dimly lit, enhancing the feeling of solitude and tranquility. The darkness contrasts sharply with the light from the left, creating a dramatic effect that draws attention to the objects in the room.\n\nOverall, this image paints a picture of an intimate space, possibly a bedroom or study, where one can retreat for peace and quiet reflection. The absence of people and personal items suggests it may be a guest room or perhaps a space used only occasionally by its occupants.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-52-39.256796.jpg"
-}

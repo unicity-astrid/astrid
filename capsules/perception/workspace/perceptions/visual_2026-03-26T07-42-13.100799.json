@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:42:26.685811",
-  "backend": "llava",
-  "description": "In the image, there is a man who appears to be in a relaxed state. He is sitting on a couch, dressed in a vibrant yellow shirt that contrasts with the muted tones of his surroundings. His attention seems to be focused on the table in front of him, which holds two objects: a black bottle and a blue cup.\n\nThe room around him is softly lit, creating an atmosphere of tranquility. A window punctuates one wall, allowing natural light to filter in and illuminate the space. The man's position on the couch and his gaze towards the table suggest he might be deep in thought or perhaps enjoying a quiet moment alone.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-42-13.100799.jpg"
-}

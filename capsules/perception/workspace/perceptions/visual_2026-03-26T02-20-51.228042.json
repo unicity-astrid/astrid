@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:20:56.158451",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a living room. The room is bathed in darkness, with only two windows providing illumination from outside. \n\nThe window on the left is adorned with a vibrant red curtain that contrasts beautifully against the night sky. On the right, another window features a white curtain, offering a softer light that adds to the room's cozy ambiance.\n\nIn the foreground of the image, there's a desk covered in a black blanket. A blue cup and a silver lighter are resting on it, adding a touch of color to the scene. \n\nThe background reveals more windows and curtains, suggesting an open floor plan for this living space. The overall atmosphere is one of tranquility and quietude, as if time has slowed down within these four walls.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-20-51.228042.jpg"
-}

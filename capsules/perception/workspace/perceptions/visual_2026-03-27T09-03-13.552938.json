@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T09:03:19.027476",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in warm sunlight. Dominating the scene is a large flat-screen TV, mounted on a pristine white wall above a black fireplace. The screen glows with vibrant colors, displaying an array of buttons and options for controlling the television.\n\nTo the right of the fireplace, a roll of paper towels hangs ready for use. Its presence adds a touch of everyday practicality to the scene.\n\nThe room itself is filled with soft light filtering in from the left side of the image, casting gentle shadows and highlighting the textures of the walls and furniture. The overall atmosphere is one of comfort and relaxation, inviting one to sit back and enjoy some leisure time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-03-13.552938.jpg"
-}

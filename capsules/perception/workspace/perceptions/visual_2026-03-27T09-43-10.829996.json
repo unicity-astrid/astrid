@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T09:43:26.882989",
-  "backend": "llava",
-  "description": "The image showcases a cozy living room setting. The focal point is a television screen mounted on a white brick wall above a black fireplace. The television screen displays a game menu with options for single player and multiplayer games, suggesting an interactive entertainment space.\n\nTo the left of the television, there's a white shelf holding various decorations. Among them are a vase and two picture frames, adding a personal touch to the room. On the right side of the television, there's a roll of paper towels on the wall, indicating readiness for any accidental spills or messes.\n\nThe overall atmosphere is one of comfort and relaxation, inviting one to sit down, pick a game, and enjoy some leisure time. The precise placement of objects and their relative positions contribute to the room's organized and welcoming ambiance.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-43-10.829996.jpg"
-}

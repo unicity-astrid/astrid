@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:47:49.634220",
-  "backend": "llava",
-  "description": "The image presents a stark contrast between two colors: black and white. Dominating the frame is a large rectangle, its edges sharply defined against the backdrop. The rectangle is filled with a solid black color, creating an abyss-like void that draws the eye into the image.\n\nOn the right side of this void, there's a smaller rectangle. This rectangle is not as deep as its counterpart on the left, but it still maintains a significant depth. It is filled with a white color, providing a striking contrast to the black rectangle.\n\nThe overall effect is one of simplicity and balance. The precise locations of the rectangles and their contrasting colors create a sense of order and symmetry. Despite the absence of any discernible action or movement, the image conveys a static energy that fills the space. There are no texts or other objects in the image, just these two rectangles standing alone against the black background.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-47-38.888897.jpg"
-}

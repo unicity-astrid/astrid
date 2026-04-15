@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T05:49:53.732020",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, dim lighting. The dominant colors are black and white, punctuated by splashes of red from a lit candle on the right side of the frame. A large window with yellow curtains stretches across one wall, allowing some light to filter into the room.\n\nOn the left side of the image, there's a comfortable sofa inviting relaxation. It faces a wooden coffee table that sits in the center of the room. The table hosts a black lamp, ready to provide illumination when needed.\n\nIn the background, there's a door leading to another part of the house. A pink towel hangs on it, adding a pop of color to the otherwise monochrome setting. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation or quiet reflection.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-49-47.005659.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:26:19.581339",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dark room. The primary source of light is a window on the left wall, casting an orange glow that contrasts with the overall darkness of the scene. On the right wall, another window draped with a curtain can be seen. \n\nIn the foreground, there's a desk positioned against the wall, its surface illuminated by the ambient light. A black chair is tucked neatly under the desk, ready for use. The room itself appears to be empty, adding to the sense of tranquility.\n\nThe image does not contain any discernible text or countable objects. The relative positions of the objects suggest a well-organized and thoughtfully arranged space. The orange glow from the windows creates an atmosphere that is both warm and serene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-26-11.636097.jpg"
-}

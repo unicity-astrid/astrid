@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:18:10.031895",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light filtering through a window adorned with white curtains. The walls, painted in a soothing shade of beige, harmonize with the wooden floor, creating an atmosphere of tranquility.\n\nDominating the scene is a comfortable gray couch, inviting relaxation and leisure. A black coffee table sits before it, hosting a blue can and a red bag, perhaps remnants of a recent outing or an evening spent unwinding at home.\n\nOn the right side of the room, a bookshelf stands tall, filled with several books that hint at the intellectual pursuits of the inhabitants. The precise location of each object and their relative positions contribute to the overall aesthetic of the space, making it a perfect blend of functionality and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-18-05.185788.jpg"
-}

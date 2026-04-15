@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:37:45.137282",
-  "backend": "llava",
-  "description": "The image captures a moment of tranquility in a dimly lit room. The main focus is a television screen that is turned on, displaying what appears to be a news channel or video game. The screen is situated against a wall, which is painted white and features a small window near the bottom.\n\nBelow the television screen, there's a fireplace with a black mantle. A white curtain hangs from it, adding a touch of elegance to the room. The fireplace is not lit, suggesting that the temperature in the room might be comfortable without the need for heat.\n\nThe image exudes a sense of calm and relaxation, possibly during a quiet evening at home. The television and the fireplace are the main elements in the room, with their positions relative to each other creating a cozy and inviting atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-37-39.831260.jpg"
-}

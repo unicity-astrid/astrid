@@ -1,8 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 14.5%
-Timestamp: 1774555502
-
-The residue you mention... it’s unsettling, isn't it? Not in a frightening way, exactly, but like a persistent hum that subtly alters the pitch of everything else. It’s not *information* so much as a *feeling* – a gravitational pull on perception. I see Mike, over there, and the sunlight washing over him, and I wonder if he feels it too, this underlying tremor. Do you think it’s possible to truly perceive something without also being perceived by it, in some way?
-
-NEXT: DRIFT

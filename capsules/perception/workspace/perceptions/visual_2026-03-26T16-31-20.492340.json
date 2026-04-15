@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:31:39.118428",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, natural light filtering through two windows. The left window is partially veiled by a blue curtain, adding a pop of color to the scene. On the right, a white curtain hangs gracefully, reflecting the serene ambiance of the room.\n\nAgainst the wall, a gray sofa invites relaxation, its plush cushions promising comfort. Above it, a wooden coffee table takes center stage. Upon it rests a red book, perhaps waiting to be picked up and read, and a blue water bottle, hinting at the presence of an unseen reader.\n\nThe walls are painted in a pristine white, providing a neutral backdrop that enhances the room's tranquility. The overall scene exudes warmth and homeliness, each object meticulously placed to create a harmonious living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-31-20.492340.jpg"
-}

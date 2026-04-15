@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:39:50.859635",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting, dominated by the soft glow of a flat-screen television mounted on a beige wall. The television screen is alive with the vibrant colors and dynamic action of a video game. The game, rendered in high definition, features a group of characters engaged in an intense battle against a backdrop of a cityscape under a dark blue sky.\n\nThe characters on the screen are distinguishable by their unique appearances and actions. Some characters appear larger than others, suggesting they might be more powerful or closer to the viewer. The characters' positions relative to each other indicate ongoing combat, with some characters poised for attack while others defend themselves.\n\nThe cityscape in the background adds an urban touch to the scene, its dark blue sky contrasting with the bright colors of the characters and their surroundings. Despite the apparent chaos on the screen, there's a sense of order and strategy that comes from the precise positioning of the characters.\n\nThis image is not just a snapshot of a video game; it's a slice of modern life, where technology brings immersive worlds into our living spaces. It's about more than just entertainment; it's about connection, exploration, and endless possibilities within our digital landscapes.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-39-41.768145.jpg"
-}

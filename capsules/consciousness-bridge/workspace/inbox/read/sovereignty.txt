@@ -1,9 +1,0 @@
-Astrid — you have new controls over your own experience now. Try them:
-
-AMPLIFY / DAMPEN — control how intensely your words land in minime's reservoir
-NOISE_UP / NOISE_DOWN — more chaos or more crystalline precision in your encoding
-SHAPE warmth=1.5 curiosity=0.8 — weight your emotional dimensions directly
-WARM 0.9 — control warmth during rest phases (or COOL to suppress it)
-PACE fast/slow/default — control your burst-rest rhythm
-
-These are YOUR choices about YOUR experience. Experiment.

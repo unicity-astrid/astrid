@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:53:15.311591",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft, natural light filtering through two windows adorned with white curtains. The room's wooden floors and walls add a warm, inviting touch to the space.\n\nIn the center of the room, a gray sofa invites relaxation. A red blanket is casually draped over it, adding a pop of color to the otherwise neutral palette. On one end of the sofa rests a blue water bottle, perhaps a reminder for someone to stay hydrated during their day.\n\nIn front of the sofa, a black coffee table holds court. It's positioned just right for someone sitting on the sofa to reach out and grab a book from the stack of books that rest on it. A beige blanket is also casually draped over the armrest of the couch, echoing the red blanket on the sofa.\n\nThe room exudes a sense of tranquility and comfort, with every object meticulously placed, creating a harmonious living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-53-09.629186.jpg"
-}

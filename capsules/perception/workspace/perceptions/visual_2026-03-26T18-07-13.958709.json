@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:07:19.492158",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting bathed in soft sunlight filtering through two windows adorned with white blinds. The room is dominated by a gray couch, comfortably positioned on the left side of the frame. A cat has found solace on this couch, lying down in peaceful slumber.\n\nIn front of the couch, a brown coffee table takes center stage. It hosts an array of objects - a laptop, suggesting work or perhaps leisure time spent browsing; a blue mug, possibly filled with a warm beverage to accompany the tranquility of the scene; and a book, hinting at intellectual pursuits during moments of relaxation.\n\nOn the right side of the image, a white curtain hangs gracefully from a window. It adds a touch of elegance and softness to the room's ambiance. The sunlight streaming in through these windows casts an inviting glow over everything, enhancing the overall warmth and coziness of this tranquil indoor space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-07-13.958709.jpg"
-}

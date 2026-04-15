@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:07:26.737718",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting, bathed in soft light filtering through two windows adorned with white curtains. The windows are symmetrically positioned on either side of a black desk, creating a balanced composition.\n\nOn the right window sill, a blue mug stands out against the muted tones of the room, its color echoing the cool hue of the morning sky outside. Its presence suggests someone's recent activity or perhaps an imminent break from work.\n\nThe desk itself is devoid of any objects, its surface as dark as night, providing a stark contrast to the white walls that envelop it. The absence of clutter gives the room an air of simplicity and serenity.\n\nTo the left of the desk, a black chair waits patiently for its occupant, adding another layer of depth to this everyday scene. Its position relative to the desk and windows creates a sense of harmony within the space.\n\nOverall, the image paints a picture of a quiet moment in time, where every object has its place and purpose, contributing to the calm and orderliness of the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-07-14.773134.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:52:30.980213",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a couch in a living room setting. He's wearing a yellow shirt and appears to be engrossed in his work on a laptop that's placed on a coffee table in front of him. The window behind him is covered with a white curtain, suggesting it might be daytime outside.\n\nOn the coffee table, there are two water bottles - one blue and one black, possibly indicating the man's preference or different flavors for hydration. A beige blanket is also present on the couch, adding to the cozy atmosphere of the room.\n\nThe image captures an everyday moment of someone working from home, surrounded by familiar objects that create a comfortable and personal space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-52-21.414070.jpg"
-}

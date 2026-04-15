@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:04:19.645467",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a living room bathed in soft sunlight. The main subject is a man, dressed in a blue shirt, seated on a gray couch. He is positioned near the armrest of the couch, with his left hand casually resting on it and his right hand gently cradling his head.\n\nIn front of him, there's an open black coffee table, which holds a red book and a white mug. The man appears to be engrossed in reading the book, perhaps enjoying a peaceful morning or evening. The overall atmosphere is one of tranquility and comfort, with the sunlight streaming in through unseen windows adding warmth to the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-04-13.581178.jpg"
-}

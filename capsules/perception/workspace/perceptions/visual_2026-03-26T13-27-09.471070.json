@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:27:18.842695",
-  "backend": "llava",
-  "description": "In the image, a man is seated in a chair inside a room that has a window. The man is dressed in a blue shirt and black shorts with white polka dots. He's wearing sunglasses and a brown baseball cap. His attention seems to be focused on a wooden table in front of him.\n\nThe table holds two objects: a blue can and an open magazine. The magazine is resting on the table, its pages spread out for reading. The blue can stands upright next to it.\n\nThe window behind the man lets in natural light that illuminates the room. On the windowsill, there's a white cloth draped over it, adding to the homely atmosphere of the scene.\n\nOverall, the image captures a quiet moment of solitude and relaxation within an indoor setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-27-09.471070.jpg"
-}

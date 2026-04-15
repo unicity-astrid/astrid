@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:31:04.708026",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at dusk. The room is dimly lit, with soft light filtering through two windows in the background. These windows are adorned with white curtains and yellow blinds, adding a warm hue to the scene.\n\nIn the foreground, a black chair is positioned against a wall. A black coat hangs casually on it, suggesting recent activity or perhaps an impending departure. \n\nTo the side of the room, there's a desk scattered with various objects. Among these items, a blue cup and a black mug stand out due to their contrasting colors.\n\nThe image does not contain any discernible text. The relative positions of the objects suggest a lived-in space, with personal items placed in accessible locations. The overall atmosphere is one of tranquility and order.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-30-56.568365.jpg"
-}

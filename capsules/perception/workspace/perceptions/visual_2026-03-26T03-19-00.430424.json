@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:19:10.966078",
-  "backend": "llava",
-  "description": "The image captures a serene scene in a room bathed in darkness. The room's window, a silent observer to the world outside, is veiled by a white curtain that dances gently with the breeze. A black coat, draped casually over it, adds an air of mystery to the setting.\n\nIn the foreground, a desk stands as a testament to human presence. On its surface rests a blue mug and a white candle, their colors standing out starkly against the night's obscurity. The candle's flame flickers in the dim light, casting dancing shadows around the room.\n\nThe walls of the room are painted white, their pristine surfaces echoing the purity of the curtain. In contrast, the ceiling is black, its deep hue absorbing the room's only source of light - a small lamp perched on the desk. The lamp's warm glow illuminates the room, casting long shadows and highlighting the room's features.\n\nEvery object in this room tells a story - from the coat that hints at human presence to the candle that adds an element of mystery. Together, they create an atmosphere that is both intriguing and tranquil.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-19-00.430424.jpg"
-}

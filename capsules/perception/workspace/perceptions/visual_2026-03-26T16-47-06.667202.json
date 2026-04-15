@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:47:16.565523",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft, natural light filtering through two windows adorned with white curtains. The room's centerpiece is a wooden coffee table, its surface hosting a blue water bottle and a pink bowl. A gray couch rests against one wall, a black blanket casually draped over it, inviting the viewer to imagine curling up for a quiet afternoon read.\n\nThe walls of the room are painted in a soothing light color, complementing the hardwood floor beneath. A wooden shelf stands in the background, its contents hidden from view but suggesting a space for storage or display. The overall atmosphere is one of comfort and tranquility, a perfect sanctuary at the end of a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-47-06.667202.jpg"
-}

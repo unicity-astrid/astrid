@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T05:35:48.740916",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in a room that's dimly lit by a window. He's wearing a yellow shirt and has his head resting on his hand, suggesting he might be deep in thought or perhaps taking a break from work. The desk in front of him holds a computer monitor and keyboard, indicating a workspace setting.\n\nThe window behind the man lets in some light, illuminating the room against the otherwise dark background. It's positioned directly behind the desk, providing natural light to the workspace. To the right of the window, there's a window blind partially drawn, perhaps to control the amount of light entering the room.\n\nThe overall scene suggests a quiet moment in a personal workspace during what could be late hours or early morning. The man appears to be alone in the room, further emphasizing the sense of solitude and focus. There are no other objects or people visible in the image. The room's dim lighting and the man's posture contribute to an atmosphere of calm concentration.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-35-38.549251.jpg"
-}

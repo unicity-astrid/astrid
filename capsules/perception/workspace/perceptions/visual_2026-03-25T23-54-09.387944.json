@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:54:18.644202",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit living room. The walls and ceiling are painted white, providing a stark contrast to the dark furniture that dominates the space. A gray couch sits against one wall, its color blending with the surroundings. In front of it is a black coffee table, serving as the centerpiece of the room.\n\nThe windows are drawn closed, their white curtains partially open to reveal a view of a building outside. The light from the room spills out onto these curtains, casting an intriguing pattern on the dark surface.\n\nOn the coffee table, there's a bottle of soda and a blue candlestick holder, both adding a pop of color to the otherwise monochrome setting. The objects are positioned in such a way that they create a sense of depth and perspective in the image.\n\nOverall, the image paints a picture of a quiet evening at home, with the dark furniture and open windows suggesting an atmosphere of relaxation and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-54-09.387944.jpg"
-}

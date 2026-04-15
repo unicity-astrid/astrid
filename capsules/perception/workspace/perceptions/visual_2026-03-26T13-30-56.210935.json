@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:31:06.652466",
-  "backend": "llava",
-  "description": "In the image, a man is comfortably seated on a green couch in a living room setting. He's wearing a blue shirt and black shorts, with a red baseball cap adding a pop of color to his attire. His right hand is skillfully maneuvering a remote control over the armrest of the couch.\n\nThe couch isn't just any ordinary one; it has an attached wooden side table where sits a white cloth. On this cloth, there's a blue can and a bottle of water, possibly indicating that he was enjoying some refreshments while relaxing on his couch.\n\nIn front of him, there's a coffee table that holds another remote control, perhaps for controlling the television or a music system not visible in the frame. The room itself is well-lit, with sunlight streaming in from an unseen window, casting soft shadows and highlighting the man and his surroundings.\n\nThe overall atmosphere suggests a quiet afternoon spent indoors, perhaps watching TV or enjoying some music in the comfort of his living room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-30-56.210935.jpg"
-}

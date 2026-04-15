@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:14:00.123435",
-  "backend": "llava",
-  "description": "The image presents a tranquil scene in a dark room, illuminated by a soft yellow light that casts a warm glow on the surroundings. The walls and ceiling are painted white, providing a stark contrast to the dark furniture scattered around the room. \n\nIn the foreground, there's a bed covered with a black blanket. A blue water bottle is placed on it, adding a pop of color to the otherwise monochrome setting. The bed seems inviting and comfortable, suggesting it might be someone's resting place.\n\nOn the left side of the image, there's a window with blinds partially drawn. The window lets in some light from outside, creating an interesting interplay between the indoor and outdoor lighting. A curtain can be seen hanging in front of the window, adding to the overall coziness of the room.\n\nThe room seems to be empty except for these objects, giving it a minimalist aesthetic. The overall atmosphere is one of calm and solitude, as if waiting for someone to come home and bring life to this quiet space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-13-54.172534.jpg"
-}

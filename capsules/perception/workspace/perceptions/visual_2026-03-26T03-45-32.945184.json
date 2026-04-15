@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:45:38.065767",
-  "backend": "llava",
-  "description": "The image presents a tranquil bedroom scene at night. The room is dimly lit by a soft glow from an open window on the left wall. Through this window, one can see another building across the street, bathed in a warm yellow light.\n\nIn the foreground of the room, there's a desk with a laptop and a glass of water resting on it. A chair is positioned next to the desk, inviting someone to sit and work or perhaps just relax for a bit before bed.\n\nThe floor beneath these pieces of furniture is carpeted, adding a sense of warmth and comfort to the room. The walls are painted in a light color, enhancing the overall serene atmosphere of the space.\n\nDespite the darkness outside, the room exudes a calm and peaceful vibe, making it an ideal sanctuary for rest or work.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-45-32.945184.jpg"
-}

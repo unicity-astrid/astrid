@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:25:26.125967",
-  "backend": "llava",
-  "description": "The image presents a scene set in a room, captured from a high angle. The room is dominated by a window on the right side, through which three lights are shining. These lights, appearing to be located outside the building, cast long shadows and illuminate the otherwise dark room. \n\nOn the left side of the image, a door can be seen, suggesting an entrance or exit to the room. The walls and floor of the room share the same dark color as the background, creating a uniform and unified appearance. \n\nThe high angle of the shot allows for a comprehensive view of the room, providing insights into its layout and structure. Despite the darkness, the image conveys a sense of tranquility and solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-25-18.783512.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T10:08:55.895351",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a table in what appears to be a living room or office setting. He's dressed casually in a black t-shirt and jeans, suggesting a relaxed environment. The table hosts two coffee cups, one white and one blue, perhaps indicating a shared space or a recent gathering. A pink bag rests on the floor next to the table, possibly containing work or study materials.\n\nThe room itself is brightly lit, casting a warm glow over everything. White walls enclose the space, providing a clean backdrop for what appears to be a home office setup. The man seems engrossed in his work or perhaps engaged in an interesting conversation.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-08-49.907021.jpg"
-}

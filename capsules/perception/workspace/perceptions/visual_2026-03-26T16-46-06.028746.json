@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:46:16.782678",
-  "backend": "llava",
-  "description": "This image captures a serene and cozy living room bathed in soft, natural light. The centerpiece of the room is a white wall that houses three windows, each adorned with white curtains that filter the sunlight, casting a warm glow throughout the space.\n\nThe room is furnished with a comfortable gray couch, which invites relaxation. A wooden coffee table sits in front of it, providing a surface for various items. On this table, there's a blue water bottle and a red book, suggesting someone might be enjoying some leisure time here.\n\nTo the right of the couch, there's a white chair draped with a beige blanket. This adds an element of coziness to the room, making it even more inviting. The placement of these pieces of furniture creates a harmonious living area where one can unwind and enjoy their time.\n\nIn terms of object count, there are three windows, one couch, one coffee table, one water bottle, one book, and one chair with a blanket on it. The relative positions of the objects suggest a well-thought-out layout for comfort and functionality.\n\nOverall, this image portrays a tranquil living space where one can relax and enjoy some quiet time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-46-06.028746.jpg"
-}

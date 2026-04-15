@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:53:29.940658",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at night, bathed in soft light that filters through two windows on the left wall. The window closest to the viewer is partially obscured by a curtain, while its companion further down the wall stands unobstructed, both their glass panes reflecting the room's muted glow.\n\nIn front of these windows, a black desk takes center stage. Upon it, a solitary blue candle and a white box with red writing sit, perhaps remnants of a recent activity or an upcoming event. The desk's dark hue contrasts sharply with the warm yellow light that spills in from the windows, creating a striking visual effect.\n\nThe room itself is simple yet inviting, its walls painted a clean white that enhances the overall brightness of the space. A window on the right wall offers additional light and connection to the world outside, completing this tranquil scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-53-20.028043.jpg"
-}

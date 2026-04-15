@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T10:32:27.989592",
-  "backend": "llava",
-  "description": "The image captures a moment in a room bathed in soft sunlight filtering through a window draped with white curtains. A man, dressed in a black t-shirt and a red baseball cap, is seated at a table, engrossed in his laptop. His posture suggests deep concentration as he works on the screen of the laptop that sits open before him. \n\nTo his side, a blue cup rests on the table, perhaps containing a beverage to fuel his work session. The room around him is softly lit, with a green armchair adding a pop of color in the background. A lamp perched on a desk also shares the space, ready to provide additional light when needed.\n\nThe scene is one of quiet productivity and focus, as if time itself has paused to allow this man to work undisturbed. The objects and their positions relative to each other create a harmonious composition that speaks volumes about the man's environment and his engagement with it.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-32-13.174811.jpg"
-}

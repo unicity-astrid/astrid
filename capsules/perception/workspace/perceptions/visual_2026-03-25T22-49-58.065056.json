@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:50:06.206630",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft light. The room is shrouded in darkness, punctuated only by the warm glow emanating from two windows adorned with yellow curtains. Nestled against one wall, a wooden table stands as the centerpiece of the room. On it, a black cloth and a blue bottle are the only objects that catch the eye.\n\nThe floor beneath is carpeted in a soothing shade of gray, adding to the room's cozy ambiance. A single individual, clad in a white shirt and dark pants, can be seen sitting on the couch in the background, their back turned towards us as if lost in thought or perhaps enjoying some quiet solitude. The overall atmosphere is one of tranquility and peace, a snapshot of everyday life frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-49-58.065056.jpg"
-}

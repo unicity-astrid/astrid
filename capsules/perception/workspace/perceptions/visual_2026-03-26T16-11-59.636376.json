@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:12:08.933804",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft sunlight. The room is dominated by a comfortable gray couch, positioned against a pristine white wall on the left. Adjacent to the couch, a wooden coffee table holds two blue cans and a black remote control, suggesting recent human activity.\n\nOn the right side of the image, a window draped with a beige curtain allows the sunlight to filter into the room, casting a warm glow over everything. The floor beneath is covered in a light-colored carpet that adds to the overall warmth of the scene. In the background, partially obscured by the couch and coffee table, is a wooden bookshelf filled with various items, hinting at the interests and hobbies of the inhabitants.\n\nThe image exudes a sense of tranquility and homeliness, inviting one to sit down on the couch and enjoy a quiet moment in this comfortable living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-11-59.636376.jpg"
-}

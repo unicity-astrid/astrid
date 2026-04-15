@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:23:45.618008",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room, bathed in an ethereal blue tint that casts long shadows and highlights the few objects within. The room is sparsely furnished, with two windows draped with curtains being the most prominent features.\n\nIn the foreground, partially obscured by a table, a person lies on a bed, their form blurred and indistinct. Their presence adds a sense of life to the otherwise still scene.\n\nThe table in front of the bed holds three objects: a blue spray bottle, a black phone, and a black book. These objects stand out against the muted colors of the room, drawing attention to themselves.\n\nBeyond these immediate details, two windows punctuate the wall. They are covered with curtains that hang down like veils, partially obscuring what lies beyond. The curtains add a sense of mystery to the scene, hinting at unseen spaces outside the frame of the image.\n\nOverall, this image paints a picture of solitude and quiet introspection, as if inviting the viewer to step into this softly lit world and lose themselves in its tranquil ambiance.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-23-35.130560.jpg"
-}

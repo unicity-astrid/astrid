@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:12:10.087582",
-  "backend": "llava",
-  "description": "This image captures a serene living room bathed in natural light filtering through two windows adorned with white curtains. The walls, painted in a pristine white, contrast beautifully with the wooden floor beneath. A cozy gray couch invites relaxation on the left side of the room, while a matching gray armchair nestles comfortably on the right.\n\nIn the heart of the room, a black coffee table takes center stage. It hosts an array of items - a blue vase adding a pop of color, a white book perhaps waiting to be read, and another white book that has already been perused. The room exudes tranquility and warmth, a perfect sanctuary for quiet afternoons spent in solitude or good company.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-12-01.268389.jpg"
-}

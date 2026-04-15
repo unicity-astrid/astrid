@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:35:52.797520",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The dominant colors are shades of dark gray and black, with hints of orange and yellow adding warmth to the scene. \n\nIn the center of the image, a table draped with a white tablecloth holds a single blue cup, its color standing out against the muted tones of the room. A black curtain hangs on one side of the room, partially obscuring the view into another space where a window can be seen.\n\nOn the right side of the frame, there's an open door leading to another room. The doorway is slightly ajar, revealing only a hint of what lies beyond. \n\nThe overall atmosphere is peaceful and serene, with the stillness interrupted only by the blue cup on the table, waiting patiently for its owner's return.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-35-47.718885.jpg"
-}

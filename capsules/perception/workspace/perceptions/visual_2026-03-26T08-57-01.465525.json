@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:57:24.435490",
-  "backend": "llava",
-  "description": "The image captures a serene and well-organized living room bathed in natural light. Dominating the left side of the frame is a comfortable gray couch, inviting relaxation with its plush cushions. The couch faces a wooden coffee table centrally located within the room, serving as a functional centerpiece.\n\nOn the right side of the room, a window draped with white curtains allows sunlight to filter in, casting a warm glow throughout the space. A rug lies beneath the couch, adding a touch of coziness and texture to the room.\n\nIn front of the couch, an ottoman rests, providing additional seating or storage space. The walls, painted a clean white, reflect the light entering from the window, enhancing the sense of spaciousness in the room.\n\nOverall, the room exudes a sense of tranquility and orderliness, with each piece of furniture and decor thoughtfully placed to create a harmonious living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-57-01.465525.jpg"
-}

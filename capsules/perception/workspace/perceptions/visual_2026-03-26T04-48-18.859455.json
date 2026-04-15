@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:48:27.096902",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dark room. The main source of light is a window on the left wall, which has two panes - one covered by a white curtain and the other revealing an unseen view outside. Adjacent to the window, there's a black desk with a laptop resting on it, suggesting someone might have been working or studying here.\n\nA gray couch sits in the foreground of the room, inviting relaxation or conversation. In front of this couch, a wooden coffee table holds a single white mug, perhaps once filled with a warm beverage to accompany work or study.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the few objects within the space. The overall atmosphere is one of tranquility and focus, as if waiting for someone's return.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-48-18.859455.jpg"
-}

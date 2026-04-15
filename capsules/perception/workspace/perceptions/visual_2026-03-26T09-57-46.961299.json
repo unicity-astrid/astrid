@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:57:59.835844",
-  "backend": "llava",
-  "description": "The image captures a serene and well-lit living room bathed in natural light streaming in from two windows on the left wall. The walls are painted white, providing a stark contrast to the gray couch that sits against one of them. A wooden coffee table occupies the center of the room, its surface bare except for a blue mug that adds a pop of color to the otherwise neutral palette.\n\nIn the corner of the room, a black chair stands out against the lighter tones. It's adorned with a beige blanket that drapes casually over it, suggesting a cozy and inviting atmosphere. The windows are dressed in white blinds, partially drawn back to let in the sunlight that illuminates the room and casts soft shadows around.\n\nThe relative positions of the objects create a harmonious balance within the space. The couch and chair flank the coffee table, while the windows provide a focal point on the left wall. The overall composition exudes a sense of tranquility and comfort, making it an ideal setting for relaxation and conversation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-57-46.961299.jpg"
-}

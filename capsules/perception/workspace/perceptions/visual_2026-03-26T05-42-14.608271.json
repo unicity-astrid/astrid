@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:42:25.789410",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a room bathed in the soft glow of a single lamp situated on the right side of the frame. The lamp, casting long shadows, illuminates the scene with a warm yellowish light that contrasts against the cool blue tones dominating the rest of the image.\n\nIn the heart of the room, a black desk stands as the centerpiece. It's an inviting space, dotted with various objects that hint at the occupant's habits and interests. A laptop is open, its screen glowing softly in the ambient light, suggesting recent use. Beside it, a coffee cup rests, perhaps left untouched amidst work or study.\n\nOn the left side of the desk, a window frames a view of another building, adding depth to the scene and connecting the room's occupant with the world outside. The walls surrounding these elements are painted white, providing a neutral backdrop that allows the other colors in the room to stand out.\n\nOverall, this image paints a picture of solitude and introspection, a snapshot of someone's personal space where ideas come to life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-42-14.608271.jpg"
-}

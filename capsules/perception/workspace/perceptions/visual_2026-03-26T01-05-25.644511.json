@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:05:30.520570",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dark room. The main focus is on two windows situated on the left side of the frame. Each window is adorned with white curtains and a yellow lampshade, casting a warm glow that contrasts with the otherwise dark surroundings.\n\nIn front of these windows, there's a black couch with an armrest that houses a blue water bottle. A brown blanket is casually draped over the back of the couch, adding a touch of homeliness to the scene.\n\nThe room itself is simple and uncluttered, with white walls providing a neutral backdrop for the dark furniture. The overall atmosphere is one of tranquility and comfort, as if inviting the viewer to sit down on the couch and enjoy a peaceful moment by the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-05-25.644511.jpg"
-}

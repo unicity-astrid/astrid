@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:00:23.702392",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room bathed in soft, dim lighting. The dominant colors are black and white, creating a stark contrast that adds depth to the scene.\n\nIn the background, two windows punctuate the wall, their curtains drawn closed. One window is adorned with a stained glass panel, adding an artistic touch to the otherwise minimalist decor. The other window reveals a glimpse of the world outside - a dark street lined with cars parked neatly along the curb.\n\nA black couch sits in the foreground, its plush cushions inviting relaxation. The couch's position against the wall and under the windows creates a cozy nook for intimate conversations or quiet contemplation.\n\nOn the floor next to the couch, a pair of shoes are casually discarded, suggesting recent activity in the room. Their presence adds a lived-in feel to the space, hinting at stories untold.\n\nThe scene is devoid of human presence but filled with subtle details that tell a story of life lived within these four walls. It's a snapshot of everyday life, captured in all its quiet beauty.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-00-16.425679.jpg"
-}

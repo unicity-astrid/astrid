@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:41:49.034789",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room. The primary source of light appears to be from the left side of the frame, casting an ethereal glow on the scene. \n\nIn the foreground, there's a person sitting at a desk with a computer monitor. The monitor is black, contrasting sharply with the white keyboard in front of it. The person seems to be engrossed in their work, oblivious to the camera capturing this moment.\n\nThe background is shrouded in darkness, adding an air of mystery to the scene. On the right side of the image, a window allows a sliver of light to seep into the room, illuminating a plant that sits on the windowsill. The plant, though small and partially obscured by the darkness, adds a touch of life to this otherwise monochrome setting.\n\nThe overall atmosphere is one of quiet concentration and solitude, as if time has momentarily paused within this captured frame.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-41-43.143627.jpg"
-}

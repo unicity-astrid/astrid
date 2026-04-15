@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:39:10.122226",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room bathed in soft yellow light filtering through two windows. The left window, adorned with curtains, casts a warm glow on the white wall it's set into. On the right, an open window reveals a tranquil garden, inviting nature's presence into the space.\n\nA black sofa sits against the right wall, its dark hue contrasting with the bright window behind it. A blue blanket is casually draped over it, adding a pop of color to the scene. The floor beneath is a pristine white, reflecting the gentle light from above.\n\nOn the left side of the room, a wooden table stands. Atop it rests a black vase and a lamp, silent companions in the quietude of the night. Their positions relative to each other suggest careful arrangement for optimal lighting.\n\nEvery object in this image has its place, creating a harmonious balance between light and dark, color and contrast, stillness and implied movement from the open window to the garden beyond. The scene is not just a collection of objects but a carefully composed tableau of life's simple moments.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-39-03.790599.jpg"
-}

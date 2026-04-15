@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:34:29.953065",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a wooden desk in what appears to be a room with white walls and a window on the left side. The man, dressed in a blue shirt and black shorts, is holding a remote control in his right hand. His gaze is directed towards something outside of the frame, suggesting he might be watching television or observing an event.\n\nOn the desk, there are two objects: a blue mug and a white cloth. The mug's vibrant blue color contrasts with the muted tones of the wooden desk and the man's dark clothing. The white cloth, possibly a napkin, adds another layer of detail to the scene.\n\nThe room itself is simple and uncluttered, with white walls providing a neutral backdrop that allows the objects within the frame to stand out. A window on the left side suggests that the room receives some natural light during daytime hours.\n\nOverall, this image captures a quiet moment in a man's day-to-day life, surrounded by familiar objects in his living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-34-23.051623.jpg"
-}

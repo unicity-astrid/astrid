@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:39:19.979872",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in a room with two windows. The man is wearing a yellow shirt and has his hand up to his head, as if he's scratching it or thinking deeply. On the desk in front of him, there's an open laptop, and next to it, there's a can of soda. The windows are covered with curtains that have a floral pattern on them.\n\nThe room appears to be dimly lit, creating a somewhat moody atmosphere. However, the light from the windows shines through the curtains, casting a soft glow in the room. The man seems to be alone in the room, engrossed in his work or thought.\n\nIt's important to note that this description is based on the visible elements in the image and their relative positions. The exact count of objects like the number of windows or the number of windows isn't clearly visible in the image. Also, actions like the man scratching his head can be inferred but might not be entirely accurate as they are based on the interpretation of the image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-39-13.297716.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:04:47.960746",
-  "backend": "llava",
-  "description": "The image captures a serene scene in a dimly lit room. The primary focus is a window that serves as a portal to another space, illuminated by a warm yellow light that contrasts with the room's subdued ambiance. A white curtain hangs from the window, partially obscuring the view beyond.\n\nOn a small table situated next to the window, there are two items: a blue can and a red bottle. Their presence adds a splash of color to the otherwise muted tones of the room. The precise positioning of these objects suggests they have been intentionally placed there.\n\nThe overall atmosphere is one of quiet solitude, as if waiting for someone to return and break the stillness. The darkness of the room further enhances this sense of anticipation. Despite the simplicity of the scene, it's filled with details that tell a story about the space and its inhabitants.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-04-42.724800.jpg"
-}

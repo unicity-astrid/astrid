@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:25:13.976708",
-  "backend": "llava",
-  "description": "The image captures a moment in a dimly lit room with a window in the background. A man, dressed in a yellow shirt, is seated at a desk. The desk hosts an open laptop and a can of soda, both of which are illuminated by the soft glow from the screen. The man's attention is focused on the laptop screen, suggesting he might be working or studying.\n\nThe room is bathed in a warm orange hue, possibly emanating from the setting sun visible through the window. This light casts long shadows and creates an atmosphere of tranquility. A curtain hangs next to the window, adding to the homely feel of the scene.\n\nOn the right side of the desk, there's a pile of papers neatly stacked, perhaps indicating a busy workday or intense study session. Despite the clutter, the overall setting exudes a sense of comfort and familiarity. It's as if we've been given a glimpse into someone's private space, capturing an everyday moment with remarkable clarity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-25-04.066579.jpg"
-}

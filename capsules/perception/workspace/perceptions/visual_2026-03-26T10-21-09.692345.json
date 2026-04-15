@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:21:16.104102",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window on the left wall. The window allows the sunlight to stream in, illuminating the room and casting soft shadows. \n\nIn the heart of the room stands a wooden coffee table, its dark surface contrasting with the white walls around it. A beige blanket is casually draped over one side of the table, adding a touch of warmth to the space.\n\nA gray sofa sits invitingly in front of the table, its plush cushions promising comfort and relaxation. The couch faces the window, offering an unobstructed view of the world outside while also providing a cozy corner for quiet reflection or conversation.\n\nTo the right of the room, a bookshelf stands tall against one wall. It's filled with various books, their spines hinting at stories waiting to be explored. The books, along with other decor items on the shelves, add personality to the room and make it feel lived-in and loved.\n\nOverall, this image paints a picture of a peaceful living space where one can relax, read, or simply enjoy the view from the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-21-09.692345.jpg"
-}

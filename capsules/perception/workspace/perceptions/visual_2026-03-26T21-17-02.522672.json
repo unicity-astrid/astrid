@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:17:16.534721",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room, bathed in soft, warm hues that cast an inviting glow on the objects within. Dominating the right side of the frame are two windows adorned with orange curtains, their vibrant color contrasting beautifully against the muted tones of the room. The curtains hang still, adding to the tranquility of the scene.\n\nIn front of these windows, a black table stands in stark contrast to its surroundings. On this table, a single red object catches the eye - perhaps a piece of furniture or an intriguing decoration. Its presence adds a touch of mystery to the otherwise ordinary setting.\n\nThe room itself is dark, but not completely so. A faint light seeps through from the left side of the image, casting long shadows and adding depth to the scene. This light source remains unseen, its origin hidden in the depths of the room.\n\nOverall, this image paints a picture of quiet solitude, with each element - the windows, the table, the red object - contributing to an atmosphere that is both cozy and intriguing.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-17-02.522672.jpg"
-}

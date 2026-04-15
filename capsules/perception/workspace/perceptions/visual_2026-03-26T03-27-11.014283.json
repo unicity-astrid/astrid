@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:27:16.247909",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a living room bathed in soft light from two windows. The left window, adorned with white curtains, casts a warm glow that contrasts with the cool darkness outside. Adjacent to it, the right window features yellow stained glass panels that add a touch of color and depth to the scene.\n\nA black leather couch sits against the wall under these windows, its sleek surface reflecting the ambient light. On top of the couch, a white coffee table holds a single blue soda can, perhaps a remnant of a recent gathering or a solitary indulgence.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the colors in the scene. Despite the darkness outside, there's an air of tranquility within this space, as if waiting for someone to return and breathe life into it once again.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-27-11.014283.jpg"
-}

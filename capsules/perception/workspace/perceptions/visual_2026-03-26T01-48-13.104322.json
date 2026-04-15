@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:48:20.193922",
-  "backend": "llava",
-  "description": "The image captures a serene night scene within a room bathed in soft, dim light. The room exudes an air of tranquility and solitude, with only one occupant present - a person seated on a bed. \n\nThe room itself is modestly furnished, with a window positioned to the left of the frame. The window is adorned with yellow curtains that hang down, partially covering the glass pane, adding a touch of warmth to the otherwise cool color palette of the scene.\n\nOn the right side of the image, we see the bed on which the person sits. A blanket is neatly draped over it, its texture visible even in the dim light. The person's posture suggests they are engaged in a quiet activity or perhaps lost in thought.\n\nThe room itself is carpeted, and to the left, there's a lamp providing a soft glow that further enhances the warm ambiance of the space. The overall color scheme leans towards shades of gray and yellow, creating a harmonious balance between warmth and coolness.\n\nIn terms of object count, there are two primary objects - the person on the bed and the lamp to their left. The window is also part of the scene, but its function as a source of light is secondary to that of the person and the lamp.\n\nThe precise",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-48-13.104322.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T11:14:32.804038",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a room bathed in soft light filtering through a window. A man, dressed in a black shirt and sporting a pink baseball cap, is seated on a wooden bench. His attention is focused on the laptop resting on his lap, suggesting he might be working or perhaps enjoying some leisure time.\n\nThe room around him is filled with various objects that add to its lived-in charm. To one side, there's a lamp casting a warm glow in the otherwise dimly lit space. A couch can be seen further back, inviting relaxation and comfort.\n\nOn another side of the room, there's a table holding a coffee cup, perhaps indicating a recent or ongoing break from work. The window in the background lets in natural light, illuminating the room and creating an atmosphere that is both cozy and conducive to productivity.\n\nThe image does not contain any discernible text. The relative positions of the objects suggest a well-organized space where each item has its place. The man on the bench, the lamp in one corner, the couch further back, and the table with the coffee cup all contribute to this sense of order.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T11-14-20.946824.jpg"
-}

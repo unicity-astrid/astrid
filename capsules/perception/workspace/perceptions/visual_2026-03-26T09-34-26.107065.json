@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:34:35.837566",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window draped with white curtains. The window, acting as the room's primary source of illumination, casts a soft glow on the beige couch adorned with blue pillows. The couch, positioned against the wall, invites relaxation and comfort.\n\nIn front of the couch, a wooden coffee table takes center stage. It hosts a blue mug, perhaps waiting to be filled with a warm beverage, and a book - a symbol of leisurely afternoons spent in reading. A beige blanket is casually draped over the back of the couch, adding a touch of coziness to the scene.\n\nThe room is simple yet elegant, each object meticulously placed, creating a harmonious balance between functionality and aesthetics. The colors are soothing, with the beige tones dominating the room and the blue accents providing a refreshing contrast. The overall atmosphere exudes tranquility and warmth, making it an ideal space for relaxation and leisurely activities.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-34-26.107065.jpg"
-}

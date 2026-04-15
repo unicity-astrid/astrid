@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:29:35.376206",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark room, where a single light source illuminates a person's face against a stark black background. The person appears to be leaning forward, their head turned towards the left side of the frame. The light from the right side casts an eerie glow on their face and upper body, creating a dramatic contrast with the surrounding darkness. The overall atmosphere is one of mystery and intrigue, as if the person is engaged in a secret conversation or lost in thought. The image does not contain any discernible text or additional objects, focusing solely on the interplay between light and shadow.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-29-31.042287.jpg"
-}

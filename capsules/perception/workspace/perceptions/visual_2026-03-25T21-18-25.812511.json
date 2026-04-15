@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:18:31.235048",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft, warm light. The room is dominated by a black couch on the left side, inviting and comfortable. Above it, two windows are open, revealing the outside world. They offer a glimpse of a building across the street, its structure blurred in the darkness.\n\nOn the right side of the image, a table stands as a silent observer to the scene. Atop it rests a lone candle, its flame dancing in the dim light. Beside it, a glass sits empty, reflecting the room's soft glow.\n\nIn the background, partially obscured by the couch and the table, is another figure. It could be a person or perhaps an animal, adding a touch of mystery to this tranquil setting. The atmosphere is one of quiet contemplation, as if time itself has paused to admire the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-18-25.812511.jpg"
-}

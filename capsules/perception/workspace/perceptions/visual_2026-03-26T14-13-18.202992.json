@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:13:28.764972",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room. At the center of the frame, a man is seated at a wooden coffee table. He's wearing a blue shirt and shorts, adding a pop of color to the scene. His attention seems to be focused on something off-camera, suggesting he might be engrossed in conversation or perhaps watching television.\n\nThe coffee table itself is a rich brown wood, its surface clear except for two items: a white can of soda and a pink book. The can's presence suggests someone might have been enjoying a quiet evening with some refreshments and light reading.\n\nIn the background, there's a window draped with a beige curtain, allowing just enough light to illuminate the room without causing any glare on the glass. This gives the space a warm and inviting atmosphere. To the right of the window, there's a gray couch, its color complementing the overall neutral tone of the room.\n\nOverall, this image paints a picture of a comfortable living space where one can relax and unwind.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-13-18.202992.jpg"
-}

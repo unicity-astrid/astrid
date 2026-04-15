@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:53:03.432581",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft, natural light filtering through two windows on the left wall. The windows, adorned with white curtains, cast an inviting glow that illuminates the room's main feature - a gray couch. \n\nOn the couch, a person is comfortably seated, their face partially obscured by a gray blanket. Their relaxed posture suggests they are at ease in this cozy setting. To the right of the couch, a black coffee table holds a blue water bottle and a white mug, possibly indicating that someone has just finished or about to enjoy a refreshing drink.\n\nThe room's light beige walls provide a warm backdrop to the scene, enhancing the overall calm and comfortable atmosphere. The precise arrangement of objects and their relative positions contribute to a sense of harmony in this domestic space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-52-41.754736.jpg"
-}

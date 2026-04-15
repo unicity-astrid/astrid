@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:26:02.651928",
-  "backend": "llava",
-  "description": "In the image, a person is seated at a desk in a dark room. The individual is dressed in a yellow shirt and is positioned on the left side of the frame. The desk, which occupies the center of the image, holds two objects: a blue soda can and a black laptop computer.\n\nThe room itself is dimly lit, with most of the light coming from two windows located on the right side of the image. These windows are adorned with white curtains that hang down to cover the glass panes. The overall atmosphere of the scene suggests a quiet and peaceful setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-25-58.535929.jpg"
-}

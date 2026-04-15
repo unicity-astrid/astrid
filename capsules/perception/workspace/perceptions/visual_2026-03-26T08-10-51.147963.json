@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:11:02.540006",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a couch in a room with white walls and a window that lets in ample sunlight. He's donned in a yellow shirt and headphones, engrossed in something on his phone. His posture suggests he might be listening to music or perhaps reading an article.\n\nThe room around him is simply furnished. A wooden coffee table sits in front of the couch, hosting two cups - one red and one blue. The window behind him has a curtain that adds a touch of homeliness to the scene. The overall atmosphere is calm and serene, with the man appearing relaxed as he enjoys his time indoors.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-10-51.147963.jpg"
-}

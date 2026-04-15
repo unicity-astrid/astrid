@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:28:04.998097",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The room's interior walls are painted white, providing a stark contrast to the objects within. A window punctuates one wall, its curtains drawn back to reveal a small table inside. On this table, a lamp casts a warm glow, illuminating the space and creating an atmosphere of tranquility.\n\nIn front of the window, a black couch sits against the wall. It's unoccupied, adding to the sense of solitude in the room. The only other object in the scene is a chair, its presence subtly hinted at rather than directly observable.\n\nThe image does not contain any discernible text or actions being performed by objects. The relative positions of the objects suggest a well-arranged space: the table with the lamp is strategically placed near the window for natural light during daytime; and the couch and chair are positioned to face each other, perhaps inviting conversation or reflection.\n\nOverall, this image paints a picture of a serene and peaceful room, waiting for its occupants to return.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-27-58.910962.jpg"
-}

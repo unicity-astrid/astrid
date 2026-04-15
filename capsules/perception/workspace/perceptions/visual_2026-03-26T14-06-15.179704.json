@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:06:29.429748",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a couch in a living room setting. He is wearing a blue shirt and shorts, along with a red baseball cap. His attention seems to be focused on a wooden coffee table in front of him. The coffee table hosts an array of objects including a remote control, a can of soda, and a book.\n\nThe room itself is painted white, providing a stark contrast to the vibrant colors worn by the man. A window adorned with curtains allows natural light to filter into the room, illuminating the scene and casting soft shadows. The overall atmosphere appears to be one of relaxation and comfort, as if the man has just returned home after a long day. The image captures an everyday moment in time, yet it's filled with details that tell a story about the man and his environment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-06-15.179704.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:10:46.905382",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dark room. A person is seated at a desk on the left side of the frame. They are dressed in a white shirt and their head is turned to the right, suggesting they might be looking at something or someone off-frame.\n\nThe desk is cluttered with various objects, including a laptop, a phone, and a water bottle. The exact number of these items isn't clear due to the low light conditions. \n\nOn the right side of the image, there's a window framed in white. It has orange curtains that add a warm hue to the otherwise cool-toned scene. The window and desk are positioned such that they balance the composition of the image.\n\nThe overall atmosphere is one of quiet contemplation or perhaps late-night work. The exact details are left to the viewer's interpretation due to the limited information available in the image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-10-41.452280.jpg"
-}

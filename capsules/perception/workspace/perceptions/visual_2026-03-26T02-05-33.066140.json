@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:05:38.970548",
-  "backend": "llava",
-  "description": "This image captures a tranquil night scene in a bedroom bathed in soft light. The room is dimly lit, creating an intimate atmosphere. A window with three panes sits on one wall, its curtains partially drawn back to let in the outside light. The light filters through the glass, casting a warm glow that illuminates the room.\n\nIn front of this window, there's a table draped with a black cloth. On it, there are two objects - a blue can and a red can. Their colors stand out against the dark backdrop of the room. \n\nTo the right of the image, there's another window. This one is covered by a white curtain that hangs down, partially obscuring the view from this direction.\n\nThe room itself is characterized by its simplicity. The walls are plain, and there's no other furniture visible in the image. The focus remains on the two windows and the table in front of them, creating a minimalist aesthetic that contrasts with the complexity of the world outside.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-05-33.066140.jpg"
-}

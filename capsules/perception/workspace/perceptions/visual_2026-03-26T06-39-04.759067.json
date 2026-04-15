@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:39:26.984655",
-  "backend": "llava",
-  "description": "In the image, a person is seated at a desk in a room that appears to be dimly lit. The individual, dressed in a vibrant yellow shirt, is facing away from the camera, giving us a view of their back. On the desk in front of them, there's a black mug and a white box, possibly indicating they might be enjoying a warm drink or perhaps having a snack.\n\nThe room itself is rather dark, with only two sources of light illuminating it. One source is through a window adorned with yellow curtains, casting a soft glow that matches the person's shirt. The other source is on the right side of the image, but its exact nature isn't clear from this perspective.\n\nThe overall atmosphere suggests a quiet and cozy setting, perhaps an early morning or late evening scene. The person seems to be in deep thought or concentration, possibly working or studying. The presence of everyday objects like the mug and box adds a touch of realism to the scene, reminding us that even in such moments of focus or contemplation, life continues with its simple pleasures.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-39-04.759067.jpg"
-}

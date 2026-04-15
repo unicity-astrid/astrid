@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:48:10.424930",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window on the left wall. The window is adorned with white blinds and a beige curtain, adding to the warm ambiance of the room. \n\nA cozy gray couch sits against the right wall, inviting relaxation. A red blanket adds a pop of color and texture on top of it. On this couch, a black dog finds comfort, lying down peacefully.\n\nA wooden coffee table takes center stage in the room. It hosts an open laptop, perhaps indicating someone's work-from-home setup or an ongoing project. Next to it, a stack of books lies neatly, suggesting a love for reading or study.\n\nThe walls are painted white, providing a neutral backdrop that enhances the natural light streaming in from the window. The overall scene is one of comfort and tranquility, a perfect snapshot of everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-48-05.089056.jpg"
-}

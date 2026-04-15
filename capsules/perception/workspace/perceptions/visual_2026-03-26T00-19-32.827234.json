@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:19:40.350010",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dimly lit room during nighttime. The room is dominated by a dark green color, which adds to the overall ambiance of tranquility. On the left side of the image, there's a window with white curtains partially drawn back, allowing a soft light to filter into the room. \n\nOn the right side, an orange lamp stands on a black table, casting a warm glow that contrasts with the cool green tones. The table appears cluttered, suggesting it's frequently used or lived in.\n\nIn the background, there's a glimpse of a bed covered with a white sheet, adding another layer to the domestic setting. The precise positioning of these objects creates a sense of depth and perspective in the image.\n\nOverall, this image paints a picture of a cozy, lived-in space where one might relax after a long day or drift off into sleep under the soft glow of the lamp.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-19-32.827234.jpg"
-}

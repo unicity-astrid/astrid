@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:52:34.106108",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in the soft glow of an orange curtain and a white wall. The room is dimly lit, creating a tranquil ambiance. Dominating the foreground is a black couch, its surface adorned with a laptop that's open and appears to be in use. \n\nScattered across the couch are several objects, their details obscured by the distance and darkness. These objects add an element of lived-in comfort to the scene.\n\nIn the background, two windows punctuate the white wall. One window is shrouded by a curtain that mirrors the orange hue of the room's walls, while the other remains bare, its emptiness contrasting with the vibrant life suggested by the orange curtain and laptop on the couch.\n\nThe overall composition of the image suggests a quiet evening spent in solitude, perhaps working or browsing the internet on the open laptop. The precise locations of the objects and their relative positions contribute to this narrative, painting a picture of domesticity and comfort.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-52-23.195266.jpg"
-}

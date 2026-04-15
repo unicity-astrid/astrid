@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:44:56.022098",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in natural light from three windows on the left wall. The windows are adorned with white curtains, adding a touch of elegance to the room. \n\nIn the center of the room, a black coffee table takes prominence. It hosts an array of objects: a laptop, suggesting someone's work or leisure time; a pink book, perhaps indicating a reader in the room; and a blue water bottle, hinting at health consciousness.\n\nTo the right of the coffee table, a gray couch invites relaxation. A white blanket casually draped over it adds to its coziness. The couch faces a wooden sideboard against the wall, which stands as a silent observer to the room's activities.\n\nThe walls, painted in pristine white, reflect the incoming light, enhancing the brightness of the room. The precise arrangement of objects and their relative positions contribute to a well-organized and harmonious living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-44-49.377238.jpg"
-}

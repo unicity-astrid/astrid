@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:28:38.601244",
-  "backend": "llava",
-  "description": "The image presents a striking contrast between a black background and a white strip running through it. On this white strip, three lights are arranged in a horizontal line, each emitting blue light. The leftmost light is slightly brighter than its counterparts, casting a soft glow that gradually fades into the darkness on both sides. The middle light shines with an intensity equal to the one on its right, creating a sense of balance in the composition. The rightmost light, although not as bright as the first, holds its own against the black backdrop. The lights are switched on, illuminating their surroundings and creating a captivating visual effect.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-28-31.433786.jpg"
-}

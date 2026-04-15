@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:22:14.483208",
-  "backend": "llava",
-  "description": "This image captures a serene and cozy indoor setting during nighttime. The room is bathed in soft, dim lighting that casts a warm glow on the white walls. A window with yellow curtains lets in a gentle stream of light, adding to the tranquil ambiance.\n\nIn the center of the room, a black couch invites relaxation. On it, a pink blanket and a black pillow offer additional comfort. To the right of the couch, a coffee table stands ready for use. It holds a blue water bottle and a black bag, perhaps indicating recent human activity in the space.\n\nThe overall scene suggests a quiet evening spent indoors, with elements like the couch, coffee table, and personal items hinting at human presence and activity within this serene setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-22-06.431765.jpg"
-}

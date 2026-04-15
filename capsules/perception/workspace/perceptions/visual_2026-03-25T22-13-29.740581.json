@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:13:40.743322",
-  "backend": "llava",
-  "description": "This image captures a serene moment in a room bathed in soft, dim light. The dominant color scheme is black and white, punctuated by occasional splashes of blue and orange.\n\nIn the center of the scene is a bed, draped with a white blanket that stands out against the darker tones of the room. A solitary figure lies on it, their face turned away from us, adding an air of mystery to the scene.\n\nTo the left of the bed, a window punctuates the wall. It's covered by a curtain, through which a sliver of light seeps out, casting long shadows and creating a play of light and dark that adds depth to the room.\n\nOn the right side of the image, another window can be seen, this one with no curtain to obstruct it. The stark contrast between the two windows creates an interesting dynamic in the composition.\n\nThe overall atmosphere is one of tranquility and quietude, as if time has slowed down within these four walls. The precise locations and actions of objects within the room tell a story that's open to interpretation, inviting viewers to lose themselves in its narrative.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-13-29.740581.jpg"
-}

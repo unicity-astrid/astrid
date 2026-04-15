@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:57:29.769256",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting, dominated by a large flat screen television that is turned on and displaying an abstract pattern with hues of blue and pink. The television is mounted on a white wall, which is adorned with a fireplace beneath it. To the right of the television, there's a window dressed with curtains, allowing natural light to filter into the room. On the left side of the television, a door can be seen, suggesting an exit or entrance to the room. The overall scene suggests a comfortable and relaxing atmosphere, perfect for unwinding after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-57-22.837345.jpg"
-}

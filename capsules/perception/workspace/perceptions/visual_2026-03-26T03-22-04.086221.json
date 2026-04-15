@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:22:11.264714",
-  "backend": "llava",
-  "description": "The image presents a tranquil indoor setting at night, bathed in soft light filtering through two windows. The left window, adorned with curtains, glows warmly from within. In contrast, the right window, veiled by blinds, casts a mysterious shadow.\n\nThe room itself is darkened, adding to the serene atmosphere. A black couch rests unoccupied on the left side of the image, its plush cushions inviting relaxation. On the right, a coffee table stands as an unassuming presence in the center of the room.\n\nThe walls are painted white, providing a stark contrast to the black furniture and floor. The overall scene exudes a sense of calm and quietude, as if time itself has paused within this space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-22-04.086221.jpg"
-}

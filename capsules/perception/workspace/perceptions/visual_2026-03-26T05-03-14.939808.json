@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:03:20.884870",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room. A person, dressed in a beige shirt, is seated at a desk positioned next to a window that overlooks another building. The desk holds a black laptop and a blue bottle, suggesting some work or study might be underway.\n\nThe window serves as the main source of light in the room, casting an orange glow on the scene outside. This warm hue contrasts with the cool tones within the room, adding depth to the image.\n\nOn the left side of the frame, a lamp stands sentinel, its presence hinting at late-night work sessions or early morning starts. The room itself is devoid of any text or discernible markings, and there are no other people visible in this captured moment.\n\nThe overall atmosphere suggests quiet introspection, perhaps during a late-night study session or an early-morning brainstorming. The image beautifully encapsulates the solitary pursuit of knowledge and creativity that often takes place within such spaces.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-03-14.939808.jpg"
-}

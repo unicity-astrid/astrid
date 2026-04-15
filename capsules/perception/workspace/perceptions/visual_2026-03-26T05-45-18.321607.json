@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:45:32.365509",
-  "backend": "llava",
-  "description": "This image captures a serene moment in a dimly lit room. The dominant color scheme is black and white, with a hint of blue peeking through in the background. \n\nIn the foreground, a comfortable couch invites relaxation, its form softened by shadows cast by unseen lights. A person sits on it, their features indistinct but their presence adding a sense of life to the room.\n\nTo the right of the couch, a lamp stands like a silent sentinel. Its light is minimal, casting only a few pools of illumination that dance across the walls and ceiling.\n\nBeyond the couch and lamp, another person can be seen in the background. They are seated at a table, their actions unclear but their presence adding to the overall ambiance of quiet intimacy.\n\nThe room itself is enclosed by a window adorned with curtains. These hang still, their fabric softening the light from outside into a gentle glow that adds depth and warmth to the scene.\n\nOverall, this image paints a picture of tranquility and comfort, each object and person contributing to a sense of peace and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-45-18.321607.jpg"
-}

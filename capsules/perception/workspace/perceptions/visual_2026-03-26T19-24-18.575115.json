@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:24:24.611670",
-  "backend": "llava",
-  "description": "The image presents a captivating scene set in a dark room, illuminated by a single window. The window, located on the right side of the frame, casts a soft glow that breaks the monotony of the blackness. Through the window, a building can be seen, adding an element of intrigue to the composition.\n\nIn the foreground, partially obscured by the darkness and the silhouette of the objects around it, is a person's head. The individual appears to be gazing out of the window, perhaps lost in thought or simply enjoying the view.\n\nThe image itself has a slightly blurred quality, which lends it an almost dreamlike feel. This effect is further enhanced by the black and white color scheme, creating a stark contrast between light and shadow.\n\nDespite the simplicity of its elements - a person, a window, and a building - the image conveys a sense of quiet introspection and solitude. It's as if time has stood still in this moment, capturing a single slice of life within its frame.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-24-18.575115.jpg"
-}

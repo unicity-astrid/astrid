@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:31:37.247449",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at night. Dominating the scene is a black couch, its dark hue contrasting with the white wall behind it. The couch is positioned in front of two windows, which are adorned with yellow curtains that add a warm glow to the room. \n\nOn the left side of the couch, there's a small table holding a blue vase and a black lamp, their colors complementing each other. The right side of the image reveals a chair draped with a white sheet, adding an element of coziness to the scene.\n\nThe windows on the right are closed, suggesting it might be late in the evening or night outside. The curtains hang down, partially obscuring the view from the windows and adding an air of mystery about what lies beyond. \n\nOverall, the image paints a picture of a quiet and peaceful indoor space, bathed in soft light that enhances its cozy atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-31-29.465228.jpg"
-}

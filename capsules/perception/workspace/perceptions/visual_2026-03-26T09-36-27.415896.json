@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:36:39.604331",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft, natural light filtering through a large window on the right wall. The window casts long shadows across the room, adding depth and contrast to the scene.\n\nDominating the center of the room is a sturdy wooden coffee table, its surface gleaming under the ambient light. A beige blanket casually drapes over one end of the table, suggesting recent use or perhaps preparation for an upcoming gathering.\n\nTo the left of the room, a gray sofa invites relaxation. It faces the window, offering a comfortable spot to enjoy the view outside. The sofa's neutral color complements the overall warm tones of the room.\n\nThe walls, painted in a clean white, serve as a blank canvas that enhances the other elements in the room. Their starkness contrasts with the textured beige carpet that covers the floor, adding another layer of visual interest.\n\nOverall, this living room exudes a sense of comfort and tranquility, making it an ideal space for rest and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-36-27.415896.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:46:16.693944",
-  "backend": "llava",
-  "description": "In the image, a person is seated at a desk in a dimly lit room. The individual is wearing a yellow shirt and appears to be engrossed in something on their laptop screen. The desk they're sitting at has a lamp providing some additional light. In front of the desk, there's a window adorned with curtains, through which a soft glow seems to seep into the room.\n\nOn the desk, apart from the laptop, there are two other objects - a can and a remote control. The walls of the room are painted white, creating a stark contrast with the dark furniture that includes a chair and a couch. The overall atmosphere of the image suggests a quiet and focused workspace.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-46-08.008829.jpg"
-}

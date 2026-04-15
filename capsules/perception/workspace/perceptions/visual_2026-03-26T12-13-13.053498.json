@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T12:13:22.915722",
-  "backend": "llava",
-  "description": "The image portrays a tranquil indoor setting. At the center of the scene, a man in a blue shirt and black shorts is seated on a couch. He appears to be engrossed in something on his laptop, which rests on a coffee table in front of him. The room exudes a sense of calm, with natural light streaming in from two windows adorned with white curtains.\n\nThe window on the left reveals a glimpse of an outdoor view, adding depth to the image. On the right, another window is partially obscured by a curtain, creating a subtle contrast within the scene. The overall atmosphere suggests a peaceful afternoon spent indoors, possibly working or browsing the internet.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-13-13.053498.jpg"
-}

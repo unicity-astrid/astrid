@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:37:03.302531",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in a room with white walls and a window adorned with orange curtains. He's dressed in a vibrant yellow shirt that stands out against the muted colors of his surroundings. His attention is focused on a laptop screen in front of him, suggesting he might be working or studying.\n\nThe desk, positioned against the wall, hosts various objects including several soda cans and a phone. The room itself has a simple yet cozy ambiance with a window located behind the man, allowing natural light to filter into the space. A curtain hangs on one side of this window, adding a touch of privacy to the setting.\n\nThe overall atmosphere appears calm and focused, perhaps indicative of a quiet study session or work-from-home setup. The image captures a moment of concentration amidst everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-36-58.148197.jpg"
-}

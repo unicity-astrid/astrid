@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:31:50.807605",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, dim light. The dominant color scheme is black and white, punctuated by vibrant splashes of red and blue. \n\nOn the left side of the room, a window with two panes lets in a sliver of light, casting long shadows and adding depth to the space. The right wall features a yellow stained glass window, its warm hue contrasting with the cool tones of the room.\n\nIn the center of the room, a black coffee table stands out against the white walls. It's adorned with two red bottles and a blue can, their colors popping against the dark surface. To the left of the table, there's a blue couch draped with a gray blanket, inviting relaxation.\n\nOn the right side of the image, a black chair is positioned next to a beige curtain. The curtain adds texture to the room and frames the window on that wall.\n\nOverall, this living room exudes a sense of tranquility and comfort, making it an ideal space for rest and contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-31-44.711992.jpg"
-}

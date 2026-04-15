@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:26:03.749514",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room bathed in hues of orange and black. The main focus is on a person standing in the foreground, their face obscured by a hat they're wearing. They are positioned to the left of the frame, adding a sense of depth to the scene.\n\nBehind the person, occupying the right side of the image, is a desk. It's unclear what's on it due to the low light conditions. The background features a window with curtains that are partially open, allowing some light to filter into the room. This creates an interesting interplay between light and shadow throughout the scene.\n\nThe overall atmosphere is one of mystery and intrigue, as the person remains anonymous and the details of the desk remain a secret due to the low light conditions. The orange tint adds warmth to the otherwise dark setting, creating a striking contrast that draws attention to the shapes and forms within the image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-25-54.789616.jpg"
-}

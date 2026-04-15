@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:06:57.956344",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft natural light filtering through two windows adorned with white curtains. The room's neutral color palette is punctuated by a wooden coffee table that sits atop a plush beige carpet. \n\nOn the left side of the room, a gray couch invites relaxation, its cushions untouched and pristine. A brown rug lies in front of it, adding warmth to the space. To the right, a red armchair stands out against the muted tones, its vibrant color drawing the eye.\n\nThe coffee table serves as a functional centerpiece, hosting an array of objects. A white vase rests on one side, its contents hidden from view. Nearby, a blue can and a pink bowl add splashes of color to the scene. A red blanket casually draped over the armchair adds another layer of comfort and style to the room.\n\nEvery object in this room has been thoughtfully placed, creating a harmonious balance between form and function. The relative positions of these objects suggest careful consideration for ease of movement and aesthetic appeal. The overall atmosphere is one of tranquility and comfort, an ideal space for rest and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-06-51.475307.jpg"
-}

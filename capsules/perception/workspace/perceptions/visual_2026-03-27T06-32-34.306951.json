@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:32:43.600956",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night, dominated by a large flat screen TV affixed to a wall. The TV is currently switched on, illuminating the room with its vibrant colors. It's displaying an abstract pattern in hues of red and blue, interspersed with text elements that read \"G\" and \"0\". \n\nThe room itself is dimly lit, creating a stark contrast between the brightly lit TV screen and the surrounding darkness. The background features a window, through which one can catch a glimpse of a cityscape, adding an urban touch to the otherwise intimate setting. The precise positioning of objects and their relative locations contribute to a sense of depth and perspective in the image. \n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-32-34.306951.jpg"
-}

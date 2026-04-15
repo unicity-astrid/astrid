@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:10:23.610828",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. A person, clad in a brown shirt, sits at a desk, their attention seemingly drawn to the laptop screen before them. The desk, serving as the focal point of the room, hosts not just the laptop but also a lamp and a phone, casting a soft glow that subtly illuminates the space.\n\nOn one side of the room stands a window draped with yellow curtains, allowing a hint of daylight to seep in and punctuate the otherwise muted lighting. The walls, painted in a neutral tone, blend seamlessly with the ceiling, creating an atmosphere of calm and concentration.\n\nThe overall composition of the image suggests a quiet afternoon spent at work or perhaps studying late into the night. The precise locations of the objects and their relative positions to each other create a sense of harmony within the space. Despite the simplicity of the scene, it's rich in detail and evokes a feeling of solitude and focus.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-10-17.742360.jpg"
-}

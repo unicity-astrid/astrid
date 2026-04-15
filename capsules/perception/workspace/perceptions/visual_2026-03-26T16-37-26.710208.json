@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:37:46.294397",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft sunlight streaming through two windows adorned with white curtains. The room is tastefully decorated with a white wall that serves as a backdrop for a gray couch positioned against it. The couch, inviting and comfortable, faces a brown coffee table situated in the center of the room.\n\nThe coffee table hosts an array of items: a blue mug waiting to be filled with warm tea or coffee, a red book hinting at a recent reading session, and a white vase adding a touch of elegance to the setting. These objects are scattered across the table in no particular order, creating a sense of casual living.\n\nA beige blanket is casually draped over one end of the couch, suggesting it's been used recently or is ready for use. The sunlight filtering through the windows casts soft shadows on the floor and walls, adding depth and warmth to the room. The overall atmosphere exudes comfort and tranquility, making it an ideal space for relaxation and leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-37-26.710208.jpg"
-}

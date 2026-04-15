@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:15:08.062465",
-  "backend": "llava",
-  "description": "In the image, a person is seated on a couch in a dimly lit room, engrossed in something off-frame to their left. The individual is holding a remote control, perhaps ready to change the channel or adjust the volume of a television not visible in the frame. \n\nThe room itself is shrouded in darkness, save for two windows that punctuate the far wall. One window is adorned with a yellow curtain, while the other features a white one, both adding a splash of color to the otherwise monochrome setting.\n\nThe couch and its occupant are positioned against this backdrop of windows. The person's focus on something off to the left suggests they might be watching a program or movie on that screen. Despite the darkness enveloping most of the room, it's clear that light is coming from elsewhere - perhaps the television screen, casting a soft glow that illuminates the scene. \n\nThere are no discernible texts in the image, and the relative positions of the objects suggest a typical living room setup with the person comfortably settled on their couch, ready for some entertainment. The image captures a quiet moment of anticipation, as the viewer waits to see what has caught the person's attention.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-14-58.604331.jpg"
-}

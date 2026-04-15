@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:33:32.185157",
-  "backend": "llava",
-  "description": "In this image, a man is seated at a wooden table in what appears to be a living room. The man, dressed in a blue shirt and shorts adorned with a black and white pattern, is holding a glass of beer in his right hand. His gaze is directed towards the left side of the frame, suggesting he might be engaged in a conversation or observing something outside the view.\n\nThe table he's sitting at holds another glass of beer, mirroring the one held by the man. A white cloth covers the table, adding a touch of homeliness to the scene. In the background, there's a window draped with curtains, hinting at an indoor setting. The overall atmosphere seems relaxed and casual, perhaps indicative of a leisurely afternoon spent indoors.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-33-20.879696.jpg"
-}

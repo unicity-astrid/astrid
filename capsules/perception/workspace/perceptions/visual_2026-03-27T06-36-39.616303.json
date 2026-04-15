@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:36:51.311558",
-  "backend": "llava",
-  "description": "The image captures a moment in a room where a television screen dominates the scene. The screen is alive with vibrant colors from a video game, displaying a character in mid-action. The character is dressed in a striking red and black outfit, standing out against the backdrop of an indistinguishable background on the screen.\n\nThe television itself is perched on a brick wall, lending a rustic charm to the otherwise modern setting. A window punctuates the right side of this wall, draped with curtains that sway gently, suggesting a soft breeze from outside.\n\nIn front of the television, there's a black fireplace mantel, its dark color contrasting sharply with the bright screen. The mantel stands empty, waiting for its place in the room to be filled.\n\nThe entire scene is bathed in an ethereal glow, thanks to a long exposure that has been used to capture this image. This technique transforms the room into a canvas of light and shadow, creating an atmosphere of tranquility amidst the action on the screen. It's as if time itself has paused for a moment, allowing us to appreciate the interplay of light and color in this everyday setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-36-39.616303.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:26:16.156457",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a room bathed in soft darkness. A window with a yellow curtain punctuates the wall on the left side, its warm hue casting a gentle glow that illuminates the room's interior. The curtain conceals part of the window, adding an element of mystery to the scene.\n\nOn the right side of the image, a desk stands against the wall. It's adorned with various objects, including a laptop and a book, suggesting a space used for work or study. The desk faces away from us, inviting us into the room but also keeping its contents private.\n\nThe room itself is shrouded in darkness, creating an atmosphere of quiet introspection. Yet, the warm light from the window provides just enough illumination to reveal the outlines of objects within the room. This contrast between the darkened interior and the lit window creates a sense of depth and dimension in the image.\n\nOverall, this image paints a picture of solitude and tranquility, with each element - the desk, the laptop, the book, the yellow curtain, and the dark room - contributing to this serene atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-26-09.728225.jpg"
-}

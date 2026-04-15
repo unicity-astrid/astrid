@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:38:34.201531",
-  "backend": "llava",
-  "description": "The image captures a serene night-time scene in a living room. The primary source of light is a window with white blinds that are partially drawn closed, allowing a soft glow to seep into the room. A blue candle, standing tall and unlit, rests on the windowsill, waiting for its moment to illuminate the space.\n\nTo the right of the image, a black chair sits quietly in solitude, its silhouette stark against the dimly lit surroundings. In the background, another window can be seen with white blinds partially drawn closed, echoing the first window's design and creating a sense of symmetry in the room.\n\nThe entire scene is bathed in a sepia tone, lending an air of nostalgia and tranquility to the image. It's as if time has paused for a moment, allowing us to appreciate this quiet interlude before it continues its relentless march forward.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-38-25.628889.jpg"
-}

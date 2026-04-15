@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:31:55.620944",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dark room. The room is illuminated by a soft yellow light that casts a warm glow on the objects within. On the left side of the frame, there's a window adorned with orange curtains and a white curtain rod. The window seems to be closed, as no light escapes from it.\n\nIn the center of the image, there's a bed covered with a blue blanket. A black cat is sitting on the bed, its body oriented towards the right side of the frame. The cat appears calm and relaxed, adding a sense of tranquility to the scene.\n\nOn the right side of the room, there's a table with a lamp resting on it. The lamp is turned off, contributing to the overall darkness of the room. The precise location of these objects relative to each other creates a balanced composition in the image.\n\nThe room exudes a sense of peace and quietude, enhanced by the dim lighting and the presence of the serene black cat. It's as if time has paused for a moment, allowing us to appreciate this snapshot of everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-31-45.321104.jpg"
-}

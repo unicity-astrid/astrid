@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:21:17.350761",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a living room bathed in soft, ambient light. The walls and ceiling are painted white, providing a stark contrast to the black carpet that blankets the floor. A large window with yellow curtains dominates one wall, its glass panes reflecting the muted colors of the room.\n\nAgainst this wall, a comfortable couch invites relaxation. Its dark color blends harmoniously with the carpeted floor. On it rests a blue blanket, casually draped and adding a pop of color to the otherwise monochrome setting.\n\nA coffee table sits in front of the couch, its surface home to two red cups - perhaps remnants of a warm beverage enjoyed earlier. The perspective of the photo suggests it was taken from a vantage point slightly elevated from the floor level, adding depth to the scene and drawing attention to the window's prominence.\n\nThe room is devoid of people but filled with objects that tell a story of comfort and tranquility. Each element - from the couch to the coffee table, from the red cups to the blue blanket - contributes to an atmosphere of homely warmth and serene solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-20-38.615007.jpg"
-}

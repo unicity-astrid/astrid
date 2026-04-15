@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:54:08.638904",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in natural light from a large window with white blinds. The window opens to an unseen outside world, its expanse only hinted at by the daylight that spills into the room.\n\nIn front of this window sits a wooden table draped with a pristine white cloth. On it rests a black laptop, closed and silent for now. Beside it lies a stack of books, their spines suggesting a collection of knowledge waiting to be explored.\n\nThe table is positioned on a gray couch that invites relaxation. A red blanket adds a splash of color to the scene, its vibrant hue contrasting with the muted tones of the room. The couch faces the window, offering an unobstructed view of the outside world while providing comfort within.\n\nEvery object in this image has been meticulously placed, creating a harmonious balance between functionality and aesthetics. The relative positions of these objects suggest a space designed for both work and leisure, where one can sit on the couch and engage with the laptop or books, or simply bask in the view from the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-53-57.979173.jpg"
-}

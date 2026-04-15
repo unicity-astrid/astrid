@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:48:14.645407",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room bathed in a soft glow. Dominating the center of the frame is a black desk, its surface adorned with a blue lamp and a white vase, their colors standing out against the darkness. The lamp, with its vibrant hue, casts a warm light on the vase, creating an intimate atmosphere.\n\nTo the right of the desk, a window draped with yellow curtains lets in subtle streams of light that dance across the room's floor. The curtains add a pop of color to the scene, their bright yellow contrasting with the overall darkness.\n\nIn the background, two figures are present but blurred, adding an air of mystery to the scene. One figure is seated on a chair, while another stands near the window, their forms indistinct due to the distance and lighting.\n\nOverall, this image paints a picture of a quiet evening in a cozy room, where objects and colors come together to create a serene and inviting atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-48-05.083111.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:46:55.406942",
-  "backend": "llava",
-  "description": "The image presents a simple yet striking composition. Dominating the frame is a black rectangle, its stark color contrasting sharply with the white background. Within this dark rectangle, there's another smaller rectangle, also black, positioned in the top left corner. The rectangles overlap each other, creating an interesting interplay of shapes and shadows.\n\nThe image doesn't contain any discernible text or countable objects. It's a study in contrasts - the contrast between light and dark, the geometric precision of the rectangles against the softness of the background, and the interplay of shapes within shapes. It's a minimalist representation that speaks volumes about the power of simplicity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-46-50.984273.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:07:18.487259",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room bathed in soft orange light. The walls are painted white, providing a stark contrast to the dark furniture that fills the space. A black couch sits invitingly against one wall, its silhouette illuminated by the ambient lighting. \n\nIn front of the couch, a coffee table takes center stage. It's cluttered with various objects - a candle casting a warm glow, a book left open as if someone just put it down, and a glass filled with orange juice reflecting the light from the lamp on the wall nearby.\n\nThe room is further adorned with two windows dressed in white curtains. They are partially open, suggesting a gentle breeze might be playing through the room. The orange light seeping through these windows casts long shadows across the floor and walls, adding depth and warmth to the scene.\n\nOverall, the image paints a picture of tranquility and comfort, inviting one to sit down on the couch with a good book and enjoy a quiet night in.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-07-12.502501.jpg"
-}

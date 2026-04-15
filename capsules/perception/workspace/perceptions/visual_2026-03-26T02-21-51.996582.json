@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:21:57.783493",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting, bathed in the soft glow of ambient light. Dominating the foreground is a wooden table draped with a black cloth, upon which rests a single blue candle, its wick untouched by flame. The table stands against a wall, its surface partially obscured by a window adorned with white curtains that filter the outside light.\n\nBeyond the window, another room comes into view, furnished with a bed dressed in a pink blanket and a nightstand holding a lamp. The objects within this room are slightly blurred, suggesting they are at some distance from the main focus of the image - the table and its solitary candle.\n\nThe overall scene exudes an air of tranquility, amplified by the absence of any discernible action or movement. The interplay of light and shadow adds depth to the composition, enhancing the sense of quietude that pervades the image. Despite the simplicity of its elements, the image paints a picture of calm and introspection.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-21-51.996582.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:10:20.980559",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft, natural light from a large window on the right side. The window allows sunlight to stream in, casting a warm glow across the room.\n\nIn the foreground, a black cat is peacefully sleeping on a gray couch. The cat's relaxed posture suggests it is in deep slumber, adding a sense of tranquility to the scene.\n\nThe room itself is tastefully decorated. A wooden coffee table sits in front of the couch, its surface adorned with a single blue mug and a laptop, perhaps indicating recent human activity. To the left of the image, a bookshelf filled with various books adds an intellectual touch to the space.\n\nThe precise arrangement of objects and their relative positions contribute to a well-organized and comfortable living space. The cat's presence also brings life and warmth to the room, making it not just a physical space, but also a place of comfort and companionship.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-10-15.284260.jpg"
-}

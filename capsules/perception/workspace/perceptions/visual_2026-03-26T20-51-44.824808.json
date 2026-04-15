@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T20:52:04.565596",
-  "backend": "llava",
-  "description": "In this image, a person is seated in what appears to be a dimly lit room, their face illuminated by the soft glow of a nearby window. The individual is engaged in conversation via a phone held to their ear, suggesting a casual or intimate call. Their posture and expression are not discernible from the image.\n\nThe room itself is shrouded in darkness, with only a few windows punctuating the scene. One of these windows stands out due to its orange hue, casting an unusual light that contrasts with the overall somber atmosphere.\n\nIn the background, another person can be seen sitting on a couch, their presence subtly hinted at rather than explicitly displayed. Their role or relationship to the person in the foreground is unclear from this single snapshot.\n\nThe image does not contain any discernible text or identifiable objects beyond those described. The relative positions of the objects and individuals suggest a domestic setting, possibly a living room or similar space. The overall composition of the image paints a picture of an ordinary moment frozen in time, captured within the confines of a dimly lit room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-51-44.824808.jpg"
-}

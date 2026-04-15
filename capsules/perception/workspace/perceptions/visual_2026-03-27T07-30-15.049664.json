@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T07:30:21.228632",
-  "backend": "llava",
-  "description": "The image depicts a cozy living room setting with a modern touch. The focal point is a large flat-screen TV mounted on a pristine white wall. The TV screen displays an abstract image of a city at night, painted in hues of blue and red, adding a vibrant contrast to the otherwise minimalist decor.\n\nBelow the TV, there's a charming white fireplace that houses a black firewood basket, ready for a warm fire on a cold evening. To the left of the fireplace, a window draped with a black curtain lets in soft, ambient light that illuminates the room.\n\nOn the right side of the fireplace, there's a door leading to another part of the house. The overall atmosphere is one of comfort and elegance, a perfect blend of modern design and traditional warmth.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-30-15.049664.jpg"
-}

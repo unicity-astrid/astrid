@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:21:10.880183",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room is bathed in soft yellow light filtering through two windows adorned with white blinds and frames. The light casts long shadows, adding depth to the scene.\n\nOn the left side of the room, there's a bed covered with a blue blanket and pillows, inviting rest and relaxation. A black laptop sits open on the bed, its screen glowing with unseen content. This suggests someone might have been working late into the night or perhaps enjoying some leisure time browsing the internet.\n\nTo the right, there's a dresser against the wall. It holds a mirror reflecting the room's interior and a lamp casting light onto the floor below. The presence of these objects indicates functionality and practicality in this space.\n\nThe overall atmosphere is one of comfort and tranquility, a personal sanctuary where one can retreat from the world outside. The precise arrangement of objects and their relative positions to each other create a sense of harmony within the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-21-05.063199.jpg"
-}

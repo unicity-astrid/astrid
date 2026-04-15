@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:26:35.726744",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark room where a television screen is turned on, illuminating the space with its vibrant display. The screen, mounted on a wall, is the central focus of the image.\n\nOn the screen, two characters are engaged in an interaction within a video game. One character is airborne, having just launched off from a cliff, while the other stands firmly on solid ground. Their positions suggest a dynamic scene of action and adventure unfolding.\n\nThe television screen is brightly lit, casting a glow that contrasts with the surrounding darkness. The colors on the screen are vivid and varied, adding to the overall sense of excitement and movement within the video game world.\n\nDespite the intense activity on the screen, there's no sign of physical presence in the room - no people or objects can be seen. It's as if we're looking into a window into this other world, where the characters are free to soar and climb, unfettered by the constraints of reality.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-26-29.824839.jpg"
-}

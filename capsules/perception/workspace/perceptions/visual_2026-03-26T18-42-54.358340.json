@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:43:08.079940",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in soft natural light. Dominating the scene is a large window on the left wall, its white frame contrasting with the beige wall. The window is adorned with two curtains, one of which is drawn to reveal a glimpse of a building outside.\n\nIn front of this window, a wooden coffee table takes center stage. Its surface hosts an open MacBook laptop and a pink notebook, both suggesting recent human activity. The coffee table stands on a brown rug that covers the beige floor, adding warmth to the room.\n\nTo the right of the coffee table, there's a comfortable couch draped with a gray blanket. A cat has claimed this spot as its resting place, lying down amidst the soft fabric and inviting relaxation.\n\nThe overall scene paints a picture of a quiet afternoon spent indoors, perhaps in solitude or company, surrounded by familiar objects that tell tales of their own.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-42-54.358340.jpg"
-}

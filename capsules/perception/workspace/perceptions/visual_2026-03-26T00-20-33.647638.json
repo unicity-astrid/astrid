@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:20:44.349697",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a dark room. The room's most striking feature is a window with three panes, each covered by a white curtain. Two of these curtains are drawn back to reveal the world outside. A street lamp stands sentinel on this side, its light casting an orange glow that contrasts with the otherwise muted tones of the scene.\n\nA table sits in the foreground, draped with a black cloth and adorned with two objects: a blue bottle and a white candle. The table's dark hue matches that of the room, creating a sense of harmony. \n\nIn the background, a person is seated on a couch, their presence adding a touch of life to the scene. Their exact actions are unclear, but they appear to be in a relaxed posture, contributing to the overall serene atmosphere.\n\nThe image is taken from an angle, offering a unique perspective that places the viewer as if they were standing just outside the window, looking into this quiet moment frozen in time. The precise locations of objects and their relative positions to each other create a balanced composition that guides the viewer's eye through the scene. \n\nThere are no discernible texts in the image, and all descriptions are based solely on the visible content of the image, without any added imagination or aesthetic interpretation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-20-33.647638.jpg"
-}

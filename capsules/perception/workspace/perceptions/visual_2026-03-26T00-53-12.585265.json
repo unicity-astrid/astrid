@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:53:18.727226",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a bedroom. The room is bathed in darkness, with only a few objects illuminated by the soft glow of the lights coming through the window blinds. A black bed, positioned on the left side of the frame, is partially obscured by the shadows. On it, a red and white striped blanket adds a splash of color to the otherwise monochrome setting.\n\nThe right side of the image is dominated by a window, its glass panes reflecting the ambient light. The window blinds are closed, creating a pattern of alternating black and white squares against the backdrop of darkness.\n\nIn the bottom right corner of the image, a small table is visible. On it sits a blue water bottle, its color standing out starkly against the night. Next to it, a white candle has been lit, casting a gentle glow that breaks up the darkness and adds depth to the scene.\n\nOverall, this image paints a picture of tranquility and solitude, as if inviting the viewer to step into this quiet sanctuary and leave their worries behind.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-53-12.585265.jpg"
-}

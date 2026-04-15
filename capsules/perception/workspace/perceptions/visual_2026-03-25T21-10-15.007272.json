@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:10:21.396478",
-  "backend": "llava",
-  "description": "This image captures a serene night scene inside a room. The primary source of light in the room comes from two windows, each adorned with white curtains that are partially drawn back, allowing a soft glow to seep into the room. The windows are situated on opposite sides of the room, creating a symmetrical balance.\n\nThe room itself is bathed in a dark atmosphere, accentuated by the black furniture and walls. A wooden table sits in the center of the room, hosting an array of objects. There's a single candle, its flame flickering gently, casting dancing shadows around the room. Next to it is a small plant, adding a touch of life to the otherwise still setting. Lastly, there's a cup, perhaps waiting to be filled or just recently used.\n\nThe image does not contain any discernible text or countable objects. The relative positions of the objects on the table suggest careful arrangement for aesthetic or functional purposes. The overall composition of the image exudes tranquility and invites the viewer to imagine themselves in this peaceful setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-10-15.007272.jpg"
-}

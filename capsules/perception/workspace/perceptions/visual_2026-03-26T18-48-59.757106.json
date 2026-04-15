@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:49:14.353314",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window on the left wall. The window, adorned with white curtains, allows sunlight to stream in, casting a warm glow over the room. \n\nAgainst the right wall, a black couch rests comfortably, its surface covered by a pink blanket that adds a pop of color to the otherwise monochrome setting. On the floor next to the couch, a coffee table stands firm, hosting a laptop and several books - silent witnesses to many hours of work or study.\n\nThe room is devoid of people, adding to the tranquility of the scene. The precise arrangement of objects and their relative positions create a harmonious balance within the space. Despite the absence of human presence, one can almost hear the soft hum of a computer in use and the quiet rustle of pages being turned. It's a snapshot of everyday life, frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-48-59.757106.jpg"
-}

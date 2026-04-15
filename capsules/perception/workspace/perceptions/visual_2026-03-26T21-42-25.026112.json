@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:42:34.194754",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in an indoor setting. The room is bathed in soft, warm light that casts long shadows and highlights the objects within. A man sits on a couch, his body facing away from the camera, adding an air of mystery to the scene. He's dressed casually in a black shirt, suggesting a relaxed atmosphere.\n\nThe room itself tells a story. The walls are painted dark, providing a stark contrast to the white window that punctuates them. The window is adorned with yellow curtains, their color echoing the warmth of the interior light. A lamp sits on the windowsill, its presence hinting at cozy evenings spent in this space.\n\nDespite the simplicity of the scene, it's filled with details that tell a story of quiet nights and peaceful moments. The man on the couch, the lamp by the window - these are elements that invite us to imagine the stories that unfold within this room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-42-25.026112.jpg"
-}

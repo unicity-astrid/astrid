@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:11:05.105524",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows adorned with white curtains. A gray couch sits invitingly against one wall, draped with a beige blanket that adds to the room's warm ambiance. \n\nIn front of the couch, a wooden coffee table takes center stage. It hosts an array of objects - a blue water bottle standing tall among them, accompanied by several books and a red flower pot resting on it. The objects are arranged in no particular order, creating an atmosphere of casual comfort.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the colors of the objects within. The floor is covered with a beige carpet, mirroring the color of the blanket on the couch and tying the room together harmoniously.\n\nEvery object in the room has its place, contributing to a sense of balance and tranquility. Despite the presence of numerous objects, there's an undeniable emptiness that makes the room feel spacious and airy. The sunlight streaming through the windows casts soft shadows around the room, adding depth and texture to the scene.\n\nOverall, this image paints a picture of a serene living space where one can relax and unwind.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-10-58.419569.jpg"
-}

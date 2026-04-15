@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:03:02.537427",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft sunlight. A black leather couch sits invitingly against one wall, its surface adorned with a single, peaceful brown dog lying on it, perhaps enjoying the warmth of the sun filtering through the window.\n\nOn a wooden coffee table that stands proudly before the couch, a white laptop is open, its screen glowing with light. It's as if someone has just stepped away for a moment and will return any second now. The floor beneath these pieces of furniture is carpeted in a soft beige color, adding to the cozy atmosphere.\n\nThe room is illuminated by natural light streaming in through a window located on the right side of the image. This light casts long shadows across the room, adding depth and texture to the scene. On the left wall, a clock hangs silently, marking the passing of time in this tranquil setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-02-55.462862.jpg"
-}

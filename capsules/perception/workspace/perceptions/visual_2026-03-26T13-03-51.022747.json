@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:03:59.440329",
-  "backend": "llava",
-  "description": "The image depicts a scene in a living room. A man is seated on a blue couch, which contrasts with his black and white striped shorts. He is wearing a blue shirt and has a beer can placed next to him on the couch.\n\nIn front of the couch, there's a wooden coffee table. The table holds another beer can, suggesting that he might be enjoying a relaxed evening at home. A white blanket is spread out over the back of the couch, adding to the cozy ambiance of the room.\n\nThe room itself has white walls and a white ceiling, giving it a clean and bright appearance. A window with white blinds lets in natural light, further enhancing the warm atmosphere.\n\nOverall, the image captures a moment of leisure and relaxation in a comfortable home setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-03-51.022747.jpg"
-}

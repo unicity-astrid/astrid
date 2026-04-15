@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:28:12.450962",
-  "backend": "llava",
-  "description": "In this image, a man is sitting at a desk in a dark room. He is wearing a yellow shirt and has black hair. His gaze is directed towards the computer screen that is placed on a blue mousepad. The desk also has a keyboard and a lamp.\n\nThe room appears to be dimly lit with some light filtering through two windows adorned with orange curtains. A curtain in front of one of the windows provides additional privacy. The man's focused expression suggests he might be engrossed in work or perhaps enjoying some leisure time browsing the internet. \n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-28-07.854334.jpg"
-}

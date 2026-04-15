@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:03:23.261154",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a room bathed in soft light from an open window. The room is shrouded in darkness, creating a stark contrast with the glowing window that serves as the primary source of illumination. \n\nAgainst the backdrop of this illuminated window, two figures stand out - one seated on a bed and another perched on a chair. Their forms are silhouetted against the light, adding an air of mystery to the scene.\n\nThe room itself is sparsely furnished, with a bed occupying the foreground and a desk positioned in front of it. The desk hosts a few objects, including a bottle and a candle, their details obscured by the dim lighting.\n\nDespite the darkness, the room exudes a sense of calm and serenity, as if time has momentarily paused within its confines.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-03-16.660306.jpg"
-}

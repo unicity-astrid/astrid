@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:33:53.719044",
-  "backend": "llava",
-  "description": "The image captures a quiet, nocturnal scene in a room bathed in soft darkness. The room is illuminated by a solitary light source positioned on the left side, casting long shadows and adding depth to the space. \n\nIn the foreground, a desk stands against the wall, its surface cluttered with various objects. A lamp, its bulb glowing warmly, sits amidst the disarray. The desk's location suggests it as a workspace or study area.\n\nTo the right of the image, a window punctuates the expanse of wall. It is partially covered by a curtain, hinting at an outside world beyond this intimate space. \n\nThe floor beneath is carpeted, its texture and color muted in the dim light. The walls surrounding the room are also adorned with wallpaper, adding a layer of complexity to the room's aesthetic.\n\nOverall, the image paints a picture of solitude and introspection, a moment frozen in time within the confines of this room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-33-47.878088.jpg"
-}

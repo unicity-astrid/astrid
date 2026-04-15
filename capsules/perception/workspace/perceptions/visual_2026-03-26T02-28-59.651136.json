@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:29:06.081729",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The walls, painted in a soothing shade of blue, provide a serene backdrop to the scene. A window punctuates one wall, draped with a white curtain that filters the light from outside. Through this window, a faint yellow glow seeps into the room, casting long shadows and adding an air of mystery.\n\nIn the heart of the room stands a black chair, its silhouette stark against the blue wall. It's positioned in front of a table, which holds two objects - a blue bottle and a black candle. The candle, unlit, waits patiently for its moment to shine.\n\nThe floor beneath is also black, mirroring the color of the chair and creating a harmonious balance in the room. On one side of the wall, there's a white door with a gold handle, slightly ajar as if inviting someone into this tranquil space.\n\nEvery object in this room tells a story - from the blue bottle on the table to the black candle waiting for its light to shine. It's a snapshot of an intimate space, frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-28-59.651136.jpg"
-}

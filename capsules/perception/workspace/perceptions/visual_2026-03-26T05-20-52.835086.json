@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:21:02.578492",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting at night. A person, dressed in a vibrant yellow shirt, is seated comfortably on a couch. They are engrossed in their laptop, which rests on their lap. The room around them is dimly lit, creating an atmosphere of tranquility. \n\nThe couch, positioned centrally in the image, provides a stark contrast to the surrounding darkness. On the right side of the image, a window punctuates the scene, its curtains drawn back to reveal the night sky outside. The window's position relative to the couch and person suggests it might offer a view when gazing into the distance.\n\nThe image is taken from the left side of the couch, offering a clear view of the person and their surroundings. Despite the darkness, the details are discernible, painting a picture of a quiet moment in someone's evening.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-20-52.835086.jpg"
-}

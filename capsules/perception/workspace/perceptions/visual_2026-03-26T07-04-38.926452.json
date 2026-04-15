@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:04:52.935440",
-  "backend": "llava",
-  "description": "In the image, a man in a vibrant yellow sweater is comfortably seated on a blue couch. He holds a black laptop in his lap, suggesting he might be working or perhaps enjoying some leisure time browsing the internet. In front of him on the coffee table is a bottle of water, possibly indicating his intention to stay hydrated during his activities.\n\nThe living room is softly lit, creating a warm and inviting atmosphere. A window with white blinds can be seen in the background, allowing natural light to filter into the room. Adjacent to the window is a white door, further enhancing the homely feel of the space.\n\nIn terms of object count, there are three main objects: the man, the couch, and the coffee table. The relative positions of these objects suggest that the man is in a relaxed position on the couch, with his laptop within easy reach for convenience. The bottle of water is slightly closer to him on the coffee table.\n\nThis image captures an everyday moment in a cozy living room setting, providing a glimpse into the man's personal space and activities.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-04-38.926452.jpg"
-}

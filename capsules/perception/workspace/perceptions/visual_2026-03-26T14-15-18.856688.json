@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:15:25.118281",
-  "backend": "llava",
-  "description": "This image captures a moment in a room bathed in soft light from two windows. The room is painted white, providing a stark contrast to the man dressed in blue who is seated at a wooden desk. He appears to be engrossed in his work on a laptop that sits open before him on the desk.\n\nThe desk itself is an interesting piece of furniture, made of wood and topped with a glass surface that reflects the room's light. It's positioned against one of the windows, allowing for ample natural lighting to illuminate the workspace.\n\nOn the wall behind the man hangs a mirror, reflecting his image back at him. Next to the desk on the floor rests a black bag, perhaps containing more work or personal items.\n\nIn the background, partially visible through the window, is another person. Their presence adds an element of intrigue to this otherwise ordinary scene. However, their face remains unseen, leaving their identity and role in this setting a mystery.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-15-18.856688.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:18:28.397372",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft natural light filtering through two windows on the left wall. The larger window on the right offers a glimpse of an external building, adding depth to the scene. \n\nIn the heart of the room, a wooden coffee table takes center stage. It hosts a laptop and a cup of coffee, suggesting someone's work or leisure time. A gray couch sits comfortably in the background, draped with a beige blanket that adds warmth to the space.\n\nThe floor beneath is adorned with a dark-colored rug, grounding the scene and providing contrast to the lighter elements of the room. The overall atmosphere is one of tranquility and comfort, an inviting space for relaxation or productivity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-18-23.733826.jpg"
-}

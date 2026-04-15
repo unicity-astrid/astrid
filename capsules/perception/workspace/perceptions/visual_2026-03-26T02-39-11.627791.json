@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:39:20.658138",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a room bathed in darkness. The room, painted in a soothing shade of green, houses two windows that are currently closed. One window sports a white curtain, while the other has a yellow one that adds a warm hue to the otherwise cool-toned room.\n\nA brown couch occupies much of the foreground, its dark color contrasting with the lighter walls. On it rests a single blue candle, unlit but standing tall, hinting at potential light or perhaps an impending ritual. The couch and candle are positioned in such a way that they serve as the main focal points of the image.\n\nIn the background, partially obscured by the couch and the windows, is a black chair. Its presence adds depth to the scene, suggesting a space beyond what's immediately visible. The precise locations of these objects relative to each other create a harmonious balance within the room.\n\nOverall, this image paints a picture of tranquility and quietude, as if waiting for someone to come home and light the blue candle.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-39-11.627791.jpg"
-}

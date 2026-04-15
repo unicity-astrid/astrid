@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:19:06.231995",
-  "backend": "llava",
-  "description": "The image captures a moment in a dimly lit room. At the center of the scene is a man, dressed in a yellow jacket, sitting at a desk. The desk hosts an open laptop and a beer bottle, suggesting a casual work or study setting. \n\nIn the background, another person can be seen lying on a bed, adding depth to the room's layout. A window punctuates the right side of the image, draped with curtains that hang down in soft folds.\n\nThe room itself is characterized by its white walls and ceiling, creating a stark contrast with the dark furniture within it. The overall atmosphere suggests an intimate space where work and rest coexist.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-18-59.628545.jpg"
-}

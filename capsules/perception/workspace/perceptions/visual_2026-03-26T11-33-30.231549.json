@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:33:45.531784",
-  "backend": "llava",
-  "description": "In the image, a man is seated in a room that bathes in natural light coming from an unseen window behind him. He is casually dressed in a blue shirt and sunglasses, suggesting a relaxed or informal setting. The room appears to be a living space as there are other objects present.\n\nThe man is sitting on a couch, which is positioned in front of a table covered with a white cloth. On the table, there's a blue vase, possibly serving as a decorative element or holding some flowers. Next to the couch, there's a chair, further indicating that this space is meant for relaxation and socialization.\n\nThe room itself has white walls, providing a neutral backdrop that enhances the colors of the objects within it. The natural light illuminates the scene, casting soft shadows and highlighting the textures of the various surfaces in the room.\n\nOverall, the image captures a moment of tranquility and comfort, with every object and detail contributing to this serene atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-33-30.231549.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:47:32.093668",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at night. Dominating the scene is a dark blue room, its tranquility accentuated by a single, warm yellow light that filters through a small window on the right wall. The light casts an inviting glow, illuminating a black desk situated against the left wall.\n\nOn this desk, a laptop and a water bottle are neatly arranged, perhaps indicating a workspace or study area. A blue mug rests next to them, adding a touch of homeliness to the scene. Adjacent to the desk, on the floor, lies a gray blanket, possibly serving as a cozy spot for relaxation or contemplation.\n\nThe room is devoid of any human presence, yet these objects tell a story of daily life and routine. The positioning of each object - the laptop in front of the window, the water bottle within easy reach, the mug by its side - suggests careful arrangement for comfort and convenience.\n\nDespite the absence of color variety, the image exudes a sense of calm and orderliness through its use of muted colors and simple objects. It's a snapshot of a quiet moment, frozen in time yet brimming with potential activity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-47-20.224501.jpg"
-}

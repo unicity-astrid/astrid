@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:34:41.936259",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room where a television screen takes center stage. The television, mounted on a beige wall, displays a vibrant video game menu. The menu is a grid composed of small icons, each representing a different game mode or option.\n\nThe television is the primary object in the room, its glow illuminating the immediate surroundings while casting long shadows that stretch across the floor and furniture. To the right of the television, there's a fireplace, its presence adding a touch of warmth to the otherwise cool ambiance.\n\nOn either side of the television screen are two windows draped with curtains. They frame the scene like silent observers, their darkened glass reflecting the flickering light from the screen.\n\nDespite the room being dimly lit, it's clear that this is a space designed for relaxation and entertainment, where one can lose themselves in the digital world displayed on the television screen. The image doesn't contain any text or discernible actions, but it paints a vivid picture of a quiet moment spent indoors, perhaps during late-night gaming sessions or after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-34-35.644620.jpg"
-}

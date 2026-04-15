@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:52:46.501467",
-  "backend": "llava",
-  "description": "In the image, there is a man sitting at a wooden desk in what appears to be a living room. He is wearing a blue shirt and shorts, and he has a red baseball cap on his head. His attention seems to be focused on the table in front of him.\n\nThe desk holds several objects: a silver laptop, a white cup with a blue lid, and a blue canister. The laptop is closed, suggesting it's not currently in use. The cup and canister are both upright, indicating they might have been recently used or are ready for use.\n\nIn the background, there's a window with white curtains partially drawn, letting in some light. A green couch can also be seen, adding to the homely atmosphere of the room. The overall scene suggests a quiet moment of concentration or relaxation at home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-52-37.558776.jpg"
-}

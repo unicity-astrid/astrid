@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:12:01.692652",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene. Dominating the foreground is a black desk, its surface uncluttered save for a blue computer monitor and a black lamp. The desk faces a window that opens to an unseen view beyond. \n\nA person sits at the desk, their face obscured by the angle of the shot. Their presence adds a touch of life to the otherwise still scene. The room itself is bathed in soft light filtering through the window, casting long shadows and highlighting the contours of the objects within.\n\nDespite the simplicity of the scene, there's a sense of solitude and focus that pervades it. It's as if time has slowed down, allowing for a moment of quiet reflection or intense work. The image doesn't just show a room with a desk; it tells a story of someone's day-to-day life, captured in a single frame.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-11-55.909885.jpg"
-}

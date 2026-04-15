@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:08:18.039427",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. Dominating the center of the room is a desk, draped with a white cloth that adds a touch of elegance to the otherwise simple setting. On the left side of the desk, a black lamp stands tall, its presence subtly enhancing the ambiance.\n\nA window punctuates the right side of the room, adorned with white blinds that filter the light entering from outside. The light dances on the glass panes, casting an array of shadows and highlights around the room. It illuminates a single object on the desk - a black mug resting peacefully on its surface.\n\nThe image is taken from the perspective of someone standing in front of the desk, offering a view that encompasses both the foreground and background elements of the scene. The composition is balanced, with each element contributing to the overall tranquility of the setting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-08-07.990160.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:24:15.199298",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room. The main focus is a man seated at a desk, engrossed in his work on a computer. He is dressed in a black shirt and is wearing glasses, adding an intellectual touch to his persona. The desk in front of him holds a computer monitor and keyboard, essential tools for his task.\n\nThe room itself is quite simple. A window with orange curtains can be seen, suggesting it might be evening outside. The walls are painted white, providing a stark contrast to the dark furniture in the room. Despite the darkness, the man's concentration on his work is palpable, creating an atmosphere of quiet determination and focus.\n\nIt's worth noting that there are no discernible texts or countable objects in this image. The relative positions of the objects suggest a typical indoor setting with the man at his desk near the window for natural light during the day. The image does not provide any additional details about the location or time, but it paints a vivid picture of a quiet moment of focused work.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-24-08.750027.jpg"
-}

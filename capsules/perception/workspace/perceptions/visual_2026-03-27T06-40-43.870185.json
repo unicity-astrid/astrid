@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:41:02.307758",
-  "backend": "llava",
-  "description": "The image captures a cozy living room setting at night. Dominating the scene is a flat screen TV mounted on the wall, which is turned on and displaying an action-adventure video game. The game features two characters engaged in combat against an enemy force, with health bars indicating their status.\n\nThe television is housed within a white entertainment center, blending seamlessly into the room's decor. To its left, there's a window adorned with curtains, allowing for natural light to filter into the room and illuminate the gaming scene on the screen.\n\nIn front of the TV, there's a comfortable couch, inviting viewers to sit down and enjoy the game. The entire setup creates an atmosphere of relaxation and entertainment, typical of a quiet night in with friends or family.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-40-43.870185.jpg"
-}

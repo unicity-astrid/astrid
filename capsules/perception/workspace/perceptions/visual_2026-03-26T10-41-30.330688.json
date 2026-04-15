@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:41:40.070282",
-  "backend": "llava",
-  "description": "The image captures a moment in a room bathed in soft, natural light filtering through a window on the left wall. The walls are painted white, providing a stark contrast to the objects within the room.\n\nIn the center of the image, a man is seated at a desk, engrossed in his task. He's wearing a blue shirt that matches the color of his sunglasses, adding a touch of coolness to his attire. His gaze is directed downwards, focused on something on his desk.\n\nThe desk itself is quite minimalistic with only a few objects scattered across its surface. A coffee cup sits next to a pen holder and a glass, perhaps indicating that this is a space for both work and relaxation.\n\nIn the background, there's an armchair draped in a white sheet, suggesting a cozy corner for reading or contemplation. The precise location of each object and their relative positions contribute to creating a harmonious scene of everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-41-30.330688.jpg"
-}

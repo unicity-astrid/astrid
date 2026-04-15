@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:35:55.206422",
-  "backend": "llava",
-  "description": "This image captures a tranquil indoor scene at night. The room is dimly lit, creating an atmosphere of calm and quiet. The main focus is a window that spans the entire wall, divided into three sections by white curtains. Each section reveals a glimpse of the outside world - a building bathed in warm yellow light.\n\nOn the windowsill rests a solitary blue candle, its color standing out against the muted tones of the room. Its presence adds an element of intrigue to the scene, suggesting a sense of solitude or perhaps anticipation of something yet to happen.\n\nThe image is taken from a low angle, which emphasizes the height of the ceiling and gives prominence to the window as the primary source of light in the room. The overall composition creates a sense of depth and perspective, drawing the viewer's eye towards the window and beyond into the night outside.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-35-49.958719.jpg"
-}

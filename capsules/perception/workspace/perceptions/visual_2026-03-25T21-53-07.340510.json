@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:53:13.426646",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene at night. The primary focus is on two windows that are adorned with yellow curtains. The window to the left is partially open, allowing a glimpse of the world outside. It's as if we're looking through a portal, where we can see another room and a single tree standing tall against the night sky.\n\nThe right window, in contrast, remains closed, its interior hidden from view. A black curtain hangs there, providing a stark contrast to the yellow one on the left. The curtains add an element of coziness to the scene, suggesting that this might be someone's bedroom or perhaps a living room.\n\nInside, we see a dark room illuminated by the soft glow of lights in the background. These lights create a warm ambiance, casting long shadows and adding depth to the scene. Their presence suggests life beyond the frame, inviting us to imagine what could be happening in the room.\n\nOverall, this image paints a picture of quiet solitude at night, where one might seek refuge from the world outside.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-53-07.340510.jpg"
-}

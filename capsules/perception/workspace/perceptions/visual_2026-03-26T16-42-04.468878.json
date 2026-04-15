@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:42:09.970713",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light filtering through two windows on the left wall. The floor beneath is carpeted in a soothing shade of beige, adding to the warm ambiance. \n\nA wooden coffee table takes center stage in the room, its surface adorned with a white tablecloth and a blue vase filled with flowers, their colors muted under the natural light. On either side of the table are two gray couches, inviting relaxation with their plush cushions.\n\nIn front of one of the couches, a black piano rests against the wall, its polished surface reflecting the room's tranquility. The white walls surrounding these pieces of furniture enhance the sense of space in the room.\n\nEvery object in this room has been meticulously placed, creating a harmonious balance between functionality and aesthetics. The overall atmosphere is one of comfort and tranquility, an ideal setting for relaxation or quiet contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-42-04.468878.jpg"
-}

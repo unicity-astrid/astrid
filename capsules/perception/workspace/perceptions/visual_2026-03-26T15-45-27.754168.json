@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:45:32.990621",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light filtering through three windows adorned with white curtains. The walls, painted in pristine white, contrast beautifully with the wooden floor that adds a touch of warmth to the space.\n\nIn the center of the room, a gray couch invites relaxation. A red blanket is casually draped over it, adding a pop of color against the neutral tones. A coffee table stands guard in front of the couch, hosting an array of objects including a blue water bottle and a white cup, perhaps remnants of a quiet afternoon spent enjoying a good book.\n\nTo the right of the couch, a wooden side table holds a stack of books and another red blanket, suggesting cozy evenings spent reading by the window. The precise arrangement of these objects creates a harmonious balance in the room, making it appear both inviting and tranquil.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-45-27.754168.jpg"
-}

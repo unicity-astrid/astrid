@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:04:22.694965",
-  "backend": "llava",
-  "description": "In the image, a man is seated in a living room, engrossed in playing a video game. He's casually dressed in a blue shirt and shorts, and a red baseball cap sits atop his head. His attention is focused on a black coffee table positioned directly in front of him. The table hosts a single object - a white cup.\n\nThe room itself exudes a cozy atmosphere. A beige couch rests against one wall, adorned with a gray blanket casually thrown over it. Behind the man stands a window, its view obscured by a blue curtain that matches his shirt. The overall scene paints a picture of a relaxed and comfortable gaming session at home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-04-14.904240.jpg"
-}

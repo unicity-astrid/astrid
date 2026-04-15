@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:55:44.870538",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room, where two windows are the main sources of light. The left window, partially obscured by a curtain, allows a soft glow to seep into the room, casting an ethereal illumination on the wall behind it. The right window is entirely veiled by a curtain, its presence subtly hinted at rather than directly seen.\n\nIn front of the right window, there's a desk holding a solitary computer monitor. The monitor, switched off in this captured moment, adds to the tranquility of the scene. The room itself is shrouded in darkness, with only these two windows breaking the monotony. The overall atmosphere exudes a sense of calm and quietude, as if time has momentarily paused within this space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-55-38.719874.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:31:37.114372",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a couch in what appears to be a living room. He's wearing sunglasses and a blue shirt, giving off a relaxed vibe. His attention seems to be focused on the coffee table before him, which holds a laptop and a mug of coffee. \n\nThe room itself is bathed in natural light streaming in from a window in the background. The walls are painted white, providing a neutral backdrop for the scene. A curtain hangs by the window, adding a touch of homeliness to the setting.\n\nThe man's posture suggests he's engaged in work or perhaps enjoying some leisure time with his laptop and coffee. The overall atmosphere is one of comfort and simplicity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-31-29.492205.jpg"
-}

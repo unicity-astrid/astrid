@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:03:00.825633",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room at night. The dominant colors are black and white, creating a stark contrast with the orange light filtering through a window on the right. The window, adorned with white curtains, casts an ethereal glow that illuminates the room.\n\nIn the center of the room, a black coffee table stands as a silent observer to the scene. On it rests a blue can, perhaps a remnant of a late-night snack or a solitary cup left behind. The table is flanked on either side by a gray couch and a white door, both closed, suggesting an air of solitude.\n\nThe room itself is simple in design - white walls enclose the space, while the floor is covered in black carpet that adds warmth to the otherwise cold surroundings. Despite the presence of objects, there's an emptiness about the room, as if waiting for someone to break the silence. The image does not contain any discernible text or action, and the relative positions of the objects suggest a well-arranged space, possibly in anticipation of an event yet to unfold.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-02-50.491798.jpg"
-}

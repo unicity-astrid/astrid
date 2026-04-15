@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T14:12:32.878454",
-  "backend": "llava",
-  "description": "The image portrays a serene indoor setting. A person, dressed in a blue shirt and shorts, is seated on the floor in front of a table. The individual's attire includes a black hat adorned with a pink stripe, adding a pop of color to their ensemble. They are engrossed in writing or drawing on a piece of paper that rests on the table.\n\nThe table itself is an interesting element in the room. It has a glass top and stands on four metal legs, providing stability and a cool surface for work. A white towel is draped over one end of the table, perhaps indicating recent activity or use.\n\nThe room exudes a calm atmosphere with its minimalist decor. The wall behind the person is painted white, reflecting light and enhancing the sense of space. Two windows punctuate the wall, fitted with blinds that filter in soft light, casting gentle shadows around the room.\n\nOverall, this image captures an intimate moment of creativity or work within the confines of a simple yet inviting living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-12-17.337757.jpg"
-}

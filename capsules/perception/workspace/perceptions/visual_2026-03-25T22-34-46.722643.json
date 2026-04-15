@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:34:55.914487",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor scene bathed in the soft glow of ambient light. Dominating the left side of the frame is a window, its panes illuminated by an unseen source. The right side of the image is occupied by another window, this one cloaked in darkness, creating a stark contrast against its lit counterpart.\n\nA black chair, shrouded in a white cloth, sits in solitude on the right side of the room. Its position suggests it might be someone's favorite spot to sit and enjoy the view from the illuminated window. A blue can rests on the floor near the chair, perhaps forgotten or intentionally placed there for later retrieval.\n\nThe image is taken from a high angle, adding an air of depth and perspective to the scene. The positioning of the objects suggests a well-thought-out arrangement for comfort and aesthetics. Despite the absence of human presence, the image exudes a sense of lived-in warmth and quiet reflection.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-34-46.722643.jpg"
-}

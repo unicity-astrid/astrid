@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:18:33.710781",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dark room, bathed in a soft glow from an unseen source. A person is seated at a desk, engrossed in their work. The desk, positioned against the wall, serves as a stark contrast to the darkness around it. On the right side of the desk, a lamp stands tall, its light casting long shadows and illuminating the room.\n\nThe person's posture suggests deep concentration, perhaps solving a complex problem or creating something beautiful. Their face is hidden from view, adding an air of mystery to the scene.\n\nTo the left of the desk, a window punctuates the wall. Its blinds are drawn shut, suggesting privacy and solitude. The outside world remains unseen, leaving us to imagine what lies beyond the confines of this room.\n\nThe image itself is slightly blurry, adding a dreamlike quality to the scene. It's as if we're looking at a memory or a snapshot from another time. The overall atmosphere is one of quiet introspection and peaceful solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-18-23.682870.jpg"
-}

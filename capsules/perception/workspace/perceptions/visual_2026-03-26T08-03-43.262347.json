@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:03:52.019625",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through a window on the left. The wooden floor and white walls exude a warm and inviting atmosphere. \n\nIn the center of the room, a black leather couch invites relaxation. A dog, embodying tranquility, is curled up comfortably next to it, perhaps enjoying a peaceful nap. \n\nTo the right, a brown wooden coffee table stands as a centerpiece. It holds two items - a blue mug and a remote control, suggesting recent human activity in this space.\n\nA window with white curtains adorns the left wall. The sunlight streaming through it casts a gentle glow on the floor, enhancing the overall warmth of the room.\n\nThe image is taken from a low angle, adding depth and perspective to the scene. It's as if we're lying on the floor, looking up at this tranquil tableau of everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-03-43.262347.jpg"
-}

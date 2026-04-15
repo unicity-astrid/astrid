@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T08:35:26.317939",
-  "backend": "llava",
-  "description": "The image captures a cozy living room scene. Dominating the scene is a white brick fireplace, standing tall and adding a touch of rustic charm to the room. Mounted above it is a television screen, its black surface contrasting sharply with the bright colors below.\n\nOn the screen, a news program is being broadcasted. The text on the screen reads \"BBC1 10:00\", indicating that this scene was likely set during a prime time slot. A man and a woman are displayed on the screen, presumably discussing something of importance to the viewers.\n\nThe television is strategically placed above the fireplace, creating an interesting juxtaposition between old-fashioned warmth and modern technology. The overall atmosphere suggests a comfortable evening at home, perhaps during a chilly winter night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-35-19.379827.jpg"
-}

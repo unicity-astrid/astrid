@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:46:32.219142",
-  "backend": "llava",
-  "description": "This image captures a serene moment in a living room bathed in soft sunlight filtering through a window on the left wall. The centerpiece of the room is a gray couch, which houses two occupants - a cat and a dog. The cat, with its fur as dark as night, has found comfort on the armrest of the couch, while the brown dog lies peacefully on the floor nearby.\n\nThe couch faces a wooden coffee table, which holds a black speaker and a blue water bottle, perhaps indicating recent human activity in the room. A beige blanket is casually draped over the back of the couch, adding to the cozy atmosphere.\n\nOn the right wall, there's a window that allows sunlight to pour into the room, casting long shadows and illuminating the scene with a warm glow. The interplay of light and shadow adds depth to the image, creating an inviting and comfortable living space where pets are clearly part of the family.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-46-16.776579.jpg"
-}

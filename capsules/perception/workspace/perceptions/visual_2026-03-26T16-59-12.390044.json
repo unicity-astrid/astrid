@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:59:18.511484",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft sunlight streaming through three windows on the left wall. The windows cast a warm glow, illuminating the room's interior. \n\nIn the heart of the room, a wooden coffee table takes center stage, draped with a pristine white cloth that contrasts beautifully with its dark hue. Adjacent to it, a brown armchair invites relaxation, with a gray blanket casually thrown over it, suggesting recent use.\n\nA bookshelf stands proudly in one corner of the room, housing an array of books and adorned with various knick-knacks. The collection adds a personal touch to the space, hinting at the interests and tastes of the inhabitants.\n\nOn the right wall, a beige curtain hangs gracefully, complementing the overall color scheme of the room. Its soft fabric adds texture to the scene, enhancing the homely atmosphere.\n\nOverall, this image paints a picture of a tranquil living space where one can unwind after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-59-12.390044.jpg"
-}

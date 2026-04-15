@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:43:37.846425",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room at night. The main subject is a man who is sitting at a desk, engrossed in his work. He is wearing a black shirt and holds a blue object in his hands, which could be a pen or marker. His gaze is directed downwards towards the desk.\n\nThe desk itself is positioned against a wall that has a window with yellow curtains. The room's lighting is minimalistic, with most of it coming from a single light source located on the left side of the image. This light casts an intriguing play of shadows around the room and illuminates the man's face.\n\nThe atmosphere of the scene is quiet and focused, suggesting that the man might be deep in thought or concentration while working at his desk. The overall color palette of the image is dark, with the exception of the bright window curtains providing a stark contrast. This contrast further emphasizes the source of light on the left side of the image.\n\nIn terms of object count, there are three main objects: the man, the desk, and the blue object he holds. Their relative positions suggest that the man is seated at the desk with his back to the window, facing towards the right side of the image.\n\nThis detailed description provides an accurate representation of the",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-43-25.618976.jpg"
-}

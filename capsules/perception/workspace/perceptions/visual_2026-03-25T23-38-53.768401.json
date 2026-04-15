@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:38:59.636579",
-  "backend": "llava",
-  "description": "This image captures a tranquil indoor scene at night. The room is bathed in a soft, dim light that casts long shadows and highlights the textures of the objects within. \n\nIn the foreground, a dark-colored couch takes center stage. It's positioned against a wall with a window, which is partially obscured by a curtain. A single lightbulb hangs from the ceiling above the couch, casting a warm glow on the scene below.\n\nTo the right of the image, there's a table draped in a white tablecloth. The table hosts two objects - a blue glass and a bottle. Their colors contrast sharply with the dark tones dominating the room.\n\nThe background is shrouded in darkness, adding depth to the image and drawing focus to the objects in the foreground. Despite the lack of light, there's a sense of comfort and familiarity that permeates this space.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-38-53.768401.jpg"
-}

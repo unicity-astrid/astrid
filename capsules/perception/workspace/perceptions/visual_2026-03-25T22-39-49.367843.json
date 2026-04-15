@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:39:55.198689",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene within a room bathed in soft, dim light. A window draped with a white curtain allows a gentle stream of light to illuminate the interior, casting long shadows that dance on the gray walls. The floor, like the walls, is also gray, creating a monochromatic backdrop for the room's occupant.\n\nThe room itself is sparsely furnished, with only a bed occupying most of the space. The bed, covered in a black blanket, stands out against the otherwise neutral tones of the room. It's positioned near the window, perhaps to take advantage of the natural light during the day or to enjoy the view outside at night.\n\nOn the windowsill rests a single object - a blue soda can. Its vibrant color contrasts with the muted hues of the room and draws attention. The can is empty, its purpose served for the time being. It's an everyday scene that speaks volumes about simplicity and tranquility.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-39-49.367843.jpg"
-}

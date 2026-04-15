@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:48:45.945389",
-  "backend": "llava",
-  "description": "The image depicts a serene living room bathed in soft natural light from two windows adorned with white curtains. The room exudes a sense of tranquility and comfort.\n\nOn the left side of the room, a gray sofa invites relaxation. It's positioned next to a wooden coffee table that holds a blue vase and a book, suggesting a quiet afternoon spent reading. \n\nOpposite the sofa, on the right side of the image, stands a black desk with a chair tucked neatly underneath. A beige blanket is draped over the back of the chair, adding a touch of warmth to the scene.\n\nThe room's floor is covered in light-colored tiles that reflect the soft light from the windows, enhancing the overall brightness of the space. The relative positions of the objects and their harmonious colors create a balanced and inviting atmosphere. \n\nThis image captures a moment of calm and comfort in a well-appointed living room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-48-29.612703.jpg"
-}

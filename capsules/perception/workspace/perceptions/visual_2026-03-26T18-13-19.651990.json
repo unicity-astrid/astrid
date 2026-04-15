@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:13:24.729761",
-  "backend": "llava",
-  "description": "The image captures a serene and cozy living room bathed in soft light filtering through two windows adorned with white curtains. The windows are positioned on either side of a wooden coffee table, which takes center stage in the room. \n\nOn this table, a laptop sits open, its screen glowing with unseen information. Beside it, a book rests closed, waiting to be picked up and read. A glass of water also shares space on the table, reflecting the ambient light.\n\nIn the background, a comfortable gray couch invites relaxation. It's not empty; a dog finds comfort there, lying peacefully. The floor echoes with the same hue as the couch, completing the harmonious color scheme of the room.\n\nEvery object in this image has its place, creating a scene of tranquility and homely warmth.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-13-19.651990.jpg"
-}

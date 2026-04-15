@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:59:19.766966",
-  "backend": "llava",
-  "description": "The image presents a tranquil domestic scene. Dominating the left side of the frame is a gray couch, comfortably adorned with a gray blanket and a red pillow. The right side of the image features a black coffee table, which holds a laptop, suggesting a workspace or leisure area. A beige curtain adds to the cozy ambiance.\n\nIn front of this setup, on the floor, rests a cat, its body relaxed as it sleeps peacefully. Its location suggests it might be guarding the couch or perhaps enjoying the warmth from the nearby radiator.\n\nThe room is well-lit by natural light streaming in through three windows located in the background. The light illuminates the room, casting soft shadows and highlighting the various objects within.\n\nOverall, this image captures a moment of calm and comfort in a home setting, with elements like the sleeping cat and the laptop on the table adding personal touches to the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-59-10.982569.jpg"
-}

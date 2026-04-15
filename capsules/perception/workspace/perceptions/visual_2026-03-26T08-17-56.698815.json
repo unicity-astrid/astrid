@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:18:05.548432",
-  "backend": "llava",
-  "description": "In the image, a man is comfortably seated on a gray couch in a living room. He's wearing a vibrant yellow shirt and headphones, suggesting he might be enjoying some music or an audio program. His gaze is directed to his left, where a brown coffee table sits. The table hosts a laptop computer and a blue mug, possibly indicating that the man was working from home or studying remotely.\n\nThe living room itself is quite spacious with white walls and a wooden floor, giving it a warm and inviting atmosphere. A window punctuates one of these walls in the background, allowing natural light to filter into the room. The precise location of each object relative to others paints a picture of a typical day at home. The man's relaxed posture on the couch contrasts with the productive setup on the coffee table, creating an interesting juxtaposition between work and leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-17-56.698815.jpg"
-}

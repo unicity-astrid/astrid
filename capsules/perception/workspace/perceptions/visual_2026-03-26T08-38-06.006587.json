@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:38:13.561316",
-  "backend": "llava",
-  "description": "In the image, there is a man sitting on a couch in a living room. He is wearing a yellow jacket and has headphones on his ears. In his hand, he holds a glass of beer. The couch is positioned next to a coffee table and against a wall that features a window.\n\nThe coffee table is adorned with several items: there's a blue mug, a red book, and a white cloth. The man appears to be looking at these items on the table, perhaps contemplating what he should do next.\n\nThe overall atmosphere of the image suggests a relaxed and comfortable setting, possibly during a quiet afternoon or evening at home. The presence of the beer and the casual attire of the man further reinforce this sense of leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-38-06.006587.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:55:15.706744",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room. The primary source of light comes from two windows situated on the left wall, both adorned with white curtains. The window on the right stands slightly taller than its counterpart on the left. The left window is illuminated by a warm yellow light that casts an inviting glow onto the wooden floor.\n\nOn the right side of the image, there's a black cat comfortably lying down on a blue blanket, seemingly enjoying the tranquility of the night. Its relaxed posture suggests it's at ease in this environment.\n\nThe room is not devoid of human presence, though. A black backpack rests on the floor near the windows, perhaps hastily placed by someone preparing to leave or just returning home. The walls of the room are painted white, providing a stark contrast to the dark silhouette of a person who stands behind one of the windows.\n\nOverall, this image paints a picture of a quiet night in a cozy living room, where both humans and pets coexist peacefully.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-55-09.800833.jpg"
-}

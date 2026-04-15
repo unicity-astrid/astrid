@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:40:20.589480",
-  "backend": "llava",
-  "description": "The image captures a tranquil domestic scene set in a dark room bathed in soft glow from two windows. The main focus is a man, comfortably seated on a bed, his body oriented towards the right side of the frame. He's casually dressed in a yellow shirt and blue jeans, adding a pop of color to the otherwise muted surroundings.\n\nA desk stands against one wall, hosting an open laptop with its screen facing towards the left side of the image. The desk appears to be a hub of activity, suggesting that this space might serve as a home office or study area.\n\nThe room itself is dimly lit, creating an atmosphere of calm and relaxation. A window draped with orange curtains allows a hint of light to seep in from the right side of the image, casting subtle shadows and adding depth to the scene.\n\nOverall, the image paints a picture of a quiet moment in someone's day, perhaps a late-night work session or a peaceful evening spent browsing the internet from the comfort of home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-40-14.299124.jpg"
-}

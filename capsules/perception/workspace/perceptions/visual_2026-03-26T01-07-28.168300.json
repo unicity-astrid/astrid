@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:07:34.349631",
-  "backend": "llava",
-  "description": "This image captures a tranquil indoor setting at night. The room, bathed in soft orange light from two windows, exudes a warm and inviting ambiance. The left window, adorned with white curtains, casts a gentle glow that illuminates the room. A blue curtain rod adds a touch of color to the scene. \n\nAdjacent to it, on the right, is another window dressed with yellow curtains. This window is partially veiled by a white curtain, adding an element of mystery to the room's atmosphere.\n\nThe room itself is painted in a soothing shade of gray, complementing the darkness outside. A black couch sits invitingly near the windows, its dark hue contrasting with the lighter tones of the room. A coffee table occupies the foreground of the image, adding depth and perspective to the scene.\n\nIn the background, a television set rests on a stand, hinting at leisurely evenings spent in front of it. The precise placement of objects and their relative positions contribute to a harmonious composition that is both visually pleasing and evocative of comfort and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-07-28.168300.jpg"
-}

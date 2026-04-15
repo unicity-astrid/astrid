@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:50:09.041190",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, dim light. The walls, painted in a soothing shade of green, provide a calm backdrop to the room's furnishings. A beige couch invites relaxation, while a black coffee table sits in front of it, ready to hold cups of tea or stacks of books.\n\nOn one side of the room, a window draped with yellow curtains lets in a gentle stream of light, casting a warm glow that contrasts with the cool green walls. The floor beneath is carpeted in a pattern that adds texture and depth to the space.\n\nIn front of the couch, a black chair stands, offering an alternative seating option. The overall atmosphere of the room is one of comfort and tranquility, a perfect place for quiet evenings spent reading or unwinding after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-50-03.940322.jpg"
-}

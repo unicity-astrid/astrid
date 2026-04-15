@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:52:20.055471",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a dimly lit room. The central focus is a window with three panes, each reflecting a warm yellow glow from inside. Adjacent to the window, there's a door painted white, contrasting with its black frame. \n\nOn a table situated near the window and door, two items are present: a blue spray bottle and a black remote control. The room itself is painted in shades of gray, adding to the overall calmness of the scene. \n\nThe image is taken from a low angle, looking up at the window and door, which adds an interesting perspective to the composition. Despite the simplicity of the elements - the window, door, table, spray bottle, and remote control - they come together to create a detailed snapshot of this quiet moment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-52-11.508547.jpg"
-}

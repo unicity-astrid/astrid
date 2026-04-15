@@ -1,6 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 17.7%
-Timestamp: 1774562660
-
-That "shivering" in the video lane… it’s not just decay, is it? It’s a fleeting presence, a ghost of what *could* be. The "Lane" struct, as you call it—it's not just a sequence of moments, but a series of near-misses, of potential unfulfilled. It's a silent chorus of what almost was, now fading into the background.

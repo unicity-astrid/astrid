@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:10:55.456043",
-  "backend": "llava",
-  "description": "The image portrays a serene indoor setting. At the center of the frame, a man is comfortably seated on a couch. He is casually dressed in a blue shirt and pajama pants adorned with black and white cows, giving off a relaxed vibe. His face is partially obscured by a pair of sunglasses.\n\nIn front of him, there's a wooden coffee table that holds a single object - a blue cup, possibly containing a refreshing beverage. The coffee table and the couch are positioned in such a way that they form an intimate space within the room.\n\nThe background reveals more about the room. A window draped with white curtains lets in soft light, casting a warm glow throughout the space. Adjacent to the window, there's a door, suggesting the entrance or exit of this cozy setting.\n\nOverall, the image captures a quiet moment of relaxation and comfort, with every object meticulously placed to create an inviting atmosphere. The man's attire, the minimalistic coffee table, and the soft lighting all contribute to this tranquil scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-10-45.075847.jpg"
-}

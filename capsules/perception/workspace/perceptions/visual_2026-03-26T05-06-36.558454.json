@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:06:41.857078",
-  "backend": "llava",
-  "description": "In the image, a person is captured in the midst of their work at a desk during the night time. The room is dimly lit, creating an atmosphere of focus and concentration. The person, dressed in a yellow shirt, is seated comfortably in front of the desk. \n\nThe desk itself is black and appears to be made of wood. It serves as the main functional element in the room, holding not only the computer that the person is working on but also a lamp providing additional light. \n\nThe background features a window with white blinds partially drawn, allowing some light to filter into the room. The image has been taken from a slightly elevated angle, giving us a clear view of the desk and its occupant.\n\nPlease note that this description is based on the visible elements in the image and does not include any speculative or inferred information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-06-36.558454.jpg"
-}

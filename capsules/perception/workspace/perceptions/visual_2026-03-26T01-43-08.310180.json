@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:43:17.371930",
-  "backend": "llava",
-  "description": "This image captures a tranquil scene within a dimly lit room. Dominating the center of the frame is a bed, its black comforter contrasting with the lighter surroundings. The bed, appearing soft and inviting, is positioned in such a way that it seems to be the focal point of the room.\n\nTo the right of the bed, a window draped with white curtains allows a sliver of light to filter into the room. This light illuminates the window, casting an ethereal glow on the otherwise dark surroundings.\n\nOn the left side of the image, a black door stands closed. Its presence adds depth to the scene and suggests that this room is part of a larger dwelling. The door's position in relation to the bed indicates it might lead to another room or perhaps an exit.\n\nOverall, the image paints a picture of solitude and peace, with each object - the bed, window, and door - contributing to this serene atmosphere.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-43-08.310180.jpg"
-}

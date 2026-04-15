@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:52:23.541728",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. The room's primary feature is a large window adorned with white curtains and a yellow valance, casting a soft glow that illuminates the space. A table, draped with a black tablecloth, stands in front of the window, hosting an array of objects including a blue water bottle and a red candle. \n\nThe perspective of the image suggests it was taken from someone seated on a couch positioned at an angle to the table. The backdrop is a beige wall punctuated by another window, adding depth to the room's layout. The overall atmosphere exudes a sense of calm and comfort, amplified by the soft lighting and the neatly arranged objects on the table.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-52-18.594735.jpg"
-}

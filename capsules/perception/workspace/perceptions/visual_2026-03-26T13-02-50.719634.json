@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:02:59.772738",
-  "backend": "llava",
-  "description": "In the image, there's a man sitting on a gray couch in a living room. He's wearing a blue shirt and black shorts adorned with white polka dots. His attention seems to be focused on something off-camera, as he gazes intently to his right.\n\nThe couch is positioned against a wall that houses a window dressed with white curtains. The window allows natural light to filter into the room, casting a soft glow on the scene.\n\nA coffee table sits in front of the couch, hosting two items: a blue cup and a white mug. These objects are the only ones on the table, suggesting a moment of tranquility or perhaps preparation for an event.\n\nOn the right side of the photo, there's another gray couch that matches the one where the man is sitting. This couch appears empty, adding to the serene atmosphere of the room.\n\nThe image captures a quiet moment in a living room setting, with objects and their positions contributing to a sense of calm and order.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-02-50.719634.jpg"
-}

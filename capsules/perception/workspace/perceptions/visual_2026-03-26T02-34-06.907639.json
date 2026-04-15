@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:34:18.551339",
-  "backend": "llava",
-  "description": "The image captures a quiet and serene night-time scene in a living room bathed in soft, dim light. The room, painted in a soothing shade of blue, exudes an air of tranquility. A window with a yellow curtain punctuates one wall, allowing a sliver of light to seep into the room and cast long shadows that dance on the white walls.\n\nIn the foreground, a comfortable couch draped in a black blanket invites relaxation. The couch is positioned under a small table, which holds two bottles - one blue and one green. Their colors are muted in the soft lighting, adding to the overall calmness of the scene.\n\nThe room is devoid of people, further enhancing its peaceful ambiance. The absence of any discernible text or action suggests a moment frozen in time, a snapshot of life's quiet moments. The relative positions of the objects - the couch under the table, the bottles on the table - create a harmonious balance within the space.\n\nOverall, this image is a beautiful representation of tranquility and peace, captured through its use of color, lighting, and composition.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-34-06.907639.jpg"
-}

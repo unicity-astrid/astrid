@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:53:09.594448",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting. The room is bathed in soft light filtering through a window on the right wall, which is adorned with white curtains. A table stands in front of the window, hosting a laptop and a lamp. The laptop, open and facing towards the window, seems to be in use. Adjacent to it, the lamp casts a warm glow across the room.\n\nOn the left wall, there's a comfortable couch inviting relaxation. Next to the couch, a pile of books suggests an atmosphere of learning or leisurely reading. A pink blanket is casually draped over the back of the couch, adding a touch of color and coziness to the scene.\n\nThe image beautifully encapsulates a moment of tranquility and comfort in what appears to be a living room or study area. The precise arrangement of objects and their relative positions contribute to the overall harmony of the space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-52-57.578475.jpg"
-}

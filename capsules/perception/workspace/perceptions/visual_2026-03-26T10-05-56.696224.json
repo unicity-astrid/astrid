@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:06:07.200082",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft, natural light. The walls and ceiling are painted white, creating a bright and airy atmosphere. A large window on the right side of the room allows sunlight to stream in, casting a warm glow over the entire space.\n\nIn the center of the room stands a gray sofa with a wooden frame, inviting relaxation. It's positioned perfectly for someone sitting at the wooden coffee table that sits directly in front of it. The table hosts a few items: a blue mug waiting to be filled with a hot beverage, and a white book left open as if someone stepped away mid-read.\n\nOn the right side of the photo, there's a beige curtain hanging from the window. It adds a touch of softness to the room's decor. On the opposite wall, three paintings are hung in a neat row, each one contributing to the room's aesthetic appeal.\n\nOverall, this image portrays a cozy and comfortable living space where one can unwind after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-05-56.696224.jpg"
-}

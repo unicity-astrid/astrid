@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:42:07.991339",
-  "backend": "llava",
-  "description": "The image captures a tranquil night scene in a room bathed in soft darkness. The room is illuminated by a single source of light emanating from an unseen window to the left. Through this window, a warm glow spills into the room, casting long shadows and painting the surroundings with hues of orange and yellow.\n\nIn the foreground, a black desk stands against a stark white wall, its surface adorned with a solitary blue pen holder. The pen holder's vibrant color contrasts sharply with the surrounding darkness, drawing attention to itself as the only source of color in this otherwise monochrome setting.\n\nTo the right, a window draped with a yellow curtain adds another splash of color to the scene. The curtain is drawn partially back, allowing a sliver of light to seep into the room and mingle with the glow from the left window.\n\nThe overall atmosphere is one of quiet solitude, as if time has paused within this small space, inviting one to lose themselves in thought or perhaps take up the blue pen holder on the desk and start writing.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-42-01.901695.jpg"
-}

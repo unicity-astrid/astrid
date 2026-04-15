@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T22:00:52.225028",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene within a dimly lit room. The room's most striking feature is a window, adorned with two curtains that hang from either side. These curtains, drawn halfway back, allow just enough light to filter into the room and illuminate the space.\n\nIn front of this window, there's a desk. On it, you can see a computer monitor and a lamp, suggesting someone might have been working here recently. To the left of the desk, there's a chair that appears to be unoccupied.\n\nThe overall atmosphere is one of quiet solitude, as if waiting for someone to return and bring life back into the room. The precise locations of objects and their relative positions create a harmonious composition within the frame of the image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-00-44.714625.jpg"
-}

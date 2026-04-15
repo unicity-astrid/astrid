@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:20:28.507279",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting, dominated by a dark theme that lends an air of mystery to the scene. A solitary figure stands in the doorway, their silhouette stark against the backdrop of the room. The person's head and shoulders are clearly visible, suggesting they might be observing or waiting for someone.\n\nIn the foreground, a desk takes center stage, its surface adorned with a computer monitor that reflects the soft light filtering into the room from an unseen source. A lamp stands sentinel on the desk, its light contributing to the ambient glow that illuminates the scene.\n\nThe background reveals more of the room's layout - a window draped with curtains, and another doorway similar to the one where the person is standing. The precise location of these objects suggests they are at some distance from each other, creating a sense of depth in the image.\n\nDespite the simplicity of the elements - a person, a desk, a lamp, a window, and two doorways - the image conveys a complex interplay between light and shadow, object and space, solitude and anticipation. It's a snapshot of a moment frozen in time, each element telling its own story within the larger narrative of the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-20-15.782083.jpg"
-}

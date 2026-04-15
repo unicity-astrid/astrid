@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:26:01.918044",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting during the night. The room is bathed in a soft glow from the lights filtering through the two windows. These windows are adorned with orange curtains that add a warm hue to the scene. One window is partially veiled by a white curtain, creating an interesting interplay of light and shadow.\n\nIn the foreground, a desk draped in a black cloth holds a few objects: a blue water bottle standing upright, a brown book lying flat, and a black mug resting on its side. The objects are arranged neatly on the desk, suggesting a sense of order and tranquility.\n\nThe room itself is devoid of people, adding to the serene atmosphere. The absence of any movement or activity further emphasizes the quietness of the night. The image does not contain any discernible text.\n\nOverall, the image presents a peaceful indoor scene at night, with objects on a desk in a room that are illuminated by soft light filtering through two windows.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-25-56.104174.jpg"
-}

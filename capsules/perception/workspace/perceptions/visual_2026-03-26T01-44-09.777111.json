@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:44:15.412083",
-  "backend": "llava",
-  "description": "The image captures a serene night scene within a room bathed in darkness. The room's window, adorned with yellow curtains, serves as the primary source of illumination. Through this window, one can discern the silhouettes of a few trees and buildings, their details softened by the distance.\n\nThe room itself is characterized by a white wall, against which a black couch rests. A single blue candle, its flame flickering gently, casts a warm glow on the nearby coffee table. The coffee table hosts a red drink and an ashtray, both resting atop it. A remote control lies on the arm of the couch, within easy reach.\n\nThe overall atmosphere is one of tranquility and solitude, with the room's interior casting long shadows and creating a stark contrast between the light from the window and the darkness of the room. The presence of the candle suggests an evening spent in quiet contemplation or perhaps enjoying some peaceful downtime alone.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-44-09.777111.jpg"
-}

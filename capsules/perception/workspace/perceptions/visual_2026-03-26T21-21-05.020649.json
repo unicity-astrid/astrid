@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:21:12.201633",
-  "backend": "llava",
-  "description": "This image captures a moment in a dimly lit room. The primary focus is on two windows, each with its own unique characteristics. On the left, there's a window adorned with a white curtain that hangs down gracefully, partially obscuring the view from the outside. The right window, on the other hand, has a vibrant red curtain that adds a pop of color to the otherwise muted tones of the room.\n\nThe windows are set in a wall made of dark wood, lending an air of antiquity and warmth to the space. In front of these windows, there's a table draped with a white tablecloth. The table is unoccupied, its surface smooth and untouched.\n\nOn the right side of the image, partially visible against the backdrop of the window, is a person sitting at the table. Their presence adds an element of mystery to the scene, as their identity remains unknown.\n\nThe overall atmosphere of the room is serene and quiet, with the dim lighting enhancing the intimate feel of the space. Despite the lack of explicit action in the image, it conveys a sense of calm and tranquility. The precise positioning of objects and their relative locations contribute to this peaceful ambiance.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-21-05.020649.jpg"
-}

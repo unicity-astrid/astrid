@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:03:22.291838",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in what appears to be a bedroom. The room is dimly lit, creating an atmosphere of quiet concentration. The man is wearing a vibrant yellow shirt, which stands out against the subdued lighting of the room.\n\nOn the desk in front of him are two objects: a black laptop and a blue can of soda. The laptop is open, suggesting that the man might be working or studying. Beside it, the blue soda can adds a pop of color to the otherwise monochrome setting.\n\nThe desk is positioned against a window, which is covered with orange curtains. These curtains filter the light entering the room, casting a warm glow on the scene. The overall composition of the image suggests a quiet moment of focus and productivity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-03-17.292033.jpg"
-}

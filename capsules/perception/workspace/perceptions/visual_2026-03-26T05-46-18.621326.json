@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:46:25.143978",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in darkness. The room is illuminated by a single light source, casting an orange glow through the window, which is adorned with white curtains. The walls and ceiling share the same dark hue as the room, creating a sense of uniformity.\n\nIn the center of the room, there's a desk, its surface illuminated by a black lamp. The lamp stands out against the otherwise dimly lit room, drawing attention to itself. A blue book lies closed on the desk, perhaps indicating an interrupted study session or a recently concluded one.\n\nTo the left of the room, a window draped with white curtains offers a glimpse into the world outside. The curtains hang still, suggesting a quiet night without disturbances from the outside.\n\nThe room is devoid of people, adding to its tranquility. The absence of movement and sound in the image further emphasizes this sense of calm. The overall composition of the image suggests a peaceful evening spent indoors, perhaps in solitude or in the company of good books.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-46-18.621326.jpg"
-}

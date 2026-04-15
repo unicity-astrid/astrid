@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:18:38.082913",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. The main focus is a table situated against a wall with three windows, two on the left and one on the right. The table hosts a single object, a blue soda can, its color standing out against the muted tones of the surroundings.\n\nOn the left wall, a window draped with white curtains allows a sliver of light to seep into the room, casting soft shadows and adding depth to the scene. The right wall houses another window, this one adorned with yellow curtains that add a warm hue to the otherwise cool color palette of the room.\n\nThe floor beneath is made of wood, its grainy texture providing a contrast to the smooth surfaces of the table and walls. On the left side of the photo, partially visible, is a couch. Its presence adds an element of comfort and homeliness to the scene.\n\nDespite the simplicity of the objects within - a table, a single soda can, two windows, and a couch - their arrangement creates a sense of balance and harmony in this captured moment. The room exudes a calm and serene atmosphere, inviting one to sit down, relax, and enjoy a quiet evening at home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-18-31.315336.jpg"
-}

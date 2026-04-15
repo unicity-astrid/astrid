@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:57:37.247021",
-  "backend": "llava",
-  "description": "The image depicts a quiet and serene indoor setting at night. The room is dimly lit, adding to the overall tranquility of the scene. A man, dressed in a yellow shirt, is seated at a desk on the right side of the image. He appears to be engrossed in his work or study, as evidenced by the laptop and books present on the desk.\n\nThe desk itself is positioned against a wall, with a window visible behind it. The window has a curtain drawn over it, further enhancing the sense of privacy and focus that pervades the room. On the left side of the image, there's a door, suggesting an entrance or exit to this peaceful sanctuary.\n\nThe color palette of the image is dominated by shades of blue and black, which adds depth and contrast to the scene. The yellow shirt worn by the man stands out vividly against this backdrop, drawing attention to his presence in the room.\n\nOverall, this image captures a moment of solitude and concentration, as embodied by the lone figure in the room amidst the quiet night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-57-30.986962.jpg"
-}

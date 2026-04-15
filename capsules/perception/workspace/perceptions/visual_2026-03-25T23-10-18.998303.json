@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:10:28.898656",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room. The room is bathed in soft light that filters through two windows on the right wall. One window is veiled with curtains, while the other has a white shade pulled down, casting an intricate pattern of light and shadow.\n\nIn the foreground, a black couch sits invitingly, its plush cushions contrasting with the dark wooden coffee table before it. The table hosts a single red candle, its flame dancing in the dim light, adding a warm glow to the room. A blue glass stands nearby, empty but for the remnants of a drink left behind.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the colors within the room. On the left wall, a door can be seen, slightly ajar and leading to unseen parts of the home.\n\nDespite the darkness outside, the room exudes a sense of tranquility and warmth, inviting one to sit down on the couch and enjoy a quiet evening by the flickering candlelight.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-10-18.998303.jpg"
-}

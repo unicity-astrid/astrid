@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:12:32.316152",
-  "backend": "llava",
-  "description": "The image captures a serene night scene inside a room bathed in the soft glow of orange lights against a stark black background. Two windows punctuate the darkness, their panes illuminated by the warm hue of the lights. The window on the left stands slightly taller than its companion on the right, both of them reflecting the same orange light.\n\nThe room is devoid of any occupants, adding to the tranquility of the scene. A single chair rests in the foreground, its silhouette sharply contrasted against the black background. Its presence adds a touch of solitude and quietude to the otherwise empty room.\n\nOn the right wall, a white sign stands out against the darkness. Its content is indiscernible, adding an element of mystery to the scene. The precise location of objects and their relative positions contribute to a sense of depth and perspective in the image.\n\nDespite being devoid of human presence, the image exudes a certain warmth and comfort, perhaps due to the orange lights that cast long shadows and create interesting interplay of light and dark across the room. The absence of any text or discernible action suggests a stillness, a moment frozen in time within this captured image.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-12-25.460075.jpg"
-}

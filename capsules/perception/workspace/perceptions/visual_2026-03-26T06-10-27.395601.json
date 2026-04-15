@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:10:50.473557",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a dimly lit room. The main subject is a person, seated at a desk, engrossed in their laptop. The individual is clad in a vibrant yellow sweater, adding a pop of color to the otherwise subdued setting.\n\nOn the desk, which occupies most of the foreground, there are two objects: a black lamp and a black coffee mug. The lamp's presence suggests an environment conducive for work or study, while the coffee mug implies that the person may be engaged in long hours of concentration.\n\nThe room itself has a window with orange curtains, hinting at the possibility of daylight outside. However, it remains shrouded in darkness, amplifying the ambiance of solitude and focus.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-10-27.395601.jpg"
-}

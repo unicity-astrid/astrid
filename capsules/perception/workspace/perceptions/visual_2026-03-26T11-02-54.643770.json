@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:03:07.330247",
-  "backend": "llava",
-  "description": "This image captures a moment in a living room where a man is sitting on a blue couch. He's wearing sunglasses and has his arms crossed over his chest, giving off an air of relaxation or contemplation. The couch he's sitting on contrasts nicely with the white walls of the room.\n\nIn front of him, there's a wooden coffee table with a black metal frame. On top of the table, there's a blue cup and a white napkin, perhaps indicating that he was recently enjoying a hot drink or snack.\n\nThe photo is taken from an interesting perspective - it's as if you're standing in the doorway looking into the room. This viewpoint gives us a clear view of the man on the couch, the coffee table, and the doorway beyond.\n\nIn terms of object count, there are three main objects: the man, the couch, and the coffee table. The blue cup and white napkin on the table could be considered as one object or two separate items depending on how you look at it.\n\nThe relative positions of these objects are also noteworthy. The man is sitting on the couch which is placed against the wall. The coffee table is positioned in front of the couch, and the blue cup and white napkin are on top of this table.\n\nOverall, this",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-02-54.643770.jpg"
-}

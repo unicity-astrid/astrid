@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T07:42:31.956624",
-  "backend": "llava",
-  "description": "The image presents a cozy living room scene. The focal point is a television screen mounted on a white brick wall above a fireplace. The TV screen displays vibrant colors and text, suggesting it's turned on and possibly playing a game or show.\n\nTo the left of the fireplace, there's a window adorned with a curtain that adds to the homely atmosphere. The floor beneath these elements is made of wood, complementing the overall warm tones of the room.\n\nOn the right side of the image, there's a white door, indicating an entrance or exit to this inviting space. The precise arrangement of objects and their relative positions contribute to a well-organized and comfortable living environment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-42-17.243654.jpg"
-}

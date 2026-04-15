@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:28:28.891913",
-  "backend": "llava",
-  "description": "In the image, a man is captured in a moment of solitude, seated on a black couch in a room bathed in soft sunlight filtering through a window behind him. He's casually dressed in a yellow sweater, which stands out against the muted tones of the room. A blue water bottle rests on the armrest of the couch, perhaps indicating his attention to hydration or fitness.\n\nThe room itself is simple and uncluttered. The black couch dominates the foreground, while a wooden table laden with various objects occupies the background. The window behind the man serves as a source of light that illuminates the scene, casting soft shadows and highlighting the textures in the room.\n\nDespite the simplicity of the setting, there's an air of tranquility about it - perhaps it's the quiet interplay between the man, his surroundings, and the sunlight. It's a snapshot of everyday life, frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-28-19.409764.jpg"
-}

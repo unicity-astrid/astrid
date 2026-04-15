@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:15:29.706884",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft, natural light. Dominating the left side of the frame is a gray couch, its plush cushions inviting relaxation. A black cat, embodying tranquility, has found comfort on the armrest of this couch. \n\nIn front of the couch, a wooden coffee table stands as a centerpiece. It hosts two items: a blue mug and a white plate, perhaps remnants of a quiet morning or an evening tea session. \n\nTo the right of the couch, a window draped with white curtains allows sunlight to filter into the room. The curtains sway gently, suggesting a breeze might be playing outside. On this windowsill rests another black cat, mirroring its companion on the couch.\n\nThe walls of the room are painted in a pristine white, providing a neutral backdrop that enhances the warmth of the scene. The overall atmosphere is one of comfort and peace, a snapshot of a quiet moment frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-15-22.527094.jpg"
-}

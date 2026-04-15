@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:02:23.090948",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a bedroom. The room is bathed in soft darkness, with the only sources of light emanating from two windows and a lamp on a table. \n\nThe windows, located on the right side of the photo, are adorned with white curtains that hang gracefully down. They allow for the gentle filtering of light into the room, creating an atmosphere of tranquility. The window in the front appears to be slightly ajar, perhaps letting in a soft breeze or simply inviting one to look out into the quiet night.\n\nOn the left side of the photo stands a bed with an inviting blue blanket spread over it. The contrast between the cool blue of the blanket and the warm orange light from the lamp creates a visually pleasing scene.\n\nSpeaking of the lamp, its presence on the table adds another layer of warmth to the room. It's positioned in such a way that one can imagine someone sitting there, perhaps reading a book or lost in thought under the soft glow of the lamp.\n\nOverall, this image paints a picture of a peaceful night spent indoors, with every object and light source contributing to a sense of calm and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-02-16.495637.jpg"
-}

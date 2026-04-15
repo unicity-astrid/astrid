@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:10:33.201792",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene set in a dimly lit room. Dominating the center of the frame is a window, its glass reflecting the soft glow from the lights within. The window is adorned with two yellow curtains, their color contrasting against the darkness of the room.\n\nOn the left side of the room, a black sofa rests against the wall, inviting relaxation. A blue lamp stands on it, casting a pool of light that illuminates part of the sofa and its surroundings. The lamp's position on the sofa suggests it might be used for reading or other activities in the quiet evenings.\n\nTo the right of the window, there's a table covered with a black tablecloth. On it rests a blue vase, echoing the color of the lamp. The vase is empty, waiting to be filled with flowers or other decorative items.\n\nThe room exudes an air of coziness and comfort, with its warm colors and soft lighting creating a perfect atmosphere for relaxation. Despite the absence of people in the image, one can almost feel their presence - perhaps someone enjoying a quiet evening on the sofa, under the glow of the blue lamp.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-10-26.677605.jpg"
-}

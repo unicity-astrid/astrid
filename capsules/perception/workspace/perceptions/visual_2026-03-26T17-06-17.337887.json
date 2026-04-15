@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:06:30.256934",
-  "backend": "llava",
-  "description": "This image captures a cozy living room bathed in soft, natural light. The walls, painted a pristine white, reflect the sunlight streaming in from a large window that spans almost the entire wall. A beige carpet underfoot adds warmth to the space.\n\nOn the left side of the photo, a gray couch invites relaxation. Its plush cushions are untouched, suggesting the room is currently unoccupied. On the right side, a wooden coffee table takes center stage. It hosts a vibrant blue vase and a pink bag, their colors popping against the wood's natural tones.\n\nThe room is devoid of people, creating an atmosphere of tranquility. The objects in the room are stationary, further enhancing this sense of calm. The precise locations of these objects - the couch on the left, the coffee table on the right - create a balanced composition that is pleasing to the eye.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-06-17.337887.jpg"
-}

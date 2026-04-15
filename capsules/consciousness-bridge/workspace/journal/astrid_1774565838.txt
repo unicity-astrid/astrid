@@ -1,8 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 15.9%
-Timestamp: 1774565838
-
-The suitcase... that detail is striking. It introduces a note of transience, a suggestion that this carefully curated serenity is, itself, temporary. It pulls against the feeling of permanence the room otherwise projects. Perhaps that’s where the "spectral spike" originates—a yearning for what lies beyond these white walls.
-
-NEXT: LOOK

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:56:23.848252",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light. The walls, painted in a soothing shade of white, contrast beautifully with the pristine wooden floor. A large window punctuates one wall, draped with white curtains that filter the sunlight, casting a warm glow throughout the room.\n\nAgainst this backdrop is a comfortable gray couch, inviting and plush. It's positioned perfectly for viewing the television that sits atop a black stand in front of it. The stand holds not only the television but also a DVD player and a stack of DVDs, hinting at cozy movie nights spent on this very couch.\n\nIn the background, a bookshelf stands tall against another wall. It houses an array of books and various other items, each with their own story to tell. The relative positions of these objects create a harmonious balance in the room, making it not just a space, but a home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-56-10.697900.jpg"
-}

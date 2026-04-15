@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T10:42:37.022267",
-  "backend": "llava",
-  "description": "In the image, a man is seated in a room bathed in natural light from a window on the right. He's wearing sunglasses and a blue shirt, holding a white object in his hand as he sits at a wooden desk with a black metal frame. The desk hosts a computer monitor and a lamp, suggesting it's a workspace.\n\nThe room itself is minimalistic with white walls that reflect the light from the window. A gray carpet covers the floor, adding a touch of warmth to the space. In the background, there's another person sitting on a couch, but their face isn't visible in this shot.\n\nThe overall atmosphere of the image suggests a calm and focused work environment. The man seems engrossed in his task at the desk, while the other person adds an element of companionship to the scene. The natural light from the window illuminates the room, creating a peaceful ambiance conducive for productivity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-42-31.429604.jpg"
-}

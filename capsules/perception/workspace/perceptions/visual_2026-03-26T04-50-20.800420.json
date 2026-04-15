@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:50:30.492806",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, dim light. The walls are painted a soothing shade of beige, providing a warm backdrop to the room's furniture. Dominating the scene is a comfortable couch, draped with a gray blanket that invites relaxation. \n\nIn front of the couch, a coffee table holds court. It's topped with a laptop and a can of soda, suggesting someone might have been enjoying some leisure time here. The table's position in relation to the couch indicates it's within easy reach for anyone sitting on the couch.\n\nThe room features two windows adorned with yellow curtains, adding a pop of color to the otherwise neutral palette. One window is situated to the left of the frame, while the other is on the right, both offering views to unseen parts of the world outside.\n\nEvery object in this image has its place, creating a harmonious balance within the space. The arrangement of the furniture and the positioning of objects suggest careful consideration for comfort and functionality.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-50-20.800420.jpg"
-}

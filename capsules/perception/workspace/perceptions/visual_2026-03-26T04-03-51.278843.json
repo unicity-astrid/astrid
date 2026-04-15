@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:03:57.548399",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft, dim lighting. The dominant colors are shades of orange and black, creating an intimate and warm atmosphere. \n\nAt the center of the room, a wooden coffee table holds court. Upon it rests a blue mug, its vibrant color standing out against the muted tones of the surroundings. Adjacent to the coffee table, a gray couch invites relaxation. A white blanket is casually draped over it, adding a touch of comfort and homeliness.\n\nA window punctuates one wall of the room, offering a glimpse into another space. The view from the window reveals a yellow curtain and a white door, their bright colors contrasting with the dim interior.\n\nThe room is devoid of people, but the arrangement of objects suggests recent activity. The blue mug on the table could indicate a recently enjoyed drink, while the blanket on the couch might have been used during a moment of rest or comfort. Despite this, there's a sense of quiet stillness in the room, as if waiting for its occupants to return and breathe life into the space once again.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-03-51.278843.jpg"
-}

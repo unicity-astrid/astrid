@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:12:41.597404",
-  "backend": "llava",
-  "description": "In the image, a man is sitting in a dimly lit room with a window that has a white curtain and a yellow drape. The man is wearing a yellow shirt and is positioned on the left side of the image. He is engaged with two objects: a laptop and a soda can. \n\nThe laptop is placed on the right side of the image, and the soda can is located in front of it. The room has a dark ambiance, but there's an intriguing detail - the window is illuminated by an orange light that casts a soft glow within the room. This contrast between the brightly lit window and the darker surroundings creates a captivating visual effect.\n\nPlease note that this description is based on the visible content of the image and does not include any inferred or imagined details.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-12-31.677091.jpg"
-}

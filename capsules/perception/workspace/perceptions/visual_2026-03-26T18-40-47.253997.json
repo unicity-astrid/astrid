@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:41:00.583081",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft sunlight. The room is dominated by a gray couch that sits comfortably against one wall, its plush cushions inviting relaxation. A black coffee table occupies the center of the room, serving as a stage for a small collection of objects. A laptop and a book are prominently displayed on it, hinting at recent human activity.\n\nThe floor beneath these pieces of furniture is carpeted in a warm beige tone, adding to the cozy atmosphere. On one side of the room, a window draped with white curtains lets in streams of light that dance across the room. The curtains sway slightly, suggesting a gentle breeze from outside.\n\nIn this tranquil setting, a dog finds comfort on the floor next to the couch. Its peaceful slumber adds an element of life and warmth to the scene. Despite being indoors, the dog seems at ease, its posture relaxed and its body language content.\n\nOverall, the image paints a picture of a quiet afternoon spent in the company of objects that each hold their own stories. The precise locations and relative positions of these objects create a harmonious balance within the room, making it a perfect place for rest and contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-40-47.253997.jpg"
-}

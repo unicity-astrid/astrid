@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:09:42.856668",
-  "backend": "llava",
-  "description": "The image captures a tranquil night scene inside a room bathed in darkness. The room is illuminated by a single light source, casting an ethereal glow on the objects within it. Dominating the center of the image is a desk, its surface adorned with a solitary red candle and a white spray bottle. \n\nTo the left of the desk, a window punctuates the wall, its curtains drawn back to reveal a small yellow light that adds a touch of warmth to the otherwise cool color palette of the room. The walls, painted in a shade of gray, serve as a neutral backdrop, their monotony broken only by the presence of several other windows scattered across them.\n\nThe relative positions of the objects suggest a space designed for quiet contemplation or perhaps late-night reading. The desk, with its single candle and spray bottle, is positioned centrally, drawing the eye to it immediately. The window on the left balances the composition, while the multiple windows on the right add depth and dimension to the scene.\n\nDespite the darkness outside, the room exudes a sense of calm and serenity, each object meticulously placed in relation to its neighbors to create a harmonious whole. It's a snapshot of a moment frozen in time, a quiet corner of the world captured within four corners of an",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-09-30.663211.jpg"
-}

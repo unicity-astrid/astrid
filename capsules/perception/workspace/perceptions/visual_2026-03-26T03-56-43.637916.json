@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:56:53.292434",
-  "backend": "llava",
-  "description": "The image captures a serene night-time scene in a bedroom. The room is bathed in soft, dim light that casts gentle shadows around the space. Dominating the right side of the frame is a large window, its glass reflecting the darkness outside. A curtain, drawn partially to one side, conceals the view beyond.\n\nIn front of this window sits a desk, draped with a white tablecloth. On it, two objects are visible: a blue water bottle and a black laptop, both closed and silent. The laptop rests atop the tablecloth, while the water bottle stands alone next to it.\n\nTo the left of the desk, a bed can be seen. It's dressed in a gray blanket that adds another layer of softness to the room's ambiance. Above the window, on the wall, hangs a clock, its face turned away from view. The entire scene is a symphony of quiet and tranquility, each object meticulously placed, creating a harmonious balance within the space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-56-43.637916.jpg"
-}

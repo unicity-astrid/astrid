@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T19:43:47.697290",
-  "backend": "llava",
-  "description": "The image presents a striking contrast between two colors - black and white. Dominating the frame is a large rectangle in black, which serves as the backdrop for a smaller rectangle in white. The white rectangle is positioned centrally within the black one, creating a sense of balance in the composition.\n\nIn this white rectangle, there's an intriguing detail - the silhouette of a person. The figure appears to be in motion, walking towards the right side of the image. This dynamic element adds a narrative layer to the otherwise static scene.\n\nThe background of the white rectangle is black, which further accentuates the figure and makes it stand out. The overall composition is simple yet evocative, leaving room for interpretation and imagination.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T19-43-40.273088.jpg"
-}

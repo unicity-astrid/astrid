@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T09:27:30.285639",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft sunlight filtering through two windows on the left wall. The window closer to the viewer is adorned with white curtains, while the other one has beige blinds partially drawn, casting a warm glow into the room.\n\nAgainst the right wall, a dark brown couch rests comfortably. A gray blanket is casually draped over it, adding a touch of coziness to the scene. In front of the couch, a black coffee table stands as the centerpiece of the room. On top of the table, a blue mug and a white laptop are placed, perhaps indicating a recent or upcoming activity.\n\nThe floor beneath these pieces of furniture is covered in light brown carpeting, complementing the beige wall and adding to the overall warmth of the room. The precise arrangement of objects and their relative positions contribute to a harmonious composition that exudes comfort and tranquility.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-27-21.537194.jpg"
-}

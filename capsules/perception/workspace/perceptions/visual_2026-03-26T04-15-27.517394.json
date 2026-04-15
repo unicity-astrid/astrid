@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:15:33.649039",
-  "backend": "llava",
-  "description": "In the image, a man is seated at a desk in what appears to be a living room or bedroom setting. He's wearing a yellow shirt and is positioned on the left side of the desk. His attention seems to be focused on the laptop that he's using. The desk itself is black and has a white lamp placed on it. \n\nThe room is dimly lit, creating an atmosphere of quiet focus. On the right side of the image, there's a window with curtains partially drawn, suggesting it might be nighttime outside. A bed can also be seen in the background on the left side of the photo, further supporting the notion that this scene takes place indoors.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or assumed information.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-15-27.517394.jpg"
-}

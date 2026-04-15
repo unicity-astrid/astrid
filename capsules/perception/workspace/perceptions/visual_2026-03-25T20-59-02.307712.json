@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:59:08.452795",
-  "backend": "llava",
-  "description": "The image captures a moment in a dimly lit room, where a person is seated at a desk, engrossed in their work. The individual's face is illuminated by the soft glow of a computer monitor, casting an ethereal light on their features. The rest of the room is shrouded in darkness, creating a stark contrast between the brightly lit workspace and the surrounding area.\n\nThe room itself is sparsely furnished, with only a single chair visible in the frame. The person's posture suggests they are deeply engaged in their task, perhaps typing or viewing something on the monitor. The overall atmosphere of the scene is one of quiet focus and concentration.\n\nDespite the simplicity of the setting, there's an inherent complexity to it - each element, from the person at the desk to the single chair, contributes to a narrative that speaks volumes about the nature of work and dedication. It's a snapshot of life in its most candid form, unfiltered and real.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-59-02.307712.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:11:16.690663",
-  "backend": "llava",
-  "description": "The image portrays a man in a yellow shirt sitting at a table during what appears to be nighttime, given the dark background. The man's face is obscured by his hand as he holds it up to his mouth, suggesting he might be deep in thought or perhaps about to yawn. \n\nOn the table before him are two objects: a black lamp and a brown bottle. The lamp, with its light illuminating the immediate surroundings, casts a soft glow on the man's face and the table surface, while the dark background remains mostly unseen.\n\nBehind the man, there is a window adorned with yellow curtains, adding a splash of color to the otherwise muted tones of the scene. The window seems closed, as no external elements are visible through it.\n\nThe overall atmosphere of the image suggests a quiet moment of introspection or relaxation in a dimly lit room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-11-11.268017.jpg"
-}

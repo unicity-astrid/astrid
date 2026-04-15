@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:59:57.633925",
-  "backend": "llava",
-  "description": "The image portrays a tranquil indoor setting. At the center of the frame, a man is seated at a wooden table draped with a blue tablecloth. He's casually dressed in a blue shirt and black shorts, his identity concealed by a pair of sunglasses. \n\nOn the table, there are two objects: an open book and a can of soda. The book, lying flat on its cover, invites one to dive into its pages, while the soda can stands upright, ready to quench thirst at a moment's notice.\n\nThe room itself exudes warmth with its white walls providing a clean backdrop to the scene. A window punctuates the wall in the background, draped with a white curtain that filters the light entering the room. The overall atmosphere is one of comfort and relaxation, an inviting space for quiet moments of reading or contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-59-42.600945.jpg"
-}

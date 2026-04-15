@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T05:59:09.473280",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft, warm light. The room, with its yellow walls and black ceiling, exudes an air of tranquility. A person is comfortably seated on a bed, their head resting thoughtfully on their hand. They are facing away from the camera, adding an air of mystery to the scene.\n\nThe room is furnished with various objects that add character to the space. A dresser stands in one corner, its presence subtly hinted at by the faint outline of a mirror hanging above it. The window, partially veiled by curtains, lets in streams of light that dance on the walls and cast long shadows around the room, creating an atmosphere of calm and peace.\n\nEvery object in the room is meticulously placed, their positions relative to each other creating a harmonious balance within the space. The person's position on the bed suggests they are deep in thought or perhaps lost in a peaceful slumber.\n\nDespite the simplicity of the scene, it's filled with details that tell a story of its own - from the person's contemplative pose to the soft glow of the light illuminating the room. It's as if time has paused for a moment, allowing us to appreciate this quiet interlude before life resumes its usual pace.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-58-57.302574.jpg"
-}

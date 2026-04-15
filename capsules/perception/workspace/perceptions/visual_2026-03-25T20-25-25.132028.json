@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:25:30.877934",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark setting, possibly an indoor room with a window. The central focus is a blurred figure in the foreground, illuminated by the soft glow of a red light source positioned behind them. The background is shrouded in darkness, creating a stark contrast that further emphasizes the person and their surroundings.\n\nThe individual appears to be seated or standing near the window, which is slightly ajar. A hint of another human figure can be discerned on the right side of the image, but their presence is less distinct due to the low light conditions.\n\nThe overall atmosphere of the image is somber and introspective, evoking a sense of solitude or quiet reflection. The red light adds a touch of warmth to the otherwise cool color palette dominated by black and dark tones.\n\nPlease note that this description is based on the visible elements in the image and does not include any speculative or interpretive details.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-25-25.132028.jpg"
-}

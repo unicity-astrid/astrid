@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:24:42.216270",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene within a dimly lit room. The room's window, adorned with yellow curtains and framed in white, offers a glimpse into another space where an orange glow permeates through it. A black table stands against one wall, its surface hosting a solitary blue candle that adds a touch of color to the otherwise monochrome setting. The shadows cast by the window and table create a sense of depth and dimension within the room. Despite the darkness, there's a certain serenity that pervades the scene, perhaps amplified by the soft glow from the candle and the mysterious orange light seeping through the window.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-24-37.900051.jpg"
-}

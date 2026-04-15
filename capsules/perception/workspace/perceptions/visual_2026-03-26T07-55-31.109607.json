@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T07:55:39.055328",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light filtering through two windows adorned with white curtains. A gray cat, curled up in slumber, rests on the arm of a comfortable couch draped with a matching gray blanket. Adjacent to the couch, a wooden coffee table holds a solitary blue mug. \n\nIn front of the couch, a wooden side table stands against the wall, serving as a resting place for a stack of books and another blue mug, mirroring its counterpart on the coffee table. The objects in the room are arranged harmoniously, creating a sense of balance and tranquility. The cat's peaceful slumber adds to the overall calm ambiance of the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-55-31.109607.jpg"
-}

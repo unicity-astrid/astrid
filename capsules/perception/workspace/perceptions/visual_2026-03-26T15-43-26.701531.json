@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:43:34.478905",
-  "backend": "llava",
-  "description": "This image captures a serene and cozy living room bathed in soft natural light filtering through a window with white blinds. Dominating the center of the room is a gray couch, inviting and comfortable. A red towel casually draped over one end adds a pop of color to the otherwise neutral palette.\n\nTo the right of the couch, a wooden coffee table stands guard. It's not alone though - it hosts two blue cups, perhaps remnants of a quiet morning or an evening tea session. \n\nThe wall behind the couch is adorned with several picture frames, each holding memories frozen in time. They are scattered across the wall, adding layers to the room's decor.\n\nOn the right side of the image, partially visible, is a wooden desk. It too has its own stories - books and papers lie on it, silent witnesses to hours spent in thought or work.\n\nEvery object in this room seems to have its own place and purpose, contributing to an atmosphere that is both lived-in and welcoming.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-43-26.701531.jpg"
-}

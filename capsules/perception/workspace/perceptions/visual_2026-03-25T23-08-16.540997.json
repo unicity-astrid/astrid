@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:08:22.305651",
-  "backend": "llava",
-  "description": "The image captures a serene scene of a living room bathed in soft, dim lighting. The walls, painted in a soothing shade of gray, provide a neutral backdrop for the furniture and decorations within the room. Dominating the center of the image is a black couch, its dark hue contrasting with the lighter surroundings. \n\nA white curtain hangs from a window adjacent to the couch, partially obscuring the view outside. On the floor next to the couch, a red bag rests, adding a pop of color to the otherwise monochromatic setting. \n\nThe window, framed by a sturdy brick wall, offers a glimpse into another world - a street where a building stands tall against the night sky. The contrast between the interior and exterior scenes creates a sense of depth and perspective in the image.\n\nOverall, this image paints a picture of tranquility and solitude, as if inviting the viewer to step into this quiet corner of the world for a moment of reflection or rest.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-08-16.540997.jpg"
-}

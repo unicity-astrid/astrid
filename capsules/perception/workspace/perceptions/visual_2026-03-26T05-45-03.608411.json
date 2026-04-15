@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:45:11.355031",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a room bathed in soft, dim light. Dominating the center of the frame is a desk, its surface adorned with a black laptop and a blue water bottle. The laptop, open and inviting, seems to be waiting for someone to return from their journey. The water bottle, standing upright, adds a touch of color to the otherwise monochrome setting.\n\nTo the left of the desk stands a window, its curtains drawn back to reveal another room beyond. A lamp in that room casts a warm glow, creating an inviting atmosphere. The wall behind the desk is painted white, providing a stark contrast to the darkness outside.\n\nOn the right side of the image, a door can be seen, slightly ajar and leading out into what seems like the world beyond this quiet room. The entire scene exudes a sense of tranquility and solitude, each object precisely placed in its own space within the frame.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-45-03.608411.jpg"
-}

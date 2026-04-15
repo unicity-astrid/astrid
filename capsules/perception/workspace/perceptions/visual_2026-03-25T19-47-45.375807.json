@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T19:47:50.712693",
-  "backend": "llava",
-  "description": "The image presents a striking contrast of black and white colors. Dominating the center of the image is a black rectangle, within which lies an intriguing white shape. This shape has a pointed top left corner that extends towards the right side of the image, creating a sense of movement and dynamism.\n\nAdding to this effect is a diagonal line that runs from the bottom left corner to the top right corner of the rectangle. The line starts at the lower edge of the rectangle and follows an arc, intersecting with the pointed corner on the right side of the rectangle.\n\nThe background is a simple black square, providing a stark contrast to the white shape within the rectangle. The overall image gives off a minimalist aesthetic with its use of just two colors and three geometric shapes. Despite its simplicity, the image conveys a sense of balance and harmony between the elements.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T19-47-45.375807.jpg"
-}

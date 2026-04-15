@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:48:39.273072",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at dusk. The room is bathed in a soft, dim light that casts a warm glow on the white walls and ceiling. A large window punctuates one wall, adorned with vibrant orange curtains that add a pop of color to the otherwise monochrome palette.\n\nA small wooden table sits in the center of the room, serving as a temporary home for an open laptop computer. The laptop screen is alive with light, illuminating its immediate surroundings and creating a stark contrast against the surrounding darkness. \n\nIn the background, a gray couch rests quietly, its presence adding depth to the scene. Its location suggests it's facing the window, perhaps offering a comfortable spot for someone to sit and enjoy the view outside.\n\nThe room itself is devoid of any human presence, yet the open laptop hints at recent activity. The absence of other furniture or decor keeps the focus on these key elements: the table with its glowing laptop, and the couch in the background.\n\nOverall, this image paints a picture of tranquility and solitude, as if inviting viewers to step into this quiet space and lose themselves in their own thoughts or digital explorations.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-48-20.054586.jpg"
-}

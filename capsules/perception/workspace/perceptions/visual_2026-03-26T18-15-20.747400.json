@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:15:25.506247",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the left wall. The walls are painted a soothing light beige color, providing a warm backdrop to the scene.\n\nOn the right side of the room, a gray couch invites relaxation. A white blanket is casually draped over its backrest, adding a touch of comfort and homeliness. A black coffee table sits in front of the couch, hosting a single object - an open laptop with a pink mouse resting on it, suggesting recent use.\n\nThe floor beneath these pieces of furniture is covered by a white rug that adds to the room's cozy ambiance. The overall atmosphere is one of tranquility and comfort, a perfect space for rest and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-15-20.747400.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:50:15.174756",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting bathed in natural light. At the heart of the scene is a living room, characterized by a white ceiling and pristine white walls that exude a sense of tranquility. \n\nThe room houses two windows adorned with white blinds, which are open, inviting the daylight to dance on the wooden floor below. A beige sofa sits comfortably against one wall, offering a cozy spot for relaxation. The sofa is not currently occupied, but there's a hint of life in the form of a black cat curled up in peaceful slumber on the armrest.\n\nA coffee table takes center stage in the room, hosting a few items. A white laptop stands open, perhaps indicating recent use or an ongoing project. Next to it, a blue water bottle adds a pop of color to the otherwise neutral palette of the room. A red book lies closed nearby, suggesting a break from reading or perhaps a recently concluded session.\n\nThe overall atmosphere is one of calm and comfort, with each object in its place contributing to the harmony of the scene. The precise locations and relative positions of these objects suggest a well-organized space where everything has its place.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-50-05.825165.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:24:20.447522",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in natural light from a large window on the left side. The window, adorned with white blinds and a beige curtain, allows sunlight to stream in, illuminating the room's contents.\n\nA gray couch rests against the wall, inviting relaxation. A wooden coffee table sits in front of it, hosting a blue can and a red book, perhaps indicating someone's recent activity. To the right of the couch, a black coat rack stands ready for use.\n\nOn the floor next to the coffee table lies a beige blanket, folded neatly. Its presence adds a touch of comfort and coziness to the room.\n\nThe walls are painted white, providing a neutral backdrop that enhances the room's brightness. The overall atmosphere is one of tranquility and comfort, a perfect space for rest and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-24-11.582592.jpg"
-}

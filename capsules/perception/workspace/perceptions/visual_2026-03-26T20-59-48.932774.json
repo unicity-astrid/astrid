@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T20:59:55.881250",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room bathed in a warm red glow. The room is dominated by three windows, each adorned with orange curtains that add to the room's cozy ambiance. \n\nOn the right side of the frame, a single window stands out with its white blinds partially drawn, allowing some light to seep through and create an intriguing pattern on the wall behind it. This wall, painted in a soothing shade of beige, serves as a backdrop for this intimate scene.\n\nTo the left, two windows flank each other. Their orange curtains are drawn closed, their vibrant color contrasting beautifully with the beige walls. These windows are identical in size, mirroring each other perfectly.\n\nIn front of these windows, there's an indistinct shape that could be either a person or a piece of furniture. Its exact nature is unclear due to the low light conditions and the angle at which this image was captured. However, it adds a sense of mystery to the scene.\n\nThe overall composition of the image suggests a peaceful evening spent in solitude, perhaps reading by the soft glow filtering through the windows. The red tint further enhances this atmosphere, creating an environment that is both warm and inviting.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-59-48.932774.jpg"
-}

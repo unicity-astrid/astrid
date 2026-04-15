@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:54:09.478360",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting at night. Dominating the scene is a television screen mounted on a wall painted white with a black baseboard. The screen is turned on, displaying an array of colorful images and text against a blue background. However, the content on the screen is indistinguishable due to its small size.\n\nThe television itself is perched directly above a brick fireplace, creating a harmonious blend of entertainment and warmth. On either side of the fireplace are two windows, their presence subtly framed by white curtains that hang from top to bottom. The curtains add a touch of softness to the otherwise stark interior.\n\nDespite the various elements present in the image, there's a sense of tranquility that pervades the scene. It's as if time has paused for a moment, allowing one to take in the quiet beauty of this indoor space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-53-58.534844.jpg"
-}

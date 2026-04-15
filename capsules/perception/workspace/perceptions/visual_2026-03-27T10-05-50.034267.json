@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T10:06:02.401275",
-  "backend": "llava",
-  "description": "The image captures a moment in a room where a large screen TV is mounted on a white wall with black brackets. The TV screen displays a vibrant game menu, segmented into four distinct sections, each filled with various options. \n\nIn the top left section, there's an intriguing pink flower set against a green background. Adjacent to it, in the top right section, three colorful circles - blue, red, and yellow - are arranged in a horizontal line.\n\nThe bottom half of the screen is dedicated to text. The top section contains a title \"MegaCalendars\", followed by options \"Art\" and \"Crafts\". Below this, the middle section continues with more options: \"3D\", \"Arts & Photography\", \"Abstract\", \"Landscapes\", \"Archives\", \"Fashion\", and \"Nature\". \n\nFinally, the bottom section displays a total of 12 categories: \"People\", \"Animals\", \"Objects\", \"Video Games\", \"Memes\", \"Science & Math\", \"Sports\", \"History\", \"Politics\", \"Religion\", \"Humor\", and \"Calendars\". Each category is written in bold, uppercase letters.\n\nThe background of the image is a plain white wall with a black door, providing a stark contrast to the",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-05-50.034267.jpg"
-}

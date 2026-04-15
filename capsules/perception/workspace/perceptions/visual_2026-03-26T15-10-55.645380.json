@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:11:01.730794",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft, natural light from a large window adorned with white curtains. The window invites sunlight to dance on the pristine white walls, casting a warm glow that illuminates the room.\n\nAt the heart of the room is a gray couch, inviting and comfortable, positioned perfectly for viewing the window. A wooden coffee table sits atop a black table frame in front of the couch, serving as a convenient spot for resting cups or books. The dark hue of the table frame contrasts beautifully with the lighter colors of the room.\n\nOn the right side of the image, there's a desk shrouded in a beige blanket, adding a touch of coziness to the room. A red chair stands next to it, ready for use. The placement of these objects creates a harmonious balance within the room, making it appear both functional and aesthetically pleasing.\n\nOverall, this living room exudes a sense of tranquility and comfort, with every object thoughtfully placed to create a welcoming space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-10-55.645380.jpg"
-}

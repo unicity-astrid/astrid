@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T08:03:25.968284",
-  "backend": "llava",
-  "description": "The image captures a cozy living room scene, dominated by a large flat-screen television mounted on a white brick wall above a black fireplace. The television screen is alive with the vibrant colors and intricate details of a video game in progress. It's as if we're looking into another world through this portal.\n\nTo the right of the television, there's a small window that lets in soft, natural light, adding warmth to the room. A white curtain hangs from it, swaying gently with the breeze perhaps. On the left side of the fireplace, a roll of paper towels stands ready for use.\n\nThe overall atmosphere is one of comfort and relaxation, as if someone has stepped away momentarily, leaving their game paused on the screen. The precise placement of objects and their relative positions contribute to a sense of order and tranquility in this space. It's more than just a room; it's a snapshot of someone's leisure time, frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-03-20.065110.jpg"
-}

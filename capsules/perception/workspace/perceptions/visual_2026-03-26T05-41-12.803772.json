@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:41:20.178985",
-  "backend": "llava",
-  "description": "In the image, a man is standing in a dimly lit room, his body partially obscured by a black curtain that hangs from a window. The window itself is also covered with a yellow curtain, adding a warm contrast to the otherwise cool tones of the scene. The room is bathed in soft light filtering through the window, casting long shadows and creating an atmosphere of quiet introspection.\n\nThe man's position behind the curtain suggests he might be seeking privacy or perhaps watching something out of view. His actions are unclear, but his posture indicates a sense of purpose or intent. \n\nIn front of him is a desk, its surface covered with various items including a computer monitor and keyboard. The presence of these objects suggests that this space may serve as a workspace or study area.\n\nThe overall color palette of the image is dominated by shades of black, yellow, and brown. These colors, combined with the low light levels, give the scene a moody and introspective feel.\n\nDespite the stillness of the scene, there's an underlying sense of activity implied by the presence of the man and his desk setup. It's as if he has just stepped away from work or study for a moment, perhaps to grab a cup of coffee or stretch his legs before returning to his tasks.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-41-12.803772.jpg"
-}

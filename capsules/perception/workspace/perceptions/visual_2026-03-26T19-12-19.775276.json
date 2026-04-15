@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:12:29.612115",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room. A window with white curtains adorns one wall, allowing a soft light to filter into the space. The curtains are drawn partially back, revealing a glimpse of the world outside. \n\nOn a table near the window, an open book and a black lamp stand out against the muted tones of the room. The pages of the book are spread wide, inviting someone to pick up where they left off in their reading journey. The black lamp with its round base casts a gentle glow across the table.\n\nThe floor beneath is covered by a dark-colored rug that adds warmth and texture to the room. The walls, painted in a neutral color, provide a calming backdrop to this tranquil scene. \n\nEvery object in the room has been arranged thoughtfully, creating a harmonious balance between them. The overall atmosphere exudes tranquility and offers a perfect setting for quiet reflection or peaceful reading.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-12-19.775276.jpg"
-}

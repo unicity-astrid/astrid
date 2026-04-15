@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T04:59:18.700986",
-  "backend": "llava",
-  "description": "In the image, a man is seated in a dimly lit room, his figure illuminated by the soft glow of ambient light. He's dressed in a vibrant yellow shirt that stands out against the muted tones of the surroundings. His face is partially obscured by a hand, which he holds up to his mouth as if in deep thought or contemplation.\n\nThe room around him tells a story of its own. A window draped with a curtain suggests it might be night outside, adding to the quiet introspective mood within. The presence of a desk and a laptop hints at work being done or perhaps abandoned for the day.\n\nA lamp stands sentinel on the desk, its light casting long shadows that dance around the room. Its position relative to the man and his actions suggest it might have been used recently or is about to be turned on.\n\nThe image captures a moment frozen in time - a solitary figure lost in thought amidst the quiet solitude of an empty room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-59-12.983134.jpg"
-}

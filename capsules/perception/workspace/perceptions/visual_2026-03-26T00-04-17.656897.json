@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:04:24.787552",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room is bathed in a soft glow from two windows, each fitted with orange curtains that add a warm hue to the scene. A window on the left side of the frame stands slightly ajar, perhaps inviting in the cool night air. \n\nOn the right, another window is partially obscured by a curtain, creating an interesting interplay of light and shadow within the room. The floor beneath is made of wood, adding a rustic charm to the space. \n\nA desk sits against the wall on the left side, adorned with a single blue soda can that stands out against the dark surroundings. The overall atmosphere suggests a quiet evening spent in solitude or perhaps company.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-04-17.656897.jpg"
-}

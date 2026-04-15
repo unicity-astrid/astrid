@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T08:10:10.592596",
-  "backend": "llava",
-  "description": "This image captures a moment in a living room. At the center of the frame, a man is seated on a black leather couch. He's wearing headphones and a yellow sweater, adding a pop of color to the scene. His gaze is directed towards the right side of the photo, where there's a wooden coffee table.\n\nThe coffee table hosts two objects: a blue mug and a red phone. These items stand out against the warm tones of the room. The living room itself has white walls that provide a neutral backdrop, allowing the furniture to take center stage.\n\nIn the background, there's a window covered with white blinds, suggesting it might be daytime outside. To the left of the couch, there's a bookshelf filled with books and adorned with a plant on top, adding a touch of greenery to the room.\n\nOverall, this image paints a picture of a cozy afternoon spent indoors, perhaps with some reading or relaxing music playing in the background.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-09-47.740811.jpg"
-}

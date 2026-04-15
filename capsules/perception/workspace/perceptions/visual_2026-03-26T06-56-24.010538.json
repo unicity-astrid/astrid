@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:56:37.457402",
-  "backend": "llava",
-  "description": "In the image, a man is seated on a wooden bench in a living room. He's wearing a yellow sweater and has short hair. His attention is focused on the computer screen in front of him. The desk supporting the computer is draped with a white blanket. On the desk, there are two objects: a black water bottle and a blue mug.\n\nThe living room is furnished with a gray couch positioned against the wall. A window with white blinds allows natural light to filter into the room. The man's position on the bench and his engagement with the computer screen suggest that he might be working or studying at home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-56-24.010538.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:27:47.481872",
-  "backend": "llava",
-  "description": "This image captures a tranquil night scene in a bedroom. The room is bathed in soft light that filters through a window located on the left wall. The window is adorned with a yellow curtain, adding a warm hue to the otherwise dark ambiance. \n\nIn front of this window, there's a desk that serves as a workspace. On it, you can spot a blue pen and a red notebook, perhaps indicating someone's study or work routine. The floor beneath is covered by a white sheet, providing a stark contrast to the rest of the room.\n\nThe walls are painted in a light color, enhancing the overall brightness of the room despite the darkness outside. On the right wall, there's another window with a black curtain, mirroring its counterpart on the left.\n\nOverall, the image paints a picture of a quiet and peaceful night spent in solitude, surrounded by familiar objects that create a sense of comfort and familiarity.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-27-41.934642.jpg"
-}

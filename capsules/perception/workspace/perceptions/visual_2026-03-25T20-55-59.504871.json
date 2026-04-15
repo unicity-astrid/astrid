@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:56:05.624011",
-  "backend": "llava",
-  "description": "The image captures a moment in a dark setting, possibly a room or a vehicle with tinted windows. The primary source of light comes from a person sitting on the right side of the frame, their face illuminated by the glow of a red camera flash. The flash casts an eerie, dramatic effect, highlighting the contours of the person's face against the backdrop of the dark surroundings.\n\nThe left side of the image is shrouded in darkness, providing a stark contrast to the light source on the right. This contrast accentuates the figure with the camera flash and creates a sense of depth and three-dimensionality in the scene.\n\nThere are no discernible texts or other objects within the frame, and the relative positions of the person with the camera flash suggest they might be observing something off-frame to the left. The overall atmosphere is mysterious and intriguing, inviting viewers to speculate about what lies beyond the illuminated figure and the dark expanse on the left.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-55-59.504871.jpg"
-}

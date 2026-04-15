@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:25:56.885359",
-  "backend": "llava",
-  "description": "This image captures a quiet moment in a dimly lit room. The primary source of light comes from a window on the left wall, which is covered with white blinds partially drawn closed. A red curtain hangs to the right of the window, adding a splash of color to the otherwise muted scene.\n\nIn the center of the image, a wooden table takes the stage. It's draped in a black cloth that contrasts with its natural texture. On top of this table, two objects are visible: a white candle and a blue cup. The candle, untouched, suggests a sense of tranquility, while the cup hints at human presence.\n\nThe background is shrouded in darkness, making it difficult to discern any additional details. However, there appears to be a door on the right wall, its shape faintly visible against the black backdrop.\n\nOverall, this image paints a picture of solitude and calmness, with each object meticulously placed to create a harmonious composition. The precise locations and relative positions of these objects contribute to the overall mood of the scene.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-25-50.729379.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T10:04:56.039622",
-  "backend": "llava",
-  "description": "The image captures a lively scene set in a living room, where the main focus is a large flat-screen TV mounted on the wall. The TV screen displays a vibrant schedule for an upcoming event at 3:30 PM. The event is titled \"DANCE FIGHT SING\" and features four contestants: Emma, Jack, Ryan, and Sarah. Each contestant has their own color-coded box on the screen, indicating their participation in the event.\n\nThe TV itself is encased within a sleek black frame, adding a touch of modernity to the room. Below the TV, there's a cozy fireplace with a black grate, providing a warm contrast to the cool tones of the TV above. \n\nTo the right of the fireplace, there's a white lamp that stands out against the wall. Its light might cast interesting shadows on the wall during darker hours.\n\nThe background reveals more about the room - it has white walls and a wooden floor, giving off a rustic yet comfortable vibe. The precise arrangement of these objects suggests careful thought went into their placement to create an inviting and entertaining space for viewers of the upcoming event.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-04-47.215009.jpg"
-}

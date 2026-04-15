@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T00:31:52.064953",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. The main source of light is a window on the left wall, divided into two sections by blinds, allowing for control over the amount of light entering the room. The right side of the room is dominated by a bed draped with a beige blanket, suggesting a comfortable and cozy atmosphere.\n\nIn the foreground, there's a couch, inviting relaxation and leisure. The overall color scheme of the image is dark, which adds to the serene ambiance of the room. Despite the darkness, the objects in the room stand out, creating a contrast that draws attention to their details.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-31-47.240788.jpg"
-}

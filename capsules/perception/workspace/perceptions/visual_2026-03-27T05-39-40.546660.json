@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T05:39:46.039081",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in soft light from two windows. The left window, adorned with white curtains, allows a gentle stream of light to illuminate the room. On the right, a window draped with beige curtains casts a warm glow, creating an inviting atmosphere.\n\nIn the center of the room, a black coffee table stands out against the lighter tones of the surroundings. It's covered with a blanket that adds texture and depth to the scene. A blue water bottle rests on top of the blanket, its color contrasting with the darker hues of the blanket and furniture.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the colors within the room. On one wall hangs a clock, silently ticking away time in this tranquil setting. The precise positioning of these objects creates a harmonious balance within the space, each item contributing to the overall aesthetic of the room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-39-40.546660.jpg"
-}

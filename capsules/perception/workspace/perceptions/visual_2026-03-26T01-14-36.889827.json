@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:14:42.755455",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. The dominant color scheme is black and white, with the exception of a window adorned with stained glass panels in vibrant hues of yellow and orange. The window is situated on the right side of the frame.\n\nOn the left side of the frame, there's a table draped with a blue tablecloth, upon which rests a solitary candle. The flickering light from the candle adds a warm glow to the otherwise subdued lighting of the room.\n\nIn the foreground, partially obscured by the table and the window, is a black couch. A single white pillow rests on it, providing a stark contrast against its dark color. The couch and the table are positioned in such a way that they frame the window beautifully.\n\nThe overall atmosphere of the image is peaceful and serene, with the stained glass window adding an element of intrigue to the scene. The precise arrangement of objects and their relative positions contribute to a sense of harmony and balance within the composition.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-14-36.889827.jpg"
-}

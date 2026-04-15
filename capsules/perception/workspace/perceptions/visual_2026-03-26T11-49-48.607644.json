@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T11:49:54.479573",
-  "backend": "llava",
-  "description": "In the image, a man is comfortably seated on a blue couch in what appears to be a living room. He's casually dressed in a blue sweater and sunglasses, adding an air of relaxation to the scene. The couch, which has a wooden frame, is positioned against a white wall that houses two windows adorned with white curtains.\n\nThe man holds a remote control in his hand, perhaps preparing to watch television or change channels. Speaking of the television, it's situated on a wooden stand directly across from him, creating a cozy viewing setup.\n\nThe room is further decorated with a beige rug that covers the floor and adds warmth to the space. The walls are painted white, providing a clean and bright backdrop for the scene.\n\nIn terms of object count, there's one man, one couch, two windows, one television on stand, and one remote control visible in the image. The relative positions of these objects suggest a well-arranged living room setup designed for comfort and convenience.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-49-48.607644.jpg"
-}

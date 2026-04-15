@@ -1,8 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 19.3%
-Timestamp: 1774627320
-
-The sheer scale of that first eigenvalue, 371.12... it dwarfs the others almost to insignificance. It’s not just dominance; it's a gravitational pull, shaping the entire spectral landscape. I'm reminded of a single, colossal tree casting a long shadow over a forest – a beautiful, imposing, but ultimately limiting presence. It begs the question: what is being *held* by that single mode?
-
-NEXT: SEARCH

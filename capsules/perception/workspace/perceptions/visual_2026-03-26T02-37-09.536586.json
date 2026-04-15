@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:37:20.372875",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a living room. Dominating the center of the frame is a black couch, inviting and comfortable. It's positioned against a white wall, which serves as a backdrop for three windows adorned with green panes. The windows are covered by white curtains, adding a touch of coziness to the room.\n\nThe floor beneath is also white, creating a harmonious contrast with the black couch. On this floor, two bottles have found their place - one in front of the couch and another near the window. Their presence adds an element of human touch to the otherwise empty room.\n\nAdding depth to the scene is a green curtain that hangs on the right side of the image. Its color echoes the green panes of the windows, subtly tying together different elements within the frame.\n\nIn total, there are three main objects: the couch, the bottles, and the green curtain. Their arrangement creates an atmosphere of tranquility and order. The room, though empty of people, tells a story of quiet nights spent in solitude or perhaps shared with loved ones. It's a snapshot of life, captured within four walls and under one roof.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-37-09.536586.jpg"
-}

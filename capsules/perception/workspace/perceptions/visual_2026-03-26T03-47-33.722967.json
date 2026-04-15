@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:47:40.701911",
-  "backend": "llava",
-  "description": "The image captures a serene night scene in a dark room. The only source of light is a window with a yellow curtain, which casts an eerie glow on the left side of the image. The right side of the image remains shrouded in darkness, creating a stark contrast between the illuminated and unlit areas. \n\nIn the bottom right corner of the image, there's a small white object that stands out against the dark background. Its exact nature isn't clear from the image alone. \n\nThe overall atmosphere is one of tranquility and mystery, as if inviting the viewer to explore what lies beyond the darkness.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-47-33.722967.jpg"
-}

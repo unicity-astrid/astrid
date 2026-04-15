@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:06:13.507622",
-  "backend": "llava",
-  "description": "The image depicts a tranquil indoor scene set against a dark background. At the heart of the scene is a man, dressed in a vibrant yellow shirt, seated at a table. He appears to be engrossed in his laptop, which rests on the table before him.\n\nThe room itself is dimly lit, adding an air of mystery and focus to the man's activities. A window punctuates one wall, its blinds partially drawn, hinting at the world beyond. Adjacent to the window, a bookshelf stands tall, though its contents remain unseen in the image.\n\nThe colors in the room are predominantly dark, with only a few objects breaking this monotony - the man's yellow shirt, the laptop, and the window frame. These splashes of color create a striking contrast against the otherwise subdued palette of the scene.\n\nIn terms of object count, there is one man, one table, one laptop, one bookshelf, and one partially visible window in the image. The precise locations are as follows: the man is seated at the table, which holds his laptop; to their right stands the bookshelf; and further to the right from them is a window.\n\nThe relative positions of these objects suggest a typical home office setup. The man's position at the table indicates",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-06-05.340166.jpg"
-}

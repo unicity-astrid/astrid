@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:09:43.849302",
-  "backend": "llava",
-  "description": "The image captures a quiet and intimate moment in a dark room. The room is bathed in soft light filtering through two windows with white panes, each adorned with yellow curtains. The windows are positioned on opposite sides of the room, creating a symmetrical view.\n\nIn the foreground, a black table takes center stage. It hosts an array of objects: a blue candle, its wick unlit; a white vase, pure and elegant; and a small statue, silent and watchful. These objects are arranged in no particular order, their positions dictated by chance or whimsy rather than design.\n\nThe walls of the room echo the color of the table with their dark hue, adding to the overall sense of quiet and solitude. The floor remains unseen, hidden from view.\n\nDespite the darkness, there's a certain warmth to the scene. It's as if each object is holding onto the last rays of light before it fades away, creating an atmosphere that's both serene and mysterious. It's a snapshot of stillness, frozen in time.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-09-37.616318.jpg"
-}

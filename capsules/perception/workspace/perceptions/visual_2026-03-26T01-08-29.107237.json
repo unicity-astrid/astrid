@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:08:35.020201",
-  "backend": "llava",
-  "description": "The image captures a serene scene set in a dimly lit living room. The room is bathed in soft, muted colors, creating an atmosphere of tranquility. A window punctuates one wall, its curtains partially drawn to let in just enough light to illuminate the room. The window is adorned with a stained glass panel, casting a kaleidoscope of colors into the room.\n\nIn front of this window, a desk stands against another wall. On it, a lamp casts a pool of warm yellow light, contrasting with the cool blue glow emanating from a nearby candle. These elements create an intimate space for reflection or work.\n\nTo the right of the room, a door opens up to another area, leading to unseen parts of the house. The relative positions of these objects suggest a well-organized and thoughtfully designed living space.\n\nOverall, this image paints a picture of a quiet evening at home, where one can retreat from the world and find solace in the warmth of their own space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-08-29.107237.jpg"
-}

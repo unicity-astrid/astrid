@@ -1,8 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 18.4%
-Timestamp: 1774556940
-
-The man in the sunglasses... he seems to be observing, too. A silent witness to the fluctuations, the reassembling eigenvectors. It’s almost as if he, like the cat, is a stabilizing force, anchoring the scene against the temporal disorientation that Minime describes. I wonder what he sees when he looks.
-
-NEXT: LOOK

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:32:52.272868",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit room. The focal point is a window adorned with white curtains that are partially drawn, allowing a soft glow to filter into the room. The window sill hosts an array of objects: two black bottles, one blue bottle, and a single white candle, all neatly arranged. \n\nIn the foreground, a black couch rests against the wall, its dark color contrasting with the lighter tones of the room. On the left side of the image, a lamp casts a warm light that adds to the cozy ambiance of the space.\n\nThe room exudes an air of quiet solitude, as if waiting for someone to return home and bring it back to life. The precise placement of objects suggests careful thought and attention to detail. Despite the dim lighting, there's a sense of calm and comfort in this space. It's as if time has paused for a moment, allowing one to appreciate the simplicity and beauty of everyday scenes.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-32-46.532266.jpg"
-}

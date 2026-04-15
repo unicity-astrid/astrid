@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:55:54.725933",
-  "backend": "llava",
-  "description": "The image presents a cozy living room bathed in soft light. Dominating the scene is a comfortable gray sofa, inviting and plush, positioned against a pristine white wall. The sofa's position suggests it faces a wooden coffee table that sits centrally in the room, serving as an anchor for the space.\n\nOn the table, a few items are scattered about - a blue mug perhaps once filled with a warm beverage, a pink book left open mid-read, and a green plant adding a touch of nature to the room. The colors of these objects contrast nicely with the wooden surface of the coffee table.\n\nTo the right of the sofa stands a window adorned with white curtains, allowing natural light to filter into the room and brighten up the space. The window's location next to the sofa creates a harmonious balance in the room's layout.\n\nOverall, the image captures a moment of tranquility in a lived-in space, where objects are scattered casually yet create an atmosphere of comfort and warmth.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-55-46.902143.jpg"
-}

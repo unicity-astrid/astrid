@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:08:31.062971",
-  "backend": "llava",
-  "description": "The image depicts a serene living room bathed in soft natural light filtering through two windows adorned with white blinds. The walls, painted in a soothing shade of beige, harmonize with the wooden floor beneath, creating a warm and inviting atmosphere.\n\nIn the center of the room, a gray couch invites relaxation. A brown coffee table sits in front of it, hosting an array of objects including a blue book, a red purse, and a white vase. These items add a splash of color to the otherwise neutral palette.\n\nOn the right side of the photo, a beige curtain hangs gracefully, adding depth to the room's layout. The relative positions of these objects create a balanced composition that is both aesthetically pleasing and functional.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-08-18.091645.jpg"
-}

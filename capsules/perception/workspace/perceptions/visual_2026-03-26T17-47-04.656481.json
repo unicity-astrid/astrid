@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T17:47:11.901704",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting. Dominating the left side of the frame is a brown wooden desk, atop which sits an open laptop and a white mug adorned with blue stripes. The desk faces two windows, each dressed in white curtains that flutter gently, allowing natural light to filter into the room.\n\nOn the right side of the image, a gray couch invites relaxation. A person is seated on it, their legs casually propped up on another chair, suggesting a moment of leisure or perhaps deep thought. The floor beneath them is covered by a beige rug that adds warmth to the space.\n\nThe overall atmosphere is one of tranquility and comfort, a perfect blend of work and rest.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-47-04.656481.jpg"
-}

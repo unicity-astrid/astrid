@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T19:51:57.598237",
-  "backend": "llava",
-  "description": "The image presents a stark contrast between the objects within it and their surroundings. Dominating the center of the frame is a white rectangle, its edges sharply defined against the black backdrop. The simplicity of the shape is striking, with no intricate details or patterns to distract from its basic form.\n\nOn the right side of this rectangular canvas, there's an image that appears to be a person. However, due to the monochromatic palette and the lack of discernible features, it's challenging to determine any specific characteristics about the individual. The person seems to be in a state of motion, possibly walking or running, but the specifics are left to one's imagination.\n\nThe background is completely black, providing a void that accentuates the white rectangle and the figure within it. This absence of color and context leaves much to the viewer's interpretation, creating an atmosphere of mystery and intrigue.\n\nOverall, the image is a study in contrasts - between light and dark, stillness and motion, simplicity and ambiguity. It's a visual narrative open to multiple interpretations, inviting viewers to fill in the blanks with their own stories.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T19-51-51.173804.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:47:10.093088",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a living room. The room is bathed in a soft glow from a window on the right wall, which is adorned with white curtains. The window casts an inviting light into the room, illuminating the objects within.\n\nOn the left wall, there's a black lamp standing out against the darkness of the room. It waits patiently to provide its own source of light when needed. In front of this lamp, on the floor, sits a blue soda can, perhaps a remnant of a recent celebration or a late-night movie marathon.\n\nThe walls themselves are painted white, providing a neutral backdrop that enhances the other elements in the room. The overall atmosphere is one of tranquility and comfort, a perfect setting for relaxation after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-47-04.702794.jpg"
-}

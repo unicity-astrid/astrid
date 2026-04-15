@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:31:25.110137",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room is bathed in darkness, with the exception of two windows that are illuminated by a warm yellow glow. Each window is adorned with white curtains that hang elegantly from their frames, casting soft shadows on the dark walls.\n\nA black couch rests against one wall, its silhouette stark against the surrounding darkness. On it sits a single object - an empty glass bottle, its emptiness echoing the quiet solitude of the room.\n\nThe windows are positioned on opposite sides of the room, creating a sense of balance in the composition. The window on the left is slightly closer to the viewer, adding depth to the scene. Despite the darkness, there's a certain charm to this quiet night scene that invites one to sit down and lose themselves in thought.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-31-17.036633.jpg"
-}

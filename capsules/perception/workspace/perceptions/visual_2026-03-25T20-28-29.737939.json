@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T20:28:35.912571",
-  "backend": "llava",
-  "description": "The image presents a captivating scene set in a dark room, illuminated by a single source of light that casts an intriguing shadow. The shadow, reminiscent of a person's head and shoulders, dominates the majority of the frame, its silhouette stark against the black background. \n\nIn the lower left corner of this dark canvas, a small white square provides a stark contrast to the otherwise monochromatic setting. A subtle hint of light emanates from it, adding an element of mystery to the composition.\n\nThe image is taken from a low angle, which accentuates the shadow's form and makes it appear larger than life. This perspective also gives the impression that the viewer is looking up at the ceiling where the light source is presumably located.\n\nDespite the simplicity of its elements - a single light source, a shadow, and a small white square - the image conveys a sense of drama and intrigue through its play of light and shadow, and the use of contrasting colors. It's a testament to how much can be conveyed through simple yet effective visual storytelling.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-28-29.737939.jpg"
-}

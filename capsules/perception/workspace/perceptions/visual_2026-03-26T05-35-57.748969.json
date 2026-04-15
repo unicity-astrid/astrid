@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:36:03.936056",
-  "backend": "llava",
-  "description": "In the image, a person is sitting on a black couch in a dimly lit room. The person is wearing a yellow shirt and appears to be working or studying. In front of them on the couch, there's an open laptop displaying a blue screen. To the side of the laptop, there's a white cup resting on the armrest of the couch.\n\nThe room itself has a window with orange curtains in the background. The overall atmosphere is calm and focused, suggesting that the person might be deep in thought or concentration while working on their laptop.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-35-57.748969.jpg"
-}

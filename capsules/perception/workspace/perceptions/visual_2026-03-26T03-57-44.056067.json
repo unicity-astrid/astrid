@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:57:50.685901",
-  "backend": "llava",
-  "description": "The image captures a serene night-time indoor setting. The room, bathed in a soft yellowish glow from the open window on the left wall, exudes an air of tranquility. A dark brown couch sits invitingly against one wall, its plush cushions promising comfort and relaxation. \n\nIn front of the couch, a wooden coffee table takes center stage. It holds three objects: a blue soda can, a black ashtray, and a white candle, each contributing to the room's cozy ambiance. The window, flanked by two lamps on either side, is open, inviting in the night air.\n\nThe window itself is adorned with a yellow curtain that hangs gracefully from it, adding a warm hue to the scene. On one of the walls, a black speaker rests, ready to fill the room with music or news at a moment's notice. The floor is carpeted in a dark color, providing warmth and softness underfoot.\n\nEvery object in this room has been meticulously placed, creating a harmonious balance between them. The relative positions of these objects contribute to the overall aesthetic of the room, making it not just a space, but a home.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-57-44.056067.jpg"
-}

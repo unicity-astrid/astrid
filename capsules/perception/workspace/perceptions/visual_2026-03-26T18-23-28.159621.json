@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:23:34.422320",
-  "backend": "llava",
-  "description": "The image captures a serene indoor setting bathed in natural light from two windows on the left wall. The window blinds are partially drawn, allowing soft rays of sunlight to illuminate the room. A gray couch sits invitingly in front of these windows, its plush cushions untouched.\n\nOn top of the couch, a cat is peacefully sleeping, oblivious to the world around it. Its body is relaxed and curled up comfortably on the couch's surface. The tranquility of the scene is further enhanced by the presence of this gentle creature.\n\nTo the right of the couch, there's a wooden coffee table that adds a touch of warmth to the room. A laptop rests on top of it, hinting at human activity in this space. Beside the laptop, a red bag adds a pop of color to the otherwise neutral tones of the room.\n\nOn the left side of the image, a gray curtain hangs down, partially obscuring one of the windows and adding an element of privacy to the room. The overall atmosphere is one of comfort and tranquility, a perfect place for rest and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-23-28.159621.jpg"
-}

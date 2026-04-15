@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:42:05.853148",
-  "backend": "llava",
-  "description": "In the image, a man is sitting on a couch in a living room. He's wearing a blue shirt and holding a remote control in his hand, suggesting he might be watching television. The room around him is dimly lit, creating a cozy atmosphere. A window with white curtains can be seen behind him, allowing some light to filter into the room.\n\nOn the coffee table in front of the couch, there's a blue soda can and a black mug, possibly indicating that the man might have been enjoying some beverages while watching TV. The overall scene suggests a quiet evening at home, with the man relaxing on his couch.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-42-01.428233.jpg"
-}

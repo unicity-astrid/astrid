@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:33:51.353171",
-  "backend": "llava",
-  "description": "The image captures a tranquil indoor setting at night. The room, bathed in soft light filtering through two windows on the left side and another one on the right, exudes a sense of calm and coziness. A window sill adorned with a plant adds a touch of nature to the scene.\n\nIn the foreground, a bed draped with a blanket suggests a space for rest and relaxation. Nearby, a desk holds an open book, hinting at recent reading activity. The objects are arranged in a way that creates a harmonious balance within the room, reflecting perhaps the quiet solitude often found in such spaces during nighttime hours.\n\nThe lighting casts soft shadows around the room, adding depth and dimension to the scene. The overall atmosphere is one of peace and serenity, inviting viewers to imagine themselves sinking into this comfortable space after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-33-46.020871.jpg"
-}

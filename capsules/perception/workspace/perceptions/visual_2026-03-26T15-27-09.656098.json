@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:27:17.466052",
-  "backend": "llava",
-  "description": "The image captures a serene living room bathed in soft light filtering through two windows dressed with white curtains and blinds. The sunlight casts gentle shadows around the room, adding depth to the scene. A gray couch sits against one wall, offering a comfortable space for relaxation or conversation. \n\nIn front of the couch, a black coffee table stands as a functional centerpiece. It holds a red book and a blue mug, perhaps remnants of a quiet reading session. The floor beneath these pieces is made of dark wood, providing a warm contrast to the otherwise light-colored room.\n\nThe walls are painted in a clean white color, reflecting the natural light and enhancing the overall brightness of the room. The precise arrangement of objects and their relative positions contribute to a well-organized and inviting living space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-27-09.656098.jpg"
-}

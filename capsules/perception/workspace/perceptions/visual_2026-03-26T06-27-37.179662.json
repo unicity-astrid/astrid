@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T06:27:46.422292",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. Dominating the left side of the frame is a black desk, its surface adorned with a laptop and a small statue of a bird. The laptop's screen is off, reflecting the soft glow from the window behind it. The bird statue stands tall on the right side of the desk, adding an element of intrigue to the scene.\n\nThe window in the background lets in just enough light to illuminate the room, casting long shadows and creating an atmosphere of tranquility. Outside the window, a tree can be seen, its branches reaching out into the night sky.\n\nOn the right side of the image, there's another black object that appears to be a person sitting on a chair. Their face is blurred, adding an air of mystery to their presence. The overall scene suggests a late-night study session or perhaps just someone enjoying some solitude in the quiet of the night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-27-37.179662.jpg"
-}

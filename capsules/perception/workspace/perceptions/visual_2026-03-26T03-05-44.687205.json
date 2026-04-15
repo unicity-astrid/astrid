@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T03:05:51.869451",
-  "backend": "llava",
-  "description": "The image captures a tranquil evening in a living room bathed in soft, ambient light. The walls, painted in a soothing shade of beige, contrast beautifully with the dark furniture that fills the space. A large window punctuates one wall, draped with curtains that are drawn back to reveal a view of another building.\n\nThe room is illuminated by two primary sources: a lamp casting a warm glow and a string of lights adding a touch of whimsy to the scene. These light sources are centrally located in the image, creating an inviting atmosphere.\n\nIn the foreground, a black couch invites relaxation. It's positioned on the left side of the image, facing towards the window as if offering a view of the outside world to those who sit upon it. \n\nOn the right side of the room stands a black coffee table, its surface occupied by two red cups. The vibrant color of the cups adds a pop of color to the otherwise monochrome setting.\n\nThe relative positions of these objects create a balanced composition. The couch and coffee table frame the window in the background, creating depth and perspective. The overall arrangement suggests a space designed for comfort and leisure, perfect for winding down after a long day.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-05-44.687205.jpg"
-}

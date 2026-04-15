@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:44:58.877584",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a room with a window overlooking the street. The room is bathed in soft, dim light that casts long shadows and highlights the textures of the objects within. \n\nIn the foreground, there's a bed draped with a black comforter that stands out starkly against the lighter surroundings. A white pillow rests on the bed, providing a contrast to the dark comforter. The bed is positioned such that it seems to be in front of the window.\n\nThe window, framed by a white sill and a yellow curtain, offers a view of the street outside. Through the window, you can see the silhouette of trees standing tall against the night sky. A car parked on the side of the road adds another element to the scene.\n\nTo the left of the bed, there's a black chair, its color matching that of the comforter and creating a sense of harmony in the room's decoration. The overall atmosphere is one of tranquility and quietness, as if time has slowed down within this space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-44-52.797131.jpg"
-}

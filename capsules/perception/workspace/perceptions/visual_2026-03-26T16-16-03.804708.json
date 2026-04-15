@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:16:15.050697",
-  "backend": "llava",
-  "description": "The image captures a cozy living room bathed in natural light. Dominating the scene is a gray sofa, adorned with a single blue pillow, inviting relaxation. Adjacent to the sofa, a black coffee table stands ready for use. A red bag casually rests on it, adding a pop of color to the otherwise monochrome setting.\n\nA white armchair, draped with a beige blanket, offers an additional seating option. It's positioned near a window that frames a serene view of trees, connecting the indoor space with the outside world. The floor beneath these pieces of furniture is wooden, lending warmth and texture to the room.\n\nThe walls are painted white, providing a neutral backdrop that enhances the colors within the room. A black lamp stands sentinel in one corner of the room, ready to cast a soft glow when needed.\n\nOverall, this image portrays a comfortable living space designed for both relaxation and functionality. The careful placement of furniture and decor creates an atmosphere of tranquility and homeliness.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-16-03.804708.jpg"
-}

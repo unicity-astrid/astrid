@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T23:56:17.282677",
-  "backend": "llava",
-  "description": "The image captures a tranquil evening in a dimly lit room. The room is bathed in the soft glow of natural light filtering through a window adorned with yellow curtains. The window, a portal to the outside world, casts a warm light that dances on the white walls and the wooden floor.\n\nIn the center of the room, a small black table stands out against the light-colored surroundings. It hosts two blue soda cans, their vibrant color contrasting with the muted tones of the room. One can is upright, while the other lies on its side, as if casually discarded after a long day.\n\nTo the left of the table, a wooden chair rests against the wall, waiting patiently for someone to occupy it. Its rustic charm adds a touch of homeliness to the scene.\n\nOn the right side of the image, partially obscured by the table and chair, is a white lamp. It stands tall and slender, its presence subtly enhancing the cozy atmosphere of the room.\n\nEvery object in this room has its place, creating a harmonious balance within the space. The precise locations and relative positions of these objects contribute to an overall sense of order and tranquility. This image beautifully encapsulates a moment of calm in an otherwise bustling world.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-56-10.396846.jpg"
-}

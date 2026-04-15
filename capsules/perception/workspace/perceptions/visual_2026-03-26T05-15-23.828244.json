@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T05:15:33.196575",
-  "backend": "llava",
-  "description": "The image captures a quiet moment in a dimly lit room. A man, clad in a vibrant yellow shirt, is seated at a desk on the left side of the frame. His attention is focused on a laptop that sits before him on the desk. The laptop screen is illuminated, casting a soft glow on his face.\n\nThe room itself is softly lit by a window draped with white curtains, which are partially open, allowing a sliver of light to seep into the room. This light casts long shadows and highlights the contours of the man and the desk.\n\nIn front of the man, there's a coffee table that holds a single object - a blue mug. The mug is empty, perhaps waiting for a sip of hot beverage to accompany the work on the laptop.\n\nThe overall atmosphere of the image is one of solitude and focus, as if time has paused in this room while the man delves into his work.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-15-23.828244.jpg"
-}

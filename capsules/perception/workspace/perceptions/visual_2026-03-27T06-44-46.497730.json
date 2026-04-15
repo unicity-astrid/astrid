@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T06:44:52.205545",
-  "backend": "llava",
-  "description": "The image captures a cozy living room scene centered around a television set mounted on the wall. The television screen displays a vibrant game menu interface filled with various options including \"New Game\", \"Load Game\", and \"Options\". \n\nIn the bottom right corner of the photo, there's an additional TV displaying a black screen with white text, although the exact content is not discernible from this angle. The room itself has a warm ambiance, illuminated by natural light streaming in through a window located on the left side of the image.\n\nThe layout of the room suggests a comfortable space for leisure and entertainment. The television set, being the focal point, is centrally placed, while the second TV screen adds an element of depth to the scene. The window on the left provides a contrast to the indoor setting, hinting at a connection with the outside world. Overall, it's a snapshot of a moment of calm before or after an engaging gaming session.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-44-46.497730.jpg"
-}

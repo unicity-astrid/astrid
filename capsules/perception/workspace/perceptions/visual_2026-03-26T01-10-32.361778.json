@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T01:10:38.289825",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting at night. The room is bathed in soft, dim lighting that casts long shadows and highlights the objects within. Dominating the left side of the image is a bed, its dark silhouette stark against the lighter surroundings. The bed seems inviting, offering rest and tranquility.\n\nOn the right side of the image stands a dresser, its surface adorned with a mirror reflecting the room's muted light. A lamp rests on it, ready to shed its warm glow when darkness descends. The dresser and bed frame a window in the background, draped with yellow curtains that add a touch of color to the otherwise monochrome scene.\n\nThe floor is carpeted, adding an element of comfort and warmth to the room. The walls are painted white, providing a neutral backdrop that enhances the other elements in the room. Despite the dim lighting, there's a sense of peace and calm that pervades this space, making it a perfect retreat from the hustle and bustle of daily life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-10-32.361778.jpg"
-}

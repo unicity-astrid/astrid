@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T09:06:26.720213",
-  "backend": "llava",
-  "description": "The image captures a cozy living room setting, bathed in soft light from a window on the left wall. Dominating the scene is a flat-screen TV mounted on the white brick wall, its screen alive with vibrant colors and text. The words \"Wii\" and \"PAC-MAN\" are prominently displayed on the screen, suggesting an ongoing game session.\n\nBelow the TV, a black fireplace adds a touch of warmth to the room. A towel hangs casually from it, ready for use after a refreshing dip in the pool or a warm bath. The room is further adorned with decorations that hang from the ceiling, adding character and charm to the space.\n\nEvery object in the room is meticulously placed, creating a harmonious balance between functionality and aesthetics. The relative positions of the objects suggest careful consideration to ensure ease of movement and interaction within the space. Despite the various elements present, each one complements the others, contributing to the overall ambiance of comfort and leisure.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-06-14.553434.jpg"
-}

@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:55:08.399077",
-  "backend": "llava",
-  "description": "This image captures a serene night scene in a living room. The room is bathed in darkness, with only a few windows providing glimpses into the outside world. The windows are adorned with white curtains, partially drawn back to reveal the darkness beyond.\n\nIn the center of the room, a black coffee table stands out against the dim light. It's unassuming presence is accentuated by the soft glow of a lamp that sits on it. The lamp, with its warm light, casts an inviting glow around the room, illuminating the space in a comforting way.\n\nTo the left of the image, there's a couch draped in a black blanket. A person is resting their head on the armrest of the couch, perhaps lost in thought or simply enjoying the tranquility of the night.\n\nThe color palette of the image is dominated by blacks and whites, with hints of orange from the lamp light adding warmth to the scene. The overall atmosphere is one of peace and quiet, a snapshot of a moment frozen in time within this living room.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-55-02.319271.jpg"
-}

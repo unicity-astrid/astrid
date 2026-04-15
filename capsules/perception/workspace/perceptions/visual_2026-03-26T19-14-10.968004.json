@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T19:14:16.991881",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene inside a dimly lit room, painted in a soothing shade of green. The room is illuminated by natural light filtering through three windows, all adorned with white curtains that sway gently to and fro.\n\nOn the left wall, two windows stand side by side. They are covered with curtains that are partially drawn back, allowing a soft glow to seep into the room. To the right, another window stands alone on the same wall as its counterpart on the opposite side. This window is also draped with curtains, but they are fully drawn, creating an air of mystery about what lies beyond.\n\nThe walls of the room are not bare; they serve as a backdrop for a white shelf that hangs patiently, waiting to be filled. The shelf's stark white color contrasts beautifully with the green hue of the walls.\n\nDespite its simplicity, the room exudes a sense of comfort and peace. It's an invitation to sit down, relax, and perhaps lose oneself in thought or simply enjoy the quiet solitude.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-14-10.968004.jpg"
-}

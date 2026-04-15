@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T18:57:13.298995",
-  "backend": "llava",
-  "description": "This image captures a serene indoor setting during daylight hours. The room is bathed in natural light streaming in through three windows adorned with white curtains. A wooden table sits in the center of the room, hosting a laptop and a book, suggesting a workspace or study area. \n\nA gray couch rests against one wall, draped with a blanket that adds a touch of coziness to the scene. The floor beneath is also made of wood, complementing the overall warm and inviting ambiance of the room. The daylight illuminates every corner of the room, highlighting its simplicity and tranquility.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-57-04.768452.jpg"
-}

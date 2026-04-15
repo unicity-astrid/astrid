@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:41:55.259742",
-  "backend": "llava",
-  "description": "This image captures a serene night scene inside a room bathed in soft, warm light. The room is dominated by a large window on the left wall, draped with white curtains that sway gently, perhaps to a rhythm only known to the wind. \n\nOn the right wall, there's a smaller window, its view obscured by a curtain of the same pristine white as its larger counterpart. A solitary black chair sits in front of this window, draped with a blanket that adds an air of mystery to the scene.\n\nThe room itself is carpeted in a dark color, providing a stark contrast to the white walls and windows. It's easy to imagine sitting on that chair, wrapped in the softness of the blanket, gazing out at the world through the window, lost in thought or perhaps just enjoying the quiet beauty of the night.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-41-50.054171.jpg"
-}

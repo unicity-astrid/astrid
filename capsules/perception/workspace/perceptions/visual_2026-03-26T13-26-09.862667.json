@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T13:26:25.310486",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a living room bathed in soft sunlight. A cat, curled up in peaceful slumber, rests on a gray couch adorned with white pillows. The couch, positioned against a pristine white wall, serves as a cozy corner for our feline friend.\n\nA wooden coffee table stands guard next to the couch, hosting an array of objects including a blue water bottle and a white vase. The table's location suggests it's within easy reach from the couch, perhaps indicating a place where one might sit with a book or enjoy a cup of tea.\n\nThe room itself is softly lit by natural light filtering in through two windows, their blinds partially drawn to let in just enough light to illuminate the space without causing any glare. The interplay of light and shadow adds depth to the scene, highlighting the textures of the couch and coffee table.\n\nOverall, this image paints a picture of tranquility and comfort, with each element - from the sleeping cat to the neatly arranged objects on the coffee table - contributing to an atmosphere of calm and relaxation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-26-09.862667.jpg"
-}

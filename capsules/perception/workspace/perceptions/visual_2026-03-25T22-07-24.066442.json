@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T22:07:29.921736",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room. The main focus is a window with three panes, two on either side and one centrally located pane. The central pane is ajar, revealing a glimpse of an indoor scene bathed in warm yellow light.\n\nTo the left of this window, there's another window featuring three panes - a single pane on the top flanked by two smaller ones at the bottom. This window also has curtains partially drawn to one side, adding a sense of privacy and coziness to the room.\n\nThe windows are set against a backdrop of a dark wall, punctuated by a door that's slightly ajar. The overall atmosphere is peaceful and inviting, as if someone just stepped out for a moment and will soon return.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-07-24.066442.jpg"
-}

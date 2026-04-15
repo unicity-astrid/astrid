@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T16:17:13.300508",
-  "backend": "llava",
-  "description": "This image captures a serene living room bathed in natural light from a large window adorned with white blinds and a beige curtain. The wooden floor lends warmth to the room, complementing the pristine white walls.\n\nDominating the scene is a comfortable gray sofa, inviting one to sink into its plush cushions. Above it, a painting hangs elegantly on the wall, adding an artistic touch to the space. \n\nTo the side of the sofa, a wooden coffee table takes center stage. It hosts a blue vase and a white lamp, their colors contrasting beautifully with the table's rich hue. A beige blanket is casually draped over one end of the couch, suggesting recent use.\n\nIn the background, a bookshelf stands tall, filled to the brim with books - silent storytellers waiting to be discovered. The overall atmosphere is one of comfort and tranquility, a perfect place for relaxation or quiet contemplation.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-17-04.048797.jpg"
-}

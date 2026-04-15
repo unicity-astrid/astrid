@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T21:10:02.989065",
-  "backend": "llava",
-  "description": "The image captures a serene moment in a dimly lit room at night. The primary source of light comes from two windows located on the left side of the frame. The window closer to us is covered with orange curtains that add a warm hue to the otherwise cool-toned scene. \n\nIn front of this window, there's a black couch that stands out against the dark background. On the couch, a person is sitting comfortably, their back facing us as if engrossed in thought or perhaps enjoying a quiet moment alone.\n\nThe room itself is sparsely furnished, with minimal objects visible in the image. The overall atmosphere is one of tranquility and solitude, as if time has paused for a while within this space.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-09-55.230652.jpg"
-}

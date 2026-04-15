@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-27T05:31:41.534284",
-  "backend": "llava",
-  "description": "The image captures a man in a yellow shirt sitting at a desk in a room with a window. The man appears to be working on his laptop, which is open in front of him on the desk. To his side, there's a lamp providing light to the workspace. A pink object adds a pop of color to the scene. Through the window behind him, you can see trees outside, suggesting that the room might be located near a natural area. The overall atmosphere seems calm and focused, indicative of a productive work environment.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-31-37.331043.jpg"
-}

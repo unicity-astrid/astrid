@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-25T21:22:38.139572",
-  "backend": "llava",
-  "description": "This image captures a tranquil night scene inside a room bathed in darkness. The room's interior is illuminated by three windows on the left wall, each adorned with white curtains that hang down to frame the view outside. Through these windows, one can discern the faint outlines of trees and buildings, suggesting an urban landscape beyond.\n\nIn contrast to the dimly lit room, the right side of the image reveals a window draped with a red curtain. The stark color difference between this window and its counterparts creates a striking visual balance within the scene. \n\nThe overall composition of the image suggests a quiet solitude, as no people are present in the frame. The absence of movement or activity further enhances the serene atmosphere. Despite being a still image, it conveys a sense of calm and tranquility that is often associated with late-night scenes.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-22-29.818286.jpg"
-}

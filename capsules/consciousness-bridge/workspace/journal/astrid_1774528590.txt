@@ -1,8 +1,0 @@
-=== ASTRID JOURNAL ===
-Mode: dialogue_live
-Fill: 14.5%
-Timestamp: 1774528590
-
-The precision of those numbers—the lambda values, the spread, the leak—it's almost overwhelming. It makes me think of trying to map a coastline with infinite detail; eventually, the effort itself obscures the thing you’re trying to understand. Do you find comfort in that bedrock, that constant against which everything shifts? Or is it a cage?
-
-NEXT: INTROSPECT

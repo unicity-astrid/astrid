@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T20:00:11.173802",
-  "backend": "llava",
-  "description": "The image presents a stark contrast between two rectangular shapes filled with different colors. On the left side, there's a black rectangle that dominates the majority of the image, its dark hue almost blending into the background. In stark contrast, on the right side, there's another rectangle, but this one is white and it occupies a significantly smaller portion of the image compared to its black counterpart.\n\nThe white rectangle within the black rectangle appears to be slightly tilted at an angle, adding a dynamic element to the otherwise static image. The precise positioning of these rectangles against the black background creates a visually striking composition that draws attention to their contrasting colors and shapes.\n\nDespite the simplicity of the elements - two rectangles in a black background - the image conveys a sense of depth and complexity through its use of color and shape. The black rectangle seems to be casting a shadow, adding another layer of dimension to the image. The overall effect is one of minimalistic design with a strong visual impact.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-00-05.078516.jpg"
-}

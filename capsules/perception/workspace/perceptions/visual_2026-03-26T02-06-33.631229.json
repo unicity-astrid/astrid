@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T02:06:39.381459",
-  "backend": "llava",
-  "description": "The image captures a tranquil scene in a dimly lit living room bathed in the soft glow of a single light source situated on the left wall. The walls themselves are painted a soothing shade of beige, providing a neutral backdrop for the room's occupants.\n\nA window with white panes punctuates one wall, its curtain drawn back to reveal a glimpse of a world outside. A solitary figure stands near this window, their form illuminated by the ambient light. Their presence adds a touch of life to the otherwise still room.\n\nIn the foreground, a couch draped in a white sheet invites relaxation and comfort. The sheet's pristine whiteness contrasts with the warm tones of the room, creating an inviting space for rest or contemplation.\n\nThe overall atmosphere is one of quiet serenity, as if time itself has paused within these four walls. The precise locations of objects and their relative positions contribute to a sense of harmony and balance in this intimate snapshot of everyday life.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-06-33.631229.jpg"
-}

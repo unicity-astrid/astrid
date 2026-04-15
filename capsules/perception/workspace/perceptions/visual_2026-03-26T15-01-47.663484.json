@@ -1,7 +1,0 @@
-{
-  "type": "visual",
-  "timestamp": "2026-03-26T15:02:05.430423",
-  "backend": "llava",
-  "description": "This image captures a serene living room bathed in soft natural light filtering through a window adorned with white curtains. The walls, painted in a soothing shade of beige, provide a warm backdrop to the room's furnishings.\n\nDominating the scene is a gray sofa, its plush cushions inviting relaxation. A coffee table sits before it, hosting two books and a blue soda can - perhaps remnants of a quiet afternoon spent reading or watching television. To the right of the sofa, a wooden side table stands guard, draped with a beige cloth that matches the walls.\n\nA window punctuates one wall, its white curtains partially drawn back to let in the outside light. The interplay between the indoor and outdoor elements creates a harmonious balance within the room.\n\nEvery object is stationary, contributing to the room's tranquil ambiance. The relative positions of the objects - the sofa facing the window, the coffee table nestled between them, and the side table standing to one side - all suggest careful arrangement for comfort and aesthetics.\n\nIn summary, this image portrays a well-arranged living room bathed in natural light, exuding an atmosphere of tranquility and warmth.",
-  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-01-47.663484.jpg"
-}
