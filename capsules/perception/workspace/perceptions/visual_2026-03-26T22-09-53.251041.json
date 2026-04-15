@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T22:10:01.826867",
+  "backend": "llava",
+  "description": "The image presents a tranquil indoor scene at night. A person, clad in a black shirt and blue jeans, is seated on the left side of the frame. They are positioned near a table that holds two objects: a can of soda and a laptop. The laptop screen illuminates a portion of the table.\n\nIn the background, another individual can be seen on the right side of the image. This person appears to be in motion, perhaps walking by or entering the room.\n\nThe room itself is characterized by white walls and a window with closed blinds. A curtain hangs from this window, adding a touch of homeliness to the scene. The overall atmosphere suggests a quiet evening spent indoors, possibly after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-09-53.251041.jpg"
+}

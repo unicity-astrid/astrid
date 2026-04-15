@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:56:10.526500",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light filtering through two windows adorned with white curtains. The floor, painted in pristine white, contrasts beautifully with the gray walls, creating a sense of tranquility.\n\nIn the heart of the room, a coffee table takes center stage, its surface home to an open laptop and a book. A glass of water sits nearby on the table, reflecting the calm ambiance of the room. The arrangement of these objects suggests a quiet afternoon spent in solitude or perhaps a late-night study session.\n\nA comfortable couch invites relaxation, draped with a blanket that adds to the homely atmosphere. A pair of shoes rests on the floor next to the couch, hinting at the presence of an unseen occupant of this peaceful space.\n\nThe room is devoid of people, adding to its tranquil charm. The objects are stationary, their positions fixed in this snapshot of life. The overall scene paints a picture of a quiet moment frozen in time within this cozy living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-56-04.266235.jpg"
+}

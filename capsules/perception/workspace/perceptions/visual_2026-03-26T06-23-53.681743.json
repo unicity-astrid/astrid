@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:24:09.754364",
+  "backend": "llava",
+  "description": "In the image, a person is seated in a dark room, engrossed in an activity on their laptop. The person is dressed in a vibrant yellow sweater, adding a pop of color to the otherwise monochrome setting. \n\nThe room itself is dimly lit, creating an atmosphere that suggests it might be evening or night outside. A window punctuates the wall behind the person, draped with curtains that hang down, partially obscuring the view outside.\n\nOn the table in front of the person are two objects - a can and another small object. The precise nature of these objects is not clear from the image. \n\nThe person's attention seems to be focused on the laptop screen, suggesting they might be working or perhaps engaged in some form of leisure activity like browsing the internet or watching a video.\n\nOverall, the image captures a quiet moment of solitude and focus within an individual's personal space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-23-53.681743.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:30:13.999196",
+  "backend": "llava",
+  "description": "The image portrays a tranquil indoor setting at night. A man is seated on a bed, which is adorned with a white blanket and a green pillow. The room is dimly lit, adding to the serene ambiance.\n\nIn front of the man, there's a desk housing a laptop and a lamp. The laptop screen glows with an inviting light, suggesting it might be in use or recently used. The lamp on the desk provides additional illumination, casting soft shadows around the room.\n\nThe window behind the desk is covered with orange curtains, filtering the outside light and adding a warm hue to the scene. A blue blanket hangs from the window, its color contrasting nicely with the overall warm tones of the room.\n\nOverall, the image captures a quiet moment in a cozy indoor space, where technology meets comfort. The precise placement of objects and their relative positions contribute to the sense of harmony within this intimate setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-30-08.467549.jpg"
+}

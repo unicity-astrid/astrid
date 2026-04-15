@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:02:44.124318",
+  "backend": "llava",
+  "description": "In this image, a man is seated on a blue couch in a living room setting. He is wearing a yellow sweater and has a black bag resting on his lap. The room around him is filled with various objects that create a lived-in atmosphere.\n\nTo his right, there's a wooden coffee table holding a black laptop. A beige blanket is casually draped over the arm of the couch, adding to the homely feel of the scene. Behind him, a white wall serves as the backdrop for two windows. One window has a white curtain partially drawn back, while the other one sports a blue curtain that matches the man's sweater.\n\nThe overall color scheme of the room is predominantly beige and blue, creating a calm and serene environment. The precise positioning of objects and their relative locations contribute to a sense of harmony within the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-02-35.448976.jpg"
+}

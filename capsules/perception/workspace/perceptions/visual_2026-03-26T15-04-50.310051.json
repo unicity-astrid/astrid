@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:05:01.372194",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft natural light filtering through a large window on the left wall. The window, adorned with white curtains, casts an inviting glow across the room, highlighting the various objects within.\n\nDominating the scene is a comfortable gray couch, its plush cushions promising relaxation. It's positioned against the right wall, serving as the perfect spot for anyone seeking rest or perhaps enjoying a good book. Speaking of books, a wooden coffee table holds court in front of the couch, offering space for reading materials or perhaps a cup of tea.\n\nThe ceiling above is painted white, providing a neutral backdrop that enhances the colors within the room. A small lamp hangs on the left wall, ready to provide additional light when needed. On the right wall, a blue vase adds a pop of color, contributing to the overall aesthetic of the space.\n\nEvery object in this room has its place and purpose, coming together to create an atmosphere that's both welcoming and peaceful. It's more than just a living room; it's a personal sanctuary where one can retreat from the world and find peace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-04-50.310051.jpg"
+}

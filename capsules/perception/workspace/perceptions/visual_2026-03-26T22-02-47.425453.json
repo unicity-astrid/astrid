@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T22:02:58.211329",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft light. The room is painted white, providing a neutral backdrop for the various objects within it. On the left side of the room, a black dog lies comfortably on the floor, its body relaxed and at ease.\n\nA window with yellow curtains adorns one wall of the room. Through this window, you can see another room where a person is sitting at a desk, engrossed in their work. The exact details of the desk or the person's activity are indistinct from this vantage point.\n\nOn the right side of the room, there's a table draped with a white cloth. A blue vase rests on top of it, adding a pop of color to the otherwise monochrome setting. The precise location of other objects or furniture isn't discernible from this viewpoint.\n\nThe image is taken from the perspective of someone standing in the doorway, offering a comprehensive view of the room's layout and contents. The overall atmosphere suggests a quiet and peaceful domestic scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-02-47.425453.jpg"
+}

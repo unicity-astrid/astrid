@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:08:11.113379",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene bathed in soft orange hues. The room, shrouded in darkness, offers a stark contrast to the window on the right wall that stands out in vibrant color. The window, framed by a sturdy brick structure, is veiled with curtains of an unseen pattern or design. A small portion of the curtain is visible at the bottom, peeking through the window's frame.\n\nInside the room, an unmade bed takes center stage. It lies in wait for its occupant, its sheets slightly disheveled, hinting at recent use. The bed is positioned against the right wall, its headboard aligning with the window. A black wall on the left side of the image provides a backdrop to this intimate setting.\n\nThe room exudes an air of quiet solitude, each element - from the brick window frame to the unmade bed - contributing to this atmosphere. The orange glow from the window casts long shadows and adds a warm tone to the scene, enhancing its cozy ambiance.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-07-54.023343.jpg"
+}

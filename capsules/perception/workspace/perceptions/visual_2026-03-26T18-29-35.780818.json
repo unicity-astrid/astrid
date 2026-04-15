@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:29:42.450054",
+  "backend": "llava",
+  "description": "The image depicts a cozy living room scene. Here's a detailed description:\n\n- A **gray couch** is positioned against one wall, providing a comfortable seating area.\n- On top of the couch, there are two individuals enjoying their time. One person is lying down, seemingly relaxed, while the other is sitting up, perhaps engaged in conversation or simply enjoying the tranquility of the room.\n- In front of the couch, a **black coffee table** holds a few items. There's a **blue mug**, possibly filled with a warm beverage for one of the individuals on the couch. Next to it, there's a **pink book**, perhaps left aside momentarily or waiting to be picked up and read later.\n- A **white window** punctuates one wall, fitted with white blinds that filter the light entering the room. This suggests it might be daytime outside.\n- On the windowsill of this window, there's a small plant in a white pot, adding a touch of greenery to the room and enhancing its homely feel.\n\nThe overall atmosphere is one of comfort and relaxation, as if inviting you to sit down, unwind, and enjoy some quiet time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-29-35.780818.jpg"
+}

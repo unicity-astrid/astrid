@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:53:48.496464",
+  "backend": "llava",
+  "description": "In the image, there's a man sitting on a gray couch in a living room. He's wearing a blue baseball cap and sunglasses, giving off a relaxed vibe. His arms are crossed over his chest as he gazes at a table covered with a white tablecloth. On the table, there's a blue bottle standing out against the white background.\n\nThe room is bathed in natural light coming from two windows on the right side of the image. The walls and ceiling of the room are painted white, providing a clean and bright atmosphere. The floor beneath him is wooden, adding warmth to the space.\n\nIn the foreground of the image, there's another couch that appears blurred due to depth of field. This gives a sense of depth to the image, making it seem as if we're viewing from a distance.\n\nOverall, this image captures a quiet moment in a cozy living room setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-53-38.533206.jpg"
+}

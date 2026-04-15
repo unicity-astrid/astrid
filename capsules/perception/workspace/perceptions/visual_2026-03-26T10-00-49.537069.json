@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:01:03.753967",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light filtering through a window adorned with white curtains. A gray couch sits invitingly against one wall, its plush cushions promising comfort. Adjacent to the couch, a wooden coffee table holds a laptop, open and ready for use, suggesting someone might have stepped away momentarily.\n\nA beige blanket is casually draped over the arm of the couch, adding a touch of warmth to the room. The walls are painted in a clean white color, providing a neutral backdrop that enhances the coziness of the space. The window, dressed with white curtains, offers a glimpse into the world outside while also illuminating the room from within.\n\nOn one side of the wall, there's a door leading to other parts of the house, its presence subtly reminding us of the continuity of life beyond this tranquil living room. The precise placement of each object and their relative positions contribute to an overall atmosphere of calm and order. This is more than just a room; it's a snapshot of everyday life beautifully captured in stillness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-00-49.537069.jpg"
+}

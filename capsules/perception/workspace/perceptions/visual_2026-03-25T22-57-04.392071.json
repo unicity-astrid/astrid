@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:57:12.713592",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room. The room is bathed in soft, dim light that casts an ethereal glow on the dark-colored walls and furniture. A comfortable couch sits against one wall, inviting relaxation. A coffee table occupies the center of the room, ready to hold cups of tea or stacks of books.\n\nA window punctuates one wall, its glass panes reflecting the darkness outside. The curtains are drawn, suggesting an atmosphere of privacy and coziness. On the windowsill rests a solitary candle, its flame flickering gently in the quiet night.\n\nThe image is taken from the perspective of someone standing in the doorway of the room, offering a comprehensive view of the space. The overall composition exudes warmth and tranquility, making it a perfect snapshot of a peaceful evening at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-57-04.392071.jpg"
+}

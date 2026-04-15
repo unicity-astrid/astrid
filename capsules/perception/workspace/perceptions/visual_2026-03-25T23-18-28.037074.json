@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:18:33.799880",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene bathed in soft light. Dominating the left side of the frame is a bed, its dark gray comforter crumpled at the foot, inviting rest and relaxation. A pair of black shoes rests casually on it, hinting at the presence of an occupant who might have just returned home.\n\nOn the right, a window stands out with its vibrant yellow curtains partially drawn back, allowing a glimpse into another world beyond. The window is closed, suggesting a sense of privacy and seclusion within this space.\n\nThe background is awash in a soothing blue hue, providing a calm backdrop to the scene. A white wall on the left balances the composition, while a door on the right offers an exit or entrance to this personal sanctuary.\n\nEvery object and color in this image - from the dark gray comforter of the bed to the yellow curtains of the window - contributes to painting a picture of a cozy and comfortable living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-18-28.037074.jpg"
+}

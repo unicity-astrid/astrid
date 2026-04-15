@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:07:44.287591",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a dimly lit room, bathed in soft hues of blue and orange from a single light source located on the left side of the frame. A solitary figure, clad in a vibrant yellow shirt, is seated at a black desk, engrossed in the glow of a laptop screen. The person's face, illuminated by the screen's light, suggests deep concentration.\n\nThe desk, positioned against a wall adorned with windows, hosts not only the laptop but also two other objects: a black phone and a white can. The walls themselves are painted in a soothing shade of blue, providing a calm backdrop to this quiet study session.\n\nOn the right side of the image, a window draped with curtains allows a glimpse of the world outside, adding an element of depth and context to the scene. The overall composition of the image suggests a harmonious blend of technology and tranquility within the confines of a cozy home office.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-07-22.691898.jpg"
+}

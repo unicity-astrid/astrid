@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:56:01.314154",
+  "backend": "llava",
+  "description": "The image depicts a man sitting at a desk in a room with a window and curtains. The man is wearing a yellow jacket and has short hair. He appears to be looking off into the distance.\n\nOn the desk, there are two items: a black laptop computer and a silver water bottle. The laptop is open and facing the man, while the water bottle is closed and standing upright.\n\nThe room in which the man is sitting has white walls and a window with yellow curtains. The window allows light to enter the room, illuminating the scene. The overall atmosphere of the image suggests a quiet moment of contemplation or work.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-55-54.417132.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T09:33:23.613289",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting. Dominating the scene is a television screen, which is mounted on a white brick wall above a black fireplace. The screen displays a video game in progress, featuring two characters engaged in combat against a backdrop of a forest. \n\nThe room itself is bathed in soft light filtering through a window situated on the right side of the image. This natural light enhances the warm ambiance of the room and subtly illuminates the objects within it.\n\nTo the left of the fireplace, a white curtain hangs gracefully, its fabric partially obscuring the view of the television screen. The curtain's presence adds a touch of privacy to the scene, suggesting that this might be a personal space where one can enjoy leisure activities like gaming.\n\nThe overall composition of the image suggests a cozy and comfortable environment, perfect for relaxation and entertainment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-33-18.309489.jpg"
+}

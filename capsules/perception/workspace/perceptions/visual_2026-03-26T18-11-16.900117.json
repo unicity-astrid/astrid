@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:11:22.541016",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting. Dominating the foreground is a **gray couch**, comfortably nestled against a wall adorned with two windows. The right window is veiled by a **white curtain**, while the left one remains bare, allowing sunlight to filter in.\n\nOn the couch, a **black cat** has found its perfect resting spot on a **blue blanket**. The feline appears relaxed and at ease, adding a touch of warmth to the scene.\n\nAdjacent to the couch is a **wooden coffee table**, upon which sits a **laptop computer**. The laptop's screen is closed, suggesting it's not in use at the moment.\n\nThe room itself is painted in soothing shades of white, creating a calm and peaceful atmosphere. A door on the left wall completes the layout of this cozy space. The overall scene suggests a quiet afternoon spent indoors, perhaps with work to be done or leisure activities to enjoy.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-11-16.900117.jpg"
+}

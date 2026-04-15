@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:18:34.688983",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor setting. At the heart of the scene is a **black dog**, comfortably nestled on a **gray couch**. The dog, lying down, gazes directly into the camera, its eyes reflecting a sense of calm and contentment.\n\nThe couch is positioned against a wall that features two windows, allowing natural light to filter into the room. Adjacent to the couch, there's a **black coffee table**, upon which rests a **blue water bottle** and a **red book**, adding splashes of color to the otherwise monochrome setting.\n\nIn the background, a **white door** stands closed, suggesting an air of quiet seclusion within this domestic space. The overall atmosphere exudes one of comfort and serenity, with the dog appearing at ease in its surroundings. It's a snapshot of everyday life, beautifully framed within the confines of this image.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-18-25.331022.jpg"
+}

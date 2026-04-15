@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:32:21.399177",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a wooden bench in what appears to be a living room. He's dressed casually in a blue shirt and black shorts adorned with white polka dots. His attention seems to be focused on a piece of paper he holds in his hand.\n\nThe room itself is bathed in natural light streaming in from a window located directly behind the man. The window, however, is partially obscured by a beige curtain that hangs from it. \n\nTo the right of the man, there's a wooden coffee table. On top of this table rests a blue water bottle, adding a splash of color to the scene. The floor beneath is also made of wood, maintaining the warm and cozy atmosphere of the room.\n\nThe image captures a quiet moment in time, with the man engrossed in his paper perhaps contemplating or planning something. The simplicity of the objects - the man, the bench, the coffee table, the water bottle - and their arrangement creates an intimate snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-32-11.376127.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:53:45.353689",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the left wall. The room is adorned with white walls and a matching ceiling, creating a clean, minimalist aesthetic. \n\nDominating the center of the room is a black coffee table, its surface scattered with various objects including a blue mug, a red bowl, and a white tissue box. Adjacent to the table, a gray couch invites relaxation, its comfort accentuated by a beige throw blanket casually draped over it.\n\nStanding in the doorway on the right wall is a man dressed in a yellow shirt. His presence adds a warm human touch to the scene, suggesting a lived-in space filled with activity and conversation. \n\nThe image as a whole paints a picture of everyday life, where objects are scattered around, each telling their own story of use and purpose. The relative positions of these objects create a harmonious balance within the room, making it feel like a welcoming home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-53-25.592965.jpg"
+}

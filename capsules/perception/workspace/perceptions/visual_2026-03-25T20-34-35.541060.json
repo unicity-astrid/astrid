@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:34:41.758466",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in what appears to be an office setting. The room is dimly lit, with the only source of light coming from the desk lamp directly in front of him. He's wearing a black shirt and a baseball cap, giving off a casual vibe. His attention seems to be focused on something on his desk.\n\nThe desk itself is quite bare - there's a pen holder and a glass of water within arm's reach, suggesting that he might have been working for some time. A computer monitor sits in front of him, its screen turned off, indicating that the man might have stepped away from work or has just finished his work for the day.\n\nThe desk lamp casts a warm glow on his face and upper body, highlighting his features while leaving the rest of the room in shadow. This contrast between the lit foreground and dark background creates a sense of depth in the image.\n\nOverall, the image captures a quiet moment in a workspace, with the man's focused expression suggesting deep thought or concentration.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-34-35.541060.jpg"
+}

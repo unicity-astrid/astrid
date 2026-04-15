@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:49:16.929091",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light filtering through two windows adorned with white curtains. The room is tastefully decorated with a gray couch that invites relaxation, a wooden coffee table centrally placed for convenience, and a bookshelf brimming with books, hinting at the intellectual pursuits of the inhabitants.\n\nIn the foreground, a black piano stands as a testament to musical interests. Its polished surface reflects the warm glow of the room, adding an element of elegance. A white blanket casually draped over it adds a touch of homeliness.\n\nThe walls, painted in a clean white color, enhance the brightness of the room while the wooden floor underfoot provides a natural contrast. The windows are dressed with beige curtains that add a soft texture to the scene.\n\nOverall, this image paints a picture of a comfortable and welcoming living space where one can unwind after a long day or immerse oneself in music or literature.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-49-07.528307.jpg"
+}

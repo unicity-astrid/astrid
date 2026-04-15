@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:12:27.810028",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft sunlight filtering through a large window on the left wall. The room is painted in a soothing shade of beige, creating a warm and inviting atmosphere.\n\nDominating the scene is a gray couch, comfortably positioned against the wall. On it rests a brown dog, its body relaxed as it lies down, perhaps taking a nap or simply enjoying the tranquility of the room.\n\nTo the right of the couch stands a wooden coffee table. Atop it sits a laptop and a book, suggesting someone might be working from home or reading for leisure. A beige blanket is casually draped over the armrest of the couch, adding to the homely feel of the space.\n\nThe sunlight streaming in through the window casts long shadows around the room, highlighting the textures of the furniture and creating an interesting interplay of light and dark. The overall scene paints a picture of a peaceful afternoon spent indoors.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-12-18.695169.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:29:48.675299",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light from a window that offers a view of a street outside. The window, framed by white walls and topped with a wooden mantel, allows the warm glow to illuminate the room. A curtain hangs at one side of the window, partially obscuring the view.\n\nIn front of this inviting backdrop is a black couch, its dark hue contrasting with the lighter surroundings. A coffee table sits in front of the couch, hosting a blue mug and a red soda can - perhaps remnants of a relaxing evening spent in this room.\n\nThe floor beneath is wooden, adding to the rustic charm of the space. On one side of the room, there's a door leading out into the world beyond. The overall atmosphere suggests a comfortable and lived-in space, perfect for unwinding after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-29-43.447545.jpg"
+}

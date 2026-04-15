@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:57:06.824501",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting. The room is bathed in soft natural light filtering through two windows on the right wall. One window is adorned with a white curtain, while the other features a blue one. A wooden table sits in front of these windows, hosting an open laptop and a pink book.\n\nOn the left side of the image, there's a comfortable gray couch inviting relaxation. The floor beneath is covered by a beige rug that adds warmth to the room. The overall atmosphere suggests a peaceful afternoon spent indoors, perhaps during a quiet weekend or a work-from-home day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-56-59.783318.jpg"
+}

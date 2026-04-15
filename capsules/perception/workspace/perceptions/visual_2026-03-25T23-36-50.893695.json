@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:36:55.703755",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dark room at night. The primary source of light comes from three windows adorned with vibrant orange curtains. These windows are located on a gray wall, creating a stark contrast against the darkness.\n\nIn the foreground, there's a black couch covered with a blue blanket, adding a touch of color to the otherwise monochrome setting. A solitary white candle sits on the couch, its flame flickering in the dim light, casting an ethereal glow around it.\n\nThe room is sparsely furnished and devoid of any human presence, enhancing the sense of solitude and tranquility. The precise arrangement of objects and their relative positions contribute to a harmonious composition that exudes a sense of calm and serenity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-36-50.893695.jpg"
+}

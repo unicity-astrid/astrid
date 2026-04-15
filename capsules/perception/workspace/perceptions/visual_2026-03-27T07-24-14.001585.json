@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:24:19.222017",
+  "backend": "llava",
+  "description": "The image captures a cozy living room scene. Dominating the space is a large television screen mounted on a white brick wall, which is part of a fireplace. The television screen displays an ongoing video game with vibrant graphics and text in shades of red, blue, green, and yellow. \n\nTo the right of the television screen, there's a window adorned with a black curtain, allowing natural light to filter into the room. On the left side of the image, you can see the entrance to another room through an open door.\n\nThe overall atmosphere suggests a comfortable space for relaxation and entertainment, where one might enjoy their favorite video games or engage in casual conversations. The precise positioning of objects and the neat arrangement indicate careful consideration of design and functionality.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-24-14.001585.jpg"
+}

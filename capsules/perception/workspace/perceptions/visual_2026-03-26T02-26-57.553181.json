@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:27:07.556548",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting bathed in soft, dim lighting. Dominating the foreground is a black couch, its dark hue contrasting with the lighter background. A single white bottle rests on it, its stark color standing out against the couch's surface.\n\nBehind the couch, a window punctuates the wall. It features three small panes of glass, each fitted into a frame painted in alternating stripes of yellow and orange. These warm colors filter into the room, casting long shadows that dance across the scene.\n\nOn either side of the window hang curtains, their dark fabric matching the hue of the couch. They are drawn partially back, allowing more light to seep into the room and adding depth to the space.\n\nThe image is taken from a low angle, looking up at the couch and window. This perspective enhances the sense of space within the room and draws attention to the objects in the foreground. Despite its simplicity, the scene exudes a sense of calm and comfort, inviting one to sit down on the couch and enjoy a quiet moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-26-57.553181.jpg"
+}

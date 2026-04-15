@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:46:14.108362",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The primary source of light is coming from an open window on the right side of the frame. Through this window, you can see curtains partially drawn back, suggesting a cozy interior space beyond.\n\nOn the left side of the image, there's a bed with a black comforter and white pillows, adding to the overall monochrome theme. The bed appears unmade, indicating recent use or perhaps someone waking up in the middle of the night.\n\nIn front of the window is a wooden table. On it, there are two blue cups, possibly remnants of a late-night conversation or solitary moments of reflection. A white candle also sits on the table, its flame not visible in the image but hinting at warmth and soft light during nighttime hours.\n\nThe room exudes an air of tranquility, with the open window inviting in the night breeze and the dark silhouette of the bed adding to the serene ambiance. The black and white color scheme enhances the moodiness of the scene, evoking a sense of calm and solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-46-03.877068.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:40:49.387707",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a room bathed in natural light from a window. The man, dressed in a blue shirt and shorts, holds a book in his hands. His gaze is directed downwards towards the desk, suggesting he might be engrossed in reading or deep in thought.\n\nThe desk itself is a sturdy wooden piece of furniture, equipped with a lamp that stands as a solitary light source on it. The desk is positioned against the wall, adjacent to the window which allows sunlight to stream into the room.\n\nTo the left of the man, there's a chair, presumably for someone who might join him in this quiet setting. Behind the man, a white curtain hangs from the window, adding a touch of homeliness to the scene.\n\nThe image exudes a sense of tranquility and focus, with the man engrossed in his book or task at the desk. The room appears to be a personal space designed for concentration and relaxation. The precise location of objects and their relative positions contribute to creating this serene atmosphere.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-40-31.440989.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:39:11.168872",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting, bathed in soft light filtering through a window adorned with orange and yellow stained glass panes. The room is illuminated from the left side of the frame, casting long shadows that dance on the walls.\n\nIn the heart of this serene scene is a person, their face hidden beneath a vibrant yellow sweater. They are seated at a black desk, engrossed in their work. Their hands hover over a laptop and mouse, poised for action. A can of soda sits nearby, perhaps a companion during long hours of work.\n\nTo the right of the desk, a window draped with white curtains lets in a gentle stream of light, adding to the warm ambiance of the room. The curtains sway slightly, suggesting a soft breeze from outside.\n\nThe image is a beautiful blend of colors and textures - the cool black of the desk contrasts with the warm yellows of the stained glass panes and sweater, while the white curtains add a touch of purity to the scene. It's a snapshot of a moment, frozen in time, telling a story without words.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-39-04.398591.jpg"
+}

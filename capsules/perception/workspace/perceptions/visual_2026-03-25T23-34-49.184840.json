@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:34:59.675398",
+  "backend": "llava",
+  "description": "This image captures a serene night-time scene in a living room. The room is bathed in soft, dim light that casts long shadows and highlights the textures of the objects within. \n\nThe focal point of the image is a black couch, positioned against one wall of the room. A single person is sitting on it, their head resting comfortably on a pillow, adding a touch of life to the otherwise still scene.\n\nTo the right of the couch, there's a window with closed blinds, suggesting an attempt at privacy or perhaps just to block out the outside world. The window and the couch together form a cozy corner within the room.\n\nOn the left wall, another window can be seen, this one open, inviting in the night air. A lamp stands guard next to it, its light adding depth to the scene.\n\nThe color palette of the image is dominated by shades of black and white, with occasional pops of blue from a lamp on the right wall. The contrast between these colors enhances the overall mood of the room, creating an atmosphere of tranquility and solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-34-49.184840.jpg"
+}

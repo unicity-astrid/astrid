@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:09:48.958402",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. A person, their face obscured by shadows, sits at a desk in the foreground. The glow from a nearby window casts an eerie light on their figure. The person appears to be engaged with a laptop and a phone that rest on the desk before them.\n\nThe room itself is shrouded in darkness, but through a window located directly behind the desk, a soft light spills in, illuminating the interior. This light reveals a chair tucked neatly under the desk, its presence subtly hinted at rather than immediately apparent due to the low lighting.\n\nDespite the darkness, there's an air of tranquility that pervades the scene. It's as if time has slowed down, allowing for an intimate glimpse into this person's solitary moment. The precise location of objects and their relative positions contribute to a sense of depth and perspective in the image, further enhancing its visual appeal.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-09-39.796436.jpg"
+}

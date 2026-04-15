@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:21:35.285939",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a bedroom. The room is bathed in darkness, creating a stark contrast with the two windows on the left wall that are illuminated by warm orange lights. These windows serve as the only sources of light in the otherwise dark room.\n\nIn front of these windows, there's a bed with a white headboard and footboard. The bed appears to be unmade, suggesting it was recently used or perhaps not yet tended to in the morning. \n\nOn the right side of the image, partially visible is another window. This one has red curtains, adding a splash of color to the otherwise monochromatic scene.\n\nThe image does not contain any discernible text or countable objects. The relative positions of the objects are as described: two windows on the left wall with warm orange lights, a bed in front of them, and another window partially visible on the right side with red curtains. The overall atmosphere is one of tranquility and quietude, typical of a late-night bedroom scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-21-29.218727.jpg"
+}

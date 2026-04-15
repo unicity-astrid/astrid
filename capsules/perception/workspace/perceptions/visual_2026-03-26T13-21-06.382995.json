@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:21:11.953917",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room bathed in soft light from a window on the left wall. The window, adorned with white curtains, allows the sunlight to filter into the room, casting a warm glow on the beige couch that sits against the right wall. A gray blanket is casually draped over this couch, adding a touch of coziness.\n\nOn the floor next to the couch, a black cat is peacefully sleeping, oblivious to its surroundings. The tranquility of the scene is further enhanced by the presence of a wooden coffee table situated in front of the couch. On top of this table rests a white vase and a blue water bottle, their colors contrasting beautifully with each other.\n\nThe room itself is painted white, providing a neutral backdrop that allows the furniture to stand out. The overall atmosphere is one of comfort and relaxation, as if inviting the viewer to sit down and enjoy a quiet afternoon at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-21-06.382995.jpg"
+}

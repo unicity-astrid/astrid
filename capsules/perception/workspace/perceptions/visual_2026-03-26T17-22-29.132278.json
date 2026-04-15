@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:22:34.380109",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room bathed in natural light from a large window on the right side. The main focus is a black cat, peacefully sleeping on a gray couch to the left of the frame. The couch faces the window, creating an inviting space for relaxation.\n\nIn front of the couch, there's a wooden coffee table holding three items: a blue water bottle, a white vase, and a red scarf. These objects add a pop of color to the otherwise neutral tones of the room.\n\nThe background features a beige wall adorned with two windows, one on each side of the image. The window on the left is partially obscured by a gray curtain, adding an element of coziness to the space. Overall, this image paints a picture of tranquility and comfort, perfectly encapsulating a quiet afternoon at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-22-29.132278.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:22:15.662329",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light from a large window on the left wall. The window allows natural light to stream in, illuminating the room and casting gentle shadows. A beige couch sits against the wall, inviting relaxation and comfort. On top of the couch, a blue vase adds a pop of color to the otherwise neutral tones.\n\nA coffee table takes center stage in the room. It's draped with a white tablecloth that contrasts beautifully with the dark wood of the table. The table hosts a few items - a pink book waiting to be read, and a silver lamp standing tall and ready to provide light when needed.\n\nThe floor beneath is made of hard wood, adding warmth to the room. On the right side of the photo, you can see part of another couch, suggesting that this living space is designed for socializing and spending quality time with loved ones.\n\nOverall, the image presents a well-arranged living room filled with objects that are thoughtfully placed, creating a harmonious balance between functionality and aesthetics. The colors, the count of objects, their actions, and their precise locations all contribute to painting a picture of a cozy and inviting space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-22-08.880107.jpg"
+}

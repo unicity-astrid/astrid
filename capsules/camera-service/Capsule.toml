@@ -1,0 +1,18 @@
+[package]
+name = "camera-service"
+version = "0.1.0"
+description = "Native camera capture — saves frames to /tmp for perception capsules"
+astrid-version = ">=0.5.0"
+
+[[mcp_server]]
+id = "camera-service"
+type = "stdio"
+command = "camera-service"
+args = []
+
+[capabilities]
+ipc_publish = ["perception.v1.frame"]
+
+[[topic]]
+name = "perception.v1.frame"
+description = "Notification that a new camera frame JPEG is available at a path"

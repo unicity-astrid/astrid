@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:35:03.498655",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting, captured from the perspective of someone sitting on a couch. The room is dimly lit, adding a sense of coziness to the scene. In the foreground, there's a person wearing a vibrant yellow shirt, engrossed in their laptop which rests on a coffee table. \n\nTo the right, there's another individual also dressed in a yellow shirt, comfortably seated on a couch with a blue blanket casually draped over it. The coffee table is situated between these two individuals, serving as a shared space for their activities.\n\nThe room itself has an inviting ambiance, enhanced by a warm light that spills from a window adorned with a stained glass panel. This light casts a soft glow throughout the room, illuminating the scene and creating a serene atmosphere. The overall composition of the image suggests a relaxed and comfortable environment, perhaps indicative of shared leisure or work time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-34-57.848554.jpg"
+}

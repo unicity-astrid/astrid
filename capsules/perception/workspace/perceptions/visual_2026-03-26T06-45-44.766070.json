@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:46:03.781601",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in warm light. The walls are painted white, providing a neutral backdrop for the room's furnishings. A window with blinds adorns one wall, allowing natural light to filter into the room and cast a soft glow on the floor.\n\nIn the center of the room, a black coffee table takes the stage. It hosts a blue mug, perhaps waiting to be filled with a hot beverage, and a white book, possibly left open mid-read. The table's dark color contrasts sharply with the light-colored walls and floor, drawing attention to its presence.\n\nTo the side, a gray couch rests invitingly. A black blanket is casually draped over it, suggesting recent use or perhaps an impending guest. On the armrest of the couch, a white pillow lies in wait for someone to sink into the comfortable cushions.\n\nThe room exudes a sense of comfort and tranquility, each object meticulously placed to create a harmonious living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-45-44.766070.jpg"
+}

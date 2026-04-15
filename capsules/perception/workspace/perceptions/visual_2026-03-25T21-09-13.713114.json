@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:09:20.866773",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft orange hues. The walls, painted white, provide a stark contrast to the warm glow from two windows draped with curtains of the same color. Each window houses a black candle holder, their silhouettes adding depth to the scene.\n\nIn the foreground, a black couch invites relaxation. It's positioned against the wall, offering a comfortable view of the room. A white lamp sits on a table next to the couch, its light unseen in the image but implied by the warm glow from the windows.\n\nThe room is illuminated by this light, casting long shadows and highlighting the textures of the objects within it. The orange curtains frame the windows like living paintings, their fabric soft and inviting. The black candle holders stand tall against the lighter background, their dark forms stark against the white walls.\n\nEvery object in this room has its place, creating a harmonious balance. The couch is centrally located, with the lamp to its right. The two windows are symmetrically placed on either side of the couch, their curtains matching each other and the overall color scheme of the room.\n\nThis image is a study in contrasts - light against dark, warm against cool, black against white. It's a snapshot of a moment frozen in time, a quiet",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-09-13.713114.jpg"
+}

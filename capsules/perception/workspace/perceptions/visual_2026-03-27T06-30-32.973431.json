@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:30:42.380514",
+  "backend": "llava",
+  "description": "The image captures a moment in a dimly lit room where a television screen is the focal point. The screen is alive with a vibrant video game scene. The game features two characters engaged in combat against a backdrop of a sprawling cityscape. \n\nOn the left side of the screen, there's a character dressed in red and white. This character is equipped with a sword, poised for action. On the right side, another character stands ready. This one is clad in black and white armor, holding a shield, prepared to defend.\n\nThe characters are set against a dynamic cityscape that stretches across the background of the screen. The buildings and trees appear small due to the perspective, emphasizing the grandeur of the game world.\n\nAt the bottom of the screen, there's text displaying \"HIT\", \"HP\", and \"MP\". These could be indicators of player performance in the game. At the top right corner, a score of 15-15 is displayed, suggesting that the game is currently underway with both players scoring equally.\n\nOverall, the image portrays an intense gaming session under a city theme, where two characters are locked in combat, each strategizing their next move.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-30-32.973431.jpg"
+}

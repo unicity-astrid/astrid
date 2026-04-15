@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:53:34.079275",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dark room bathed in soft orange light from a window on the left wall. The window, adorned with white curtains, casts an inviting glow that illuminates the space and reveals a black desk positioned against the right wall. On this desk, a computer monitor sits idle, its screen blank.\n\nA couch, draped in a blue blanket, occupies the foreground of the image. It invites relaxation and comfort, suggesting a space for rest or work. The floor beneath is made of hardwood, adding a touch of warmth to the room's overall ambiance.\n\nDespite the darkness, the room exudes a sense of tranquility, as if waiting for its occupant to return and bring it back to life. The image does not contain any discernible text. The relative positions of the objects suggest a well-organized space designed for both comfort and productivity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-53-25.333707.jpg"
+}

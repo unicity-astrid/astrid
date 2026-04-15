@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:46:31.376931",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a darkened room. The central focus is a window with three panes, each covered by a white curtain. The middle pane stands out as it's lit up, casting a soft glow that contrasts with the darkness of the room.\n\nTo the right of the window, there's a desk positioned against the wall. On the desk, a blue cup and a brown bottle are visible, their colors muted in the subdued lighting. The objects on the desk suggest a space used for work or study.\n\nIn the background, partially obscured by the window, is a person sitting on a bed. Their presence adds a layer of intimacy to the scene, hinting at personal moments shared within this space.\n\nThe room itself is shrouded in darkness, with only the lit middle pane of the window and the few objects on the desk providing illumination. This contrast between light and dark creates a sense of depth and atmosphere, making the image more than just a simple depiction of a room. It's a snapshot of life, captured in all its quiet moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-46-21.026902.jpg"
+}

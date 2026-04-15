@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:51:42.799254",
+  "backend": "llava",
+  "description": "This image captures a tranquil scene inside a darkened room during nighttime. The primary focus is a window on the left side of the frame, adorned with white curtains that hang down its length. A small blue light adorns the curtain rod, casting a soft glow that contrasts with the overall darkness.\n\nOn the right side of the photo, there's another window, but this one features brown curtains instead. Above it, mounted on the wall, is a light fixture that illuminates the room with a warm yellow light.\n\nThe room itself exudes an air of quiet solitude, with the windows offering glimpses into the world outside while also inviting the viewer's gaze to wander within its confines. The precise positioning of objects and their relative locations contribute to the overall composition of this nocturnal snapshot.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-51-37.800866.jpg"
+}

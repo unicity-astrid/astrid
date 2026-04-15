@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:24:37.369557",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting at dusk. A person, clad in a blue shirt and black pants, stands near an open window draped with a white curtain. The window allows a soft light to filter into the room, illuminating the objects within. \n\nA wooden table sits nearby, its surface adorned with a few items: a blue water bottle, a white mug, and a glass ashtray. The table's position suggests it might be used for evening reading or relaxation.\n\nIn the foreground, a gray couch invites rest and comfort. A beige blanket is casually draped over one end of it, hinting at recent use. \n\nThe walls are painted in a clean white color, providing a neutral backdrop that enhances the colors within the room. The overall atmosphere suggests a quiet and peaceful evening spent indoors.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-24-32.201471.jpg"
+}

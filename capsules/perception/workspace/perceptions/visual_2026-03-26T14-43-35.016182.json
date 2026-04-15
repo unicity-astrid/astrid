@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:43:44.010428",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft natural light. Dominating the center of the room is a wooden coffee table draped with a white cloth. The table hosts an array of items - a blue mug, a red book, and a black remote control, each adding a splash of color to the otherwise neutral palette.\n\nTo the left, a gray couch invites relaxation. A brown dog has taken up this offer, lying peacefully on it, embodying the tranquility of the scene. The floor beneath them is covered by a beige rug, its soft texture complementing the overall warmth of the room.\n\nOn the right side of the image, a window draped with white curtains lets in streams of light, illuminating the room and creating an inviting atmosphere. The precise arrangement of objects and their relative positions contribute to the harmonious composition of this snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-43-35.016182.jpg"
+}

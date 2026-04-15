@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:02:12.485591",
+  "backend": "llava",
+  "description": "The image depicts a serene living room bathed in natural light from two windows adorned with white curtains. The floor is covered by a beige carpet that adds warmth to the room. \n\nIn the center of the room, there's a black coffee table holding a laptop and a blue water bottle, suggesting someone might be working or studying here. A red blanket casually draped over a chair adds a pop of color to the otherwise neutral palette of the room.\n\nOn the left side of the image, there's a couch with a gray throw pillow on it, inviting relaxation. The couch faces the windows and the coffee table, creating an intimate conversation area.\n\nOverall, the room exudes a sense of comfort and tranquility, perfect for unwinding after a long day or focusing on work in a peaceful environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-02-03.787071.jpg"
+}

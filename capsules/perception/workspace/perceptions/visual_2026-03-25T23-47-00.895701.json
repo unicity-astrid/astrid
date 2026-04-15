@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:47:07.487760",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light. The walls, painted in a soothing shade of white, contrast beautifully with the warm tones of the furniture. A large window punctuates one wall, its glass panes reflecting the ambient light and adding depth to the scene.\n\nIn the heart of the room, a black coffee table stands as an island of activity. It's adorned with everyday items - a blue water bottle, a white candle holder casting a gentle glow, and a red phone lying idle. The objects are scattered across the table in no particular order, suggesting a lived-in space where things are used and not put away immediately.\n\nA black couch sits against one wall, its plush cushions inviting relaxation. It's draped with a beige blanket, adding a touch of comfort to the scene. A blue pillow rests on the couch, mirroring the color of the water bottle on the coffee table.\n\nThe room is bathed in warm light that filters through the window and spills over from a lamp on one side of the room. The light casts long shadows and highlights the textures of the furniture and decor, creating an atmosphere of tranquility and warmth.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-47-00.895701.jpg"
+}

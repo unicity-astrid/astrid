@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:28:10.996333",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting during nighttime. The room is bathed in soft light filtering through two windows adorned with yellow curtains. On the windowsill rests a small statue, silently observing the world outside.\n\nIn the foreground, a black coffee table takes center stage. It hosts a collection of items: a blue water bottle standing tall amidst other objects, their details hidden from view. The table and its occupants are in sharp focus, drawing attention to their presence.\n\nThe background is shrouded in darkness, adding an element of mystery to the scene. However, through one of the windows, a glimpse of another room can be seen. It's here that a person is captured in motion - walking by a window draped with blue curtains. The figure adds a dynamic element to the otherwise still image.\n\nThe image is taken from the perspective of someone sitting on a couch, their back turned towards us. This viewpoint places us right in the scene, as if we were another character in this nighttime tableau. It's a snapshot of life, frozen in time yet brimming with stories waiting to be told.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-27-55.189411.jpg"
+}

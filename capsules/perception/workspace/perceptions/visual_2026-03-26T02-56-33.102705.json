@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:56:37.845723",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor scene bathed in soft light filtering through two windows adorned with white curtains. The walls, painted in pristine white, provide a stark contrast to the dark silhouette of a couch that dominates the foreground. \n\nOn this couch, a solitary black bag rests, its presence adding a touch of intrigue to the otherwise ordinary setting. Adjacent to the couch, a small table holds two objects: a red can and a blue bottle, their vibrant colors standing out against the muted tones of the room.\n\nThe windows serve as the main source of light in this image, casting long shadows that dance across the white walls and floor. The overall atmosphere is one of calm and simplicity, an intimate snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-56-33.102705.jpg"
+}

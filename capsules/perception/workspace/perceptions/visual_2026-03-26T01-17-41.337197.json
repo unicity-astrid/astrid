@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:17:47.158564",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft light. Dominating the left side of the room is a gray couch, inviting and comfortable. On its armrest rests a black remote control, perhaps indicating a recent or upcoming viewing session. \n\nOpposite to the couch, on the right side of the room, stands a dark-colored table. Atop it sits a blue cup and a red candle, their colors contrasting beautifully against the darker surface. \n\nThe room is illuminated by natural light filtering in through two windows adorned with white curtains. One window is situated behind the couch while the other is positioned opposite to it, both offering views of the world outside.\n\nIn front of one of these windows hangs a beige curtain. It's drawn halfway back, revealing a glimpse of the world beyond - perhaps trees swaying gently in the breeze or distant buildings standing tall against the skyline.\n\nEvery object in this room tells a story, painting a picture of everyday life and comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-17-41.337197.jpg"
+}

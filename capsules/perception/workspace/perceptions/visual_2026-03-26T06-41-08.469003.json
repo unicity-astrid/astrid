@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:41:14.006496",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through a window adorned with white curtains. The window, acting as the room's sole source of natural light, casts an inviting glow on the surroundings. \n\nIn the heart of the room, a black coffee table takes center stage, its sleek surface reflecting the ambient light. A gray couch rests against one wall, its comfortable cushions promising relaxation. Nearby, a wooden chair adds a touch of rustic charm to the modern setting.\n\nA white rug sprawls across the floor, its pristine color contrasting with the darker tones of the furniture and walls. The room is further illuminated by artificial light from a lamp positioned near the window, enhancing the warm and welcoming atmosphere.\n\nDespite the simplicity of its components - sunlight, furniture, and lighting - the image paints a picture of a comfortable living space where one can unwind and feel at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-41-08.469003.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:01:25.608187",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene within a dimly lit room. The room is dominated by a large window that serves as the main source of light. The window is adorned with yellow curtains and features two panes, each covered in a white patterned fabric that adds a touch of elegance to the space.\n\nIn front of this window, there's a black table that holds a few objects. A blue spray bottle stands out against the dark surface, along with a black vase. The table is positioned right in front of the window, creating a cozy corner for someone to sit and enjoy the view outside or perhaps engage in some quiet contemplation.\n\nThe room itself has a simple yet inviting ambiance, enhanced by the soft glow from the lit-up window. The overall atmosphere suggests a peaceful evening spent indoors, with every object meticulously placed and contributing to the serene setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-01-20.319445.jpg"
+}

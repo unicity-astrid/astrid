@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:40:15.369558",
+  "backend": "llava",
+  "description": "This image captures a moment in a living room bathed in natural light from a large window on the left side. The room's walls are painted white, providing a stark contrast to the beige couch where a man is seated.\n\nThe man, dressed in a vibrant yellow shirt and black pants, has chosen comfort over style by donning headphones. His attention seems divided between two cups of coffee placed on a wooden table before him. One cup is blue while the other is red, adding a splash of color to the scene.\n\nBeside the table, there's a beige armchair that echoes the couch in its color and design. It stands empty, perhaps waiting for someone else to join the man in this cozy setting.\n\nThe overall atmosphere is one of relaxation and tranquility, as if inviting viewers to sit down and enjoy a warm cup of coffee just like the man in yellow.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-40-06.692394.jpg"
+}

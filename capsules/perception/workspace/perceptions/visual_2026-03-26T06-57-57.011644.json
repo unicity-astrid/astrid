@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:58:24.901156",
+  "backend": "llava",
+  "description": "In the center of a warmly lit room, a man in a vibrant yellow shirt is seated at a sturdy wooden desk, engrossed in his work on a laptop. His fingers dance across the keyboard as he types, illuminated by the soft glow from the screen. The laptop's blue light casts a gentle hue on his face, highlighting his concentration.\n\nTo his right, a black speaker stands like a silent sentinel, its presence adding depth to the scene. It sits next to a stack of books, their spines worn and well-read, suggesting a mind that thrives on knowledge and learning.\n\nA window punctuates the room's white wall in the background, draped with a beige curtain that filters the outside light. Through it, one can glimpse an outdoor scene, adding an element of life beyond the confines of the room.\n\nEvery object and person in this image is frozen in time, creating a snapshot of everyday life filled with quiet moments of focus and productivity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-57-57.011644.jpg"
+}

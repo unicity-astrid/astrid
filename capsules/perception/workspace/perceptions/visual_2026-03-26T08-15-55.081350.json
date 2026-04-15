@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:16:15.769344",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a black couch in a living room, engrossed in his thoughts. He's wearing a vibrant yellow shirt that stands out against the muted colors of the room. His attention seems to be focused on something off-screen, perhaps an interesting piece of art or a captivating book.\n\nThe man is also wearing headphones, suggesting he might be listening to music or an audiobook. His hand rests lightly on his knee, indicating a relaxed posture. The black couch he's sitting on contrasts with the white walls and ceiling of the room, creating a modern and clean aesthetic.\n\nIn front of him is a wooden coffee table, which holds a blue cup and a remote control, possibly indicating that he was recently enjoying a warm beverage while watching TV or browsing through his favorite channels.\n\nA window punctuates one wall of the room, draped with white curtains that filter in soft, natural light. The light from the window illuminates parts of the room, casting gentle shadows and highlighting certain objects.\n\nOverall, this image captures a quiet moment of reflection for the man in the yellow shirt, surrounded by the simple comfort of his living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-15-55.081350.jpg"
+}

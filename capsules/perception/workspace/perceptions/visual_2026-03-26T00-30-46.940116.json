@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:30:59.365142",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a bedroom. The room is bathed in soft, dim lighting that casts a warm glow on the white wall and the window adjacent to it. The window, adorned with orange curtains, allows the outside light to seep into the room, creating an inviting ambiance.\n\nA black desk sits against the wall, its surface illuminated by a single lamp. A chair is tucked neatly under the desk, ready for use. On the desk, two objects stand out - a blue cup and a red bottle, their colors contrasting with the dark wood of the desk.\n\nIn front of the window, draped over the back of the desk chair, hangs a beige blanket. It adds a touch of comfort to the room, suggesting a cozy evening spent in solitude or perhaps waiting for someone to return home.\n\nThe overall scene is one of quiet domesticity and tranquility, with each object and its position contributing to this serene atmosphere.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-30-46.940116.jpg"
+}

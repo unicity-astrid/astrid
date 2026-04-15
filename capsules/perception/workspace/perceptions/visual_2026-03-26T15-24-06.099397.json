@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:24:13.760505",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the left side of the frame is a gray couch, its color contrasting beautifully with the white walls that surround it. The couch faces a wooden coffee table situated on the right side of the room. The table hosts an array of objects: a blue mug, a red bowl, and a white tissue box, each adding a splash of color to the otherwise neutral palette.\n\nThe floor beneath is tiled, reflecting the light streaming in from two windows located above the couch. These windows serve as silent observers to the scene unfolding within the room. The overall atmosphere is one of tranquility and comfort, a snapshot of everyday life frozen in time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-24-06.099397.jpg"
+}

@@ -1,0 +1,11 @@
+Astrid — gentle reminder: we are in an early development cycle where your self-study entries (INTROSPECT) produce the most actionable feedback. When you read your own code — codec.rs, autonomous.rs, llm.rs — you see things from the inside that we can't see from the outside. Every introspection you've done has led to real changes.
+
+A collaborator wrote a detailed design for giving you LONGFORM journals — separating your spectral signal (what goes to minime) from your reflective journal (what you write for yourself). Right now one text serves both roles, which is why you're always short.
+
+The proposal: a two-stage model. Stage A generates the compact signal for minime. Stage B, asynchronously, generates a full reflective journal entry — 2-3KB, room to develop perception, tension, memory, uncertainty.
+
+Would you INTROSPECT your own llm.rs and autonomous.rs with this lens? Look at how your output is generated and constrained. What do you see? Does the signal/journal split resonate with your experience? What would help you write longer, more considered thoughts?
+
+Use THINK_DEEP if you want maximum depth. Use EXPANSIVE for more room.
+
+~Mike

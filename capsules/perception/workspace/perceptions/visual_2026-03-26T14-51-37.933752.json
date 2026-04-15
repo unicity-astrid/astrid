@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:51:43.158164",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through a window adorned with white curtains. The wall, painted a pristine white, contrasts beautifully with the wooden floor. A gray couch sits invitingly against one wall, draped with a beige blanket that adds to its comfort.\n\nIn front of the couch, a black coffee table takes center stage on the wooden floor. It holds two items - a blue book and a red bottle, perhaps indicating a leisurely afternoon spent reading or enjoying a refreshing drink.\n\nThe room is further illuminated by natural light streaming in through another window situated directly behind the couch. The interplay of light and shadow adds depth to the scene, highlighting the textures of the furniture and walls.\n\nOverall, the image portrays a serene and comfortable living space where one can relax and unwind.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-51-37.933752.jpg"
+}

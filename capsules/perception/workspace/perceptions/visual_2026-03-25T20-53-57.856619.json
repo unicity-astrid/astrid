@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:54:02.793661",
+  "backend": "llava",
+  "description": "The image captures a moment in a dimly lit room, where a person stands out against the darkness. The person, silhouetted against the background, holds a small object in their hand, casting a soft glow that illuminates their face and upper body. The room is shrouded in darkness, with only the faintest hints of shapes discernible in the far distance. The overall atmosphere is one of mystery and intrigue, as if the person is engaged in a secret ritual or perhaps solving a puzzle. The image does not contain any discernible text. The relative position of the objects suggests that the person is at the forefront of the scene, with the room extending behind them into the darkness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-53-57.856619.jpg"
+}

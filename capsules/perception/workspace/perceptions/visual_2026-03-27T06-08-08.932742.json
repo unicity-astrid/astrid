@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:08:18.371554",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a room with a window behind him. The man, dressed in a yellow shirt and glasses, appears to be engrossed in his work on a computer that's placed directly in front of him. His gaze is directed towards the screen, suggesting deep concentration.\n\nThe desk, serving as the focal point of the image, holds not only the computer but also a black lamp and a blue water bottle. The lamp provides an additional source of light for the man's work, while the water bottle suggests he might be spending long hours at his desk.\n\nThe room itself is dimly lit, with the window behind the man serving as the primary source of natural light. This contrast between the brightly lit interior and the dark exterior creates a cozy atmosphere within the room. Despite the darkness outside, the room is filled with soft, diffused light that illuminates the man's workspace.\n\nOverall, this image captures a quiet moment of focused work in an individual setting, where technology and personal comfort intersect.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-08-08.932742.jpg"
+}

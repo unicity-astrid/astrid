@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:47:28.647866",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a room bathed in soft light. The room, painted in a soothing shade of green, features a window on the right side. The window, adorned with white blinds and a gold curtain rod, houses three windows that are partially veiled by dark-colored curtains.\n\nA black couch rests against the wall to the left of the room, offering a comfortable space for relaxation or conversation. On the right side of the image, a small table holds a single candle, casting a warm glow that adds to the serene ambiance of the room. The candle's light dances on the green walls and window blinds, creating an atmosphere of peace and quietude.\n\nThe relative positions of the objects further enhance the composition of the scene. The couch and table are positioned diagonally from each other, creating a sense of balance in the image. The windows on the right provide a counterbalance to the couch on the left, while the candle on the right table adds an element of interest on the opposite side.\n\nOverall, this image beautifully encapsulates a quiet moment in a cozy room at night, where light and shadow play together to create a sense of warmth and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-47-21.949680.jpg"
+}

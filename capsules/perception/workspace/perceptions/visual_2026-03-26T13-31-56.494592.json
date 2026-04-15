@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:32:00.537407",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden desk in a living room setting. He is wearing a blue shirt and shorts, along with sunglasses. His hands are resting on the desk, which has a glass of water placed on it. The desk also holds a blue can.\n\nThe room itself is quite minimalistic, featuring white walls and a window that offers a view of trees outside. A gray couch is positioned against one wall, while a beige blanket adds a touch of warmth to another corner of the room. The overall atmosphere appears calm and relaxed.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-31-56.494592.jpg"
+}

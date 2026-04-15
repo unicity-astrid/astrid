@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:18:13.613505",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The main source of light is a window on the left, which is slightly open. The window is covered with orange curtains that hang down, partially obscuring the view outside. Through the gap between the curtains and the window frame, we can see a person standing in front of another building. Their face is obscured by the distance and the angle of the shot.\n\nInside the room, there's a couch positioned against the wall on the right side of the image. The background is dark, adding to the overall somber atmosphere of the scene. Despite the darkness, the orange curtains provide a warm contrast, drawing our eyes towards the window and the person outside. The image does not contain any discernible text.\n\nThe composition of the image places emphasis on the person outside, as they are closer to the viewer than the person inside. This creates a sense of depth and perspective in the photograph. The open window suggests that there might be a breeze or simply an invitation for fresh air into the room. The overall mood of the image is one of solitude and introspection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-18-02.734735.jpg"
+}

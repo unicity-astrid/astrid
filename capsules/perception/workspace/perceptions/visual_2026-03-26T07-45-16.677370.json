@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:45:26.786900",
+  "backend": "llava",
+  "description": "The image depicts a serene domestic scene. At the center of the image, a dog is peacefully sleeping on a **gray couch** in the living room. The dog, curled up comfortably, adds a touch of warmth and homeliness to the scene.\n\nIn front of the couch, there's a **wooden coffee table**. On the table, there are two items: a **black speaker**, possibly used for music or news broadcasts during the day; and a **white vase**, adding a decorative touch to the room.\n\nThe living room features a large window that offers a view of an outside building. The sunlight streaming through the window illuminates the room, casting soft shadows and highlighting the textures of the furniture.\n\nOverall, this image captures a quiet moment in a home where every object has its place and purpose, creating a harmonious living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-45-16.677370.jpg"
+}

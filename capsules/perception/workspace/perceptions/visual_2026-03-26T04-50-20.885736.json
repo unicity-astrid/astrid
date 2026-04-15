@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:50:39.837562",
+  "backend": "llava",
+  "description": "The image captures a cozy corner of a living room bathed in soft light. Dominating the scene is a black couch, its surface adorned with a single blue bottle. The couch faces a wooden coffee table, upon which rests a black laptop and a white candle, casting a gentle glow that dances on the walls around.\n\nA window punctuates one wall, draped with a yellow curtain that adds a splash of color to the room. The floor is covered by a beige rug, its texture adding warmth to the space. Tucked away in the background is a wooden chair, standing guard over this tranquil setting.\n\nThe room exudes an air of comfort and relaxation, each object meticulously placed to create a harmonious balance. The objects are stationary, their positions fixed - yet they tell a story of everyday life, of moments spent in quiet reflection or shared conversations. It's a snapshot of home, captured in the stillness of one moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-50-20.885736.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:46:09.743240",
+  "backend": "llava",
+  "description": "In the stillness of a dimly lit room, a solitary figure stands in the foreground, their presence accentuated by the soft glow of the yellow lights emanating from the windows behind them. The person's face remains unseen, adding an air of mystery to the scene. \n\nThe room itself is bathed in shadows, creating a stark contrast with the bright window panes that frame the view like a painting. The windows are slightly ajar, allowing a gentle breeze to rustle the curtain on the right side of the image, as if whispering secrets from outside.\n\nIn the heart of this scene, a small table takes center stage in the middle ground. Upon it rests a blue water bottle and a white candle holder, their colors standing out against the darkness. The candle holder is empty, its wick untouched by flame, waiting for the right moment to bring light back into the room.\n\nThis image captures more than just objects; it encapsulates an atmosphere of quiet solitude and anticipation of what's yet to come.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-46-03.611084.jpg"
+}

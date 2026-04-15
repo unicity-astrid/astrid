@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:16:50.544908",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a gray couch in a living room. He's wearing a yellow shirt and has headphones on his ears, suggesting he might be listening to music or an audio program. His attention seems to be focused on something off-camera to the right.\n\nThe living room itself has a cozy atmosphere. A window with white blinds allows natural light to filter into the room, casting soft shadows around. The blinds are partially closed, controlling the amount of light that enters.\n\nIn front of the man is a wooden coffee table. On it, there's a red cup and a blue water bottle, perhaps indicating that he was recently enjoying a drink. A white blanket is casually draped over one end of the couch, adding to the homely feel of the scene.\n\nThe image captures an everyday moment in a relaxed setting, with the man as the main subject. The objects around him - the couch, the coffee table, and even the red cup and blue water bottle - tell us more about his surroundings and activities at that time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-16-27.344217.jpg"
+}

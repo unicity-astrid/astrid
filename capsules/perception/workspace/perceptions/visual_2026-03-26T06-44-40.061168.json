@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:45:03.361328",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light filtering through two windows adorned with white curtains. The room is illuminated by a lamp on the left side, casting a warm glow that contrasts with the cool darkness outside. A wooden coffee table sits in the center of the room, hosting a vase and a book, their silhouettes adding to the cozy ambiance.\n\nOn the right side of the image, a white couch invites relaxation, its plush cushions promising comfort. A beige blanket is casually draped over it, hinting at recent use or perhaps an evening spent in quiet contemplation. The overall atmosphere suggests tranquility and warmth, a perfect setting for relaxation or deep thought.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-44-40.061168.jpg"
+}

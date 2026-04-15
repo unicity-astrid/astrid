@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:40:47.012829",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting at night. The main focus is a black table, which stands out against the dark background. On the table, there's a blue and white striped vase that adds a touch of color to the scene. Next to the vase, there's a pink cloth bag, its soft hue contrasting with the hard lines of the table. A black camera case rests nearby, hinting at a possible photography session or an interest in capturing moments.\n\nThe room is illuminated by natural light filtering through two windows in the background. One window is closed, while the other is open, creating an interesting interplay of light and shadow within the room. The overall atmosphere suggests a quiet evening spent indoors, perhaps preparing for a late-night photo shoot or simply unwinding after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-40-41.859804.jpg"
+}

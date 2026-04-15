@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:57:16.322653",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dark room. The room's primary source of light is a window, which has three panes and is draped with a white curtain. Through this window, you can see another room where a person is seated at a table. The person appears to be looking out the window, perhaps observing the world outside or lost in their own thoughts.\n\nThe table in front of the person holds several objects: a blue soda can, a white vase, and a black bag. These items are arranged casually on the table, suggesting an air of relaxation and comfort. Despite the darkness of the room, these objects stand out due to their contrasting colors.\n\nIn the foreground of the image, you can see part of a bed and a wall with two windows. The overall atmosphere of the image is peaceful and serene, as if time has momentarily paused within this captured moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-57-10.879534.jpg"
+}

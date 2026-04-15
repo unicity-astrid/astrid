@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:02:53.642001",
+  "backend": "llava",
+  "description": "The image portrays a tranquil indoor scene with a man as the central figure. He is seated comfortably on a couch, which is swathed in a vibrant blue blanket. The man is casually dressed in a blue shirt and shorts, complemented by a red baseball cap, adding a pop of color to his ensemble.\n\nIn front of him, a wooden coffee table holds a blue can of soda, perhaps indicating a relaxed atmosphere or a casual conversation underway. Adjacent to the couch, on the floor, rests another blue bag - this one is white and features a logo in shades of pink and orange.\n\nThe room itself exudes a sense of coziness with its white walls providing a neutral backdrop. A window punctuates the wall, draped with a white curtain that filters the outside light, adding an element of softness to the scene.\n\nOverall, the image captures an everyday moment of relaxation and comfort, with each object and color contributing to the warm and inviting ambiance of the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-02-43.584201.jpg"
+}

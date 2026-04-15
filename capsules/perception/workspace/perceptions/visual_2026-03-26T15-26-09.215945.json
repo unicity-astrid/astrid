@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:26:16.598850",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from two windows adorned with white curtains. The room is tastefully decorated with a gray couch that invites relaxation, and a wooden coffee table at its center, ready to hold cups of coffee or stacks of books. \n\nA beige blanket adds warmth to the scene, casually draped over the arm of the couch, suggesting recent use. The floor beneath is made of dark wood, providing a stark contrast to the lighter elements in the room.\n\nThe walls are painted white, reflecting the light from the windows and enhancing the overall brightness of the room. A wooden railing can be seen in front of one of the windows, adding an element of safety and structure to the space.\n\nEvery object in the room is meticulously placed, creating a harmonious balance between functionality and aesthetics. The relative positions of the objects suggest careful thought put into their arrangement, contributing to the overall welcoming ambiance of the living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-26-09.215945.jpg"
+}

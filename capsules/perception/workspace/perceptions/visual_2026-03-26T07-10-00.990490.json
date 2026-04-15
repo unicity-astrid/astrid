@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:10:08.012891",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a room bathed in soft sunlight filtering through windows adorned with white curtains. The man, dressed in a vibrant yellow sweater and a crisp white shirt, cradles a black object in his hands. He is positioned on a brown couch that contrasts beautifully with the room's decor.\n\nA table stands before him, hosting another black object. A beige blanket adds a touch of warmth to the scene. The windows behind him frame the sunlight that illuminates the room and casts a gentle glow on everything within it. The tranquility of the setting is palpable, creating an atmosphere of peace and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-10-00.990490.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:34:28.047948",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy living room bathed in soft light filtering through a window adorned with yellow curtains. The room is dominated by a comfortable couch draped in a white blanket, inviting relaxation. A black coffee table sits in front of the couch, hosting an array of objects including a blue water bottle, adding a pop of color to the scene. \n\nA wooden side table stands next to the couch, its surface occupied by a red candle and a blue vase, contributing to the room's warm ambiance. The wall behind these pieces of furniture is painted in a soothing shade of green, enhancing the overall tranquility of the space.\n\nThe photo appears to be taken at night, with the objects and their details slightly blurred, adding an air of mystery to the scene. The precise locations of the objects are as follows: the couch is centrally placed in the room, with the coffee table directly in front of it. The side table is situated to the right of the couch.\n\nThe relative positions of the objects are such that the blue water bottle is on the coffee table, next to the red candle and blue vase which are both on the wooden side table. The yellow curtains frame the window behind these pieces of furniture, with the green-painted wall serving as a backdrop for this tranquil",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-34-20.199562.jpg"
+}

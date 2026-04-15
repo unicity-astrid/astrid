@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T20:40:45.147938",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a dimly lit room, his face illuminated by the soft glow of a single light source. He's dressed casually in a black t-shirt that stands out against the darker hues of his surroundings. His attention is focused on a piece of paper resting on a table before him, suggesting he might be working or studying.\n\nThe room itself is simple and uncluttered, with the man being the only person present. A window punctuates one wall, its curtains drawn to let in the outside light. The overall atmosphere is quiet and contemplative, as if time has paused for a moment within this captured image. The interplay of light and shadow adds depth to the scene, highlighting the man's solitary figure against the backdrop of his room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-40-37.019559.jpg"
+}

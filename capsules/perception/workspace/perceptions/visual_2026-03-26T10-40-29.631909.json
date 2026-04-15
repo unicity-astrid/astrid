@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:40:34.222906",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden table in a room that is bathed in natural light from a window on the left wall. The man is dressed casually in a blue shirt and sunglasses, holding a white mug in his hands. On the table, there's a blue bottle of water placed next to him.\n\nThe room itself has a cozy ambiance with a beige carpet covering the floor. A gray couch can be seen in the background, adding to the homely feel of the space. The overall scene suggests a relaxed and comfortable setting, perhaps indicating that the man is enjoying some quiet time in his living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-40-29.631909.jpg"
+}

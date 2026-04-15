@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:17:11.698402",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft, natural light. Dominating the foreground is a gray couch, inviting and comfortable, positioned against the wall. A brown coffee table sits before it, ready to hold cups of coffee or stacks of books.\n\nIn the background, a window with white blinds lets in streams of sunlight that dance across the room, casting a warm glow on everything they touch. The light illuminates a beige curtain that hangs from the ceiling, adding a touch of elegance to the space.\n\nOn the floor in front of the couch is a black bag, perhaps waiting for its owner or just placed there after a long day. Next to it lies a beige blanket, folded neatly and ready to be used when needed.\n\nThe room exudes a sense of tranquility and comfort, each object meticulously placed, creating a harmonious living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-17-06.330478.jpg"
+}

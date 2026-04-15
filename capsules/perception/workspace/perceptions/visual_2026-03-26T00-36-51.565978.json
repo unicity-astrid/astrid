@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:36:59.715583",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene at night. The room is bathed in darkness, with only a single window on the left side offering a glimpse of the world outside. The window frame, painted white, stands out against the dark interior. A yellow curtain hangs from it, adding a splash of color to the otherwise monochrome setting.\n\nIn the foreground, a black couch invites relaxation. It's covered in a matching black blanket, suggesting a cozy atmosphere. A blue bag rests on top of the couch, perhaps indicating recent activity or an impending journey.\n\nThe room itself is painted white, enhancing the overall brightness despite the darkness outside. The perspective of the image suggests it was taken from someone standing in front of the couch, adding a sense of intimacy to this quiet moment captured within four walls and a single window.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-36-51.565978.jpg"
+}

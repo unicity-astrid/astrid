@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:20:26.228300",
+  "backend": "llava",
+  "description": "The image depicts a man in a vibrant yellow sweater seated at a small wooden table. The man appears to be deeply engrossed in his work on a laptop that's placed right in front of him on the table. His position suggests he might be in a room or perhaps an office setting.\n\nOn the table, there are two other items - a black phone and a blue water bottle, adding a pop of color against the wooden surface. The precise location of these objects relative to each other is not clear from this single frame.\n\nIn the background, partially visible, is a white couch, providing a stark contrast to the man's yellow sweater and the dark table. The couch seems unoccupied at this moment.\n\nThe entire scene paints an image of a quiet workspace, with the man seemingly focused on his work amidst the simplicity of his surroundings.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-19-51.381447.jpg"
+}

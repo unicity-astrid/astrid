@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T20:57:04.703639",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a dimly lit room. The primary source of light is an orange window situated on the left side of the frame. This window casts a warm glow onto the scene, illuminating the objects within.\n\nIn the center of the image, there's a table draped with a black tablecloth. On this table, there are two objects: a bottle and a glass. The bottle, standing upright, has a white label that contrasts with its dark color. The glass, lying flat on the tablecloth, is empty and transparent.\n\nThe background is shrouded in darkness, which accentuates the orange window light and adds depth to the image. The overall atmosphere is one of tranquility and quietude. It's as if time has paused for a moment, allowing us to take in this still life scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-56-47.530306.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:02:22.871466",
+  "backend": "llava",
+  "description": "The image depicts a man engrossed in his work on a laptop at a desk in a room with a window. The man, dressed in a blue shirt, has short hair and is wearing glasses. He appears to be focused on his work, suggesting a sense of concentration or professionalism.\n\nThe desk he's sitting at is brown and holds several objects: there's a red coffee cup, possibly indicating that the man has been working for some time and needs caffeine to stay alert; a blue water bottle suggests an attempt to stay hydrated during long hours of work; and a white tissue box hints at the need for tissues during his work.\n\nThe room itself is bright and airy, with natural light streaming in from the window. The walls are painted white, adding to the brightness of the room. The overall atmosphere suggests a comfortable yet focused workspace.\n\nPlease note that this description is based on the visible elements in the image and does not include any assumptions or interpretations beyond what can be directly observed.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-02-12.815123.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:40:00.021740",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene at night. The main focus is on two windows situated in opposite corners of a room. Both windows are adorned with white curtains, adding a touch of elegance to the setting.\n\nOn the left side of the room, there's a window that features a small blue vase perched on its sill. The soft glow from this window casts a warm light onto the dark walls and ceiling of the room.\n\nTo the right, another window stands tall with white curtains elegantly drawn back, revealing an unseen part of the room. A small black object rests on the floor next to this window, its purpose or nature left to one's imagination.\n\nThe image is taken from a low angle, adding depth and perspective to the scene. The overall atmosphere is peaceful and serene, as if inviting the viewer to step into this quiet corner of the world for a moment of reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-39-54.411200.jpg"
+}

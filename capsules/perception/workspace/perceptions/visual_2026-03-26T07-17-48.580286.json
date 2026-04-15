@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:17:56.672365",
+  "backend": "llava",
+  "description": "The image captures a serene indoor scene. A man, dressed in a vibrant yellow sweater and black pants, is seated on a gray couch. He holds a black phone to his ear, suggesting an ongoing conversation. His posture indicates a relaxed demeanor.\n\nIn front of him on the floor rests a wooden coffee table. The table hosts a black book and a white cloth, perhaps indicating recent activity or preparation for one. The relative position of the objects suggests that the man might be in the middle of reading from the book or working on an item covered by the white cloth.\n\nThe background reveals a window adorned with white curtains, allowing natural light to filter into the room. This detail adds depth to the scene and hints at a world beyond the immediate setting.\n\nOverall, the image portrays a tranquil moment in a living space, with each object and individual contributing to the narrative of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-17-48.580286.jpg"
+}

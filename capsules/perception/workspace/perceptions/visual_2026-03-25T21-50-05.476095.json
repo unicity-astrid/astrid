@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:50:11.725279",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room at night. The main focus is a dark-colored couch, inviting and comfortable, positioned against one wall. A wooden coffee table sits in front of it, hosting two bottles of soda, their labels obscured by the darkness.\n\nThe window nearby offers a view into another world - a room bathed in warm orange light, suggesting a cozy living area within another dwelling. The stark contrast between the dark interior and the illuminated window creates an intriguing juxtaposition.\n\nAbove the couch, on the wall, hangs a white light switch, its presence unobtrusive yet significant. It's an everyday object that often goes unnoticed but plays a crucial role in controlling the ambiance of the room.\n\nThe image is taken from the perspective of someone standing at the foot of the couch, offering a comprehensive view of the scene. The relative positions of the objects suggest a well-organized space where everything has its place.\n\nOverall, this image paints a picture of tranquility and homeliness, capturing an intimate glimpse into someone's personal space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-50-05.476095.jpg"
+}

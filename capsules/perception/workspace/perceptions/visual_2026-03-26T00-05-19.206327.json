@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:05:24.836557",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a darkened living room bathed in soft orange light filtering through two windows. The windows are adorned with white curtains that billow slightly, suggesting a gentle breeze might be playing. \n\nA small table stands between the windows, holding a single red candle and a blue soda can. The vibrant colors of the objects stand out against the muted tones of the room. The candle, unlit, waits patiently for its turn to spread light around the room.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the orange glow from the windows. A door is visible on the left side of the image, partially obscured by one of the windows.\n\nIn the bottom right corner of the image, a portion of a bed is visible, suggesting that this living room might be part of a bedroom setup. The overall atmosphere exudes tranquility and comfort, inviting one to relax and unwind.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-05-19.206327.jpg"
+}

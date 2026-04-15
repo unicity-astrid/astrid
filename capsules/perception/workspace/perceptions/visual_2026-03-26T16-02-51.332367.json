@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:03:03.292884",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light filtering through white blinds on a window adorned with blue curtains. The window serves as the room's main source of illumination, casting gentle shadows and highlighting the textures within.\n\nDominating the scene is a gray couch, its plush cushions inviting relaxation. A red blanket casually draped over it adds a pop of color to the otherwise neutral palette. The couch faces a wooden coffee table centrally positioned in the room.\n\nOn the table, everyday objects tell a story of life lived here. A white mug stands alone, perhaps left behind after a morning cup of tea or coffee. A blue water bottle lies next to it, hinting at the importance of hydration. A stack of books suggests intellectual pursuits or leisurely reading sessions.\n\nThe image is taken from an elevated angle, offering a bird's eye view of the room. This perspective allows for an appreciation of the space as a whole, its layout and design elements coming together to create a harmonious living area.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-02-51.332367.jpg"
+}

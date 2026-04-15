@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:34:40.086752",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. A man, dressed in a vibrant yellow shirt, is seated on a black couch, engrossed in his phone which he holds in his hands. The room is illuminated by natural light filtering through two windows adorned with white curtains. These windows are situated directly behind the couch, serving as the main source of illumination in the otherwise dark room.\n\nThe image is taken from the left side of the couch, providing a clear view of the man and his surroundings. On the coffee table that sits before the couch, there's a single black object, its purpose or nature indeterminable from the image alone.\n\nThe overall atmosphere conveyed by the image is one of quiet contemplation, as if inviting the viewer to share in the man's introspective moment. The contrast between the yellow shirt of the man and the dark room further accentuates this serene scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-34-31.277390.jpg"
+}

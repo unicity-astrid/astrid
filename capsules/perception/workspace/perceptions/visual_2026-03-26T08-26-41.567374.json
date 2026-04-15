@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:27:09.410749",
+  "backend": "llava",
+  "description": "The image depicts a serene indoor setting. A man, dressed in a vibrant yellow shirt, is comfortably seated on a gray couch, his attention seemingly captured by something off-camera. His relaxed posture and the tranquil ambiance suggest he might be enjoying some leisure time.\n\nTo his side, a small dog rests peacefully on the floor, adding to the homely atmosphere. The dog's calm demeanor indicates it is familiar with its surroundings and comfortable in this environment.\n\nThe room they are in features a large window that offers an expansive view of a beautiful garden, hinting at an idyllic outdoor space just beyond the indoor setting. The natural light from the window illuminates the room, enhancing the colors and details within.\n\nIn front of the couch, there's a wooden coffee table holding a blue mug and a red book, suggesting recent human activity in this space. The presence of these objects adds a lived-in feel to the scene.\n\nOverall, the image captures a quiet moment of relaxation and comfort, with the man, dog, and their surroundings creating a picture of domestic tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-26-41.567374.jpg"
+}

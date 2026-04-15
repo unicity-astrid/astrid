@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:43:45.006232",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy living room bathed in soft light. The walls are painted in a soothing shade of white, providing a neutral backdrop for the room's furnishings. Dominating the space is a comfortable gray couch, its plush cushions inviting relaxation. A wooden coffee table sits in front of the couch, atop which rests a laptop, perhaps indicating a recent work session or an upcoming one.\n\nA window with blinds is situated above the coffee table, allowing natural light to filter into the room and cast gentle shadows on the floor. The blinds are closed, suggesting an attempt to block out external distractions for concentration or rest.\n\nThe image is taken from a high angle, offering a comprehensive view of the room. This perspective allows us to appreciate not only the individual elements within the space but also their relative positions and how they interact with each other. The couch, coffee table, and window are all in close proximity, creating a compact yet functional living area.\n\nOverall, this image portrays a well-organized and inviting living space designed for comfort and productivity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-43-34.252524.jpg"
+}

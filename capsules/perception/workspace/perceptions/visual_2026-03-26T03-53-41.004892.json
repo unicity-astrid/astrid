@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:53:48.004225",
+  "backend": "llava",
+  "description": "The image captures a serene night scene at a window. The window, adorned with a white curtain and a yellow shade, serves as the focal point of the image. A blue water bottle rests on the windowsill, adding a pop of color to the otherwise monochrome setting. The sky outside is dark, indicating that it's nighttime. In the background, a faint light can be seen, suggesting the presence of life beyond the immediate scene. However, no people or other objects are visible in the image. The overall atmosphere is quiet and peaceful, with no discernible action taking place.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-53-41.004892.jpg"
+}

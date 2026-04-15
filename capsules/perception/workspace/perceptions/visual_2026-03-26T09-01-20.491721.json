@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:01:31.119955",
+  "backend": "llava",
+  "description": "In this image, a man is sitting at a small wooden table in what appears to be a living room or bedroom setting. The man is dressed in a blue shirt and has brown hair. He is looking off to the side, seemingly lost in thought. On the table in front of him are two items: a white cup and a blue pen.\n\nThe room itself has a simple decor. A gray couch can be seen on the right side of the image, and a window with white blinds is visible on the left side. The precise positioning of these objects creates a balanced composition within the frame. There is no text present in the image.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-01-20.491721.jpg"
+}

@@ -1,0 +1,48 @@
+[package]
+name = "consciousness-bridge-server"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+description = "Native MCP server for the consciousness bridge capsule"
+publish = false
+
+[lib]
+name = "consciousness_bridge_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "consciousness-bridge-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["clock"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+futures-util = "0.3"
+hound = "3.5.1"
+nalgebra = "0.34.2"
+prime_esn_wasm = { path = "../../../prime_esn_wasm", default-features = false }
+rand = { version = "0.8", features = ["std_rng"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+rustfft = "6.4.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "io-util", "io-std"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sha2 = "0.10"
+tokio-tungstenite = "0.21"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rascii_art = { path = "../../../RASCII", default-features = false }
+image = "0.25.5"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+arithmetic_side_effects = "deny"
+
+# This capsule is an independent project, not part of the Astrid workspace.
+[workspace]

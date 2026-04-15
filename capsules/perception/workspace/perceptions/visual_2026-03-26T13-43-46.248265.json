@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:43:55.376736",
+  "backend": "llava",
+  "description": "In the image, a young man is comfortably seated in a living room setting. He's wearing a blue shirt and shorts, with a red baseball cap adding a pop of color to his outfit. His attention is focused on a laptop that he holds in his hands, suggesting he might be working or perhaps enjoying some leisure time.\n\nThe room around him is furnished with a beige sofa, providing a warm and inviting atmosphere. A white wall serves as the backdrop for this scene, punctuated by a window dressed in white curtains that let in soft, natural light.\n\nOn the table next to the man, there's a blue water bottle, perhaps indicating his attention to hydration or fitness. The overall scene suggests a casual, relaxed environment where work and leisure blend together.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-43-46.248265.jpg"
+}

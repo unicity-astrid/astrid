@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T20:44:46.449488",
+  "backend": "llava",
+  "description": "The image captures a serene scene in a dimly lit room, possibly at night. The room is illuminated by two main sources: a desk lamp and a window with orange curtains that are partially open, allowing a soft glow to seep into the room.\n\nIn the center of the frame, there's a person sitting at a desk, engrossed in their work on a computer. The desk is black and equipped with a keyboard and mouse, all of which are also black. The person appears to be focused on their task, their attention riveted to the screen before them.\n\nThe window behind the desk has orange curtains that add a warm hue to the room's ambiance. Through this window, you can see another building, suggesting that this room is located in an urban setting or perhaps within a larger complex.\n\nThe overall atmosphere of the image suggests tranquility and concentration, as if the person is deeply involved in their work or study. The dim lighting adds to this feeling, creating a cozy and intimate space for focused activity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-44-40.417496.jpg"
+}

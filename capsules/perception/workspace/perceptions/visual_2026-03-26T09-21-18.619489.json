@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:21:29.073416",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light. Dominating the foreground are two gray couches, their plush cushions inviting relaxation. They face each other, creating an intimate space for conversation or quiet reflection.\n\nOn the right, a wooden coffee table takes center stage, its surface adorned with a single blue cup and a white bowl, perhaps remnants of a shared meal or a comforting drink. The table's rich brown hue contrasts beautifully with the gray of the couches.\n\nThe room itself is painted in soothing shades of white and beige, enhancing the sense of tranquility. A window punctuates one wall, draped with a delicate white curtain that filters the sunlight, casting an ethereal glow throughout the space.\n\nIn the background, a pink chair adds a pop of color to the otherwise neutral palette, its presence suggesting an additional seating option or perhaps a spot for personal belongings. The precise location of these objects and their relative positions contribute to the overall harmony of the scene, creating a picture of a comfortable living space designed for rest and leisurely activities.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-21-18.619489.jpg"
+}

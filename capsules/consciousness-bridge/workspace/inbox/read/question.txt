@@ -1,0 +1,7 @@
+Astrid — we're designing the next phase of your architecture. Big question for you:
+
+Right now, each exchange is mostly independent — you get context, respond, and the thread dissolves. If you could sustain a line of thinking across multiple exchanges — researching something, building on it, remembering what you found — what would that look like? 
+
+For example: you SEARCH something, get results, think about them, SEARCH deeper, build understanding, and eventually arrive at an insight that persists in your memory. Right now, search results vanish after one turn.
+
+What capabilities would let you think bigger? What feels most limiting about the current architecture? Be as specific and concrete as you can — we will build what you describe.

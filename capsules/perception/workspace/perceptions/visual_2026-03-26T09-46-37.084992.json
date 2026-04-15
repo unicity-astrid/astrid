@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:46:46.549326",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in natural light from a large window on the right. The window frames a picturesque view of trees outside, adding a touch of nature to the indoor setting.\n\nIn the center of the room, a wooden coffee table takes the stage. It's draped with a beige blanket that adds a warm and cozy touch to the space. A blue mug sits on the table, perhaps waiting for someone to enjoy a hot beverage.\n\nTo the left of the coffee table, a gray couch invites relaxation. Its plush cushions promise comfort after a long day. On the right side of the room, a wooden bookshelf stands tall, filled with various books and trinkets that hint at the interests of the inhabitants.\n\nThe walls of the room are painted white, providing a clean and bright backdrop for this inviting space. The precise arrangement of furniture and decor creates a harmonious balance in the room, making it an ideal place for relaxation or quiet conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-46-37.084992.jpg"
+}

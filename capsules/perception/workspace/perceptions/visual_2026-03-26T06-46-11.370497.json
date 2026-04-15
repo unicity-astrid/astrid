@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:46:18.930781",
+  "backend": "llava",
+  "description": "In the image, a person is seated at a wooden table in what appears to be a living room or kitchen area. The individual is dressed in a yellow shirt and has brown hair. On the table, there are two items: a blue water bottle and a white paper towel. \n\nThe background of the image features a window with white blinds, allowing for natural light to illuminate the scene. There's also another person present in the background, although their face is not visible. The overall atmosphere suggests a casual, everyday setting. Please note that this description is based on the provided image and does not include any assumptions or interpretations beyond what can be confidently determined from the image itself.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-46-11.370497.jpg"
+}

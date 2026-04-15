@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:07:38.313791",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a black leather couch in what appears to be a living room setting. He's dressed casually in a blue shirt and shorts. His gaze is directed towards a wooden coffee table that sits before him on the couch.\n\nThe coffee table hosts an array of objects: there's a red candle, its vibrant color contrasting with the muted tones of the room; a white vase, simple yet elegant; a blue book, perhaps indicating a love for reading or a thirst for knowledge. A beige blanket is also present on the table, possibly used to keep someone warm during colder days.\n\nThe room itself is bathed in soft light filtering through a window adorned with white curtains. The curtains are partially drawn, suggesting it might be daytime outside. A gray armchair rests in the background, adding to the homely atmosphere of the room.\n\nEach object and piece of furniture has its place, creating a harmonious scene that speaks volumes about the man's life - his tastes, his habits, and perhaps even his personality.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-07-32.175385.jpg"
+}

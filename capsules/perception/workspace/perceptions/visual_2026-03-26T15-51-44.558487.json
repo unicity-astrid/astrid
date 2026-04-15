@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:51:56.019183",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light filtering through three windows adorned with white curtains. The walls, painted a pristine white, enhance the brightness of the room. \n\nIn the heart of the room stands a wooden coffee table, serving as a stage for two vases - one blue and one red, their colors popping against the neutral tones. A beige blanket is casually draped over the back of a gray couch, adding a touch of warmth to the space.\n\nThe floor beneath is tiled in white, reflecting the light from above and below. The ceiling, painted black, contrasts sharply with the light-colored walls, creating an interesting interplay of light and shadow.\n\nThe room exudes a sense of tranquility and orderliness, each object meticulously placed, contributing to the overall harmony of the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-51-44.558487.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:58:21.881407",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight streaming through two windows adorned with white curtains. The walls, painted a pristine white, contrast beautifully with the warm beige carpet underfoot. \n\nDominating the scene is a gray couch, inviting and comfortable, positioned against one wall. A red blanket casually draped over it adds a pop of color to the otherwise neutral palette. \n\nTo the right of the couch, a black coffee table stands guard, its surface home to an array of books and magazines - silent witnesses to many a quiet afternoon spent in the company of loved ones.\n\nOn the left side of the room, a small wooden desk nestles comfortably against the wall. A lamp perches on top, ready to shed light on late-night reading sessions or early morning workdays. Beside it stands a solitary blue vase, its color echoing the sunlight filtering through the windows.\n\nThe room is devoid of people but exudes a sense of warmth and homeliness. The precise placement of each object suggests careful thought and consideration, creating an atmosphere that is both welcoming and serene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-58-11.434497.jpg"
+}

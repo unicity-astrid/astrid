@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:24:12.482022",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft light from two windows. The room, painted in a soothing shade of blue, houses a black couch that stands out against the backdrop. A wooden table sits in front of the couch, draped with a white tablecloth and adorned with various objects including a red vase and a blue soda can.\n\nThe window on the left is veiled by yellow curtains, casting an inviting glow into the room. On the right, another window framed in white offers a glimpse of the world outside, though what lies beyond is shrouded in darkness.\n\nA person sits on the couch, their face obscured by the low angle from which the photo was taken. Their presence adds a touch of life to the otherwise still scene. The overall atmosphere is one of tranquility and comfort, as if inviting you to sit down and relax for a peaceful night in.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-24-07.000884.jpg"
+}

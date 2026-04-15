@@ -1,0 +1,17 @@
+[package]
+name = "camera-service"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native camera capture service for astrid perception capsules"
+
+[[bin]]
+name = "camera-service"
+path = "src/main.rs"
+
+[dependencies]
+rascii_art = { path = "/Users/v/other/RASCII" }
+image = "0.25.5"
+clap = { version = "4.5", features = ["derive"] }
+
+[workspace]

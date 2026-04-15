@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:25:42.394933",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The central focus is a window with stained glass panels that are illuminated from within, casting a soft glow on the objects nearby. A table stands in front of the window, its surface occupied by a few items: a blue water bottle and a white candle holder.\n\nTo the left of the image, there's a bed adorned with a white blanket, adding to the serene ambiance of the room. On the right side of the image, partially obscured from view, is a person lying down on the floor. Their presence adds a human element to this tranquil scene.\n\nThe overall atmosphere is one of peace and tranquility, enhanced by the soft lighting and the quiet presence of the person on the floor. It's as if time has slowed down in this room, allowing for reflection or restful sleep.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-25-37.097763.jpg"
+}

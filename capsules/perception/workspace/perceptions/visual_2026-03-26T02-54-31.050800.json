@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:54:41.612761",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a bedroom. The room is bathed in soft light filtering through two windows on one wall. The window on the left is open, allowing a gentle breeze to stir the curtain, while the one on the right is closed, its curtain drawn shut.\n\nAgainst this backdrop of windows, a desk stands as a silent observer to the world outside. It's a simple piece of furniture, unadorned save for a small blue vase perched atop it. The vase, with its vibrant color, adds a touch of life to the otherwise muted palette of the room.\n\nTo the right of the desk, a window with an open curtain stands guard. A figure can be seen standing in front of this window, their silhouette stark against the night sky. Their presence adds a sense of depth and mystery to the scene.\n\nThe atmosphere is one of tranquility and solitude, as if time itself has paused to admire this quiet moment. The room seems to be waiting, holding its breath in anticipation of what might happen next. It's a snapshot of life, frozen in time yet teeming with potential stories.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-54-31.050800.jpg"
+}

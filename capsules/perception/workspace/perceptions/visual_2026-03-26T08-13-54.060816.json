@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:14:08.475295",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a gray couch in a living room. He's wearing a yellow sweater and has headphones on his ears, suggesting he might be listening to something. The couch faces a wooden coffee table that holds a blue cup and a white bowl, possibly indicating a recent meal or snack.\n\nThe room itself is simply decorated, with white walls providing a neutral backdrop. A window with white blinds allows some light into the room, but the overall atmosphere is dimly lit, adding to the cozy and relaxed vibe of the scene.\n\nInterestingly, there's also an image of the same man sitting on a green couch in the bottom right corner of the image. This could be a glitch or an intentional artistic choice by the photographer.\n\nPlease note that this description is based on what can be confidently determined from the image.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-13-54.060816.jpg"
+}

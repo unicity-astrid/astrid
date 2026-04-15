@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:25:19.250137",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft, natural light. Dominating the scene is a cozy gray sofa, inviting and comfortable, with a matching armchair positioned to its left, both facing a wooden coffee table that sits atop a black rug. The coffee table hosts an array of books, suggesting a space for relaxation and intellectual engagement.\n\nA white curtain adorns the window on the right wall, partially drawn back to let in streams of light that dance across the room's surface. The walls themselves are painted a pristine white, providing a neutral backdrop that enhances the room's tranquility.\n\nThe floor is covered with a beige carpet, adding warmth and texture to the space. On the left wall, there's a door, subtly blending into the room's decor without drawing attention away from the main elements of the living room.\n\nOverall, this image portrays a well-arranged and thoughtfully decorated living space that exudes comfort and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-25-13.405429.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:26:49.488391",
+  "backend": "llava",
+  "description": "This image captures a tranquil night scene in a room bathed in soft light. The room is dominated by a large window with vibrant yellow curtains, which are drawn back to reveal a serene view of trees under the starlit sky. The window sill serves as a stage for several objects: a blue soda can and an orange bottle stand out against the muted tones of the room.\n\nThe room itself exudes an air of comfort and homeliness. A bed, dressed in a white blanket, sits invitingly next to the window, promising rest and relaxation. A gray couch adds another layer of coziness to the scene, its plush cushions hinting at hours spent in quiet conversation or lost in good books.\n\nThe walls are painted a soothing light blue, providing a calming backdrop that enhances the peaceful ambiance of the room. The overall atmosphere is one of tranquility and warmth, inviting one to unwind and enjoy the beauty of the night outside.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-26-40.270484.jpg"
+}

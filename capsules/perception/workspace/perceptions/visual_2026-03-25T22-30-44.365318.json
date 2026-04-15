@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:30:55.738134",
+  "backend": "llava",
+  "description": "The image captures a serene night-time scene in a living room. The room is bathed in soft, dim light that accentuates the various objects within it. Dominating the foreground is a black couch, its silhouette stark against the muted tones of the room. A blue soda can rests on it, perhaps forgotten by someone engrossed in a late-night movie or show.\n\nTo the side of the couch, there's a wooden coffee table draped with a white tablecloth. The table hosts another blue soda can and two red beer cans, their colors standing out against the monochrome palette of the room. A lamp sits on the table as well, its light not visible in the image but implied by its presence.\n\nThe background features a window that is open, inviting in the cool night air. A curtain hangs at the window, partially drawn back to let in the breeze. The wall behind the couch has a light switch located on it and another window next to the main one. The walls themselves are painted white, providing a clean canvas for this tranquil tableau.\n\nOverall, the image paints a picture of quiet domesticity, with each object meticulously placed, creating a harmonious balance within the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-30-44.365318.jpg"
+}

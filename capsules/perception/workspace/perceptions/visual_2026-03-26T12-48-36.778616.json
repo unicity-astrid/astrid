@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:48:43.457906",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a green couch in a living room. He's casually dressed in a blue shirt and black shorts, embodying the relaxed ambiance of his surroundings. His gaze is directed upwards and to the left, as if lost in thought or perhaps observing something out of frame.\n\nThe coffee table before him holds a few items - a white mug waiting to be filled with a hot beverage, a blue water bottle hinting at his fitness routine, and an orange soda can adding a pop of color to the scene. These objects are within easy reach, suggesting a space designed for comfort and convenience.\n\nA beige blanket is casually draped over the back of the couch, adding texture and warmth to the scene. Its placement suggests recent use or perhaps it was just set aside after being used earlier.\n\nThe room itself is bathed in natural light filtering through a window on the right side of the image. The sunlight illuminates the space, casting soft shadows and highlighting the details of each object and person in the room.\n\nOverall, this image captures an everyday moment in a comfortable living room setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-48-36.778616.jpg"
+}

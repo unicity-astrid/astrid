@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:41:36.837636",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in natural light from two windows on the left wall. The walls are painted white, providing a stark contrast to the beige carpet underfoot. A gray couch and a brown coffee table sit in front of one window, while a blue laptop rests on the table, suggesting someone might be working or studying at home.\n\nOn the opposite side of the room, there's a black chair positioned near another window, which is also covered with a beige curtain. The curtains add a touch of warmth to the space, complementing the carpet and wall color scheme. A bookshelf stands against one wall, filled with various books that hint at the interests or hobbies of the inhabitants.\n\nThe room is illuminated by sunlight streaming in through the windows, casting soft shadows and highlighting the textures of each object. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation and work.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-41-31.260081.jpg"
+}

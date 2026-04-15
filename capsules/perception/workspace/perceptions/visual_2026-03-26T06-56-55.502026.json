@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:57:03.970265",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden desk in what appears to be a living room. The man, dressed in a yellow shirt and blue jeans, has his gaze directed towards something off-frame. On the desk in front of him are two objects: a black laptop and a silver water bottle.\n\nThe room itself is characterized by white walls and a window adorned with white curtains. A beige couch can be seen on the left side of the image, adding to the homely atmosphere. The overall scene suggests a quiet moment of work or study in a comfortable domestic setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-56-55.502026.jpg"
+}

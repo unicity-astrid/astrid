@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:27:29.439173",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in natural light. The room is dominated by a large window on the left wall, dressed with white curtains that are partially drawn back, allowing sunlight to filter into the room. The window's position suggests it might be during the day.\n\nIn front of this window, there's a comfortable couch adorned with a gray blanket, inviting one to sit and enjoy the view outside. A coffee table stands in front of the couch, hosting two blue cups and a book titled \"The Girl with the Dragon Tattoo\". The arrangement of these items suggests someone might have been enjoying some quiet time here.\n\nTo the right of the room, there's a desk equipped with a computer monitor, keyboard, and mouse, indicating a workspace within this living area. A beige curtain hangs to the left of the window, complementing the overall color scheme of the room.\n\nThe image exudes a sense of calmness and comfort, as if it's waiting for its occupant to return from their daily adventures and settle back into this peaceful sanctuary.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-27-15.887074.jpg"
+}

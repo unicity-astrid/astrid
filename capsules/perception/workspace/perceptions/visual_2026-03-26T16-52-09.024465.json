@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:52:19.866791",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light filtering through three windows adorned with white curtains. The room's centerpiece is a gray couch, inviting and comfortable. A wooden coffee table sits in front of it, hosting a pink vase that adds a pop of color to the scene. The floor beneath these pieces of furniture is covered by a beige carpet, adding warmth to the room.\n\nA red blanket lies casually on the floor next to the couch, suggesting recent use or perhaps preparation for an evening in. In the background, partially obscured by this homely setup, stands a black chair. Its presence adds depth and variety to the room's furniture collection.\n\nThe objects in the room are arranged in harmony, creating a balanced composition that is pleasing to the eye. The couch, coffee table, and chair form a triangle of focal points around which the rest of the room revolves. The windows provide natural light that illuminates the space, enhancing its welcoming ambiance. This image is not just a depiction of objects; it's a snapshot of everyday life, captured in all its comfortable chaos.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-52-09.024465.jpg"
+}

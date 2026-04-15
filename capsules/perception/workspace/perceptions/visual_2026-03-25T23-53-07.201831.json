@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:53:13.071482",
+  "backend": "llava",
+  "description": "This image captures a serene night scene in a living room. The room is bathed in a soft, dim light that enhances the tranquil atmosphere. A fireplace, serving as the focal point of the room, is adorned with a blue and white vase filled with flowers, adding a touch of elegance to the space.\n\nThe window, covered with yellow curtains, casts a warm glow onto the floor below. This light illuminates a coffee table situated in front of the couch. The table hosts two cans of soda, their colors muted under the soft lighting.\n\nIn front of the window is a black chair, draped with a white blanket that provides a stark contrast against its dark hue. The walls surrounding this scene are painted white, providing a neutral backdrop that further accentuates the objects within the room.\n\nThe overall image paints a picture of a cozy living space, inviting and comfortable despite the dim lighting. It's as if time has slowed down in this room, allowing one to soak in every detail.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-53-07.201831.jpg"
+}

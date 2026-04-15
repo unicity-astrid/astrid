@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:21:35.048401",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft light filtering through two windows adorned with white curtains. The room is dominated by a beige couch, which comfortably accommodates a person lying down, perhaps enjoying a quiet moment of rest. \n\nOn the coffee table, there's another individual engrossed in their laptop, possibly working or browsing the internet. Next to them, a glass of water and a red book are placed, suggesting they might be taking occasional sips and breaks from their work.\n\nIn front of the couch, there's a wooden side table that hosts a stack of books and a white blanket, indicating a love for literature in this household or perhaps preparation for an evening of relaxation. The overall atmosphere is one of comfort and tranquility, inviting one to unwind after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-21-26.957659.jpg"
+}

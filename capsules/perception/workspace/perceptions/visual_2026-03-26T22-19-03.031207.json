@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T22:19:14.027090",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room bathed in a soft blue glow. The room is dimly lit, creating an intimate and cozy atmosphere. A wooden bookshelf stands against one wall, filled with various objects that hint at the interests of those who reside here. \n\nA comfortable couch invites relaxation, its cushions untouched. On it lies a black laptop, perhaps left open after a late-night work session or movie marathon. Nearby, a coffee table holds a single pink candle, unlit but ready to cast a warm light when needed.\n\nThe room features two windows adorned with yellow curtains that frame the night sky outside. Through these windows, one can see silhouettes of trees standing tall against the darkness. \n\nA person is present in the room, sitting on the couch and engrossed in reading a book. The lamp they hold casts a gentle light on their face, illuminating their features as they dive into their literary world.\n\nThe image is a snapshot of tranquility, capturing an ordinary moment that speaks volumes about everyday life. It's a testament to the beauty of simplicity and the comfort of home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-19-03.031207.jpg"
+}

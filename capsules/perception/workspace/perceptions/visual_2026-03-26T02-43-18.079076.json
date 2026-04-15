@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:43:24.516066",
+  "backend": "llava",
+  "description": "The image captures a serene night scene inside a room bathed in darkness. The room's window, dressed with yellow curtains and a white sill, is open, inviting the cool night air to mingle with the warm interior. A blue bottle rests on the sill, its contents untouched by the night breeze.\n\nIn the background, a bed draped in a black comforter adds to the room's coziness. The room, despite the darkness, exudes a sense of tranquility and solitude, as if waiting for someone to return home from a long day and sink into the comfortable embrace of the bed.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-43-18.079076.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:33:44.205769",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in what appears to be his office. He's dressed casually in a yellow shirt and blue jeans. His gaze is directed towards the left side of the frame, suggesting that he might be engrossed in something off-camera.\n\nThe desk is well-equipped with several items: there's a black lamp providing light, a blue water bottle possibly indicating the man's fitness routine, and a black phone lying idle. The precise arrangement of these objects suggests an organized workspace.\n\nIn the background, there's a window adorned with white blinds, allowing some natural light to filter into the room. Through this window, you can see a building across the street, suggesting that the office is located in an urban area.\n\nThe image captures a quiet moment of solitude and focus, as the man seems engrossed in his work or perhaps lost in thought. The overall atmosphere is calm and conducive for productivity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-33-37.762235.jpg"
+}

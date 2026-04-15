@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:06:19.848555",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from two windows adorned with white curtains. A cozy gray couch takes center stage, inviting relaxation and comfort. On it, a dog finds its perfect spot for a nap, adding a touch of warmth to the scene.\n\nAdjacent to the couch, a wooden coffee table stands guard over a laptop, hinting at work or study in progress. The laptop is not alone; a glass of water sits nearby, perhaps serving as a companion during long hours of work. A bookshelf stands tall next to the coffee table, filled with books that hold countless stories and knowledge.\n\nThe room itself is simple yet elegant - white walls provide a blank canvas for imagination, while wooden floors add a touch of rustic charm. The overall atmosphere is one of tranquility and order, a perfect sanctuary from the hustle and bustle of daily life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-06-13.615036.jpg"
+}

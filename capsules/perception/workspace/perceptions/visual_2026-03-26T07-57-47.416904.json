@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:57:59.585405",
+  "backend": "llava",
+  "description": "In the image, a person is comfortably nestled on a gray couch in a living room bathed in soft sunlight. The couch, positioned against a pristine white wall, serves as the centerpiece of the room. A wooden coffee table sits in front of the couch, hosting a blue can and a white candle, adding a touch of color to the otherwise neutral palette.\n\nThe window on the right side of the image lets in natural light that illuminates the room, casting long shadows and highlighting the textures within. The person appears relaxed, their posture suggesting they might be resting or perhaps enjoying a quiet moment alone.\n\nEvery object in the room is stationary, creating a sense of calm and tranquility. The relative positions of the objects - the couch against the wall, the coffee table in front of it, and the window to its right - contribute to this peaceful ambiance. The image captures a single moment in time, yet it tells a story of comfort, relaxation, and the simple pleasures of home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-57-47.416904.jpg"
+}

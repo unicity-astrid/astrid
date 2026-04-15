@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:26:15.759590",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a living room, engrossed in his work on a laptop that rests on a coffee table. He's casually dressed in a blue shirt and black pants adorned with white polka dots. The wooden floor beneath him adds a warm touch to the room.\n\nThe living room itself is simply furnished. A beige couch sits against one wall, offering a comfortable seating area. On another wall, a window draped with a white curtain lets in soft light that illuminates the room.\n\nOutside the window, you can see trees standing tall and proud, their green leaves rustling in the wind. The scene outside contrasts with the calm and focused atmosphere inside, creating an interesting juxtaposition between the tranquility of the indoors and the dynamic world outside.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-26-07.727674.jpg"
+}

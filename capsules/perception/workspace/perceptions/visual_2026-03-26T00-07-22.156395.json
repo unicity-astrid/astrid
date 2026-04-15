@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:07:29.880645",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit living room. The room is bathed in a soft glow from two windows on the left wall, which are covered by white curtains. A single light bulb hangs from the ceiling, casting a warm light that adds to the cozy atmosphere.\n\nIn the center of the room, there's a black coffee table. On it, you can see a blue soda bottle and a red candle, both standing out against the dark background. The table serves as a focal point in the room, drawing your attention with its vibrant colors.\n\nTo the right of the frame, a couch is partially visible, suggesting a comfortable living space. The overall scene is one of tranquility and comfort, inviting you to sit down and relax.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-07-22.156395.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:40:20.049921",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light from a window on the left. The window allows sunlight to stream in, casting a warm glow throughout the room. \n\nIn the center of the room, there's a wooden coffee table holding a blue vase and a book. The table is positioned against the wall, creating a cozy corner for reading or enjoying a cup of tea.\n\nTo the right, there's a comfortable gray couch with a white blanket casually draped over it, inviting one to sit down and relax. A brown footrest stands in front of the couch, ready to provide support when needed.\n\nThe walls are painted white, providing a neutral backdrop that enhances the natural light from the window. The floor is made of wood, adding warmth and texture to the room.\n\nOverall, the image portrays a tranquil living space designed for comfort and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-40-03.219885.jpg"
+}

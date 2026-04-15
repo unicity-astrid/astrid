@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T12:05:11.645209",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting with a man engrossed in his work at a desk. Here's a detailed description:\n\n- The central figure is a **man** dressed in a **black t-shirt** and sporting a **red baseball cap**. He is seated on the right side of a wooden desk.\n- On the desk, there are two objects: a **white computer monitor** and a **black laptop**. The man appears to be working on the laptop while occasionally glancing at the monitor.\n- In front of him on the desk is a **black coffee cup**, possibly containing his beverage of choice for this work session.\n- The room itself has a window, through which one can see an outdoor scene featuring a tree and a building. This suggests that the man might be working from home or in a co-working space.\n- To the left of the frame, there's a green couch, adding to the homely atmosphere of the setting.\n\nPlease note that this description is based on the visible contents of the image and does not include any inferred or assumed information.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T12-04-59.228622.jpg"
+}

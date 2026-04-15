@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:42:27.946840",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. A man, dressed in a vibrant yellow shirt, is seated at a desk, engrossed in his work on a laptop. The room is softly illuminated by the glow from a window and a lamp, casting an atmospheric light that highlights the scene.\n\nThe man's focus is unwavering as he interacts with his laptop, which is placed centrally on the desk. His posture suggests deep concentration, perhaps indicative of a late-night project or a challenging task at hand.\n\nTo the right of the image, a window draped with curtains lets in a soft light that adds depth to the room. The curtains, drawn partially aside, frame the view outside and add an element of intrigue about what lies beyond.\n\nThe desk itself is positioned against one wall of the room, providing ample space for the man's work. A lamp on the desk casts a warm glow, illuminating the immediate area around it while leaving the rest of the room in relative darkness.\n\nOverall, this image paints a picture of solitude and focus, capturing a single moment in time where all that matters is the task at hand.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-42-15.507142.jpg"
+}

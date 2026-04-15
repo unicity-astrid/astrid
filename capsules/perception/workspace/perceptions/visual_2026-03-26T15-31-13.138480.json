@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:31:19.919162",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light from an unseen source to the left. Dominating the scene is a brown wooden coffee table, positioned centrally against the wall. It's a simple yet elegant piece, unadorned except for a blue vase and a red book resting on its surface. The colors of these objects stand out vividly against the warm tones of the furniture.\n\nAdjacent to the table, a gray sofa invites relaxation. It too carries a single object - a beige blanket casually draped over it, adding a touch of coziness to the scene. The positioning of these pieces suggests an intimate living space designed for comfort and conversation.\n\nThe wall behind this setup is painted in a crisp white, providing a neutral backdrop that enhances the colors within the room. A window with white blinds punctuates the wall, hinting at world beyond this tranquil interior.\n\nEvery object in this image is stationary, frozen in time within the four corners of this photo. The relative positions between objects - the table to the left of the sofa, and their proximity to each other - all contribute to a harmonious composition that speaks of quiet afternoons spent in good company.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-31-13.138480.jpg"
+}

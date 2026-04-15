@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:48:44.749423",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in natural light filtering through an unseen window. Dominating the scene is a comfortable couch, dressed in a gray suede fabric that invites relaxation. A dog, perhaps the resident canine of this home, has found its perch on the armrest of the couch. The dog's attention seems to be caught by something off-camera, as it gazes intently into the distance.\n\nIn front of the couch, a coffee table takes center stage. It hosts an array of objects - a black vase standing tall among them. A beige blanket is casually draped over the armrest of the couch, adding to the room's warm and welcoming ambiance.\n\nOn the right side of the image, a bookshelf stands filled with various items, hinting at the interests or necessities of the inhabitants. The relative positions of these objects suggest a well-thought-out arrangement for comfort and functionality within this living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-48-18.798673.jpg"
+}

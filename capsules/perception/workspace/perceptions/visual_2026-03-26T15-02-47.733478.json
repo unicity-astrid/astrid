@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:03:03.255033",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, natural light filtering through a window on the left wall. A gray couch invites relaxation, its plush cushions promising comfort. Across from it, a beige armchair stands, offering an alternative seating option. The furniture is arranged around a wooden coffee table, which holds a blue mug and a red book, hinting at a quiet afternoon spent in reading.\n\nIn front of the window, a wooden desk with a black metal frame serves as a workspace or perhaps a study area. A white curtain hangs from it, ready to be drawn for privacy when needed. The room is painted in a soothing light yellow color, adding warmth and tranquility to the space. The overall atmosphere suggests an environment conducive to rest and contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-02-47.733478.jpg"
+}

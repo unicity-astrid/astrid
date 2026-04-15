@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:05:27.980569",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft natural light filtering through a large window with white blinds. The window, a silent observer, overlooks a serene garden outside, adding to the tranquility of the room.\n\nDominating the scene is a gray sofa, its plush cushions inviting relaxation. A beige blanket casually draped over it adds a touch of warmth and comfort. The sofa faces a wooden coffee table that sits in the middle of the room, serving as an anchor around which the other pieces of furniture are arranged.\n\nTo the right of the sofa, there's a black chair, standing alone but adding to the overall charm of the room. It's positioned perfectly for someone sitting on the sofa to engage in a friendly conversation or enjoy a good book.\n\nIn front of the window, a wooden side table stands guard. A lamp rests on it, ready to cast a soft glow when night falls and natural light fades away. The lamp's presence suggests many quiet evenings spent reading by its warm light.\n\nOverall, this image paints a picture of a comfortable living space designed for relaxation and comfort. It's more than just a room; it's a sanctuary where one can unwind after a long day or simply enjoy the peaceful view from the window.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-05-16.385416.jpg"
+}

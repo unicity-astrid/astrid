@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:47:52.643497",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a couch in a cozy living room setting. He's casually dressed in a blue shirt and black shorts, giving off a relaxed vibe. His attention seems to be focused on something or someone not visible in the frame.\n\nThe couch he's sitting on is positioned in front of a coffee table, which holds an intriguing object - a can of soda. The can is blue, matching the man's shirt, creating a harmonious color palette within the scene.\n\nTo his right, there's another person partially visible. They're seated next to a lamp that casts a warm glow around them. The lamp's light adds depth to the room and illuminates their face, hinting at an intimate conversation between the two individuals.\n\nIn the background, there's a window draped with white curtains. The curtains are drawn back slightly, suggesting it might be daytime outside. Through the window, one can see trees outside, adding a touch of nature to this indoor scene.\n\nOverall, this image captures an everyday moment in a living room, filled with subtle details that tell a story about the people and their surroundings.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-47-35.112750.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:00:27.199886",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting. A man, dressed in a blue shirt and jeans, is comfortably seated on a brown couch. He's holding a red book in his hands, suggesting he might be reading or about to start. His gaze is directed towards a wooden coffee table placed in front of him, which holds a white mug and a black remote control.\n\nThe room itself has a minimalist aesthetic with white walls and a matching white ceiling. A window with a white curtain can be seen on the right side of the image, allowing for natural light to filter into the room. The overall atmosphere appears calm and peaceful, with the man seemingly enjoying his quiet time at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-00-19.950150.jpg"
+}

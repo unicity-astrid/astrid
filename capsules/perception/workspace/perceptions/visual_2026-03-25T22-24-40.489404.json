@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:24:50.862671",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a living room bathed in soft, dim light. The dominant color scheme is black and white, with occasional splashes of blue and red adding depth and interest.\n\nIn the center of the room, a gray couch sits against the wall, inviting relaxation. On top of the couch, there's a wooden coffee table, its surface home to a solitary blue soda can. A single white candle also rests on the table, unlit but ready to cast a warm glow when needed.\n\nTo the right of the couch, a window punctuates the wall. It has a vibrant red curtain that adds a pop of color to the scene. The window's glass panes are painted with streaks of light, hinting at life outside this tranquil space.\n\nThe room itself is carpeted in gray, mirroring the color of the couch and creating a sense of harmony. On the left wall, there's a black door, its presence subtly balancing the composition of the room.\n\nOverall, this image paints a picture of a cozy living space waiting to be filled with laughter and life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-24-40.489404.jpg"
+}

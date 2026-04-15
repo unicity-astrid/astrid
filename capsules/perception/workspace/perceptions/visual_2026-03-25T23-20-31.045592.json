@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:20:39.550023",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in warm orange hues from two windows. The left window, adorned with yellow curtains, is partially obscured by a black curtain that hangs to its right. The right window, also draped with yellow curtains and a black curtain to its right, offers a glimpse into the world outside.\n\nIn the center of the image, a black coffee table takes stage. It's not alone though; it's surrounded by an array of objects that tell a story of their own. A black couch rests against one wall, inviting relaxation after a long day. Nearby, a blue bottle stands tall, perhaps holding a refreshing drink for later.\n\nThe walls and ceiling are painted white, providing a neutral backdrop that allows the orange light to shine through. The overall atmosphere is one of warmth and comfort, an ideal setting for unwinding after a busy day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-20-31.045592.jpg"
+}

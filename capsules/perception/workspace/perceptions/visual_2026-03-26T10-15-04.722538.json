@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:15:15.273186",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft natural light from a large window on the right wall. The window overlooks a tranquil view of trees, inviting a sense of calm and connection to nature into the space.\n\nThe room's centerpiece is a wooden coffee table, draped with a pristine white tablecloth. Atop the table rests a blue water pitcher, its vibrant color contrasting beautifully with the warm tones of the wood.\n\nOn either side of the coffee table are two gray sofas, their plush cushions inviting relaxation. One sofa faces the window, offering an unobstructed view of the peaceful scene outside. The other sofa is positioned away from the window, creating a cozy conversation nook.\n\nA beige blanket hangs casually on one of the sofas, adding to the room's welcoming ambiance. Its soft texture and muted color blend harmoniously with the overall decor.\n\nThe room is illuminated by natural light filtering through the window, casting gentle shadows and highlighting the textures and colors within the space. The overall atmosphere is one of comfort and tranquility, an ideal setting for relaxation and quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-15-04.722538.jpg"
+}

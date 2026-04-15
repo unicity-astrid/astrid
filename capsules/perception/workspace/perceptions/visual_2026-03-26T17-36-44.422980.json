@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:36:59.230729",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting. At the heart of the scene is a **gray dog** lying comfortably on a **gray couch**, its body relaxed and at ease. The couch, adorned with two **white pillows**, provides a stark contrast to the dog's gray fur.\n\nIn front of the couch, there's a wooden coffee table. Upon it rests a **blue glass bottle**, possibly containing water or some other beverage. The table serves as a stage for the dog, which is attentively facing towards something or someone off-camera.\n\nTo the right of the couch and coffee table, there's a window with white blinds partially drawn. Through this window, one can catch a glimpse of another room in what appears to be an apartment complex. A curtain hangs from the window, adding to the homely atmosphere.\n\nThe image is taken from the perspective of someone sitting on the couch, offering an intimate view into this quiet moment shared between the dog and its unseen human companion. The overall scene exudes a sense of calm and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-36-44.422980.jpg"
+}

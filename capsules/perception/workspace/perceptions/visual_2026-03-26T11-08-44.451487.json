@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T11:08:52.443052",
+  "backend": "llava",
+  "description": "This image captures a moment in a room bathed in soft light. At the center of the frame, a man is seated at a wooden table. He's casually dressed in a blue shirt and black shorts, his identity concealed by a pair of sunglasses. In his hand, he holds a pen, poised over a piece of paper that rests on the table.\n\nThe room around him is simply decorated. A window punctuates one wall, its blinds partially drawn to let in a muted light. Nearby, a door stands closed, adding to the sense of tranquility. The man's position at the table and his relaxed attire suggest he might be in a moment of quiet contemplation or focused work.\n\nThe overall atmosphere is one of calm and concentration, with every object and their relative positions contributing to this serene tableau.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-08-44.451487.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:13:55.211585",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. A man, clad in a vibrant yellow shirt, is seated at a desk, engrossed in his work on a laptop that rests directly in front of him. The soft glow from the laptop screen illuminates his face, casting long shadows around the room.\n\nTo his side, standing like silent sentinels, are two black speakers. Their sleek design contrasts with the warm, homely atmosphere of the room. The desk itself is positioned against a wall, its surface adorned with several other objects that add to the lived-in feel of the space.\n\nA window punctuates this wall, its glass panes reflecting the ambient light and adding depth to the scene. A curtain hangs from it, swaying gently in the unseen breeze. Through this window, one can glimpse a building across the street, bathed in an ethereal orange hue that suggests it's ablaze with lights.\n\nThis image is a snapshot of modern life - technology, comfort, solitude, and the quiet hum of activity within four walls at night.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-13-43.375960.jpg"
+}

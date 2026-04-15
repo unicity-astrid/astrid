@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:54:27.099227",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting at dusk. The room is dimly lit, creating an atmosphere of tranquility. Dominating the foreground is a black couch, adorned with a single white pillow that stands out against its dark hue. \n\nTo the right of the couch, a coffee table takes center stage. It's covered in a blue and white striped cloth, adding a touch of vibrancy to the scene. On top of this cloth lies a solitary can of soda, perhaps left behind after a day of relaxation.\n\nThe room is characterized by its window, which is located on the right side of the image. A yellow curtain hangs from it, swaying slightly as if moved by a gentle breeze. The curtain's color contrasts beautifully with the blue and white striped cloth on the table.\n\nOn the left side of the couch, there's a door that leads to other parts of the house. Its presence suggests an open-plan layout for this living space.\n\nOverall, this image paints a picture of a cozy evening spent in solitude or quiet company, perhaps while enjoying a favorite beverage on that coffee table.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-54-20.768338.jpg"
+}

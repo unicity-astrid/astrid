@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:55:55.738753",
+  "backend": "llava",
+  "description": "The image captures a moment in a living room bathed in natural light from a large window that dominates one wall. The window's light illuminates the room, casting a warm glow on the wooden furniture scattered around.\n\nIn the foreground, a person dressed in a vibrant yellow shirt is leaning over a wooden coffee table. Their posture suggests they are reaching for something on the table or perhaps adjusting their position on the couch. The couch, a comfortable gray plush piece of furniture, sits invitingly behind them.\n\nTo the right of the room, there's another piece of furniture - this one is white and covered in a blanket, adding to the cozy ambiance of the space. The walls of the room are painted white, providing a neutral backdrop that enhances the colors of the furniture and clothing.\n\nOverall, the image depicts a comfortable living space where someone is engaged in a simple yet intimate moment of reaching for an object on their coffee table.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-55-45.803693.jpg"
+}

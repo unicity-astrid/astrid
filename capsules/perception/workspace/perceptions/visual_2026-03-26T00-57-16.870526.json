@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:57:24.660161",
+  "backend": "llava",
+  "description": "The image captures a serene night-time scene in a dimly lit room. The room is bathed in soft light that filters through two windows, each adorned with yellow curtains. A wooden chair stands in the foreground, its back facing us and an armrest visible on one side. On the right wall, a lamp casts a warm glow, adding to the room's cozy ambiance.\n\nThe floor is covered by a beige carpet that stretches across the room, complementing the white walls that surround it. The room seems to be devoid of any occupants, with no people or moving objects in sight. The atmosphere is calm and quiet, as if time itself has paused for a moment within this space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-57-16.870526.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:29:32.961741",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a black couch in a living room bathed in bright sunlight. He's dressed casually in a yellow shirt and blue jeans, embodying the essence of a relaxed afternoon at home. \n\nOn the table before him, there are two objects: a black speaker and a white mug, perhaps indicating his intention to enjoy some music or a hot beverage. The table is positioned centrally in front of the couch, serving as a convenient place for these items.\n\nThe background of the image reveals a window with curtains partially drawn, allowing the sunlight to stream in and illuminate the room. This suggests it might be either morning or late afternoon when the sun shines brightly.\n\nOverall, the image captures a serene moment of solitude and relaxation in a cozy living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-29-19.897216.jpg"
+}

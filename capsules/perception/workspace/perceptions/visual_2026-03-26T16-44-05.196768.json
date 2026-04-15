@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:44:13.173150",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the left side of the frame is a gray sofa, inviting and comfortable. A black coffee table sits in front of it, hosting a blue cup and a white book, suggesting a quiet reading session. \n\nOn the right, a white window frames the scene, its sill adorned with a pink towel. The light streaming in from the window illuminates the room, casting soft shadows and highlighting the textures of the objects within.\n\nIn the background, a door can be seen on the left side of the image, subtly marking the boundary of this cozy space. The overall atmosphere is one of tranquility and comfort, an ideal setting for relaxation or quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-44-05.196768.jpg"
+}

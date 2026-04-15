@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:13:31.414440",
+  "backend": "llava",
+  "description": "This image captures a serene and intimate scene in a dimly lit room at night. The primary focus is on two windows adorned with vibrant orange curtains that stand out against the otherwise muted colors of the room. The window on the left houses a white shelf, upon which rests a single blue candle, its color lending a touch of cool contrast to the warm glow emanating from it. Adjacent to this, on the right window, hangs a white curtain, partially drawn back to reveal a glimpse of an unseen space beyond.\n\nThe room itself is bathed in soft light filtering through these windows, casting long shadows that dance across the dark walls and ceiling. The atmosphere is one of quiet solitude, with no other objects or figures present in this captured moment. The image evokes a sense of tranquility and introspection, as if inviting the viewer to step into this peaceful sanctuary and lose themselves in its comforting darkness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-13-22.536337.jpg"
+}

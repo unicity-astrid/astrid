@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:36:25.334794",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, dominated by a flat-screen TV that is mounted on a white brick wall. The TV, which is turned on and displaying a video game, serves as the focal point in the room. \n\nTo the left of the TV, there's a window adorned with a curtain, allowing for natural light to filter into the room. On the right side of the TV, there's a door, suggesting an exit or entrance to this space.\n\nThe image is taken from a low angle, looking up at the TV screen and wall. This perspective gives a sense of scale and depth to the scene. The overall atmosphere appears calm and inviting, perfect for an evening of gaming.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-36-16.176862.jpg"
+}

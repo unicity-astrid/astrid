@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:33:06.376312",
+  "backend": "llava",
+  "description": "The image captures a serene and dark living room bathed in soft, dim lighting. The walls are painted white, providing a stark contrast to the black couch that dominates the foreground. The couch, positioned against one wall, faces three windows adorned with yellow curtains. The windows allow a peek into another world outside.\n\nOn the left side of the image, a black lamp stands tall on a table, its light softly illuminating the room. On the right side, a blue vase adds a pop of color to the otherwise monochrome setting. A bookshelf filled with various books and trinkets can be seen in the background, hinting at the intellectual pursuits of the inhabitants.\n\nThe perspective is from someone sitting on the couch, looking out towards the windows. The scene evokes a sense of tranquility and introspection, as if inviting the viewer to sit down and lose themselves in the comfort of their own thoughts.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-32-56.881789.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:19:35.296211",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, dim light. The walls are painted a calming shade of white, providing a stark contrast to the black furniture that dominates the space. A large window punctuates one wall, its curtains drawn back slightly to let in a sliver of outside light.\n\nIn the center of the room, a coffee table holds court. It's draped with a pristine white tablecloth that adds an air of elegance to the setting. The table hosts two bottles - one red and one blue - standing like sentinels amidst the other objects on the table. A magazine lies open nearby, its pages untouched.\n\nA black couch sits against one wall, inviting relaxation. It's partially covered with a beige blanket, adding a touch of warmth to the otherwise cool tones of the room. The floor beneath is made of dark wood, grounding the space and providing a nice contrast to the lighter walls.\n\nThe overall atmosphere is one of tranquility and comfort, an ideal setting for a quiet evening in.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-19-29.201989.jpg"
+}

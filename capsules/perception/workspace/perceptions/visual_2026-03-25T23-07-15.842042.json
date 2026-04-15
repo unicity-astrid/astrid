@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:07:22.917636",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy indoor setting during nighttime. The primary focus is on a window that spans almost the entire height of the wall in the living room. A white curtain hangs from it, partially drawn to reveal an orange light emanating from behind it. This light casts a warm glow, subtly illuminating the room.\n\nTo the right of the image, there's a black couch that occupies a significant portion of the frame. It appears comfortable and inviting, ready for someone to sink into its cushions with a good book or perhaps a cup of coffee.\n\nIn front of the couch, on the floor, rests a white object. Its purpose isn't clear from the image alone, but it adds to the overall homely atmosphere of the scene.\n\nThe image is taken from a low angle, looking up at the window and couch. This perspective enhances the height of the room and gives a sense of being in the space rather than just observing it.\n\nThere's no text present in the image, allowing the viewer to fully immerse themselves in the visual narrative without any distractions. The relative positions of the objects - the window on the wall, the couch against it, and the object on the floor - create a harmonious balance within the frame. It's a snapshot of everyday life",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-07-15.842042.jpg"
+}

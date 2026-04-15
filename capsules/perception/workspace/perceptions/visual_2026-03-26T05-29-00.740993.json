@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:29:07.115030",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in his office, engrossed in his work on a computer screen. The room around him is dimly lit, creating an atmosphere conducive to concentration and focus. A window with yellow curtains adorns one wall, allowing a soft glow to seep into the room.\n\nThe man is casually dressed in a yellow shirt and blue jeans, suggesting a relaxed yet productive environment. His attention is completely absorbed by the laptop screen in front of him, indicating his deep involvement in whatever task he's working on.\n\nOn the desk, there's a lamp providing additional light and a coffee cup, perhaps to keep him energized during his work. The precise location of these objects relative to each other isn't clear from this perspective, but they are within easy reach for the man at the desk.\n\nThere are no discernible texts in the image, and the count of objects such as the number of windows or the number of objects on the desk isn't specified. The description is based solely on the visible content of the image without any added imagination or aesthetic interpretation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-29-00.740993.jpg"
+}

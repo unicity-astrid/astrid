@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:25:23.258792",
+  "backend": "llava",
+  "description": "This image captures a moment in a dimly lit room. The central figure is a person sitting at a table, engrossed in their laptop which they are using with both hands. The laptop screen is visible but the text on it is not discernible due to the low light.\n\nThe table, positioned against a wall with two windows, holds more than just the laptop. A lamp and a phone are also present on the table, adding to the ambiance of the room. The person's face is partially hidden in shadow, creating an air of mystery about their identity.\n\nThe overall atmosphere of the image is quiet and introspective, as if the person is deeply engrossed in their work or perhaps lost in thought. The dim lighting adds a sense of coziness to the scene, making it feel like a personal space where one can retreat from the world outside.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-25-11.319658.jpg"
+}

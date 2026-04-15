@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:51:33.251334",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dark room. The central figure is a person, seated at a desk draped with a black cloth. The individual is clad in a yellow shirt, their attention seemingly absorbed by something on the laptop screen before them. \n\nTwo objects rest on the desk - a blue water bottle and a white tissue box, adding a touch of color to the otherwise monochrome setting. The desk is positioned against a wall that features a window with a white frame. This window, however, is veiled, obscuring the view outside.\n\nThe room itself is bathed in darkness, save for a single light source - an orange lamp located on the right side of the image. This warm glow casts long shadows and illuminates the person's face, creating an atmosphere of focused concentration. \n\nDespite the simplicity of the scene, it's filled with details that tell a story of someone immersed in their work or study, perhaps late at night when others are asleep. It's a snapshot of life that speaks volumes about routine, solitude, and dedication.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-51-25.914059.jpg"
+}

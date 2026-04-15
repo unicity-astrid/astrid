@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:28:38.457382",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a room that has been bathed in darkness. The only source of light emanates from the window behind him. He's donned in a vibrant yellow shirt and is engrossed in his laptop, which sits open on the desk before him. His attention is solely focused on the screen, suggesting he might be working or perhaps enjoying some leisure time browsing the internet.\n\nThe room around him is sparsely furnished. A chair rests unoccupied next to the desk, while a curtain hangs at one side of the window. The overall atmosphere of the room is quiet and serene, with no other objects or people in sight. The man's solitary presence adds to this sense of calmness. Despite the darkness enveloping most of the room, the light from the window provides enough illumination for him to carry out his activities at the desk.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-28-28.845459.jpg"
+}

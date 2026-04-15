@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:21:26.841641",
+  "backend": "llava",
+  "description": "The image depicts a serene indoor setting. At the center of the frame, a man is comfortably seated on a brown couch, dressed in a vibrant yellow sweater. He is holding a book in his hands, suggesting he might be reading or studying.\n\nThe room around him is tastefully decorated with white walls that reflect the natural light streaming in from a window located behind the couch. The window allows for ample light to fill the room, creating a warm and inviting atmosphere.\n\nTo the right of the frame, there's a wooden coffee table standing in front of the couch. On top of the table, there's a black speaker, possibly for music or news updates. A white blanket is casually draped over the armrest of the couch, adding to the cozy ambiance of the room.\n\nOverall, the image captures an intimate moment of relaxation and leisure in a well-lit, inviting living space. The precise placement of objects and their relative positions contribute to the harmony of the scene. The man's relaxed posture on the couch suggests a sense of tranquility and contentment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-21-20.087166.jpg"
+}

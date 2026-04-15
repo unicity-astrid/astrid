@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:47:24.224127",
+  "backend": "llava",
+  "description": "In the image, a man is engrossed in his work at a desk in a room with a window that offers a view of a building across the street. The man, dressed in a yellow shirt, is seated comfortably on a chair, his attention absorbed by the laptop resting on his lap. His gaze is fixed on the screen, suggesting deep concentration.\n\nThe room itself is dimly lit, casting a soft glow on the scene and enhancing the atmosphere of focused work. A window with blinds adorns one wall, its position allowing for natural light to filter into the room during the day but offering privacy at night.\n\nOn the desk, there's a bottle of water and a book, possibly reference materials or reading material for breaks from work. The objects are arranged in an organized manner, reflecting the man's professional demeanor.\n\nOverall, the image captures a quiet moment of focused work in a comfortable setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-47-18.690615.jpg"
+}

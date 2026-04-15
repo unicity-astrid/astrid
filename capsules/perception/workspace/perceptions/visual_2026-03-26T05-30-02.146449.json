@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:30:11.541543",
+  "backend": "llava",
+  "description": "In the quiet solitude of a dimly lit room, a man finds himself engrossed in his work at a desk. The soft glow from the laptop screen illuminates his face, casting long shadows that dance upon the wooden floor beneath him. He's dressed casually in a vibrant yellow shirt, and in one hand, he holds a glass of water, perhaps to quench his thirst as he works.\n\nThe room itself is simple yet functional. A window punctuates the right wall, draped with a curtain that hangs still. The curtain, like a silent observer, adds an element of intrigue to the scene. On the left wall, a door stands closed, its purpose unknown but its presence undeniable.\n\nEvery object in this image tells a story - from the man engrossed in his work to the objects around him and their relative positions. It's a snapshot of life, captured in one single frame.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-30-02.146449.jpg"
+}

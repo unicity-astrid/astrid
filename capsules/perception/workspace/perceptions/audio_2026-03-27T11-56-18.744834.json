@@ -1,0 +1,13 @@
+{
+  "type": "audio",
+  "timestamp": "2026-03-27T11:56:18.744848",
+  "transcript": "I'm playing here. Hey, how are they? I said, are you excited to play? It's all right.",
+  "duration_s": 5,
+  "features": {
+    "rms_energy": 0.0,
+    "zero_crossing_rate": 0.0,
+    "dynamic_range": 0.0,
+    "temporal_variation": 0.0,
+    "is_music_likely": false
+  }
+}

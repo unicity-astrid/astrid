@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:32:36.426246",
+  "backend": "llava",
+  "description": "The image captures a serene and well-organized living room bathed in soft light filtering through a window on the left wall. The window, adorned with white curtains, allows a gentle stream of light to illuminate the room's interior. \n\nAgainst the right wall, there is a comfortable gray couch. It's not just any couch, but one that holds a wooden coffee table in front of it. The coffee table, serving as a centerpiece, hosts two blue cups and a black remote control, suggesting recent human activity.\n\nA white lamp stands nearby on the floor, its presence adding to the room's cozy ambiance. The walls are painted white, providing a neutral backdrop for the room's contents. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation or quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-32-21.955947.jpg"
+}

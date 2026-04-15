@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:28:23.645629",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting at night. Dominating the right side of the frame is a window with two panes, adorned with white curtains that hang gracefully from it. The window overlooks what appears to be a tranquil street, its view obscured by a second curtain partially drawn closed.\n\nTo the left, an open door invites curiosity about what lies beyond. A black couch rests in front of this door, its dark hue contrasting with the lighter surroundings. It sits empty, waiting for someone to occupy it.\n\nIn the center of the image, a coffee table holds court. It's covered by a white sheet that adds a touch of elegance to the scene. On top of this sheet, a blue bottle and a black laptop are placed, suggesting recent human activity.\n\nThe room itself is dimly lit, with only a single light source illuminating it from the left side of the image. This light casts shadows and highlights around the room, adding depth and dimension to the scene.\n\nOverall, this image paints a picture of an empty yet lived-in space, waiting for its inhabitants to return home. The precise placement of objects and their relative positions contribute to this narrative, creating a snapshot that is both intimate and universal.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-28-12.961815.jpg"
+}

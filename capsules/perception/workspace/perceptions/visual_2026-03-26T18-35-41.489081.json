@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:35:46.746431",
+  "backend": "llava",
+  "description": "The image captures a serene moment in a living room bathed in soft light. The walls, painted in a soothing shade of beige, harmonize with the white ceiling above. A window punctuates one wall, draped with white curtains that filter the sunlight and cast an ethereal glow throughout the room.\n\nA gray cat has found comfort on a wooden coffee table, its body relaxed as it slumbers next to a laptop. The laptop, open and inviting, seems ready for use at any moment. A pink blanket is casually draped over the back of the couch, adding a splash of color to the scene.\n\nThe floor beneath is covered with a gray rug that complements the overall color scheme of the room. The relative positions of these objects create a cozy and welcoming atmosphere, inviting one to sit down and enjoy the tranquility of this space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-35-41.489081.jpg"
+}

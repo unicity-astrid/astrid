@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:03:18.406588",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room setting. At the center of the frame, a man is seated on a comfortable couch, his body oriented towards a wooden coffee table that sits before him. He's dressed casually in a blue shirt, and his hand rests thoughtfully on his chin.\n\nThe coffee table hosts two main objects: a red cup and a white mug, both standing upright. Their vibrant colors contrast nicely with the warm tones of the wood. \n\nIn the background, you can see a window adorned with white blinds, allowing for control over the amount of light entering the room. The overall atmosphere is one of tranquility and comfort, as if inviting the viewer to join in this peaceful setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-03-13.684219.jpg"
+}

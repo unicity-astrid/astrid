@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:49:58.138712",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, dim light. Dominating the scene is a black fireplace, above which hangs a large flat-screen television. The TV screen is alive with color and movement, displaying a video game that seems to be a racing game, as indicated by the presence of multiple cars on the screen.\n\nThe room itself is painted white, creating a stark contrast against the dark brick wall behind it. A window punctuates this wall, draped with curtains that hang down like silent sentinels in the dim light. The overall atmosphere is one of quiet relaxation and entertainment, as if inviting the viewer to sit back and lose themselves in the virtual race unfolding on the screen.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-49-53.336896.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:28:48.489515",
+  "backend": "llava",
+  "description": "The image captures a serene night in a living room bathed in soft, dim light. The primary source of illumination comes from a window with stained glass panes that casts a warm yellow glow onto the floor. A white curtain hangs from this window, partially obscuring the view outside.\n\nIn the center of the room, a coffee table takes prominence. It's draped with a black cloth, giving it an air of elegance and mystery. The table hosts two objects: a blue glass and a red candle, their colors standing out against the dark backdrop. \n\nTo the left of the table, there's a couch adorned with a gray blanket, inviting relaxation and comfort. On the right side of the table, a black chair is tucked away, its silhouette adding to the room's cozy ambiance.\n\nThe floor beneath these pieces of furniture is made of wood, its natural texture adding warmth to the room. The walls are painted white, providing a neutral canvas that enhances the colors in the room.\n\nOverall, this image paints a picture of tranquility and comfort, a snapshot of everyday life captured in one frame.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-28-42.147845.jpg"
+}

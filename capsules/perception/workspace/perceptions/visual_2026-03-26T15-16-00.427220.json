@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:16:14.576821",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft sunlight filtering through two windows adorned with white curtains. The room's walls are painted a pristine white, providing a neutral backdrop for the furniture within.\n\nIn the foreground, a gray couch invites relaxation, its plush cushions promising comfort. Adjacent to it, a black coffee table stands firm on four sturdy legs, ready to hold cups of coffee or stacks of books.\n\nThe room is not just a space for rest but also a workspace. A desk, draped with a white cloth, houses a computer monitor and keyboard, suggesting productivity in the midst of tranquility.\n\nScattered around the room are various objects that add character to the space. A blue bag lies casually on the floor near the couch, perhaps hastily discarded after a day out. Nearby, a red book rests on the coffee table, hinting at leisurely reading sessions in this serene setting.\n\nDespite the absence of people in the image, one can almost hear the soft hum of conversations and the gentle tap of fingers on the keyboard. It's more than just an image; it's a snapshot of life unfolding within these four walls.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-16-00.427220.jpg"
+}

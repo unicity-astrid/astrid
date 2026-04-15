@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:14:50.660067",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene set in a dimly lit room, bathed in soft yellow light that seeps through two windows adorned with white curtains. The windows are situated on one side of the room, their light casting long shadows and creating an atmosphere of quiet solitude.\n\nOn the right side of the image, a black couch rests against the wall, its dark hue contrasting with the lighter tones of the room. In front of the couch, a wooden coffee table takes center stage. It's here that life unfolds - two cans of soda sit on it, perhaps remnants of a recent gathering or an evening spent in leisure.\n\nThe floor beneath is made of wood, adding to the warm and cozy ambiance of the room. On the left side of the image, a door can be seen with a small amount of light filtering through its window, hinting at another space beyond this quiet corner of the room.\n\nEvery object in this room tells a story - from the soda cans on the table to the couch against the wall and the windows that let in soft light. It's a snapshot of life, frozen in time within these four walls.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-14-44.176508.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:22:41.535915",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting. At the center of the frame is a **gray cat**, peacefully sleeping on a **gray couch**. The couch is adorned with a **blue blanket** and a **white pillow**, adding a touch of coziness to the scene.\n\nIn front of the couch, there's a **wooden coffee table**. On it, you can spot a **red water bottle**, perhaps indicating someone's recent activity or their fitness routine. Next to it, there's a **blue book**, possibly suggesting a quiet reading session was recently interrupted.\n\nThe room is illuminated by natural light streaming in from two windows. One window is covered with a **white curtain**, while the other is adorned with a **beige curtain**. These elements add depth and texture to the scene.\n\nOn the right side of the photo, there's a door, suggesting that this peaceful scene is part of a larger living space. The overall image paints a picture of tranquility and everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-22-25.107107.jpg"
+}

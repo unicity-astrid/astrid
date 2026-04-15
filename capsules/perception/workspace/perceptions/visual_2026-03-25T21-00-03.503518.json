@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:00:10.919278",
+  "backend": "llava",
+  "description": "This image captures a serene night scene in a living room. The room is bathed in a soft glow from two windows, each adorned with white curtains that filter the light, casting an ethereal sheen over the room. A black wall serves as the backdrop, punctuated by a red rug that adds a splash of color to the otherwise monochrome setting.\n\nIn the foreground, a black couch invites relaxation, its surface unoccupied save for a single white candle and a small wooden figurine. The candle's wick is lit, casting a warm light that dances across the room. Beside it, the wooden figurine stands as an intriguing centerpiece on the couch.\n\nThe windows are not just sources of light but also portals to another world. A white curtain hangs from one window, partially obscuring the view outside and adding an element of mystery to the scene. The other window reveals a glimpse of a garden, its greenery muted in the distance.\n\nEvery object in this room tells a story - of quiet nights spent reading by the windowsill, of conversations shared over candlelight, of moments lost in thought as one watches the world go by through the open window. It's more than just a room; it's a testament to countless memories and experiences.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-00-03.503518.jpg"
+}

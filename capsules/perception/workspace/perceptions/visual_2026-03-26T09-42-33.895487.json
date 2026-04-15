@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:42:46.083473",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the center of the room is a wooden coffee table, draped with a beige blanket that adds a touch of warmth to the space. The table hosts two objects - a blue cup and a laptop, suggesting someone's recently concluded work session.\n\nTo the left of the table, a gray couch invites relaxation. It cradles another blue cup, mirroring its counterpart on the table. A white pillow rests on it, offering additional comfort.\n\nThe room is enclosed by pristine white walls that reflect the light streaming in from a large window on the right wall. This window serves as the source of natural illumination, casting soft shadows and highlighting the tranquility of the scene.\n\nDespite the presence of personal items like cups and laptop, there's an air of simplicity and order in this space. The absence of people or movement suggests a quiet moment frozen in time, perhaps early morning or late evening when the day transitions into night. The image is a snapshot of everyday life, captured in its most ordinary yet beautiful form.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-42-33.895487.jpg"
+}

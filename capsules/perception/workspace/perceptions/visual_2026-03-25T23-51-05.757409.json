@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:51:15.170629",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night, bathed in the soft glow of a single lamp that casts an orange hue on the window. The room itself is dark, creating a striking contrast with the illuminated window. \n\nIn the foreground, there's a black couch, its silhouette stark against the darkness. It faces the window, as if inviting viewers to share in the quiet contemplation taking place within the room. \n\nTo the left of the couch, a table holds a few items. A blue can stands out against the dark surroundings, accompanied by an empty red cup and a black bottle. The arrangement suggests recent activity or perhaps an ongoing narrative.\n\nThe window itself is adorned with white curtains that frame the view like a living painting. It offers a glimpse into another world outside while simultaneously serving as a canvas for the story unfolding within this room.\n\nDespite the darkness, there's a sense of life and activity suggested by these objects - a scene frozen in time, waiting to continue its story.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-51-05.757409.jpg"
+}

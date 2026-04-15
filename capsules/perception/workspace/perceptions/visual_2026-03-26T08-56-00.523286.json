@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:56:09.244972",
+  "backend": "llava",
+  "description": "In the image, a man stands in the center of a living room, his left hand resting on his hip and his gaze directed towards the camera. He is dressed in a blue shirt, adding a pop of color to the otherwise neutral palette of the room.\n\nThe room itself is sparsely furnished, with a gray couch positioned against one wall and a wooden coffee table situated in front of it. A white curtain hangs from one of the windows, filtering the light that enters the room.\n\nOn the right side of the image, a window draped with a white curtain lets in soft, diffused light that illuminates the room. The overall atmosphere is calm and serene, enhanced by the simplicity of the decor and the natural light streaming through the window. The man's presence adds a human element to this tranquil setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-56-00.523286.jpg"
+}

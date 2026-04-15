@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:38:03.380888",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor scene at dusk. A person is seated on a couch in a living room, engrossed in something on their laptop, which rests on their lap. The room is dimly lit, creating an atmosphere of quietude and focus.\n\nThe individual is dressed in a vibrant yellow shirt, adding a pop of color to the otherwise subdued lighting. A lamp situated on the coffee table casts a soft glow, further enhancing the warm ambiance of the room.\n\nOn the right side of the frame, a window draped with white curtains allows a glimpse of the outside world - a serene view of trees under the fading light of dusk. The precise location of these objects and their relative positions contribute to the overall composition of this peaceful domestic setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-37-32.457666.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:28:36.479430",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in natural light from two windows on the left wall. The room is dominated by a beige sofa, adorned with a gray blanket casually draped over it. In front of the sofa, a coffee table holds a blue book and a white mug, suggesting someone might have been enjoying some quiet reading time.\n\nTo the right of the sofa, a lamp stands tall, ready to provide soft illumination when needed. A brown ottoman is placed in front of the sofa, offering additional seating or perhaps storage for throw blankets on chilly nights. The walls are painted white, providing a neutral backdrop that enhances the room's tranquility.\n\nThe windows let in an abundance of light, casting a warm glow throughout the room and highlighting the beige carpet underfoot. On the right wall, there is a door leading to another part of the house. The overall atmosphere of the room is one of comfort and relaxation, inviting one to sit down, pick up that blue book, and lose themselves in a good read.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-28-30.364022.jpg"
+}

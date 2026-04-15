@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:28:47.827607",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. The main focus is a window, which is divided into two panes. The left pane is open, allowing us to see a dark hallway outside, while the right pane remains closed, offering a glimpse of the night sky.\n\nA blue chair sits in the foreground, draped with a white sheet that adds a touch of coziness to the scene. On a nearby table, there's a bottle of beer, its label facing away from us, and a single candle casting a warm glow around it.\n\nThe image is taken from the perspective of someone sitting on the chair, creating an intimate atmosphere as if inviting us to join in this quiet moment. The overall composition suggests a sense of solitude and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-28-42.918013.jpg"
+}

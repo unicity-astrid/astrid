@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T11:08:26.968162",
+  "backend": "llava",
+  "description": "In the image, a man is sitting on a gray couch in what appears to be a living room. He's wearing a black t-shirt with red text and a pink baseball cap. In his hands, he holds a laptop computer, and next to him on the couch, there's a white coffee cup. His gaze is directed towards the right side of the image.\n\nThe background features a window covered by white curtains. On the windowsill, there's a plant adding a touch of greenery to the scene. In the foreground, slightly blurred due to its distance from the man and the camera, there's another couch visible.\n\nThe overall atmosphere suggests a relaxed setting, perhaps someone working or browsing the internet in the comfort of their home. The presence of the coffee cup might indicate that he's enjoying some leisure time with his favorite beverage.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T11-08-19.921921.jpg"
+}

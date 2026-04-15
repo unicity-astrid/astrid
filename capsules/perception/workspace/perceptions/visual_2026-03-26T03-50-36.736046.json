@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:50:43.128938",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting bathed in soft orange light filtering through two windows. The room, shrouded in darkness against a stark black background, exudes an air of mystery and solitude. Two silhouettes add life to this nocturnal tableau: one stands near the window on the left, while another is positioned closer to the right window. Their forms are hazy, adding to the ethereal quality of the scene.\n\nThe room itself is sparsely furnished. A bed, its details obscured by the darkness, rests quietly in the background. Nearby, a desk stands unadorned, save for a lamp that casts an additional pool of light. The floor beneath them is carpeted, its texture softened under the glow of the ambient light.\n\nThe windows, two of which punctuate the room's wall, are adorned with curtains that hang like silent sentinels in the dimly lit room. They frame the orange glow from outside, a stark contrast against the dark interior. The overall scene is one of quiet introspection, a moment frozen in time within the confines of this room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-50-36.736046.jpg"
+}

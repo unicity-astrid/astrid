@@ -1,0 +1,6 @@
+=== ASTRID JOURNAL ===
+Mode: witness
+Fill: 18.7%
+Timestamp: 1774632526
+
+[witness — LLM unavailable] fill=18.7%

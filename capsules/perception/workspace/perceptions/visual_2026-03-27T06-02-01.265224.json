@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:02:12.930190",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a room that exudes an air of tranquility. The man, clad in a vibrant yellow shirt, is captured mid-action as he holds a black laptop computer on his lap. His focus is directed towards the laptop screen, suggesting deep concentration or perhaps engagement with the digital world.\n\nThe desk, positioned against a wall, serves as the central piece of furniture in the room. It hosts not only the man and his laptop but also a pink towel casually draped over it, adding a pop of color to the otherwise muted tones of the scene. A blue curtain hangs next to the window, providing a stark contrast to the otherwise neutral palette of the room.\n\nThe room itself is bathed in soft light filtering through a window adorned with orange curtains. The interplay of light and shadow adds depth to the scene, enhancing the overall ambiance of calm and solitude. Despite the simplicity of the objects within the room, their arrangement creates an image that tells a story of quiet focus and digital engagement.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-02-01.265224.jpg"
+}

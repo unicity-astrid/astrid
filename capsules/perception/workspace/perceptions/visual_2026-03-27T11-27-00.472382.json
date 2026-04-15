@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T11:27:10.420076",
+  "backend": "llava",
+  "description": "In the image, a young man is seated on a couch in a living room. He's wearing a black t-shirt and a red baseball cap, adding a pop of color to his outfit. The man is holding a remote control in his hand, suggesting he might be watching television or browsing through some form of digital entertainment.\n\nThe living room itself is furnished with a coffee table placed right in front of the couch. On top of the table, there's a white mug and a black laptop, indicating that this space could also serve as a casual workspace or study area.\n\nIn terms of lighting, the room appears to be well-lit, likely due to natural light coming through windows not visible in the image. The overall atmosphere is one of comfort and relaxation, with the man enjoying his time on the couch.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T11-27-00.472382.jpg"
+}

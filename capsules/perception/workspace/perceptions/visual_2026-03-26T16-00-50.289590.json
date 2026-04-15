@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:01:00.190349",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft natural light from two windows adorned with white curtains. The room is dominated by a plush gray couch, which sits comfortably on the left side of the image. The couch's inviting cushions and sturdy armrests suggest it's a perfect spot for relaxation or perhaps enjoying a good book.\n\nIn front of the couch, serving as a functional centerpiece in the room, is a wooden coffee table. Its rich brown hue contrasts beautifully with the gray tones of the couch and adds a touch of warmth to the space. A red blanket casually draped over the back of the couch adds a pop of color and texture to the scene.\n\nOn the right side of the image, there's a window dressed in white curtains that filter the sunlight, casting a gentle glow throughout the room. The curtains add an element of softness and elegance to the space.\n\nOverall, this living room exudes a sense of comfort and tranquility, making it an ideal place for relaxation and leisure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-00-50.289590.jpg"
+}

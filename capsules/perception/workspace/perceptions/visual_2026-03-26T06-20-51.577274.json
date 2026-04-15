@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:21:30.942914",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. A person, clad in a vibrant yellow shirt, is seated at a desk situated against the wall. The desk, bathed in soft light from a nearby window, holds two objects: a black laptop and a silver can of soda. \n\nIn front of this individual is a small table, upon which rests another soda can, mirroring its counterpart on the desk. The person appears engrossed in their work or perhaps lost in thought.\n\nThe room itself exudes a sense of calmness. A window punctuates one wall, draped with curtains that hang down in soft folds. Beyond this window, a railing is discernible, suggesting an upper floor or balcony. The overall atmosphere is one of tranquility and focused concentration.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-20-51.577274.jpg"
+}

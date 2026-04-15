@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:48:33.739069",
+  "backend": "llava",
+  "description": "The image captures a cozy living room setting with a focus on a black flat screen TV mounted above a white brick fireplace. The TV screen displays a vibrant game menu filled with various options including \"Campaign\", \"Multiplayer\", and \"Challenge\". \n\nTo the right of the fireplace, there's a window adorned with white curtains that let in soft light, illuminating the room. A person is captured mid-motion, walking out of the frame from the right side, adding a dynamic element to the otherwise static scene.\n\nThe overall atmosphere is one of comfort and leisure, suggesting a quiet evening spent gaming in the warmth of the fireplace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-48-18.069948.jpg"
+}

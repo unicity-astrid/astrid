@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:42:39.077282",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through two windows on the right wall. The walls are painted white, providing a clean canvas for the room's features. A brown sofa sits invitingly against one wall, adorned with a gray blanket that adds a touch of comfort. \n\nIn front of the sofa, a wooden coffee table takes center stage. It hosts a blue can and a red book, perhaps indicating someone's relaxed afternoon reading session. The window sill houses a plant, adding a dash of greenery to the room and enhancing its calming ambiance.\n\nThe room is well-lit, with sunlight streaming in through the windows casting soft shadows around the room. The overall atmosphere exudes warmth and tranquility, making it an ideal space for relaxation or quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-42-25.831594.jpg"
+}

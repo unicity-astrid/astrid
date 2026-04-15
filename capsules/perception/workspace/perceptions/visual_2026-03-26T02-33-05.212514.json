@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:33:10.887500",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene set in a dark living room. The room is bathed in soft, dim light that accentuates the shadows and adds depth to the space. On one wall, two windows are visible, their curtains drawn back slightly to let in a sliver of light. A small table sits between these windows, serving as a makeshift nightstand.\n\nOn this table, two objects catch the eye - a blue spray bottle and a black vase. The spray bottle stands upright, its cap pointing skyward, while the vase lies on its side, their positions contrasting with each other. \n\nThe room is devoid of people, adding to the sense of quiet solitude. A dark curtain hangs from one corner, providing an additional source of light that spills into the room and illuminates a portion of the floor. The overall atmosphere is peaceful and serene, as if time has momentarily paused within these four walls.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-33-05.212514.jpg"
+}

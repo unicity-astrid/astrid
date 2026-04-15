@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:05:05.987483",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in natural light from a large window on the left wall. The window, adorned with white blinds and a beige curtain, casts a soft glow that enhances the tranquility of the space.\n\nIn the heart of the room, a black coffee table takes center stage. It's topped with a laptop and a book, suggesting someone was perhaps enjoying some quiet reading or work time here.\n\nOn the right wall, a gray couch invites relaxation. A beige blanket is casually thrown over it, adding to the cozy atmosphere. The couch faces the window, allowing for natural light to illuminate the room during daylight hours.\n\nIn front of the couch, a wooden coffee table holds a single blue candle on its surface. The candle's presence adds an element of warmth and coziness to the space.\n\nOverall, this living room exudes a sense of calm and comfort, with its simple yet thoughtful arrangement of furniture and decor.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-04-55.846868.jpg"
+}

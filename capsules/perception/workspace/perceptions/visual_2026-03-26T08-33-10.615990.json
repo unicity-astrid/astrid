@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:33:30.479569",
+  "backend": "llava",
+  "description": "The image portrays a man in a vibrant yellow shirt and black pants, comfortably seated on a gray couch with wooden armrests. He has a microphone attached to his ear, suggesting he might be broadcasting or recording something. His attention is focused on a small table placed in front of him, which holds various objects including a blue cup and a white book.\n\nThe room around him exudes simplicity and comfort. The walls are painted white, providing a stark contrast to the gray carpet underfoot. A window with closed blinds can be seen in the background, adding an element of privacy to the scene.\n\nThe image is taken from a low angle, making the man appear larger than life. This perspective, combined with his focused gaze on the table, gives the impression that he is deeply engrossed in whatever task he's engaged in.\n\nOverall, the image captures a quiet moment in a cozy living room where work or creativity seems to be taking place.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-33-10.615990.jpg"
+}

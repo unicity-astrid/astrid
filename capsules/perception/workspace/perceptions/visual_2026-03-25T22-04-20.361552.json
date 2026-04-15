@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:04:30.107159",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a dimly lit room. The room is illuminated by a soft glow from two windows, one of which has its blinds partially drawn back, allowing some light to seep through. A black couch sits against one wall, draped with a white sheet that adds a touch of contrast to the darkness.\n\nIn the foreground, a coffee table takes center stage. It's adorned with a blue vase and a black phone, both resting on its surface. The table's location in the room suggests it's a central point for activities or conversations.\n\nThe image is taken from the perspective of someone standing near the door, their gaze directed towards the couch and windows. This viewpoint gives us a sense of being an observer, invited to step into this quiet space and perhaps join in on whatever conversation might be taking place.\n\nOverall, the image paints a picture of a peaceful evening spent in solitude or quiet company, with elements like the coffee table and windows serving as focal points that guide our eyes through the scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-04-20.361552.jpg"
+}

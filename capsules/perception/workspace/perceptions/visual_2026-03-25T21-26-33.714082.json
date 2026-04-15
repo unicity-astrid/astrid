@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:26:39.406842",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft light. The room is painted in a soothing dark blue color, creating an ambiance of tranquility. On the left wall, there's a window with white curtains that are partially open, revealing the outside world. A black door stands nearby on the right wall.\n\nIn the foreground, a black couch invites relaxation. It has a wooden armrest and a matching wooden side table. The table hosts a white lamp casting a warm glow, and a blue vase adding a pop of color to the scene. Behind the couch, there's another window with white curtains like the one on the left wall.\n\nThe image is taken from the perspective of someone sitting on the couch, looking towards these windows and the door. The composition of the image suggests an inviting space for rest and contemplation. The precise placement of objects and their relative positions contribute to the overall harmony of the scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-26-33.714082.jpg"
+}

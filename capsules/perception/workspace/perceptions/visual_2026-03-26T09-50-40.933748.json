@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:50:52.992907",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from two windows on the left wall. The walls are painted white, providing a bright and airy atmosphere. A wooden floor extends throughout the room, adding warmth to the space.\n\nOn the right side of the room, a gray sofa invites relaxation. A blue blanket is casually draped over it, suggesting recent use. In front of the sofa, a coffee table holds a laptop and a book, indicating an area for work or study.\n\nThe windows allow sunlight to pour into the room, illuminating every corner. The light from the windows contrasts with the gray walls, creating a visually pleasing effect. The natural light also enhances the colors in the room, making them appear more vibrant.\n\nOverall, the image portrays a comfortable and inviting living space that combines elements of rest and work.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-50-40.933748.jpg"
+}

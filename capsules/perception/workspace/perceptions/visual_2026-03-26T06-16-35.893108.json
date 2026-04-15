@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:16:57.948610",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. A person, clad in a vibrant yellow shirt, is seated at a desk, engrossed in their work on a laptop. The soft glow from the laptop screen illuminates their face, casting an intimate light that contrasts with the surrounding darkness.\n\nThe desk, positioned against a wall, holds two additional objects of interest - a bottle and a can. Their presence suggests a long session of work or perhaps study. \n\nIn the background, a window draped with a curtain adds depth to the scene. The curtain's fabric is partially visible, hinting at its soft texture and adding another layer of comfort to this quiet workspace.\n\nThe room itself exudes a sense of calm and focus, perfectly suited for productivity. The darkness outside contrasts sharply with the lit-up room, creating an atmosphere that speaks volumes about the dedication it takes to be present in such an environment. It's a snapshot of life, captured in one single frame.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-16-35.893108.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:20:05.068577",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. The room is bathed in a soft orange glow from a window on the left wall, which is adorned with white curtains. The floor beneath is a stark black, contrasting with the lighter walls. A solitary figure can be seen sitting on a bed located towards the right side of the image, their form slightly obscured by an open book resting beside them. The overall atmosphere suggests a quiet evening spent in solitude, perhaps enjoying a late-night read.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-20-01.331344.jpg"
+}

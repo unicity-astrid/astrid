@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:47:10.532227",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene bathed in soft light. A window with three panes, two on the left and one on the right, allows the light to filter into the room. The light from the left pane casts an orange glow, while the light from the right pane shines through with a blue hue. \n\nA black chair is positioned against the wall adjacent to the window, inviting someone to sit and enjoy the view outside. On the floor next to the chair, there's a small white object, its purpose or identity unknown.\n\nThe atmosphere suggests an evening setting, perhaps after work or before bed. The precise locations of the objects and their relative positions to each other create a harmonious composition, evoking a sense of calm and quietude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-47-05.645855.jpg"
+}

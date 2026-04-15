@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:51:26.987431",
+  "backend": "llava",
+  "description": "The image captures a serene and tranquil indoor scene at night. The room is bathed in a soft glow from two windows that are open, each adorned with white curtains. The windows are positioned on either side of the room, framing the view of the darkened exterior.\n\nIn front of these windows, there's a small table draped with a black cloth. On the table, three objects catch the eye: a tall glass bottle standing upright, its transparency gleaming under the light; a small vase, and a remote control lying flat on the table.\n\nThe walls of the room are painted white, providing a stark contrast to the dark furniture that includes a bed in one corner. The floor is tiled, adding an element of sophistication to the space. The overall atmosphere is one of quiet solitude, as if waiting for someone to return home and bring life back into it.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-51-05.512373.jpg"
+}

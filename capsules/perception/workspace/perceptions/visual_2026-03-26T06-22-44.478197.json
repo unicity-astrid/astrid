@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:23:08.683015",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting, bathed in the soft glow of a yellow-orange hue emanating from the windows. Two individuals are present in the room, each engaged in their own world. One person is comfortably seated on a couch, their back turned to us, perhaps engrossed in thought or simply enjoying the quietude. The other individual stands near a table that hosts two objects - a black camera and a blue soda can, possibly indicating an interest in photography or a moment of relaxation with a cold drink.\n\nThe room itself is minimalist, with white walls providing a stark contrast to the dark floor. A single window punctuates one wall, its curtains drawn back slightly to let in the warm light that illuminates the space. The atmosphere exudes calm and serenity, each object and person contributing to this overall sense of tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-22-44.478197.jpg"
+}

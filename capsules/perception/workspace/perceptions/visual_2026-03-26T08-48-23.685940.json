@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:48:54.841892",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through a window draped with white curtains. The window, located on the left wall, casts a warm glow that illuminates the room. \n\nIn the center of the room, a brown coffee table takes prominence. It's adorned with two items - a blue soda can and a red cup, adding splashes of color to the otherwise neutral palette of the room.\n\nTo the right, a gray couch invites relaxation. A white blanket casually draped over it suggests recent use or perhaps an early morning start. \n\nThe floor beneath is wooden, providing a natural contrast to the light-colored walls. The overall atmosphere is one of comfort and tranquility, a perfect place for rest and rejuvenation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-48-23.685940.jpg"
+}

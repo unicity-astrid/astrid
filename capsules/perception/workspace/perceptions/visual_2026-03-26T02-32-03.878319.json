@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:32:09.705792",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft yellow lighting. The centerpiece of the room is a bed, neatly made with a beige comforter that adds a warm hue to the space. A white pillow rests at the head of the bed, providing a stark contrast against the comforting blanket.\n\nOn either side of the bed are two windows, each adorned with sheer curtains that filter the outside light, casting an ethereal glow within the room. The window on the left is slightly ajar, inviting in the crisp night air. On the right window, a small plant sits on the sill, adding a touch of nature to this tranquil setting.\n\nThe walls of the room are painted white, reflecting the soft light and enhancing the sense of space. In one corner of the room stands a black lamp post, its presence adding depth to the scene. The overall atmosphere is one of calm and tranquility, a perfect retreat from the hustle and bustle of daily life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-32-03.878319.jpg"
+}

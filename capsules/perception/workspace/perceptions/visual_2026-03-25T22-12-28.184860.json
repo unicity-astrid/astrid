@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:12:33.992971",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene inside a room. The room is bathed in darkness, with the only sources of light coming from two windows and an interior lamp. The window on the left glows warmly, casting a soft yellow hue that contrasts with the cool blue tint of the right window. \n\nOn a black desk, which sits against the wall, there are three objects: a blue bottle, a white object, and a black object. Their exact nature is not clear from the image alone, but they add an element of intrigue to the scene.\n\nThe room itself has a simple design. The walls are painted white, providing a stark contrast to the dark furniture that fills the space. Despite the darkness, the room exudes a sense of calm and serenity, as if waiting for its occupant to return home after a long day. \n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-12-28.184860.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:54:31.454310",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, warm light. Dominating the scene is a television, its screen alive with a video game that's paused at a moment in time. The game, possibly \"Halo\", features two characters engaged in combat on a futuristic battlefield. \n\nThe television is mounted on the wall above a brick fireplace, creating a striking contrast between the modern entertainment and the traditional hearth. To the left of the television, a window lets in natural light that illuminates the room, casting long shadows and highlighting the textures of the furniture.\n\nThe room itself is softly lit by lamps that add to the inviting ambiance. The overall atmosphere suggests an evening spent in relaxation and leisure, with the video game waiting for its players to resume their virtual adventure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-54-22.213521.jpg"
+}

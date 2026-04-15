@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:39:39.438658",
+  "backend": "llava",
+  "description": "In the given image, a person is seen in a dimly lit room, sitting at a desk with their head resting on it. They are wearing a yellow shirt and are holding a black object in their hand. The desk they're sitting at has a white cloth on it, adding to the monochrome palette of the scene.\n\nThe room itself is quite simple, with white walls that reflect the little light present in the room. A window with white curtains can be seen in the background, suggesting that the person might have been working late into the night or perhaps early in the morning.\n\nThere's a sense of solitude and quiet in this image, as if the person is deeply engrossed in their work or thought. The yellow shirt stands out against the otherwise black and white setting, drawing attention to the person and their actions.\n\nOverall, this image captures a moment of introspection or concentration, set against a backdrop of simplicity and calmness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-39-33.357293.jpg"
+}

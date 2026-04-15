@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:55:54.495530",
+  "backend": "llava",
+  "description": "The image captures a serene and inviting living room bathed in soft natural light filtering through a window on the left wall. The window allows a glimpse of the world outside while illuminating the interior with a warm glow. \n\nAgainst the right wall, two gray sofas face each other, creating an intimate seating area perfect for conversation or relaxation. A coffee table sits between them, ready to hold cups of tea or stacks of books. A lamp stands sentinel on the floor next to one of the sofas, its light off in the daytime but promising a cozy ambiance when night falls.\n\nOn the far wall, a bookshelf stands tall, filled with various items that hint at the interests and hobbies of the inhabitants. The room itself is painted white, providing a neutral backdrop for the furniture and decor. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation or quiet reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-55-17.348874.jpg"
+}

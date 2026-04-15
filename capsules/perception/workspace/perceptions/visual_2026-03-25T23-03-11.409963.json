@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:03:17.880090",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in the soft glow of a single light source, casting long shadows that dance across the walls and furniture. The room is awash with a dark ambiance, creating an intimate and tranquil atmosphere.\n\nIn the foreground, a black couch invites relaxation, its surface gleaming subtly under the illumination. A solitary lamp stands guard on it, ready to bathe the room in a warm light when night falls. \n\nTo the left of the frame, a window with white blinds punctuates the darkness. The blinds are drawn partially, their edges framing the world outside while allowing the soft light to filter into the room.\n\nOn the right side of the image, another window is visible, but this one has yellow curtains that add a pop of color to the otherwise monochromatic scene. They hang gracefully, partially open as if inviting an unseen breeze to join in this quiet symphony of shadows and light.\n\nDespite its simplicity, the image paints a picture of a comfortable and inviting space, where every object and detail contributes to creating a warm and welcoming atmosphere.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-03-11.409963.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:15:12.067580",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through two windows adorned with white curtains. The walls, painted in a soothing shade of beige, harmonize beautifully with the warm wooden floor. \n\nIn the heart of the room, a gray couch invites relaxation. A pink blanket is casually draped over it, adding a pop of color to the neutral palette. Adjacent to the couch, a black coffee table holds court. It's not just any table though - it's a makeshift desk. A blue mug and a white box rest on its surface, suggesting someone might have been enjoying a quiet moment with their favorite brew.\n\nThe windows, framed by the curtains, let in streams of light that dance on the wooden floor, casting an inviting glow around the room. The overall atmosphere is one of comfort and tranquility, a perfect space for unwinding after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-15-03.266373.jpg"
+}

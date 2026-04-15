@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:37:04.124291",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden desk in what appears to be a living room. He's wearing a blue shirt and has a pink baseball cap on his head. His attention seems to be focused on the laptop computer that he's using. \n\nThe desk, positioned against a white wall with windows, holds not only the laptop but also a can of soda. The windows behind the man let in natural light, illuminating the room and casting soft shadows.\n\nTo the right of the image, there's a couch partially visible, suggesting a cozy and comfortable living space. On it, a blanket is neatly folded, adding to the homely atmosphere.\n\nOverall, the image captures an everyday moment of modern life, with technology at its center.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-36-59.234126.jpg"
+}

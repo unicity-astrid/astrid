@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:10:54.237808",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting at night. Dominating the scene are two windows adorned with yellow curtains that hang from white frames. The left window hosts a plant, its leaves reaching out into the room, while a blue vase sits on the right window sill. The background is shrouded in darkness, punctuated by a faint light source positioned to the right of the image. This light casts an ethereal glow over the scene, enhancing the overall ambiance and creating a sense of tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-10-50.454709.jpg"
+}

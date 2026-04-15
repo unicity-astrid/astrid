@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:29:40.227739",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light filtering through a window draped with white curtains. The window allows the outside light to seep into the room, casting a warm glow on the objects within. \n\nOn the right side of the photo, a beige couch invites relaxation. A blue blanket is casually thrown over it, adding a pop of color to the scene. In front of the couch, a wooden coffee table holds court. It's a hub of activity with various items scattered across its surface.\n\nTo the left of the couch stands a black bookshelf filled with books and trinkets, suggesting a love for reading or collecting mementos. The objects in the room are arranged harmoniously, creating a sense of balance and comfort.\n\nThe overall atmosphere is one of tranquility and warmth, an ideal space for unwinding after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-29-30.955561.jpg"
+}

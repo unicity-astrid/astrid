@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:14:23.064886",
+  "backend": "llava",
+  "description": "The image captures a man engrossed in his work at a desk during what appears to be the evening or night. He's wearing a yellow shirt, which stands out against the dimly lit room. The desk, positioned near a window, serves as his workspace. \n\nOn the desk, there are two objects: a black camera and a silver lamp with a red shade. The camera is closed, resting next to the man who is holding a glass in one hand. His attention seems to be focused on something off-frame.\n\nThe room itself has a dark ambiance, suggesting it's either late evening or night. A window in the background lets in some light that illuminates the scene. The overall atmosphere suggests a quiet moment of concentration and focus.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-14-16.513271.jpg"
+}

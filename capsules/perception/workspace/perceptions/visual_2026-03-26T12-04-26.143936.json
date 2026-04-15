@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:04:31.733923",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a gray couch in a living room. He's casually dressed in a blue shirt and shorts, adding to the relaxed ambiance of the scene. His attention seems to be focused on something off-camera, as he gazes intently.\n\nThe living room itself is tastefully decorated. A wooden coffee table takes center stage, its surface adorned with a white cloth. The table provides a stark contrast against the gray couch and beige walls, creating an aesthetically pleasing visual balance in the room.\n\nA window punctuates one of the beige walls, draped with a white curtain that filters the sunlight entering the room. The natural light adds warmth to the space, enhancing the overall cozy atmosphere.\n\nIn summary, this image captures a quiet moment in a well-lit living room where a man is seated on a gray couch, engrossed in something off-camera.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-04-26.143936.jpg"
+}

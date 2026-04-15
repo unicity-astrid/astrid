@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:25:37.064741",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the left side of the frame is a gray couch, its plush cushions inviting relaxation. The couch faces a wooden coffee table, which stands out against the otherwise white walls. A beige curtain adds a soft touch to the background.\n\nOn the coffee table, a red book and a blue water bottle are neatly arranged, suggesting someone's recent activity. The table is positioned in front of two windows, their glass surfaces reflecting the outside world. Through these windows, a garden unfolds, filled with lush greenery that brings life to the scene.\n\nThe overall atmosphere is one of tranquility and comfort, a perfect setting for quiet afternoons or peaceful evenings spent reading. The precise placement of objects and the careful balance between light and shadow create a harmonious composition that speaks volumes about the quiet beauty of everyday moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-25-28.297665.jpg"
+}

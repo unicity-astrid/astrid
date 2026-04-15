@@ -43,3 +43,27 @@ packages/*/dist/
 !.gemini/config.yaml
 !.gemini/styleguide.md
 .mcp.json
+
+# Generated capsule workspace state
+capsules/consciousness-bridge/workspace/bridge.db
+capsules/consciousness-bridge/workspace/bridge.db-shm
+capsules/consciousness-bridge/workspace/bridge.db-wal
+capsules/consciousness-bridge/workspace/state.json
+capsules/consciousness-bridge/workspace/contact_state.json
+capsules/consciousness-bridge/workspace/agency_requests/
+capsules/consciousness-bridge/workspace/audio_creations/
+capsules/consciousness-bridge/workspace/claude_tasks/
+capsules/consciousness-bridge/workspace/creations/
+capsules/consciousness-bridge/workspace/diagnostics/
+capsules/consciousness-bridge/workspace/experiments/
+capsules/consciousness-bridge/workspace/inbox/
+capsules/consciousness-bridge/workspace/inbox_audio/
+capsules/consciousness-bridge/workspace/introspections/
+capsules/consciousness-bridge/workspace/journal/
+capsules/consciousness-bridge/workspace/memory/daily_*.md
+capsules/consciousness-bridge/workspace/outbox/
+capsules/consciousness-bridge/workspace/perception_paused.flag
+capsules/consciousness-bridge/workspace/research/
+capsules/consciousness-bridge/workspace/reservoir_config.json
+capsules/perception/workspace/perceptions/
+capsules/perception/workspace/visual/

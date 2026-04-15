@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:59:21.032363",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting. Dominating the scene is a couch, adorned with a gray blanket, inviting relaxation. A black coffee table sits in front of the couch, hosting an open laptop that faces the window. The window, veiled by white curtains, allows light to filter into the room, illuminating the objects within.\n\nThe color palette of the image leans towards shades of gray and white, punctuated by the contrasting blackness of the coffee table and couch. A hint of blue is present in the laptop on the table, adding a pop of color to the otherwise monochromatic scene.\n\nThe arrangement of the objects suggests a quiet afternoon spent in front of the window - perhaps someone working on their laptop or maybe they've just returned home after a long day, ready to unwind with their favorite show. The image exudes a sense of calm and tranquility, characteristic of a well-appointed living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-59-06.967434.jpg"
+}

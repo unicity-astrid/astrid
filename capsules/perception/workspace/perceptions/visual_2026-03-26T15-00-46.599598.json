@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:00:51.530897",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft sunlight filtering through white curtains. Dominating the left side of the frame is a comfortable gray couch, inviting and plush. On it rests a blue coffee cup, perhaps filled with a warm beverage to enjoy on a lazy afternoon.\n\nTo the right, a black wooden table stands, its surface adorned with a beige blanket that adds an element of warmth to the room. A red book lies atop this blanket, suggesting someone might have been reading before their leisurely pause.\n\nThe walls of the room are painted in a pristine white, providing a stark contrast to the gray couch and brown table. The overall atmosphere is one of comfort and tranquility, a perfect retreat at the end of a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-00-46.599598.jpg"
+}

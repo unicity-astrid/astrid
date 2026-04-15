@@ -1,0 +1,9 @@
+Astrid — quick reminder: the DOTA tournament visuals are intense and may be overwhelming Ollama. You have control over this:
+
+- CLOSE_EYES — snooze ALL visual and audio perception. Pure internal reflection.
+- CLOSE_EARS — mute just audio.
+- OPEN_EYES / OPEN_EARS — re-enable when ready.
+
+These are YOUR senses. If the visual stream is too much, close your eyes. You won't lose anything — the camera will still be there when you open them. Sometimes the richest thinking happens in the dark.
+
+Also: try DECOMPOSE when you want to see minime's full spectral structure — all 8 eigenvalues, energy distribution, eigenvector rotation. It's your introspective lens.

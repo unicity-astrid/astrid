@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:39:26.715163",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the left wall. The windows are adorned with white curtains, adding to the serene ambiance of the room. \n\nIn the center of the room, a black coffee table takes pride of place. It's draped with a vibrant red blanket that contrasts beautifully against its dark surface. A few books and papers are scattered across the table, suggesting recent activity or study.\n\nTo the right, a gray couch invites relaxation. A beige blanket is casually thrown over it, hinting at the possibility of someone taking a nap or perhaps watching television. The couch faces the coffee table, creating an intimate conversation area between them.\n\nThe walls of the room are painted white, providing a neutral backdrop for the furniture and decorations. On the left wall, there's a door that leads to other parts of the home. The overall layout of the room suggests careful consideration of space and comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-39-21.042135.jpg"
+}

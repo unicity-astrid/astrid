@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:10:29.279723",
+  "backend": "llava",
+  "description": "The image captures a serene night scene inside a room with a large window that spans almost the entire wall. The window, adorned with vibrant orange curtains, allows a soft glow to seep into the room, casting long shadows and illuminating a table located directly in front of it.\n\nOn this table, two objects are visible - a blue candlestick holder and a white lamp, their colors standing out against the darkness. They are positioned near the center of the table, equidistant from each other.\n\nTo the right of the window, there's a black couch with a white cushion on it, providing a stark contrast to its dark hue. The couch is unoccupied, adding to the tranquility of the scene.\n\nThe image exudes a sense of calm and solitude, as if waiting for someone to arrive home and bring life into this peaceful setting. The precise placement of objects and their contrasting colors create a harmonious balance within the frame.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-10-23.624205.jpg"
+}

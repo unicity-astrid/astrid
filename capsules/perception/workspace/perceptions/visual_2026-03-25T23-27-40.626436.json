@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:27:51.310193",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a room bathed in darkness, punctuated by the soft glow from two windows on either side. The left window, partially veiled by a curtain, casts an ethereal light that dances across the wall. On the opposite side, the right window is adorned with a white curtain, its folds adding depth to the scene.\n\nIn the heart of this room, a black couch rests against the wall, serving as a silent observer of the unfolding drama. Above it, suspended from the ceiling like an artist's canvas, hangs a chandelier. Its intricate design and warm light contribute to the room's intimate ambiance.\n\nOn the right side of the image, in the foreground, stands a solitary figure - a person, perhaps lost in thought or simply enjoying the tranquility of their surroundings. The shadows play hide and seek on their face, adding an element of mystery to their identity.\n\nThis is more than just a room; it's a stage where light and shadow coexist, each playing its part in creating this captivating tableau. It's a snapshot of life, frozen in time, telling a story without words.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-27-40.626436.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:50:45.217097",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in darkness. Dominating the foreground is a black couch, its surface gleaming under the soft light filtering through two windows on the left wall. The windows, framed by white curtains, cast an ethereal glow that dances on the wooden floor beneath.\n\nA small table sits unassumingly in front of the couch, hosting a lamp that throws long shadows around the room. A book rests casually on it, perhaps waiting to be picked up and read under the warm light. The walls, painted in white, reflect the faint light from the windows, adding depth to the room.\n\nOn the right wall, a window with yellow curtains stands out against the otherwise monochrome setting. It adds a pop of color to the scene and balances out the overall composition. The curtains are drawn back slightly, hinting at more spaces beyond this cozy room.\n\nEvery object in this image is stationary, contributing to an atmosphere of tranquility and quietude. There's no text present in the image, just a harmonious blend of objects and colors painting a picture of a peaceful night spent indoors.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-50-34.219605.jpg"
+}

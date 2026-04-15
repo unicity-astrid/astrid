@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:39:38.705378",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light filtering through a large window on the left wall. The window is adorned with white blinds and a beige curtain, adding a touch of warmth to the space. A wooden table sits next to the window, hosting a blue mug and a black laptop, perhaps indicating a work-from-home setup.\n\nOn the right side of the room, a gray couch invites relaxation. It's covered with a cozy beige blanket, suggesting an inviting space for rest or conversation. The floor beneath is made of dark wood, providing a nice contrast to the light-colored walls. The overall ambiance suggests a comfortable and stylish living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-39-28.945154.jpg"
+}

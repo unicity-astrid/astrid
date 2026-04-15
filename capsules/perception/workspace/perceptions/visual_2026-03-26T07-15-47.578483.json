@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:16:05.739369",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a room, engrossed in his work at a desk. The man, dressed in a vibrant yellow sweater, holds a black cup of coffee, perhaps to stay alert during his work. His focus is directed towards a laptop screen that rests on the wooden desk.\n\nThe desk itself is adorned with various objects: a lamp providing light, a phone possibly for communication, and a book indicating an academic or professional pursuit. The room in which he sits has a window draped with white curtains, allowing natural light to filter in and create a serene atmosphere.\n\nOn the left side of the image, there's another person visible but only partially seen, adding an element of companionship or shared space to the scene. The precise locations of these objects relative to each other and their interactions paint a picture of a typical day in this man's life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-15-47.578483.jpg"
+}

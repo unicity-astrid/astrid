@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T10:12:02.178118",
+  "backend": "llava",
+  "description": "The image captures a moment in a living room where a young man is engrossed in his work at a desk. He's wearing a black t-shirt adorned with red text and has short hair, which adds to his focused demeanor. His right hand is holding a coffee cup, suggesting he might be working long hours or perhaps studying for an exam.\n\nThe desk, positioned against the wall of the room, is covered in papers and books, indicating that he's deeply involved in some sort of academic or professional task. The window behind him is letting in natural light, which illuminates the room and casts a soft glow on his face.\n\nIn the background, there's a couch that adds to the homely atmosphere of the scene. A lamp can also be seen, possibly providing additional lighting when needed. The overall setting suggests a comfortable and personalized workspace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-11-49.697891.jpg"
+}

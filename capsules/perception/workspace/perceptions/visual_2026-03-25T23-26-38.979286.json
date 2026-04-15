@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:26:44.618314",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor setting at night. The room is bathed in soft, dim lighting that casts long shadows and adds depth to the scene. A window on the right side of the frame offers a glimpse into another space, where yellow curtains hang, partially obscuring the view.\n\nIn the foreground, a black couch invites relaxation. It's draped with a white sheet that contrasts sharply with its dark color. The couch is positioned in front of a desk, which houses a blue soda can and a white candle, their colors standing out against the dark background.\n\nThe room itself is characterized by white walls and a wooden floor, providing a neutral backdrop for the objects within it. On the left side of the image, a door can be seen, suggesting an entrance or exit to this peaceful space.\n\nOverall, the image paints a picture of quiet solitude, with each object carefully placed, contributing to the serene atmosphere of the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-26-38.979286.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:59:18.545137",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft light. The walls, painted in a soothing shade of green, house two windows on either side of a beige wall. Each window is adorned with white blinds, adding to the room's classic charm.\n\nOn the left side of the room, a wooden bench rests against the wall, serving as an inviting spot for relaxation or contemplation. A blue armchair sits in front of it, offering additional seating and comfort.\n\nThe centerpiece of the room is a coffee table draped with a white tablecloth. The table hosts two candles, their flames dancing gently, casting a warm glow that illuminates the room. The flickering light from these candles creates an atmosphere of tranquility and intimacy.\n\nDespite the room's simplicity, it exudes a sense of warmth and comfort. It's a space designed for rest and relaxation, where one can sit back with a good book or enjoy quiet moments of reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-59-12.823805.jpg"
+}

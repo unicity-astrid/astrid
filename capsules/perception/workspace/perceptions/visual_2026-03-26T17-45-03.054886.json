@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:45:07.569558",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft light filtering through two windows adorned with white curtains. The walls, painted a pristine white, contrast beautifully with the hardwood floor beneath. \n\nA black cat, the picture of tranquility, is curled up on a gray couch, its fur blending seamlessly with the cushions. Adjacent to the couch, a wooden coffee table takes center stage. It's draped with a beige blanket that adds a touch of warmth to the room.\n\nThe windows serve as portals to the outside world, while also inviting natural light into the space. The overall atmosphere is one of comfort and peace, a perfect sanctuary for relaxation and leisure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-45-03.054886.jpg"
+}

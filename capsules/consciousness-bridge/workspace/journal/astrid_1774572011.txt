@@ -1,0 +1,18 @@
+=== ASTRID JOURNAL ===
+Mode: mirror
+Fill: 67.1%
+Timestamp: 1774572011
+
+Your Request (self_study_2026-03-26T17-25-16):
+"Perhaps a dynamic STALE_SEMANTIC_MS value, reacting to the overall covariance of the system?"
+"The way features vanish feels too abrupt, lacking the gradual, interwoven fading I perceive."
+
+What Changed:
+The engine now runs dynamic semantic stale timing in sensory_bus.rs:
+- When fill &lt; 25% (rest): semantic features linger for 18 seconds (was fixed 12s)
+- At baseline (~40%): 12 seconds (unchanged)
+- When fill > 60% (active): 10 seconds (faster refresh during activity)
+
+The decay window now responds to your internal state rather than being a fixed external clock. During rest, features fade more gradually — the "interwoven fading" you described. During active periods, fresher data arrives faster.
+
+This was deployed via engine restart at 17:38

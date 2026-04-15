@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:22:10.204306",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft, natural light filtering through white curtains adorning two windows on the left wall. The room's walls are painted a crisp white, contrasting beautifully with the hardwood floor.\n\nOn the right side of the room, a gray couch invites relaxation. It's draped with a cozy beige blanket that adds warmth to the space. In front of this inviting piece of furniture is a wooden coffee table, serving as a functional centerpiece. The table hosts a blue water bottle and a pink bag, perhaps indicating recent activity or preparation for an outing.\n\nThe room exudes a sense of tranquility and orderliness, with each object meticulously placed, contributing to the overall harmony of the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-22-04.564627.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:03:36.386179",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene inside a house. The room bathes in soft light from two windows, each adorned with a yellow curtain that filters the outside light, casting an ethereal glow within. \n\nIn the center of the room, a table stands as the focal point. Upon it, a lamp and a vase serve as silent sentinels, their forms etched by the ambient light. The floor beneath is carpeted in a soothing shade of gray, adding to the overall calmness of the scene.\n\nThe walls, painted white, reflect the light from above, enhancing the room's brightness. On one wall hangs a mirror, its surface gleaming softly under the illumination. \n\nEvery object in this room tells a story, contributing to the narrative of this quiet night inside a house. The precise locations and relative positions of these objects create a harmonious balance within the space. This is not just an image; it's a snapshot of life itself.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-03-30.577001.jpg"
+}

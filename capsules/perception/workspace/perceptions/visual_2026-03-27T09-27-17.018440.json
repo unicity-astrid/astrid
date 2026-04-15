@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T09:27:22.670078",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, ambient light. Dominating the scene is a flat-screen TV, mounted on a pristine white wall above a black fireplace. The TV screen is alive with vibrant colors from a video game, its characters and objects rendered in striking detail.\n\nOn either side of the TV, two speakers stand like sentinels, their presence hinting at the possibility of music filling this space. To the right of the TV, there's a white curtain that adds to the room's minimalist aesthetic.\n\nThe black fireplace below contrasts sharply with the surrounding whiteness, creating an interesting visual dynamic in the room. The overall atmosphere suggests a comfortable and inviting space for relaxation and entertainment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-27-17.018440.jpg"
+}

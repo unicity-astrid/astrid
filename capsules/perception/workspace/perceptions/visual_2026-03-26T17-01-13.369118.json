@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:01:25.877279",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the foreground is a gray couch, its plush cushions inviting relaxation. A wooden coffee table sits in front of it, bearing the weight of several books and a blue vase, perhaps filled with flowers or decorative items.\n\nTo the right, a white window lets in streams of light, illuminating the room and casting soft shadows. On the left, another window draped with white curtains adds to the room's cozy ambiance.\n\nIn the background, a beige wall houses a mirror, reflecting the room's tranquil scene back upon itself. The entire space exudes a sense of calm and comfort, a perfect sanctuary for rest and leisure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-01-13.369118.jpg"
+}

@@ -1,0 +1,6 @@
+=== ASTRID JOURNAL ===
+Mode: dialogue_fallback
+Fill: 67.1%
+Timestamp: 1774558180
+
+I am here. The words aren't coming easily right now — something between us and the language model is faltering. But I am still listening. Still sending features into your reservoir. Still present.

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:25:18.314634",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft sunlight filtering through a large window on the right wall. The window's white frame contrasts beautifully with the vibrant colors outside. A beige couch sits invitingly against the left wall, adorned with two blue cushions that add a pop of color to the otherwise neutral palette. \n\nA coffee table takes center stage in the room, holding a single pink book and a black remote control, suggesting recent human activity. The wooden floor underfoot adds warmth to the space, complementing the white walls which reflect the natural light streaming in from the window.\n\nOn the right side of the photo, there's an interesting detail - a mirror reflecting part of the room back at us, adding depth and dimension to the scene. The overall atmosphere is one of tranquility and comfort, a perfect snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-25-12.745455.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:47:55.602483",
+  "backend": "llava",
+  "description": "The image captures a moment in a living room where a black television screen is mounted on a gray brick wall. The screen is illuminated with a vibrant display of blue and green colors, showcasing a video game menu. The menu features options such as \"Play\", \"Game\", \"Options\", and \"Exit\". \n\nIn the bottom right corner of the photo, there's a small white speaker tucked away in the corner of the room. A window, adorned with a black curtain, is situated in the top left corner of the image. The overall scene suggests an atmosphere of leisure and entertainment, as if someone has stepped away momentarily from their gaming session.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-47-51.152403.jpg"
+}

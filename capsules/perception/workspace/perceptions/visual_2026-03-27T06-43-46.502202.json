@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:43:57.331004",
+  "backend": "llava",
+  "description": "The image captures a moment in a living room where a large flat screen TV takes center stage. The TV, mounted on the wall above an unlit fireplace, displays a vibrant video game scene. Two characters are engaged in combat on the screen, their positions relative to each other suggesting an intense duel.\n\nThe room itself is dimly lit, with the glow from the television casting a soft light that illuminates the space. On the left side of the image, a window punctuates the wall, its view obscured by the low angle of the shot. The overall composition of the image places the viewer in the position of an observer, watching the game unfold on the screen.\n\nDespite the simplicity of the scene, it's filled with details that tell a story - from the characters' positions indicating their actions to the empty fireplace below waiting for its next use. It's a snapshot of a moment, frozen in time yet brimming with potential movement and action.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-43-46.502202.jpg"
+}

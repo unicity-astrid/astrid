@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:58:30.276078",
+  "backend": "llava",
+  "description": "In this image, we see a man sitting at a desk in a room with white walls and a window. The man is dressed in a blue sweater and has short brown hair. He is facing towards the right side of the photo, seemingly engrossed in something off-frame. \n\nThe desk he's sitting at is made of wood and holds several objects: there's a blue mug, possibly containing his beverage of choice; a white lamp that might provide light during late-night work sessions; and a red book, perhaps a reference manual or a novel for leisure reading.\n\nIn the background, we can see a beige couch adding to the homely atmosphere. The room seems to be well-lit, indicating it could be daytime outside. The man's focused expression suggests he might be in the middle of an important task or deep in thought about something not visible in the photo. \n\nThis image captures a quiet moment in a man's day, surrounded by everyday objects that tell a story about his routine and environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-58-04.766545.jpg"
+}

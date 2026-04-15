@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:49:59.311863",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft natural light filtering through a large window. The window, adorned with white curtains and brown blinds, offers a view to an unseen landscape outside. \n\nIn the center of the room, a black coffee table takes prominence. It hosts an array of objects: a silver laptop bearing the Apple logo, a pink book lying open as if someone just put it down, and a beige blanket casually draped over the side.\n\nTo the right of the coffee table, a gray couch invites relaxation. A single white pillow rests on it, untouched. Adjacent to the couch, a black armchair stands, mirroring its position in relation to the coffee table.\n\nThe room exudes a sense of tranquility and order, each object meticulously placed, creating a harmonious living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-49-53.674340.jpg"
+}

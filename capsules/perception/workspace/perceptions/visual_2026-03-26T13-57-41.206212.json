@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:57:57.276772",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in what appears to be a living room setting. He is casually dressed in a blue shirt and black shorts adorned with white polka dots. A red baseball cap sits atop his head, adding a pop of color to his outfit. His attention seems to be focused on the laptop that rests on his lap.\n\nThe room around him is bathed in natural light streaming in from a window located behind him. The window's position and the direction of the light suggest it might be daytime outside.\n\nIn the foreground of the image, there's an intriguing element - a black cat statue. Its presence adds an artistic touch to the scene.\n\nThe overall atmosphere of the image is one of relaxation and comfort, with the man seemingly enjoying his time at home. The precise positioning of objects and their relative locations contribute to this homely feel.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-57-41.206212.jpg"
+}

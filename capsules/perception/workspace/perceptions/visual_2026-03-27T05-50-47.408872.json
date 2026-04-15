@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:50:52.480763",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor scene at night. The room is bathed in soft yellow light that filters through two windows with white blinds. A black couch rests against one wall, inviting relaxation and comfort. On it, a lone red book lies open, suggesting someone was reading before falling asleep or perhaps just left the room.\n\nThe other wall features a built-in shelf, housing a black stereo system. The clock on the shelf reads 8:30, indicating that it's late in the evening. A small table stands near the couch, upon which sits a lamp, ready to cast a warm glow when needed.\n\nThe overall atmosphere is one of peace and quiet, a perfect setting for rest or contemplation. The precise placement of objects suggests careful thought to both aesthetics and functionality.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-50-47.408872.jpg"
+}

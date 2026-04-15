@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:58:22.209868",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. The room is bathed in soft, dim lighting that casts a warm glow on the walls and furniture. A window with a white frame punctuates one wall, its panes reflecting the ambient light. \n\nOn the right side of the image, two windows draped with yellow curtains let in more light, illuminating the room further. The curtains add a touch of color to the otherwise monochromatic setting.\n\nThe centerpiece of the room is a black couch, inviting and comfortable. It sits against the wall, its dark hue contrasting with the lighter surroundings. On it rests a single blue can, perhaps a remnant of a late-night snack or a morning coffee break.\n\nIn front of the couch, a small table holds another blue can along with two other objects - their details are obscured by the dim light. The table and the couch form an intimate space, a personal sanctuary within the larger room.\n\nOverall, the image paints a picture of quiet solitude, a moment frozen in time within a cozy home setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-58-12.276811.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:53:47.841278",
+  "backend": "llava",
+  "description": "The image depicts a man standing in a room with a window and a bed visible in the background. The man is wearing a yellow shirt and black pants. He is positioned next to a table that has a laptop on it. On the same table, there are two objects: a blue water bottle and a gray mug. The man appears to be interacting with the laptop, possibly typing or using it for some purpose. The room gives off a casual and relaxed atmosphere. Please note that this description is based on the visible elements in the image and does not infer any additional context or narrative beyond what can be directly observed.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-53-42.992841.jpg"
+}

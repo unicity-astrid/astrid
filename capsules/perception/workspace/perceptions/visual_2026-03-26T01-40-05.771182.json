@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:40:13.960244",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in darkness. Dominating the center of the frame is a bed, its presence accentuated by a blue blanket casually draped over it. To the left, a window punctuates the wall, adorned with two curtains that hang still, silently guarding the room's privacy. The windowsill serves as a resting place for a solitary bottle and an empty glass, their contents long gone.\n\nThe right side of the image is illuminated by a soft glow emanating from a lamp on a nightstand. This light casts a warm ambiance throughout the room, its gentle illumination revealing more details that would otherwise remain shrouded in darkness. The overall atmosphere exudes tranquility and calm, a perfect sanctuary for rest and relaxation at the end of a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-40-05.771182.jpg"
+}

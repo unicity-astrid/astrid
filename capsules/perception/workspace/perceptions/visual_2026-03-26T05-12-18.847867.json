@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:12:27.335885",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor scene at night. A person is seated in a chair, engrossed in their laptop. They are dressed in a vibrant yellow shirt which stands out against the dimly lit room. The laptop rests on a wooden desk, positioned right in front of them.\n\nThe room itself exudes a warm and cozy atmosphere, enhanced by the soft glow from two windows that let in natural light. One window is adorned with blinds, adding an element of privacy to the scene. The other window features curtains that are drawn partially back, allowing the light to filter in and illuminate the room's interior.\n\nThe image is captured from a low angle, creating an interesting perspective that emphasizes the person sitting at the desk. The overall composition of the image suggests a quiet moment of focus and productivity, possibly during late-night work or study.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-12-18.847867.jpg"
+}

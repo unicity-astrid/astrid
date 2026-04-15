@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:08:04.568576",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the right wall. The room is dominated by a black couch with a gray blanket casually thrown over it, inviting relaxation. A brown coffee table sits in front of the couch, hosting a blue mug and a red book, suggesting someone's recent activity.\n\nTo the left, a white door stands closed, adding to the homely atmosphere. On the right side of the image, a beige wall houses two windows that let in streams of light, casting a warm glow on the room. The overall scene paints a picture of a tranquil afternoon spent in comfort and solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-07-55.706514.jpg"
+}

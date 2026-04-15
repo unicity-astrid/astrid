@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:29:39.951078",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a dimly lit room. He's wearing a vibrant yellow shirt, adding a pop of color to the otherwise muted surroundings. The desk is equipped with a computer monitor and keyboard, suggesting that he might be working or studying. \n\nThe room itself has a window covered with a white curtain, allowing for some natural light to filter in. A lamp on the desk provides additional illumination, casting a soft glow that subtly highlights the man's figure. The overall atmosphere of the image is one of quiet concentration and solitude.\n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-29-29.368232.jpg"
+}

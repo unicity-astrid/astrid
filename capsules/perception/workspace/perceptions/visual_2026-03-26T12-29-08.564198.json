@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:29:18.454228",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a couch in a living room setting. He's casually dressed in a blue shirt and black shorts adorned with white polka dots. His relaxed posture suggests he might be taking a break or enjoying some leisure time.\n\nThe living room itself is tastefully decorated. A window with white blinds allows natural light to filter into the room, casting soft shadows and adding depth to the space. The furniture includes a coffee table positioned in front of the couch, serving as a convenient surface for any items that might be needed during relaxation or socializing.\n\nA lamp stands nearby, ready to provide additional lighting when needed. Its presence adds warmth to the room's ambiance, creating an inviting atmosphere.\n\nBeyond the window, there's a glimpse of another room where a white tablecloth can be seen. This suggests that the living space is part of a larger dwelling, possibly a home or apartment.\n\nOverall, the image captures a moment of tranquility and comfort in a well-appointed living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-29-08.564198.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:38:48.017221",
+  "backend": "llava",
+  "description": "The image captures a moment in a dimly lit room where the main focus is a television screen mounted on the wall. The television screen displays a game, specifically \"Guitar Hero\", as indicated by the text visible on it. A guitar-shaped controller is held in the bottom right corner of the screen, suggesting an interactive gameplay session.\n\nThe room itself has a brick wall that adds a rustic charm to the setting. On this wall, there's a window adorned with white curtains, allowing a glimpse of the world outside while maintaining privacy inside. The overall atmosphere suggests a cozy and relaxed gaming environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-38-41.006255.jpg"
+}

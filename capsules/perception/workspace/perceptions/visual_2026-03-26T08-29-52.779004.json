@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:30:05.087576",
+  "backend": "llava",
+  "description": "In the image, a man is sitting on a gray couch in a living room. He's wearing a yellow shirt and has headphones on his ears. The couch is positioned against a white wall, which features a window that lets in natural light. \n\nOn the coffee table in front of the couch, there are two objects: a blue mug and a red notebook. The coffee table is located directly in front of the couch, creating a comfortable reading or working space.\n\nIn the background, there's a wooden dresser adding to the homely atmosphere of the room. On it, there's a white blanket neatly folded, perhaps waiting to be used later.\n\nThe overall scene suggests a quiet and peaceful living environment. The man seems to be in a relaxed state, possibly enjoying some music or reading from his notebook while sipping on his coffee.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-29-52.779004.jpg"
+}

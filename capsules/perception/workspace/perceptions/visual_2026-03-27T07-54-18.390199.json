@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:54:27.327195",
+  "backend": "llava",
+  "description": "The image captures a lively scene in a living room where a video game is being played on a television. The television screen, which is mounted above a white brick fireplace with a black grate, displays vibrant colors and characters from the game. The screen is flanked by two speakers, indicating an immersive audio experience.\n\nBelow the television, a wooden shelf holds various items, adding to the homely ambiance of the room. On the right side of the image, there's a window that lets in natural light, contrasting with the artificial glow from the television screen.\n\nIn the background, a person can be seen standing, possibly engaged in the game or controlling it. The precise positioning of objects and their relative locations contribute to a well-organized and cozy living space. The image does not contain any discernible text.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-54-18.390199.jpg"
+}

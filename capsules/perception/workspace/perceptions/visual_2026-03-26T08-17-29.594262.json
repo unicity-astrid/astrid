@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:17:51.449690",
+  "backend": "llava",
+  "description": "In the image, a man is sitting on a blue couch in a living room. He is wearing a yellow shirt and headphones, suggesting he might be listening to something or perhaps preparing for an activity that requires sound. His gaze is directed towards the right side of the photo, indicating that his attention is captured by something outside the frame.\n\nThe living room itself is quite simple, with white walls providing a neutral backdrop. A window with white blinds can be seen in the background, suggesting it might be daytime. On the wooden coffee table in front of the couch, there's a blue cup and a remote control, possibly indicating recent human activity or preparation for an event.\n\nThe man's position on the couch, his attire, and the objects around him all contribute to painting a picture of a relaxed, casual setting where he might be enjoying some downtime.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-17-29.594262.jpg"
+}

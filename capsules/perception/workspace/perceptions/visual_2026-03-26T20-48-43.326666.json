@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T20:48:51.325697",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting at night. The room is bathed in a soft orange glow from two windows on either side of the frame. On the left, a person is seated comfortably on a couch, absorbed in a book that they're holding with both hands. Their posture suggests a quiet moment of reading before sleep or perhaps during a late-night study session.\n\nOn the right, another individual stands near one of the windows, their attention seemingly focused on something outside. The room's interior features a white wall, providing a stark contrast to the warm orange light that fills the space.\n\nThe image is taken from a low angle, adding a sense of depth and perspective to the scene. Despite the darkness outside, the room exudes a cozy and inviting atmosphere, making it a perfect sanctuary from the world outside. The people in the image are silhouetted against the windows, their forms adding an element of mystery to this tranquil domestic scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T20-48-43.326666.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:57:07.117015",
+  "backend": "llava",
+  "description": "The image presents a captivating scene set against a stark black background. The primary focus is on two individuals who are positioned centrally within the frame. One of them is donned in a vibrant red shirt, adding a splash of color to the otherwise monochromatic setting. The other individual sports a black shirt, blending seamlessly with the backdrop.\n\nThe person in the red shirt appears to be engaged in conversation with their companion, suggesting an intimate interaction between them. Their exact actions are indiscernible due to the distance from which the image is captured, but their proximity indicates a close relationship or shared purpose.\n\nAbove this central duo, a single light source casts its glow onto the scene below. The light illuminates only the top half of the image, creating an interesting interplay of shadows and highlights that adds depth to the composition. The precise location of the light source is unknown, but its effect on the scene is undeniable.\n\nThe image does not contain any discernible text or countable objects. The relative positions of the people remain constant, with one person in front and the other behind. The overall atmosphere suggests a quiet, intimate moment shared between two individuals under the soft illumination of an unseen light source.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-56-59.909233.jpg"
+}

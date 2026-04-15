@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:57:24.609714",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light filtering through an unseen window. Dominating the scene is a white brick fireplace, its surface unadorned save for a black television screen mounted directly above it. The screen flickers with life, displaying what appears to be a news program or video game.\n\nTo the right of the fireplace, a white wall extends upwards, punctuated by a window that lets in streams of natural light. Below this window, a white radiator clings to the wall, ready to combat any chill in the room.\n\nIn the background, partially obscured by the fireplace and television screen, is a white door. Its presence adds depth to the scene, hinting at spaces beyond what's immediately visible.\n\nOverall, the image paints a picture of a tranquil domestic setting, where modern technology blends seamlessly with traditional architecture.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-57-19.114018.jpg"
+}

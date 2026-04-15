@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:42:51.980656",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting. A man, clad in a blue shirt and shorts, is seated at a wooden desk. He's wearing a pink baseball cap and sunglasses, adding a pop of color to the scene. The desk hosts two objects: a blue water bottle and a white towel. The man seems engrossed in his own world, with his gaze directed away from the camera.\n\nThe room itself exudes a warm and cozy atmosphere. A window punctuates one wall, draped with a white curtain that filters the outside light. Adjacent to the window is a door, its presence subtly enhancing the depth of the scene.\n\nEvery object in this image has its place, creating a harmonious composition. The man's position at the desk suggests he might be preparing for an outdoor activity or perhaps just returning from one. The water bottle and towel on the desk indicate his preparedness for physical exertion. The window and door add architectural interest to the room.\n\nOverall, this image captures a moment of calm before what could be an active day ahead.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-42-45.308480.jpg"
+}

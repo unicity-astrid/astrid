@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:38:28.881702",
+  "backend": "llava",
+  "description": "The image captures a moment in a dimly lit room bathed in soft orange light from a window on the left. A person is seated at a desk, their figure illuminated by the ambient light. The desk, positioned centrally in the frame, holds a computer monitor and keyboard, suggesting a workspace or study area.\n\nOn the right, a chair is visible, presumably for the person at the desk. The background reveals more of the room, with a wall adorned with shelves and another window on the far left. The orange hue of the light casts a warm glow throughout the scene, creating an atmosphere that feels both cozy and focused.\n\nPlease note that this description is based on the visible elements in the image and does not include any speculative or inferred information.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-38-21.557591.jpg"
+}

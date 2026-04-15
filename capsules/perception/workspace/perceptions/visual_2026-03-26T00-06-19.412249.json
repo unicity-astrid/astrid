@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:06:25.441617",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room. The room is bathed in soft, dim light that casts long shadows and gives the space an intimate feel. Dominating the right side of the frame is a large window, its glass surface reflecting the faint glow from outside. \n\nIn front of this window, a dark-colored sofa sits against the wall, inviting relaxation. A coffee table occupies the center of the room, acting as a focal point in the space. On it, a blue cup and a soda can are visible, suggesting recent human activity.\n\nTo the left, a door with a white frame stands closed. Above it, a light switch is mounted on the wall, its position indicating easy access for those seated on the sofa or standing near the door.\n\nThe color palette of the image is dominated by shades of dark and light gray, punctuated by splashes of blue from the cup and soda can. The overall effect is one of calm and tranquility, a snapshot of life's quiet moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-06-19.412249.jpg"
+}

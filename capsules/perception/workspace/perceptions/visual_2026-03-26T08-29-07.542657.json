@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:29:15.926582",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a gray couch in a living room. He's wearing a vibrant yellow shirt and has headphones on, perhaps indicating his interest in music or audio content. A black dog sits next to him, adding a sense of companionship to the scene.\n\nThe living room itself is warmly lit, with sunlight streaming through two windows in the background. The walls are painted white, providing a neutral backdrop that enhances the colors within the room. \n\nA coffee table sits between the man and the windows, holding a single red cup. The cup's bright color stands out against the otherwise muted tones of the scene.\n\nOn one side of the living room, there's a door leading to another part of the house. On the other side, there's a window that offers a glimpse into another room with a bed visible through it.\n\nThe overall atmosphere is one of relaxation and comfort, as if inviting us to sit down and enjoy some quiet time at home. The man, dog, and their surroundings all contribute to this cozy scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-29-07.542657.jpg"
+}

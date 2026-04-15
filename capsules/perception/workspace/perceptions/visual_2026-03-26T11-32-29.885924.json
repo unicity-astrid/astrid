@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T11:32:38.294551",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting. A man, dressed in a blue shirt and shorts, is seated on a couch adorned with a white blanket. He sports sunglasses, adding an air of mystery to his persona. His arms are crossed over his chest in a relaxed manner as he gazes towards the left side of the frame.\n\nThe room itself is bathed in soft light filtering through a window dressed with white curtains. The walls and ceiling share the same pristine white color scheme, enhancing the sense of spaciousness. A table stands against one wall, hosting a blue vase that adds a pop of color to the otherwise neutral palette.\n\nIn terms of object count, there's one man, one couch, one table, one window with two curtains, one wall, and one ceiling visible in the image. The relative positions of these objects suggest a well-arranged living space designed for comfort and aesthetics.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-32-29.885924.jpg"
+}

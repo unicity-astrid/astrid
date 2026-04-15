@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:57:38.134199",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through a window on the left wall. The room is dominated by a gray sofa, comfortably nestled against the white wall to the right. A wooden coffee table sits in front of the sofa, hosting a blue mug and a red book, suggesting someone's quiet reading or sipping routine. Behind the sofa, a beige armchair echoes its color, creating a harmonious blend with the room's overall aesthetic.\n\nA wooden sideboard stands against the left wall, under the window. It holds a white vase that adds to the room's minimalist decor. The right wall features a white door and another window, further enhancing the room's inviting ambiance. The floor is covered by a beige carpet, complementing the armchair and maintaining the room's warm color palette.\n\nThe objects in the room are arranged in such a way that they create a welcoming and functional space. The sofa and armchair face each other, encouraging conversation or quiet contemplation, while the coffee table serves as a convenient surface for personal items. The sideboard against the left wall provides additional storage and display space. The windows allow natural light to flood into the room, creating an atmosphere of warmth and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-57-17.915980.jpg"
+}

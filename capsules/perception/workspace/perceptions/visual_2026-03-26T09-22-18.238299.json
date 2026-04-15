@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:22:29.786146",
+  "backend": "llava",
+  "description": "The image captures a serene and well-lit living room. Dominating the center of the room is a gray sofa, its plush cushions inviting relaxation. To the right of the sofa, a brown coffee table stands, ready to hold cups of tea or stacks of magazines. \n\nA window on the left wall lets in natural light that illuminates the room, casting soft shadows and highlighting the textures of the furniture. The white walls provide a neutral backdrop, enhancing the visibility of the objects within.\n\nOn the right wall, a white curtain hangs, partially closed to control the amount of light entering the room. Its color matches the walls, creating a harmonious visual effect.\n\nThe floor is covered with a gray rug that echoes the color of the sofa, tying the room together in a soothing palette of grays and browns. The rug extends from under the coffee table to the edge of the image, framing the scene within its soft texture.\n\nOverall, the room exudes a sense of tranquility and comfort, a perfect space for relaxation and leisurely activities.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-22-18.238299.jpg"
+}

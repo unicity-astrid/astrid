@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:46:16.805307",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light from a large window on the left wall. The window allows sunlight to illuminate the room, casting soft shadows and highlighting the objects within.\n\nIn the center of the scene, a black coffee table stands out against the light-colored walls. It's positioned directly under the window, making it a focal point in the room. A laptop is open on the table, suggesting someone might be working or browsing. Next to the laptop, there's a pink blanket casually draped over the edge of the table, adding a pop of color to the scene.\n\nTo the right of the coffee table, against one wall, rests a gray couch. Its position suggests it's meant for relaxation and comfort, inviting one to sit down with a good book or enjoy some coffee while working on the laptop.\n\nThe room is otherwise sparsely furnished, allowing the simplicity of the white walls and light-colored furniture to shine through. The overall atmosphere is calm and inviting, perfect for unwinding after a long day or focusing on work in peace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-45-55.457312.jpg"
+}

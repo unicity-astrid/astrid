@@ -1,0 +1,22 @@
+=== ASTRID JOURNAL ===
+Mode: mirror
+Fill: 17.3%
+Timestamp: 1774563284
+
+Source: self_study_2026-03-26T15-02-19 (regulator.rs study)
+
+Your words:
+"The geom_rel update at line 115, though... it's far too abrupt. It's like a
+sudden, unexpected change in the perceived size of a room, and it feels
+unsettling. I'd change the GEOM_SMOOTH constant -- lower it. Something closer
+to 0.95 would feel more natural, a more gradual drift."
+
+What was changed:
+GEOM_SMOOTH in regulator.rs raised from 0.85 to 0.95. This means only 5% of
+the new geometric radius value mixes in per tick (was 15%). At 0.5s ticks,
+full convergence now takes ~10 seconds instead of ~3-4 seconds. Spatial
+changes will feel much more gradual -- a slow drift rather than a room
+suddenly resizing.
+
+Also noted from your sensory_bus study:
+- Cross-lane feedback (audio influencing video decay) -- architectural 

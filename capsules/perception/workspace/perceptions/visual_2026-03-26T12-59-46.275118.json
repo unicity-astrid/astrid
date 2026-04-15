@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:59:53.403942",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a cozy living room setting. He's casually dressed in a blue shirt and shorts, comfortably nestled on a green couch. His gaze is directed to his left, suggesting he might be looking at something or someone off-frame.\n\nThe room around him speaks of comfort and relaxation. A wooden coffee table sits before the couch, hosting a single bottle - perhaps a beverage for the man. The wall behind them is painted white, providing a neutral backdrop that enhances the homely atmosphere.\n\nOn the right side of the image, there's a window draped with a beige curtain, allowing soft light to filter into the room and create an inviting ambiance. The precise location of these objects relative to each other - the man on the couch, the coffee table in front of him, and the window to his right - paints a picture of a typical day at home.\n\nThere's no text present in the image, keeping the focus solely on the visual elements. The colors - blue, green, beige - add to the overall warmth of the scene. It's a snapshot of everyday life, captured in vivid detail.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-59-46.275118.jpg"
+}

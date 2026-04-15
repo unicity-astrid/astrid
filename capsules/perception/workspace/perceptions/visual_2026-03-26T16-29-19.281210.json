@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:29:32.879468",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft sunlight. Dominating the left side of the frame is a gray couch, its plush cushions inviting relaxation. A white blanket, casually draped over it, adds a touch of homeliness to the scene.\n\nIn front of the couch, a wooden coffee table takes center stage. It hosts two objects - a blue mug and a red book, perhaps hinting at a quiet afternoon spent in reading or sipping on a warm beverage. \n\nThe room itself is neatly organized with white walls providing a neutral backdrop that enhances the simplicity of the space. A large window punctuates one wall, its glass surface reflecting the bright daylight and adding depth to the room.\n\nTo the right, partially obscured by the couch and coffee table, stands a white door, slightly ajar perhaps suggesting recent activity or an impending departure. The overall atmosphere is one of tranquility and comfort, a perfect setting for quiet moments of solitude or shared conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-29-19.281210.jpg"
+}

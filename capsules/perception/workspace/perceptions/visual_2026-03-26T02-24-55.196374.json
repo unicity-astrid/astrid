@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:25:00.469918",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room. The room is bathed in soft, dim light that accentuates the dark hue of the furniture and walls. A window punctuates one wall, draped with a white curtain that filters the outside light, casting an ethereal glow within.\n\nIn the foreground, a black couch invites relaxation. A person sits on it, their silhouette illuminated by the ambient light. The couch is positioned to face a coffee table situated in the center of the room. The table hosts a blue vase and two red cups, their colors standing out against the darker surroundings.\n\nThe room's layout suggests a space designed for comfort and conversation. The couch and coffee table form an intimate setting within the larger living area. The person on the couch appears to be enjoying this tranquility, adding a human touch to this domestic tableau.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-24-55.196374.jpg"
+}

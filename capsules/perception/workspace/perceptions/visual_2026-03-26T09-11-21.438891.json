@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:11:28.386885",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft sunlight. Dominating the left side of the frame is a gray sofa, inviting and comfortable, its fabric echoing the quietude of the room. A wooden coffee table takes center stage in front of the sofa, hosting an array of everyday objects. A red cup, vibrant against the neutral tones, sits alongside a white vase and a black remote control, each item telling a story of its own.\n\nOn the right side of the photo, a window draped with a beige curtain allows a gentle stream of light to filter into the room. The curtain's soft hue complements the overall warm color palette of the scene.\n\nIn the background, partially obscured by the sofa and coffee table, is a wooden shelf laden with books. It stands as a testament to knowledge and curiosity, adding depth and personality to the space.\n\nThe entire scene is viewed from a low angle, creating an interesting perspective that draws your gaze upwards towards the window and the light it lets in. The interplay of light and shadow adds texture and dimension to this cozy living room setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-11-21.438891.jpg"
+}

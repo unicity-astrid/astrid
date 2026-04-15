@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:17:27.468615",
+  "backend": "llava",
+  "description": "The image captures a moment in a room where a television is mounted on a white brick wall. The television screen is alive with vibrant colors from a video game, which appears to be a racing game given the visible characters and objects on the screen. \n\nTo the right of the television, a white towel hangs neatly on a hook, ready for use. On the opposite side, a white door stands closed, its purpose unknown but its presence adding to the room's functionality. \n\nBelow the television, two black vents are embedded in the wall, likely serving as an air conditioning unit or perhaps part of a home theater system. Their dark color contrasts with the overall light-colored room, drawing attention to their importance.\n\nThe image is taken from a low angle, making the television and its screen dominate the scene. This perspective also gives us a clear view of the other elements in the room, creating a comprehensive snapshot of this moment captured in time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-17-17.035629.jpg"
+}

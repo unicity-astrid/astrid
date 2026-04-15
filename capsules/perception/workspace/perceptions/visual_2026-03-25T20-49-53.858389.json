@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:49:59.784753",
+  "backend": "llava",
+  "description": "This image captures a moment in a dark setting, possibly an indoor environment with dim lighting. The main focus is on two individuals seated at a table, their faces illuminated by the soft glow from a single light source positioned above them. \n\nThe person on the left, clad in a black shirt, appears to be engaged in conversation with the other individual. This second person, wearing a red shirt, seems to be attentively listening. Their expressions and body language suggest an intimate exchange, perhaps discussing matters of importance.\n\nThe background is shrouded in darkness, adding an air of mystery to the scene. The only source of light in this otherwise dark environment is a single spotlight located above the table. This solitary light casts long shadows and creates dramatic contrasts between the lit faces and the surrounding darkness.\n\nOverall, the image paints a picture of a quiet conversation taking place in an atmospheric setting, with the two individuals at the center of this intriguing scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-49-53.858389.jpg"
+}

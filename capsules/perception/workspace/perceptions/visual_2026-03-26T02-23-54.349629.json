@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:24:04.939357",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room, bathed in hues of yellow from a window on the left wall. The window, dressed with white curtains, allows a soft glow to seep into the room. A table stands against the right wall, its surface home to two bottles of wine and an empty glass. The table's position is such that it balances the composition of the image.\n\nIn the foreground, a black couch rests against the left wall, its dark color contrasting with the lighter tones of the room. It occupies space in both the foreground and background, adding depth to the scene.\n\nOn the right side of the image, partially obscured by the table, stands a person. Their face is hidden from view, adding an air of mystery to their presence. The person's position suggests they might be standing at the table or perhaps seated on the couch.\n\nThe room itself is a study in contrasts - the dark walls against the bright window, the stillness interrupted only by the presence of the person. It's a snapshot of a moment frozen in time, telling a story that's open to interpretation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-23-54.349629.jpg"
+}

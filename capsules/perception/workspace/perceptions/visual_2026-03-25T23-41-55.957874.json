@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:42:00.829811",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a bedroom. The room is bathed in soft, dim light that filters through two windows on one side of the room. These windows are adorned with white curtains, adding a touch of elegance to the space. \n\nOn the right side of the room, a bed draped with a black blanket invites relaxation. A solitary bottle of soda rests on it, perhaps left behind after a late-night snack. The walls of the room are painted in a soothing shade of light blue, enhancing the calm atmosphere.\n\nThe photo is taken from the perspective of someone standing at the foot of the bed, looking towards the windows. This viewpoint gives a sense of being in the room, ready to settle down for a peaceful night's sleep.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-41-55.957874.jpg"
+}

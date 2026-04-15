@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:16:36.449696",
+  "backend": "llava",
+  "description": "The image captures a moment in a dark room, illuminated by a single window draped with white curtains. The window, situated on the left side of the frame, casts a soft glow that subtly lights up the surrounding area. \n\nIn the foreground, two silhouettes add depth to the scene. One is positioned on the left and another on the right, both appearing to be in a state of rest or contemplation. Their exact identities are indistinct due to the low light conditions.\n\nThe background, though blurred, hints at more windows, suggesting that this room might be part of a larger space. The entire scene exudes an atmosphere of tranquility and introspection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-16-23.172224.jpg"
+}

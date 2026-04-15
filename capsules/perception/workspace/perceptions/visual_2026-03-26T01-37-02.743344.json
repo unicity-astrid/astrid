@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:37:09.215288",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The dominant color scheme is black and white, punctuated by the warm glow of yellow lights emanating from the windows. \n\nIn the center of the room, a table draped with a blue tablecloth stands out against the monochrome surroundings. On it, two cups are placed side by side, their contents hidden from view. A glass ashtray sits nearby, its surface gleaming under the soft light.\n\nTo the left of the frame, a bed can be seen, its black blanket contrasting sharply with the white headboard. The bed's position suggests it's against one wall, providing a sense of depth and perspective to the room.\n\nOn the right side of the image, a window with orange curtains lets in a soft light that illuminates part of the room. The curtains are partially drawn back, revealing their contents to the world outside while maintaining privacy within.\n\nOverall, this image paints a picture of tranquility and solitude, where every object has its place and purpose.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-37-02.743344.jpg"
+}

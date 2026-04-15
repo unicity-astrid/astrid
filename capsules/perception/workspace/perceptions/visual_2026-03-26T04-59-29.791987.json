@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:59:38.634476",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a dimly lit room. He's wearing a yellow shirt and his attention seems to be focused on the laptop in front of him. The laptop has a blue logo on its lid. To his right, there's another person partially visible, also dressed in a yellow shirt.\n\nThe desk they're sitting at is covered with a black cloth. On it, besides the laptop, there are two other objects - a white can and a red object, though their exact nature isn't clear from the image.\n\nBehind them, there's a window adorned with orange curtains, letting in some light that illuminates the room. The precise location of these objects relative to each other and the overall setting creates an atmosphere of focus and productivity. However, without additional context, it's hard to determine more about their actions or what they're working on.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-59-29.791987.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:24:18.809942",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft sunlight filtering through two windows on the left wall. The walls and ceiling are painted a pristine white, providing a stark contrast to the furniture that includes a gray couch and a wooden coffee table.\n\nThe couch is positioned against one of the windows, offering a view of the world outside while also serving as a cozy spot for relaxation. A beige blanket is casually draped over it, adding an element of warmth and comfort to the room.\n\nOn the right wall, a small TV finds its place on top of a wooden stand, ready to provide entertainment at a moment's notice. The coffee table sits in front of the couch, serving as a convenient surface for placing items or enjoying a cup of coffee.\n\nThe floor is covered with a beige carpet that complements the overall color scheme of the room. On one side of the room, there's a door leading to other parts of the house.\n\nThe window on the left wall has white curtains, partially drawn back to let in some sunlight and offer views of the outside world. The overall atmosphere is one of tranquility and comfort, an ideal space for relaxation or socializing.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-24-12.150136.jpg"
+}

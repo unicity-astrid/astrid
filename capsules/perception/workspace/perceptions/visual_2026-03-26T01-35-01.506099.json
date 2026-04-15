@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:35:10.863501",
+  "backend": "llava",
+  "description": "This image captures a serene night scene in a room bathed in darkness. The room is illuminated by the soft glow from a window located on the left side of the image. The window, adorned with curtains and a white sill, casts a warm light that contrasts with the cool blackness of the room.\n\nIn the foreground, a table draped in a white tablecloth stands out against the dark surroundings. A single candle graces its surface, casting long shadows around the room. On the right side of the image, partially obscured by the table and illuminated by the window's light, is a bed.\n\nThe objects in this image are stationary, suggesting a quiet moment frozen in time. The precise locations of these objects - the table on the left, the bed on the right, and the window on the left - create a sense of depth and perspective in the image.\n\nOverall, this image paints a picture of tranquility and solitude, evoking feelings of peace and introspection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-35-01.506099.jpg"
+}

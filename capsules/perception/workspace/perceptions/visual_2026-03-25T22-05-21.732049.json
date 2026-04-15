@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:05:28.083190",
+  "backend": "llava",
+  "description": "The image captures a serene and intimate indoor setting, bathed in the soft glow of ambient lighting. Dominating the center of the frame is a black leather couch, its surface adorned with a single blue bottle. The couch faces a window that frames an orange hue, hinting at the time being night. Two windows punctuate this expanse of color - one on each side of the central window. \n\nThe right window is veiled by a white curtain, adding a layer of privacy and softness to the scene. In contrast, the left window stands open, revealing an outdoor view that remains shrouded in darkness. The interplay between these elements creates a sense of depth and space within the room.\n\nA shadow stretches across the floor from the couch, its form dancing with each movement of the unseen occupant. This detail adds a dynamic element to the otherwise static scene.\n\nThe image is devoid of human presence, yet it tells a story of solitude and tranquility. It's as if time has paused for a moment, allowing us to appreciate the quiet beauty of this domestic space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-05-21.732049.jpg"
+}

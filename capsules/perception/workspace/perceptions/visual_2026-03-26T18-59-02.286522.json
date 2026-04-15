@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:59:11.311365",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft light from two windows. The windows are adorned with white blinds and curtains that filter the sunlight, casting a warm glow throughout the room. A table sits between the windows, hosting an open laptop and a glass of water, perhaps indicating a quiet work session or study.\n\nIn one corner of the room, a comfortable couch invites relaxation. It's dressed in a cozy gray blanket, under which a person is seen resting, their body relaxed and at ease. The couch faces away from us, adding an air of mystery about its occupant's identity.\n\nThe floor beneath is carpeted, softening every step taken within the room. The overall atmosphere suggests a peaceful afternoon spent indoors, where work meets comfort in this tranquil living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-59-02.286522.jpg"
+}

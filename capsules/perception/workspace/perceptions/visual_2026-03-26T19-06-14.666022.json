@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:06:20.196250",
+  "backend": "llava",
+  "description": "The image captures a serene morning in a dimly lit room. The room is bathed in soft light that gently illuminates a wooden table positioned centrally. On the table, a blue mug stands alone, its vibrant color contrasting with the muted tones of the surroundings.\n\nTo the right of the table, two windows frame the scene like silent observers. One window is adorned with white curtains, their fabric partially drawn to let in the morning light. The other window is bare, its starkness adding an element of contrast to the scene.\n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the tranquility of the setting. On one wall, a black door stands closed, its presence subtly hinting at spaces beyond.\n\nEvery object in this image, from the solitary blue mug on the table to the bare window and closed door, contributes to painting a picture of quiet solitude and calm morning routines.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-06-14.666022.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:09:09.935953",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in natural light. The walls and ceiling are painted a pristine white, providing a bright backdrop for the room's furniture. A gray couch rests against one wall, inviting relaxation with its plush cushions. Adjacent to the couch, a black coffee table sits atop a wooden floor, ready to hold cups of tea or stacks of books.\n\nA window punctuates one wall, draped with sheer curtains that filter the sunlight and cast a soft glow throughout the room. The light illuminates the room, highlighting the textures of the furniture and adding warmth to the space.\n\nOn the other side of the coffee table is a wooden bookshelf, standing tall against another wall. It houses several books, their spines showcasing an array of colors and titles. Each book is a portal to another world, waiting to be explored by curious minds.\n\nThe room is devoid of people but full of character, each piece of furniture telling its own story. The precise arrangement of the objects suggests careful thought has been put into creating this living space. It's more than just a room; it's a testament to someone's taste and lifestyle.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-08-58.800889.jpg"
+}

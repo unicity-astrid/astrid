@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T09:52:57.248830",
+  "backend": "llava",
+  "description": "The image captures a cozy living room setting. Dominating the scene is a flat-screen TV, mounted on a white brick wall. The TV screen displays a vibrant game scene, suggesting that someone has been enjoying some leisure time playing video games.\n\nBeneath the TV, a black fireplace adds to the warm ambiance of the room. Its dark color contrasts with the light-colored walls and ceiling, creating an interesting visual dynamic. \n\nTo the right of the TV, a white air conditioning unit is installed on the wall. It's a subtle reminder of modern conveniences that make our living spaces more comfortable.\n\nOn the left side of the TV, there's a black curtain rod. Its presence adds depth to the room and helps frame the large flat-screen TV.\n\nThe overall scene suggests a space designed for relaxation and entertainment, where one can enjoy gaming sessions in front of the fire or on a cold day with air conditioning.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-52-46.215289.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T11:42:12.498045",
+  "backend": "llava",
+  "description": "The image captures a lively scene in a living room bathed in sunlight. A man and a woman are standing in the foreground, their attention seemingly drawn towards something off-camera. The man, sporting a black shirt, sports sunglasses that add an air of mystery to his persona. \n\nBehind them, comfortably nestled against the wall, is a gray couch. It's not just any ordinary couch, though. A wooden coffee table sits atop it, providing a functional and aesthetic touch to the room.\n\nThe room itself is a study in contrasts - white walls that reflect the sunlight pouring in from the window on the right side of the photo, and a blue carpet underfoot that adds a splash of color to the otherwise neutral palette of grays and whites. The carpet's vibrant hue stands out against the stark whiteness of the walls.\n\nThe image is taken from an interesting perspective - it's as if you're standing in the doorway of this living room, observing the scene unfold before your eyes. It's a snapshot of a moment, frozen in time, telling a story without words.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-42-02.202088.jpg"
+}

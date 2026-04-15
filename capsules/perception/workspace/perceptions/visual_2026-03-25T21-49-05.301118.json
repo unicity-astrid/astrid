@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:49:23.354453",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The walls, painted in a soothing shade of beige, hold a window with a white frame that lets in soft light from outside. A curtain, partially drawn, adds an air of mystery to the scene.\n\nIn the center of the room, a black coffee table stands as if it's waiting for guests. It holds two objects: a blue can and a silver candlestick holder, their colors contrasting against the dark wood of the table. \n\nA black couch rests in the background, adorned with a white pillow that adds a touch of comfort. The floor beneath is made of dark wood, enhancing the warm ambiance of the room.\n\nThe image exudes an atmosphere of tranquility and solitude, as if inviting you to sit down on the couch, light the candle from the holder, and enjoy a peaceful moment alone.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-49-05.301118.jpg"
+}

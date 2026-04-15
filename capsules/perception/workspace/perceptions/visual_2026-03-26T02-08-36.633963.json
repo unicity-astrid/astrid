@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:08:43.420324",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a bedroom. The room is bathed in a soft glow from two windows, each adorned with white curtains that add a touch of elegance to the space. The window on the left has its curtains drawn back slightly, revealing a glimpse of the world outside. On the right, the curtains are fully closed, creating an intimate atmosphere within.\n\nThe floor beneath is made of dark wood, adding a warm and cozy feel to the room. A black rug lies in front of the windows, perhaps providing comfort underfoot or acting as a boundary between the bed and the rest of the room.\n\nIn the background, a bed can be seen with a white pillow resting on it, inviting rest and relaxation. The image is taken from an angle that places the viewer at the foot of the bed, looking towards the windows, almost as if waiting for someone to return home.\n\nDespite being nighttime, there's a sense of tranquility that permeates the scene, perhaps due to the soft light filtering in through the windows or maybe it's just another day winding down into peaceful slumber. The image is devoid of any text or discernible actions, adding to its calm and soothing ambiance.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-08-36.633963.jpg"
+}

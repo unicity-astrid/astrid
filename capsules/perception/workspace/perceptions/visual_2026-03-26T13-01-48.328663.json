@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:01:53.483605",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting. A man is comfortably seated on a vibrant green couch, engrossed in his book which he holds in his hands. He is casually dressed in a blue shirt and black shorts, suggesting a relaxed atmosphere.\n\nIn front of him, there's a sturdy wooden coffee table. On it, there are two items: a white cup possibly filled with a hot beverage, and a blue water bottle, indicating the man's preparedness for an extended reading session.\n\nThe room itself is bright and airy, with sunlight streaming in through a window adorned with white curtains in the background. The positioning of these objects suggests that the man might be near or facing this window, enjoying the natural light while he reads.\n\nOverall, the image captures a peaceful moment of solitude and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-01-48.328663.jpg"
+}

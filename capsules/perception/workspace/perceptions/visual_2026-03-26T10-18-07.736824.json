@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:18:20.484342",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft light. The room is painted in a soothing shade of beige, which is reflected on the white ceiling and walls. A large window punctuates one wall, draped with white curtains that filter the sunlight streaming in.\n\nThe room's furniture is arranged around a wooden coffee table, creating an intimate conversation area. On the left side of the image, a gray sofa invites relaxation. A matching gray armchair sits to its right, their symmetry adding balance to the space.\n\nIn front of the sofa and armchair, a wooden coffee table takes center stage. It hosts various objects that add character to the room - a blue mug waiting for its next sip, a book left open as if in mid-read, and a small plant lending a touch of greenery.\n\nThe right side of the image is dominated by a beige curtain, providing privacy while contributing to the warm ambiance. The careful arrangement of these elements creates a harmonious living space that exudes comfort and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-18-07.736824.jpg"
+}

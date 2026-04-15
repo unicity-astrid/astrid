@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:44:29.384759",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a dimly lit room. He is wearing a vibrant yellow shirt and has his head tilted downwards as if deep in thought or perhaps engrossed in something on the black laptop that sits open before him on the desk. The room itself is softly illuminated by a single light source located in the top left corner, casting a warm glow that contrasts with the cool blue tint of the scene.\n\nThe man's position at the desk and his focused gaze suggest he might be working or studying. The laptop screen is not visible, so it's unclear what exactly has captured his attention. The room around him is sparsely furnished, giving it an air of simplicity and tranquility. A window can be seen in the top right corner of the image, but its details are obscured by shadows.\n\nThe overall atmosphere of the image is one of quiet introspection and focused work. It's a snapshot of a moment, frozen in time, capturing the essence of solitude and concentration.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-44-16.394923.jpg"
+}

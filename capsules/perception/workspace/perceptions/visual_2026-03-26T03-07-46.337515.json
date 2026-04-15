@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:07:52.894906",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene bathed in the soft glow of ambient lighting. A window on the left wall allows a hint of the world outside to seep into the room, its light casting an ethereal glow that dances off the dark walls and ceiling.\n\nOn the right wall, two windows stand side by side like silent sentinels. They are veiled with white curtains that hang heavy and still, their folds creating a sense of privacy and solitude within the room. The curtains' pristine whiteness contrasts sharply with the room's dark interior, adding depth to the scene.\n\nThe floor is made of wood, its polished surface reflecting the light from the windows and amplifying it in a warm glow that fills the room. A rug lies on this wooden expanse, its edges blurred by the low angle of the shot.\n\nIn the bottom right corner, an indistinct figure can be seen lying down. Their presence adds a touch of life to the otherwise still scene, their form barely discernible against the dark background.\n\nOverall, this image paints a picture of quiet solitude, a moment frozen in time within the confines of an indoor space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-07-46.337515.jpg"
+}

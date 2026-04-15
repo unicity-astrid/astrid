@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:22:54.113407",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy indoor setting at night. The room is bathed in soft, dim lighting, creating an intimate atmosphere. A window punctuates one wall, draped with a white curtain that filters the incoming light. On the windowsill rests a blue can, its color standing out against the muted tones of the room.\n\nTo the right, another window reveals orange curtains, adding a warm hue to the scene. The floor beneath is carpeted in gray, providing a soft contrast to the darker walls. A black couch invites relaxation, its dark color echoing that of the walls and ceiling.\n\nOn the table in front of the couch, two red cans are placed, their vibrant color drawing attention. Their location suggests they might be used for enjoying a quiet evening at home. The overall scene exudes comfort and tranquility, inviting one to sit down on the couch and enjoy some time indoors.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-22-47.198247.jpg"
+}

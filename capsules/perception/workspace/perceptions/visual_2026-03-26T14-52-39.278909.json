@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:52:54.855798",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light. Dominating the center of the frame is a wooden coffee table, its surface adorned with a pristine white cloth. A blue book rests on it, its pages untouched and waiting to be turned.\n\nTo the left of the table, a gray couch invites relaxation. It's draped with a beige blanket that adds a touch of warmth to the scene. The couch faces a window dressed in white curtains, allowing natural light to filter into the room.\n\nOn the right side of the coffee table stands a wooden bookshelf, its shelves filled with books. A red scarf hangs from it, adding a pop of color to the otherwise neutral palette of the room.\n\nThe walls are painted white, providing a blank canvas for the objects within. The floor is also wooden, echoing the material of the furniture and creating a harmonious look.\n\nEvery object in this room has its place, creating an atmosphere that feels both lived-in and meticulously curated. It's a snapshot of everyday life, captured in still life form.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-52-39.278909.jpg"
+}

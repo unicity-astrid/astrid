@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:23:28.039175",
+  "backend": "llava",
+  "description": "The image captures a lively scene in what appears to be a cozy living room. Dominating the space is a large television screen mounted on a white brick wall. The screen displays a vibrant cityscape, complete with tall buildings and a bustling street filled with cars.\n\nBeneath the television, a black fireplace adds a touch of warmth to the room. A white towel casually hangs from it, suggesting recent use. The fireplace's position directly under the television creates an interesting visual symmetry in the room.\n\nTo the right of the fireplace, there's a window draped with white curtains, allowing for natural light to filter into the room. The curtains add a soft contrast to the hard lines of the brick wall and the angularity of the television screen.\n\nOverall, the image portrays a modern living space where technology meets comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-23-17.632166.jpg"
+}

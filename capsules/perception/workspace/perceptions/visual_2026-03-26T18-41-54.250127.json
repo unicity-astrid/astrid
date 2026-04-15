@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:42:00.183709",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in natural light. The room is dominated by a large window on the left wall, draped with white curtains that sway gently, allowing sunlight to filter in and illuminate the space. \n\nAgainst the right wall, there's a comfortable sofa, inviting and cozy. It's adorned with a gray blanket casually thrown over it, adding a touch of homeliness to the scene. A red pillow rests on the sofa, providing a pop of color against the neutral tones.\n\nA wooden coffee table stands in front of the sofa, hosting an open laptop that seems ready for use. The desk lamp next to the laptop is off, suggesting it's daytime outside. \n\nThe floor beneath is made of wood, adding warmth to the room, while the ceiling above is white, providing a nice contrast to the darker elements in the room.\n\nOverall, this image paints a picture of a peaceful afternoon spent indoors, perhaps working on the laptop or simply enjoying some downtime on the sofa.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-41-54.250127.jpg"
+}

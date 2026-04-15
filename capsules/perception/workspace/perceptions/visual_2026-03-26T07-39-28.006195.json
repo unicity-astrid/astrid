@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:39:36.761904",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in a living room bathed in soft sunlight filtering through a window. He's casually dressed in a vibrant yellow sweater and blue jeans, embodying the comfort of his surroundings. His attention seems to be drawn towards a wooden coffee table that sits before him.\n\nOn the table, there are two objects - a black speaker, possibly filling the room with music, and a white vase, adding an artistic touch to the setting. The couch where he's seated has a gray blanket casually thrown over it, suggesting recent use or perhaps preparing for a relaxing evening.\n\nThe living room itself is simple yet inviting, with its walls painted in a calming shade of white. A wooden railing can be seen in the background, possibly leading up to a staircase or balcony. The overall atmosphere exudes warmth and tranquility, a perfect setting for rest and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-39-28.006195.jpg"
+}

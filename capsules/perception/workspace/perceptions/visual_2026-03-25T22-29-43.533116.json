@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:29:48.679755",
+  "backend": "llava",
+  "description": "The image captures a serene night-time setting in a bedroom. The room is bathed in a soft glow from a window that is adorned with white curtains and a yellowish hue. The window is centrally located in the room, surrounded by white walls on all sides.\n\nIn front of the window, there's a dark brown desk, upon which rests a single red book. The book lies closed, its vibrant color contrasting against the dark surface of the desk. \n\nTo the left of the desk, a green chair adds a pop of color to the otherwise monochrome setting. The chair is unoccupied and appears to be waiting for someone.\n\nThe entire scene exudes a sense of tranquility and solitude, as if inviting the viewer to sit down with their red book under the gentle glow of the nightlight from the window.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-29-43.533116.jpg"
+}

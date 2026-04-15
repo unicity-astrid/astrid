@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T09:40:22.970066",
+  "backend": "llava",
+  "description": "The image captures a cozy living room scene, bathed in soft, natural light from a window located on the left side. The room's focal point is a white brick wall, against which rests a black flat screen TV mounted securely with two sturdy metal brackets. \n\nThe TV screen is alive with the vibrant colors of a video game, its characters and menus rendered in vivid hues that stand out against the dark background. The game seems to be paused at this moment, inviting the viewer's gaze to wander over the various elements displayed.\n\nTo the right of the TV, a small window punctuates the wall, allowing a sliver of light to seep into the room. This light dances on the white surface in front of the TV, creating an intricate pattern that adds depth and texture to the scene.\n\nThe overall atmosphere is one of comfort and relaxation, a perfect setting for an evening of gaming. The precise location of objects and their relative positions contribute to this sense of tranquility, each element carefully placed to create a harmonious balance within the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-40-11.335329.jpg"
+}

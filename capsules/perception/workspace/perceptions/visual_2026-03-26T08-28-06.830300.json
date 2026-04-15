@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:28:18.137858",
+  "backend": "llava",
+  "description": "This image captures a moment in a living room bathed in natural light from a large window on the left wall. The window casts long shadows across the room, adding depth and contrast to the scene.\n\nIn the foreground, a man is comfortably seated on a gray couch. He's wearing a vibrant yellow shirt that stands out against the neutral tones of the room. His attention is focused on something outside the frame, suggesting he might be engaged in conversation or observing an event happening just out of view.\n\nThe center of the image is dominated by a wooden coffee table placed strategically between two sofas. One sofa is partially visible in the background, while the other occupies the right side of the room. The arrangement of furniture and the man's position on the couch suggest a cozy and intimate setting.\n\nThe overall atmosphere appears to be relaxed and casual, with the natural light from the window enhancing the warmth of the scene. It's as if we've been given a snapshot into a quiet moment in someone's day, frozen in time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-28-06.830300.jpg"
+}

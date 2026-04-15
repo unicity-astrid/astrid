@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:06:29.343732",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room. The room is bathed in soft light that filters through two windows adorned with orange curtains. One window is situated on the left side of the frame, while the other occupies the right side.\n\nIn front of these windows, there's a couch draped with a white blanket, inviting relaxation and comfort. A coffee table rests in front of the couch, hosting three objects: a blue soda can, a white candle, and a black remote control. The arrangement suggests a cozy evening spent watching television under the glow of the candle light.\n\nThe floor is carpeted in dark color, adding to the warmth of the room. On the left wall, there's a door slightly ajar, leading to other parts of the house. A single blue curtain hangs on this wall, matching the one on the right window.\n\nEvery object and detail in this image contributes to painting a picture of tranquility and homeliness. It's as if you can almost hear the soft hum of the television in the background, smell the warm scent of the candle, and feel the softness of the carpet underfoot. It's a snapshot of everyday life, beautifully captured in an image.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-06-22.514938.jpg"
+}

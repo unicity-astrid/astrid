@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:31:31.439987",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from a large window on the left wall. The window allows a glimpse of trees outside, adding to the tranquility of the scene. \n\nOn the right wall, a television set sits atop a wooden stand, with a laptop resting next to it on the stand. A blue mug and a brown book are also present on the stand, suggesting someone's leisurely activities.\n\nIn front of the window, there's a gray sofa inviting relaxation. A beige blanket is casually draped over it, hinting at cozy afternoons spent watching television or reading. \n\nThe room itself is painted white, providing a neutral backdrop that enhances the colors within - the brown of the wooden stand and book, the blue of the mug, and the gray of the sofa.\n\nOverall, this image paints a picture of a comfortable living space where one can unwind after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-31-23.631645.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:11:22.126683",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a dimly lit room at night. The room exudes an air of tranquility and solitude. Dominating the foreground is a window draped with orange curtains that cast a warm glow into the room, illuminating the scene from the left side. \n\nTo the right, another window can be seen, also adorned with orange curtains but this time featuring brown blinds. A small table stands between these windows, serving as a resting place for two objects - a white candle and a black figurine. Their presence adds an element of intrigue to the room.\n\nThe floor beneath is dark, providing a stark contrast to the vibrant colors of the curtains and the objects on the table. On the left side of the image, partially hidden in shadow, is a person's arm resting on a couch. The overall atmosphere is one of peace and quietude, as if inviting the viewer to step into this tranquil space for a moment of rest or reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-11-16.303895.jpg"
+}

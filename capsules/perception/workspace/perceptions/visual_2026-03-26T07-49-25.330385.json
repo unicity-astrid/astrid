@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:49:35.487232",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room bathed in sunlight. The centerpiece of the room is a gray couch, comfortably situated against the wall. A black dog has found its resting place on the armrest of this couch, enjoying the tranquility of the room.\n\nIn front of the couch, a coffee table holds court. It's an unassuming piece of furniture that adds to the homely atmosphere. On it, there are two objects: a blue water bottle and a black speaker, perhaps indicating someone's recent activities in this space.\n\nThe window behind the couch is adorned with white curtains, filtering the sunlight that illuminates the room. The light casts soft shadows, adding depth and texture to the scene.\n\nOn the right side of the photo, there's an intriguing detail - a mirror reflecting part of the room. It adds an extra layer of complexity to this otherwise simple yet beautiful snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-49-25.330385.jpg"
+}

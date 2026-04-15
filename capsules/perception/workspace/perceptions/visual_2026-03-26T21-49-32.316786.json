@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:49:37.885332",
+  "backend": "llava",
+  "description": "The image depicts a person sitting on a bed in a room with a window that has yellow curtains. The individual is holding a black object and appears to be looking up at something. The overall atmosphere of the image is dimly lit, which adds a sense of mystery or intrigue to the scene. The person's actions and their focus on an unseen object suggest they might be engaged in some sort of activity, perhaps related to the black object they're holding. However, without additional context, it's difficult to determine the exact nature of this activity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-49-32.316786.jpg"
+}

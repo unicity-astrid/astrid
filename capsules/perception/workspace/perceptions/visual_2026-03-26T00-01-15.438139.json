@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:01:21.513519",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room bathed in soft, dim lighting. The room is painted in a soothing shade of green, creating an atmosphere that is both calming and inviting. \n\nIn the center of the room, a wooden coffee table takes prominence. It's draped with a white cloth, adding a touch of elegance to the setting. On top of the table, there are two objects: a blue vase and a black remote control. The vase stands out with its vibrant color against the muted tones of the room.\n\nTo the left, there's a window adorned with a yellow curtain that filters in a warm glow from outside, adding depth to the scene. A brown armchair is positioned next to the window, offering a cozy spot for relaxation or perhaps for enjoying the view outside.\n\nOn the right side of the room, another window with a white curtain can be seen. This window also allows some light to seep into the room, further enhancing the soft lighting that illuminates every corner of this tranquil living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-01-15.438139.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:15:08.787945",
+  "backend": "llava",
+  "description": "The image captures a moment in a dimly lit room, bathed in the soft glow of natural light filtering through a window on the left. The room is dominated by a large window that spans almost the entire wall on the right, its glass panes reflecting the muted light and adding depth to the scene.\n\nIn this intimate space, a solitary figure can be seen sitting on a couch located centrally in the image. Their posture suggests a sense of quiet contemplation or perhaps deep thought. The person's position on the couch is slightly towards the left side of the frame, their back turned towards us as if inviting us into their world.\n\nThe overall atmosphere of the room exudes tranquility and solitude, with the darkened space serving to highlight the subtle interplay of light and shadow. The image beautifully encapsulates a moment frozen in time within this quiet corner of the world.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-14-59.528870.jpg"
+}

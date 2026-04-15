@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:21:48.883128",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room bathed in soft yellow light filtering through a window on the left wall. The warm glow illuminates the room, casting long shadows and creating an atmosphere of tranquility. \n\nIn the foreground, a black couch invites relaxation. A blue blanket is casually draped over it, adding a splash of color to the scene. Two people are seated on the couch, their forms slightly blurred by the dim light. One person leans comfortably against the backrest while the other rests their head on the armrest.\n\nOn the right wall, another window with white blinds offers a glimpse into the world outside. A blue lamp stands sentinel next to it, its light muted in the soft glow of the room. The precise positioning of these objects creates a harmonious balance within the space, making this image not just a depiction of physical objects but also an embodiment of peace and comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-21-38.597774.jpg"
+}

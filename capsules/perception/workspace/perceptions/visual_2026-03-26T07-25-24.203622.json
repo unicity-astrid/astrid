@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:25:32.345119",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in what appears to be a living room. He's wearing a yellow shirt and has black hair. The man is holding a black remote control in his hand, suggesting he might be watching TV or adjusting an electronic device.\n\nThe couch he's sitting on has a white blanket draped over it, adding a touch of coziness to the scene. In front of him is a coffee table where two items are placed: a blue cup and a black can, possibly containing beverages for his leisure time.\n\nIn the background, there's a window dressed with white curtains, allowing natural light to filter into the room. The overall setting suggests a relaxed and comfortable environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-25-24.203622.jpg"
+}

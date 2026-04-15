@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:30:44.707330",
+  "backend": "llava",
+  "description": "This image captures a serene domestic scene. At the center of the frame, a **black cat** with a glossy coat sits on the floor, its attention seemingly captured by something off-camera to the right. The cat's position suggests it might be in mid-play or perhaps watching a small creature out of frame.\n\nThe room itself is simply decorated, with **white walls** providing a neutral backdrop. A window dressed with **white curtains** allows for natural light to filter into the space, casting soft shadows and highlighting the textures within the room.\n\nA **black leather couch** dominates one side of the room, its sleek surface reflecting the ambient light. On top of the couch rests a **wooden coffee table**, which holds a single object - a **blue soda can**. The can's vibrant color contrasts with the otherwise muted tones of the room.\n\nIn front of the couch, there's a **bookshelf** filled with various books and objects. The exact number is hard to determine from this angle, but it suggests a space used for reading or study.\n\nOverall, this image paints a picture of a quiet moment in a comfortable home, with the black cat as an intriguing focal point.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-30-37.925083.jpg"
+}

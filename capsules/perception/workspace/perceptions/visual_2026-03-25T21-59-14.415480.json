@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:59:19.800802",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The dominant colors are black and white, creating an atmosphere of tranquility. A window with yellow curtains adorns one wall, partially obscured by a blue curtain. The window casts a soft glow on the white wall behind it, adding to the warm ambiance.\n\nIn the corner of the room, a black desk is situated against another wall. On top of the desk, a computer monitor and a lamp are visible, their forms silhouetted against the soft light. The precise location of these objects suggests a space dedicated to work or study.\n\nDespite the presence of these objects, the room is devoid of people, enhancing its serene atmosphere. The absence of color in most of the scene further emphasizes the simplicity and calmness of the setting. The image as a whole exudes a sense of solitude and peace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-59-14.415480.jpg"
+}

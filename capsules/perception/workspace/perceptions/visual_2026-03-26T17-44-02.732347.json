@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:44:09.958758",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft natural light from a window. The room is dominated by a comfortable gray couch on which rests a black cat, peacefully curled up in slumber. A wooden coffee table sits in front of the couch, hosting a blue vase and a stack of books, suggesting an atmosphere of relaxation and intellectual pursuits.\n\nTo the right, a white door stands closed, adding to the sense of tranquility. The window, adorned with white curtains, allows sunlight to filter into the room, casting a warm glow on the beige walls. The overall scene exudes a sense of calm and comfort, making it an inviting space for relaxation and quiet moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-44-02.732347.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:36:18.631652",
+  "backend": "llava",
+  "description": "The image captures a cozy living room setting with a flat-screen TV mounted on the wall above a white brick fireplace. The TV screen is turned on, displaying a vibrant scene from what appears to be a movie or show featuring a man in a suit and a woman elegantly dressed in red. The TV is adorned with black lines and dots, possibly part of its design or functionality.\n\nThe fireplace below the TV has a black screen, contrasting with the white bricks surrounding it. A small flag hangs on the wall to the right of the fireplace, adding a personal touch to the room. \n\nIn front of the TV and fireplace, there's a wooden floor that extends throughout the room. On this floor, there's a pair of shoes casually placed, suggesting recent activity in the room. The overall atmosphere is one of comfort and relaxation, as if inviting viewers to sit down and enjoy their favorite show or movie.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-36-09.178212.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:51:13.323959",
+  "backend": "llava",
+  "description": "The image captures a dimly lit room bathed in an orange glow from a single window in the background. The room is sparsely furnished with a black couch and a table draped in a white tablecloth. Two soda cans rest on the table, their silver bodies gleaming under the soft light.\n\nIn the foreground, a person sits on the black couch, their body turned away from us. They hold a black object in their hands, its purpose or identity obscured by the angle of the shot. The overall atmosphere is one of quiet solitude, with the lone figure immersed in their own world amidst the simplicity and tranquility of the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-51-06.033645.jpg"
+}

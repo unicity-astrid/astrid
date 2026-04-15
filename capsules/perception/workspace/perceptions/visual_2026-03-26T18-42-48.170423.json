@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:42:58.890258",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft sunlight filtering through two windows on the right wall. The walls are painted a pristine white, providing a stark contrast to the wooden floor that extends across the room. \n\nOn the left side of the room, a comfortable couch invites relaxation. A gray blanket is casually draped over it, adding a touch of warmth and comfort. In front of the couch, a coffee table holds a laptop and a book, suggesting someone's work or study session might be underway.\n\nTo the right of the couch, a bookshelf stands tall against the wall. It's filled with books of various sizes and colors, indicating an avid reader resides here. The window sill hosts a plant that adds a dash of green to the room, its leaves reaching out as if trying to touch the sunlight streaming in.\n\nThe windows on the right wall are covered with white curtains that match the walls, creating a harmonious color scheme throughout the room. The overall atmosphere is one of tranquility and comfort, an ideal space for both work and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-42-48.170423.jpg"
+}

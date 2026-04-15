@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:16:09.761515",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from an unseen window. Dominating the center of the room is a wooden coffee table, its surface adorned with a blue vase and a stack of books, suggesting a quiet afternoon spent reading or perhaps a morning routine of drinking tea.\n\nTo the left of the frame, a gray couch invites relaxation, draped with a beige blanket that adds warmth to the space. The floor beneath it is carpeted, adding to the room's cozy ambiance.\n\nOn the right side of the image, a window draped with white curtains lets in soft light, illuminating the room and creating a welcoming atmosphere. The overall scene suggests a comfortable living space designed for rest and leisure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-16-05.079980.jpg"
+}

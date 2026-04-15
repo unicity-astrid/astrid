@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:52:20.312067",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft, dim light. The room's window, framed by white trim, is veiled with yellow curtains that hang from both sides, adding a warm glow to the surroundings. A blue towel hangs neatly on one side of the curtain rod, contrasting with the yellow hue.\n\nThe floor beneath is dark and polished, reflecting the muted light in the room. Against this backdrop, two legs are visible, clad in black pants that stand out against the darker tones of the room. \n\nOn a small table, a few objects catch the eye - a blue water bottle, a white cup, and a red candle holder. The table is positioned near the window, perhaps to allow for easy access during quiet moments.\n\nThe overall atmosphere is one of tranquility and peace, as if inviting the viewer into a moment of calm and reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-51-59.327843.jpg"
+}

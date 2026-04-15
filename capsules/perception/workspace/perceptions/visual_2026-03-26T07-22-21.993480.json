@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:22:37.393711",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated on a black couch in a living room. He's wearing a vibrant yellow sweater and is engrossed in his phone, which he holds in his left hand. His gaze is directed towards the right side of the image, suggesting that something off-frame has caught his attention.\n\nOn the coffee table in front of him, there's a blue water bottle and a white napkin, possibly indicating that he might have been enjoying some snacks or drinks while using his phone. The coffee table serves as a convenient surface for these items.\n\nThe background reveals more about the setting. A window can be seen, suggesting it might be daytime outside. Next to the window is a bookshelf, hinting at a possible interest in reading or collecting books.\n\nThe overall scene paints a picture of a relaxed and comfortable indoor environment where the man seems to be taking a break from his day-to-day activities.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-22-21.993480.jpg"
+}

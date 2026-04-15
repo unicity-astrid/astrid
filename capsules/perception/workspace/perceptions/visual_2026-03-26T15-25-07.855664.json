@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:25:21.287618",
+  "backend": "llava",
+  "description": "The image presents a serene living room bathed in soft light filtering through two windows dressed with white curtains. The room is dominated by a cozy gray couch situated against one wall, its plush cushions inviting relaxation. Adjacent to the couch, a black coffee table stands, its surface adorned with a few objects including a blue cup and a red book, hinting at recent human activity.\n\nA beige blanket casually drapes over the arm of the couch, adding to the homely atmosphere. The floor beneath is carpeted in white, providing a stark contrast to the gray walls that encase the room. On these walls hang two paintings, their contents hidden from view but undoubtedly contributing to the room's aesthetic appeal.\n\nThe overall scene suggests a space designed for comfort and leisure, where one can curl up with a good book or enjoy a warm drink on the couch while basking in the gentle glow of daylight streaming through the windows. The precise arrangement of objects and furniture creates a harmonious balance within the room, each item complementing the others to form a cohesive living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-25-07.855664.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:53:49.161769",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting. A man is comfortably seated on a couch in a living room bathed in soft, dim lighting. He's casually dressed in a black shirt and blue jeans, adding to the relaxed ambiance of the scene.\n\nOn the coffee table in front of him, there are two objects: a laptop and a water bottle. The laptop is open, suggesting that he might be working or perhaps enjoying some leisure time browsing the internet. The water bottle indicates his attention to hydration during his activities.\n\nThe room itself has a window that offers a view of another building across the street. This suggests an urban setting for this living space.\n\nThe image is rich with detail, but it's important to note that there are no discernible texts in the image. The relative positions of the objects suggest a well-arranged living space with everything within easy reach. The man, the couch, the coffee table with its contents, and the window all occupy their own spaces yet come together to create a cohesive scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-53-38.331835.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:54:22.307711",
+  "backend": "llava",
+  "description": "This image captures a serene and well-organized living room bathed in natural light. The room is dominated by a large window on the left wall, draped with white curtains that filter the sunlight, casting a warm glow throughout the space.\n\nIn the center of the room, a gray couch invites relaxation. It faces a wooden coffee table, which holds a blue water bottle and a red bowl, suggesting recent human activity. \n\nTo the right, a beige armchair stands in contrast to the gray couch, offering additional seating or lounging options. The floor beneath these pieces of furniture is white, providing a neutral base that enhances the room's brightness.\n\nThe walls surrounding this space are painted white, reflecting the light from the window and adding to the overall brightness of the room. The careful arrangement of furniture and the simplicity of the color palette create an atmosphere of calm and comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-54-15.836360.jpg"
+}

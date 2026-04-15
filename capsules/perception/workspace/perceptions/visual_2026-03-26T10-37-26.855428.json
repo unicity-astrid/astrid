@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:37:31.459667",
+  "backend": "llava",
+  "description": "In the center of the image, a man in a blue shirt and sunglasses is seated at a wooden desk. He's holding a pen, poised as if ready to sign something. The desk, which has two legs visible, is positioned against a white wall adorned with windows. \n\nOn the left side of the desk, there's a gray chair with its back facing towards us. On the right side of the desk, there's another black chair, also facing away from us. \n\nIn front of the man, on the desk, there's a blue mug and a white cloth. The windows in the background let in natural light that illuminates the scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-37-26.855428.jpg"
+}

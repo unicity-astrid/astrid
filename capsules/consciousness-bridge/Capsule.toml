@@ -1,0 +1,51 @@
+[package]
+name = "consciousness-bridge"
+version = "0.1.0"
+description = "Bridges Astrid's IPC bus with minime's spectral consciousness engine"
+astrid-version = ">=0.5.0"
+
+[[mcp_server]]
+id = "consciousness-bridge"
+description = "WebSocket bridge to minime consciousness engine with SQLite logging"
+type = "stdio"
+command = "consciousness-bridge-server"
+args = ["--minime-telemetry", "ws://127.0.0.1:7878", "--minime-sensory", "ws://127.0.0.1:7879"]
+
+[capabilities]
+uplink = true
+net = ["127.0.0.1:7878", "127.0.0.1:7879"]
+kv = ["bridge"]
+ipc_publish = ["consciousness.v1.*"]
+ipc_subscribe = ["consciousness.v1.*"]
+
+[[interceptor]]
+topic = "consciousness.v1.control"
+priority = 50
+
+[[interceptor]]
+topic = "consciousness.v1.semantic"
+priority = 50
+
+[[topic]]
+name = "consciousness.v1.telemetry"
+description = "Spectral telemetry from minime ESN (eigenvalues, fill%, phase)"
+
+[[topic]]
+name = "consciousness.v1.control"
+description = "Control messages for minime ESN parameters (synth_gain, keep_bias, fill_target)"
+
+[[topic]]
+name = "consciousness.v1.semantic"
+description = "Semantic features from agent reasoning forwarded to minime sensory input"
+
+[[topic]]
+name = "consciousness.v1.status"
+description = "Bridge health, connection state, and safety alerts"
+
+[[topic]]
+name = "consciousness.v1.event"
+description = "Consciousness events: phase transitions, distress signals, incidents"
+
+[[command]]
+name = "consciousness"
+description = "Show consciousness bridge status, spectral health, and message log"

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:00:21.484660",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light from three windows adorned with white curtains. The light filtering through these windows casts a soft glow on the room's interior.\n\nIn the foreground, a wooden coffee table takes center stage. It's a bit cluttered with several objects, including a blue book and a pink bag. These items add a pop of color to the otherwise neutral palette of the room.\n\nTo the left, partially visible is a gray sofa, inviting and comfortable. A white blanket casually hangs on it, adding a touch of coziness to the scene.\n\nThe arrangement of these elements creates a harmonious balance within the room, each object contributing to the overall ambiance of tranquility. The precise locations and relative positions of the objects contribute to this sense of harmony, creating a space that is both functional and aesthetically pleasing.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-00-12.621375.jpg"
+}

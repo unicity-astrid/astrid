@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:21:29.086878",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a living room bathed in natural light. Dominating the foreground is a couch, its surface adorned with a gray blanket that adds a touch of warmth to the space. A brown dog lies peacefully on the blanket, embodying the essence of relaxation.\n\nIn the background, a wooden coffee table takes center stage. It's not just any table, but one that tells a story of life lived in comfort and joy. On it rests a blue water bottle, perhaps indicating an active lifestyle or a preference for hydration. A pink bag lies nearby, its presence suggesting recent activity or an upcoming adventure.\n\nA white curtain hangs gracefully from the window, its pristine color contrasting beautifully with the vibrant sunlight streaming in. The sun casts long shadows across the room, adding depth and dimension to the scene.\n\nEvery object in this image has its place, creating a harmonious composition that speaks of everyday life and quiet moments shared in the comfort of home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-21-23.268400.jpg"
+}

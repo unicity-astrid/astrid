@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:05:22.342499",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, bathed in soft, natural light filtering through three windows adorned with white curtains. The windows are situated on the right side of the room, casting a warm glow that illuminates the space.\n\nIn the center of the room, a wooden coffee table takes prominence. It hosts an array of objects: a laptop resting atop it, suggesting work or study; a blue mug, possibly filled with a hot beverage; and a white bowl, its contents hidden from view.\n\nTo the left of the frame, partially visible is a couch draped in a black blanket, inviting relaxation and comfort. The overall atmosphere exudes tranquility and homeliness, each object meticulously placed, creating a harmonious balance within the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-05-13.768968.jpg"
+}

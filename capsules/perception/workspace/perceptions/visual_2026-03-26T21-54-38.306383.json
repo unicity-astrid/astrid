@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:54:44.155313",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room bathed in soft light filtering through two windows adorned with white blinds and yellow curtains. The windows are symmetrically positioned on either side of the room, creating a balanced ambiance.\n\nOn the left side of the room, a green couch invites relaxation. A black dog is sitting on it, its attention captured by something off-camera to the right. The dog's position suggests curiosity and alertness.\n\nIn the center of the room, a coffee table holds a few items: a blue water bottle, a pink book, and a black laptop computer. These objects are neatly arranged, hinting at an organized lifestyle.\n\nThe floor is covered by a beige rug that adds warmth to the room. On the right side, there's a wooden chair adding another layer of comfort and functionality to this cozy living space.\n\nOverall, the image paints a picture of a peaceful afternoon spent in a comfortable living room with one's canine companion.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-54-38.306383.jpg"
+}

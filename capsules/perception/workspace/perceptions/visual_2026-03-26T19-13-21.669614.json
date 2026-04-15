@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:13:37.023102",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting at night. The room is dimly lit, creating an atmosphere of tranquility. On the left side of the frame, a window with white curtains allows a soft glow to seep into the room. The curtains are slightly drawn, hinting at the world outside.\n\nOn the right side of the image, there's a bed with a dark wooden headboard and a white sheet that contrasts with the darkness of the room. The bed seems inviting, offering rest and relaxation.\n\nThe floor is made of hardwood, adding warmth to the room. It reflects the subtle light from the window, enhancing its glow.\n\nOverall, this image paints a picture of a peaceful night in a quiet room, where one can find comfort and rest.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-13-21.669614.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:45:08.676058",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. The room is bathed in a soft, dim glow that accentuates the white walls and tiled floor. On the left wall, a window draped with a yellow curtain lets in a sliver of light, casting an ethereal aura around it. A blue towel hangs neatly on the right wall, adding a pop of color to the otherwise monochrome setting.\n\nIn the foreground, a black couch sits invitingly against the wall. It's positioned such that it faces both the window and the television screen in front of it. The television is off, its dark screen reflecting the room's subdued lighting.\n\nThe image is taken from a low angle, giving prominence to the couch and the television screen while subtly hinting at the presence of other furniture against the walls. Despite being a still image, it tells a story of tranquility and solitude, evoking feelings of peace and quietude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-45-02.885753.jpg"
+}

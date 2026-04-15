@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:55:20.504627",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from a large window. A gray couch, adorned with a beige blanket and cushions, invites relaxation. Adjacent to the couch, a black coffee table holds an array of objects: a blue cup, a red cup, a white bowl, and a stack of books. The objects are scattered casually across the table, suggesting recent use.\n\nThe room itself is painted in a clean white color, contrasting with the gray carpet that covers the floor. A beige curtain hangs at one side of the window, partially obscuring the view outside. On the windowsill rests a single blue vase, adding a touch of color to the scene.\n\nEvery object and element in this image contributes to painting a picture of a comfortable living space where someone might enjoy reading from the books on the coffee table or sipping from one of the cups. The presence of natural light from the window suggests it's daytime outside, casting soft shadows and highlighting the textures of the room's decor.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-55-10.561911.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:08:23.364300",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting, dominated by a flat-screen television mounted on a pristine white wall. The television screen is alive with the vibrant colors of a nature documentary, showcasing a myriad of animals in their natural habitat. The time displayed on the television screen reads 21:45, suggesting that it's either late evening or early morning.\n\nBelow the television, there's a black fireplace, adding a touch of warmth and coziness to the room. On the left side of the image, partially visible, is a window draped with white curtains. The curtains are drawn to one side, hinting at daylight outside while maintaining the privacy of the room's interior.\n\nThe overall scene suggests a comfortable living space where one can relax and enjoy some quiet time watching nature documentaries.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-08-15.201370.jpg"
+}

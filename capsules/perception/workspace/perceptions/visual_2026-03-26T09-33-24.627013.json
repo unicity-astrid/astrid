@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:33:30.513533",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light. Dominating the left side of the frame is a gray couch, inviting and comfortable. It's positioned perfectly for someone to sink into its cushions and enjoy a quiet moment. \n\nIn front of the couch, there's a wooden coffee table that holds a blue cup and a book, suggesting a recent reading session. The book lies closed, waiting to be picked up again.\n\nOn the right side of the image, a window draped with white curtains lets in gentle streams of light, illuminating the room and casting soft shadows. The curtains sway slightly, indicating a gentle breeze from outside.\n\nThe floor beneath is covered with a beige carpet that adds warmth to the room. It's soft underfoot, perfect for bare feet or slippers on lazy afternoons.\n\nOverall, this image paints a picture of a peaceful afternoon spent in the comfort of home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-33-24.627013.jpg"
+}

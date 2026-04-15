@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:02:23.818418",
+  "backend": "llava",
+  "description": "The image captures a quiet and intimate moment in a dimly lit room. Dominating the center of the image is a window adorned with a white curtain that filters the soft glow of the orange light coming from it. The light casts a warm hue on the scene, contrasting with the overall cool tones of the room.\n\nTo the left of the window, two objects stand out against the darkness - a black spray bottle and a blue candle. They are close to each other, suggesting they might be used together in some way. Their presence adds an element of intrigue to the otherwise ordinary setting.\n\nOn the right side of the image, a portion of a bed can be seen, its dark color blending with the night. A person is sitting on it, their silhouette illuminated by the light from the window. The darkness envelops them, creating a sense of solitude and peace.\n\nThe background is shrouded in darkness, allowing the viewer's attention to remain focused on the objects within this small space. The overall atmosphere is one of tranquility and introspection, as if inviting the viewer to pause and reflect.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-02-17.474131.jpg"
+}

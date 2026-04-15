@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:21:21.377967",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a dimly lit room. The primary focus is a window with white curtains, through which a faint light is filtering in from the outside, casting a soft glow on the dark interior. A silhouette can be seen against this backdrop, adding an element of intrigue to the scene.\n\nIn front of the window, there's a black table that stands out due to its contrasting color. On it, a white paper is visible, although the text isn't discernible. The overall atmosphere is one of tranquility and quietude, as if time has momentarily paused within this space. The precise positioning of the objects and their interplay with light and shadow contribute to the composition's aesthetic appeal.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-21-16.675911.jpg"
+}

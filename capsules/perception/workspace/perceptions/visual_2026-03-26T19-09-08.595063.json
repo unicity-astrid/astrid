@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:09:26.945324",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting at what appears to be either dawn or dusk, given the soft light filtering through two windows adorned with white curtains. The left window casts a gentle glow on the wooden dresser situated in front of it, while the right window illuminates the black chair positioned next to the dresser.\n\nThe dresser itself is a hub of activity, hosting a small lamp that promises warmth and comfort. A book lies open nearby, perhaps waiting to be picked up and read. Adding an unexpected element to this domestic scene is a piece of paper with an intriguing message: \"Don't tell anyone I'm here\".\n\nIn the background, a door suggests further spaces beyond, adding depth to this intimate snapshot of life. The overall atmosphere exudes tranquility and solitude, as if time has momentarily paused within this room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-09-08.595063.jpg"
+}

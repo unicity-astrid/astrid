@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:54:10.908803",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room at night. The room is bathed in an ethereal glow from two windows, one on each side. The window on the left is adorned with a white curtain, partially drawn to let in a soft light that dances on the floor. On the right, a yellow curtain adds a warm hue to the scene.\n\nIn front of the windows, a table draped in a black cloth stands as the centerpiece of the room. A single candle rests atop it, casting flickering shadows and adding an element of mystery to the space. The walls of the room are painted white, providing a stark contrast to the dark furniture that fills the space.\n\nThe overall atmosphere is one of tranquility and solitude, with every object meticulously placed, creating a harmonious balance within the room. Despite the darkness, there's a sense of warmth and comfort emanating from this peaceful nighttime scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-54-01.769468.jpg"
+}

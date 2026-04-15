@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:11:16.016132",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from two windows adorned with white blinds. The room is dominated by a gray couch on the left side, inviting relaxation under its plush cushions. A wooden coffee table takes center stage, hosting an array of objects: a blue mug waiting to be filled with hot tea or coffee, a book suggesting quiet reading hours, and a white tissue box for any unexpected needs.\n\nOn the right side of the image, a beige armchair echoes the gray couch's promise of comfort. It stands in front of a wooden side table, its surface home to another blue mug and a white lamp that casts a warm glow during evening hours.\n\nThe room is grounded by a dark brown floor that contrasts beautifully with the light-colored walls. The overall atmosphere is one of warmth and coziness, an ideal space for unwinding after a long day or gathering with family and friends for conversation and laughter.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-11-00.731202.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:03:11.954422",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting, bathed in soft light filtering through two windows adorned with white curtains. The left window is positioned higher than the right one, creating an interesting asymmetry in the scene.\n\nIn the foreground, a wooden coffee table holds court. It's draped with a black and white checkered tablecloth that adds a touch of rustic charm to the setting. Atop the table sits a blue mug, its vibrant color contrasting beautifully with the monochrome tablecloth. Beside it, a red and white striped bag rests casually, adding another pop of color to the scene.\n\nIn the background, a black couch beckons invitingly. A blanket is casually draped over it, suggesting recent use or perhaps an evening spent in comfort. The couch faces the coffee table, creating a cozy conversation area.\n\nThe windows on the right side of the image serve as portals to the outside world, their white curtains partially drawn back to let in natural light that dances across the room. The floor beneath is carpeted in a warm shade of brown, adding to the overall warmth and coziness of this indoor space.\n\nOverall, this image paints a picture of comfort and tranquility, an intimate snapshot into someone's personal space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-03-04.683744.jpg"
+}

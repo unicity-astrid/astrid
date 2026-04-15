@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:53:54.727730",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor setting. At the center of the scene, a man in a vibrant yellow shirt is comfortably seated on a black couch. He holds a black laptop, perhaps engaged in work or leisure activities. The laptop rests on his lap, suggesting a relaxed posture.\n\nThe room is bathed in soft light filtering through two windows adorned with white curtains. The light casts gentle shadows, adding depth to the scene. A wooden table sits before the man, hosting a blue water bottle and another black laptop, possibly indicating a multi-tasking environment or shared space.\n\nA white curtain hangs from one of the windows, its crisp color contrasting with the darker tones of the room. The overall atmosphere is one of calm and productivity, an intimate snapshot of modern indoor life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-53-22.298568.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:01:09.021298",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy living room bathed in soft, dim light. The walls are painted a soothing shade of white, providing a neutral backdrop for the room's furnishings.\n\nIn the center of the room stands a sturdy wooden coffee table, draped with a beige cloth that adds a touch of warmth to the space. A blue can rests atop the table, perhaps a remnant of a relaxed evening spent in good company.\n\nTo the right, a black sofa invites rest and relaxation. It's adorned with a gray blanket, hinting at many nights spent watching movies or enjoying warm conversations.\n\nThe room features two windows, each fitted with white blinds that filter the outside light, casting an ethereal glow within. A red curtain hangs on one of these windows, adding a pop of color to the otherwise muted palette of the room.\n\nEvery object in this room tells a story, painting a picture of comfort and tranquility. It's more than just a living room; it's a snapshot of life lived well.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-00-46.906316.jpg"
+}

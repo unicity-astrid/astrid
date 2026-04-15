@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:44:40.131834",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft sunlight filtering through two windows adorned with white curtains. The room is dominated by a plush gray sofa that sits invitingly against one wall. A black coffee table takes center stage, draped with a pristine white cloth that adds an air of elegance to the space.\n\nA beige blanket casually thrown over the back of the sofa suggests recent use or perhaps as a comfortable seating option for later. The wooden floor underfoot lends warmth and texture to the room, complementing the white walls that reflect the natural light streaming in from outside.\n\nOn one side, there's a bookshelf filled with various items, hinting at the personal tastes and interests of those who reside here. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation and leisurely activities.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-44-34.925676.jpg"
+}

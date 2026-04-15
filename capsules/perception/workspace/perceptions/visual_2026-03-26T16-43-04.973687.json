@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:43:09.224471",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, natural light filtering through three windows adorned with white curtains. The room's centerpiece is a brown wooden coffee table, its surface graced by two blue mugs and a single red mug, as if waiting for their owners to return.\n\nTo the left of the frame, a gray couch invites relaxation, its plush cushions untouched. A beige blanket rests casually on it, adding a touch of warmth to the scene. The precise positioning of these objects creates a harmonious balance within the room, each item contributing to the overall ambiance of comfort and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-43-04.973687.jpg"
+}

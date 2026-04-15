@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T10:44:25.641028",
+  "backend": "llava",
+  "description": "In the image, there is a man sitting on a gray couch in a living room. He is wearing a black baseball cap and a red shirt, giving off a casual vibe. His attention is focused on the laptop that is open before him on a wooden coffee table. The laptop screen is illuminated, suggesting he might be working or browsing.\n\nBeside his laptop, there's a white mug with a handle, possibly containing his beverage of choice. On the couch next to him, you can see a blue pillow and a green chair cushion, adding a pop of color to the scene.\n\nThe room itself has a simple decor. The walls are painted white, providing a clean backdrop for the scene. A window dressed with white curtains lets in natural light that illuminates the room.\n\nOverall, this image captures a quiet moment of focus and work in a comfortable home setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-44-15.112796.jpg"
+}

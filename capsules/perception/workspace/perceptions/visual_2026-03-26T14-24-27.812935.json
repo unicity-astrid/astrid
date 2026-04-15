@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:24:32.073812",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a room bathed in natural light from a window to his left. He's dressed casually, sporting shorts and a blue shirt. His attention seems to be focused on the table before him, which holds a few items including a can of soda.\n\nThe room itself is furnished with a couch that occupies the left side of the frame, partially visible. A lamp, its purpose unclear from this angle, stands nearby. The man, the table, and these pieces of furniture create a small domestic scene, suggesting a quiet moment in someone's day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-24-27.812935.jpg"
+}

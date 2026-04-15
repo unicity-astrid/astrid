@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:30:22.912767",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, natural light. Dominating the center of the room is a sturdy wooden coffee table. On it, a blue mug stands alone, its vibrant color contrasting with the warm tones of the wood. \n\nTo the left of the room, a gray couch invites relaxation. It's adorned with a beige blanket that adds a touch of comfort and warmth to the space. The couch faces a white wall which houses two windows. One window is veiled by a white curtain, filtering the light entering the room, while the other reveals a glimpse of an unseen world outside.\n\nOn the right side of the room, a wooden bookshelf stands tall against the wall. It's not just any bookshelf; it's filled with books and crowned with a blue vase that echoes the color of the mug on the table. The books and vase are arranged in such a way that they create an interesting visual rhythm.\n\nThe overall atmosphere is one of tranquility and comfort, a perfect setting for quiet afternoons spent reading or enjoying a cup of tea.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-30-12.523592.jpg"
+}

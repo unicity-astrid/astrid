@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:15:30.210586",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft light from a window draped with white curtains. The room itself is shrouded in darkness, creating a striking contrast with the illuminated window. The window is adorned with stained glass panels, their colors muted but noticeable. \n\nIn the foreground, a solitary black chair stands out against the room's low-light ambiance. Its presence adds a touch of mystery to the scene, inviting one to imagine its owner and their story. \n\nThe perspective of the image is particularly intriguing - it's taken from someone lying on a bed in the foreground, looking up at the ceiling. This viewpoint offers a unique glimpse into the room, framing the chair and window within the viewer's own space.\n\nOverall, this image paints a picture of quiet introspection, as if inviting the viewer to pause and reflect amidst the tranquility of the night.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-15-24.789067.jpg"
+}

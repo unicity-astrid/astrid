@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:53:52.681792",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft light filtering through white curtains that frame a large window on one wall. The room's walls are painted a pristine white, providing a stark contrast to the comfortable gray couch that sits invitingly against them. Above the couch, a black shelf holds court, adorned with various objects that add character to the space.\n\nIn front of the couch, a wooden coffee table takes center stage. It hosts a single blue can and a red book, perhaps indicating recent human activity. The window behind the couch opens up to an unseen view, suggesting the room's connection to the outside world.\n\nDespite the presence of these objects, there's an air of emptiness that permeates the space. It's as if the room is waiting for someone to occupy it and bring it to life. The precise locations of the objects and their relative positions contribute to this sense of anticipation. There's no text present in the image, allowing the viewer to fully immerse themselves in the visual narrative without any distractions.\n\nOverall, the image presents a tranquil scene of an empty living room, ready for someone to bring it back to life with their presence and activities.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-53-45.969460.jpg"
+}

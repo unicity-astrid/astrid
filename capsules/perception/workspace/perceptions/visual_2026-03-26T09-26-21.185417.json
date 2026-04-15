@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:26:26.620578",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from a large window on the left side. The window, adorned with white curtains, casts a soft glow throughout the room. A beige carpet underfoot adds warmth to the space.\n\nOn the right, a black leather couch invites relaxation. It's positioned perfectly for viewing the television, which is perched on a wooden stand directly across from it. The television screen is blank, reflecting the tranquility of the room.\n\nIn front of the couch, a brown coffee table holds court. A glass of water sits atop it, its contents clear and refreshing. To the left of the couch, a lamp waits patiently to shed light when night falls.\n\nThe walls, painted in a crisp white, contrast beautifully with the beige carpet. The overall atmosphere is one of comfort and tranquility, an ideal setting for relaxation or entertainment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-26-21.185417.jpg"
+}

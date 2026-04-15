@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:23:56.471255",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. The room is bathed in darkness, with the only source of light emanating from the window. The window, adorned with white curtains, frames the scene and allows the outside light to seep into the room.\n\nIn the foreground, a dark-colored couch sits invitingly against the wall. On it, a blue soda can rests, its color contrasting with the darkness of the couch. A black coat is casually draped over one end of the couch, adding a touch of lived-in warmth to the scene.\n\nThe background reveals more of the room's interior. A white wall stands tall, punctuated by another window that mirrors the design of the first. The overall atmosphere is one of quiet comfort and solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-23-48.620780.jpg"
+}

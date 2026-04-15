@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:59:27.658754",
+  "backend": "llava",
+  "description": "The image captures a serene night scene inside a room. The room, bathed in a soft glow from a window with white panes, exudes an air of tranquility. A black curtain hangs gracefully on one side of the window, adding to the contrast of light and shadow.\n\nOn a table positioned near the window, a blue candle stands tall amidst scattered objects. The candle's presence suggests a sense of calm and quietude. The objects on the table are indistinct, their details obscured by the darkness.\n\nIn the background, another window can be seen, its white panes mirroring those of the main window. This symmetry adds depth to the scene.\n\nThe image is devoid of human presence, yet it tells a story of solitude and peace. The objects on the table, though indistinct, hint at someone's life lived within these four walls. The blue candle stands as a silent sentinel, its flame flickering in the quiet night.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-59-18.943685.jpg"
+}

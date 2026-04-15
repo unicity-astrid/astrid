@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:43:39.758479",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a black desk in a room bathed in natural light from two windows on the left wall. The man, dressed in a blue shirt and shorts, appears to be engrossed in his work on a laptop that's open before him on the desk. To the right of the laptop, there's a blue can resting on the desk.\n\nThe desk is positioned against a white wall, which houses a bookshelf and a door on its right side. The room exudes an atmosphere of tranquility and focus, with the man seemingly absorbed in his work amidst the serene setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-43-32.341725.jpg"
+}

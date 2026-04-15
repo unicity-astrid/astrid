@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T10:53:27.248230",
+  "backend": "llava",
+  "description": "This image captures a moment in a living room where a man is engrossed in his work. The man, donned in a black t-shirt and a red baseball cap, is seated on a blue couch, holding a white laptop. His focused gaze suggests he might be working or studying.\n\nIn front of the couch, there's a coffee table supporting another white laptop, possibly indicating that this space also serves as an office. The room itself is painted white, providing a neutral backdrop to the scene.\n\nA window dressed with white curtains allows natural light to filter into the room, illuminating the space and casting soft shadows. The overall atmosphere suggests a comfortable and relaxed environment conducive for work or study.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-53-16.940253.jpg"
+}

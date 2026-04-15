@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T22:20:12.650068",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dark room. The primary source of light comes from a window with white panes and a yellow frame, which stands out against the blackness of the surroundings. A pink blanket adds a touch of color to the scene.\n\nIn front of the window, on a small table, sits an open laptop, its screen glowing softly in the dim light. The table is positioned centrally in the image, serving as a focal point amidst the darkness. To the left of the frame, there's a person lying down with their head resting on their arms, adding a sense of relaxation to the scene.\n\nThe background is shrouded in darkness, making it difficult to discern any other objects or details. The overall atmosphere is one of tranquility and solitude. The image does not contain any text.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-20-04.776633.jpg"
+}

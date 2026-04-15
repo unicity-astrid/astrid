@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:02:16.060937",
+  "backend": "llava",
+  "description": "The image captures a tranquil moment in a living room bathed in soft sunlight filtering through two windows adorned with white curtains. The room exudes an air of comfort and warmth, amplified by the large beige couch that dominates the space. \n\nOn this couch, a black dog is peacefully sleeping, its body relaxed and curled up against the armrest. Its dark fur contrasts beautifully with the light-colored couch, adding depth to the scene.\n\nTo the right of the couch, there's a wooden coffee table holding a few items - a blue mug, a white plate, and a book. The table's brown hue matches the couch, creating a harmonious color palette in the room.\n\nThe arrangement of these objects suggests an atmosphere of leisure and relaxation. It's as if time has paused for a while, allowing us to appreciate this quiet moment in the life of this black dog.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-01-50.618471.jpg"
+}

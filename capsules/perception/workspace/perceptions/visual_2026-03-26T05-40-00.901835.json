@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:40:09.931045",
+  "backend": "llava",
+  "description": "In the image, a solitary figure is captured in a moment of quiet introspection, sitting at a desk in what appears to be a dimly lit room. The person, clad in a vibrant yellow shirt, faces away from the camera, their attention seemingly drawn to something off-frame. \n\nThe desk, positioned against a wall adorned with windows, serves as the centerpiece of the scene. A laptop rests on it, its screen aglow with an unseen display. Beside it, a blue water bottle stands tall, adding a splash of color to the otherwise muted palette of the room.\n\nA beige curtain hangs from one of the windows, partially obscuring the view outside. The glow from another window illuminates the scene, casting soft shadows and highlighting the person's profile. The overall atmosphere is one of solitude and focus, as if the individual is deeply engrossed in their work or perhaps lost in thought.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-40-00.901835.jpg"
+}

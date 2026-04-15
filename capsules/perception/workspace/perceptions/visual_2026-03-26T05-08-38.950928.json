@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:08:45.069065",
+  "backend": "llava",
+  "description": "In the image, a solitary figure is seated in the dimly lit room, engrossed in work at a desk. The person's face is partially obscured by a computer monitor that stands prominently on the desk. The monitor, bathed in an ethereal glow from the ambient light, casts a soft shadow on the desk below.\n\nThe room itself is shrouded in darkness, punctuated only by the warm orange light filtering through two windows. These windows are adorned with white curtains, their fabric gently swaying with each breeze that ventures into the room. The overall atmosphere of the image exudes a sense of tranquility and focus, as if time has momentarily paused within this space.\n\nDespite the darkness enveloping the room, it's clear that our lone worker is undeterred by their surroundings. Their dedication to their task is evident in their posture, suggesting they are deeply engrossed in whatever appears on the computer screen before them. The image captures a moment of quiet determination and concentration amidst a world often filled with distractions and noise.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-08-38.950928.jpg"
+}

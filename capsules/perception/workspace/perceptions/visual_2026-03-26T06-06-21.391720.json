@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:06:41.563771",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a dimly lit room. The desk is positioned against a wall that features two windows with yellow curtains. The man is wearing a yellow shirt and appears to be engrossed in his work on a laptop computer.\n\nOn the desk, there are three objects: a black bottle, a white cup, and another laptop computer. The black bottle is located behind the man's right hand, suggesting it might contain a beverage for him to drink while working. The white cup is placed closer to the front of the desk, possibly containing water or coffee.\n\nThe two laptops are open on the desk, indicating that the man might be multitasking between multiple tasks or projects. One laptop is positioned in front of the man, and the other is placed behind his left hand, suggesting he may be working in a linear fashion from one task to another.\n\nOverall, the image depicts a quiet and focused work environment with the man deeply engaged in his work on the laptop. The presence of multiple objects suggests that this could be a professional or personal workspace where various tasks are being carried out simultaneously.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-06-21.391720.jpg"
+}

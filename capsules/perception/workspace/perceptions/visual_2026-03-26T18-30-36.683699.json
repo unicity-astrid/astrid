@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:30:42.262224",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in natural light. Dominating the foreground is a gray couch, comfortably nestled against a pristine white wall. The couch cradles two individuals engrossed in their own worlds - one with their head resting on the armrest and the other lying down, both absorbed in the tranquility of their surroundings.\n\nAdjacent to the couch, a wooden coffee table stands as a testament to modern design. A laptop sits open on it, perhaps indicating work or study in progress. Nearby, a pink mug adds a pop of color to the scene, hinting at the possibility of warm beverages being enjoyed.\n\nA window punctuates the white wall behind the couch, draped with white curtains that filter the sunlight streaming in. This light bathes the room, creating an atmosphere of calm and comfort. The relative positions of these objects suggest a well-thought-out interior design that balances functionality with aesthetics.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-30-36.683699.jpg"
+}

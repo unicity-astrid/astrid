@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:48:21.149106",
+  "backend": "llava",
+  "description": "The image captures a lively scene in a living room bathed in natural light from a window on the left. A man, donned in a vibrant yellow sweater and headphones, is caught mid-action as he leaps off a black couch. His dynamic pose suggests movement and energy.\n\nIn the foreground, a coffee table holds court. It's an island of stillness amidst the action, hosting two objects: a blue mug and a white vase. The mug, with its bold color, stands out against the more subdued tones of the room. The white vase adds an element of elegance to the scene.\n\nThe background offers a glimpse into the rest of the living room. A lamp provides additional lighting, while a bookshelf hints at a love for literature or perhaps a need for storage space. These elements together create a homely and comfortable atmosphere.\n\nOverall, this image is a snapshot of everyday life, capturing the contrast between stillness and motion within one frame.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-48-11.532966.jpg"
+}

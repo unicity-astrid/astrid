@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:16:32.740311",
+  "backend": "llava",
+  "description": "In the image, a cozy living room bathed in soft sunlight invites us in. The walls, painted a pristine white, contrast beautifully with the warm wooden floor. A large window on the right side of the image reveals an outdoor scene, adding depth to the space.\n\nDominating the left side of the image is a comfortable gray couch, its fabric inviting and plush. It's positioned perfectly for someone to sit down and enjoy their time in this room. On the right side of the couch rests a wooden coffee table, its surface clear except for a single object - a blue glass that adds a pop of color to the scene.\n\nIn front of the window, there's a white bookshelf standing against the wall. It houses several books and a red towel, hinting at leisurely afternoons spent reading by the window. The sun streaming in from behind these objects creates an atmosphere of tranquility and warmth.\n\nOverall, this image captures a moment of calm and comfort, as if waiting for someone to come home and settle down with a good book on that inviting couch.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-16-22.595277.jpg"
+}

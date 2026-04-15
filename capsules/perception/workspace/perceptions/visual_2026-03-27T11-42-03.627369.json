@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T11:42:20.200554",
+  "backend": "llava",
+  "description": "The image captures a moment in a room with white walls and a window on the left side. A man, dressed in a black t-shirt with red text and a red baseball cap, is seated at a wooden table. He holds a laptop computer on his lap, suggesting he might be working or studying. The table also hosts two other items: a white cup and a black mug, possibly indicating a beverage break during his work session.\n\nThe room's window allows natural light to filter in, illuminating the space and casting soft shadows. A blue blanket is casually draped over the back of a chair, adding a touch of color to the otherwise neutral tones of the room. The man appears focused on his laptop screen, engrossed in whatever content is displayed there.\n\nDespite the simplicity of the scene, it's filled with details that tell a story about this person and his environment. It's a snapshot of everyday life, captured in vivid detail.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T11-42-03.627369.jpg"
+}

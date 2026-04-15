@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:28:51.538805",
+  "backend": "llava",
+  "description": "In the image, a serene domestic setting unfolds. A brown dog, full of life and curiosity, sits on a gray couch in what appears to be a living room. The dog's gaze is directed towards the camera, its eyes reflecting a sense of calm and comfort.\n\nThe couch, acting as the centerpiece of the room, faces two windows adorned with white blinds. These windows allow natural light to filter into the room, casting soft shadows and illuminating the space with a warm glow.\n\nAgainst one wall stands a black coffee table. On it rests a blue vase and a red bowl, adding a splash of color to the otherwise neutral tones of the room. The furniture arrangement suggests a well-thought-out design that prioritizes comfort and functionality.\n\nDespite the simplicity of the scene, it's clear that this is a space where one can relax and unwind. The dog's presence adds an element of companionship and warmth to the room, making it not just a living space, but also a home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-28-35.480242.jpg"
+}

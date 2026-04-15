@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:11:29.698844",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. The room is bathed in a soft glow from the window on the left side of the frame, casting long shadows and highlighting the various objects within. \n\nOn the right, another window reveals a glimpse of the world outside. A curtain hangs from it, partially obscuring the view. The dark background contrasts with the illuminated interior, creating an interesting interplay of light and shadow.\n\nThe room itself is filled with furniture. A bed, covered in a dark blanket, occupies much of the space on the right side of the image. Its shape is soft and inviting, suggesting comfort and rest. \n\nNext to it, a desk holds a blue water bottle and a white lamp, both standing out against the darker hues of the room. The presence of these objects suggests that this might be a bedroom or perhaps a study.\n\nOverall, the image paints a picture of quiet solitude in a cozy indoor space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-11-24.013446.jpg"
+}

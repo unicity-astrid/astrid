@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:57:51.467344",
+  "backend": "llava",
+  "description": "In this image, a man is seated in a room bathed in soft sunlight filtering through a window. The window, adorned with white curtains, casts a warm glow on the scene. The man, clad in a vibrant yellow sweater and blue jeans, is engrossed in his work at a desk that sits beneath the window.\n\nThe desk hosts an array of objects - a laptop, a black water bottle, and a small plant adding a touch of green to the otherwise tech-dominated space. Adjacent to the desk, there's a wooden chair with a beige cushion, offering comfort for long hours of work. A gray couch rests in front of the window, perhaps providing an alternate spot for relaxation or contemplation.\n\nThe room exudes a sense of tranquility and focus, each object meticulously placed, contributing to an environment conducive for productivity and peace. The man's engagement with his laptop suggests he is deeply immersed in his tasks, possibly working from home amidst the serene setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-57-24.105885.jpg"
+}

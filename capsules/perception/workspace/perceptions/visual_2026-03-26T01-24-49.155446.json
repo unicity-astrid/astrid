@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:24:55.236645",
+  "backend": "llava",
+  "description": "The image presents a tranquil indoor setting, bathed in soft light. Dominating the center of the frame is a wooden coffee table, its surface adorned with a red book and a blue cup. The table's warm brown tones contrast with the cool colors of the objects on it.\n\nTo the left, a white wall serves as a backdrop for a window that has yellow curtains. The curtains are drawn back slightly, revealing a glimpse of a white curtain rod above them. On this rod hangs a single white curtain, its fabric billowing outwards, adding a sense of depth to the scene.\n\nOn the right side of the frame, another window with a similar yellow curtain can be seen. However, this one is covered by a beige curtain that matches the color of the rug on the floor. The rug, spread out in front of the coffee table, adds a touch of coziness to the room.\n\nThe overall atmosphere is one of comfort and relaxation, as if inviting the viewer to sit down with a good book and enjoy some quiet time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-24-49.155446.jpg"
+}

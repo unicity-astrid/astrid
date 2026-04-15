@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:44:15.212581",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting bathed in soft light. The room is dominated by a wooden table situated centrally, draped with a black cloth that contrasts against the warm tones of the wood. On this table, two objects are discernible: a blue bottle and a black bag, their colors standing out against the dark fabric.\n\nThe wall behind the table is adorned with three windows, each framed in white and fitted with yellow curtains that add a pop of color to the scene. The window on the left is covered by a white curtain, while the middle window is veiled by a yellow one, creating an interesting interplay of light and shadow. The rightmost window is uncovered, its glass pane reflecting the room's ambiance.\n\nThe floor beneath is made of wood, echoing the table's material and adding to the room's warm aesthetic. In the bottom right corner of the image, a black object can be seen, but it remains indistinguishable due to its location and size.\n\nOverall, this image paints a picture of a cozy, dimly lit room with a wooden table at its heart, where everyday objects are scattered about, waiting for their owners' return.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-44-03.318763.jpg"
+}

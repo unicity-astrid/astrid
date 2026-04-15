@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:00:16.190132",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a bedroom. The room is bathed in darkness, with only a single window allowing a soft glow to seep through. This light casts long shadows across the room, adding depth and texture to the scene.\n\nOn the right side of the photo, there's a bed draped with a white sheet. A black jacket is casually thrown on top of it, suggesting recent activity. The bed is positioned in front of the window, which has a screen covering its lower half.\n\nTo the left of the photo, a nightstand holds two objects - a blue bottle and a white candle. Their presence adds a personal touch to the space.\n\nThe overall atmosphere is one of tranquility and relaxation, as if inviting you to unwind and rest after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-00-08.310873.jpg"
+}

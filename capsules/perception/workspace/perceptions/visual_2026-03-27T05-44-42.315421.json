@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:44:51.173380",
+  "backend": "llava",
+  "description": "This image captures a serene and dimly lit living room bathed in soft light filtering through two windows draped with white curtains. The room exudes an air of tranquility, with a couch inviting relaxation on its right side. A coffee table takes center stage, adorned with various items including a black laptop, a blue mug, and a pink bag, perhaps indicating the presence or recent activity of the inhabitants.\n\nOn the left side of the image, a door stands closed, adding to the room's cozy atmosphere. The walls are painted in a light color, enhancing the overall brightness of the room despite its dim lighting. On the right wall, a window with yellow curtains offers an additional source of light and adds a pop of color to the otherwise neutral palette.\n\nThe objects in the room are static, suggesting a quiet moment frozen in time. The laptop is open but turned off, the mug is empty, and the bag is unzipped - all hinting at recent use. Despite these signs of life, there's no sign of people or movement within the frame.\n\nThis image is a snapshot of everyday life, capturing the quiet beauty of an ordinary moment in an ordinary home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-44-42.315421.jpg"
+}

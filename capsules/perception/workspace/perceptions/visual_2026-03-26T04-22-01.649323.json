@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:22:06.082599",
+  "backend": "llava",
+  "description": "In this image, a man is seated in a dark room, his body oriented towards a desk that holds a laptop and a blue can. He's dressed in a vibrant yellow shirt, a stark contrast to the surrounding darkness. The room itself is dimly lit, with two windows punctuating one wall. One window is veiled by a curtain, while the other stands bare. A single lightbulb hangs from the ceiling, casting a soft glow over the scene. The man appears to be in a state of deep thought or perhaps engrossed in his work on the laptop. The overall atmosphere is one of quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-22-01.649323.jpg"
+}

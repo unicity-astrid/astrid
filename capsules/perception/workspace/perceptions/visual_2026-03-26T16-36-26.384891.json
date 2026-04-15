@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:36:32.283070",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft light. Dominating the left side of the frame is a comfortable gray couch, its plush cushions inviting relaxation. The couch faces a wooden coffee table situated on the right, which holds an array of objects including a blue soda can and a red toy car, hinting at recent activity.\n\nA beige blanket is casually draped over the back of the couch, adding a touch of warmth to the room. On the left wall, two windows are adorned with white curtains that filter the light entering the room, casting a gentle glow throughout the space. The walls themselves are painted in a clean white color, providing a neutral backdrop that enhances the tranquility of the room.\n\nEvery object in this room is meticulously placed, creating a harmonious balance between functionality and aesthetics. The relative positions of these objects suggest an organized and well-maintained living space. Despite the absence of human presence, one can almost feel the quiet hum of daily life within this image.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-36-26.384891.jpg"
+}

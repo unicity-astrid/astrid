@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:19:10.546483",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dark room bathed in an ethereal glow from a single window. The window, adorned with white curtains, stands as the sole source of light, casting an orange hue that contrasts sharply against the black surroundings. \n\nInside this illuminated space, two individuals are seated on a bed covered with a black blanket. One person is positioned to the left and the other to the right. The person on the left, dressed in dark clothing, is turned away from us, adding an air of mystery to their identity. On the right, another individual faces towards us, their light-colored attire providing a visual counterpoint to their counterpart.\n\nThe room itself is enveloped in darkness, save for the radiant window that stands out like a beacon in this nocturnal setting. The interplay of light and shadow creates an atmosphere of intimacy and seclusion, as if we've stumbled upon a secret moment frozen in time within these four walls.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-19-04.030098.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T22:13:05.653201",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor scene at night. The room is dimly lit by the soft glow of a window with a white frame and a blue curtain. A man, clad in a black shirt and pants, sits on a gray couch on the left side of the room. His legs are crossed, suggesting a relaxed posture. \n\nNext to him on the floor is a black laptop, open and ready for use. The room itself has a wooden floor that adds warmth to the space. A beige curtain hangs from the window, complementing the blue one.\n\nIn the background, another person can be seen sitting in a chair near the wall, adding a sense of depth and activity to the scene. The overall atmosphere is peaceful and quiet, as if inviting the viewer to join this intimate moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T22-12-57.568385.jpg"
+}

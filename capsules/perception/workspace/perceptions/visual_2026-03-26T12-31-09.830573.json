@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:31:14.468426",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in a living room. He's wearing a blue shirt and shorts adorned with black polka dots. His attention is focused on a wooden coffee table that he's holding onto with both hands. On top of the table, there's a laptop.\n\nThe living room is bathed in natural light filtering through a window located behind the couch. A beige curtain hangs from this window, adding to the warm ambiance of the room. The man appears to be engrossed in his work or perhaps enjoying some leisure time with his laptop. His position on the couch and his interaction with the coffee table suggest a relaxed and comfortable environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-31-09.830573.jpg"
+}

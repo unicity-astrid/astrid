@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:42:36.454093",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in soft, ambient lighting. Dominating the center of the frame is a bed, its silhouette stark against the muted tones of the room. The bed's dark hue contrasts with the lighter surroundings, drawing the viewer's eye to it immediately.\n\nTo the left of the bed, there's a window adorned with two panes. One pane is illuminated by a warm yellow light that spills out into the room, casting long shadows and creating an atmosphere of cozy comfort. The other pane remains shrouded in darkness, adding depth and intrigue to the scene.\n\nOn the right side of the image, partially obscured by the bed, another window can be seen. It's covered with a white curtain that filters the incoming light, softening its impact on the room.\n\nThe floor beneath is made of wood, its natural grain visible even in the dim lighting. The walls echo this rustic charm, their wooden texture adding warmth and homeliness to the space.\n\nEvery object in this image, from the bed to the windows and the wooden flooring, contributes to painting a picture of a tranquil and inviting indoor environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-42-29.971462.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:12:17.020909",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor scene at dusk. The room is dimly lit, with the main source of light coming from two windows adorned with white curtains. A table stands in the center of the room, hosting a single object - a white candle. The walls and ceiling are painted in a stark black color, creating a striking contrast with the few objects within the space. On one wall, a window can be seen, suggesting an entrance or exit to the exterior world. The overall atmosphere is serene and quiet, as if inviting the viewer to step into this peaceful solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-12-10.171835.jpg"
+}

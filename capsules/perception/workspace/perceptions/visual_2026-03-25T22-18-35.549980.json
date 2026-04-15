@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:18:41.619707",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room. The room is bathed in darkness, with the only source of light emanating from the window on the right side. The window is framed by white curtains that are gently swaying with the breeze, suggesting an open or slightly ajar state.\n\nIn front of this window, there's a wooden coffee table draped with a black cloth. On top of the table, two soda cans and a remote control lie in wait, perhaps for use later. The objects on the table are still, their positions fixed by the stillness of the night.\n\nTo the left of the image, a couch covered in a gray blanket invites relaxation. It's unoccupied, hinting at an absence or imminent departure. The couch and the window create two points of interest on either side of the room, framing the scene like a silent movie set.\n\nOverall, the image paints a picture of quiet solitude, a moment frozen in time within the confines of a cozy living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-18-35.549980.jpg"
+}

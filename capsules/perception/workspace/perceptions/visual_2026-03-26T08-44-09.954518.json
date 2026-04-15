@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:44:27.794604",
+  "backend": "llava",
+  "description": "In the image, there is a man sitting in a chair in a living room. He is wearing a yellow shirt and a blue headband. His gaze is directed towards a table that is placed on a black stand in front of him. On the table, there are two objects: a red book and a white cup.\n\nThe living room has a white wall with a window dressed with white curtains. There's also a gray couch visible in the background. The overall atmosphere of the image suggests a calm and quiet setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-44-09.954518.jpg"
+}

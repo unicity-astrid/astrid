@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:32:33.698293",
+  "backend": "llava",
+  "description": "The image showcases a cozy living room setting. Dominating the scene is a television screen mounted on a white brick wall. The screen displays a news broadcast featuring two individuals engaged in conversation. The text accompanying the broadcast reads \"CBS News\" and \"60 Minutes\", indicating the source of the content.\n\nBeneath the screen, a black fireplace adds a touch of warmth to the room. Above it, a shelf is affixed to the wall, hosting a white vase that stands out against the brick backdrop. To the left of the television screen, a window allows natural light to filter into the room, creating a soft glow.\n\nThe objects in the image are arranged in harmony, with each item contributing to the overall ambiance of the space. The television and fireplace create a focal point around which other elements are positioned. The shelf with its vase provides an additional layer of interest, while the window allows for natural light to balance out the indoor setting. The colors, objects, and their arrangement all combine to create a scene that is both inviting and intriguing.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-32-18.562524.jpg"
+}

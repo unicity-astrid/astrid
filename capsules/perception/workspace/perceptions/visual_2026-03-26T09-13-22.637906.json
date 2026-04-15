@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:13:27.856234",
+  "backend": "llava",
+  "description": "The image depicts a man sitting at a desk in a living room. The man is wearing a blue shirt and has a red baseball cap on his head. He is holding a pen and appears to be writing or drawing on a piece of paper that is placed on the desk.\n\nThe desk itself is made of wood and is positioned against a wall with a window. On the desk, there are two objects: one is a blue water bottle and the other is a white coffee cup. The man's attention seems to be focused on the piece of paper in front of him.\n\nIn the background, there is a couch that appears to be gray in color. A beige curtain can also be seen hanging near the window. The overall atmosphere of the room suggests it could be a casual and comfortable space for work or study.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-13-22.637906.jpg"
+}

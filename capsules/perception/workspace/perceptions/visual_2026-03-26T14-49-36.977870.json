@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T14:49:46.368954",
+  "backend": "llava",
+  "description": "The image presents a serene and inviting living room bathed in soft light. Dominating the left side of the frame is a comfortable gray couch, adorned with a cozy blue blanket casually draped over it. The couch faces a white fireplace, standing as the room's centerpiece.\n\nTo the right of the room, a wooden coffee table holds court. Upon it rests a blue vase and a pink book, adding a splash of color to the otherwise neutral palette. The window behind the table is veiled by white curtains that filter in gentle streams of light, casting soft shadows around the room.\n\nThe floor beneath is made of wood, its warm tones complementing the gray couch and white fireplace. On the right side of the image, a green chair adds another pop of color to this tranquil living space. The relative positions of these objects create a harmonious balance within the room, making it an ideal space for relaxation and conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T14-49-36.977870.jpg"
+}

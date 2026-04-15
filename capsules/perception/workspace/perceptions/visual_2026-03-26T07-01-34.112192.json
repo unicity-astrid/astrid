@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:01:40.292789",
+  "backend": "llava",
+  "description": "The image depicts a serene indoor setting. At the center of the scene is a man, seated comfortably on a couch in what appears to be a living room. He's dressed casually in a yellow shirt and black pants, adding a pop of color to the otherwise neutral tones of the room.\n\nIn front of him, on a wooden coffee table, sits a black laptop. The laptop, open and seemingly powered on, suggests that he might be working or perhaps enjoying some leisure time browsing the internet. A blue water bottle rests next to the laptop, its vibrant color contrasting with the other objects in the room.\n\nTo his right, there's a window adorned with white curtains. The curtains are partially drawn back, allowing a glimpse of the world outside while also letting in natural light that illuminates the room. This detail adds depth to the scene and hints at a connection between the man and the world beyond the confines of his living space.\n\nOverall, this image captures an everyday moment filled with subtle details that tell a story about its subject's life and surroundings.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-01-34.112192.jpg"
+}

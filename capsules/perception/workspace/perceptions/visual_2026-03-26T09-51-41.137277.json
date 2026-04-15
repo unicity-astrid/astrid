@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:51:46.238479",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from a large window on the right wall. The window casts a warm glow on the beige couch that sits invitingly in front of it. A gray blanket is casually draped over the armrest of the couch, adding a touch of coziness to the scene.\n\nTo the left of the couch, there's a wooden coffee table. Atop it rests a blue mug and a stack of books, suggesting a quiet afternoon spent reading. \n\nThe walls of the room are painted white, providing a neutral backdrop that enhances the colors in the room. On the left wall, there's a door slightly ajar, adding an element of intrigue about what lies beyond.\n\nOverall, the image paints a picture of a peaceful afternoon in a comfortable living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-51-41.137277.jpg"
+}

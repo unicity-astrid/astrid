@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:54:46.887343",
+  "backend": "llava",
+  "description": "This image captures a serene night scene in a bedroom. The room is bathed in darkness, with only two windows punctuating the left side of the frame, their glass panes reflecting the soft glow from within. A curtain hangs from one of these windows, partially obscuring the view into the other window.\n\nThe right side of the image is dominated by a bed, its silhouette stark against the dark background. The bed is positioned perpendicular to the wall and adjacent to the two windows, creating a sense of depth in the room.\n\nIn the top right corner of the photo, there's a hint of human presence - a person sitting on the edge of the bed. Their form is blurred, adding an air of mystery to the scene.\n\nThe image as a whole exudes tranquility and solitude, with each element - from the darkened bedroom to the solitary figure on the bed - contributing to this overall mood.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-54-41.366179.jpg"
+}

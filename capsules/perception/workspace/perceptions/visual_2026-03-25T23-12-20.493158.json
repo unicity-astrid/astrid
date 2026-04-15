@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:12:26.028804",
+  "backend": "llava",
+  "description": "The image captures a serene night scene inside a room bathed in soft, warm light from a single window. The window, framed by white curtains, is the sole source of illumination in an otherwise dark room. A black couch rests in the foreground, its silhouette stark against the muted tones of the surroundings.\n\nOn the right side of the image, a wooden table stands under the glow of the window. On top of it, a blue bottle and a white cup are visible, their colors standing out in the darkness. The bottle's cap is slightly ajar, suggesting recent use or perhaps an invitation to open it later.\n\nThe room itself is shrouded in shadows, with only the faint outline of a door discernible on the left side of the image. The overall atmosphere is one of tranquility and quiet solitude, as if waiting for someone to return and bring life back into this peaceful setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-12-20.493158.jpg"
+}

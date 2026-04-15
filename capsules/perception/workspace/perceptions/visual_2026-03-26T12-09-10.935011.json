@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:09:21.284372",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a gray couch in a living room. He's wearing a blue shirt and shorts, giving off a casual vibe. His gaze is directed towards the left side of the image, perhaps engrossed in something out of frame.\n\nThe room itself is well-lit, with sunlight streaming in through a window in the background. The light casts soft shadows around the room, adding depth to the scene. A white curtain hangs from the window, matching the white walls of the room.\n\nIn front of the man, there's a black coffee table. On it, there's a blue mug and a white napkin, suggesting someone might have been enjoying some hot beverage while sitting here. The table is positioned between the couch and another gray chair that's also in the living room.\n\nThe room appears to be quite cozy and comfortable, with its warm lighting and inviting furniture. It seems like an ideal space for relaxation or casual conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-09-10.935011.jpg"
+}

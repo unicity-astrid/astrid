@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:37:36.432964",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in soft sunlight filtering through two windows adorned with white curtains. The room is tastefully furnished, featuring a comfortable gray couch that invites relaxation. A black coffee table sits in front of the couch, hosting a laptop and a blue mug, suggesting someone's recent presence.\n\nAdjacent to the couch, a wooden desk stands against the wall, its surface covered by a beige blanket. A wooden chair is tucked neatly under the desk, ready for use. The interplay of light and shadow adds depth to the scene, highlighting the textures of the furniture and the floor.\n\nThe image is taken from an angle that offers a comprehensive view of the room, allowing us to appreciate the harmony between each piece of furniture and their relative positions. The overall atmosphere is one of tranquility and order, a personal space where one can retreat from the world.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-37-27.665039.jpg"
+}

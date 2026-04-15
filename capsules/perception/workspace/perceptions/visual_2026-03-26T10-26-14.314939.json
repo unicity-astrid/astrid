@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:26:23.982271",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light filtering through a large window adorned with white curtains. A blue and white striped rug lies on the wooden floor, adding a pop of color to the room. \n\nA black couch sits against one wall, inviting relaxation. On it rests a gray blanket, perhaps used for cozying up on cold nights. Adjacent to the couch, a brown coffee table holds a vase filled with fresh flowers and a blue mug, suggesting recent human activity.\n\nIn front of the couch is a wooden side table, upon which sits another blue and white striped rug, mirroring the one on the floor. This repetition of pattern adds a sense of harmony to the space.\n\nThe room is devoid of people but feels lived-in, with various objects scattered around that hint at daily routines and leisurely activities. The overall atmosphere is one of comfort and tranquility, an ideal setting for relaxation or quiet contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-26-14.314939.jpg"
+}

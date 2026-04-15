@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:06:25.777027",
+  "backend": "llava",
+  "description": "The image captures a cozy corner of a room, where a white brick fireplace takes center stage. The fireplace, with its black grate in the middle, exudes an inviting warmth. Above it, mounted on the wall, is a large flat screen TV. The TV screen displays a vibrant scene from what appears to be a video game or anime, characterized by bright colors and dynamic action.\n\nThe room itself is softly illuminated, with natural light filtering through a window located in the top left corner of the image. This light casts a gentle glow on the white walls and brick fireplace, enhancing the homely atmosphere. The overall scene suggests a comfortable living space where one can relax and enjoy both the warmth of the fireplace and the entertainment offered by the TV.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-06-20.758093.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T10:01:52.401445",
+  "backend": "llava",
+  "description": "The image captures a lively scene in a living room. Dominating the frame is a television set, its screen glowing with the vibrant colors and text of a news program. The words \"LONDON\", \"BBC1\", and \"7 UP\" are prominently displayed on the screen, indicating the current broadcast.\n\nThe television is perched atop a white brick wall, which adds a rustic charm to the room. Just below the TV set, there's a black speaker, possibly amplifying the audio from the television for an enhanced viewing experience.\n\nThe perspective of the image suggests it was taken at eye level, offering a clear view of the television and its immediate surroundings. The overall scene is one of a typical living space where news updates are being received in real-time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-01-46.371870.jpg"
+}

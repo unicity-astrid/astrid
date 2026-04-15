@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:06:40.430967",
+  "backend": "llava",
+  "description": "The image depicts a tranquil indoor setting. At the center of the scene, a man is seated at a wooden desk, engrossed in his work. He's dressed casually in a blue shirt and shorts, indicating a relaxed environment.\n\nOn the desk, he has a black computer monitor directly in front of him, suggesting that he might be engaged in some form of digital work or study. To his side on the desk is a white mug, possibly containing a hot beverage to keep him company during his task.\n\nThe room itself exudes a sense of calm and focus. The walls are painted white, providing a clean and spacious feel. A window with blinds can be seen in the background, allowing for control over natural light entering the room.\n\nOverall, this image captures a moment of quiet concentration in an everyday setting. It's a snapshot of modern life where work and relaxation often blend together.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-06-31.255762.jpg"
+}

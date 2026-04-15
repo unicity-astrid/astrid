@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:34:45.560661",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. A man, clad in a vibrant yellow shirt, is seated at a desk, his attention seemingly absorbed by a laptop that sits before him. His surroundings are shrouded in darkness, with the only source of illumination emanating from a window in the background. Through this portal to the outside world, one can discern a building adorned with a red awning and a sign bearing yellow lettering.\n\nThe man's desk hosts not just his laptop but also two bottles - one black and one blue. Their purpose or contents remain unknown, adding an element of intrigue to the scene. The overall atmosphere is one of focus and concentration, as if the man is deeply engrossed in his work or perhaps lost in thought.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-34-39.099189.jpg"
+}

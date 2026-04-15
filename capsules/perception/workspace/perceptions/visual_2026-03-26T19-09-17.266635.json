@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:09:36.059026",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting bathed in soft, natural light filtering through a window with white blinds. The room, painted in a soothing shade of beige, houses a few pieces of furniture and a table draped with a white tablecloth. \n\nOn the table, there's an object that stands out due to its vibrant blue color, possibly a vase or a pitcher. Its location on the table suggests it might be used for decorative purposes or perhaps for serving drinks. \n\nThe window, with its white blinds partially drawn, allows a gentle stream of light to illuminate the room, casting soft shadows and highlighting the textures of the objects within. The overall atmosphere is one of tranquility and simplicity, a quiet corner in a home where time seems to slow down.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-09-17.266635.jpg"
+}

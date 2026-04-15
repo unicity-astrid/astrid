@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:45:15.769124",
+  "backend": "llava",
+  "description": "The image presents a tranquil indoor setting at night. The room, bathed in soft light from an unseen source, exudes a sense of calm and serenity. Dominating the scene is a window adorned with a white curtain that filters the outside light, casting a gentle glow on the wooden sill below. \n\nA blue vase sits atop the sill, its vibrant color contrasting beautifully with the warm tones of the wood. The vase is empty, yet it adds an element of life to the otherwise inanimate room.\n\nIn the foreground, a black couch invites relaxation and comfort. Its dark hue stands out against the lighter surroundings, adding depth and dimension to the scene.\n\nThe perspective of the image suggests it was taken by someone standing in front of the window, their gaze drawn towards the inviting couch. The overall composition of the image - with its careful balance of light and shadow, color and contrast - creates a harmonious visual narrative that is both captivating and soothing.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-45-10.042384.jpg"
+}

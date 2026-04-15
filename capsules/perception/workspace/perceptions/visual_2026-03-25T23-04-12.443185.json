@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:04:24.448767",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room during nighttime. The main focus is a window that has been left open, revealing a glimpse of a street outside where the soft glow of yellow lights can be seen. The interior of the room is shrouded in darkness, with only a small amount of light emanating from a single light source located on the left side of the image.\n\nThe room itself is sparsely furnished, with a bed occupying the right side of the frame. A white pillow rests on the bed, and next to it, there's a blue bottle, possibly containing water or some other liquid. The open window suggests an air of openness and freedom, contrasting with the enclosed space within.\n\nThe overall atmosphere is one of tranquility and solitude, as if someone has just stepped out into the night and left their room behind. The image doesn't contain any discernible text or notable actions taking place. The relative positions of the objects are such that the bed is on the right, the light source is on the left, and the open window spans across from one end to the other. The yellow lights in the background add a touch of warmth to the otherwise cool color palette of blues and blacks.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-04-12.443185.jpg"
+}

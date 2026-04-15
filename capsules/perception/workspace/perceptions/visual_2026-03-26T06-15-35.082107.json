@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:15:52.525937",
+  "backend": "llava",
+  "description": "In this image, a man is seated at a desk in a room with a dark ambiance. The man, dressed in a yellow shirt, appears to be deep in thought, his gaze directed towards something outside the frame of the photo. The desk he's sitting at is draped with a white tablecloth and holds two objects: a can of soda and a black laptop.\n\nThe room itself has a window adorned with orange curtains that let in some light, illuminating the space and casting shadows. A chair, partially visible on the left side of the frame, adds to the domestic setting of this scene.\n\nThe overall atmosphere suggests a quiet evening at home, perhaps with work being done or thoughts being pondered over. The dark background contrasts with the bright window curtains, creating an interesting visual dynamic in this image. The man's yellow shirt stands out against this backdrop, adding a pop of color to the scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-15-35.082107.jpg"
+}

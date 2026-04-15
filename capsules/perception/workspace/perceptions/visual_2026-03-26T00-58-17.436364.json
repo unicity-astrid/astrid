@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:58:22.921192",
+  "backend": "llava",
+  "description": "This image captures a serene night scene in a room bathed in soft light filtering through two windows adorned with orange curtains. The windows are symmetrically positioned on either side of a black couch, creating a harmonious balance within the space.\n\nOn the right window sill, there's an array of objects: a blue soda can, a red and white striped candle, and a small plant adding a touch of nature to the room. Each object is distinct yet they come together to create a homely atmosphere.\n\nThe left side of the image is dominated by a black couch, inviting relaxation. A white blanket casually thrown over it suggests recent use or perhaps an evening spent in comfort. The couch's position on the right side creates a sense of openness on the left, further emphasizing the room's spaciousness.\n\nOverall, this image paints a picture of a tranquil night in a well-furnished and comfortable living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-58-17.436364.jpg"
+}

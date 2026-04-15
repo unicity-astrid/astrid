@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:30:50.764048",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft orange glow from a window on the left wall. The room is dimly lit, creating an intimate atmosphere. Dominating the right side of the frame is a bed, covered with a beige blanket that adds a warm touch to the scene. On the bed, there's a black object and two cans of soda, perhaps indicating someone's presence or recent activity.\n\nThe window on the left wall is open, as suggested by the white curtain that hangs from it, swaying gently in the night breeze. The floor beneath is made of wood, adding a rustic charm to the room. A door can be seen on the right side of the image, closed and silent.\n\nIn front of the bed, there's a black table with a blue bottle resting on it. The bottle stands alone on the table, its contents unknown but its presence adding a touch of color to the otherwise monochrome setting.\n\nOverall, this image paints a picture of quiet solitude, a single moment frozen in time within a room that tells stories of nights spent in peace and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-30-44.207811.jpg"
+}

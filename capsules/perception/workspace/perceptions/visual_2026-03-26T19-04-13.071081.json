@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T19:04:21.408422",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, bathed in natural light filtering through two windows adorned with white curtains. The windows are situated on the left side of the room, casting a soft glow that illuminates the space.\n\nIn the foreground, a black sofa invites relaxation. A person is seated on it, their identity obscured by shadows. The sofa's dark hue contrasts with the lighter tones of the room, creating a striking visual balance.\n\nA wooden coffee table sits in front of the sofa, its surface hosting a single object - a white cup with a blue handle. The simplicity of this scene speaks to an atmosphere of calm and tranquility.\n\nThe overall composition of the image suggests a quiet moment captured within a cozy living space, where one might sit on the sofa, sip from the cup, and lose oneself in thought or conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T19-04-13.071081.jpg"
+}

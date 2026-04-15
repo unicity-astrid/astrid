@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:43:03.700881",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, dominated by a television screen that is turned on and emitting a soft glow. The screen displays a video game scene, characterized by a blue background speckled with white and red dots. Two characters are prominently featured in the game scene: one character is clad in a blue shirt while the other sports a black outfit.\n\nThe television is housed on a brick wall, which adds a rustic charm to the room. Below the screen, there's a fireplace, its mantel painted in pristine white. Above the mantle, a painting hangs, contributing to the room's artistic ambiance. The positioning of these objects creates a cozy and inviting atmosphere.\n\nIn the bottom left corner of the image, a window is visible, allowing a glimpse of the world outside while also letting in natural light that illuminates the room. The interplay between indoor elements and outdoor views adds depth to the scene.\n\nOverall, this image paints a picture of a comfortable living space where one can enjoy video games or simply appreciate the artistry of their surroundings.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-42-45.260532.jpg"
+}

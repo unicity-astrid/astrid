@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:35:42.150077",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting, dominated by a television screen mounted on a wall. The screen is alive with the vibrant colors of a video game, specifically a racing game, as indicated by the text \"Race\" displayed prominently. The game scene itself is a blur of motion, suggesting high-speed action typical of such games.\n\nThe television set is perched above a fireplace, creating an interesting juxtaposition between modern entertainment and traditional warmth. A window punctuates the left side of the image, its blinds partially drawn to let in just enough light to illuminate the room. The overall atmosphere is one of comfort and relaxation, a perfect setting for an engaging gaming session.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-35-37.256487.jpg"
+}

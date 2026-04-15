@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:56:00.478969",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a room bathed in soft light filtering through a window on the left wall. He's casually dressed in a blue shirt and black shorts adorned with white polka dots. His attention is focused on a small wooden table before him, which holds a single object - a glass of water.\n\nThe man appears to be in deep thought, perhaps contemplating something important. The room around him is simple and uncluttered, adding to the serene atmosphere. A couch can be seen in the background, inviting relaxation, while a curtain partially covers another window on the right wall, suggesting an air of privacy.\n\nDespite the simplicity of the scene, there's an underlying sense of tranquility and introspection that makes this image captivating. It's as if time has paused for a moment, allowing us to share in the man's quiet reflection.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-55-47.870572.jpg"
+}

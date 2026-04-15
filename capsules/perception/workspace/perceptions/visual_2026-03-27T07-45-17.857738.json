@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:45:28.520077",
+  "backend": "llava",
+  "description": "The image captures a cozy living room scene. Dominating the view is a flat-screen TV, mounted on a white brick wall. The TV screen displays a vibrant game of soccer, with two teams engaged in a lively match. The teams are distinguishable by their distinct colors - one team dons blue and white uniforms while the other team sports red and white.\n\nThe TV is flanked by two windows, each adorned with curtains that add a touch of elegance to the room. On the right side of the image, there's a window with white curtains, partially obscured by a white door frame. The left window, also framed in white, features black curtains that contrast beautifully against the light-colored wall.\n\nThe arrangement of these elements creates a harmonious balance within the space. The TV serves as the focal point, drawing attention to the ongoing soccer game. Meanwhile, the windows and door offer glimpses into the world outside while adding depth and dimension to the room. Overall, it's a snapshot of a quiet moment in someone's day, where they can sit back and enjoy a game on their favorite team.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-45-17.857738.jpg"
+}

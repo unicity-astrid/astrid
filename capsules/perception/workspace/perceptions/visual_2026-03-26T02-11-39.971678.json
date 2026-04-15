@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:11:44.117872",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a room bathed in soft, warm light from a window draped with curtains. The room itself is shrouded in darkness, creating a stark contrast between the illuminated window and the rest of the space. On a table adjacent to the window, there are two objects: a blue vase and a white candle holder. The candle holder stands out against the dark backdrop, its shape casting subtle shadows on the surrounding area. The overall atmosphere is one of quiet solitude, as if waiting for someone to return home and bring life back into this serene setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-11-39.971678.jpg"
+}

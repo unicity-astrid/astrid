@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:42:12.603385",
+  "backend": "llava",
+  "description": "The image captures a serene night-time scene in a bedroom. The room is bathed in a soft glow from the two windows on the left wall. One window has blinds partially drawn, allowing for a gentle filtering of light, while the other window remains fully open to the night sky.\n\nA desk sits against the right wall, its surface adorned with a single red cup and a blue can. The objects on the desk are reflected in the mirror positioned directly behind it, creating an interesting interplay of light and shadow.\n\nIn the background, partially obscured by the bed that occupies most of the foreground, is another person. Their presence adds a sense of warmth and companionship to the scene.\n\nThe overall atmosphere is one of tranquility and quiet reflection, as if time itself has paused for a moment in this intimate setting. The precise locations of objects and their relative positions contribute to this sense of harmony and balance within the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-42-06.966066.jpg"
+}

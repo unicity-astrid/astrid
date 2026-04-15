@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:37:50.037375",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden desk in what appears to be a living room. He's wearing a blue shirt and black shorts, with a pink baseball cap on his head. His attention seems to be focused on a laptop that's open in front of him.\n\nThe desk, made of wood, has a black lamp providing light on its left side. On the right side of the desk, there's a beer can resting. The room itself is painted white and features a window with closed blinds.\n\nOn the floor next to the desk, there's a gray blanket casually thrown aside. The overall atmosphere suggests a relaxed setting, perhaps a weekend or after-work scenario.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-37-42.690704.jpg"
+}

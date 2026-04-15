@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T05:37:48.876980",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light. Dominating the left side of the frame is a window with two panes, through which a warm orange glow filters in, casting a gentle illumination on the white wall behind it. \n\nOn the right, a black coffee table holds court. It's a hub of activity with various objects scattered across its surface: a blue water bottle standing tall, a black mug waiting to be filled, and a pink blanket casually draped over it. The contrast between these items adds a splash of color to the otherwise monochrome setting.\n\nIn front of this tableau is a gray couch, inviting and comfortable. A single white pillow rests on it, adding an extra touch of homeliness. The positioning of the couch in relation to the coffee table suggests a space designed for relaxation and leisurely activities.\n\nOverall, the image paints a picture of a quiet evening spent indoors, perhaps enjoying a warm drink while watching the world go by through the window.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T05-37-39.760310.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:19:29.036136",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in natural light. The room is dominated by a comfortable gray couch on the left side, inviting one to sit and relax. In front of the couch, serving as a functional centerpiece, is a wooden coffee table. A blue mug rests on it, perhaps indicating a recent or upcoming break.\n\nOn the right side of the image, there's a beige armchair, offering additional seating space. A white blanket is casually draped over it, suggesting an air of comfort and warmth. Behind these pieces of furniture, a window with white blinds allows sunlight to filter into the room, casting soft shadows and creating a peaceful ambiance.\n\nThe walls of the room are painted in a clean shade of white, providing a neutral backdrop that enhances the tranquility of the space. The overall layout of the room suggests careful thought to both aesthetics and functionality, resulting in a harmonious blend of comfort and style.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-19-18.214967.jpg"
+}

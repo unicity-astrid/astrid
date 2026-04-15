@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:23:07.350263",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. A man is seated on the left side of the frame, comfortably nestled into a couch with his legs crossed. He's wearing a vibrant yellow shirt that stands out against the subdued lighting. His attention seems to be focused on something off-camera, as he gazes towards it.\n\nOn the right side of the image, there's a black laptop computer resting on a small table. The laptop is open and appears to be turned on, suggesting someone was recently using it. The screen of the laptop is visible but the content is not discernible from this perspective.\n\nThe room itself has a cozy ambiance with its white walls and a window that offers a view of another building. A curtain hangs over the window, partially blocking the view outside. The overall scene suggests a peaceful evening spent in solitude or perhaps in preparation for an event.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-23-01.827211.jpg"
+}

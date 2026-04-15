@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:14:36.719865",
+  "backend": "llava",
+  "description": "In the image, a man is engrossed in his work on a laptop at a desk. He's wearing a yellow shirt and sitting comfortably on a couch. The room he's in has white walls and a window that offers a view of another building. The time of day appears to be evening as the sky outside is dark. The atmosphere in the room seems calm and quiet, ideal for concentration.\n\nThe man is holding the laptop with both hands, indicating his focus on the task at hand. His posture suggests he's deeply engaged in whatever he's working on. \n\nOn the desk in front of him, there are a few objects: a lamp providing light for his work, a water bottle possibly indicating a long work session ahead or just finished, and a phone lying idle.\n\nThe window beside him has a curtain that's drawn partially back, allowing some light to filter into the room. The view outside is mostly obscured by darkness but another building can be glimpsed in the distance.\n\nOverall, this image captures a quiet moment of focused work in a comfortable home setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-14-28.086794.jpg"
+}

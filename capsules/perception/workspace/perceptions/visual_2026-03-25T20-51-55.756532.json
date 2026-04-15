@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:52:00.626071",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a dimly lit room. He is wearing a blue shirt and is holding a phone to his ear. On the desk next to him, there's a lamp providing some light in the otherwise dark room. The background is completely black, which makes the man, the desk, and the lamp stand out prominently. The atmosphere of the image suggests that it might be nighttime or the room has minimal lighting. The man appears to be engaged in a conversation on his phone. There are no other discernible objects or people in the image. The overall scene is simple yet intriguing due to its contrast between the brightly lit foreground and the dark background.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-51-55.756532.jpg"
+}

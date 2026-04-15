@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:49:46.597350",
+  "backend": "llava",
+  "description": "This image captures a cozy living room bathed in soft sunlight filtering through a window with white blinds and a beige curtain. The window casts a warm glow on the room, illuminating a gray couch that sits invitingly against one wall. A black coffee table stands in front of the couch, its surface adorned with a blue mug and a stack of books, suggesting a quiet afternoon spent in relaxation or perhaps study.\n\nTo the right, a white dresser stands tall, draped with a beige blanket that matches the curtain on the window, creating a harmonious color palette within the room. The overall atmosphere is one of comfort and tranquility, an ideal space for rest and leisure.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-49-39.036400.jpg"
+}

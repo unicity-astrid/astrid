@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:02:36.034556",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a dimly lit room with two windows. The window on the left is adorned with white curtains that are partially drawn, allowing a soft glow to filter into the room. A black lamp rests on a table next to this window, its presence adding to the room's cozy ambiance.\n\nOn the right side of the image, another window with a red curtain stands out against the room's darker hues. A blue towel hangs on it, adding a splash of color to the scene. \n\nIn the foreground, a black couch invites relaxation and comfort. It's draped with a white blanket that contrasts beautifully with its dark hue. The overall atmosphere is one of tranquility and warmth, as if waiting for someone to sink into the couch and lose themselves in a good book or a peaceful conversation.\n\nThe image does not contain any discernible text or countable objects. The relative positions of the objects suggest a well-thought-out interior design that balances functionality and aesthetics. The room is devoid of people, adding to its quiet charm. The image is rich in detail but leaves enough to the imagination, inviting the viewer to fill in their own stories.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-02-29.401108.jpg"
+}

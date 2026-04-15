@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:19:02.072691",
+  "backend": "llava",
+  "description": "In the image, a person is seated at a desk in what appears to be an office or study area. The individual is donned in a yellow shirt and is engrossed in a computer screen that sits on the desk. The desk also houses several other objects: a black mug and two white cans of soda.\n\nThe room where this scene unfolds is bathed in darkness, save for a window situated directly behind the person. Through the window, a faint glow can be discerned, suggesting an external source of light. The overall atmosphere of the image conveys a sense of focused work or study taking place in a quiet, dimly lit environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-18-47.382893.jpg"
+}

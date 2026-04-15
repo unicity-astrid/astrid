@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:12:54.802452",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene at night. The room, bathed in soft light, reveals a man engrossed in his work on a laptop. He's comfortably seated on a couch, his attire suggesting it might be a cool evening. His attention is focused on the screen before him, hinting at the importance of his task.\n\nThe room itself is minimally furnished, creating an atmosphere of simplicity and focus. A window punctuates one wall, its blinds drawn to let in just the right amount of light for work. The light from the window casts a warm glow across the room, adding to the cozy ambiance.\n\nDespite the darkness outside, the interior is well-lit, highlighting every object in sharp detail. This contrast between the darkness and the light creates a sense of solitude and concentration, further emphasizing the man's dedication to his work.\n\nThere are no discernible texts or other objects in the image, and the relative positions of the objects suggest a typical living room setup with the couch near the window for optimal lighting. The image is devoid of any aesthetic embellishments, focusing solely on the scene at hand - a man working late into the night.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-12-43.752648.jpg"
+}

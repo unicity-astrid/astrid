@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:23:11.938864",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in what appears to be a living room setting. He is wearing a vibrant yellow sweater and is positioned next to a black coffee table. On the table, there are two objects: a blue can and a glass filled with an orange liquid, possibly juice. The man seems to be engrossed in something on the table.\n\nThe couch he's sitting on has a plush black cushion that contrasts with his yellow sweater. Behind him, there's a window covered with white curtains, letting in soft light that illuminates the room. The overall atmosphere of the image is calm and relaxed, capturing a quiet moment in someone's day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-22-53.695070.jpg"
+}

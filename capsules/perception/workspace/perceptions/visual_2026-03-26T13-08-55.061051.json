@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:09:05.353692",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden table in what appears to be a living room or study area. The man is casually dressed in a blue shirt and black shorts. He has his arms crossed over his chest, suggesting he might be deep in thought or relaxed.\n\nThe table in front of him holds a few items: a can of soda, possibly indicating a break or leisure time; a bowl with a spoon in it, perhaps containing food or snacks; and a pile of papers, which could suggest that the man is engaged in some work or study.\n\nThe room around him is minimally furnished. A window in the background lets in natural light, illuminating the scene. Adjacent to the window, there's a bookshelf filled with various items, hinting at personal interests or necessary resources for work or study.\n\nOverall, the image captures an everyday moment of relaxation and productivity in a simple, clutter-free environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-08-55.061051.jpg"
+}

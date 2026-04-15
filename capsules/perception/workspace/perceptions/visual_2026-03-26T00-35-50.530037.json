@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:35:55.985223",
+  "backend": "llava",
+  "description": "The image captures a quiet and intimate moment in a room bathed in darkness. The room is illuminated by two windows, one located on the left and another on the right. The window on the left allows a warm yellow light to filter through its blinds, casting a soft glow on the objects within. \n\nA table sits in the center of the room, draped with a white cloth that contrasts with the darkness. On this table, two soda cans are visible, their colors muted under the dim lighting. \n\nOn the right wall, a window with orange blinds stands out against the otherwise monochromatic setting. The blinds add an element of warmth to the scene, mirroring the yellow light from the left window.\n\nThe background is shrouded in darkness, making it difficult to discern any other objects or details. However, the overall atmosphere suggests a sense of calm and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-35-50.530037.jpg"
+}

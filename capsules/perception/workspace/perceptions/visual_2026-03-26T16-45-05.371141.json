@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:45:14.843386",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light filtering through two windows adorned with white curtains. A gray sofa sits comfortably against one wall, inviting relaxation. Adjacent to it, a black coffee table holds court, its surface graced by a red and blue vase and a single pink rose. The walls, painted in pristine white, contrast beautifully with the hardwood floor.\n\nOn another wall, a bookshelf stands tall, housing several books that hint at the intellectual pursuits of the inhabitants. The room is further illuminated by two lamps positioned symmetrically on either side of the coffee table, their soft glow enhancing the warm ambiance.\n\nEvery object in this room has its place, creating a harmonious balance. The relative positions of these objects suggest careful thought to both aesthetics and functionality. This is not just a room; it's a testament to tasteful interior design.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-45-05.371141.jpg"
+}

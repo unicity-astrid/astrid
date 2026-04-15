@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:12:42.114819",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene in a bedroom. The room is bathed in darkness, with only the soft glow from a window illuminating the space. A wooden dresser stands against one wall, its surface adorned with a lamp and a clock, their silhouettes stark against the dark background.\n\nA person is seated on the edge of the bed, which is covered with a white sheet that hangs down in soft folds. The person's legs are crossed at the knees, suggesting a relaxed posture. Their feet rest gently on the floor, adding to the sense of comfort and tranquility.\n\nThe window, located on the opposite wall from the dresser, has yellow curtains that hang straight down. The curtain is partially open, allowing a sliver of light to filter into the room and cast long shadows on the walls and floor.\n\nDespite the darkness, there's a sense of peace and quiet in this scene, as if time itself has paused for a moment. It's a snapshot of everyday life, captured in stillness and solitude.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-12-35.040952.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:19:10.739000",
+  "backend": "llava",
+  "description": "The image captures a serene moment in a room bathed in soft sunlight. The main focus is a wooden coffee table, its surface adorned with a blue mug and a beige cloth. The table stands on two sturdy legs, one on each side, providing a stable platform. \n\nIn the background, a window dressed with white curtains allows the light to filter into the room, casting a warm glow that illuminates the space. A green armchair rests against the wall, its color contrasting beautifully with the light-colored walls and wooden floor.\n\nThe centerpiece of this scene is a gray dog lying comfortably on a beige couch, its body relaxed in slumber. The dog's peaceful presence adds a sense of tranquility to the room. Its position on the couch suggests it has found a cozy spot for a nap, perhaps enjoying the warmth of the sunlight streaming through the window.\n\nOverall, this image paints a picture of a quiet afternoon spent indoors, where life moves at a slower pace and simple pleasures like lying down in a sunlit room can be savored.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-19-04.612019.jpg"
+}

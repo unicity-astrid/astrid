@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:38:35.580064",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a black wooden desk in what appears to be an office setting. He is dressed casually, wearing a blue shirt and shorts. The desk is positioned against a white wall, with a window situated directly behind it. A beige curtain hangs from the window, filtering the light that enters the room.\n\nOn the desk, there's a computer monitor and a lamp providing illumination. The man seems to be engrossed in his work on the laptop, which is placed in front of him. His gaze is directed towards the left side of the image, suggesting he might be looking at something off-frame.\n\nThe overall atmosphere of the image suggests a calm and focused workspace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-38-30.900865.jpg"
+}

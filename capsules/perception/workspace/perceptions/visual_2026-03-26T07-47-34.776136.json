@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:48:21.853392",
+  "backend": "llava",
+  "description": "The image captures a serene domestic scene bathed in natural light from a window on the left side. Dominating the foreground is a gray couch, comfortably nestled against a white wall. A black dog, embodying tranquility, is curled up asleep on the right armrest of the couch, oblivious to its surroundings.\n\nA wooden coffee table stands in front of the couch, hosting a blue water bottle and a black phone, perhaps signs of recent human activity. The coffee table is centrally positioned in the image, creating a sense of balance.\n\nTo the left of the couch, a gray chair adds to the cozy ambiance of the room. Its position suggests it could be a spot for someone to sit and enjoy their surroundings or engage in quiet conversation with another occupant of the room.\n\nThe background features a white wall adorned with a window on the left side, allowing the sunlight to filter into the room and create soft shadows that add depth and warmth to the scene. The window's location suggests it might offer an unseen view outside, adding an element of curiosity about what lies beyond.\n\nOverall, this image paints a picture of a peaceful moment frozen in time within a well-appointed living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-47-34.776136.jpg"
+}

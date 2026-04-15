@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:18:20.736668",
+  "backend": "llava",
+  "description": "The image captures a cozy living room setting. Dominating the scene is a flat-screen TV mounted on the wall. The TV is turned on, displaying a vibrant scene from what appears to be a cartoon or animated series. The characters on the screen are dressed in striking red and black costumes, adding a pop of color against the otherwise muted tones of the room.\n\nThe TV is positioned above a white fireplace, creating an interesting contrast between the modern technology and traditional architecture. The fireplace, with its classic design, adds a touch of warmth to the space.\n\nOn either side of the TV are two white columns that frame the screen perfectly. These columns not only serve as structural elements but also contribute to the aesthetic appeal of the room.\n\nThe photo is taken from a low angle, which gives an interesting perspective to the scene. It emphasizes the height of the fireplace and the TV, making them appear more imposing.\n\nIn terms of object count, there are three main objects: the TV, the fireplace, and the columns. The characters on the screen could be considered as objects as well, but they are not tangible or physically present in the room.\n\nThe relative positions of the objects are also noteworthy. The TV is centrally located above the fireplace, with the columns flanking it on either side.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-18-12.696549.jpg"
+}

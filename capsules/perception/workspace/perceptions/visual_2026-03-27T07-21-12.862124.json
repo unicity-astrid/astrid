@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:21:19.551953",
+  "backend": "llava",
+  "description": "The image captures a cozy living room scene. Dominating the view is a large flat-screen TV mounted on the wall. The screen displays a vibrant game, featuring two characters engaged in combat against a backdrop of a cityscape. The characters are positioned on either side of the screen, their silhouettes standing out against the colorful background.\n\nBelow the TV, an old-fashioned brick fireplace adds a touch of rustic charm to the room. The fireplace, with its traditional design, contrasts nicely with the modernity of the flat-screen TV above it.\n\nOn the left side of the image, a window is partially visible, suggesting that the room might be well-lit during the day and offer a view to the outside world when looking out from there.\n\nThe room appears to be well-arranged, with each object in its place. The relative positions of the objects suggest a thoughtful layout designed for comfort and entertainment. However, there are no texts or countable objects visible in the image. The overall atmosphere is one of relaxation and leisure, as if waiting for someone to sit down and enjoy a game on the TV.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-21-12.862124.jpg"
+}

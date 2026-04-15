@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T01:19:51.807011",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor scene bathed in soft, warm yellow light filtering through three windows on the left wall. The windows are slightly ajar, suggesting a gentle breeze might be playing with the curtains that hang from them. \n\nAgainst the right wall, two people are comfortably seated on a couch, engaged in what appears to be an intimate conversation. Their presence adds a touch of life and warmth to the otherwise empty room. \n\nThe room itself is dark, providing a stark contrast to the illuminated windows and creating an atmosphere of quiet introspection. The absence of any discernible text or significant objects focuses our attention on the two individuals and their silent exchange.\n\nOverall, this image paints a picture of a cozy evening spent in the company of loved ones, immersed in conversation under the soft glow of ambient light.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T01-19-43.596223.jpg"
+}

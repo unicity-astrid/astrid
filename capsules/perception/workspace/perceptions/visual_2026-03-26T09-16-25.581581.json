@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:16:35.030687",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden table in a room bathed in bright sunlight. He's donned in a red baseball cap and sunglasses, adding a pop of color to the scene. His gaze is directed downwards, suggesting he might be engrossed in something on his phone or perhaps admiring the intricate patterns on the table.\n\nThe room around him is simple yet inviting. The walls are painted white, reflecting the sunlight streaming in from a window on the right side of the image. A beige couch rests against one wall, its neutral tone complementing the overall warm and cozy atmosphere of the room.\n\nIn front of the man, there's a blue towel casually draped over the back of his chair. It adds a touch of homeliness to the scene, suggesting that this could be a space where he spends a significant amount of time.\n\nOverall, the image captures an everyday moment with an attention to detail that brings out the beauty in simplicity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-16-25.581581.jpg"
+}

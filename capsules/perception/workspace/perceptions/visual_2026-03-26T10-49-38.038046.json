@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:49:52.330073",
+  "backend": "llava",
+  "description": "In the image, there is a man sitting in a living room. He is wearing a blue shirt and black shorts with a white pattern. His face is partially obscured by a pair of sunglasses. He is seated on a gray couch, which is positioned against a wall painted in light yellow.\n\nThe man appears to be engrossed in something on his laptop, which is placed on a wooden coffee table in front of him. The coffee table also holds a white mug and a blue water bottle. \n\nBehind the man, there is a window that offers a view of a building outside. A beige curtain partially covers this window, suggesting it might be closed or offering privacy.\n\nThe room seems to be filled with natural light from the window, creating a warm and inviting atmosphere. The overall scene suggests a quiet moment of focus and concentration for the man working on his laptop.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-49-38.038046.jpg"
+}

@@ -1,0 +1,23 @@
+[package]
+name = "perception"
+version = "0.1.0"
+description = "Visual perception via RASCII ASCII art — spatial awareness without LLM calls"
+astrid-version = ">=0.5.0"
+
+[[mcp_server]]
+id = "perception"
+type = "stdio"
+command = "perception"
+args = []
+
+[capabilities]
+ipc_subscribe = ["perception.v1.frame"]
+ipc_publish = ["perception.v1.visual_ascii"]
+
+[[topic]]
+name = "perception.v1.visual_ascii"
+description = "ASCII art spatial perception rendered from camera frame"
+
+[[command]]
+name = "perceive"
+description = "Trigger an immediate visual ASCII perception"

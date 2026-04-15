@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:28:14.718814",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. In the foreground, a man is seated on a couch, engrossed in his laptop which rests on his lap. The soft glow from the laptop screen illuminates his face, casting a warm light that contrasts with the darkness of the room.\n\nBehind him, a window draped with curtains lets in a sliver of light, adding to the serene ambiance. A lamp also sits behind him, its light contributing to the overall soft lighting that fills the room.\n\nThe man's silhouette is stark against this backdrop, creating a striking contrast between his figure and the surrounding darkness. His focused demeanor suggests he might be working late into the night or perhaps enjoying some quiet time alone with his laptop.\n\nDespite the absence of color in the image, the interplay of light and shadow creates a rich tapestry of visual elements that tell a story of solitude and focus. The precise locations of objects - their relative positions to each other - further enhance this narrative, painting a picture of a peaceful night spent indoors.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-28-00.541467.jpg"
+}

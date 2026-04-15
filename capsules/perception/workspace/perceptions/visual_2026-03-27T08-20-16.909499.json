@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:20:26.263099",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting, dominated by a large flat screen TV mounted on a pristine white wall. The TV, which is turned off, has its black frame and buttons standing out against the backdrop. Positioned directly below the TV is a black fireplace, providing a stark contrast to the otherwise light-colored surroundings.\n\nTo the left of the fireplace, there's a window draped with white curtains, allowing for natural light to filter into the room. The floor beneath these features is made of wood, adding a touch of warmth to the space.\n\nInterestingly, the image is taken from an elevated angle, giving us a bird's eye view of this serene setting. This perspective allows us to appreciate the harmony between the various elements in the room - the TV, fireplace, window, and wooden floor. The overall atmosphere exudes a sense of calm and comfort, typical of a well-designed living space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-20-16.909499.jpg"
+}

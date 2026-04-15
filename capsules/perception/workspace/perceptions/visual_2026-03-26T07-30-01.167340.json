@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:30:12.007053",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a couch in a room bathed in soft light filtering through a window. He's dressed casually in a vibrant yellow sweater that stands out against the muted colors of his surroundings. His attention is focused on something off-camera, and he holds a black phone to his ear, suggesting he might be engaged in conversation.\n\nThe room itself is simple and uncluttered. The couch on which the man sits forms one side of the frame, while a coffee table occupies the other. A white curtain hangs at the window, partially obscuring the view outside. On the table, there's a single object - a blue water bottle, perhaps indicating that the man has been or plans to be active.\n\nThe image captures an everyday moment, frozen in time. The man, the couch, the coffee table, and even the phone he holds up to his ear - all are static, immobile. Yet there's a sense of life in this stillness - a hint at stories untold, conversations unspoken. It's a snapshot of someone's day, a glimpse into their world.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-30-01.167340.jpg"
+}

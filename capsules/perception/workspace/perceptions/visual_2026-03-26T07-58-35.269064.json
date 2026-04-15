@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:58:41.124561",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting bathed in natural light. The focal point is a black leather couch situated against a white wall on the left side of the frame. A gray blanket is casually draped over the armrest of the couch, adding a touch of coziness to the scene.\n\nIn front of the couch, a black coffee table takes center stage. It hosts two objects - a blue mug and a stack of books, suggesting a quiet afternoon spent reading or relaxing with a warm beverage. \n\nTo the right of the frame, there's a white door with a window that lets in ample sunlight, illuminating the room and casting soft shadows. The interplay between light and shadow adds depth to the image.\n\nOverall, this image paints a picture of a tranquil domestic scene, inviting viewers to imagine themselves sinking into the comfortable couch for a relaxing read or chat over coffee.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-58-35.269064.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:55:52.015001",
+  "backend": "llava",
+  "description": "In this image, a man is seated in a room, engrossed in his work on a laptop that rests on a wooden desk. He's casually dressed in a blue shirt and shorts, suggesting a relaxed environment. The desk, positioned against a white wall with a window, serves as the focal point of the scene.\n\nThe room is bathed in natural light streaming in from the window, casting soft shadows and highlighting the textures of the objects within. A beige curtain hangs on one side of the window, adding a touch of warmth to the otherwise stark white walls.\n\nA wooden chair, matching the desk, stands nearby, hinting at additional seating space. The overall setting suggests a comfortable workspace, possibly in a home office or studio apartment. The simplicity and functionality of the room indicate that it's designed for productivity and focus.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-55-43.236603.jpg"
+}

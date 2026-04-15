@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:48:06.515948",
+  "backend": "llava",
+  "description": "This image captures a serene indoor setting. At the center of the scene is a **wooden coffee table** placed on a **gray rug**. The table hosts two items: a **pink laptop** and a **white book**, both closed, suggesting they are not currently in use.\n\nThe room itself has **white walls**, providing a neutral backdrop to the objects within. A window with **white blinds** is located behind the table, allowing for natural light to filter into the room.\n\nIn front of the table, there's a comfortable **green couch**, inviting one to sit and relax. The precise arrangement of these objects suggests an organized and peaceful space. The overall atmosphere of the image conveys tranquility and orderliness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-47-50.768875.jpg"
+}

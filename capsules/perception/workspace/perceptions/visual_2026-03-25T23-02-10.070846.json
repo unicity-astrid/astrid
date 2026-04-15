@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:02:16.568670",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft, warm light. The room, painted in a soothing shade of beige, exudes tranquility and comfort. A black couch, plush and inviting, occupies one corner of the room. A blue blanket is casually draped over it, adding a pop of color to the otherwise monochrome setting.\n\nThe window, framed by a white sill and a white wall, is open, perhaps letting in the cool night air or the distant sounds of the city. The curtain, drawn back slightly, allows the outside world to peek into this intimate space.\n\nOn the windowsill rests a black remote control, its purpose clear yet somewhat out of place in such an environment. It's as if someone just stepped away from their comfortable spot on the couch and left it there.\n\nThe room is illuminated by a yellow light that filters through the window, casting long shadows and creating an atmosphere of cozy solitude. The image is taken from a low angle, looking up at the window and couch, giving us a unique perspective as if we're lying on the couch ourselves, taking in this peaceful scene.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-02-10.070846.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:07:11.501668",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the center of the room is a gray couch, inviting and plush. A beige blanket is casually draped over it, adding a touch of warmth to the cool tones. In front of the couch, a wooden coffee table holds court. It's an eclectic mix of everyday items - a blue soda can, a white candle standing tall, and a pink book lying closed.\n\nOn one side of the room, a window with white curtains lets in streams of light that dance across the floor, casting long shadows. The walls are painted a clean white, providing a neutral backdrop to the scene. A wooden door stands on the far wall, its grainy texture adding depth and character to the space.\n\nThe room is devoid of people, but it's easy to imagine someone settling down with their book after a long day or perhaps enjoying a quiet moment alone with their soda can. The simplicity of the scene speaks volumes about comfort and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-06-55.193178.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:23:10.686689",
+  "backend": "llava",
+  "description": "The image presents a serene living room bathed in natural light from a large window adorned with white curtains. The window opens up to an unseen view beyond the frame of the image. \n\nResting against one wall is a wooden table, its surface occupied by a single object - a blue mug. The mug's color stands out against the warm tones of the room and the table. \n\nThe walls of the room are painted white, providing a neutral backdrop for the other furniture in the room. A brown sofa invites relaxation, its plush cushions promising comfort. Nearby, a black armchair offers an alternative seating option.\n\nAdding to the cozy atmosphere is a beige blanket draped over one of the chairs, suggesting a sense of warmth and homeliness. The precise placement of these objects creates a harmonious balance within the space, making it a welcoming haven for rest and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-23-05.366652.jpg"
+}

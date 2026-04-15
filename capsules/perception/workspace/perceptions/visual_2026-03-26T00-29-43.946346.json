@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:29:49.348806",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a living room at night. The scene is set against a backdrop of darkness, with only two windows punctuating the wall. These windows are adorned with white curtains that hang down on either side, partially obscuring the view from within.\n\nThe room itself is bathed in soft light filtering through these windows, casting a warm glow that contrasts with the cool darkness outside. On one side of the room stands a black couch, its silhouette stark against the lighter background. A single object rests atop it - a white candle, its wick untouched by flame.\n\nThe floor of the room is carpeted in a dark color, adding to the overall somber tone of the scene. Despite the darkness, there's a sense of tranquility that pervades the image, as if inviting the viewer to sit down and lose themselves in thought.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-29-43.946346.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:48:57.818751",
+  "backend": "llava",
+  "description": "This image captures a cozy indoor setting. The main focus is a **television** that is turned on and displaying a **cartoon show** with vibrant colors. The show appears to be quite popular as there are **9 characters** visible on the screen, each engaged in their own actions.\n\nThe television is placed against a **white wall**, which provides a stark contrast to the colorful content on the screen. Above the television, there's a small window that lets in natural light, adding to the ambiance of the room.\n\nOn either side of the television are two **speakers**, suggesting that this might be a setup for an immersive audio-visual experience. The precise positioning of these objects indicates careful planning and attention to detail in setting up this space.\n\nOverall, this image paints a picture of a comfortable living area where one can relax and enjoy some entertainment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-48-51.352981.jpg"
+}

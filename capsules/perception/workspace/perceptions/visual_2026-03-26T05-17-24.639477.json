@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:17:34.725997",
+  "backend": "llava",
+  "description": "In this image, a person is captured in a moment of quiet solitude at night. They are seated at a desk, engrossed in the glow of their laptop screen. The room around them is shrouded in darkness, save for a window that stands out with its yellow curtain and orange blinds. The person's attire is simple - a black shirt paired with blue jeans.\n\nThe desk, positioned against the wall, serves as the person's temporary workspace under the soft light filtering through the window. The laptop, the central object on the desk, is open and appears to be in use. A white mug sits next to it, perhaps containing a warm drink to counter the chill of the night.\n\nThe overall atmosphere suggests a late-night work session or perhaps a moment of relaxation before sleep. The colors - the black shirt and jeans of the person, the yellow curtain and orange blinds of the window, and the white mug on the desk - all contribute to creating a scene that is both ordinary and intimate.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-17-24.639477.jpg"
+}

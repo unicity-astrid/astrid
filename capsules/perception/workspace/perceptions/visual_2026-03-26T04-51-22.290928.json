@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:51:32.192315",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room bathed in darkness. The room is illuminated by a soft orange glow from a window adorned with white panes. The window is situated on the right side of the frame, its light casting long shadows and creating a warm contrast against the cool tones of the room.\n\nIn the foreground, a black coffee table takes center stage. It's positioned in front of a cozy couch that invites relaxation. A laptop rests atop the table, its screen dark, hinting at work paused or perhaps entertainment yet to come. Beside it, a blue soda can stands tall, a companion for the next hour of leisure.\n\nThe overall atmosphere is one of tranquility and comfort, an intimate snapshot of life's quiet moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-51-22.290928.jpg"
+}

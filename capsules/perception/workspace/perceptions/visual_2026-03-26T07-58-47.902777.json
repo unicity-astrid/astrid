@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:58:53.439136",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft sunlight filtering through two windows on one side. The windows are adorned with white blinds that add a touch of elegance to the room. \n\nDominating the scene is a wooden coffee table, its surface graced by a blue vase and a white candle, adding a pop of color to the otherwise neutral palette. These objects are arranged in such a way that they seem to be inviting you into the space.\n\nOn one side of the room, a gray sofa sits comfortably, its plush cushions promising comfort after a long day. A black armchair is situated on the other side, offering additional seating and adding depth to the room's layout.\n\nThe walls are painted in a soothing light beige color, complementing the wooden floor beneath. The overall atmosphere is one of tranquility and warmth, making it an ideal space for relaxation and conversation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-58-47.902777.jpg"
+}

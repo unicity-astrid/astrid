@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T11:15:01.509993",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden table in what appears to be a living room. The man is casually dressed in a blue shirt and has donned sunglasses, perhaps as an indication of his relaxed demeanor. His gaze is directed towards something outside the frame of the image.\n\nThe table before him holds a white cloth and a blue can, suggesting some sort of activity or preparation. The wooden structure of the table contrasts with the modern aesthetic of the room.\n\nIn the background, there's another person partially visible in the mirror reflection, adding an element of depth to the scene. A window with closed blinds can also be seen, indicating that it might be daytime outside but the interior is kept private.\n\nThe image captures a moment of calm and tranquility, with the man seemingly engaged in his own world amidst the comfortable setting of his living room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-14-48.015399.jpg"
+}

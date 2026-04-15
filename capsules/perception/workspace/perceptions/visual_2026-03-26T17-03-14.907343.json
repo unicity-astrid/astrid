@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:03:25.474979",
+  "backend": "llava",
+  "description": "The image captures a serene moment in a living room bathed in soft sunlight filtering through a window adorned with white curtains. The room exudes an air of tranquility and comfort, inviting one to relax and unwind.\n\nIn the foreground, a gray sofa with a wooden frame sits against the wall, its plush cushions promising comfort. A white blanket casually draped over it adds a touch of coziness. The sofa is positioned in such a way that it faces the window, allowing for ample natural light to illuminate the room during daytime hours.\n\nAdjacent to the sofa, a black coffee table stands ready to hold any items or refreshments one might need while lounging on the sofa. On top of this table rests a blue vase and a pink book, perhaps indicating the recent presence of someone who has left behind these personal belongings.\n\nThe window in the background not only lets in sunlight but also offers an external view of a building, subtly connecting the indoor space with the world outside. The overall scene paints a picture of a peaceful afternoon spent indoors, where one can enjoy their favorite book while basking in the warmth of the sun.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-03-14.907343.jpg"
+}

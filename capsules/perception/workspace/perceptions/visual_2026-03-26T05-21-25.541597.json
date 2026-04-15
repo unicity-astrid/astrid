@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:21:31.576061",
+  "backend": "llava",
+  "description": "In the image, a man is sitting at a desk in a dimly lit room. He's wearing a vibrant yellow shirt and looking down at his laptop, which is open on the desk in front of him. The desk also holds a black mug, possibly containing a beverage to accompany his work or leisure time.\n\nThe room itself has a window that is partially covered by white blinds, allowing some light to filter through and illuminate the space. A beige curtain hangs from this window, adding a touch of warmth to the otherwise muted colors in the room.\n\nOn the windowsill rests another black mug, mirroring its counterpart on the desk. Its position suggests it might be within easy reach for someone sitting at the desk.\n\nThe overall atmosphere is one of quiet focus and concentration, as if the man is deeply engrossed in his work or perhaps enjoying some leisure time browsing the internet or watching a video. The room's dim lighting and the presence of personal items like the mugs suggest a comfortable and lived-in space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-21-25.541597.jpg"
+}

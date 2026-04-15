@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T15:40:33.815614",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light. Dominating the center of the frame is a gray couch, its soft fabric inviting relaxation. A beige blanket casually drapes over it, adding a touch of warmth to the scene.\n\nTo the right of the couch, a black coffee table takes center stage. It holds two objects: a blue water bottle and a red hat, perhaps indicating recent outdoor activity or an impending journey. The table's dark color contrasts with the lighter tones of the room, drawing attention to its presence.\n\nThe walls are painted white, providing a neutral backdrop that enhances the colors within the room. On the left wall, two windows adorned with beige curtains let in streams of light, illuminating the space and creating an atmosphere of tranquility.\n\nOn the right wall, a wooden bookshelf stands tall. It houses several books and various other items, hinting at the interests or activities of the inhabitants. The wood's natural color adds a touch of rustic charm to the modern setting.\n\nOverall, this image paints a picture of a comfortable living space where one can unwind after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T15-40-22.793961.jpg"
+}

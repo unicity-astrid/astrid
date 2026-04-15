@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:02:11.180675",
+  "backend": "llava",
+  "description": "This image captures a serene indoor scene at night. The room is bathed in a soft glow from the windows, which are adorned with orange curtains and yellow blinds. Two small lamps add to the warm ambiance, their light reflecting off the white walls.\n\nIn the foreground, a black dog is peacefully sleeping on a couch. Its body is relaxed, curled up comfortably under the comforting warmth of the room's lights. The dog's position suggests it has found a cozy spot to rest and perhaps dream about chasing squirrels or playing fetch in its dreams.\n\nThe couch, which serves as the dog's resting place, is positioned near one of the windows. This placement allows the dog to enjoy both the view outside and the tranquility within the room.\n\nOverall, this image paints a picture of a quiet evening spent indoors with a beloved pet. The careful arrangement of objects and their relative positions contribute to creating an atmosphere of comfort and peace.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-02-05.514227.jpg"
+}

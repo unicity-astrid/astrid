@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T04:51:27.358097",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. The main focus is a table situated against a wall. On the table, there are two objects: a black laptop and a blue water bottle. The laptop screen glows with a soft light, suggesting it's turned on but not in use. \n\nThe room itself has a window adorned with white curtains, through which a faint orange glow seeps in, adding to the overall warmth of the scene. This glow illuminates the right side of the image, casting long shadows and creating an intimate atmosphere.\n\nTo the left of the table, there's a person lying on a bed, partially visible in the frame. The person appears relaxed and at ease in this comfortable setting. \n\nThe entire scene exudes a sense of tranquility and solitude, with each element - from the objects on the table to the person on the bed - contributing to this serene tableau.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T04-51-21.683589.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T06:28:42.185487",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a dark room. Dominating the center of the frame is a television screen, which is turned on and brightly illuminated against the darkness. The screen displays an oceanic scene, painted with hues of blue and green, suggesting perhaps the vast expanse of the sea or sky.\n\nOn this vibrant backdrop, there are several text elements scattered across the screen. The words \"HIT\", \"JUMP\", and \"REPLAY\" are prominently displayed, possibly indicating different functions or options available on the television.\n\nThe television is situated against a wall, providing a sense of depth to the image. To the left of the screen, there's a window draped with white curtains, allowing for natural light to filter into the room. This interplay between artificial and natural lighting adds a dynamic element to the scene.\n\nOverall, the image presents a snapshot of a modern indoor setting, where technology meets simplicity, and color meets contrast.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T06-28-31.763669.jpg"
+}

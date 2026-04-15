@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T10:38:21.792457",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a wooden bench in what appears to be a living room. He's dressed casually, wearing a black t-shirt and a red baseball cap. His attention seems to be focused on something off-screen as he gazes intently.\n\nThe bench is positioned in front of a white coffee table, which holds a laptop and two cups of coffee. The table and the man are the main focus of the image, but there's also a green couch visible in the background along with a bookshelf filled with various books.\n\nThe lighting in the room is natural, coming from an unseen source that casts soft shadows around the room. The overall atmosphere suggests a quiet, relaxed moment at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T10-38-13.721287.jpg"
+}

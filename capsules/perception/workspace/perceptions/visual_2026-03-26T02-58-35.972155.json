@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:58:44.014746",
+  "backend": "llava",
+  "description": "This image captures a tranquil indoor setting during what appears to be nighttime, as indicated by the darkness outside and the illuminated interior. The focal point is a cozy living room bathed in warm yellow light from two windows adorned with white curtains. \n\nA brown sofa, inviting and comfortable, sits against one wall. A blue blanket casually drapes over it, adding a pop of color to the scene. In front of the sofa, a coffee table holds a red drink, perhaps left behind by a recent guest or awaiting someone's return.\n\nOn another wall, a black coat hangs neatly on a hook, hinting at the presence of an occupant who has just returned home or is about to leave. The room exudes a sense of comfort and familiarity, each object telling its own story in this snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-58-35.972155.jpg"
+}

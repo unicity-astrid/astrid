@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T11:33:12.160610",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a table in what appears to be a living room. He's wearing a black t-shirt adorned with red text and a red baseball cap. His attention is focused on the laptop that sits before him on the table. \n\nNext to the laptop, there's a white mug with a black handle, possibly containing his beverage of choice. The table also holds a phone and a book, suggesting a blend of technology and traditional learning methods.\n\nThe room itself has a comfortable ambiance. A couch can be seen in the background, inviting relaxation. A window dressed with white curtains lets in soft, natural light that illuminates the scene. The man's position at the table, his engagement with the laptop, and the tranquil setting all contribute to a sense of calm concentration. \n\nPlease note that this description is based on the visible elements in the image and does not include any inferred or imagined content.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T11-33-01.168678.jpg"
+}

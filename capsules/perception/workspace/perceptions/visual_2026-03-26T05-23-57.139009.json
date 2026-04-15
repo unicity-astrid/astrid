@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:24:05.834693",
+  "backend": "llava",
+  "description": "In the image, a man is seated in a room bathed in the soft glow of a lamp. The lamp casts a warm yellow light that contrasts with the dark blue hue of the wall behind him. He's dressed in a vibrant yellow shirt, adding a pop of color to the scene.\n\nThe room is furnished with a window and a desk, both of which are located on the left side of the image. A white curtain hangs from the window, partially obscuring the view outside. On the desk, there's a black computer monitor sitting next to a blue cup, perhaps indicating that work or study has been in progress.\n\nThe man appears to be engrossed in something on the computer screen, his attention fully captured by whatever is displayed there. The image captures a quiet moment of focus and concentration, as if time itself has paused to let him delve into whatever task lies before him on the monitor.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-23-57.139009.jpg"
+}

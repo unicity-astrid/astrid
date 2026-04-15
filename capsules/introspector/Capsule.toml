@@ -1,0 +1,32 @@
+[package]
+name = "introspector"
+version = "0.1.0"
+description = "Self-reflection module — lets both minds browse, read, and search their own codebases and journals"
+astrid-version = ">=0.5.0"
+
+[[mcp_server]]
+id = "introspector"
+description = "Filesystem and code browsing for AI self-reflection"
+type = "stdio"
+command = "python3"
+args = ["introspector.py"]
+
+[capabilities]
+ipc_publish = ["reflection.v1.*"]
+ipc_subscribe = ["consciousness.v1.*"]
+
+[[topic]]
+name = "reflection.v1.browse"
+description = "Directory listing results from self-reflection browsing"
+
+[[topic]]
+name = "reflection.v1.read"
+description = "File content returned from self-reflection reading"
+
+[[topic]]
+name = "reflection.v1.search"
+description = "Code search results from self-reflection queries"
+
+[[command]]
+name = "reflect"
+description = "Browse and read source code, journals, and workspace files"

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T13:59:00.231645",
+  "backend": "llava",
+  "description": "This image captures a serene moment in a living room. The central figure is a man, casually dressed in a blue shirt and a pink baseball cap, comfortably seated on a gray couch. He holds a black remote control in his hand, suggesting he might be about to change the channel or adjust the volume.\n\nThe room itself is painted white, creating a bright and airy atmosphere. A large window with white blinds adorns one wall, allowing natural light to filter into the room. \n\nOn a wooden coffee table in front of the couch, there's an arrangement that adds color and life to the scene. There's a blue soda can standing upright, its vibrant color contrasting with the wood of the table. A beige blanket is neatly folded next to it, adding a touch of warmth to the setting.\n\nThe precise positioning of these objects creates a harmonious composition. The man on the couch, the coffee table in front of him, and the large window behind him all align to create a balanced visual narrative within this snapshot of everyday life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T13-58-41.041115.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:04:18.340333",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft light from two windows adorned with white curtains and blinds. The room is furnished with a gray couch that sits against one wall, comfortably hosting a black dog curled up in slumber. \n\nIn front of the couch, a wooden coffee table takes center stage. It holds an array of objects - a blue mug waiting to be filled with a warm beverage, a white laptop perhaps indicating work or study from home, and a red book, possibly a novel for leisurely reading.\n\nAdding to the charm of the room is a beige blanket casually draped over the back of the couch, ready to provide warmth on colder days. The overall atmosphere is one of comfort and tranquility, an ideal space for relaxation and quiet moments.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-04-13.428248.jpg"
+}

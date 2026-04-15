@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:06:23.497834",
+  "backend": "llava",
+  "description": "This image captures a quiet moment in a dimly lit room. The room is shrouded in darkness, with only a single window punctuating one wall. The window, framed in white and adorned with yellow curtains, allows a soft light to filter into the room. \n\nOn the windowsill of this window rests a solitary glass bottle, its contents unknown but its presence adding an element of intrigue to the scene. To the left of the frame, the silhouette of a person can be seen sitting on a bed, their form blurred and indistinct in the low light.\n\nThe overall atmosphere is one of tranquility and solitude, as if time itself has paused within this captured moment. The precise locations of objects and their relative positions to each other add depth and context to the image, painting a picture that is open to interpretation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-06-14.732501.jpg"
+}

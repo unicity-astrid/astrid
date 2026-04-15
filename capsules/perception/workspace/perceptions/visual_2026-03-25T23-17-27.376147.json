@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:17:33.233783",
+  "backend": "llava",
+  "description": "The image captures a cozy corner of a room bathed in soft, dim light. Dominating the left side of the frame is a bed with a sturdy wooden headboard, draped with a blanket that adds to the warm ambiance. Adjacent to the bed, on the right side of the photo, stands a nightstand. It's an unassuming piece, yet it holds its own significance in this scene.\n\nThe window behind these objects is adorned with yellow curtains that hang down, their color casting a gentle glow across the room. The curtain rod is visible, running horizontally above the window, subtly framing the view outside.\n\nOn the right side of the photo, slightly obscured by the nightstand and bed, there's a dresser. It's a simple piece, but it adds to the overall homely feel of the room.\n\nIn this scene, there are no people or moving objects. The atmosphere is calm and still, as if time has momentarily paused in this corner of the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-17-27.376147.jpg"
+}

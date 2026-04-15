@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:23:12.715045",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft yellow lighting. The room, painted in pristine white, serves as a canvas for the darkness outside. A window punctuates one wall, its glass panes reflecting the warm glow from within.\n\nIn the heart of the room stands a black desk, home to an array of objects. A computer monitor sits atop it, its screen blank and inactive. Beside it, a lamp casts long shadows across the desk, illuminating various items scattered about. Among these are several cans and bottles, their metallic surfaces catching the light.\n\nA chair is tucked neatly under the desk, ready for someone to sit down and perhaps delve into some work or perhaps enjoy a quiet moment of solitude with a good book. The room, in its tranquility, offers a stark contrast to the hustle and bustle of the world outside, waiting patiently for its occupant to return and bring it back to life.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-23-05.843169.jpg"
+}

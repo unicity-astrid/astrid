@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:13:36.681714",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, dim lighting. The walls are painted a pristine white, contrasting with the warm yellow curtains that frame two windows on one wall. A wooden floor underfoot adds to the room's rustic charm.\n\nIn the center of the room, a dark wooden coffee table holds court. It's strewn with various objects - a blue water bottle standing tall among them. To the left of this tableau, a gray couch invites relaxation. On the right, a white armchair stands in quiet solitude, a blanket casually draped over it adding a touch of homeliness.\n\nThe room is illuminated by two lamps, their soft glow casting long shadows and highlighting the textures of each object within. The overall ambiance is one of comfort and tranquility, an inviting space where one can unwind after a long day.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-13-27.522352.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:10:54.267328",
+  "backend": "llava",
+  "description": "In the image, a man is sitting on a black leather couch in a living room. He's wearing a vibrant yellow sweater and has a laptop resting on his lap. The laptop is open, suggesting he might be working or browsing the internet. Next to the laptop, there's a water bottle, possibly indicating that he's staying hydrated while using his device.\n\nThe man is positioned next to a window, which offers a view of another building outside. This suggests that he might be in an apartment in an urban area.\n\nIn the foreground of the image, there's a wooden coffee table. On it, you can see a white cloth and a book, perhaps indicating that this space is used for both work and leisure activities.\n\nThe room itself has light beige walls and a white ceiling, creating a calm and serene atmosphere. The overall setting suggests a comfortable and modern living environment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-10-44.485524.jpg"
+}

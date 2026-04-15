@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T21:56:49.432466",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft light. The walls and ceiling are painted a soothing dark blue, creating a serene backdrop for the room's occupants. \n\nTwo windows punctuate one wall, each fitted with white blinds that filter the light entering the room. One of these windows is partially obscured by a curtain, adding an element of mystery to the scene.\n\nIn front of this window, a black coffee table holds court. It's not just any ordinary table - it's adorned with a pink and blue striped vase, and a solitary red flower that adds a pop of color to the otherwise monochrome setting.\n\nThe room is in a state of tranquility, with no people present. The absence of movement suggests a quiet evening or perhaps an early morning. Despite the darkness of the room, there's an undeniable warmth to it, a testament to its inviting ambiance.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T21-56-40.319188.jpg"
+}

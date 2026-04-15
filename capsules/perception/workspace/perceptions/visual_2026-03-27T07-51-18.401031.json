@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T07:51:28.051526",
+  "backend": "llava",
+  "description": "The image captures a cozy living room scene, dominated by a large flat screen TV mounted on the wall. The TV is turned on, displaying what appears to be a video game, adding a dynamic element to the otherwise static setting.\n\nBelow the TV, a white fireplace with a black mantel stands out against the light-colored walls. A brick surround adds a touch of rustic charm to the modern design. To the right of the fireplace, there's a window adorned with curtains, allowing for natural light to filter into the room and create a warm atmosphere.\n\nThe objects in the image are stationary, suggesting a quiet moment captured in time. The relative positions of the objects indicate a well-thought-out layout designed for comfort and entertainment. The TV is centrally located above the fireplace, creating an ideal viewing angle from both seating areas. The window to the right balances out the composition, adding depth and dimension to the scene.\n\nOverall, this image paints a picture of a comfortable living space designed for relaxation and entertainment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T07-51-18.401031.jpg"
+}

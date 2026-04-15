@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T08:54:19.577198",
+  "backend": "llava",
+  "description": "The image captures a moment in a room, where the main focus is a black flat screen TV mounted on a white wall. The TV is turned on, displaying an image of two individuals engaged in conversation at a table. However, their faces are blurred out, adding a sense of anonymity to the scene.\n\nBelow the TV, there's a fireplace with a black mantle that contrasts with the white walls. A single piece of paper hangs from the mantel, its content unknown. \n\nThe room itself is well-lit, with light streaming in from above and below the TV, casting a soft glow on the surfaces. The interplay of light and shadow adds depth to the scene, highlighting certain areas while leaving others in shadow.\n\nOverall, the image presents a snapshot of a quiet moment in a modern living space, where technology and traditional design elements coexist.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T08-54-10.828944.jpg"
+}

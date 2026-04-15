@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T16:39:11.907363",
+  "backend": "llava",
+  "description": "This image captures a serene living room bathed in soft sunlight filtering through three windows. The walls, painted in a pristine white, provide a stark contrast to the light-colored carpet that covers the floor. A gray sofa invites relaxation and comfort, adorned with a beige blanket casually draped over it.\n\nA wooden coffee table takes center stage in the room, its surface graced by two blue cups and a single pink candle. The table is strategically positioned next to the sofa, creating an intimate conversation area. On one side of the room, a bookshelf stands filled with several books, suggesting a love for reading or perhaps indicating a busy lifestyle.\n\nThe natural light streaming in from the windows illuminates the room, casting soft shadows and highlighting the textures of the various objects within. The overall atmosphere is one of tranquility and homely warmth, an inviting space that speaks of quiet afternoons spent in good company.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T16-39-02.904246.jpg"
+}

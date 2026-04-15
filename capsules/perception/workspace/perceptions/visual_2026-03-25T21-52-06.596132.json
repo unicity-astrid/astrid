@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:52:12.738557",
+  "backend": "llava",
+  "description": "The image presents a tranquil indoor setting at night. The room is bathed in darkness, with the only source of light emanating from a window located on the right side. This window, adorned with white blinds and a yellow curtain, frames the scene like a picture within a frame.\n\nIn the foreground, a black couch rests against the wall, its surface unoccupied save for two red cups that sit in quiet solitude. The couch's position suggests it is the focal point of the room, inviting viewers to imagine themselves sitting there, perhaps enjoying a warm drink under the soft glow of the window light.\n\nOn the left side of the image, another window can be seen. However, unlike its counterpart on the right, this one is shrouded in darkness and remains unseen. This contrast between the lit and unlit windows adds an element of mystery to the scene.\n\nOverall, the image captures a moment of quiet solitude within a room at night, with the two red cups on the couch adding a touch of color to the otherwise monochrome setting.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-52-06.596132.jpg"
+}

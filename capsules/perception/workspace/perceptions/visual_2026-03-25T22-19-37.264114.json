@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:19:45.103656",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft, dim light. The walls are painted a pristine white, providing a stark contrast to the gray couch that sits against them. A wooden coffee table occupies the center of the room, its surface adorned with a blue can and a red mug. \n\nA window punctuates one wall, draped with yellow curtains that add a warm hue to the room. The floor beneath is carpeted in a plush beige color, adding an element of comfort and warmth to the space.\n\nThe image is taken from a slightly elevated angle, offering a bird's eye view of the room. This perspective allows for a comprehensive view of the room's layout and contents. Despite the dim lighting, the room exudes a sense of tranquility and homeliness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-19-37.264114.jpg"
+}

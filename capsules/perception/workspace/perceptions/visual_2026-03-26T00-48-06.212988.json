@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T00:48:12.261217",
+  "backend": "llava",
+  "description": "The image captures a serene night scene inside a room bathed in soft, warm yellow light filtering through a window on the left. The room is dimly lit, adding to the tranquility of the scene. \n\nIn the foreground, two people are comfortably seated on a couch. One of them has their legs crossed, while the other has their arms resting on the backrest of the couch, suggesting a relaxed posture. They are facing away from the camera, engrossed in their own world.\n\nOn the coffee table situated between the couch and the window, there are two bottles of water, possibly indicating that they have been enjoying some drinks during their time together. The exact details of these bottles are not clear due to the low light.\n\nThe image does not contain any discernible text or specific actions being performed by the objects or people. The relative positions of the objects suggest a cozy and intimate setting, with the couch and coffee table positioned close to each other and the window providing a source of natural light during this quiet moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T00-48-06.212988.jpg"
+}

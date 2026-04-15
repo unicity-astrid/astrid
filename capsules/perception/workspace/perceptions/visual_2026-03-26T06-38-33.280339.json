@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:38:42.834802",
+  "backend": "llava",
+  "description": "The image captures a quiet moment in a dimly lit room. At the center of the frame, a person is seated at a desk, their body angled away from the camera. They are dressed in a vibrant yellow shirt, which stands out against the subdued lighting. The desk, positioned to their left, serves as the main stage for this intimate scene.\n\nOn the desk, two objects draw attention: a tall black bottle and a smaller blue one. Their presence adds an air of mystery to the setting. A white cloth, neatly folded, lies next to them, perhaps used in some task or ritual.\n\nBehind the person, a window opens up to the outside world. White curtains hang from it, partially drawn back to reveal a glimpse of a building beyond. This connection to the world outside contrasts with the enclosed space of the room and adds depth to the image.\n\nThe overall atmosphere is one of calm and introspection, as if frozen in time within this captured moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-38-33.280339.jpg"
+}

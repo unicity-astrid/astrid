@@ -1,0 +1,2 @@
+epoch_start,epoch_end,duration_min,score,avg_fill,std_fill,pct_in_62_68,pct_over_75,avg_lambda1,minime_commit,astrid_commit,confidence
+2026-03-29 01:30,2026-03-29 02:15,45,17.63,66.49,4.06,64.2%,2.3%,127.18,1167939,c0543ed,high

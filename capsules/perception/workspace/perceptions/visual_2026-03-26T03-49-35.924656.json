@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:49:45.314114",
+  "backend": "llava",
+  "description": "The image captures a tranquil night scene inside a room. The room is bathed in soft orange and yellow light, creating a warm and inviting atmosphere. A window with white blinds is open on one side of the room, allowing the ambient light to seep in and illuminate the space.\n\nIn the foreground, there's a black couch that stands out against the light-colored walls. A person is comfortably seated on it, their head resting on the back of the couch as they gaze into the distance. The couch faces a white wall which features a window with closed curtains, adding an element of depth to the room.\n\nThe image does not contain any discernible text. The relative positions of the objects suggest a well-thought-out interior design, with the couch strategically placed in front of the windows for optimal viewing and comfort. The overall composition of the image exudes a sense of peace and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-49-35.924656.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:32:49.291954",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. Dominating the foreground are two windows, their glass panes reflecting the soft glow of yellow lights that seem to be coming from inside the room. The window on the left is veiled by white curtains, partially obscuring the view within, while the one on the right reveals a glimpse of a person seated behind the window.\n\nThe room itself appears to be dimly lit, adding a sense of coziness to the scene. A black table stands in the center, its surface uncluttered except for a solitary blue vase placed towards the back. The walls, painted white, contrast with the dark furniture and floor, enhancing the overall ambiance of the room.\n\nThe image is taken from the perspective of someone sitting on a couch in front of this scene, offering a personal viewpoint into the quiet night within this space. The precise locations of objects and their relative positions contribute to a harmonious composition that tells a story of solitude and tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-32-29.574812.jpg"
+}

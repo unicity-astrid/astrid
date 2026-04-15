@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:46:10.701262",
+  "backend": "llava",
+  "description": "The image captures a serene night scene within a room. The room is bathed in darkness, with the only source of light emanating from a window on the right wall. The window, framed by white bars, casts an inviting glow that illuminates the room's interior. \n\nA bed, draped with a beige blanket, sits against the left wall. The bed appears unmade, suggesting recent use or perhaps an early morning start. On it rests a black laptop, its screen glowing softly in the subdued light. \n\nTo the right of the bed, leaning casually against the wall, is a black suitcase. Its presence suggests travel or perhaps a recent return home.\n\nThe walls of the room are painted white, providing a stark contrast to the darkness of the night. The window's bars add an element of safety and security to the scene.\n\nOverall, the image paints a picture of quiet solitude, with each object in its place under the soft glow of the night light from the window.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-46-04.009049.jpg"
+}

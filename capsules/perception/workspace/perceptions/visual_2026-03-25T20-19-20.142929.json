@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T20:19:31.949174",
+  "backend": "llava",
+  "description": "The image captures a moment of quiet solitude in a dimly lit room. The darkness envelops the majority of the frame, with only two sources of light piercing through: a small window on the left and an unseen source on the right. These lights cast long shadows across the room, creating a dramatic interplay of light and dark.\n\nIn the foreground, on the right side of the image, there's a table with a lamp placed on it. The lamp, despite its presence, does not illuminate the surroundings but adds to the overall darkness of the scene. \n\nOn the left side of the image, there's another source of light that appears to be coming from outside through a small window. This light also casts shadows across the room and illuminates a person who is sitting at the table.\n\nThe person is blurred out, their features indistinct in the soft glow of the light from the window. Their presence adds a sense of life and activity to this otherwise still scene. The precise location of each object and their relative positions contribute to the overall composition of the image, creating a harmonious balance between light and shadow. \n\nThis image is a study in contrasts - between light and dark, stillness and movement, solitude and companionship. It's a snapshot of a moment",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T20-19-20.142929.jpg"
+}

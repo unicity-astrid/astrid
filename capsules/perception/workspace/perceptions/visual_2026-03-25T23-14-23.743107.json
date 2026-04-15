@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T23:14:29.186161",
+  "backend": "llava",
+  "description": "The image captures a serene and cozy living room bathed in soft light. Dominating the left side of the frame is a large window draped with white curtains. The window is illuminated by an unseen source, casting a warm glow that dances on the curtains and the floor. \n\nOn the right side, a small table nestles against the wall, hosting two blue soda cans and a white ashtray, perhaps remnants of a quiet evening spent in conversation or contemplation. \n\nThe room itself is shrouded in darkness, with only the light emanating from the window piercing through it. The darkness lends an air of mystery to the scene, making the objects on the table stand out starkly against their surroundings.\n\nOverall, this image paints a picture of tranquility and solitude, where one can find comfort in simple pleasures such as a quiet evening by the window with a drink at hand.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T23-14-23.743107.jpg"
+}

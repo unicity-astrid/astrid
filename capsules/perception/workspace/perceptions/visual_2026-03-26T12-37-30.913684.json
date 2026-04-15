@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T12:37:38.889575",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a wooden table in what appears to be a living room. He's dressed casually for warm weather, sporting shorts and a blue shirt. His attention seems to be focused on something off-camera, as he looks up from his perch.\n\nThe room around him is bathed in natural light filtering through a window on the right side of the image, casting soft shadows and highlighting the objects within. On the table, there's a small plant adding a touch of greenery to the scene, and a white towel casually draped over one end of it.\n\nIn the background, a bookshelf stands against the wall, filled with various books that hint at the man's interests or hobbies. The overall atmosphere is one of comfort and relaxation, as if inviting the viewer to join in this quiet moment.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T12-37-30.913684.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T11:53:09.868068",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a table in what appears to be a living room. He is dressed casually and is wearing sunglasses. On his lap, there is an open laptop computer. The table he's sitting at has various objects on it, including another glass of water that matches the one placed on the table.\n\nThe room around him is furnished with a couch positioned behind him. A window can be seen in the background, suggesting natural light might be entering the room from outside. The man seems to be focused on something on his laptop screen, indicating he might be working or engaged in some form of digital activity.\n\nThere's no text visible in the image, and all the objects are stationary. The relative positions of the objects suggest a comfortable and relaxed setting. The man is centrally located at the table, with the couch behind him and the window further back. This arrangement creates a sense of depth in the room.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T11-52-49.786240.jpg"
+}

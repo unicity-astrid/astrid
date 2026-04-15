@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:46:41.667946",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, bathed in soft natural light filtering through a window dressed with white curtains. A man, casually attired in a blue shirt and black shorts, is seated at a sturdy wooden desk. His legs are crossed, and he holds a pen in his hand, suggesting he might be writing or working on something.\n\nThe desk itself is quite large, providing ample space for various items. There's a lamp that promises to illuminate the workspace when needed, and a plant adding a touch of greenery and life to the environment. The precise positioning of these objects indicates an organized and thoughtfully arranged workspace.\n\nIn the background, there's another person whose face isn't visible. However, their presence adds depth to the scene and hints at shared space or companionship.\n\nOverall, this image paints a picture of a tranquil indoor setting where work and relaxation seem to coexist harmoniously.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-46-36.154408.jpg"
+}

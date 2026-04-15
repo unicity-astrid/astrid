@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:05:20.475385",
+  "backend": "llava",
+  "description": "In the image, a man is seated at a desk in a room with two windows. The man is dressed in a yellow shirt and has dark hair. He appears to be engrossed in his work on a computer that is placed in front of him on the desk.\n\nOne window behind the man is closed, while the other window beside it is open. Both windows have orange curtains that hang down from the top edge of the frame. The light in the room comes primarily from the open window, casting a warm glow over the scene.\n\nThe image captures a quiet moment of concentration and focus, as the man works at his computer under the soft light filtering through the open window. The colors in the room - the yellow of the man's shirt, the orange of the curtains, and the muted tones of the desk and computer - all contribute to creating an atmosphere of calm and productivity.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-05-15.042749.jpg"
+}

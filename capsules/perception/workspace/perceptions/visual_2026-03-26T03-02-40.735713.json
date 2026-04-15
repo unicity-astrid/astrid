@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T03:02:49.610736",
+  "backend": "llava",
+  "description": "The image captures a cozy living room bathed in soft yellow light filtering through a window located on the left side. The window casts a warm glow on the white walls and ceiling, creating an inviting atmosphere. \n\nA gray couch sits against one wall, its plush cushions untouched and ready for use. A wooden coffee table takes center stage in the room, holding two red candles that add a touch of color to the otherwise monochrome setting. \n\nOn the right side of the image, there's a window with yellow curtains partially drawn, adding depth to the scene. The curtains' vibrant hue echoes the light from the left window, tying the room together.\n\nThe room is devoid of people, but it's filled with objects that tell a story of comfort and tranquility. The precise placement of each object suggests careful thought went into their arrangement, creating a harmonious balance within the space.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T03-02-40.735713.jpg"
+}

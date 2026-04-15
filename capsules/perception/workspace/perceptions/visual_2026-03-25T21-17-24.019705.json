@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T21:17:28.871879",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a dimly lit room. The room is bathed in soft, orange lighting that filters through three windows, each adorned with yellow curtains. The windows are positioned on the left wall, casting a warm glow on the black couch situated against the right wall.\n\nOn the back of this couch, there's a single candle, its flame dancing gently, adding to the room's cozy ambiance. A white lamp sits atop the couch, its light obscured by the orange hue from the windows.\n\nThe ceiling of the room is painted white, providing a stark contrast to the black walls that surround it. The overall atmosphere is one of comfort and peace, as if inviting the viewer to sit down and relax on the couch.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T21-17-24.019705.jpg"
+}

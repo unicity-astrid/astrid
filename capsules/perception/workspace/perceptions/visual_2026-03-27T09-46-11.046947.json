@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-27T09:46:32.515573",
+  "backend": "llava",
+  "description": "The image captures a serene indoor setting, dominated by a flat screen TV that is mounted on a white brick wall with a black frame. The TV is turned on, displaying a vibrant blue background interspersed with pink and purple lines and shapes, creating an abstract pattern that adds a splash of color to the room.\n\nBelow the TV, there's a black fireplace, its presence adding a touch of warmth to the otherwise cool-toned room. To the left of the TV, a white curtain hangs, partially obscuring the view but adding a sense of depth and dimension to the scene.\n\nThe objects in the image are stationary, suggesting a quiet moment captured in time. The precise locations of the objects - the TV on the wall, the fireplace below it, and the curtain to its left - create a harmonious balance within the frame.\n\nThere's no text present in the image, allowing the viewer to focus solely on the visual elements. The relative positions of the objects - the TV above the fireplace, the curtain to one side - all contribute to a well-composed scene that is both visually pleasing and intriguing.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-27T09-46-11.046947.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:36:17.399908",
+  "backend": "llava",
+  "description": "The image captures a tranquil indoor setting at night. The room is bathed in soft, dim light that casts gentle shadows around the space. A person, clad in a vibrant yellow shirt, stands out against this backdrop. They are positioned near a window adorned with stained glass panels, their silhouette framed by the colorful patterns.\n\nIn front of them, there's a desk housing various objects. The most prominent among these is a black laptop, its screen glowing softly, suggesting it's turned on and in use. Accompanying the laptop are a white candle and a blue bottle, adding to the array of items on the desk.\n\nThe scene exudes an air of quiet concentration, perhaps indicative of late-night work or study. The precise positioning of objects and their relative locations contribute to this narrative, painting a picture of a solitary figure immersed in their own world within the confines of their home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-36-07.966645.jpg"
+}

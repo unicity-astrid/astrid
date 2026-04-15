@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T02:55:37.362011",
+  "backend": "llava",
+  "description": "This image captures a serene and intimate indoor setting at night. The room is bathed in soft, dim lighting that highlights the objects within. \n\nOn the left side of the image, there's a window with closed blinds, casting an intriguing pattern on the wall behind it. Adjacent to this window, on the right side of the photo, another window stands open, offering a glimpse into the world outside.\n\nIn front of the windows, a table is positioned in the center of the room. The table hosts two objects: a black mug and a blue soda can. Their contrasting colors stand out against the muted tones of the room.\n\nThe background reveals more about this space - it's a bedroom or perhaps a living room given the presence of the windows and the domestic items on the table. The overall atmosphere is one of quiet comfort, an inviting space for rest and relaxation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T02-55-31.986118.jpg"
+}

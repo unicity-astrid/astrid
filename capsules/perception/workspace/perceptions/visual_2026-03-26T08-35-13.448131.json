@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:35:49.087168",
+  "backend": "llava",
+  "description": "The image depicts a serene indoor setting. A man, donned in a vibrant yellow jacket and sporting headphones, is comfortably seated on a gray couch. His attention seems to be captured by something off-frame, as he gazes intently into the distance.\n\nIn front of him, there's a wooden coffee table, serving as a stage for an array of objects. A blue soda can stands out against the neutral tones of the room, next to which is a white mug. The precise location of these objects suggests a casual setting, perhaps indicative of a relaxed day at home.\n\nThe room itself exudes warmth with its beige walls. A window punctuates one wall, draped with a white curtain that filters in soft light, adding to the tranquil ambiance of the scene.\n\nEvery object and person in this image is frozen in time, creating a snapshot of a quiet moment in everyday life. The relative positions of the objects and their interactions paint a picture of domestic tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-35-13.448131.jpg"
+}

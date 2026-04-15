@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T10:44:53.326705",
+  "backend": "llava",
+  "description": "In the image, a man is comfortably seated in a chair on the left side, his body relaxed with his legs casually crossed over a coffee table. He's wearing a blue shirt and black shorts, giving off an air of casual comfort. His attention seems to be focused on something outside the frame.\n\nThe room around him is softly lit, creating a warm and inviting atmosphere. On the right side of the image, there's another chair, mirroring the one he's sitting in. A window with closed blinds can be seen in the background, suggesting it might be daytime but the man prefers the privacy of his indoor space.\n\nThe coffee table, where the man's legs are crossed, holds a white cloth that contrasts with the darker colors of the room and the man's attire. The overall scene suggests a quiet moment of relaxation or deep thought for the man in the blue shirt.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T10-44-34.833931.jpg"
+}

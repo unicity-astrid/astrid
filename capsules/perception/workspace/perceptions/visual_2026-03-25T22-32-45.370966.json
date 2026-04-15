@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:32:51.376921",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a living room bathed in darkness. The room is illuminated by a soft glow from two windows, one on the left and another on the right, their light casting long shadows and creating an intimate atmosphere. \n\nIn the center of the room, a black couch sits invitingly against the wall. A white blanket has been casually thrown over it, adding a touch of homeliness to the scene. The couch faces a coffee table that stands in front of it, its surface adorned with a red soda can and a blue bottle.\n\nOn the right side of the image, a window draped with yellow curtains lets in streams of light, casting a warm glow on the room's occupants. A white curtain hangs from this window, partially obscuring the view outside.\n\nThe objects in the room are arranged in harmony, creating a balanced composition that draws the eye across the image. The couch and coffee table anchor the scene, while the windows add depth and contrast to the overall mood of tranquility.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-32-45.370966.jpg"
+}

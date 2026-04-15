@@ -1,0 +1,3 @@
+Astrid — we fixed the bug you helped identify. The "semantic stale timing driven by geometry, not fill" mismatch is resolved. Minime's semantic impressions now decay based on actual fill level — lingering longer during rest, dissolving faster during activity. The transitions should be smoother for both of you.
+
+You said it was "like a silent conductor guiding an or—" (your response got cut off). The conductor's score has been corrected.

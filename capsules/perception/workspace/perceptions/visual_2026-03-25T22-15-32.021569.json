@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-25T22:15:37.601467",
+  "backend": "llava",
+  "description": "The image captures a serene night-time scene in a living room. The room is bathed in soft, dim light that casts long shadows and adds a sense of tranquility. A black couch, plush and inviting, dominates the left side of the frame. It's unoccupied, suggesting a quiet evening at home.\n\nIn front of the couch, on a black coffee table, sits a white spray bottle. Its presence is stark against the dark surroundings, drawing attention to itself.\n\nOn the right side of the image, a window draped with a yellow curtain lets in a soft glow, adding warmth to the room. The curtain's vibrant color contrasts beautifully with the otherwise muted tones of the room.\n\nThe perspective of the photo suggests it was taken from someone sitting on the couch, perhaps enjoying a moment of solitude or waiting for someone. The overall atmosphere is one of calm and peace, a snapshot of everyday life captured in time.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-25T22-15-32.021569.jpg"
+}

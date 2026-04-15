@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T18:52:00.987243",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy living room bathed in soft, natural light from two windows adorned with white blinds. The room exudes a warm, inviting aura that invites one to relax.\n\nIn the foreground, a black coffee table takes center stage. It hosts an open laptop, its screen glowing softly, indicating it's turned on. A pink towel is casually draped over the back of the couch, adding a pop of color to the scene.\n\nThe couch itself is draped with a gray blanket, suggesting a chilly day outside or perhaps just for comfort. The precise location of objects and their relative positions contribute to the overall harmony of the room, creating a picture of tranquility and comfort.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T18-51-55.979159.jpg"
+}

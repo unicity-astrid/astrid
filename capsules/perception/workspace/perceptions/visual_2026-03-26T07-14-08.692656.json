@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T07:14:21.686564",
+  "backend": "llava",
+  "description": "In the image, a man is seated on a brown leather couch in a living room setting. He is dressed in a vibrant yellow sweater and is holding a black camera, possibly capturing the scene or preparing to take a shot. The man's position suggests he is engaged in his photography session.\n\nThe living room is well-lit, with sunlight streaming through a window adorned with white curtains. This natural light illuminates the space, highlighting the various objects within it.\n\nA wooden coffee table sits in front of the couch, hosting a black bottle and a purple book. The bottle could be a water container or perhaps a beverage for later. The book might belong to the man or be a prop for his photography session.\n\nThe image captures an everyday moment, yet it also tells a story about the man's interests and hobbies. His camera suggests he enjoys documenting moments and experiences, while the comfortable setting indicates he might do this in a relaxed environment at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T07-14-08.692656.jpg"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T08:49:54.493736",
+  "backend": "llava",
+  "description": "This image captures a serene and cozy living room bathed in soft sunlight filtering through a large window on the left wall. The window, adorned with white curtains, casts a warm glow throughout the room, illuminating the light-colored walls and creating a welcoming atmosphere.\n\nOn the right side of the room, there's a black leather couch that exudes comfort and style. It faces the window, offering a perfect spot to enjoy the view or bask in the sunlight. In front of the couch, a dark wooden coffee table takes center stage. It holds a single blue mug, perhaps waiting to be filled with a warm beverage for someone lounging on the couch.\n\nThe floor mirrors the walls with its light color, enhancing the overall brightness of the room. The relative positions of these objects - the couch and coffee table in front of the window - suggest an arrangement designed for relaxation and enjoyment of the view outside.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T08-49-23.836900.jpg"
+}

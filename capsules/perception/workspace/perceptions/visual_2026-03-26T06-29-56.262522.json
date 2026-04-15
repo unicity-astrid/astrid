@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T06:30:03.033434",
+  "backend": "llava",
+  "description": "The image depicts a man sitting at a desk in a room with a window. The man is wearing a yellow shirt and appears to be looking down at his desk. On the desk, there are two objects: a black pen and a blue book. The desk itself has a white surface, contrasting with the black chair the man is seated on.\n\nThe room has a white wall, providing a neutral backdrop for the scene. On this wall hangs a clock, its hands indicating the time as 10:30. This could suggest an early morning or late-night setting.\n\nIn the background, there's a window covered by yellow curtains that match the man's shirt. Through this window, one can see a tree and some buildings outside, suggesting that the room is located in an urban area with greenery nearby.\n\nOverall, the image captures a quiet moment of solitude and focus, as the man sits alone at his desk under the watchful eyes of the clock.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T06-29-56.262522.jpg"
+}

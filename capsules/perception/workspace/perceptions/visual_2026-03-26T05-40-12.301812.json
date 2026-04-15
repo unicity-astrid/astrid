@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:40:17.532313",
+  "backend": "llava",
+  "description": "The image captures a tranquil scene in a dimly lit room. A person, clad in a vibrant yellow shirt, is engrossed in their work on a laptop that rests on a desk. The glow from the laptop screen illuminates the immediate surroundings, casting an ethereal light on the individual and their task at hand.\n\nIn the background, two windows punctuate the wall, one of which is adorned with a white curtain, adding a touch of softness to the otherwise stark surroundings. These windows serve as silent observers to the scene unfolding within the room.\n\nThe overall atmosphere is one of quiet concentration, as if time itself has paused to allow for this moment of focused work. The image beautifully encapsulates the essence of a solitary workspace, where ideas are born and brought to life under the gentle glow of artificial light.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-40-12.301812.jpg"
+}

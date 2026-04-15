@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T09:00:19.206745",
+  "backend": "llava",
+  "description": "In this image, we see a man in a blue shirt sitting on a couch with his legs crossed. He's holding a remote control and appears to be looking at a television screen that's out of frame. The room around him is painted white, giving it a clean and bright appearance. A window can be seen in the background, suggesting it might be daytime outside.\n\nIn front of the man is a coffee table where a book and a cup are placed. The objects on the table seem to suggest that he might have been reading before switching to watching television. The overall scene gives an impression of a relaxed indoor setting with the man possibly enjoying some leisure time at home.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T09-00-11.554686.jpg"
+}

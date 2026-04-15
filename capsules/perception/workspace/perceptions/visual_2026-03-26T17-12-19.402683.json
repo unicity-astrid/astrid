@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T17:12:24.766227",
+  "backend": "llava",
+  "description": "The image captures a serene living room bathed in natural light from a large window adorned with white curtains. The window, located on the right side of the image, allows sunlight to stream into the room, illuminating the space and casting soft shadows.\n\nIn the center of the room, a gray couch invites relaxation. It faces the window, providing an unobstructed view of the outside world. To the left of the couch, a wooden coffee table holds court. The table is draped with a white tablecloth, adding a touch of elegance to the setting. On top of the table, a blue vase stands tall, its color contrasting beautifully against the white backdrop.\n\nThe room itself is characterized by white walls that reflect the sunlight, enhancing the brightness of the space. The overall ambiance is one of tranquility and comfort, an ideal place for rest and contemplation.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T17-12-19.402683.jpg"
+}

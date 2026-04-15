@@ -1,0 +1,7 @@
+{
+  "type": "visual",
+  "timestamp": "2026-03-26T05:43:09.473555",
+  "backend": "llava",
+  "description": "The image captures a serene night scene in a room bathed in soft, dim light. The dominant colors are black and white, punctuated by hints of orange and yellow that add warmth to the room's ambiance.\n\nOn the right side of the room, a window with a yellow curtain lets in a stream of light that casts an inviting glow on the wooden floor. The curtain, drawn aside slightly, frames the view outside the window.\n\nIn front of this window, a table stands holding a black laptop and a blue water bottle. The laptop, open and seemingly active, suggests recent use. The water bottle, with its dark blue hue, adds a pop of color to the otherwise monochrome setting.\n\nOn the left side of the room, a white door stands closed. Its stark color contrasts with the darker tones of the room, making it a noticeable feature in the composition.\n\nThe overall atmosphere is one of tranquility and solitude, as if the room's occupant has just stepped out for a moment and will return soon. The objects are stationary, their positions suggesting a quiet domesticity that is often associated with home. The image evokes a sense of calm and order, a snapshot of everyday life captured in stillness.",
+  "frame_path": "/Users/v/other/astrid/capsules/perception/workspace/visual/frame_2026-03-26T05-43-02.508480.jpg"
+}
