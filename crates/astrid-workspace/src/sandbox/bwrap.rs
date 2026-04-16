@@ -15,11 +15,13 @@ fn bwrap_install_hint() -> &'static str {
         // ID= line identifies the distro family.
         let id = os_release
             .lines()
+            .map(str::trim)
             .find_map(|l| l.strip_prefix("ID="))
             .unwrap_or("")
             .trim_matches('"');
         let id_like = os_release
             .lines()
+            .map(str::trim)
             .find_map(|l| l.strip_prefix("ID_LIKE="))
             .unwrap_or("")
             .trim_matches('"');
@@ -80,10 +82,15 @@ fn interpret_bwrap_probe(result: io::Result<std::process::Output>) -> bool {
         },
         Err(e) => {
             let hint = bwrap_install_hint();
+            let msg = if e.kind() == io::ErrorKind::NotFound {
+                "bwrap binary not found."
+            } else {
+                "Failed to execute bwrap probe."
+            };
             tracing::warn!(
                 error = %e,
                 install_hint = %hint,
-                "bwrap binary not found. Capsules will run without OS-level sandboxing."
+                "{msg} Capsules will run without OS-level sandboxing."
             );
             false
         },
