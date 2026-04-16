@@ -25,6 +25,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 - **`astrid-build` targets `wasm32-wasip2`** for Component Model capsules. Was still targeting `wasm32-wasip1`, producing plain WASM modules. (#649)
 - **`astrid-build` bundles SDK shared WIT** (`astrid-contracts.wit`) into capsule archives as a WIT dep, so `wit_type` references in `Capsule.toml` resolve at install time without manual WIT duplication. (#649)
 - **JSON Schema field names converted to snake_case** in `wit_schema` to match `serde(rename_all = "snake_case")` wire convention. (#649)
+- **`reqwest::blocking` inside `#[tokio::main]` panics on first run.** All HTTP call sites in `self_update.rs`, `init.rs`, and `capsule/install.rs` used `reqwest::blocking::Client`, which creates an internal tokio runtime that panics on drop inside the outer async context. Converted to async `reqwest`. Only manifested on fresh installs (no cache/lock files to short-circuit). (#645)
+- **`INTERNAL_SUBSCRIBER_COUNT` debug_assert race.** `EventDispatcher` subscribed to the event bus inside `tokio::spawn(dispatcher.run())`, so the assert could fire before the spawned task started. Moved subscription into `EventDispatcher::new()`. (#645)
 
 ### Added
 
