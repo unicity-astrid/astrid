@@ -86,7 +86,7 @@ oxc_allocator = "0.112"
 rand = "0.8"
 ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
 regex = "1.10"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rmcp = { version = "0.15", features = ["client", "transport-child-process", "transport-io", "elicitation"] }
 rustyline = { version = "15", features = ["derive"] }
 semver = "1"

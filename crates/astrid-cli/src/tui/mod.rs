@@ -708,14 +708,7 @@ async fn handle_slash_command(
                 // Force a redraw before starting blocking task
                 let _ = terminal.draw(|frame| render::render_frame(frame, app));
 
-                let source_owned = source.to_string();
-                let result = tokio::task::spawn_blocking(move || {
-                    crate::commands::capsule::install::install_capsule(&source_owned, false)
-                })
-                .await
-                .unwrap_or_else(|e| Err(anyhow::anyhow!("Task panicked: {e}")));
-
-                match result {
+                match crate::commands::capsule::install::install_capsule(source, false).await {
                     Ok(()) => {
                         let success_msg =
                             "Installation complete. Sending refresh signal to Kernel...";

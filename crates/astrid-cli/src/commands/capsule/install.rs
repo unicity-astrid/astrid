@@ -1,6 +1,5 @@
 //! Capsule management commands - install capsules securely.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -88,8 +87,8 @@ fn parse_github_source(source: &str) -> Option<(String, String)> {
 }
 
 /// Fetch the latest release version from GitHub for a given org/repo.
-fn fetch_github_latest_version(
-    client: &reqwest::blocking::Client,
+async fn fetch_github_latest_version(
+    client: &reqwest::Client,
     org: &str,
     repo: &str,
 ) -> anyhow::Result<semver::Version> {
@@ -97,6 +96,7 @@ fn fetch_github_latest_version(
     let response = client
         .get(&api_url)
         .send()
+        .await
         .context("failed to reach GitHub API")?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -113,6 +113,7 @@ fn fetch_github_latest_version(
 
     let json: serde_json::Value = response
         .json()
+        .await
         .context("failed to parse GitHub API response")?;
     let tag_name = json
         .get("tag_name")
@@ -126,8 +127,8 @@ fn fetch_github_latest_version(
 }
 
 /// Check whether a newer version is available from a capsule's source.
-fn check_remote_version(
-    client: &reqwest::blocking::Client,
+async fn check_remote_version(
+    client: &reqwest::Client,
     source: &str,
     current_version: &str,
 ) -> UpdateCheck {
@@ -153,7 +154,7 @@ fn check_remote_version(
 
     // GitHub-backed sources
     if let Some((org, repo)) = parse_github_source(source) {
-        match fetch_github_latest_version(client, &org, &repo) {
+        match fetch_github_latest_version(client, &org, &repo).await {
             Ok(latest) => {
                 if latest > current {
                     UpdateCheck::Available { latest }
@@ -183,7 +184,7 @@ fn check_remote_version(
 ///   per capsule. `update` should fetch the manifest, compare versions against
 ///   `meta.json`, only download if newer, and verify Blake3 hash before installing.
 ///   Trust chain: registry manifest (signed) -> pinned URL + Blake3 -> verified binary.
-pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::Result<()> {
+pub(crate) async fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
     if let Some(name) = target {
@@ -203,14 +204,14 @@ pub(crate) fn update_capsule(target: Option<&str>, workspace: bool) -> anyhow::R
         })?;
 
         eprintln!("Updating {name} from {source}...");
-        install_capsule(&source, workspace)
+        install_capsule(&source, workspace).await
     } else {
-        update_all_capsules(&home, workspace)
+        update_all_capsules(&home, workspace).await
     }
 }
 
 /// Check all installed capsules for updates and install those with newer versions.
-fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()> {
+async fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()> {
     let principal = astrid_core::PrincipalId::default();
     let capsules_dir = home.principal_home(&principal).capsules_dir();
     if !capsules_dir.exists() {
@@ -235,7 +236,7 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
         return Ok(());
     }
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
@@ -263,7 +264,7 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
             continue;
         };
 
-        match check_remote_version(&client, source, &meta.version) {
+        match check_remote_version(&client, source, &meta.version).await {
             UpdateCheck::Available { latest } => {
                 eprintln!("  {name}: {} -> {latest} (update available)", meta.version);
                 to_update.push((name.clone(), source.clone()));
@@ -288,7 +289,7 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
     let mut install_failed = 0u32;
     for (name, source) in &to_update {
         eprintln!("Updating {name} from {source}...");
-        if let Err(e) = install_capsule(source, workspace) {
+        if let Err(e) = install_capsule(source, workspace).await {
             eprintln!("  Failed to update {name}: {e}");
             install_failed = install_failed.saturating_add(1);
         } else {
@@ -313,20 +314,20 @@ fn update_all_capsules(home: &AstridHome, workspace: bool) -> anyhow::Result<()>
 /// When `batch` is true (called from `astrid init`), import validation and
 /// env prompting are skipped — the distro handles env config and all
 /// capsules are installed together so import checks are meaningless mid-batch.
-pub(crate) fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
-    install_capsule_inner(source, workspace)
+pub(crate) async fn install_capsule(source: &str, workspace: bool) -> anyhow::Result<()> {
+    install_capsule_inner(source, workspace).await
 }
 
 /// Install a capsule in batch mode (from distro init) — skips import
 /// validation and env prompting.
-pub(crate) fn install_capsule_batch(source: &str, workspace: bool) -> anyhow::Result<()> {
+pub(crate) async fn install_capsule_batch(source: &str, workspace: bool) -> anyhow::Result<()> {
     BATCH_MODE.store(true, Ordering::Relaxed);
-    let result = install_capsule_inner(source, workspace);
+    let result = install_capsule_inner(source, workspace).await;
     BATCH_MODE.store(false, Ordering::Relaxed);
     result
 }
 
-fn install_capsule_inner(source: &str, workspace: bool) -> anyhow::Result<()> {
+async fn install_capsule_inner(source: &str, workspace: bool) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
 
     // 1. Explicit Local Path - no source tracking (re-fetch doesn't make sense)
@@ -339,7 +340,7 @@ fn install_capsule_inner(source: &str, workspace: bool) -> anyhow::Result<()> {
         // If it uses the github namespace alias after the prefix
         if let Some(repo) = rest.strip_prefix('@') {
             let url = format!("https://github.com/{repo}");
-            return install_from_github(&url, workspace, &home, true, Some(source));
+            return install_from_github(&url, workspace, &home, true, Some(source)).await;
         }
         return install_from_openclaw(rest, workspace, &home, Some(source));
     }
@@ -347,26 +348,26 @@ fn install_capsule_inner(source: &str, workspace: bool) -> anyhow::Result<()> {
     // 3. Native Namespace Alias (@org/repo) -> GitHub
     if let Some(repo) = source.strip_prefix('@') {
         let url = format!("https://github.com/{repo}");
-        return install_from_github(&url, workspace, &home, false, Some(source));
+        return install_from_github(&url, workspace, &home, false, Some(source)).await;
     }
 
     // 4. Raw GitHub URL
     if source.starts_with("github.com/") || source.starts_with("https://github.com/") {
-        return install_from_github(source, workspace, &home, false, Some(source));
+        return install_from_github(source, workspace, &home, false, Some(source)).await;
     }
 
     // 5. Fallback: Assume it's a local folder - no source tracking
     install_from_local(source, workspace, &home, None)
 }
 
-pub(crate) fn install_from_github(
+pub(crate) async fn install_from_github(
     url: &str,
     workspace: bool,
     home: &AstridHome,
     _is_openclaw: bool,
     original_source: Option<&str>,
 ) -> anyhow::Result<()> {
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -380,9 +381,9 @@ pub(crate) fn install_from_github(
     // and bundled WIT definitions including shared SDK contracts).
     let api_url = format!("https://api.github.com/repos/{org}/{repo}/releases/latest");
 
-    if let Ok(response) = client.get(&api_url).send()
+    if let Ok(response) = client.get(&api_url).send().await
         && response.status().is_success()
-        && let Ok(json) = response.json::<serde_json::Value>()
+        && let Ok(json) = response.json::<serde_json::Value>().await
         && let Some(assets) = json.get("assets").and_then(serde_json::Value::as_array)
     {
         for asset in assets {
@@ -395,10 +396,17 @@ pub(crate) fn install_from_github(
                 let tmp_dir = tempfile::tempdir()?;
                 let sanitized_name = Path::new(name).file_name().unwrap_or_default();
                 let download_path = tmp_dir.path().join(sanitized_name);
-                let mut file = std::fs::File::create(&download_path)?;
-                let download_res = client.get(download_url).send()?;
-                let mut limited_stream = download_res.take(50 * 1024 * 1024);
-                std::io::copy(&mut limited_stream, &mut file)?;
+                // Stream with 50 MB limit.
+                let mut dl = client.get(download_url).send().await?;
+                let mut bytes = Vec::new();
+                while let Some(chunk) = dl.chunk().await? {
+                    bytes.extend_from_slice(&chunk);
+                    anyhow::ensure!(
+                        bytes.len() <= 50 * 1024 * 1024,
+                        "capsule archive exceeds 50 MB limit",
+                    );
+                }
+                std::fs::write(&download_path, &bytes)?;
                 return unpack_and_install(&download_path, workspace, home, original_source);
             }
         }
@@ -2100,31 +2108,31 @@ mod tests {
         assert!(parse_github_source("/absolute/path").is_none());
     }
 
-    #[test]
-    fn test_check_remote_version_openclaw_skipped() {
-        let client = reqwest::blocking::Client::new();
-        let result = check_remote_version(&client, "openclaw:my-capsule", "1.0.0");
+    #[tokio::test]
+    async fn test_check_remote_version_openclaw_skipped() {
+        let client = reqwest::Client::new();
+        let result = check_remote_version(&client, "openclaw:my-capsule", "1.0.0").await;
         assert!(matches!(result, UpdateCheck::Skipped { reason } if reason.contains("OpenClaw")));
     }
 
-    #[test]
-    fn test_check_remote_version_invalid_semver() {
-        let client = reqwest::blocking::Client::new();
-        let result = check_remote_version(&client, "@org/repo", "not-a-version");
+    #[tokio::test]
+    async fn test_check_remote_version_invalid_semver() {
+        let client = reqwest::Client::new();
+        let result = check_remote_version(&client, "@org/repo", "not-a-version").await;
         assert!(
             matches!(result, UpdateCheck::Failed { reason } if reason.contains("not valid semver"))
         );
     }
 
-    #[test]
-    fn test_check_remote_version_local_skipped() {
-        let client = reqwest::blocking::Client::new();
-        let result = check_remote_version(&client, "./local/path", "1.0.0");
+    #[tokio::test]
+    async fn test_check_remote_version_local_skipped() {
+        let client = reqwest::Client::new();
+        let result = check_remote_version(&client, "./local/path", "1.0.0").await;
         assert!(
             matches!(result, UpdateCheck::Skipped { reason } if reason.contains("local source"))
         );
 
-        let result = check_remote_version(&client, "/absolute/path", "1.0.0");
+        let result = check_remote_version(&client, "/absolute/path", "1.0.0").await;
         assert!(
             matches!(result, UpdateCheck::Skipped { reason } if reason.contains("local source"))
         );

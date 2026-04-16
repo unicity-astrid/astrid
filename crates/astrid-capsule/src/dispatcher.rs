@@ -35,7 +35,7 @@ use tracing::{debug, warn};
 
 use crate::capsule::{Capsule, CapsuleId};
 use crate::registry::CapsuleRegistry;
-use astrid_events::{AstridEvent, EventBus};
+use astrid_events::{AstridEvent, EventBus, EventReceiver};
 
 /// Capacity of each per-capsule event dispatch queue.
 ///
@@ -64,6 +64,8 @@ struct InterceptorWork {
 pub struct EventDispatcher {
     registry: Arc<RwLock<CapsuleRegistry>>,
     event_bus: Arc<EventBus>,
+    /// Pre-created receiver so the subscription is counted before `run()` is spawned.
+    receiver: EventReceiver,
     /// Identity store for validating principals before auto-provisioning.
     /// When set, only principals with a matching identity record get
     /// home directories created. When `None`, provisioning is ungated
@@ -73,11 +75,16 @@ pub struct EventDispatcher {
 
 impl EventDispatcher {
     /// Create a new event dispatcher.
+    ///
+    /// Subscribes to the event bus immediately so the subscriber count is
+    /// accurate before `run()` is spawned on a background task.
     #[must_use]
     pub fn new(registry: Arc<RwLock<CapsuleRegistry>>, event_bus: Arc<EventBus>) -> Self {
+        let receiver = event_bus.subscribe();
         Self {
             registry,
             event_bus,
+            receiver,
             identity_store: None,
         }
     }
@@ -98,8 +105,7 @@ impl EventDispatcher {
     /// Monitors broadcast channel lag and publishes `astrid.v1.event_bus.lagged`
     /// IPC events when messages are dropped, rate-limited to at most once per
     /// 10 seconds to avoid feedback loops.
-    pub async fn run(self) {
-        let mut receiver = self.event_bus.subscribe();
+    pub async fn run(mut self) {
         let mut last_lag_notification = std::time::Instant::now()
             .checked_sub(std::time::Duration::from_secs(10))
             .unwrap_or_else(std::time::Instant::now);
@@ -114,9 +120,9 @@ impl EventDispatcher {
         const MAX_KNOWN_PRINCIPALS: usize = 10_000;
         debug!("Event dispatcher started");
 
-        while let Some(event) = receiver.recv().await {
+        while let Some(event) = self.receiver.recv().await {
             // Check for broadcast channel overflow (lost messages).
-            let lagged = receiver.drain_lagged();
+            let lagged = self.receiver.drain_lagged();
             if lagged > 0 && last_lag_notification.elapsed() >= std::time::Duration::from_secs(10) {
                 warn!(
                     lagged_count = lagged,
