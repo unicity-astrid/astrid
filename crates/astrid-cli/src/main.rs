@@ -229,20 +229,20 @@ enum SessionCommands {
 
 // ─── Bootstrap helpers ───────────────────────────────────────────
 
-fn ensure_global_config() {
+async fn ensure_global_config() {
     use astrid_core::dirs::AstridHome;
     if let Ok(home) = AstridHome::resolve() {
         let _ = home.ensure();
     }
     // Auto-init on first run.
-    let _ = ensure_initialized();
+    let _ = ensure_initialized().await;
 }
 
 /// Run `astrid init` automatically if no distro has been installed yet.
 ///
 /// Checks for `distro.lock` as the canonical signal. If absent, runs init
 /// with the default distro so first-time users don't need a separate step.
-fn ensure_initialized() -> Result<()> {
+async fn ensure_initialized() -> Result<()> {
     if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
         let principal = astrid_core::PrincipalId::default();
         let lock_path = home
@@ -254,7 +254,7 @@ fn ensure_initialized() -> Result<()> {
                 "{}",
                 theme::Theme::info("First run detected — running astrid init...")
             );
-            commands::init::run_init("astralis")?;
+            commands::init::run_init("astralis").await?;
             commands::self_update::ensure_path_setup()?;
         }
     }
@@ -329,9 +329,9 @@ async fn main() -> Result<()> {
 
     init_logging(&cli);
 
-    // Check for updates (cached, non-blocking) on interactive commands.
+    // Check for updates (cached) on interactive commands.
     if cli.prompt.is_none() && !matches!(cli.command, Some(Commands::SelfUpdate)) {
-        commands::self_update::print_update_banner();
+        commands::self_update::print_update_banner().await;
     }
 
     // Parse output format.
@@ -342,7 +342,7 @@ async fn main() -> Result<()> {
 
     // Headless mode: -p "prompt" sends a single prompt and exits.
     if let Some(prompt_text) = cli.prompt {
-        ensure_global_config();
+        ensure_global_config().await;
         if cli.snapshot_tui {
             return commands::headless::run_snapshot_tui(
                 prompt_text,
@@ -365,7 +365,7 @@ async fn main() -> Result<()> {
 
     // Also detect piped stdin with no subcommand as headless.
     if cli.command.is_none() && !std::io::stdin().is_terminal() {
-        ensure_global_config();
+        ensure_global_config().await;
         let mut stdin_text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut stdin_text)?;
         if !stdin_text.is_empty() {
@@ -386,7 +386,7 @@ async fn main() -> Result<()> {
             if output_format == formatter::OutputFormat::Json {
                 print_banner();
             }
-            ensure_global_config();
+            ensure_global_config().await;
             let workspace = std::env::current_dir().ok();
             run_or_connect(session, workspace, output_format).await?;
         },
@@ -394,7 +394,7 @@ async fn main() -> Result<()> {
             if output_format == formatter::OutputFormat::Json {
                 print_banner();
             }
-            ensure_global_config();
+            ensure_global_config().await;
             let workspace = std::env::current_dir().ok();
             run_or_connect(None, workspace, output_format).await?;
         },
@@ -424,15 +424,15 @@ async fn main() -> Result<()> {
             }
         },
         Some(Commands::Init { distro }) => {
-            commands::init::run_init(&distro)?;
+            commands::init::run_init(&distro).await?;
             commands::self_update::ensure_path_setup()?;
         },
         Some(Commands::Capsule { command }) => match command {
             CapsuleCommands::Install { source, workspace } => {
-                commands::capsule::install::install_capsule(&source, workspace)?;
+                commands::capsule::install::install_capsule(&source, workspace).await?;
             },
             CapsuleCommands::Update { target, workspace } => {
-                commands::capsule::install::update_capsule(target.as_deref(), workspace)?;
+                commands::capsule::install::update_capsule(target.as_deref(), workspace).await?;
             },
             CapsuleCommands::List { verbose } => {
                 commands::capsule::list::list_capsules(verbose)?;
@@ -458,7 +458,7 @@ async fn main() -> Result<()> {
             commands::sessions::handle_session_commands(command)?;
         },
         Some(Commands::Start) => {
-            ensure_global_config();
+            ensure_global_config().await;
             commands::daemon::handle_start().await?;
         },
         Some(Commands::Status) => {
@@ -468,7 +468,7 @@ async fn main() -> Result<()> {
             commands::daemon::handle_stop().await?;
         },
         Some(Commands::SelfUpdate) => {
-            commands::self_update::run_self_update()?;
+            commands::self_update::run_self_update().await?;
         },
     }
 

@@ -24,7 +24,7 @@ const DEFAULT_DISTRO: &str = "astralis";
 const DEFAULT_ORG: &str = "unicity-astrid";
 
 /// Run the init flow: workspace setup + distro-based capsule installation.
-pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
+pub(crate) async fn run_init(distro_source: &str) -> anyhow::Result<()> {
     let home = AstridHome::resolve()?;
     home.ensure()?;
 
@@ -39,7 +39,7 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
         .join("distro.lock");
 
     // Fetch and parse the distro manifest.
-    let manifest = fetch_and_parse_manifest(distro_source)?;
+    let manifest = fetch_and_parse_manifest(distro_source).await?;
 
     // Check lock freshness AFTER parsing manifest (need manifest to compare).
     if let Some(existing_lock) = load_lock(&lock_path)?
@@ -89,7 +89,7 @@ pub(crate) fn run_init(distro_source: &str) -> anyhow::Result<()> {
     write_env_files(&home, &selected, &vars)?;
 
     // Install each capsule with progress.
-    let locked = install_capsules(&selected)?;
+    let locked = install_capsules(&selected).await?;
 
     // Write Distro.lock.
     let lock = create_lock_from_parts(schema_version, &distro_id, &distro_version, locked);
@@ -137,7 +137,7 @@ fn resolve_distro_url(source: &str) -> String {
 }
 
 /// Resolve a distro source string to a manifest URL or path, then parse it.
-fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
+async fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
     // Local file path.
     let path = std::path::Path::new(source);
     if path.exists() && path.is_file() {
@@ -150,7 +150,7 @@ fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
 
     eprintln!("Fetching distro manifest...");
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -158,6 +158,7 @@ fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
     let response = client
         .get(&url)
         .send()
+        .await
         .context("failed to fetch distro manifest")?;
 
     if !response.status().is_success() {
@@ -167,15 +168,19 @@ fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest> {
         );
     }
 
-    // Limit to 1MB.
-    let content = {
-        use std::io::Read;
-        let mut buf = String::new();
-        response.take(1024 * 1024).read_to_string(&mut buf)?;
-        buf
-    };
+    // Limit response body to 1 MB to prevent abuse from untrusted URLs.
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read distro manifest body")?;
+    anyhow::ensure!(
+        bytes.len() <= 1024 * 1024,
+        "distro manifest exceeds 1 MB limit ({} bytes)",
+        bytes.len(),
+    );
+    let content = std::str::from_utf8(&bytes).context("distro manifest contains invalid UTF-8")?;
 
-    parse_manifest(&content)
+    parse_manifest(content)
 }
 
 /// Select which capsules to install. Capsules without a group are always
@@ -329,7 +334,7 @@ fn resolve_template(template: &str, vars: &HashMap<String, String>) -> String {
 }
 
 /// Install each selected capsule with a progress bar.
-fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCapsule>> {
+async fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCapsule>> {
     let total = selected.len();
     let pb = ProgressBar::new(total as u64);
     pb.set_style(
@@ -345,7 +350,7 @@ fn install_capsules(selected: &[DistroCapsule]) -> anyhow::Result<Vec<LockedCaps
     for cap in selected {
         pb.set_message(cap.name.clone());
 
-        if let Err(e) = super::capsule::install::install_capsule_batch(&cap.source, false) {
+        if let Err(e) = super::capsule::install::install_capsule_batch(&cap.source, false).await {
             eprintln!("\n  Failed to install {}: {e}", cap.name);
             failed.push(cap.name.clone());
             pb.inc(1);

@@ -63,7 +63,7 @@ fn now_epoch() -> u64 {
 ///
 /// Returns `Some(version)` if an update is available, `None` if up-to-date
 /// or check failed/cached.
-pub(crate) fn check_for_update_cached() -> Option<String> {
+pub(crate) async fn check_for_update_cached() -> Option<String> {
     let path = cache_path().ok()?;
 
     // Check cache first
@@ -81,7 +81,7 @@ pub(crate) fn check_for_update_cached() -> Option<String> {
     }
 
     // Cache miss or stale — do a live check
-    let client = match reqwest::blocking::Client::builder()
+    let client = match reqwest::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(5))
         .build()
@@ -94,7 +94,7 @@ pub(crate) fn check_for_update_cached() -> Option<String> {
     };
 
     let url = format!("https://api.github.com/repos/{GITHUB_ORG}/{GITHUB_REPO}/releases/latest");
-    let response = match client.get(&url).send() {
+    let response = match client.get(&url).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::debug!("Update check: GitHub API request failed: {e}");
@@ -106,7 +106,7 @@ pub(crate) fn check_for_update_cached() -> Option<String> {
         return None;
     }
 
-    let json: serde_json::Value = match response.json() {
+    let json: serde_json::Value = match response.json().await {
         Ok(j) => j,
         Err(e) => {
             tracing::debug!("Update check: failed to parse response: {e}");
@@ -135,8 +135,8 @@ pub(crate) fn check_for_update_cached() -> Option<String> {
 }
 
 /// Print an update banner if a newer version is available.
-pub(crate) fn print_update_banner() {
-    if let Some(latest) = check_for_update_cached() {
+pub(crate) async fn print_update_banner() {
+    if let Some(latest) = check_for_update_cached().await {
         eprintln!(
             "{}",
             Theme::warning(&format!(
@@ -147,18 +147,22 @@ pub(crate) fn print_update_banner() {
 }
 
 /// Fetch the latest release metadata from GitHub.
-fn fetch_latest_release(
-    client: &reqwest::blocking::Client,
+async fn fetch_latest_release(
+    client: &reqwest::Client,
 ) -> anyhow::Result<(String, serde_json::Value)> {
     let url = format!("https://api.github.com/repos/{GITHUB_ORG}/{GITHUB_REPO}/releases/latest");
     let response = client
         .get(&url)
         .send()
+        .await
         .context("failed to reach GitHub API")?;
     if !response.status().is_success() {
         bail!("GitHub API returned {}", response.status());
     }
-    let json: serde_json::Value = response.json().context("failed to parse API response")?;
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .context("failed to parse API response")?;
     let tag = json
         .get("tag_name")
         .and_then(|v| v.as_str())
@@ -169,8 +173,8 @@ fn fetch_latest_release(
 
 /// Download and extract the release archive to a temp directory.
 /// Returns the path to the extracted directory.
-fn download_and_extract(
-    client: &reqwest::blocking::Client,
+async fn download_and_extract(
+    client: &reqwest::Client,
     release: &serde_json::Value,
     version: &str,
     target: &str,
@@ -191,10 +195,14 @@ fn download_and_extract(
 
     let tmp_dir = tempfile::tempdir()?;
     let archive_path = tmp_dir.path().join(&asset_name);
-    let mut file = std::fs::File::create(&archive_path)?;
-    let mut dl = client.get(download_url).send()?;
-    std::io::copy(&mut dl, &mut file)?;
-    drop(file);
+    let bytes = client
+        .get(download_url)
+        .send()
+        .await?
+        .bytes()
+        .await
+        .context("failed to download release archive")?;
+    std::fs::write(&archive_path, &bytes)?;
 
     let tar_gz = std::fs::File::open(&archive_path)?;
     let decoder = flate2::read::GzDecoder::new(tar_gz);
@@ -225,7 +233,7 @@ fn install_binaries(from: &Path, install_dir: &Path) -> anyhow::Result<()> {
 
 /// Run the self-update command — download and install the latest version,
 /// then sync distro and capsule updates.
-pub(crate) fn run_self_update() -> anyhow::Result<()> {
+pub(crate) async fn run_self_update() -> anyhow::Result<()> {
     let target = platform_target()?;
 
     println!(
@@ -235,12 +243,12 @@ pub(crate) fn run_self_update() -> anyhow::Result<()> {
         ))
     );
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("astrid-cli")
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let (version_str, release) = fetch_latest_release(&client)?;
+    let (version_str, release) = fetch_latest_release(&client).await?;
 
     let current = semver::Version::parse(CURRENT_VERSION)?;
     let latest = semver::Version::parse(&version_str)?;
@@ -256,7 +264,7 @@ pub(crate) fn run_self_update() -> anyhow::Result<()> {
             Theme::info(&format!("Downloading v{version_str} for {target}..."))
         );
 
-        let tmp_dir = download_and_extract(&client, &release, &version_str, target)?;
+        let tmp_dir = download_and_extract(&client, &release, &version_str, target).await?;
         let extract_dir = tmp_dir
             .path()
             .join(format!("astrid-{version_str}-{target}"));
@@ -295,7 +303,7 @@ pub(crate) fn run_self_update() -> anyhow::Result<()> {
     }
 
     // Sync distro + capsules after binary update.
-    sync_distro_and_capsules()?;
+    sync_distro_and_capsules().await?;
 
     Ok(())
 }
@@ -305,7 +313,7 @@ pub(crate) fn run_self_update() -> anyhow::Result<()> {
 /// Compares the remote Distro.toml against the local Distro.lock. If the
 /// distro version changed, re-runs init to install new/updated capsules.
 /// Then runs `capsule update` for any capsules with newer GitHub releases.
-fn sync_distro_and_capsules() -> anyhow::Result<()> {
+async fn sync_distro_and_capsules() -> anyhow::Result<()> {
     println!();
     println!("{}", Theme::info("Checking distro and capsule updates..."));
 
@@ -322,12 +330,12 @@ fn sync_distro_and_capsules() -> anyhow::Result<()> {
 
     // Re-run init which handles: fetch manifest, diff lock, install new capsules.
     // init is idempotent — if lock is fresh it returns immediately.
-    if let Err(e) = super::init::run_init(distro_id) {
+    if let Err(e) = super::init::run_init(distro_id).await {
         println!("{}", Theme::warning(&format!("Distro sync: {e}")));
     }
 
     // Update individual capsules (checks GitHub releases for newer versions).
-    if let Err(e) = super::capsule::install::update_capsule(None, false) {
+    if let Err(e) = super::capsule::install::update_capsule(None, false).await {
         println!("{}", Theme::warning(&format!("Capsule update: {e}")));
     }
 
