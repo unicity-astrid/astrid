@@ -195,13 +195,16 @@ async fn download_and_extract(
 
     let tmp_dir = tempfile::tempdir()?;
     let archive_path = tmp_dir.path().join(&asset_name);
-    let bytes = client
-        .get(download_url)
-        .send()
-        .await?
-        .bytes()
-        .await
-        .context("failed to download release archive")?;
+    // Stream with 100 MB limit.
+    let mut response = client.get(download_url).send().await?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        bytes.extend_from_slice(&chunk);
+        anyhow::ensure!(
+            bytes.len() <= 100 * 1024 * 1024,
+            "release archive exceeds 100 MB limit",
+        );
+    }
     std::fs::write(&archive_path, &bytes)?;
 
     let tar_gz = std::fs::File::open(&archive_path)?;

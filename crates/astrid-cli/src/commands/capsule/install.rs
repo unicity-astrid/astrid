@@ -396,18 +396,16 @@ pub(crate) async fn install_from_github(
                 let tmp_dir = tempfile::tempdir()?;
                 let sanitized_name = Path::new(name).file_name().unwrap_or_default();
                 let download_path = tmp_dir.path().join(sanitized_name);
-                // Download with 50 MB limit.
-                let bytes = client
-                    .get(download_url)
-                    .send()
-                    .await?
-                    .bytes()
-                    .await
-                    .context("failed to download capsule archive")?;
-                anyhow::ensure!(
-                    bytes.len() <= 50 * 1024 * 1024,
-                    "capsule archive exceeds 50 MB limit",
-                );
+                // Stream with 50 MB limit.
+                let mut dl = client.get(download_url).send().await?;
+                let mut bytes = Vec::new();
+                while let Some(chunk) = dl.chunk().await? {
+                    bytes.extend_from_slice(&chunk);
+                    anyhow::ensure!(
+                        bytes.len() <= 50 * 1024 * 1024,
+                        "capsule archive exceeds 50 MB limit",
+                    );
+                }
                 std::fs::write(&download_path, &bytes)?;
                 return unpack_and_install(&download_path, workspace, home, original_source);
             }

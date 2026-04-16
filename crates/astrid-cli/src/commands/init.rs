@@ -168,16 +168,16 @@ async fn fetch_and_parse_manifest(source: &str) -> anyhow::Result<DistroManifest
         );
     }
 
-    // Limit response body to 1 MB to prevent abuse from untrusted URLs.
-    let bytes = response
-        .bytes()
-        .await
-        .context("failed to read distro manifest body")?;
-    anyhow::ensure!(
-        bytes.len() <= 1024 * 1024,
-        "distro manifest exceeds 1 MB limit ({} bytes)",
-        bytes.len(),
-    );
+    // Stream response body with 1 MB limit to prevent abuse from untrusted URLs.
+    let mut bytes = Vec::new();
+    let mut response = response;
+    while let Some(chunk) = response.chunk().await? {
+        bytes.extend_from_slice(&chunk);
+        anyhow::ensure!(
+            bytes.len() <= 1024 * 1024,
+            "distro manifest exceeds 1 MB limit",
+        );
+    }
     let content = std::str::from_utf8(&bytes).context("distro manifest contains invalid UTF-8")?;
 
     parse_manifest(content)
