@@ -3,6 +3,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(target_os = "linux")]
+mod bwrap;
+#[cfg(target_os = "macos")]
+mod seatbelt;
+
 /// Validate a path for safe interpolation into sandbox profiles (SBPL/bwrap).
 ///
 /// Rejects relative paths, non-UTF-8, double-quote, backslash, and null byte -
@@ -33,50 +38,6 @@ fn validate_sandbox_str<'a>(path: &'a Path, label: &str) -> io::Result<&'a str> 
         ));
     }
     Ok(s)
-}
-
-/// Validates that a path is safe for interpolation into an SBPL profile string.
-///
-/// Rejects:
-/// - Non-UTF-8 paths (silent lossy coercion would misalign the SBPL rule with the real path)
-/// - Double-quote (`"`) - SBPL string delimiter; allows sandbox escape
-/// - Backslash (`\`) - SBPL escape character; silently reinterprets the path
-/// - Null byte (`\0`) - defense in depth
-///
-/// # Errors
-///
-/// Returns an error if the path is not valid UTF-8 or contains forbidden characters.
-#[cfg(test)]
-fn validate_sandbox_path(path: &Path) -> io::Result<()> {
-    let s = path.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("sandbox path is not valid UTF-8: {}", path.display()),
-        )
-    })?;
-    if s.contains(['"', '\\', '\0']) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "sandbox path contains forbidden characters (double-quote, backslash, or null): {}",
-                path.display()
-            ),
-        ));
-    }
-    Ok(())
-}
-
-/// Returns the Darwin kernel major version (e.g. 25 for macOS 15 Sequoia).
-/// Used to detect macOS 15+ where `sandbox-exec` is deprecated.
-#[cfg(target_os = "macos")]
-fn darwin_major_version() -> u32 {
-    std::process::Command::new("uname")
-        .arg("-r")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.split('.').next()?.parse().ok())
-        .unwrap_or(0)
 }
 
 /// Wraps a standard OS command in a native kernel sandbox (bwrap or Seatbelt).
@@ -151,7 +112,7 @@ impl SandboxCommand {
         #[cfg(target_os = "macos")]
         {
             // sandbox-exec (Seatbelt) is deprecated on macOS 15+ (Darwin >= 24).
-            if darwin_major_version() >= 24 {
+            if seatbelt::darwin_major_version() >= 24 {
                 tracing::warn!(
                     "macOS 15+ detected: sandbox-exec is deprecated. Running host process unsandboxed."
                 );
@@ -336,7 +297,11 @@ impl ProcessSandboxConfig {
 
         #[cfg(target_os = "linux")]
         {
-            Ok(Some(self.build_bwrap_prefix()))
+            if bwrap::bwrap_available() {
+                Ok(Some(self.build_bwrap_prefix()))
+            } else {
+                Ok(None)
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -368,165 +333,32 @@ impl ProcessSandboxConfig {
         }
         Ok(())
     }
-
-    #[cfg(target_os = "linux")]
-    fn build_bwrap_prefix(&self) -> SandboxPrefix {
-        let mut args: Vec<OsString> = Vec::new();
-
-        // Read-only access to host OS (for binaries like /usr/bin/node)
-        args.extend(["--ro-bind", "/", "/"].map(OsString::from));
-        // Standard dev + proc mounts
-        args.extend(["--dev", "/dev"].map(OsString::from));
-        args.extend(["--proc", "/proc"].map(OsString::from));
-
-        // Write access to the writable root
-        args.extend([
-            OsString::from("--bind"),
-            self.writable_root.as_os_str().into(),
-            self.writable_root.as_os_str().into(),
-        ]);
-
-        // Additional writable paths
-        for path in &self.extra_write_paths {
-            args.extend([
-                OsString::from("--bind"),
-                path.as_os_str().into(),
-                path.as_os_str().into(),
-            ]);
-        }
-
-        // extra_read_paths are not emitted on Linux because `--ro-bind / /`
-        // already grants read access to all host paths. Hidden paths override
-        // via tmpfs below. On macOS, extra_read_paths are added to the
-        // Seatbelt allow-list because the default policy is deny-all.
-
-        // Disposable tmpfs for /tmp
-        args.extend(["--tmpfs", "/tmp"].map(OsString::from));
-
-        // Hidden paths: overlay with empty tmpfs
-        for path in &self.hidden_paths {
-            args.extend([OsString::from("--tmpfs"), path.as_os_str().into()]);
-        }
-
-        // Drop all namespaces
-        args.push(OsString::from("--unshare-all"));
-
-        // Conditionally re-enable network
-        if self.allow_network {
-            args.push(OsString::from("--share-net"));
-        }
-
-        // Prevent orphan processes
-        args.push(OsString::from("--die-with-parent"));
-
-        // Separator before the inner command
-        args.push(OsString::from("--"));
-
-        SandboxPrefix {
-            program: OsString::from("bwrap"),
-            args,
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn build_seatbelt_prefix(&self) -> io::Result<SandboxPrefix> {
-        let writable_root_str = validate_sandbox_str(&self.writable_root, "writable root")?;
-
-        // Build the network rule conditionally
-        let network_rule = if self.allow_network {
-            "(allow network*)"
-        } else {
-            ""
-        };
-
-        // Build extra read path rules
-        let extra_read_rules: String = self
-            .extra_read_paths
-            .iter()
-            .map(|p| {
-                validate_sandbox_str(p, "extra read path").map(|s| format!("    (subpath \"{s}\")"))
-            })
-            .collect::<io::Result<Vec<_>>>()?
-            .join("\n");
-
-        // Build extra write path rules
-        let extra_write_rules: String = self
-            .extra_write_paths
-            .iter()
-            .map(|p| {
-                validate_sandbox_str(p, "extra write path")
-                    .map(|s| format!("    (subpath \"{s}\")"))
-            })
-            .collect::<io::Result<Vec<_>>>()?
-            .join("\n");
-
-        // Build deny rules for hidden paths (e.g. ~/.astrid/).
-        // Skip any hidden path that is an ancestor of or equal to the
-        // writable_root — the capsule must be able to access its own
-        // directory, and Seatbelt deny rules block even lstat() on parent
-        // paths which prevents Node.js from resolving real paths.
-        let hidden_deny_rules: String = self
-            .hidden_paths
-            .iter()
-            .filter(|p| !self.writable_root.starts_with(p.as_path()))
-            .map(|p| {
-                validate_sandbox_str(p, "hidden path").map(|s| {
-                    format!(
-                        "(deny file-read* (subpath \"{s}\"))\n\
-                         (deny file-write* (subpath \"{s}\"))"
-                    )
-                })
-            })
-            .collect::<io::Result<Vec<_>>>()?
-            .join("\n");
-
-        let profile = format!(
-            r#"(version 1)
-(deny default)
-(allow process-exec*)
-(allow process-fork)
-{network_rule}
-(allow sysctl-read)
-(allow ipc-posix-shm)
-(allow mach*)
-(allow file-read*
-    (subpath "/usr")
-    (subpath "/bin")
-    (subpath "/sbin")
-    (subpath "/System")
-    (subpath "/Library")
-    (subpath "/opt")
-    (subpath "/dev")
-    (subpath "{writable_root_str}")
-    (subpath "/private/tmp")
-    (subpath "/var/folders")
-    (literal "/")
-{extra_read_rules}
-)
-(allow file-write*
-    (subpath "{writable_root_str}")
-    (subpath "/private/tmp")
-    (subpath "/var/folders")
-    (literal "/dev/null")
-{extra_write_rules}
-)
-{hidden_deny_rules}"#
-        );
-
-        // Pass profile inline via -p to avoid temp file leak.
-        let args = vec![OsString::from("-p"), OsString::from(&profile)];
-
-        Ok(SandboxPrefix {
-            program: OsString::from("sandbox-exec"),
-            args,
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// Validates that a path is safe for interpolation into an SBPL profile string.
+    fn validate_sandbox_path(path: &Path) -> io::Result<()> {
+        let s = path.to_str().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("sandbox path is not valid UTF-8: {}", path.display()),
+            )
+        })?;
+        if s.contains(['"', '\\', '\0']) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "sandbox path contains forbidden characters (double-quote, backslash, or null): {}",
+                    path.display()
+                ),
+            ));
+        }
+        Ok(())
+    }
 
     // --- validate_sandbox_path tests ---
 
@@ -567,7 +399,6 @@ mod tests {
 
     #[test]
     fn validate_sandbox_path_rejects_backslash() {
-        // Backslash is an SBPL escape character - would silently reinterpret the path.
         let path = PathBuf::from("/tmp/work\\nspace");
         let err = validate_sandbox_path(&path).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
@@ -579,8 +410,6 @@ mod tests {
 
     #[test]
     fn validate_sandbox_path_rejects_null_byte() {
-        // Null byte (0x00) is valid UTF-8, so to_str() succeeds.
-        // The s.contains('\0') guard then catches it.
         let path = PathBuf::from("/tmp/work\0space");
         let err = validate_sandbox_path(&path).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
@@ -668,8 +497,7 @@ mod tests {
         let path = PathBuf::from("/tmp/safe-workspace");
         let wrapped = SandboxCommand::wrap(cmd, &path).unwrap();
 
-        if super::darwin_major_version() >= 24 {
-            // Passthrough: the program is "echo" directly, not "sandbox-exec".
+        if super::seatbelt::darwin_major_version() >= 24 {
             assert_eq!(
                 wrapped.get_program(),
                 "echo",
@@ -677,9 +505,7 @@ mod tests {
             );
         } else {
             let args: Vec<_> = wrapped.get_args().collect();
-            // First arg should be "-p" (inline profile), not "-f" (file).
             assert_eq!(args[0], "-p", "expected -p for inline profile delivery");
-            // Second arg is the profile content, which should contain the worktree path.
             let profile = args[1].to_string_lossy();
             assert!(
                 profile.contains("/tmp/safe-workspace"),
@@ -717,191 +543,7 @@ mod tests {
         assert!(config.hidden_paths.is_empty());
     }
 
-    // --- Platform-specific prefix tests ---
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn test_bwrap_prefix_basic() {
-        let config = ProcessSandboxConfig::new("/project");
-        let prefix = config.build_bwrap_prefix();
-
-        assert_eq!(prefix.program, OsString::from("bwrap"));
-
-        let args_str: Vec<String> = prefix
-            .args
-            .iter()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-
-        // Verify core structure
-        assert!(args_str.contains(&"--ro-bind".to_string()));
-        assert!(args_str.contains(&"--dev".to_string()));
-        assert!(args_str.contains(&"--proc".to_string()));
-        assert!(args_str.contains(&"--unshare-all".to_string()));
-        assert!(args_str.contains(&"--share-net".to_string()));
-        assert!(args_str.contains(&"--die-with-parent".to_string()));
-        assert!(args_str.contains(&"--".to_string()));
-
-        // Writable root bind
-        let bind_idx = args_str
-            .iter()
-            .position(|a| a == "--bind")
-            .expect("should have --bind");
-        assert_eq!(args_str[bind_idx + 1], "/project");
-        assert_eq!(args_str[bind_idx + 2], "/project");
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn test_bwrap_prefix_no_network() {
-        let config = ProcessSandboxConfig::new("/project").with_network(false);
-        let prefix = config.build_bwrap_prefix();
-
-        let args_str: Vec<String> = prefix
-            .args
-            .iter()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args_str.contains(&"--unshare-all".to_string()));
-        assert!(!args_str.contains(&"--share-net".to_string()));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn test_bwrap_prefix_hidden_paths() {
-        let config = ProcessSandboxConfig::new("/project").with_hidden("/home/user/.astrid");
-        let prefix = config.build_bwrap_prefix();
-
-        let args_str: Vec<String> = prefix
-            .args
-            .iter()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-
-        // Find the tmpfs for hidden path (not the /tmp one)
-        let tmpfs_positions: Vec<usize> = args_str
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| *a == "--tmpfs")
-            .map(|(i, _)| i)
-            .collect();
-
-        assert!(
-            tmpfs_positions.len() >= 2,
-            "should have at least 2 tmpfs mounts"
-        );
-        let hidden_tmpfs_found = tmpfs_positions
-            .iter()
-            .any(|&i| args_str.get(i + 1) == Some(&"/home/user/.astrid".to_string()));
-        assert!(hidden_tmpfs_found, "should have tmpfs for hidden path");
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn test_bwrap_prefix_extra_paths() {
-        let config = ProcessSandboxConfig::new("/project")
-            .with_extra_read("/data")
-            .with_extra_write("/output");
-        let prefix = config.build_bwrap_prefix();
-
-        let args_str: Vec<String> = prefix
-            .args
-            .iter()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-
-        // Extra writable path should have --bind
-        let bind_positions: Vec<usize> = args_str
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| *a == "--bind")
-            .map(|(i, _)| i)
-            .collect();
-        let has_output_bind = bind_positions
-            .iter()
-            .any(|&i| args_str.get(i + 1) == Some(&"/output".to_string()));
-        assert!(has_output_bind, "should have --bind for extra write path");
-
-        // extra_read_paths are NOT emitted as --ro-bind on Linux because
-        // `--ro-bind / /` already covers all host paths. Verify they are
-        // NOT redundantly added.
-        let ro_positions: Vec<usize> = args_str
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| *a == "--ro-bind")
-            .map(|(i, _)| i)
-            .collect();
-        let has_data_explicit = ro_positions
-            .iter()
-            .any(|&i| args_str.get(i + 1) == Some(&"/data".to_string()));
-        assert!(
-            !has_data_explicit,
-            "extra_read_paths should NOT produce --ro-bind on Linux (covered by --ro-bind / /)"
-        );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test_seatbelt_prefix_basic() {
-        let config = ProcessSandboxConfig::new("/project");
-        let prefix = config.build_seatbelt_prefix().unwrap();
-
-        assert_eq!(prefix.program, OsString::from("sandbox-exec"));
-        assert_eq!(prefix.args[0], OsString::from("-p"));
-
-        // Profile is passed inline as the second arg
-        let profile = prefix.args[1].to_string_lossy().to_string();
-
-        assert!(profile.contains("(deny default)"));
-        assert!(profile.contains("(allow network*)"));
-        assert!(profile.contains(r#"(subpath "/project")"#));
-        assert!(profile.contains("(allow process-exec*)"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test_seatbelt_prefix_no_network() {
-        let config = ProcessSandboxConfig::new("/project").with_network(false);
-        let prefix = config.build_seatbelt_prefix().unwrap();
-
-        let profile = prefix.args[1].to_string_lossy().to_string();
-        assert!(!profile.contains("(allow network*)"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test_seatbelt_prefix_extra_paths() {
-        let config = ProcessSandboxConfig::new("/project")
-            .with_extra_read("/data")
-            .with_extra_write("/output");
-        let prefix = config.build_seatbelt_prefix().unwrap();
-
-        let profile = prefix.args[1].to_string_lossy().to_string();
-        assert!(profile.contains(r#"(subpath "/data")"#));
-        assert!(profile.contains(r#"(subpath "/output")"#));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn test_seatbelt_prefix_hidden_paths() {
-        let config = ProcessSandboxConfig::new("/project").with_hidden("/Users/testuser/.astrid");
-        let prefix = config.build_seatbelt_prefix().unwrap();
-
-        let profile = prefix.args[1].to_string_lossy().to_string();
-        assert!(
-            profile.contains(r#"(deny file-read* (subpath "/Users/testuser/.astrid"))"#),
-            "should deny file-read for hidden path"
-        );
-        assert!(
-            profile.contains(r#"(deny file-write* (subpath "/Users/testuser/.astrid"))"#),
-            "should deny file-write for hidden path"
-        );
-    }
-
     // --- Cross-platform sandbox_prefix() rejection tests ---
-    // These are NOT gated by platform - sandbox_prefix() validates on all
-    // platforms for API contract consistency.
 
     #[test]
     fn test_sandbox_prefix_rejects_relative_writable_root() {
@@ -930,53 +572,42 @@ mod tests {
         let bad_bytes: &[u8] = b"/data/\xff\xfe";
         let bad_path = PathBuf::from(OsStr::from_bytes(bad_bytes));
 
-        // Non-UTF-8 in extra read path
         let config = ProcessSandboxConfig::new("/project").with_extra_read(bad_path.clone());
         assert!(config.sandbox_prefix().is_err());
 
-        // Non-UTF-8 in extra write path
         let config = ProcessSandboxConfig::new("/project").with_extra_write(bad_path.clone());
         assert!(config.sandbox_prefix().is_err());
 
-        // Non-UTF-8 in hidden path
         let config = ProcessSandboxConfig::new("/project").with_hidden(bad_path);
         assert!(config.sandbox_prefix().is_err());
     }
 
     #[test]
     fn test_sandbox_prefix_rejects_double_quote_in_paths() {
-        // Double-quote in writable root
         let config = ProcessSandboxConfig::new("/project/evil\"dir");
         assert!(config.sandbox_prefix().is_err());
 
-        // Double-quote in extra read path
         let config = ProcessSandboxConfig::new("/project").with_extra_read("/data/evil\"path");
         assert!(config.sandbox_prefix().is_err());
 
-        // Double-quote in extra write path
         let config = ProcessSandboxConfig::new("/project").with_extra_write("/output/evil\"path");
         assert!(config.sandbox_prefix().is_err());
 
-        // Double-quote in hidden path
         let config = ProcessSandboxConfig::new("/project").with_hidden("/hidden/evil\"path");
         assert!(config.sandbox_prefix().is_err());
     }
 
     #[test]
     fn test_sandbox_prefix_rejects_backslash_in_paths() {
-        // Backslash in writable root
         let config = ProcessSandboxConfig::new("/project/evil\\dir");
         assert!(config.sandbox_prefix().is_err());
 
-        // Backslash in extra read path
         let config = ProcessSandboxConfig::new("/project").with_extra_read("/data/evil\\path");
         assert!(config.sandbox_prefix().is_err());
 
-        // Backslash in extra write path
         let config = ProcessSandboxConfig::new("/project").with_extra_write("/output/evil\\path");
         assert!(config.sandbox_prefix().is_err());
 
-        // Backslash in hidden path
         let config = ProcessSandboxConfig::new("/project").with_hidden("/hidden/evil\\path");
         assert!(config.sandbox_prefix().is_err());
     }

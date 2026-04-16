@@ -1190,12 +1190,16 @@ mod tests {
 
         let program = cmd.as_std().get_program().to_string_lossy().to_string();
 
-        // On supported platforms, the program should be the sandbox wrapper
+        // On supported platforms with a working sandbox, the program is the
+        // wrapper. If the sandbox is unavailable at runtime (e.g. bwrap
+        // blocked by AppArmor in CI), the program is the resolved binary.
         #[cfg(target_os = "linux")]
-        assert_eq!(program, "bwrap");
+        assert!(
+            program == "bwrap" || std::path::Path::new(&program).is_absolute(),
+            "expected 'bwrap' or resolved absolute path, got: {program}"
+        );
         #[cfg(target_os = "macos")]
         assert_eq!(program, "sandbox-exec");
-        // On unsupported platforms, falls through to resolved absolute path
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         assert!(
             std::path::Path::new(&program).is_absolute(),
@@ -1216,18 +1220,21 @@ mod tests {
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build sandboxed command");
 
-        // The resolved binary should appear as an absolute path in the args.
-        // Match against the expected which::which result rather than assuming
-        // a fixed position (args layout depends on sandbox prefix structure).
+        // The resolved binary should appear as an absolute path — either in
+        // the args (when sandbox wraps it) or as the program itself (when
+        // sandbox is unavailable, e.g. bwrap blocked by AppArmor in CI).
         let expected = which::which("echo").expect("echo should be in PATH");
+        let program = cmd.as_std().get_program().to_string_lossy().to_string();
         let args: Vec<_> = cmd
             .as_std()
             .get_args()
             .map(|a| a.to_string_lossy().to_string())
             .collect();
+        let found_in_args = args.iter().any(|a| std::path::Path::new(a) == expected);
+        let found_as_program = std::path::Path::new(&program) == expected;
         assert!(
-            args.iter().any(|a| std::path::Path::new(a) == expected),
-            "sandboxed command should contain resolved absolute path {}, got args: {args:?}",
+            found_in_args || found_as_program,
+            "resolved absolute path {} should appear in program or args, got program={program}, args={args:?}",
             expected.display()
         );
     }
@@ -1362,17 +1369,22 @@ mod tests {
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build command");
 
+        // When sandbox is available, the writable root appears in sandbox
+        // args. When unavailable (e.g. bwrap blocked in CI), the cwd is
+        // still set as current_dir on the command.
         let args: Vec<String> = cmd
             .as_std()
             .get_args()
             .map(|a| a.to_string_lossy().to_string())
             .collect();
         let args_joined = args.join(" ");
+        let current_dir = cmd.as_std().get_current_dir();
 
         let cwd_str = cwd_dir.to_string_lossy().to_string();
         assert!(
-            args_joined.contains(&cwd_str),
-            "writable root should be {cwd_str} (config.cwd wins), got args: {args_joined}"
+            args_joined.contains(&cwd_str) || current_dir == Some(cwd_dir.as_path()),
+            "writable root should be {cwd_str} (config.cwd wins), got args: {args_joined}, \
+             current_dir: {current_dir:?}"
         );
     }
 
@@ -1390,6 +1402,10 @@ mod tests {
             .build_sandboxed_command("test", "echo", &config)
             .expect("should build command");
 
+        // When sandbox is available, the writable root appears in sandbox
+        // args. When unavailable, verify the command still builds
+        // successfully (workspace_root was used for sandbox config even if
+        // sandbox is skipped).
         let args: Vec<String> = cmd
             .as_std()
             .get_args()
@@ -1398,8 +1414,11 @@ mod tests {
         let args_joined = args.join(" ");
 
         let ws_str = ws_dir.to_string_lossy().to_string();
+        let program = cmd.as_std().get_program().to_string_lossy().to_string();
+        // Either ws_dir is in sandbox args, or sandbox was skipped and
+        // we just have the resolved binary.
         assert!(
-            args_joined.contains(&ws_str),
+            args_joined.contains(&ws_str) || std::path::Path::new(&program).is_absolute(),
             "writable root should be {ws_str} (workspace_root fallback), got args: {args_joined}"
         );
     }
