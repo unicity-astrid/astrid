@@ -2,6 +2,8 @@ use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
 
 /// Validate a path for safe interpolation into sandbox profiles (SBPL/bwrap).
 ///
@@ -64,6 +66,121 @@ fn validate_sandbox_path(path: &Path) -> io::Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Detects the Linux distro's package manager and returns install instructions
+/// for bubblewrap.
+#[cfg(target_os = "linux")]
+fn bwrap_install_hint() -> &'static str {
+    // Read /etc/os-release once — if it fails, give a generic hint.
+    static HINT: OnceLock<String> = OnceLock::new();
+    HINT.get_or_init(|| {
+        let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        // ID= line identifies the distro family.
+        let id = os_release
+            .lines()
+            .find_map(|l| l.strip_prefix("ID="))
+            .unwrap_or("")
+            .trim_matches('"');
+        let id_like = os_release
+            .lines()
+            .find_map(|l| l.strip_prefix("ID_LIKE="))
+            .unwrap_or("")
+            .trim_matches('"');
+
+        if id == "ubuntu"
+            || id == "debian"
+            || id == "pop"
+            || id == "linuxmint"
+            || id_like.contains("debian")
+            || id_like.contains("ubuntu")
+        {
+            "Install with: sudo apt install bubblewrap".to_string()
+        } else if id == "fedora"
+            || id == "rhel"
+            || id == "centos"
+            || id == "rocky"
+            || id == "alma"
+            || id_like.contains("fedora")
+            || id_like.contains("rhel")
+        {
+            "Install with: sudo dnf install bubblewrap".to_string()
+        } else if id == "arch" || id == "manjaro" || id_like.contains("arch") {
+            "Install with: sudo pacman -S bubblewrap".to_string()
+        } else if id == "alpine" {
+            "Install with: sudo apk add bubblewrap".to_string()
+        } else if id == "opensuse" || id == "sles" || id_like.contains("suse") {
+            "Install with: sudo zypper install bubblewrap".to_string()
+        } else if id == "nixos" || id == "nix" {
+            "Add bubblewrap to environment.systemPackages or use: nix-env -iA nixpkgs.bubblewrap"
+                .to_string()
+        } else if id == "void" {
+            "Install with: sudo xbps-install bubblewrap".to_string()
+        } else {
+            "Install the 'bubblewrap' package using your system package manager".to_string()
+        }
+    })
+}
+
+/// Interprets the result of a `bwrap --unshare-user` probe command.
+///
+/// Returns `true` if the probe succeeded (bwrap can create user namespaces).
+/// Logs a warning and returns `false` on failure.
+#[cfg(target_os = "linux")]
+fn interpret_bwrap_probe(result: io::Result<std::process::Output>) -> bool {
+    match result {
+        Ok(output) if output.status.success() => true,
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(
+                exit_code = output.status.code(),
+                stderr = %stderr.trim(),
+                "bwrap sandbox unavailable: user namespace creation failed. \
+                 On Ubuntu 24.04+, this is likely caused by \
+                 kernel.apparmor_restrict_unprivileged_userns=1. \
+                 Fix with: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 \
+                 Capsules will run without OS-level sandboxing."
+            );
+            false
+        },
+        Err(e) => {
+            let hint = bwrap_install_hint();
+            tracing::warn!(
+                error = %e,
+                install_hint = %hint,
+                "bwrap binary not found. Capsules will run without OS-level sandboxing."
+            );
+            false
+        },
+    }
+}
+
+/// Probes whether `bwrap` can create user namespaces.
+///
+/// Ubuntu 24.04+ sets `kernel.apparmor_restrict_unprivileged_userns = 1` by
+/// default, which silently blocks `bwrap --unshare-all`. This probe runs
+/// `bwrap --unshare-user --ro-bind / / -- /bin/true` once and caches the
+/// result for the lifetime of the process so we don't re-probe on every
+/// capsule start.
+///
+/// Returns `true` if bwrap is available and user namespaces work.
+#[cfg(target_os = "linux")]
+fn bwrap_available() -> bool {
+    static RESULT: OnceLock<bool> = OnceLock::new();
+    *RESULT.get_or_init(|| {
+        let result = Command::new("bwrap")
+            .arg("--unshare-user")
+            .arg("--ro-bind")
+            .arg("/")
+            .arg("/")
+            .arg("--")
+            .arg("/bin/true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        interpret_bwrap_probe(result)
+    })
 }
 
 /// Returns the Darwin kernel major version (e.g. 25 for macOS 15 Sequoia).
@@ -336,7 +453,11 @@ impl ProcessSandboxConfig {
 
         #[cfg(target_os = "linux")]
         {
-            Ok(Some(self.build_bwrap_prefix()))
+            if bwrap_available() {
+                Ok(Some(self.build_bwrap_prefix()))
+            } else {
+                Ok(None)
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -379,22 +500,6 @@ impl ProcessSandboxConfig {
         args.extend(["--dev", "/dev"].map(OsString::from));
         args.extend(["--proc", "/proc"].map(OsString::from));
 
-        // Write access to the writable root
-        args.extend([
-            OsString::from("--bind"),
-            self.writable_root.as_os_str().into(),
-            self.writable_root.as_os_str().into(),
-        ]);
-
-        // Additional writable paths
-        for path in &self.extra_write_paths {
-            args.extend([
-                OsString::from("--bind"),
-                path.as_os_str().into(),
-                path.as_os_str().into(),
-            ]);
-        }
-
         // extra_read_paths are not emitted on Linux because `--ro-bind / /`
         // already grants read access to all host paths. Hidden paths override
         // via tmpfs below. On macOS, extra_read_paths are added to the
@@ -403,9 +508,30 @@ impl ProcessSandboxConfig {
         // Disposable tmpfs for /tmp
         args.extend(["--tmpfs", "/tmp"].map(OsString::from));
 
-        // Hidden paths: overlay with empty tmpfs
+        // Hidden paths: overlay with empty tmpfs.
+        // These MUST come before writable bind-mounts below so that
+        // bind-mounts can "punch through" the tmpfs overlay. In bwrap,
+        // later mounts override earlier ones — if a writable path is inside
+        // a hidden path (e.g. ~/.astrid/capsules/foo inside hidden ~/.astrid),
+        // the bind-mount must come after the tmpfs to remain visible.
         for path in &self.hidden_paths {
             args.extend([OsString::from("--tmpfs"), path.as_os_str().into()]);
+        }
+
+        // Write access to the writable root (after hidden tmpfs so it punches through)
+        args.extend([
+            OsString::from("--bind"),
+            self.writable_root.as_os_str().into(),
+            self.writable_root.as_os_str().into(),
+        ]);
+
+        // Additional writable paths (also after hidden tmpfs)
+        for path in &self.extra_write_paths {
+            args.extend([
+                OsString::from("--bind"),
+                path.as_os_str().into(),
+                path.as_os_str().into(),
+            ]);
         }
 
         // Drop all namespaces
@@ -797,6 +923,52 @@ mod tests {
         assert!(hidden_tmpfs_found, "should have tmpfs for hidden path");
     }
 
+    /// Regression test for #648: when the writable root is inside a hidden
+    /// path (e.g. ~/.astrid/capsules/foo hidden by ~/.astrid tmpfs), the
+    /// writable --bind must come AFTER the hidden --tmpfs so it punches
+    /// through.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_bwrap_prefix_writable_inside_hidden_path() {
+        let config = ProcessSandboxConfig::new("/home/user/.astrid/capsules/openclaw-unicity")
+            .with_hidden("/home/user/.astrid");
+        let prefix = config.build_bwrap_prefix();
+
+        let args_str: Vec<String> = prefix
+            .args
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+
+        // Find position of --tmpfs for hidden path
+        let hidden_tmpfs_pos = args_str
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "--tmpfs")
+            .find(|(i, _)| args_str.get(i + 1) == Some(&"/home/user/.astrid".to_string()))
+            .map(|(i, _)| i)
+            .expect("should have --tmpfs for hidden path");
+
+        // Find position of --bind for writable root
+        let writable_bind_pos = args_str
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "--bind")
+            .find(|(i, _)| {
+                args_str.get(i + 1)
+                    == Some(&"/home/user/.astrid/capsules/openclaw-unicity".to_string())
+            })
+            .map(|(i, _)| i)
+            .expect("should have --bind for writable root");
+
+        assert!(
+            writable_bind_pos > hidden_tmpfs_pos,
+            "writable --bind (pos {writable_bind_pos}) must come after \
+             hidden --tmpfs (pos {hidden_tmpfs_pos}) so capsule dir \
+             punches through the tmpfs overlay"
+        );
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn test_bwrap_prefix_extra_paths() {
@@ -899,6 +1071,29 @@ mod tests {
         );
     }
 
+    /// Regression test for the macOS side of #648: when the writable root is
+    /// inside a hidden path, the deny rule for that path must be skipped so
+    /// the capsule directory remains accessible.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_seatbelt_prefix_writable_inside_hidden_path() {
+        let config = ProcessSandboxConfig::new("/Users/testuser/.astrid/capsules/openclaw-unicity")
+            .with_hidden("/Users/testuser/.astrid");
+        let prefix = config.build_seatbelt_prefix().unwrap();
+
+        let profile = prefix.args[1].to_string_lossy().to_string();
+        // The deny rule for ~/.astrid must be ABSENT because writable_root
+        // is inside it — the ancestor check should filter it out.
+        assert!(
+            !profile.contains(r#"(deny file-read* (subpath "/Users/testuser/.astrid"))"#),
+            "should NOT deny file-read for hidden path that is ancestor of writable root"
+        );
+        assert!(
+            !profile.contains(r#"(deny file-write* (subpath "/Users/testuser/.astrid"))"#),
+            "should NOT deny file-write for hidden path that is ancestor of writable root"
+        );
+    }
+
     // --- Cross-platform sandbox_prefix() rejection tests ---
     // These are NOT gated by platform - sandbox_prefix() validates on all
     // platforms for API contract consistency.
@@ -994,5 +1189,53 @@ mod tests {
 
         let config = ProcessSandboxConfig::new("/project").with_hidden("/hidden/evil\0path");
         assert!(config.sandbox_prefix().is_err());
+    }
+
+    // --- bwrap probe interpretation tests ---
+
+    #[cfg(target_os = "linux")]
+    fn mock_output(code: i32, stderr: &str) -> io::Result<std::process::Output> {
+        use std::os::unix::process::ExitStatusExt;
+        Ok(std::process::Output {
+            status: std::process::ExitStatus::from_raw(code << 8),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_bwrap_probe_success() {
+        assert!(interpret_bwrap_probe(mock_output(0, "")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_bwrap_probe_namespace_denied() {
+        // Simulates AppArmor blocking user namespace creation
+        let result = mock_output(1, "bwrap: setting up uid map: Permission denied\n");
+        assert!(!interpret_bwrap_probe(result));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_bwrap_probe_not_found() {
+        let result: io::Result<std::process::Output> = Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No such file or directory",
+        ));
+        assert!(!interpret_bwrap_probe(result));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_bwrap_install_hint_returns_nonempty() {
+        let hint = bwrap_install_hint();
+        assert!(!hint.is_empty(), "install hint should never be empty");
+        // Should always mention bubblewrap regardless of distro
+        assert!(
+            hint.contains("bubblewrap"),
+            "install hint should mention 'bubblewrap': {hint}"
+        );
     }
 }

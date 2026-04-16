@@ -19,6 +19,8 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 ### Fixed
 
+- **bwrap mount ordering hides capsule directory on Linux.** Hidden `--tmpfs` overlays (e.g. `~/.astrid`) were applied before writable `--bind` mounts, erasing capsule directories inside the hidden path. Reordered so bind-mounts come after tmpfs and punch through. Mirrors the ancestor check already present in the macOS Seatbelt path (PR #534). (#648)
+- **bwrap silently fails on Ubuntu 24.04+ (AppArmor).** `kernel.apparmor_restrict_unprivileged_userns=1` blocks user namespaces required by bwrap. Added a cached probe at startup that detects this and falls back to unsandboxed execution with a clear warning and distro-specific install instructions. (#648)
 - **`capsule remove` no longer deletes env config by default.** User configuration (API keys, secrets) in `env.json` is preserved across uninstall/reinstall cycles. Use `--purge` to explicitly delete saved configuration. (#647)
 - **`astrid-build` targets `wasm32-wasip2`** for Component Model capsules. Was still targeting `wasm32-wasip1`, producing plain WASM modules. (#649)
 - **`astrid-build` bundles SDK shared WIT** (`astrid-contracts.wit`) into capsule archives as a WIT dep, so `wit_type` references in `Capsule.toml` resolve at install time without manual WIT duplication. (#649)
