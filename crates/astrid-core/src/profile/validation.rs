@@ -5,9 +5,9 @@
 //! persisted.
 
 use super::{
-    ALLOWED_AUTH_METHODS, AuthConfig, BACKGROUND_PROCESSES_UPPER_BOUND, CURRENT_PROFILE_VERSION,
-    MAX_GROUP_NAME_LEN, NetworkConfig, PrincipalProfile, ProcessConfig, ProfileError,
-    ProfileResult, Quotas, TIMEOUT_SECS_UPPER_BOUND,
+    AuthConfig, BACKGROUND_PROCESSES_UPPER_BOUND, CURRENT_PROFILE_VERSION, MAX_GROUP_NAME_LEN,
+    NetworkConfig, PrincipalProfile, ProcessConfig, ProfileError, ProfileResult, Quotas,
+    TIMEOUT_SECS_UPPER_BOUND,
 };
 
 impl PrincipalProfile {
@@ -73,20 +73,13 @@ impl Quotas {
 }
 
 impl AuthConfig {
-    /// Validate auth methods and public keys.
+    /// Validate public keys. Method variants are enforced by serde via the
+    /// closed [`AuthMethod`](super::AuthMethod) enum.
     ///
     /// # Errors
     ///
-    /// Returns [`ProfileError::Invalid`] if any method is outside
-    /// [`ALLOWED_AUTH_METHODS`] or any public key is an empty string.
+    /// Returns [`ProfileError::Invalid`] if any public key is empty.
     pub fn validate(&self) -> ProfileResult<()> {
-        for method in &self.methods {
-            if !ALLOWED_AUTH_METHODS.iter().any(|m| *m == method) {
-                return Err(ProfileError::Invalid(format!(
-                    "auth.methods entry {method:?} is not one of {ALLOWED_AUTH_METHODS:?}",
-                )));
-            }
-        }
         for key in &self.public_keys {
             if key.is_empty() {
                 return Err(ProfileError::Invalid(
@@ -226,20 +219,11 @@ mod tests {
     // ── Auth ──────────────────────────────────────────────────────────
 
     #[test]
-    fn accepts_known_auth_methods() {
+    fn accepts_all_known_auth_methods() {
+        use super::super::AuthMethod;
         let mut p = PrincipalProfile::default();
-        p.auth.methods = ALLOWED_AUTH_METHODS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect();
+        p.auth.methods = vec![AuthMethod::Keypair, AuthMethod::Passkey, AuthMethod::System];
         p.validate().unwrap();
-    }
-
-    #[test]
-    fn rejects_unknown_auth_method() {
-        let mut p = PrincipalProfile::default();
-        p.auth.methods = vec!["passky".into()];
-        assert!(matches!(p.validate(), Err(ProfileError::Invalid(_))));
     }
 
     #[test]

@@ -67,13 +67,6 @@ pub const BACKGROUND_PROCESSES_UPPER_BOUND: u32 = 256;
 /// Maximum length of a single entry in [`PrincipalProfile::groups`].
 pub const MAX_GROUP_NAME_LEN: usize = 64;
 
-/// Authentication methods accepted in [`AuthConfig::methods`].
-///
-/// Kept as a fixed allowlist so typos in `profile.toml` (`passky`,
-/// `keyparr`) fail loudly at load time rather than silently granting
-/// access via a method the authenticator does not understand.
-pub const ALLOWED_AUTH_METHODS: &[&str] = &["keypair", "passkey", "system"];
-
 /// Result alias for profile operations.
 pub type ProfileResult<T> = Result<T, ProfileError>;
 
@@ -134,15 +127,29 @@ pub struct PrincipalProfile {
     pub quotas: Quotas,
 }
 
+/// Authentication methods a principal may use.
+///
+/// Closed enum so serde rejects typos (`passky`, `keyparr`) at load time
+/// rather than silently granting access via a method the authenticator
+/// does not understand. TOML / JSON wire form is the lowercase variant name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMethod {
+    /// Ed25519 public-key authentication.
+    Keypair,
+    /// `WebAuthn` / FIDO2 passkey.
+    Passkey,
+    /// System-level authentication (e.g. peer UID over the kernel socket).
+    System,
+}
+
 /// Authentication configuration for a principal.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AuthConfig {
-    /// Accepted authentication methods.
-    ///
-    /// Each entry must be a member of [`ALLOWED_AUTH_METHODS`].
+    /// Accepted authentication methods. Serde rejects unknown variants.
     #[serde(default)]
-    pub methods: Vec<String>,
+    pub methods: Vec<AuthMethod>,
 
     /// Public keys bound to this principal (encoding TBD; see Layer 5).
     #[serde(default)]
@@ -311,7 +318,7 @@ mod tests {
             enabled: false,
             groups: vec!["admins".into(), "ops_team".into()],
             auth: AuthConfig {
-                methods: vec!["keypair".into(), "passkey".into()],
+                methods: vec![AuthMethod::Keypair, AuthMethod::Passkey],
                 public_keys: vec!["ed25519:AAAA".into()],
             },
             network: NetworkConfig {

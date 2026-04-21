@@ -3,6 +3,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{PrincipalProfile, ProfileError, ProfileResult};
 use crate::dirs::PrincipalHome;
@@ -74,6 +75,11 @@ impl PrincipalProfile {
     }
 }
 
+/// Per-process monotonic counter disambiguating concurrent tmp filenames.
+/// PID alone is not enough — two threads in the same daemon calling `save`
+/// would race on the same tmp path and corrupt each other's writes.
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn write_atomic(path: &Path, data: &[u8]) -> ProfileResult<()> {
     let parent = path.parent().ok_or_else(|| {
         ProfileError::Io(io::Error::new(
@@ -88,8 +94,11 @@ fn write_atomic(path: &Path, data: &[u8]) -> ProfileResult<()> {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
 
-        // Same-filesystem temp sibling so `rename` is atomic.
-        let tmp_path = path.with_extension(format!("toml.tmp.{}", std::process::id()));
+        // Same-filesystem temp sibling so `rename` is atomic. PID + monotonic
+        // counter → unique per call across threads within a process and
+        // across processes sharing the directory.
+        let seq = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp_path = path.with_extension(format!("toml.tmp.{}.{seq}", std::process::id()));
         let mut f = fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -172,6 +181,29 @@ mod tests {
         fs::write(&path, "enabled = true\nenableed = true\n").unwrap();
         let err = PrincipalProfile::load(&home).unwrap_err();
         assert!(matches!(err, ProfileError::Parse(_)), "got: {err:?}");
+    }
+
+    #[test]
+    fn load_rejects_unknown_auth_method_variant() {
+        // Enum variant typo (`passky`) must fail loudly at parse time.
+        let (_d, home) = scratch_home();
+        let path = PrincipalProfile::path_for(&home);
+        fs::write(&path, "[auth]\nmethods = [\"passky\"]\n").unwrap();
+        let err = PrincipalProfile::load(&home).unwrap_err();
+        assert!(matches!(err, ProfileError::Parse(_)), "got: {err:?}");
+    }
+
+    #[test]
+    fn load_accepts_known_auth_method_variants() {
+        let (_d, home) = scratch_home();
+        let path = PrincipalProfile::path_for(&home);
+        fs::write(
+            &path,
+            "[auth]\nmethods = [\"keypair\", \"passkey\", \"system\"]\n",
+        )
+        .unwrap();
+        let loaded = PrincipalProfile::load(&home).unwrap();
+        assert_eq!(loaded.auth.methods.len(), 3);
     }
 
     #[test]
