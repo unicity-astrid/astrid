@@ -186,12 +186,30 @@ impl sys::Host for HostState {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
 
-        if let Some(log_file) = log_file {
+        // Try the per-capsule log file first. If it's not available, or the
+        // mutex is poisoned (panic in a prior log writer), emit a warning and
+        // fall back to the tracing subscriber so the message still lands.
+        let wrote_to_file = if let Some(log_file) = log_file {
             use std::io::Write;
-            if let Ok(mut f) = log_file.lock() {
-                let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+            match log_file.lock() {
+                Ok(mut f) => {
+                    let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+                    true
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        capsule = %capsule_id,
+                        error = %e,
+                        "capsule log mutex poisoned; falling back to tracing subscriber"
+                    );
+                    false
+                },
             }
         } else {
+            false
+        };
+
+        if !wrote_to_file {
             match level {
                 LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
                 LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
@@ -426,5 +444,31 @@ mod log_chain_tests {
         let bob = std::fs::read_to_string(&bob_path).unwrap();
         assert!(alice.contains("alice-msg") && !alice.contains("bob-msg"));
         assert!(bob.contains("bob-msg") && !bob.contains("alice-msg"));
+    }
+
+    #[tokio::test]
+    async fn log_survives_poisoned_mutex_without_dropping_message() {
+        // If a prior writer panicked holding the log mutex, subsequent writes
+        // must not silently vanish — they fall back to the tracing subscriber
+        // after a warning. Asserted by exercising the non-panicking fallback
+        // path: a poisoned lock must not cause `log()` itself to panic.
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("poisoned.log");
+        let log_file = open_log(&log_path);
+
+        // Poison the mutex by panicking inside a `lock()`.
+        let poisoner = Arc::clone(&log_file);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        })
+        .join();
+        assert!(log_file.is_poisoned(), "precondition: mutex is poisoned");
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(log_file);
+
+        // Must not panic; must not silently drop (it warns and tracing-fallbacks).
+        state.log(LogLevel::Error, "post-poison line".into());
     }
 }
