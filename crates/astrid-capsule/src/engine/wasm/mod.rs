@@ -237,25 +237,32 @@ struct PrincipalVfsBundle {
 /// [`PrincipalMount`]. Returns `None` if `root` does not exist or the VFS
 /// registration fails.
 ///
+/// The stored `PrincipalMount.root` is canonicalized so it matches the
+/// symlink-resolved paths that `host/fs.rs::resolve_physical_absolute`
+/// produces for security-gate checks. On macOS this matters: tempdirs under
+/// `/tmp/...` canonicalize to `/private/tmp/...`, and a non-canonical mount
+/// root would cause `Path::starts_with` comparisons in the gate to fail.
+///
 /// Callers must be holding a tokio runtime handle
 /// (`tokio::runtime::Handle::current()`).
 pub(crate) fn mount_dir(root: &std::path::Path) -> Option<PrincipalMount> {
     if !root.exists() {
         return None;
     }
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let vfs = astrid_vfs::HostVfs::new();
     let handle = astrid_capabilities::DirHandle::new();
     match tokio::runtime::Handle::current()
-        .block_on(async { vfs.register_dir(handle.clone(), root.to_path_buf()).await })
+        .block_on(async { vfs.register_dir(handle.clone(), canonical.clone()).await })
     {
         Ok(()) => Some(PrincipalMount {
-            root: root.to_path_buf(),
+            root: canonical,
             vfs: Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>,
             handle,
         }),
         Err(e) => {
             tracing::warn!(
-                root = %root.display(),
+                root = %canonical.display(),
                 error = %e,
                 "failed to register principal VFS; denying scheme access",
             );
@@ -1696,12 +1703,15 @@ mod tests {
         let alice_root = tmp.path().join("home/alice");
         let ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
         ph.ensure().unwrap();
+        // `mount_dir` canonicalizes (resolves /tmp -> /private/tmp on macOS),
+        // so compare against the canonical form.
+        let alice_canonical = alice_root.canonicalize().unwrap();
 
         let bundle = build_bundle_async_safe(ph).await;
         let home = bundle.home.as_ref().expect("home mount present");
-        assert_eq!(home.root, alice_root);
+        assert_eq!(home.root, alice_canonical);
         let tmp_mount = bundle.tmp.as_ref().expect("tmp mount present");
-        assert_eq!(tmp_mount.root, alice_root.join(".local").join("tmp"));
+        assert_eq!(tmp_mount.root, alice_canonical.join(".local").join("tmp"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1713,6 +1723,8 @@ mod tests {
         let bob_ph = astrid_core::dirs::PrincipalHome::from_path(&bob_root);
         alice_ph.ensure().unwrap();
         bob_ph.ensure().unwrap();
+        let alice_canonical = alice_root.canonicalize().unwrap();
+        let bob_canonical = bob_root.canonicalize().unwrap();
 
         let alice_bundle = build_bundle_async_safe(alice_ph).await;
         let bob_bundle = build_bundle_async_safe(bob_ph).await;
@@ -1723,8 +1735,8 @@ mod tests {
             alice_home, bob_home,
             "distinct principals, distinct home roots"
         );
-        assert_eq!(alice_home, &alice_root);
-        assert_eq!(bob_home, &bob_root);
+        assert_eq!(alice_home, &alice_canonical);
+        assert_eq!(bob_home, &bob_canonical);
 
         // Each principal's `home://note.txt` must land under their own root.
         std::fs::write(alice_home.join("note.txt"), b"alice").unwrap();
