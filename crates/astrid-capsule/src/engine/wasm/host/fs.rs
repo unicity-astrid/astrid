@@ -233,7 +233,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_read(&pid, &p, home.as_deref()).await
@@ -268,7 +268,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_write(&pid, &p, home.as_deref()).await
@@ -301,7 +301,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_read(&pid, &p, home.as_deref()).await
@@ -336,7 +336,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_read(&pid, &p, home.as_deref()).await
@@ -375,7 +375,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_write(&pid, &p, home.as_deref()).await
@@ -408,7 +408,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_read(&pid, &p, home.as_deref()).await
@@ -461,7 +461,7 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
-            let home = self.effective_home().map(|m| m.root.clone());
+            let home = self.effective_home_root_buf();
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
                     gate.check_file_write(&pid, &p, home.as_deref()).await

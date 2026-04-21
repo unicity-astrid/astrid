@@ -53,7 +53,6 @@ use crate::security::CapsuleSecurityGate;
 /// at `root`. They must always be installed and cleared as a unit, so callers
 /// cannot accidentally pair an invocation-scoped VFS with a load-time handle
 /// (which would break capability confinement).
-#[derive(Clone)]
 pub struct PrincipalMount {
     /// Canonical physical directory this mount is rooted at.
     pub root: PathBuf,
@@ -338,6 +337,15 @@ impl HostState {
     #[must_use]
     pub fn effective_tmp(&self) -> Option<&PrincipalMount> {
         self.invocation_tmp.as_ref().or(self.tmp.as_ref())
+    }
+
+    /// Owned copy of the effective home root path.
+    ///
+    /// Convenience for host fs functions that need to pass the principal
+    /// home into a security-gate check running inside an `async move` block.
+    #[must_use]
+    pub fn effective_home_root_buf(&self) -> Option<PathBuf> {
+        self.effective_home().map(|m| m.root.clone())
     }
 }
 

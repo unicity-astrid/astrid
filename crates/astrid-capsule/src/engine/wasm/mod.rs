@@ -378,10 +378,10 @@ impl ExecutionEngine for WasmEngine {
 
         // Inject the kernel socket path so capsules can discover it via
         // `sys::socket_path()` instead of hardcoding.
-        if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
+        if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve() {
             wasm_config.insert(
                 "ASTRID_SOCKET_PATH".to_string(),
-                serde_json::Value::String(home.socket_path().to_string_lossy().into_owned()),
+                serde_json::Value::String(astrid_home.socket_path().to_string_lossy().into_owned()),
             );
         }
 
@@ -506,9 +506,10 @@ impl ExecutionEngine for WasmEngine {
                 ));
 
                 // Set up /tmp mount backed by the principal's .local/tmp/ directory.
-                let tmp_mount: Option<PrincipalMount> =
-                    astrid_core::dirs::AstridHome::resolve().ok().and_then(|h| {
-                        let dir = h.principal_home(&ctx.principal).tmp_dir();
+                let tmp_mount: Option<PrincipalMount> = astrid_core::dirs::AstridHome::resolve()
+                    .ok()
+                    .and_then(|astrid_home| {
+                        let dir = astrid_home.principal_home(&ctx.principal).tmp_dir();
                         if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
                             mount_dir(&dir)
                         } else {
@@ -518,8 +519,9 @@ impl ExecutionEngine for WasmEngine {
 
                 // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
                 // Prunes logs older than 7 days on each capsule load.
-                let capsule_log = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-                    let ph = home.principal_home(&ctx.principal);
+                let capsule_log = if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve()
+                {
+                    let ph = astrid_home.principal_home(&ctx.principal);
                     let capsule_log_dir = ph.log_dir().join(&manifest.package.name);
                     let _ = std::fs::create_dir_all(&capsule_log_dir);
                     prune_old_logs(&capsule_log_dir, 7);
