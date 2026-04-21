@@ -14,6 +14,8 @@ use crate::manifest::CapsuleManifest;
 pub mod bindings;
 pub mod host;
 pub mod host_state;
+#[cfg(test)]
+mod test_fixtures;
 
 /// Today's date as `YYYY-MM-DD` for daily log rotation.
 fn today_date_string() -> String {
@@ -287,6 +289,54 @@ fn build_principal_vfs_bundle(principal: &astrid_core::PrincipalId) -> Principal
     build_principal_vfs_bundle_at(&astrid_home.principal_home(principal))
 }
 
+/// Open (creating the log dir if needed) the daily-rotated log file for
+/// `capsule_name` under `principal`'s home. Returns `None` if the astrid home
+/// can't be resolved, the principal's home directory doesn't exist, or the
+/// file can't be opened.
+///
+/// When `prune` is true, deletes rotated logs older than 7 days before
+/// opening. Pruning is an O(N) directory scan and must only be requested on
+/// the load-time path — never from [`WasmEngine::invoke_interceptor`], which
+/// runs on the async hot path.
+///
+/// Mirrors the registration gate from [`build_principal_vfs_bundle`]: an
+/// invocation for an unregistered principal yields `None` instead of
+/// auto-creating the attacker's home tree.
+fn open_capsule_log(
+    principal: &astrid_core::PrincipalId,
+    capsule_name: &str,
+    prune: bool,
+) -> Option<Arc<Mutex<std::fs::File>>> {
+    let astrid_home = astrid_core::dirs::AstridHome::resolve().ok()?;
+    open_capsule_log_at(&astrid_home.principal_home(principal), capsule_name, prune)
+}
+
+/// Test-friendly core of [`open_capsule_log`]: open a log file under a
+/// fully-resolved [`PrincipalHome`], without touching any environment.
+fn open_capsule_log_at(
+    ph: &astrid_core::dirs::PrincipalHome,
+    capsule_name: &str,
+    prune: bool,
+) -> Option<Arc<Mutex<std::fs::File>>> {
+    // Registration gate: don't auto-create a principal home directory for
+    // an unregistered principal.
+    if !ph.root().exists() {
+        return None;
+    }
+    let log_dir = ph.log_dir().join(capsule_name);
+    std::fs::create_dir_all(&log_dir).ok()?;
+    if prune {
+        prune_old_logs(&log_dir, 7);
+    }
+    let today = today_date_string();
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join(format!("{today}.log")))
+        .ok()
+        .map(|f| Arc::new(Mutex::new(f)))
+}
+
 /// Test-friendly core of [`build_principal_vfs_bundle`]: build a bundle from
 /// a fully-resolved [`PrincipalHome`], without touching any environment.
 ///
@@ -525,23 +575,10 @@ impl ExecutionEngine for WasmEngine {
                     });
 
                 // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
-                // Prunes logs older than 7 days on each capsule load.
-                let capsule_log = if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve()
-                {
-                    let ph = astrid_home.principal_home(&ctx.principal);
-                    let capsule_log_dir = ph.log_dir().join(&manifest.package.name);
-                    let _ = std::fs::create_dir_all(&capsule_log_dir);
-                    prune_old_logs(&capsule_log_dir, 7);
-                    let today = today_date_string();
-                    std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(capsule_log_dir.join(format!("{today}.log")))
-                        .ok()
-                        .map(|f| Arc::new(std::sync::Mutex::new(f)))
-                } else {
-                    None
-                };
+                // Prunes logs older than 7 days on each capsule load — load is
+                // one-shot so the O(N) scan is fine here. Per-invocation re-opens
+                // (see `invoke_interceptor`) do NOT prune — hot path.
+                let capsule_log = open_capsule_log(&ctx.principal, &manifest.package.name, true);
 
                 let secret_store = astrid_storage::build_secret_store(
                     &manifest.package.name,
@@ -569,6 +606,8 @@ impl ExecutionEngine for WasmEngine {
                     tmp: tmp_mount,
                     invocation_home: None,
                     invocation_tmp: None,
+                    invocation_secret_store: None,
+                    invocation_capsule_log: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -979,9 +1018,43 @@ impl ExecutionEngine for WasmEngine {
             // `register_dir` are lightweight; caching can be retrofitted later
             // behind the same accessors if profiling shows it matters.
             if let Some(ref p) = invocation_principal {
-                let bundle = build_principal_vfs_bundle(p);
-                state.invocation_home = bundle.home;
-                state.invocation_tmp = bundle.tmp;
+                // VFS/log/secret builders below do blocking I/O (VFS
+                // `register_dir` via `block_on`, log `create_dir_all` + `open`,
+                // keychain probe inside `build_secret_store`). `invoke_interceptor`
+                // is called from async tasks (see `trigger_hook` fan-out), so
+                // wrap the blocking work in `block_in_place` to avoid stalling
+                // the tokio worker. Pruning is NOT performed here — that's
+                // load-time only (O(N) scan).
+                tokio::task::block_in_place(|| {
+                    let bundle = build_principal_vfs_bundle(p);
+                    state.invocation_home = bundle.home;
+                    state.invocation_tmp = bundle.tmp;
+
+                    // Per-invocation capsule log: opens (or silently falls
+                    // back to None for unregistered principals) under the
+                    // invoking principal's home. Host `astrid_log` routes
+                    // through `effective_capsule_log()`.
+                    state.invocation_capsule_log =
+                        open_capsule_log(p, state.capsule_id.as_str(), false);
+
+                    // Per-invocation secret store: built against the
+                    // invocation KV scope so both KV and keychain backends
+                    // are principal-isolated. `build_secret_store`'s
+                    // capsule_id is the keychain service name; combining it
+                    // with the principal keeps keychain entries scoped even
+                    // when the same capsule serves multiple principals.
+                    // If the invocation KV scope couldn't be built we leave
+                    // this as `None`, which causes `effective_secret_store`
+                    // to fall back to the load-time store — same
+                    // degrade-safely behavior as the KV scoping above.
+                    state.invocation_secret_store = state.invocation_kv.as_ref().map(|kv| {
+                        astrid_storage::build_secret_store(
+                            &format!("{}:{}", state.capsule_id, p),
+                            kv.clone(),
+                            state.runtime_handle.clone(),
+                        )
+                    });
+                });
             }
         }
 
@@ -1016,6 +1089,8 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_kv = None;
             state.invocation_home = None;
             state.invocation_tmp = None;
+            state.invocation_secret_store = None;
+            state.invocation_capsule_log = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1130,6 +1205,8 @@ pub fn run_lifecycle(
         tmp: None,
         invocation_home: None,
         invocation_tmp: None,
+        invocation_secret_store: None,
+        invocation_capsule_log: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,
@@ -1746,5 +1823,146 @@ mod tests {
             b"alice"
         );
         assert_eq!(std::fs::read(bob_home.join("note.txt")).unwrap(), b"bob");
+    }
+
+    // ---------------------------------------------------------------------
+    // open_capsule_log_at: per-invocation log re-scoping (#661)
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn open_capsule_log_returns_none_for_unregistered_principal() {
+        // No principal home directory exists on disk — fail-closed: return
+        // `None` instead of auto-creating the attacker's home tree.
+        let tmp = tempfile::tempdir().unwrap();
+        let ph = astrid_core::dirs::PrincipalHome::from_path(tmp.path().join("home/mallory"));
+        assert!(open_capsule_log_at(&ph, "some-capsule", false).is_none());
+        assert!(open_capsule_log_at(&ph, "some-capsule", true).is_none());
+        assert!(
+            !ph.root().exists(),
+            "must not auto-mkdir an unregistered principal's home"
+        );
+    }
+
+    #[test]
+    fn open_capsule_log_opens_file_under_principal_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_root = tmp.path().join("home/alice");
+        let ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
+        ph.ensure().unwrap();
+
+        let file = open_capsule_log_at(&ph, "my-capsule", false).expect("open ok");
+
+        // Physical file must live under `ph.log_dir()/my-capsule/{today}.log`.
+        let log_dir = ph.log_dir().join("my-capsule");
+        assert!(log_dir.is_dir(), "log dir auto-created under alice's tree");
+        let today = today_date_string();
+        let expected = log_dir.join(format!("{today}.log"));
+        assert!(
+            expected.is_file(),
+            "today's log file opened at {expected:?}"
+        );
+
+        // Writes go to the expected physical file.
+        use std::io::Write;
+        {
+            let mut f = file.lock().unwrap();
+            writeln!(f, "hello-alice").unwrap();
+            f.flush().unwrap();
+        }
+        let contents = std::fs::read_to_string(&expected).unwrap();
+        assert!(contents.contains("hello-alice"));
+    }
+
+    #[test]
+    fn open_capsule_log_isolates_distinct_principals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_root = tmp.path().join("home/alice");
+        let bob_root = tmp.path().join("home/bob");
+        let alice_ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
+        let bob_ph = astrid_core::dirs::PrincipalHome::from_path(&bob_root);
+        alice_ph.ensure().unwrap();
+        bob_ph.ensure().unwrap();
+
+        let alice_log = open_capsule_log_at(&alice_ph, "shared-capsule", false).unwrap();
+        let bob_log = open_capsule_log_at(&bob_ph, "shared-capsule", false).unwrap();
+
+        use std::io::Write;
+        writeln!(alice_log.lock().unwrap(), "alice-line").unwrap();
+        writeln!(bob_log.lock().unwrap(), "bob-line").unwrap();
+
+        let today = today_date_string();
+        let alice_file = alice_ph
+            .log_dir()
+            .join("shared-capsule")
+            .join(format!("{today}.log"));
+        let bob_file = bob_ph
+            .log_dir()
+            .join("shared-capsule")
+            .join(format!("{today}.log"));
+
+        let alice_contents = std::fs::read_to_string(&alice_file).unwrap();
+        let bob_contents = std::fs::read_to_string(&bob_file).unwrap();
+        assert!(alice_contents.contains("alice-line"));
+        assert!(!alice_contents.contains("bob-line"));
+        assert!(bob_contents.contains("bob-line"));
+        assert!(!bob_contents.contains("alice-line"));
+    }
+
+    #[test]
+    fn open_capsule_log_with_prune_does_not_delete_todays_file() {
+        // Sanity: pruning is on a 7-day cutoff, so today's freshly-written
+        // file survives. Guards against regressions that'd rotate too aggressively.
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_root = tmp.path().join("home/alice");
+        let ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
+        ph.ensure().unwrap();
+
+        // First call prunes and opens (load-time path).
+        let f1 = open_capsule_log_at(&ph, "c", true).unwrap();
+        use std::io::Write;
+        writeln!(f1.lock().unwrap(), "pre-prune line").unwrap();
+        f1.lock().unwrap().flush().unwrap();
+        drop(f1);
+
+        // Second call also prunes — should not unlink today's file.
+        let f2 = open_capsule_log_at(&ph, "c", true).unwrap();
+        drop(f2);
+        let today = today_date_string();
+        let path = ph.log_dir().join("c").join(format!("{today}.log"));
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("pre-prune line"));
+    }
+
+    // ---------------------------------------------------------------------
+    // civil_from_days: hand-rolled civil-date algorithm. A regression here
+    // misroutes every log file, so pin it to a handful of known dates.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn civil_from_days_epoch() {
+        // Day 0 since Unix epoch is 1970-01-01.
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn civil_from_days_known_dates() {
+        // A leap-day, a month boundary, a year boundary, a far-future date.
+        assert_eq!(civil_from_days(59), (1970, 3, 1)); // 1970-03-01 (Jan + Feb = 59 days)
+        assert_eq!(civil_from_days(365), (1971, 1, 1)); // 1970 has 365 days
+        assert_eq!(civil_from_days(11_016), (2000, 2, 29)); // Y2K leap day
+        assert_eq!(civil_from_days(20_564), (2026, 4, 21)); // issue-reference date
+    }
+
+    #[test]
+    fn today_date_string_matches_civil_from_days() {
+        // Cross-check the format: the string must match `civil_from_days`
+        // applied to the same epoch-seconds value.
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let days = secs / 86400;
+        let (y, m, d) = civil_from_days(days as i64);
+        assert_eq!(today_date_string(), format!("{y:04}-{m:02}-{d:02}"));
     }
 }

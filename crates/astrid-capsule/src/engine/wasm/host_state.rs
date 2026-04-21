@@ -128,6 +128,20 @@ pub struct HostState {
     /// Per-invocation tmp mount for the calling principal. Same lifecycle
     /// as `invocation_home`.
     pub invocation_tmp: Option<PrincipalMount>,
+    /// Per-invocation secret store scoped to the calling principal.
+    ///
+    /// Set by `WasmEngine::invoke_interceptor` when the IPC message's
+    /// principal differs from `self.principal`. When set, overrides
+    /// `secret_store` so `has_secret` and future secret host fns scope
+    /// reads/writes to the invoking principal. Cleared on exit.
+    pub invocation_secret_store: Option<Arc<dyn SecretStore>>,
+    /// Per-invocation capsule log file scoped to the calling principal.
+    ///
+    /// Same lifecycle as [`invocation_secret_store`](Self::invocation_secret_store).
+    /// When set, `astrid_log` writes to the invoking principal's
+    /// `~/.astrid/home/{principal}/.local/log/{capsule}/{date}.log` instead
+    /// of the capsule owner's.
+    pub invocation_capsule_log: Option<Arc<std::sync::Mutex<std::fs::File>>>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -320,7 +334,42 @@ impl HostState {
     /// the capsule's default `kv` store.
     #[must_use]
     pub fn effective_kv(&self) -> &ScopedKvStore {
+        #[cfg(debug_assertions)]
+        self.debug_assert_invocation_field_set(self.invocation_kv.is_some(), "invocation_kv");
         self.invocation_kv.as_ref().unwrap_or(&self.kv)
+    }
+
+    /// Debug-only consistency check: when the caller's principal differs from
+    /// the capsule owner's, the corresponding `invocation_*` field **must** be
+    /// populated. Otherwise the accessor silently returns the owner's resource
+    /// and the invoking principal's reads/writes leak to the owner's scope.
+    ///
+    /// In practice the setup in [`WasmEngine::invoke_interceptor`] guarantees
+    /// `invocation_kv` and `invocation_secret_store` are populated whenever
+    /// the principal mismatches (the only failure path is
+    /// `ScopedKvStore::with_namespace` rejecting an empty/null-byte namespace,
+    /// which our format string never produces). This assertion catches any
+    /// regression that breaks that invariant in debug builds.
+    ///
+    /// Not applied to `invocation_home` / `invocation_tmp` / `invocation_capsule_log`:
+    /// those legitimately stay `None` for unregistered principals (the VFS
+    /// bundle registration gate and log-open registration gate).
+    #[cfg(debug_assertions)]
+    fn debug_assert_invocation_field_set(&self, is_set: bool, field_name: &str) {
+        let principal_mismatches = self
+            .caller_context
+            .as_ref()
+            .and_then(|m| m.principal.as_deref())
+            .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+            .is_some_and(|p| p != self.principal);
+        if principal_mismatches && !is_set {
+            debug_assert!(
+                false,
+                "invocation principal differs from capsule owner ({owner}) but {field_name} is None — \
+                 effective_* accessor would fall back to the owner's resource, leaking reads/writes",
+                owner = self.principal,
+            );
+        }
     }
 
     /// Return the effective home mount for the current invocation.
@@ -346,6 +395,33 @@ impl HostState {
     #[must_use]
     pub fn effective_home_root_buf(&self) -> Option<PathBuf> {
         self.effective_home().map(|m| m.root.clone())
+    }
+
+    /// Return the effective secret store for the current invocation.
+    ///
+    /// Prefers `invocation_secret_store` (set when serving a different
+    /// principal) over the load-time `secret_store`.
+    #[must_use]
+    pub fn effective_secret_store(&self) -> &Arc<dyn SecretStore> {
+        #[cfg(debug_assertions)]
+        self.debug_assert_invocation_field_set(
+            self.invocation_secret_store.is_some(),
+            "invocation_secret_store",
+        );
+        self.invocation_secret_store
+            .as_ref()
+            .unwrap_or(&self.secret_store)
+    }
+
+    /// Return the effective capsule log file for the current invocation.
+    ///
+    /// Same precedence as [`effective_secret_store`](Self::effective_secret_store).
+    /// Returns `None` if neither the invocation nor load-time log is open.
+    #[must_use]
+    pub fn effective_capsule_log(&self) -> Option<&Arc<std::sync::Mutex<std::fs::File>>> {
+        self.invocation_capsule_log
+            .as_ref()
+            .or(self.capsule_log.as_ref())
     }
 }
 
@@ -374,424 +450,5 @@ impl std::fmt::Debug for HostState {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn host_state_debug_format() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
-        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
-            kv.clone(),
-            rt.handle().clone(),
-        ));
-
-        let state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt.handle().clone(),
-            has_uplink_capability: false,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: secret_store.clone(),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
-
-        let debug = format!("{state:?}");
-        assert!(debug.contains("test"));
-        assert!(debug.contains("has_security"));
-        assert!(debug.contains("has_inbound_tx"));
-        assert!(debug.contains("registered_uplinks"));
-    }
-
-    #[test]
-    fn register_uplink_accumulates() {
-        use crate::capsule::CapsuleId;
-        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
-        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
-            kv.clone(),
-            rt.handle().clone(),
-        ));
-
-        let mut state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt.handle().clone(),
-            has_uplink_capability: true,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: secret_store.clone(),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
-
-        assert!(state.uplinks().is_empty());
-
-        let desc = UplinkDescriptor::builder("test-conn", "discord")
-            .source(UplinkSource::Wasm {
-                capsule_id: "test".into(),
-            })
-            .capabilities(UplinkCapabilities::receive_only())
-            .profile(UplinkProfile::Chat)
-            .build();
-        state.register_uplink(desc).unwrap();
-
-        assert_eq!(state.uplinks().len(), 1);
-        assert_eq!(state.uplinks()[0].name, "test-conn");
-    }
-
-    #[test]
-    fn set_inbound_tx_stores_sender() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
-        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
-            kv.clone(),
-            rt.handle().clone(),
-        ));
-
-        let mut state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt.handle().clone(),
-            has_uplink_capability: false,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: secret_store.clone(),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
-
-        assert!(state.inbound_tx.is_none());
-
-        let (tx, _rx) = mpsc::channel(256);
-        state.set_inbound_tx(tx);
-
-        assert!(state.inbound_tx.is_some());
-    }
-
-    #[test]
-    fn register_uplink_rejects_at_limit() {
-        use crate::capsule::CapsuleId;
-        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
-        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
-            kv.clone(),
-            rt.handle().clone(),
-        ));
-
-        let mut state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt.handle().clone(),
-            has_uplink_capability: true,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: secret_store.clone(),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
-
-        for i in 0..MAX_UPLINKS_PER_CAPSULE {
-            let desc = UplinkDescriptor::builder(format!("conn-{i}"), "discord")
-                .source(UplinkSource::Wasm {
-                    capsule_id: "test".into(),
-                })
-                .capabilities(UplinkCapabilities::receive_only())
-                .profile(UplinkProfile::Chat)
-                .build();
-            assert!(state.register_uplink(desc).is_ok());
-        }
-
-        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
-
-        let extra = UplinkDescriptor::builder("over-limit", "discord")
-            .source(UplinkSource::Wasm {
-                capsule_id: "test".into(),
-            })
-            .capabilities(UplinkCapabilities::receive_only())
-            .profile(UplinkProfile::Chat)
-            .build();
-        assert!(state.register_uplink(extra).is_err());
-        assert_eq!(state.uplinks().len(), MAX_UPLINKS_PER_CAPSULE);
-    }
-
-    #[test]
-    fn register_uplink_rejects_duplicate_name_and_platform() {
-        use crate::capsule::CapsuleId;
-        use astrid_core::uplink::{UplinkCapabilities, UplinkProfile, UplinkSource};
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-        let store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(store, "capsule:test").unwrap();
-        let secret_store: Arc<dyn SecretStore> = Arc::new(astrid_storage::KvSecretStore::new(
-            kv.clone(),
-            rt.handle().clone(),
-        ));
-
-        let mut state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test"),
-            workspace_root: PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt.handle().clone(),
-            has_uplink_capability: true,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: std::collections::HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: secret_store.clone(),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
-
-        let desc1 = UplinkDescriptor::builder("my-conn", "discord")
-            .source(UplinkSource::Wasm {
-                capsule_id: "test".into(),
-            })
-            .capabilities(UplinkCapabilities::receive_only())
-            .profile(UplinkProfile::Chat)
-            .build();
-        assert!(state.register_uplink(desc1).is_ok());
-
-        let desc2 = UplinkDescriptor::builder("my-conn", "discord")
-            .source(UplinkSource::Wasm {
-                capsule_id: "test".into(),
-            })
-            .capabilities(UplinkCapabilities::receive_only())
-            .profile(UplinkProfile::Chat)
-            .build();
-        let err = state.register_uplink(desc2).unwrap_err();
-        assert!(err.contains("duplicate"), "expected duplicate error: {err}");
-
-        let desc3 = UplinkDescriptor::builder("my-conn", "telegram")
-            .source(UplinkSource::Wasm {
-                capsule_id: "test".into(),
-            })
-            .capabilities(UplinkCapabilities::receive_only())
-            .profile(UplinkProfile::Chat)
-            .build();
-        assert!(state.register_uplink(desc3).is_ok());
-        assert_eq!(state.uplinks().len(), 2);
-    }
-}
+#[path = "host_state_tests.rs"]
+mod tests;

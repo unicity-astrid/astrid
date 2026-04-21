@@ -169,17 +169,11 @@ impl sys::Host for HostState {
     }
 
     fn log(&mut self, level: LogLevel, message: String) {
-        // Single extraction: get everything we need from self before any
-        // filesystem I/O (critical for cross-principal path which does
-        // create_dir_all + open).
         let capsule_id = self.capsule_id.as_str().to_owned();
-        let invocation_principal = self
-            .caller_context
-            .as_ref()
-            .and_then(|msg| msg.principal.as_deref())
-            .and_then(|p| astrid_core::PrincipalId::new(p).ok())
-            .filter(|p| *p != self.principal);
-        let log_file = self.capsule_log.clone();
+        // Routes to the invoking principal's log when `invoke_interceptor`
+        // installed one (cross-principal invocation), otherwise to the
+        // capsule owner's load-time log, otherwise to the tracing subscriber.
+        let log_file = self.effective_capsule_log().cloned();
 
         let level_str = match level {
             LogLevel::Trace => "TRACE",
@@ -192,31 +186,30 @@ impl sys::Host for HostState {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
 
-        if let Some(ref inv_principal) = invocation_principal {
-            // Cross-principal: open target log file, write, close.
-            // No FD caching — append-mode open() is cheap, avoids leaks
-            // in 1000-user deployments. OS filesystem cache handles the inode.
-            if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve() {
-                let ph = astrid_home.principal_home(inv_principal);
-                let log_dir = ph.log_dir().join(&capsule_id);
-                let _ = std::fs::create_dir_all(&log_dir);
-                let today = crate::engine::wasm::today_date_string();
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(log_dir.join(format!("{today}.log")))
-                {
-                    use std::io::Write;
-                    let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
-                }
-            }
-        } else if let Some(ref log_file) = log_file {
-            // Default principal: use pre-opened log file (fast path).
+        // Try the per-capsule log file first. If it's not available, or the
+        // mutex is poisoned (panic in a prior log writer), emit a warning and
+        // fall back to the tracing subscriber so the message still lands.
+        let wrote_to_file = if let Some(log_file) = log_file {
             use std::io::Write;
-            if let Ok(mut f) = log_file.lock() {
-                let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+            match log_file.lock() {
+                Ok(mut f) => {
+                    let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
+                    true
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        capsule = %capsule_id,
+                        error = %e,
+                        "capsule log mutex poisoned; falling back to tracing subscriber"
+                    );
+                    false
+                },
             }
         } else {
+            false
+        };
+
+        if !wrote_to_file {
             match level {
                 LogLevel::Trace => tracing::trace!(plugin = %capsule_id, "{message}"),
                 LogLevel::Debug => tracing::debug!(plugin = %capsule_id, "{message}"),
@@ -291,5 +284,115 @@ impl sys::Host for HostState {
         };
 
         Ok(CapabilityCheckResponse { allowed })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chain tests: drive `sys::Host::log` synchronously on a HostState with
+// manually-installed invocation fields, assert physical log file lives under
+// the invoking principal's dir. Mirrors the pattern established in
+// `host/fs.rs` for per-invocation VFS re-scoping (#549).
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod log_chain_tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::engine::wasm::bindings::astrid::capsule::sys::Host as SysHost;
+    use crate::engine::wasm::test_fixtures::{minimal_host_state, open_log};
+
+    /// Drive `log()` on a minimal HostState — no security gate, no VFS
+    /// mounts, only the fields `log()` consults.
+    fn make_host_state() -> crate::engine::wasm::host_state::HostState {
+        minimal_host_state(tokio::runtime::Handle::current())
+    }
+
+    #[tokio::test]
+    async fn log_routes_to_invocation_file_when_installed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let owner_log_path = tmp.path().join("owner.log");
+        let alice_log_path = tmp.path().join("alice.log");
+        let owner_log = open_log(&owner_log_path);
+        let alice_log = open_log(&alice_log_path);
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(owner_log);
+        state.invocation_capsule_log = Some(alice_log);
+
+        state.log(LogLevel::Info, "hello from alice".into());
+
+        let alice_contents = std::fs::read_to_string(&alice_log_path).unwrap();
+        let owner_contents = std::fs::read_to_string(&owner_log_path).unwrap();
+        assert!(alice_contents.contains("hello from alice"));
+        assert!(
+            !owner_contents.contains("hello from alice"),
+            "owner log must not receive cross-principal write"
+        );
+    }
+
+    #[tokio::test]
+    async fn log_falls_back_to_load_time_file_when_no_invocation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let owner_log_path = tmp.path().join("owner.log");
+        let owner_log = open_log(&owner_log_path);
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(owner_log);
+
+        state.log(LogLevel::Warn, "single-tenant line".into());
+
+        let contents = std::fs::read_to_string(&owner_log_path).unwrap();
+        assert!(contents.contains("single-tenant line"));
+        assert!(contents.contains("WARN"));
+    }
+
+    #[tokio::test]
+    async fn log_isolates_writes_across_sequential_invocations() {
+        // Same HostState, invocation log swapped between calls — each call's
+        // writes land in the file installed for that call.
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_path = tmp.path().join("alice.log");
+        let bob_path = tmp.path().join("bob.log");
+
+        let mut state = make_host_state();
+
+        state.invocation_capsule_log = Some(open_log(&alice_path));
+        state.log(LogLevel::Info, "alice-msg".into());
+        state.invocation_capsule_log = None;
+
+        state.invocation_capsule_log = Some(open_log(&bob_path));
+        state.log(LogLevel::Info, "bob-msg".into());
+        state.invocation_capsule_log = None;
+
+        let alice = std::fs::read_to_string(&alice_path).unwrap();
+        let bob = std::fs::read_to_string(&bob_path).unwrap();
+        assert!(alice.contains("alice-msg") && !alice.contains("bob-msg"));
+        assert!(bob.contains("bob-msg") && !bob.contains("alice-msg"));
+    }
+
+    #[tokio::test]
+    async fn log_survives_poisoned_mutex_without_dropping_message() {
+        // If a prior writer panicked holding the log mutex, subsequent writes
+        // must not silently vanish — they fall back to the tracing subscriber
+        // after a warning. Asserted by exercising the non-panicking fallback
+        // path: a poisoned lock must not cause `log()` itself to panic.
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("poisoned.log");
+        let log_file = open_log(&log_path);
+
+        // Poison the mutex by panicking inside a `lock()`.
+        let poisoner = Arc::clone(&log_file);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        })
+        .join();
+        assert!(log_file.is_poisoned(), "precondition: mutex is poisoned");
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(log_file);
+
+        // Must not panic; must not silently drop (it warns and tracing-fallbacks).
+        state.log(LogLevel::Error, "post-poison line".into());
     }
 }
