@@ -1930,4 +1930,37 @@ mod tests {
         let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("pre-prune line"));
     }
+
+    // ---------------------------------------------------------------------
+    // civil_from_days: hand-rolled civil-date algorithm. A regression here
+    // misroutes every log file, so pin it to a handful of known dates.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn civil_from_days_epoch() {
+        // Day 0 since Unix epoch is 1970-01-01.
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn civil_from_days_known_dates() {
+        // A leap-day, a month boundary, a year boundary, a far-future date.
+        assert_eq!(civil_from_days(59), (1970, 3, 1)); // 1970-03-01 (Jan + Feb = 59 days)
+        assert_eq!(civil_from_days(365), (1971, 1, 1)); // 1970 has 365 days
+        assert_eq!(civil_from_days(11_016), (2000, 2, 29)); // Y2K leap day
+        assert_eq!(civil_from_days(20_564), (2026, 4, 21)); // issue-reference date
+    }
+
+    #[test]
+    fn today_date_string_matches_civil_from_days() {
+        // Cross-check the format: the string must match `civil_from_days`
+        // applied to the same epoch-seconds value.
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let days = secs / 86400;
+        let (y, m, d) = civil_from_days(days as i64);
+        assert_eq!(today_date_string(), format!("{y:04}-{m:02}-{d:02}"));
+    }
 }
