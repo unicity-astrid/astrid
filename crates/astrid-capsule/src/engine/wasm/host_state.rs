@@ -46,6 +46,33 @@ pub struct InterceptorHandle {
 use crate::engine::wasm::host::process::ProcessTracker;
 use crate::security::CapsuleSecurityGate;
 
+/// A principal-scoped filesystem mount: physical root, VFS, and capability handle.
+///
+/// The three are bound together — the [`DirHandle`](astrid_capabilities::DirHandle)
+/// is confined to the specific [`Vfs`](astrid_vfs::Vfs) instance, and both are rooted
+/// at `root`. They must always be installed and cleared as a unit, so callers
+/// cannot accidentally pair an invocation-scoped VFS with a load-time handle
+/// (which would break capability confinement).
+#[derive(Clone)]
+pub struct PrincipalMount {
+    /// Canonical physical directory this mount is rooted at.
+    pub root: PathBuf,
+    /// VFS wrapping `root`. Direct [`HostVfs`](astrid_vfs::HostVfs) —
+    /// writes are permanent (no OverlayVfs CoW layer).
+    pub vfs: Arc<dyn astrid_vfs::Vfs>,
+    /// Capability handle that confines access to `root`.
+    pub handle: astrid_capabilities::DirHandle,
+}
+
+impl std::fmt::Debug for PrincipalMount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrincipalMount")
+            .field("root", &self.root)
+            .field("handle", &self.handle)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Shared state accessible to all host functions via `Store<HostState>`.
 pub struct HostState {
     /// WASI context for Component Model WASI imports (clocks, random, etc.).
@@ -72,22 +99,12 @@ pub struct HostState {
     pub vfs: Arc<dyn astrid_vfs::Vfs>,
     /// The root capability handle for the VFS.
     pub vfs_root_handle: astrid_capabilities::DirHandle,
-    /// Principal's home directory. Paths prefixed with `home://`
-    /// are resolved relative to this root.
-    pub home_root: Option<PathBuf>,
-    /// VFS instance for the principal's home directory. This is a direct
-    /// `HostVfs` — writes are permanent (no OverlayVfs CoW layer).
-    pub home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the home VFS root.
-    pub home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
-    /// Principal's tmp directory. Paths starting with `/tmp/` are resolved
-    /// relative to this root (`~/.astrid/home/{principal}/.local/tmp/`).
-    pub tmp_dir: Option<PathBuf>,
-    /// VFS instance for the principal's tmp directory. Direct `HostVfs` —
-    /// writes are permanent.
-    pub tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the tmp VFS root.
-    pub tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    /// Load-time principal home mount (`home://` paths). `None` if the
+    /// principal's home directory does not exist on disk.
+    pub home: Option<PrincipalMount>,
+    /// Load-time principal tmp mount (`/tmp/` paths, backed by
+    /// `~/.astrid/home/{principal}/.local/tmp/`). `None` if unavailable.
+    pub tmp: Option<PrincipalMount>,
     /// Concrete reference to the [`OverlayVfs`](astrid_vfs::OverlayVfs) for
     /// commit/rollback operations. `None` for non-overlay VFS configurations
     /// (e.g., tests with a plain `HostVfs`).
@@ -103,24 +120,15 @@ pub struct HostState {
     /// `invocation_kv.as_ref().unwrap_or(&kv)` to transparently scope
     /// reads/writes to the calling principal.
     pub invocation_kv: Option<ScopedKvStore>,
-    /// Per-invocation physical home directory for the calling principal.
+    /// Per-invocation home mount for the calling principal.
     ///
     /// Populated by `WasmEngine::invoke_interceptor` when the IPC message's
-    /// principal differs from `self.principal`. When set, overrides
-    /// `home_root` for scheme resolution and security gate checks. Cleared
-    /// on invocation exit.
-    pub invocation_home_root: Option<PathBuf>,
-    /// Per-invocation home VFS for the calling principal. Paired with
-    /// `invocation_home_vfs_root_handle`.
-    pub invocation_home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the per-invocation home VFS root.
-    pub invocation_home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
-    /// Per-invocation physical tmp directory for the calling principal.
-    pub invocation_tmp_dir: Option<PathBuf>,
-    /// Per-invocation tmp VFS for the calling principal.
-    pub invocation_tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    /// Capability handle for the per-invocation tmp VFS root.
-    pub invocation_tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    /// principal differs from `self.principal`. When set, overrides `home`
+    /// for scheme resolution and security gate checks. Cleared on exit.
+    pub invocation_home: Option<PrincipalMount>,
+    /// Per-invocation tmp mount for the calling principal. Same lifecycle
+    /// as `invocation_home`.
+    pub invocation_tmp: Option<PrincipalMount>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -316,65 +324,20 @@ impl HostState {
         self.invocation_kv.as_ref().unwrap_or(&self.kv)
     }
 
-    /// Return the effective physical home root for the current invocation.
+    /// Return the effective home mount for the current invocation.
     ///
-    /// Prefers `invocation_home_root` (set when serving a different principal)
-    /// over `home_root` (set at capsule load for the owning principal).
+    /// Prefers `invocation_home` (set when serving a different principal)
+    /// over `home` (set at capsule load for the owning principal).
     #[must_use]
-    pub fn effective_home_root(&self) -> Option<&std::path::Path> {
-        self.invocation_home_root
-            .as_deref()
-            .or(self.home_root.as_deref())
+    pub fn effective_home(&self) -> Option<&PrincipalMount> {
+        self.invocation_home.as_ref().or(self.home.as_ref())
     }
 
-    /// Return the effective physical tmp directory for the current invocation.
+    /// Return the effective tmp mount for the current invocation. Same
+    /// precedence as [`effective_home`](Self::effective_home).
     #[must_use]
-    pub fn effective_tmp_dir(&self) -> Option<&std::path::Path> {
-        self.invocation_tmp_dir
-            .as_deref()
-            .or(self.tmp_dir.as_deref())
-    }
-
-    /// Return the `(home VFS, home root handle)` pair for the current invocation.
-    ///
-    /// Prefers the invocation-scoped pair; otherwise falls back to the
-    /// capsule's load-time pair. The two fields are returned together so
-    /// callers cannot accidentally mix an invocation VFS with a load-time
-    /// handle (which would break capability confinement).
-    #[must_use]
-    pub fn effective_home_bundle(
-        &self,
-    ) -> Option<(&Arc<dyn astrid_vfs::Vfs>, &astrid_capabilities::DirHandle)> {
-        if let (Some(vfs), Some(handle)) = (
-            self.invocation_home_vfs.as_ref(),
-            self.invocation_home_vfs_root_handle.as_ref(),
-        ) {
-            return Some((vfs, handle));
-        }
-        match (self.home_vfs.as_ref(), self.home_vfs_root_handle.as_ref()) {
-            (Some(vfs), Some(handle)) => Some((vfs, handle)),
-            _ => None,
-        }
-    }
-
-    /// Return the `(tmp VFS, tmp root handle)` pair for the current invocation.
-    ///
-    /// See [`effective_home_bundle`](Self::effective_home_bundle) for the
-    /// pairing rationale.
-    #[must_use]
-    pub fn effective_tmp_bundle(
-        &self,
-    ) -> Option<(&Arc<dyn astrid_vfs::Vfs>, &astrid_capabilities::DirHandle)> {
-        if let (Some(vfs), Some(handle)) = (
-            self.invocation_tmp_vfs.as_ref(),
-            self.invocation_tmp_vfs_root_handle.as_ref(),
-        ) {
-            return Some((vfs, handle));
-        }
-        match (self.tmp_vfs.as_ref(), self.tmp_vfs_root_handle.as_ref()) {
-            (Some(vfs), Some(handle)) => Some((vfs, handle)),
-            _ => None,
-        }
+    pub fn effective_tmp(&self) -> Option<&PrincipalMount> {
+        self.invocation_tmp.as_ref().or(self.tmp.as_ref())
     }
 }
 
@@ -384,7 +347,8 @@ impl std::fmt::Debug for HostState {
             .field("capsule_id", &self.capsule_id)
             .field("workspace_root", &self.workspace_root)
             .field("vfs_root_handle", &self.vfs_root_handle)
-            .field("has_home_root", &self.home_root.is_some())
+            .field("has_home", &self.home.is_some())
+            .field("has_tmp", &self.tmp.is_some())
             .field("has_security", &self.security.is_some())
             .field("has_uplink_capability", &self.has_uplink_capability)
             .field("has_inbound_tx", &self.inbound_tx.is_some())
@@ -430,18 +394,10 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home_root: None,
-            home_vfs: None,
-            home_vfs_root_handle: None,
-            tmp_dir: None,
-            tmp_vfs: None,
-            tmp_vfs_root_handle: None,
-            invocation_home_root: None,
-            invocation_home_vfs: None,
-            invocation_home_vfs_root_handle: None,
-            invocation_tmp_dir: None,
-            invocation_tmp_vfs: None,
-            invocation_tmp_vfs_root_handle: None,
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -513,18 +469,10 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home_root: None,
-            home_vfs: None,
-            home_vfs_root_handle: None,
-            tmp_dir: None,
-            tmp_vfs: None,
-            tmp_vfs_root_handle: None,
-            invocation_home_root: None,
-            invocation_home_vfs: None,
-            invocation_home_vfs_root_handle: None,
-            invocation_tmp_dir: None,
-            invocation_tmp_vfs: None,
-            invocation_tmp_vfs_root_handle: None,
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -601,18 +549,10 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home_root: None,
-            home_vfs: None,
-            home_vfs_root_handle: None,
-            tmp_dir: None,
-            tmp_vfs: None,
-            tmp_vfs_root_handle: None,
-            invocation_home_root: None,
-            invocation_home_vfs: None,
-            invocation_home_vfs_root_handle: None,
-            invocation_tmp_dir: None,
-            invocation_tmp_vfs: None,
-            invocation_tmp_vfs_root_handle: None,
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -685,18 +625,10 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home_root: None,
-            home_vfs: None,
-            home_vfs_root_handle: None,
-            tmp_dir: None,
-            tmp_vfs: None,
-            tmp_vfs_root_handle: None,
-            invocation_home_root: None,
-            invocation_home_vfs: None,
-            invocation_home_vfs_root_handle: None,
-            invocation_tmp_dir: None,
-            invocation_tmp_vfs: None,
-            invocation_tmp_vfs_root_handle: None,
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -785,18 +717,10 @@ mod tests {
             workspace_root: PathBuf::from("/tmp"),
             vfs: Arc::new(astrid_vfs::HostVfs::new()),
             vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home_root: None,
-            home_vfs: None,
-            home_vfs_root_handle: None,
-            tmp_dir: None,
-            tmp_vfs: None,
-            tmp_vfs_root_handle: None,
-            invocation_home_root: None,
-            invocation_home_vfs: None,
-            invocation_home_vfs_root_handle: None,
-            invocation_tmp_dir: None,
-            invocation_tmp_vfs: None,
-            invocation_tmp_vfs_root_handle: None,
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,

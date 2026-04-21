@@ -7,7 +7,7 @@ use wasmtime::component::{Component, Linker};
 
 use crate::context::CapsuleContext;
 use crate::engine::ExecutionEngine;
-use crate::engine::wasm::host_state::{HostState, LifecyclePhase};
+use crate::engine::wasm::host_state::{HostState, LifecyclePhase, PrincipalMount};
 use crate::error::{CapsuleError, CapsuleResult};
 use crate::manifest::CapsuleManifest;
 
@@ -222,18 +222,46 @@ fn build_wasi_ctx() -> wasmtime_wasi::WasiCtx {
 ///
 /// Populated by [`build_principal_vfs_bundle`] and installed on
 /// [`HostState`] by `WasmEngine::invoke_interceptor` when the invocation
-/// principal differs from the capsule's owning principal. All fields are
-/// `Option` so a missing home directory yields a clean denial instead of
-/// a panic; the host-side fs functions treat `None` as "no VFS available"
+/// principal differs from the capsule's owning principal. Either field may
+/// be `None`: a missing home directory yields a clean denial instead of a
+/// panic; the host-side fs functions treat `None` as "no VFS available"
 /// and return an error to the guest.
 #[derive(Default)]
 struct PrincipalVfsBundle {
-    home_root: Option<PathBuf>,
-    home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
-    tmp_dir: Option<PathBuf>,
-    tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
-    tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    home: Option<PrincipalMount>,
+    tmp: Option<PrincipalMount>,
+}
+
+/// Register `root` as a new [`HostVfs`](astrid_vfs::HostVfs) with a fresh
+/// [`DirHandle`](astrid_capabilities::DirHandle), returning the triple as a
+/// [`PrincipalMount`]. Returns `None` if `root` does not exist or the VFS
+/// registration fails.
+///
+/// Callers must be holding a tokio runtime handle
+/// (`tokio::runtime::Handle::current()`).
+pub(crate) fn mount_dir(root: &std::path::Path) -> Option<PrincipalMount> {
+    if !root.exists() {
+        return None;
+    }
+    let vfs = astrid_vfs::HostVfs::new();
+    let handle = astrid_capabilities::DirHandle::new();
+    match tokio::runtime::Handle::current()
+        .block_on(async { vfs.register_dir(handle.clone(), root.to_path_buf()).await })
+    {
+        Ok(()) => Some(PrincipalMount {
+            root: root.to_path_buf(),
+            vfs: Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>,
+            handle,
+        }),
+        Err(e) => {
+            tracing::warn!(
+                root = %root.display(),
+                error = %e,
+                "failed to register principal VFS; denying scheme access",
+            );
+            None
+        },
+    }
 }
 
 /// Build a home/tmp VFS bundle for `principal`.
@@ -258,62 +286,18 @@ fn build_principal_vfs_bundle(principal: &astrid_core::PrincipalId) -> Principal
 /// Tests construct a [`PrincipalHome`] pointing at a tempdir; production
 /// code resolves the principal home through [`astrid_core::dirs::AstridHome`].
 fn build_principal_vfs_bundle_at(ph: &astrid_core::dirs::PrincipalHome) -> PrincipalVfsBundle {
-    let root = ph.root().to_path_buf();
-
-    let (home_root, home_vfs, home_vfs_root_handle) = if root.exists() {
-        let vfs = astrid_vfs::HostVfs::new();
-        let handle = astrid_capabilities::DirHandle::new();
-        match tokio::runtime::Handle::current()
-            .block_on(async { vfs.register_dir(handle.clone(), root.clone()).await })
-        {
-            Ok(()) => (
-                Some(root),
-                Some(Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>),
-                Some(handle),
-            ),
-            Err(e) => {
-                tracing::warn!(
-                    home_root = %root.display(),
-                    error = %e,
-                    "failed to register per-invocation home VFS; denying home:// access",
-                );
-                (None, None, None)
-            },
-        }
-    } else {
-        (None, None, None)
-    };
-
-    let (tmp_dir, tmp_vfs, tmp_vfs_root_handle) = if home_root.is_some() {
-        let t_dir = ph.tmp_dir();
-        if t_dir.exists() || std::fs::create_dir_all(&t_dir).is_ok() {
-            let vfs = astrid_vfs::HostVfs::new();
-            let handle = astrid_capabilities::DirHandle::new();
-            match tokio::runtime::Handle::current()
-                .block_on(async { vfs.register_dir(handle.clone(), t_dir.clone()).await })
-            {
-                Ok(()) => (
-                    Some(t_dir),
-                    Some(Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>),
-                    Some(handle),
-                ),
-                Err(_) => (None, None, None),
-            }
+    let home = mount_dir(ph.root());
+    // Tmp is only mounted when home is — they live under the same principal
+    // root and follow its lifetime. Tmp subdirs may be auto-created.
+    let tmp = home.as_ref().and_then(|_| {
+        let t = ph.tmp_dir();
+        if t.exists() || std::fs::create_dir_all(&t).is_ok() {
+            mount_dir(&t)
         } else {
-            (None, None, None)
+            None
         }
-    } else {
-        (None, None, None)
-    };
-
-    PrincipalVfsBundle {
-        home_root,
-        home_vfs,
-        home_vfs_root_handle,
-        tmp_dir,
-        tmp_vfs,
-        tmp_vfs_root_handle,
-    }
+    });
+    PrincipalVfsBundle { home, tmp }
 }
 
 /// RAII guard that stops the epoch ticker thread when dropped.
@@ -487,41 +471,23 @@ impl ExecutionEngine for WasmEngine {
                         ))
                     })?;
 
-                // Set up the global VFS (backed by ~/.astrid/shared/). Writes go
-                // directly to disk — there is no OverlayVfs CoW layer here,
-                // unlike the workspace VFS. Only mount if the directory exists
-                // to avoid failing capsule load on fresh installs.
-                let (home_vfs, home_vfs_root_handle): (
-                    Option<Arc<dyn astrid_vfs::Vfs>>,
-                    Option<astrid_capabilities::DirHandle>,
-                ) = if let Some(ref g_root) = home_root {
-                    if g_root.exists() {
-                        let g_vfs = astrid_vfs::HostVfs::new();
-                        let g_handle = astrid_capabilities::DirHandle::new();
-                        tokio::runtime::Handle::current()
-                            .block_on(async {
-                                g_vfs.register_dir(g_handle.clone(), g_root.clone()).await
-                            })
-                            .map_err(|e| {
-                                CapsuleError::UnsupportedEntryPoint(format!(
-                                    "Failed to register global VFS directory: {e}"
-                                ))
-                            })?;
-                        (
-                            Some(Arc::new(g_vfs) as Arc<dyn astrid_vfs::Vfs>),
-                            Some(g_handle),
-                        )
-                    } else {
+                // Set up the per-principal home mount. Writes go directly to
+                // disk — no OverlayVfs CoW layer here, unlike the workspace
+                // VFS. Only mount if the directory exists to avoid failing
+                // capsule load on fresh installs; `mount_dir` returns `None`
+                // for a missing root.
+                let home_mount: Option<PrincipalMount> = match home_root.as_deref() {
+                    Some(g_root) if !g_root.exists() => {
                         tracing::warn!(
                             home_root = %g_root.display(),
                             "home:// VFS not mounted: directory does not exist. \
                              Capsules requesting home:// paths will receive errors \
                              until the directory is created and the kernel is restarted."
                         );
-                        (None, None)
-                    }
-                } else {
-                    (None, None)
+                        None
+                    },
+                    Some(g_root) => mount_dir(g_root),
+                    None => None,
                 };
 
                 let overlay_vfs = Arc::new(astrid_vfs::OverlayVfs::new(
@@ -532,48 +498,23 @@ impl ExecutionEngine for WasmEngine {
                 let next_subscription_id = 1;
                 // Only resolve home:// in the gate if we actually mounted the VFS.
                 // Otherwise the gate would approve paths the VFS can't serve.
-                let gate_home_root = if home_vfs.is_some() {
-                    home_root.clone()
-                } else {
-                    None
-                };
+                let gate_home_root = home_mount.as_ref().map(|m| m.root.clone());
                 let security_gate = Arc::new(crate::security::ManifestSecurityGate::new(
                     manifest.clone(),
                     workspace_root.clone(),
                     gate_home_root,
                 ));
 
-                // Set up /tmp VFS backed by the principal's .local/tmp/ directory.
-                let tmp_dir = if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-                    let ph = home.principal_home(&ctx.principal);
-                    let dir = ph.tmp_dir();
-                    if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
-                        Some(dir)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let (tmp_vfs, tmp_vfs_root_handle) = if let Some(ref t_root) = tmp_dir {
-                    let t_vfs = astrid_vfs::HostVfs::new();
-                    let t_handle = astrid_capabilities::DirHandle::new();
-                    if tokio::runtime::Handle::current()
-                        .block_on(async {
-                            t_vfs.register_dir(t_handle.clone(), t_root.clone()).await
-                        })
-                        .is_ok()
-                    {
-                        (
-                            Some(Arc::new(t_vfs) as Arc<dyn astrid_vfs::Vfs>),
-                            Some(t_handle),
-                        )
-                    } else {
-                        (None, None)
-                    }
-                } else {
-                    (None, None)
-                };
+                // Set up /tmp mount backed by the principal's .local/tmp/ directory.
+                let tmp_mount: Option<PrincipalMount> =
+                    astrid_core::dirs::AstridHome::resolve().ok().and_then(|h| {
+                        let dir = h.principal_home(&ctx.principal).tmp_dir();
+                        if dir.exists() || std::fs::create_dir_all(&dir).is_ok() {
+                            mount_dir(&dir)
+                        } else {
+                            None
+                        }
+                    });
 
                 // Open per-capsule daily log file at .local/log/{capsule}/{date}.log.
                 // Prunes logs older than 7 days on each capsule load.
@@ -615,18 +556,10 @@ impl ExecutionEngine for WasmEngine {
                     workspace_root,
                     vfs: Arc::clone(&overlay_vfs) as Arc<dyn astrid_vfs::Vfs>,
                     vfs_root_handle: root_handle,
-                    home_root,
-                    home_vfs,
-                    home_vfs_root_handle,
-                    tmp_dir,
-                    tmp_vfs,
-                    tmp_vfs_root_handle,
-                    invocation_home_root: None,
-                    invocation_home_vfs: None,
-                    invocation_home_vfs_root_handle: None,
-                    invocation_tmp_dir: None,
-                    invocation_tmp_vfs: None,
-                    invocation_tmp_vfs_root_handle: None,
+                    home: home_mount,
+                    tmp: tmp_mount,
+                    invocation_home: None,
+                    invocation_tmp: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -1038,12 +971,8 @@ impl ExecutionEngine for WasmEngine {
             // behind the same accessors if profiling shows it matters.
             if let Some(ref p) = invocation_principal {
                 let bundle = build_principal_vfs_bundle(p);
-                state.invocation_home_root = bundle.home_root;
-                state.invocation_home_vfs = bundle.home_vfs;
-                state.invocation_home_vfs_root_handle = bundle.home_vfs_root_handle;
-                state.invocation_tmp_dir = bundle.tmp_dir;
-                state.invocation_tmp_vfs = bundle.tmp_vfs;
-                state.invocation_tmp_vfs_root_handle = bundle.tmp_vfs_root_handle;
+                state.invocation_home = bundle.home;
+                state.invocation_tmp = bundle.tmp;
             }
         }
 
@@ -1076,12 +1005,8 @@ impl ExecutionEngine for WasmEngine {
             let state = s.data_mut();
             state.caller_context = None;
             state.invocation_kv = None;
-            state.invocation_home_root = None;
-            state.invocation_home_vfs = None;
-            state.invocation_home_vfs_root_handle = None;
-            state.invocation_tmp_dir = None;
-            state.invocation_tmp_vfs = None;
-            state.invocation_tmp_vfs_root_handle = None;
+            state.invocation_home = None;
+            state.invocation_tmp = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1170,24 +1095,12 @@ pub fn run_lifecycle(
             ))
         })?;
 
-    // Mount home VFS if a home root was provided.
-    let (home_root, home_vfs, home_vfs_root_handle) = if let Some(ref h_root) = cfg.home_root {
-        let h_vfs = astrid_vfs::HostVfs::new();
-        let h_handle = astrid_capabilities::DirHandle::new();
+    // Mount home VFS if a home root was provided. Canonicalize first so the
+    // stored mount root matches paths the security gate checks against.
+    let home_mount: Option<PrincipalMount> = cfg.home_root.as_ref().and_then(|h_root| {
         let canonical = h_root.canonicalize().unwrap_or_else(|_| h_root.clone());
-        let _ = tokio::runtime::Handle::current().block_on(async {
-            h_vfs
-                .register_dir(h_handle.clone(), canonical.clone())
-                .await
-        });
-        (
-            Some(canonical),
-            Some(Arc::new(h_vfs) as Arc<dyn astrid_vfs::Vfs>),
-            Some(h_handle),
-        )
-    } else {
-        (None, None, None)
-    };
+        mount_dir(&canonical)
+    });
 
     let host_state = HostState {
         wasi_ctx: build_wasi_ctx(),
@@ -1204,18 +1117,10 @@ pub fn run_lifecycle(
         workspace_root: cfg.workspace_root,
         vfs: Arc::new(vfs),
         vfs_root_handle: root_handle,
-        home_root,
-        home_vfs,
-        home_vfs_root_handle,
-        tmp_dir: None,
-        tmp_vfs: None,
-        tmp_vfs_root_handle: None,
-        invocation_home_root: None,
-        invocation_home_vfs: None,
-        invocation_home_vfs_root_handle: None,
-        invocation_tmp_dir: None,
-        invocation_tmp_vfs: None,
-        invocation_tmp_vfs_root_handle: None,
+        home: home_mount,
+        tmp: None,
+        invocation_home: None,
+        invocation_tmp: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,
@@ -1779,15 +1684,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ph = astrid_core::dirs::PrincipalHome::from_path(tmp.path().join("home/mallory"));
         let bundle = build_bundle_async_safe(ph).await;
-        assert!(
-            bundle.home_root.is_none(),
-            "unknown principal: no home root"
-        );
-        assert!(bundle.home_vfs.is_none());
-        assert!(bundle.home_vfs_root_handle.is_none());
-        assert!(bundle.tmp_dir.is_none());
-        assert!(bundle.tmp_vfs.is_none());
-        assert!(bundle.tmp_vfs_root_handle.is_none());
+        assert!(bundle.home.is_none(), "unknown principal: no home mount");
+        assert!(bundle.tmp.is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1798,14 +1696,10 @@ mod tests {
         ph.ensure().unwrap();
 
         let bundle = build_bundle_async_safe(ph).await;
-        let home_root = bundle.home_root.as_deref().expect("home root present");
-        assert_eq!(home_root, alice_root);
-        assert!(bundle.home_vfs.is_some());
-        assert!(bundle.home_vfs_root_handle.is_some());
-        let tmp_dir = bundle.tmp_dir.as_deref().expect("tmp dir present");
-        assert_eq!(tmp_dir, alice_root.join(".local").join("tmp"));
-        assert!(bundle.tmp_vfs.is_some());
-        assert!(bundle.tmp_vfs_root_handle.is_some());
+        let home = bundle.home.as_ref().expect("home mount present");
+        assert_eq!(home.root, alice_root);
+        let tmp_mount = bundle.tmp.as_ref().expect("tmp mount present");
+        assert_eq!(tmp_mount.root, alice_root.join(".local").join("tmp"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1821,14 +1715,14 @@ mod tests {
         let alice_bundle = build_bundle_async_safe(alice_ph).await;
         let bob_bundle = build_bundle_async_safe(bob_ph).await;
 
-        let alice_home = alice_bundle.home_root.as_deref().unwrap();
-        let bob_home = bob_bundle.home_root.as_deref().unwrap();
+        let alice_home = &alice_bundle.home.as_ref().unwrap().root;
+        let bob_home = &bob_bundle.home.as_ref().unwrap().root;
         assert_ne!(
             alice_home, bob_home,
             "distinct principals, distinct home roots"
         );
-        assert_eq!(alice_home, alice_root);
-        assert_eq!(bob_home, bob_root);
+        assert_eq!(alice_home, &alice_root);
+        assert_eq!(bob_home, &bob_root);
 
         // Each principal's `home://note.txt` must land under their own root.
         std::fs::write(alice_home.join("note.txt"), b"alice").unwrap();
