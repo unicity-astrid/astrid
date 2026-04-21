@@ -21,6 +21,7 @@ pub mod elicitation;
 pub mod env_policy;
 pub mod identity;
 pub mod principal;
+pub mod profile;
 pub mod retry;
 pub mod session_token;
 pub mod types;
@@ -32,6 +33,12 @@ pub use elicitation::{
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
 };
 pub use principal::{PrincipalId, PrincipalIdError};
+pub use profile::{
+    AuthConfig, AuthMethod, BACKGROUND_PROCESSES_UPPER_BOUND, CURRENT_PROFILE_VERSION,
+    DEFAULT_MAX_BACKGROUND_PROCESSES, DEFAULT_MAX_IPC_THROUGHPUT_BYTES, DEFAULT_MAX_MEMORY_BYTES,
+    DEFAULT_MAX_STORAGE_BYTES, DEFAULT_MAX_TIMEOUT_SECS, MAX_GROUP_NAME_LEN, NetworkConfig,
+    PrincipalProfile, ProcessConfig, ProfileError, ProfileResult, Quotas, TIMEOUT_SECS_UPPER_BOUND,
+};
 pub use retry::RetryConfig;
 pub use types::{
     AgentId, ApprovalDecision, ApprovalOption, ApprovalRequest, Permission, SessionId, Timestamp,

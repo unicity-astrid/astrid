@@ -18,6 +18,7 @@ serde_json = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["time", "sync"] }
+toml = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
