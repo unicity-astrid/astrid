@@ -314,91 +314,30 @@ mod tests {
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod secret_chain_tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
 
-    use tokio::sync::Semaphore;
-    use tokio_util::sync::CancellationToken;
-
-    use crate::capsule::CapsuleId;
     use crate::engine::wasm::bindings::astrid::capsule::elicit::Host as ElicitHost;
-    use crate::engine::wasm::host::process::ProcessTracker;
     use crate::engine::wasm::host_state::HostState;
-    use astrid_storage::ScopedKvStore;
+    use crate::engine::wasm::test_fixtures::{mem_secret_store, minimal_host_state};
     use astrid_storage::secret::SecretStore;
 
-    /// Build a HostState carrying an owner-scoped secret store. Each call to
-    /// this helper returns a fresh state with an independent in-memory KV.
+    /// Build a HostState whose load-time `secret_store` points at a fresh,
+    /// namespace-isolated KV-backed store. Returns the state and an `Arc`
+    /// handle to that owner store so tests can seed secrets through it.
     fn make_host_state_with_secret(
         rt: tokio::runtime::Handle,
         owner_namespace: &str,
     ) -> (HostState, Arc<dyn SecretStore>) {
-        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(kv_store, owner_namespace).unwrap();
-        let owner_secret: Arc<dyn SecretStore> =
-            Arc::new(astrid_storage::KvSecretStore::new(kv.clone(), rt.clone()));
-
-        let state = HostState {
-            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
-            resource_table: wasmtime::component::ResourceTable::new(),
-            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
-            principal: astrid_core::PrincipalId::default(),
-            capsule_uuid: uuid::Uuid::new_v4(),
-            caller_context: None,
-            invocation_kv: None,
-            capsule_log: None,
-            capsule_id: CapsuleId::from_static("test-capsule"),
-            workspace_root: std::path::PathBuf::from("/tmp"),
-            vfs: Arc::new(astrid_vfs::HostVfs::new()),
-            vfs_root_handle: astrid_capabilities::DirHandle::new(),
-            home: None,
-            tmp: None,
-            invocation_home: None,
-            invocation_tmp: None,
-            invocation_secret_store: None,
-            invocation_capsule_log: None,
-            overlay_vfs: None,
-            upper_dir: None,
-            kv,
-            event_bus: astrid_events::EventBus::with_capacity(128),
-            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
-            subscriptions: HashMap::new(),
-            next_subscription_id: 1,
-            config: HashMap::new(),
-            ipc_publish_patterns: Vec::new(),
-            ipc_subscribe_patterns: Vec::new(),
-            security: None,
-            hook_manager: None,
-            capsule_registry: None,
-            runtime_handle: rt,
-            has_uplink_capability: false,
-            inbound_tx: None,
-            registered_uplinks: Vec::new(),
-            cli_socket_listener: None,
-            active_streams: HashMap::new(),
-            next_stream_id: 1,
-            active_http_streams: HashMap::new(),
-            next_http_stream_id: 1,
-            lifecycle_phase: None,
-            secret_store: Arc::clone(&owner_secret),
-            ready_tx: None,
-            host_semaphore: Arc::new(Semaphore::new(2)),
-            cancel_token: CancellationToken::new(),
-            session_token: None,
-            interceptor_handles: Vec::new(),
-            allowance_store: None,
-            identity_store: None,
-            background_processes: HashMap::new(),
-            next_process_id: 1,
-            process_tracker: Arc::new(ProcessTracker::new()),
-        };
+        let owner_secret = mem_secret_store(owner_namespace, rt.clone());
+        let mut state = minimal_host_state(rt);
+        state.secret_store = Arc::clone(&owner_secret);
         (state, owner_secret)
     }
 
+    /// Fresh invocation-scoped secret store (principal-namespaced in real
+    /// `invoke_interceptor`; arbitrary in tests).
     fn make_invocation_store(rt: tokio::runtime::Handle, namespace: &str) -> Arc<dyn SecretStore> {
-        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
-        let kv = ScopedKvStore::new(kv_store, namespace).unwrap();
-        Arc::new(astrid_storage::KvSecretStore::new(kv, rt))
+        mem_secret_store(namespace, rt)
     }
 
     /// Drive a closure in a blocking context so KvSecretStore's internal

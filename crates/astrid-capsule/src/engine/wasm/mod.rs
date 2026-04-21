@@ -14,6 +14,8 @@ use crate::manifest::CapsuleManifest;
 pub mod bindings;
 pub mod host;
 pub mod host_state;
+#[cfg(test)]
+mod test_fixtures;
 
 /// Today's date as `YYYY-MM-DD` for daily log rotation.
 fn today_date_string() -> String {
