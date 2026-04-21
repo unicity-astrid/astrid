@@ -128,6 +128,20 @@ pub struct HostState {
     /// Per-invocation tmp mount for the calling principal. Same lifecycle
     /// as `invocation_home`.
     pub invocation_tmp: Option<PrincipalMount>,
+    /// Per-invocation secret store scoped to the calling principal.
+    ///
+    /// Set by `WasmEngine::invoke_interceptor` when the IPC message's
+    /// principal differs from `self.principal`. When set, overrides
+    /// `secret_store` so `has_secret` and future secret host fns scope
+    /// reads/writes to the invoking principal. Cleared on exit.
+    pub invocation_secret_store: Option<Arc<dyn SecretStore>>,
+    /// Per-invocation capsule log file scoped to the calling principal.
+    ///
+    /// Same lifecycle as [`invocation_secret_store`](Self::invocation_secret_store).
+    /// When set, `astrid_log` writes to the invoking principal's
+    /// `~/.astrid/home/{principal}/.local/log/{capsule}/{date}.log` instead
+    /// of the capsule owner's.
+    pub invocation_capsule_log: Option<Arc<std::sync::Mutex<std::fs::File>>>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -347,6 +361,28 @@ impl HostState {
     pub fn effective_home_root_buf(&self) -> Option<PathBuf> {
         self.effective_home().map(|m| m.root.clone())
     }
+
+    /// Return the effective secret store for the current invocation.
+    ///
+    /// Prefers `invocation_secret_store` (set when serving a different
+    /// principal) over the load-time `secret_store`.
+    #[must_use]
+    pub fn effective_secret_store(&self) -> &Arc<dyn SecretStore> {
+        self.invocation_secret_store
+            .as_ref()
+            .unwrap_or(&self.secret_store)
+    }
+
+    /// Return the effective capsule log file for the current invocation.
+    ///
+    /// Same precedence as [`effective_secret_store`](Self::effective_secret_store).
+    /// Returns `None` if neither the invocation nor load-time log is open.
+    #[must_use]
+    pub fn effective_capsule_log(&self) -> Option<&Arc<std::sync::Mutex<std::fs::File>>> {
+        self.invocation_capsule_log
+            .as_ref()
+            .or(self.capsule_log.as_ref())
+    }
 }
 
 impl std::fmt::Debug for HostState {
@@ -406,6 +442,8 @@ mod tests {
             tmp: None,
             invocation_home: None,
             invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -481,6 +519,8 @@ mod tests {
             tmp: None,
             invocation_home: None,
             invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -561,6 +601,8 @@ mod tests {
             tmp: None,
             invocation_home: None,
             invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -637,6 +679,8 @@ mod tests {
             tmp: None,
             invocation_home: None,
             invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -729,6 +773,8 @@ mod tests {
             tmp: None,
             invocation_home: None,
             invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,

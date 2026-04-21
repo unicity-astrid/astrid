@@ -78,7 +78,7 @@ impl elicit::Host for HostState {
         let runtime_handle = self.runtime_handle.clone();
         let event_bus = self.event_bus.clone();
         let capsule_id = self.capsule_id.to_string();
-        let secret_store = self.secret_store.clone();
+        let secret_store = self.effective_secret_store().clone();
         let cancel_token = self.cancel_token.clone();
         let host_semaphore = self.host_semaphore.clone();
 
@@ -203,9 +203,7 @@ impl elicit::Host for HostState {
     /// Checks whether a secret key has been stored for this capsule.
     /// Uses the [`SecretStore`] abstraction (OS keychain with KV fallback).
     fn has_secret(&mut self, key: String) -> Result<bool, String> {
-        let secret_store = self.secret_store.clone();
-
-        secret_store
+        self.effective_secret_store()
             .exists(&key)
             .map_err(|e| format!("failed to check for secret: {e}"))
     }
@@ -304,5 +302,247 @@ mod tests {
         let field = map_to_onboarding_field(&req).unwrap();
         assert_eq!(field.prompt, "my_setting");
         assert!(field.description.is_none());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chain tests: drive `has_secret` synchronously on a HostState with manually-
+// installed invocation fields. Verifies `effective_secret_store()` wiring: a
+// key set via the invocation store must not be visible via the load-time
+// store and vice versa. Mirrors the pattern established in `host/fs.rs` for
+// per-invocation VFS re-scoping (#549).
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod secret_chain_tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use tokio::sync::Semaphore;
+    use tokio_util::sync::CancellationToken;
+
+    use crate::capsule::CapsuleId;
+    use crate::engine::wasm::bindings::astrid::capsule::elicit::Host as ElicitHost;
+    use crate::engine::wasm::host::process::ProcessTracker;
+    use crate::engine::wasm::host_state::HostState;
+    use astrid_storage::ScopedKvStore;
+    use astrid_storage::secret::SecretStore;
+
+    /// Build a HostState carrying an owner-scoped secret store. Each call to
+    /// this helper returns a fresh state with an independent in-memory KV.
+    fn make_host_state_with_secret(
+        rt: tokio::runtime::Handle,
+        owner_namespace: &str,
+    ) -> (HostState, Arc<dyn SecretStore>) {
+        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
+        let kv = ScopedKvStore::new(kv_store, owner_namespace).unwrap();
+        let owner_secret: Arc<dyn SecretStore> =
+            Arc::new(astrid_storage::KvSecretStore::new(kv.clone(), rt.clone()));
+
+        let state = HostState {
+            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
+            resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
+            principal: astrid_core::PrincipalId::default(),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
+            invocation_kv: None,
+            capsule_log: None,
+            capsule_id: CapsuleId::from_static("test-capsule"),
+            workspace_root: std::path::PathBuf::from("/tmp"),
+            vfs: Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
+            overlay_vfs: None,
+            upper_dir: None,
+            kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
+            config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
+            security: None,
+            hook_manager: None,
+            capsule_registry: None,
+            runtime_handle: rt,
+            has_uplink_capability: false,
+            inbound_tx: None,
+            registered_uplinks: Vec::new(),
+            cli_socket_listener: None,
+            active_streams: HashMap::new(),
+            next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
+            lifecycle_phase: None,
+            secret_store: Arc::clone(&owner_secret),
+            ready_tx: None,
+            host_semaphore: Arc::new(Semaphore::new(2)),
+            cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
+            allowance_store: None,
+            identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
+        };
+        (state, owner_secret)
+    }
+
+    fn make_invocation_store(rt: tokio::runtime::Handle, namespace: &str) -> Arc<dyn SecretStore> {
+        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
+        let kv = ScopedKvStore::new(kv_store, namespace).unwrap();
+        Arc::new(astrid_storage::KvSecretStore::new(kv, rt))
+    }
+
+    /// Drive a closure in a blocking context so KvSecretStore's internal
+    /// `Handle::block_on` works — same sync/async bridge pattern as
+    /// production host functions.
+    async fn blocking<T, F>(f: F) -> T
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
+        tokio::task::spawn_blocking(f)
+            .await
+            .expect("spawn_blocking join")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn has_secret_reads_invocation_store_when_installed() {
+        let rt = tokio::runtime::Handle::current();
+        let (mut state, owner_secret) =
+            make_host_state_with_secret(rt.clone(), "capsule:test-owner");
+        let alice_secret = make_invocation_store(rt, "capsule:test-alice");
+
+        // Owner has `shared_key`; Alice does not.
+        {
+            let s = Arc::clone(&owner_secret);
+            blocking(move || s.set("shared_key", "owner-val").unwrap()).await;
+        }
+        state.invocation_secret_store = Some(Arc::clone(&alice_secret));
+
+        // Via the accessor, `has_secret` consults Alice's store — the owner's
+        // entry is not visible.
+        let (state, got) = blocking(move || {
+            let mut s = state;
+            let got = s.has_secret("shared_key".to_string()).unwrap();
+            (s, got)
+        })
+        .await;
+        assert!(!got, "invocation store is empty; owner's key must not leak");
+
+        // Alice sets her own; owner's view is unchanged.
+        {
+            let s = Arc::clone(&alice_secret);
+            blocking(move || s.set("shared_key", "alice-val").unwrap()).await;
+        }
+        let (mut state, got) = blocking(move || {
+            let mut s = state;
+            let got = s.has_secret("shared_key".to_string()).unwrap();
+            (s, got)
+        })
+        .await;
+        assert!(got);
+
+        // Drop invocation context: falls back to owner's store.
+        state.invocation_secret_store = None;
+        let (_state, got) = blocking(move || {
+            let mut s = state;
+            let got = s.has_secret("shared_key".to_string()).unwrap();
+            (s, got)
+        })
+        .await;
+        assert!(got, "owner's key still present after clear");
+
+        // Sanity: owner never saw Alice's value.
+        let (owner_val, alice_val) = blocking(move || {
+            (
+                owner_secret.get("shared_key").unwrap(),
+                alice_secret.get("shared_key").unwrap(),
+            )
+        })
+        .await;
+        assert_eq!(owner_val.as_deref(), Some("owner-val"));
+        assert_eq!(alice_val.as_deref(), Some("alice-val"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn has_secret_falls_back_to_load_time_store() {
+        // Regression guard: single-tenant path (no invocation store installed)
+        // must see load-time secrets.
+        let rt = tokio::runtime::Handle::current();
+        let (state, owner_secret) = make_host_state_with_secret(rt, "capsule:test-owner");
+        {
+            let s = Arc::clone(&owner_secret);
+            blocking(move || s.set("api_key", "sk-load").unwrap()).await;
+        }
+        assert!(state.invocation_secret_store.is_none());
+        let (_state, got1, got2) = blocking(move || {
+            let mut state = state;
+            let got1 = state.has_secret("api_key".to_string()).unwrap();
+            let got2 = state.has_secret("other_key".to_string()).unwrap();
+            (state, got1, got2)
+        })
+        .await;
+        assert!(got1);
+        assert!(!got2);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn has_secret_isolates_across_sequential_invocations() {
+        // Same HostState, invocation store swapped between calls — each call
+        // sees only the currently-installed principal's secrets.
+        let rt = tokio::runtime::Handle::current();
+        let (mut state, _owner_secret) =
+            make_host_state_with_secret(rt.clone(), "capsule:test-owner");
+
+        let alice_secret = make_invocation_store(rt.clone(), "capsule:test-alice");
+        let bob_secret = make_invocation_store(rt, "capsule:test-bob");
+        {
+            let a = Arc::clone(&alice_secret);
+            let b = Arc::clone(&bob_secret);
+            blocking(move || {
+                a.set("pk", "alice-pk").unwrap();
+                b.set("pk", "bob-pk").unwrap();
+            })
+            .await;
+        }
+
+        state.invocation_secret_store = Some(Arc::clone(&alice_secret));
+        let (mut state, alice_view) = blocking(move || {
+            let mut s = state;
+            let v = s.has_secret("pk".to_string()).unwrap();
+            (s, v)
+        })
+        .await;
+        assert!(alice_view);
+        state.invocation_secret_store = None;
+
+        state.invocation_secret_store = Some(Arc::clone(&bob_secret));
+        let (_state, bob_view) = blocking(move || {
+            let mut s = state;
+            let v = s.has_secret("pk".to_string()).unwrap();
+            (s, v)
+        })
+        .await;
+        assert!(bob_view);
+
+        // Both isolated: each only sees its own key.
+        let (a_val, b_val) = blocking(move || {
+            (
+                alice_secret.get("pk").unwrap(),
+                bob_secret.get("pk").unwrap(),
+            )
+        })
+        .await;
+        assert_eq!(a_val.as_deref(), Some("alice-pk"));
+        assert_eq!(b_val.as_deref(), Some("bob-pk"));
     }
 }

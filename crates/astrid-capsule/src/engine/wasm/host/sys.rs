@@ -169,17 +169,11 @@ impl sys::Host for HostState {
     }
 
     fn log(&mut self, level: LogLevel, message: String) {
-        // Single extraction: get everything we need from self before any
-        // filesystem I/O (critical for cross-principal path which does
-        // create_dir_all + open).
         let capsule_id = self.capsule_id.as_str().to_owned();
-        let invocation_principal = self
-            .caller_context
-            .as_ref()
-            .and_then(|msg| msg.principal.as_deref())
-            .and_then(|p| astrid_core::PrincipalId::new(p).ok())
-            .filter(|p| *p != self.principal);
-        let log_file = self.capsule_log.clone();
+        // Routes to the invoking principal's log when `invoke_interceptor`
+        // installed one (cross-principal invocation), otherwise to the
+        // capsule owner's load-time log, otherwise to the tracing subscriber.
+        let log_file = self.effective_capsule_log().cloned();
 
         let level_str = match level {
             LogLevel::Trace => "TRACE",
@@ -192,26 +186,7 @@ impl sys::Host for HostState {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or_else(|_| "0".to_string(), |d| format!("{:.3}", d.as_secs_f64()));
 
-        if let Some(ref inv_principal) = invocation_principal {
-            // Cross-principal: open target log file, write, close.
-            // No FD caching — append-mode open() is cheap, avoids leaks
-            // in 1000-user deployments. OS filesystem cache handles the inode.
-            if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve() {
-                let ph = astrid_home.principal_home(inv_principal);
-                let log_dir = ph.log_dir().join(&capsule_id);
-                let _ = std::fs::create_dir_all(&log_dir);
-                let today = crate::engine::wasm::today_date_string();
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(log_dir.join(format!("{today}.log")))
-                {
-                    use std::io::Write;
-                    let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
-                }
-            }
-        } else if let Some(ref log_file) = log_file {
-            // Default principal: use pre-opened log file (fast path).
+        if let Some(log_file) = log_file {
             use std::io::Write;
             if let Ok(mut f) = log_file.lock() {
                 let _ = writeln!(f, "{timestamp} {level_str} [{capsule_id}] {message}");
@@ -291,5 +266,165 @@ impl sys::Host for HostState {
         };
 
         Ok(CapabilityCheckResponse { allowed })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chain tests: drive `sys::Host::log` synchronously on a HostState with
+// manually-installed invocation fields, assert physical log file lives under
+// the invoking principal's dir. Mirrors the pattern established in
+// `host/fs.rs` for per-invocation VFS re-scoping (#549).
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod log_chain_tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use tokio::sync::Semaphore;
+    use tokio_util::sync::CancellationToken;
+
+    use super::*;
+    use crate::capsule::CapsuleId;
+    use crate::engine::wasm::bindings::astrid::capsule::sys::Host as SysHost;
+    use crate::engine::wasm::host::process::ProcessTracker;
+    use crate::engine::wasm::host_state::HostState;
+    use astrid_storage::ScopedKvStore;
+    use astrid_storage::secret::SecretStore;
+
+    /// Minimal HostState for exercising `log()`. No security gate, no VFS
+    /// mounts — only the fields `log()` consults.
+    fn make_host_state() -> HostState {
+        let rt = tokio::runtime::Handle::current();
+        let kv_store = Arc::new(astrid_storage::MemoryKvStore::new());
+        let kv = ScopedKvStore::new(kv_store, "capsule:test").unwrap();
+        let secret_store: Arc<dyn SecretStore> =
+            Arc::new(astrid_storage::KvSecretStore::new(kv.clone(), rt.clone()));
+
+        HostState {
+            wasi_ctx: wasmtime_wasi::WasiCtxBuilder::new().build(),
+            resource_table: wasmtime::component::ResourceTable::new(),
+            store_limits: wasmtime::StoreLimitsBuilder::new().build(),
+            principal: astrid_core::PrincipalId::default(),
+            capsule_uuid: uuid::Uuid::new_v4(),
+            caller_context: None,
+            invocation_kv: None,
+            capsule_log: None,
+            capsule_id: CapsuleId::from_static("test-capsule"),
+            workspace_root: std::path::PathBuf::from("/tmp"),
+            vfs: Arc::new(astrid_vfs::HostVfs::new()),
+            vfs_root_handle: astrid_capabilities::DirHandle::new(),
+            home: None,
+            tmp: None,
+            invocation_home: None,
+            invocation_tmp: None,
+            invocation_secret_store: None,
+            invocation_capsule_log: None,
+            overlay_vfs: None,
+            upper_dir: None,
+            kv,
+            event_bus: astrid_events::EventBus::with_capacity(128),
+            ipc_limiter: astrid_events::ipc::IpcRateLimiter::new(),
+            subscriptions: HashMap::new(),
+            next_subscription_id: 1,
+            config: HashMap::new(),
+            ipc_publish_patterns: Vec::new(),
+            ipc_subscribe_patterns: Vec::new(),
+            security: None,
+            hook_manager: None,
+            capsule_registry: None,
+            runtime_handle: rt,
+            has_uplink_capability: false,
+            inbound_tx: None,
+            registered_uplinks: Vec::new(),
+            cli_socket_listener: None,
+            active_streams: HashMap::new(),
+            next_stream_id: 1,
+            active_http_streams: HashMap::new(),
+            next_http_stream_id: 1,
+            lifecycle_phase: None,
+            secret_store,
+            ready_tx: None,
+            host_semaphore: Arc::new(Semaphore::new(2)),
+            cancel_token: CancellationToken::new(),
+            session_token: None,
+            interceptor_handles: Vec::new(),
+            allowance_store: None,
+            identity_store: None,
+            background_processes: HashMap::new(),
+            next_process_id: 1,
+            process_tracker: Arc::new(ProcessTracker::new()),
+        }
+    }
+
+    fn open_log(path: &std::path::Path) -> Arc<std::sync::Mutex<std::fs::File>> {
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        Arc::new(std::sync::Mutex::new(f))
+    }
+
+    #[tokio::test]
+    async fn log_routes_to_invocation_file_when_installed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let owner_log_path = tmp.path().join("owner.log");
+        let alice_log_path = tmp.path().join("alice.log");
+        let owner_log = open_log(&owner_log_path);
+        let alice_log = open_log(&alice_log_path);
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(owner_log);
+        state.invocation_capsule_log = Some(alice_log);
+
+        state.log(LogLevel::Info, "hello from alice".into());
+
+        let alice_contents = std::fs::read_to_string(&alice_log_path).unwrap();
+        let owner_contents = std::fs::read_to_string(&owner_log_path).unwrap();
+        assert!(alice_contents.contains("hello from alice"));
+        assert!(
+            !owner_contents.contains("hello from alice"),
+            "owner log must not receive cross-principal write"
+        );
+    }
+
+    #[tokio::test]
+    async fn log_falls_back_to_load_time_file_when_no_invocation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let owner_log_path = tmp.path().join("owner.log");
+        let owner_log = open_log(&owner_log_path);
+
+        let mut state = make_host_state();
+        state.capsule_log = Some(owner_log);
+
+        state.log(LogLevel::Warn, "single-tenant line".into());
+
+        let contents = std::fs::read_to_string(&owner_log_path).unwrap();
+        assert!(contents.contains("single-tenant line"));
+        assert!(contents.contains("WARN"));
+    }
+
+    #[tokio::test]
+    async fn log_isolates_writes_across_sequential_invocations() {
+        // Same HostState, invocation log swapped between calls — each call's
+        // writes land in the file installed for that call.
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_path = tmp.path().join("alice.log");
+        let bob_path = tmp.path().join("bob.log");
+
+        let mut state = make_host_state();
+
+        state.invocation_capsule_log = Some(open_log(&alice_path));
+        state.log(LogLevel::Info, "alice-msg".into());
+        state.invocation_capsule_log = None;
+
+        state.invocation_capsule_log = Some(open_log(&bob_path));
+        state.log(LogLevel::Info, "bob-msg".into());
+        state.invocation_capsule_log = None;
+
+        let alice = std::fs::read_to_string(&alice_path).unwrap();
+        let bob = std::fs::read_to_string(&bob_path).unwrap();
+        assert!(alice.contains("alice-msg") && !alice.contains("bob-msg"));
+        assert!(bob.contains("bob-msg") && !bob.contains("alice-msg"));
     }
 }
