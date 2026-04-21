@@ -103,6 +103,24 @@ pub struct HostState {
     /// `invocation_kv.as_ref().unwrap_or(&kv)` to transparently scope
     /// reads/writes to the calling principal.
     pub invocation_kv: Option<ScopedKvStore>,
+    /// Per-invocation physical home directory for the calling principal.
+    ///
+    /// Populated by `WasmEngine::invoke_interceptor` when the IPC message's
+    /// principal differs from `self.principal`. When set, overrides
+    /// `home_root` for scheme resolution and security gate checks. Cleared
+    /// on invocation exit.
+    pub invocation_home_root: Option<PathBuf>,
+    /// Per-invocation home VFS for the calling principal. Paired with
+    /// `invocation_home_vfs_root_handle`.
+    pub invocation_home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    /// Capability handle for the per-invocation home VFS root.
+    pub invocation_home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    /// Per-invocation physical tmp directory for the calling principal.
+    pub invocation_tmp_dir: Option<PathBuf>,
+    /// Per-invocation tmp VFS for the calling principal.
+    pub invocation_tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    /// Capability handle for the per-invocation tmp VFS root.
+    pub invocation_tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -297,6 +315,67 @@ impl HostState {
     pub fn effective_kv(&self) -> &ScopedKvStore {
         self.invocation_kv.as_ref().unwrap_or(&self.kv)
     }
+
+    /// Return the effective physical home root for the current invocation.
+    ///
+    /// Prefers `invocation_home_root` (set when serving a different principal)
+    /// over `home_root` (set at capsule load for the owning principal).
+    #[must_use]
+    pub fn effective_home_root(&self) -> Option<&std::path::Path> {
+        self.invocation_home_root
+            .as_deref()
+            .or(self.home_root.as_deref())
+    }
+
+    /// Return the effective physical tmp directory for the current invocation.
+    #[must_use]
+    pub fn effective_tmp_dir(&self) -> Option<&std::path::Path> {
+        self.invocation_tmp_dir
+            .as_deref()
+            .or(self.tmp_dir.as_deref())
+    }
+
+    /// Return the `(home VFS, home root handle)` pair for the current invocation.
+    ///
+    /// Prefers the invocation-scoped pair; otherwise falls back to the
+    /// capsule's load-time pair. The two fields are returned together so
+    /// callers cannot accidentally mix an invocation VFS with a load-time
+    /// handle (which would break capability confinement).
+    #[must_use]
+    pub fn effective_home_bundle(
+        &self,
+    ) -> Option<(&Arc<dyn astrid_vfs::Vfs>, &astrid_capabilities::DirHandle)> {
+        if let (Some(vfs), Some(handle)) = (
+            self.invocation_home_vfs.as_ref(),
+            self.invocation_home_vfs_root_handle.as_ref(),
+        ) {
+            return Some((vfs, handle));
+        }
+        match (self.home_vfs.as_ref(), self.home_vfs_root_handle.as_ref()) {
+            (Some(vfs), Some(handle)) => Some((vfs, handle)),
+            _ => None,
+        }
+    }
+
+    /// Return the `(tmp VFS, tmp root handle)` pair for the current invocation.
+    ///
+    /// See [`effective_home_bundle`](Self::effective_home_bundle) for the
+    /// pairing rationale.
+    #[must_use]
+    pub fn effective_tmp_bundle(
+        &self,
+    ) -> Option<(&Arc<dyn astrid_vfs::Vfs>, &astrid_capabilities::DirHandle)> {
+        if let (Some(vfs), Some(handle)) = (
+            self.invocation_tmp_vfs.as_ref(),
+            self.invocation_tmp_vfs_root_handle.as_ref(),
+        ) {
+            return Some((vfs, handle));
+        }
+        match (self.tmp_vfs.as_ref(), self.tmp_vfs_root_handle.as_ref()) {
+            (Some(vfs), Some(handle)) => Some((vfs, handle)),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Debug for HostState {
@@ -357,6 +436,12 @@ mod tests {
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
+            invocation_home_root: None,
+            invocation_home_vfs: None,
+            invocation_home_vfs_root_handle: None,
+            invocation_tmp_dir: None,
+            invocation_tmp_vfs: None,
+            invocation_tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -434,6 +519,12 @@ mod tests {
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
+            invocation_home_root: None,
+            invocation_home_vfs: None,
+            invocation_home_vfs_root_handle: None,
+            invocation_tmp_dir: None,
+            invocation_tmp_vfs: None,
+            invocation_tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -516,6 +607,12 @@ mod tests {
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
+            invocation_home_root: None,
+            invocation_home_vfs: None,
+            invocation_home_vfs_root_handle: None,
+            invocation_tmp_dir: None,
+            invocation_tmp_vfs: None,
+            invocation_tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -594,6 +691,12 @@ mod tests {
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
+            invocation_home_root: None,
+            invocation_home_vfs: None,
+            invocation_home_vfs_root_handle: None,
+            invocation_tmp_dir: None,
+            invocation_tmp_vfs: None,
+            invocation_tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,
@@ -688,6 +791,12 @@ mod tests {
             tmp_dir: None,
             tmp_vfs: None,
             tmp_vfs_root_handle: None,
+            invocation_home_root: None,
+            invocation_home_vfs: None,
+            invocation_home_vfs_root_handle: None,
+            invocation_tmp_dir: None,
+            invocation_tmp_vfs: None,
+            invocation_tmp_vfs_root_handle: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,

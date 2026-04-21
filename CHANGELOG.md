@@ -32,6 +32,7 @@ Changelog tracking starts with 0.2.0. Prior versions were not tracked.
 
 - **Content-addressed WIT store** at `~/.astrid/wit/{blake3}.wit`. Install-time WIT files (including `deps/`) are recursively hashed, deduped, and stored with atomic writes. Per-capsule `wit/` is removed after addressing; `meta.json.wit_files` is the authoritative manifest. Append-only by design for replay preservation. (#649)
 - **`astrid wit gc`** — admin-only mark-sweep GC for the WIT content store. Dry-run by default, `--force` to delete. Scans all principal homes + workspace. (#649)
+- **Per-invocation `home://` and `/tmp/` VFS scoping.** A shared capsule serving multiple agents now resolves `home://` and `/tmp/` against the *invoking* agent's home directory (`~/.astrid/home/{principal}/`) instead of the capsule owner's. The security gate accepts a `principal_home` parameter and `WasmEngine::invoke_interceptor` builds a per-principal VFS bundle when the invocation principal differs from the capsule's. Unregistered principals (no home directory on disk) receive a clean denial — the kernel does not auto-create principal homes. Single-tenant installs (all traffic under `default`) see no behavior change. Precursor to multi-tenancy (#653). (#549)
 
 ### Removed
 

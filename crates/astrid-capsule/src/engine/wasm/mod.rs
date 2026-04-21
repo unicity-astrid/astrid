@@ -218,6 +218,104 @@ fn build_wasi_ctx() -> wasmtime_wasi::WasiCtx {
         .build()
 }
 
+/// Per-invocation home/tmp VFS bundle for the calling principal.
+///
+/// Populated by [`build_principal_vfs_bundle`] and installed on
+/// [`HostState`] by `WasmEngine::invoke_interceptor` when the invocation
+/// principal differs from the capsule's owning principal. All fields are
+/// `Option` so a missing home directory yields a clean denial instead of
+/// a panic; the host-side fs functions treat `None` as "no VFS available"
+/// and return an error to the guest.
+#[derive(Default)]
+struct PrincipalVfsBundle {
+    home_root: Option<PathBuf>,
+    home_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    home_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+    tmp_dir: Option<PathBuf>,
+    tmp_vfs: Option<Arc<dyn astrid_vfs::Vfs>>,
+    tmp_vfs_root_handle: Option<astrid_capabilities::DirHandle>,
+}
+
+/// Build a home/tmp VFS bundle for `principal`.
+///
+/// Only mounts a home VFS if `~/.astrid/home/{principal}/` already exists
+/// on disk. This is the registration gate: an invocation for an unknown
+/// principal returns an empty bundle and the host fs layer denies
+/// `home://` access. The tmp directory (`~/.astrid/home/{principal}/.local/tmp/`)
+/// is auto-created under an already-existing principal root.
+///
+/// Callers must be holding a tokio runtime handle (`tokio::runtime::Handle::current()`).
+fn build_principal_vfs_bundle(principal: &astrid_core::PrincipalId) -> PrincipalVfsBundle {
+    let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve() else {
+        return PrincipalVfsBundle::default();
+    };
+    build_principal_vfs_bundle_at(&astrid_home.principal_home(principal))
+}
+
+/// Test-friendly core of [`build_principal_vfs_bundle`]: build a bundle from
+/// a fully-resolved [`PrincipalHome`], without touching any environment.
+///
+/// Tests construct a [`PrincipalHome`] pointing at a tempdir; production
+/// code resolves the principal home through [`astrid_core::dirs::AstridHome`].
+fn build_principal_vfs_bundle_at(ph: &astrid_core::dirs::PrincipalHome) -> PrincipalVfsBundle {
+    let root = ph.root().to_path_buf();
+
+    let (home_root, home_vfs, home_vfs_root_handle) = if root.exists() {
+        let vfs = astrid_vfs::HostVfs::new();
+        let handle = astrid_capabilities::DirHandle::new();
+        match tokio::runtime::Handle::current()
+            .block_on(async { vfs.register_dir(handle.clone(), root.clone()).await })
+        {
+            Ok(()) => (
+                Some(root),
+                Some(Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>),
+                Some(handle),
+            ),
+            Err(e) => {
+                tracing::warn!(
+                    home_root = %root.display(),
+                    error = %e,
+                    "failed to register per-invocation home VFS; denying home:// access",
+                );
+                (None, None, None)
+            },
+        }
+    } else {
+        (None, None, None)
+    };
+
+    let (tmp_dir, tmp_vfs, tmp_vfs_root_handle) = if home_root.is_some() {
+        let t_dir = ph.tmp_dir();
+        if t_dir.exists() || std::fs::create_dir_all(&t_dir).is_ok() {
+            let vfs = astrid_vfs::HostVfs::new();
+            let handle = astrid_capabilities::DirHandle::new();
+            match tokio::runtime::Handle::current()
+                .block_on(async { vfs.register_dir(handle.clone(), t_dir.clone()).await })
+            {
+                Ok(()) => (
+                    Some(t_dir),
+                    Some(Arc::new(vfs) as Arc<dyn astrid_vfs::Vfs>),
+                    Some(handle),
+                ),
+                Err(_) => (None, None, None),
+            }
+        } else {
+            (None, None, None)
+        }
+    } else {
+        (None, None, None)
+    };
+
+    PrincipalVfsBundle {
+        home_root,
+        home_vfs,
+        home_vfs_root_handle,
+        tmp_dir,
+        tmp_vfs,
+        tmp_vfs_root_handle,
+    }
+}
+
 /// RAII guard that stops the epoch ticker thread when dropped.
 ///
 /// Ensures the ticker is cleaned up even on early error returns.
@@ -523,6 +621,12 @@ impl ExecutionEngine for WasmEngine {
                     tmp_dir,
                     tmp_vfs,
                     tmp_vfs_root_handle,
+                    invocation_home_root: None,
+                    invocation_home_vfs: None,
+                    invocation_home_vfs_root_handle: None,
+                    invocation_tmp_dir: None,
+                    invocation_tmp_vfs: None,
+                    invocation_tmp_vfs_root_handle: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -901,26 +1005,46 @@ impl ExecutionEngine for WasmEngine {
             let state = s.data_mut();
             state.caller_context = caller.cloned();
 
-            // Dynamic KV scoping: if the invocation principal differs
-            // from the capsule's default, create a scoped KV store.
-            state.invocation_kv = caller
+            // Derive the invocation principal once; reused for KV + VFS scoping.
+            let invocation_principal: Option<astrid_core::PrincipalId> = caller
                 .and_then(|msg| msg.principal.as_deref())
                 .and_then(|p| astrid_core::PrincipalId::new(p).ok())
-                .filter(|p| *p != state.principal)
-                .and_then(|p| {
-                    let ns = format!("{}:capsule:{}", p, state.capsule_id);
-                    match state.kv.with_namespace(&ns) {
-                        Ok(kv) => Some(kv),
-                        Err(e) => {
-                            tracing::warn!(
-                                principal = %p,
-                                error = %e,
-                                "Failed to create invocation KV scope"
-                            );
-                            None
-                        },
-                    }
-                });
+                .filter(|p| *p != state.principal);
+
+            // Dynamic KV scoping: if the invocation principal differs
+            // from the capsule's default, create a scoped KV store.
+            state.invocation_kv = invocation_principal.as_ref().and_then(|p| {
+                let ns = format!("{}:capsule:{}", p, state.capsule_id);
+                match state.kv.with_namespace(&ns) {
+                    Ok(kv) => Some(kv),
+                    Err(e) => {
+                        tracing::warn!(
+                            principal = %p,
+                            error = %e,
+                            "Failed to create invocation KV scope"
+                        );
+                        None
+                    },
+                }
+            });
+
+            // Dynamic home/tmp VFS scoping. Mirrors the KV pattern above:
+            // build a per-principal bundle if the invocation principal differs
+            // from the capsule's load-time principal, install the VFS + root
+            // handle + physical path on HostState, and clear them after the
+            // call returns. The bundle is intentionally built inline (no
+            // shared registry) because `HostVfs::new` + `DirHandle::new` +
+            // `register_dir` are lightweight; caching can be retrofitted later
+            // behind the same accessors if profiling shows it matters.
+            if let Some(ref p) = invocation_principal {
+                let bundle = build_principal_vfs_bundle(p);
+                state.invocation_home_root = bundle.home_root;
+                state.invocation_home_vfs = bundle.home_vfs;
+                state.invocation_home_vfs_root_handle = bundle.home_vfs_root_handle;
+                state.invocation_tmp_dir = bundle.tmp_dir;
+                state.invocation_tmp_vfs = bundle.tmp_vfs;
+                state.invocation_tmp_vfs_root_handle = bundle.tmp_vfs_root_handle;
+            }
         }
 
         // Call the typed Component Model export. The action name and payload
@@ -952,6 +1076,12 @@ impl ExecutionEngine for WasmEngine {
             let state = s.data_mut();
             state.caller_context = None;
             state.invocation_kv = None;
+            state.invocation_home_root = None;
+            state.invocation_home_vfs = None;
+            state.invocation_home_vfs_root_handle = None;
+            state.invocation_tmp_dir = None;
+            state.invocation_tmp_vfs = None;
+            state.invocation_tmp_vfs_root_handle = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1080,6 +1210,12 @@ pub fn run_lifecycle(
         tmp_dir: None,
         tmp_vfs: None,
         tmp_vfs_root_handle: None,
+        invocation_home_root: None,
+        invocation_home_vfs: None,
+        invocation_home_vfs_root_handle: None,
+        invocation_tmp_dir: None,
+        invocation_tmp_vfs: None,
+        invocation_tmp_vfs_root_handle: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,
@@ -1617,5 +1753,90 @@ mod tests {
             !wasm_exports_contain_run(&wasm),
             "global named 'run' should not be detected as a function export"
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // build_principal_vfs_bundle_at: per-invocation VFS scoping (#549)
+    // ---------------------------------------------------------------------
+
+    /// Build a bundle from a sync context with a live runtime handle.
+    ///
+    /// `build_principal_vfs_bundle_at` uses `Handle::current().block_on`
+    /// internally to call the async `register_dir` — the same pattern used in
+    /// the load-time path and in `invoke_interceptor`. That call panics if
+    /// invoked from an async task polled on the same runtime, so tests wrap
+    /// it in `spawn_blocking` to bridge sync/async like production does.
+    async fn build_bundle_async_safe(ph: astrid_core::dirs::PrincipalHome) -> PrincipalVfsBundle {
+        tokio::task::spawn_blocking(move || build_principal_vfs_bundle_at(&ph))
+            .await
+            .expect("spawn_blocking join")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_bundle_returns_empty_for_unregistered_principal() {
+        // No principal home directory exists on disk — fail-closed: bundle empty,
+        // no auto-mkdir of a `home/{principal}/` tree.
+        let tmp = tempfile::tempdir().unwrap();
+        let ph = astrid_core::dirs::PrincipalHome::from_path(tmp.path().join("home/mallory"));
+        let bundle = build_bundle_async_safe(ph).await;
+        assert!(
+            bundle.home_root.is_none(),
+            "unknown principal: no home root"
+        );
+        assert!(bundle.home_vfs.is_none());
+        assert!(bundle.home_vfs_root_handle.is_none());
+        assert!(bundle.tmp_dir.is_none());
+        assert!(bundle.tmp_vfs.is_none());
+        assert!(bundle.tmp_vfs_root_handle.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_bundle_populated_for_registered_principal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_root = tmp.path().join("home/alice");
+        let ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
+        ph.ensure().unwrap();
+
+        let bundle = build_bundle_async_safe(ph).await;
+        let home_root = bundle.home_root.as_deref().expect("home root present");
+        assert_eq!(home_root, alice_root);
+        assert!(bundle.home_vfs.is_some());
+        assert!(bundle.home_vfs_root_handle.is_some());
+        let tmp_dir = bundle.tmp_dir.as_deref().expect("tmp dir present");
+        assert_eq!(tmp_dir, alice_root.join(".local").join("tmp"));
+        assert!(bundle.tmp_vfs.is_some());
+        assert!(bundle.tmp_vfs_root_handle.is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_bundle_isolates_distinct_principals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let alice_root = tmp.path().join("home/alice");
+        let bob_root = tmp.path().join("home/bob");
+        let alice_ph = astrid_core::dirs::PrincipalHome::from_path(&alice_root);
+        let bob_ph = astrid_core::dirs::PrincipalHome::from_path(&bob_root);
+        alice_ph.ensure().unwrap();
+        bob_ph.ensure().unwrap();
+
+        let alice_bundle = build_bundle_async_safe(alice_ph).await;
+        let bob_bundle = build_bundle_async_safe(bob_ph).await;
+
+        let alice_home = alice_bundle.home_root.as_deref().unwrap();
+        let bob_home = bob_bundle.home_root.as_deref().unwrap();
+        assert_ne!(
+            alice_home, bob_home,
+            "distinct principals, distinct home roots"
+        );
+        assert_eq!(alice_home, alice_root);
+        assert_eq!(bob_home, bob_root);
+
+        // Each principal's `home://note.txt` must land under their own root.
+        std::fs::write(alice_home.join("note.txt"), b"alice").unwrap();
+        std::fs::write(bob_home.join("note.txt"), b"bob").unwrap();
+        assert_eq!(
+            std::fs::read(alice_home.join("note.txt")).unwrap(),
+            b"alice"
+        );
+        assert_eq!(std::fs::read(bob_home.join("note.txt")).unwrap(), b"bob");
     }
 }

@@ -125,6 +125,10 @@ struct ResolvedVfsPath {
 
 /// Phase 1: Resolve a raw guest path to a physical path and determine
 /// whether it targets the workspace or home VFS.
+///
+/// Uses the *effective* home root and tmp dir, which prefer the per-invocation
+/// principal's paths over the capsule's load-time paths when set by
+/// `WasmEngine::invoke_interceptor`.
 fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, String> {
     if let Some(stripped) = raw_path.strip_prefix(CWD_SCHEME) {
         let resolved = resolve_physical_absolute(&state.workspace_root, stripped)?;
@@ -139,9 +143,9 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Strin
             target: VfsTarget::Workspace,
         })
     } else if let Some(stripped) = raw_path.strip_prefix(HOME_SCHEME) {
-        let home_root = state.home_root.as_ref().ok_or_else(|| {
-            "home:// scheme is not available: no home directory is configured. \
-             Create the directory and restart the kernel."
+        let home_root = state.effective_home_root().ok_or_else(|| {
+            "home:// scheme is not available: no home directory is configured \
+             for the calling principal."
                 .to_string()
         })?;
         let resolved = resolve_physical_absolute(home_root, stripped)?;
@@ -156,7 +160,7 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Strin
             target: VfsTarget::Home,
         })
     } else if raw_path.starts_with(TMP_PREFIX) || raw_path == "/tmp" {
-        let tmp_root = state.tmp_dir.as_ref().ok_or_else(|| {
+        let tmp_root = state.effective_tmp_dir().ok_or_else(|| {
             "/tmp is not available: no tmp directory is configured for this principal.".to_string()
         })?;
         let stripped = raw_path
@@ -191,37 +195,30 @@ fn resolve_path(state: &HostState, raw_path: &str) -> Result<ResolvedPath, Strin
 
 /// Phase 2: Given a first-phase result, select the correct VFS instance
 /// and capability handle.
+///
+/// For `Home` and `Tmp` targets, returns the *effective* bundle — the
+/// per-invocation bundle if `WasmEngine::invoke_interceptor` installed one,
+/// otherwise the capsule's load-time bundle.
 fn resolve_vfs(state: &HostState, resolved: &ResolvedPath) -> Result<ResolvedVfsPath, String> {
     match resolved.target {
         VfsTarget::Home => {
-            let vfs = state.home_vfs.clone().ok_or_else(|| {
-                "home:// VFS is not mounted. \
-                 Create the directory and restart the kernel."
-                    .to_string()
+            let (vfs, handle) = state.effective_home_bundle().ok_or_else(|| {
+                "home:// VFS is not mounted for the calling principal.".to_string()
             })?;
-            let handle = state
-                .home_vfs_root_handle
-                .clone()
-                .ok_or_else(|| "home:// VFS root handle is not available".to_string())?;
             Ok(ResolvedVfsPath {
                 relative: resolved.relative.clone(),
-                vfs,
-                handle,
+                vfs: vfs.clone(),
+                handle: handle.clone(),
             })
         },
         VfsTarget::Tmp => {
-            let vfs = state
-                .tmp_vfs
-                .clone()
-                .ok_or_else(|| "/tmp VFS is not mounted for this principal.".to_string())?;
-            let handle = state
-                .tmp_vfs_root_handle
-                .clone()
-                .ok_or_else(|| "/tmp VFS root handle is not available".to_string())?;
+            let (vfs, handle) = state
+                .effective_tmp_bundle()
+                .ok_or_else(|| "/tmp VFS is not mounted for the calling principal.".to_string())?;
             Ok(ResolvedVfsPath {
                 relative: resolved.relative.clone(),
-                vfs,
-                handle,
+                vfs: vfs.clone(),
+                handle: handle.clone(),
             })
         },
         VfsTarget::Workspace => Ok(ResolvedVfsPath {
@@ -243,9 +240,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_read(&pid, &p).await
+                    gate.check_file_read(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied exists check: {reason}"));
@@ -277,9 +275,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_write(&pid, &p).await
+                    gate.check_file_write(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied mkdir: {reason}"));
@@ -309,9 +308,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_read(&pid, &p).await
+                    gate.check_file_read(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied readdir: {reason}"));
@@ -343,9 +343,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_read(&pid, &p).await
+                    gate.check_file_read(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied stat: {reason}"));
@@ -381,9 +382,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_write(&pid, &p).await
+                    gate.check_file_write(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied unlink: {reason}"));
@@ -413,9 +415,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_read(&pid, &p).await
+                    gate.check_file_read(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied read_file: {reason}"));
@@ -465,9 +468,10 @@ impl fs::Host for HostState {
         if let Some(gate) = security {
             let p = resolved.physical.to_string_lossy().to_string();
             let pid = capsule_id.clone();
+            let home = self.effective_home_root().map(Path::to_path_buf);
             let check =
                 util::bounded_block_on(&self.runtime_handle, &self.host_semaphore, async move {
-                    gate.check_file_write(&pid, &p).await
+                    gate.check_file_write(&pid, &p, home.as_deref()).await
                 });
             if let Err(reason) = check {
                 return Err(format!("security denied write_file: {reason}"));
