@@ -196,8 +196,8 @@ impl sys::Host for HostState {
             // Cross-principal: open target log file, write, close.
             // No FD caching — append-mode open() is cheap, avoids leaks
             // in 1000-user deployments. OS filesystem cache handles the inode.
-            if let Ok(home) = astrid_core::dirs::AstridHome::resolve() {
-                let ph = home.principal_home(inv_principal);
+            if let Ok(astrid_home) = astrid_core::dirs::AstridHome::resolve() {
+                let ph = astrid_home.principal_home(inv_principal);
                 let log_dir = ph.log_dir().join(&capsule_id);
                 let _ = std::fs::create_dir_all(&log_dir);
                 let today = crate::engine::wasm::today_date_string();

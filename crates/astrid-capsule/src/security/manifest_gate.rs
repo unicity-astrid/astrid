@@ -1,277 +1,42 @@
-//! Security gate trait for capsule host function calls.
-//!
-//! Decouples the capsule WASM runtime from the full security interceptor stack.
-//! Test implementations ([`AllowAllGate`], [`DenyAllGate`]) are provided for
-//! unit testing. A concrete [`SecurityInterceptorGate`] adapter wrapping
-//! `astrid-approval`'s `SecurityInterceptor` is available behind the
-//! `approval` feature flag.
+//! Production [`CapsuleSecurityGate`] implementation backed by the capsule's
+//! declared manifest capabilities.
 
-use crate::manifest::CapsuleManifest;
 use async_trait::async_trait;
 
-/// Identity operations that can be gated by the security gate.
-///
-/// Typed enum prevents string-matching bugs. Each variant maps to a
-/// required capability level in the manifest's `identity` field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdentityOperation {
-    /// Resolve a platform user to an AstridUserId (requires "resolve").
-    Resolve,
-    /// Create a platform link (requires "link").
-    Link,
-    /// Remove a platform link (requires "link").
-    Unlink,
-    /// List links for a user (requires "link").
-    ListLinks,
-    /// Create a new user (requires "admin").
-    CreateUser,
-}
-
-impl IdentityOperation {
-    /// Return the minimum capability level required for this operation.
-    ///
-    /// The hierarchy is: `admin > link > resolve`.
-    #[must_use]
-    pub fn required_capability(self) -> &'static str {
-        match self {
-            Self::Resolve => "resolve",
-            Self::Link | Self::Unlink | Self::ListLinks => "link",
-            Self::CreateUser => "admin",
-        }
-    }
-}
-
-/// Check whether a set of declared capability strings satisfies a required level.
-///
-/// The hierarchy is `admin > link > resolve`. Having `"admin"` implies
-/// `"link"` and `"resolve"`.
-fn identity_capability_satisfies(declared: &[String], required: &str) -> bool {
-    // Direct match.
-    if declared.iter().any(|d| d == required) {
-        return true;
-    }
-    // Hierarchy: admin implies everything, link implies resolve.
-    match required {
-        "resolve" => declared.iter().any(|d| d == "link" || d == "admin"),
-        "link" => declared.iter().any(|d| d == "admin"),
-        _ => false,
-    }
-}
-
-/// Security gate for capsule host function calls.
-///
-/// Each method corresponds to a class of sensitive operation that a WASM
-/// capsule can request through host functions. Implementors decide whether
-/// to permit or deny the operation.
-#[async_trait]
-pub trait CapsuleSecurityGate: Send + Sync {
-    /// Check whether the capsule is allowed to make an HTTP request.
-    async fn check_http_request(
-        &self,
-        capsule_id: &str,
-        method: &str,
-        url: &str,
-    ) -> Result<(), String>;
-
-    /// Check whether the capsule is allowed to read a file.
-    async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String>;
-
-    /// Check whether the capsule is allowed to write a file.
-    async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String>;
-
-    /// Check whether the capsule is allowed to spawn a host process.
-    async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String>;
-
-    /// Check whether the capsule is allowed to accept connections on a bound socket.
-    ///
-    /// Default implementation denies all bind operations. Override to permit
-    /// capsules that declare `net_bind` capabilities.
-    ///
-    /// NOTE: This method currently takes no socket path argument because the
-    /// kernel pre-binds the socket and the path is not user-controllable.
-    /// If future work introduces capsule-specified bind addresses, add a
-    /// `socket_path: &str` parameter and enforce path-based confinement.
-    async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: net_bind not permitted (default)"
-        ))
-    }
-
-    /// Check whether the capsule is allowed to register a uplink.
-    ///
-    /// Default implementation permits all registrations. Override to enforce
-    /// uplink policies (e.g. platform allowlists per capsule).
-    ///
-    /// RATIONALE: This has a permissive default (unlike the required file/HTTP
-    /// methods) to maintain backward compatibility with existing
-    /// `CapsuleSecurityGate` implementors. The `has_uplink_capability` flag
-    /// on `HostState` already gates access - this method adds operator-level
-    /// policy on top.
-    async fn check_uplink_register(
-        &self,
-        _capsule_id: &str,
-        _uplink_name: &str,
-        _platform: &str,
-    ) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// Check whether the capsule is allowed to perform an identity operation.
-    ///
-    /// Default implementation denies all identity operations (fail-closed).
-    async fn check_identity(
-        &self,
-        capsule_id: &str,
-        operation: IdentityOperation,
-    ) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: identity operation '{:?}' not permitted (default)",
-            operation
-        ))
-    }
-}
-
-/// Security gate that permits all operations (for testing).
-#[derive(Debug, Clone, Copy, Default)]
-#[cfg(test)]
-pub(crate) struct AllowAllGate;
-
-#[cfg(test)]
-#[async_trait]
-impl CapsuleSecurityGate for AllowAllGate {
-    async fn check_http_request(
-        &self,
-        _capsule_id: &str,
-        _method: &str,
-        _url: &str,
-    ) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_file_read(&self, _capsule_id: &str, _path: &str) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_file_write(&self, _capsule_id: &str, _path: &str) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_host_process(&self, _capsule_id: &str, _command: &str) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_net_bind(&self, _capsule_id: &str) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_uplink_register(
-        &self,
-        _capsule_id: &str,
-        _uplink_name: &str,
-        _platform: &str,
-    ) -> Result<(), String> {
-        Ok(())
-    }
-
-    async fn check_identity(
-        &self,
-        _capsule_id: &str,
-        _operation: IdentityOperation,
-    ) -> Result<(), String> {
-        Ok(())
-    }
-}
-
-/// Security gate that denies all operations (for testing).
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct DenyAllGate;
-
-#[cfg(test)]
-#[async_trait]
-impl CapsuleSecurityGate for DenyAllGate {
-    async fn check_http_request(
-        &self,
-        capsule_id: &str,
-        method: &str,
-        url: &str,
-    ) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: {method} {url} (DenyAllGate)"
-        ))
-    }
-
-    async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: read {path} (DenyAllGate)"
-        ))
-    }
-
-    async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: write {path} (DenyAllGate)"
-        ))
-    }
-
-    async fn check_host_process(&self, capsule_id: &str, command: &str) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: spawn host process {command} (DenyAllGate)"
-        ))
-    }
-
-    async fn check_net_bind(&self, capsule_id: &str) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: net_bind (DenyAllGate)"
-        ))
-    }
-
-    async fn check_uplink_register(
-        &self,
-        capsule_id: &str,
-        uplink_name: &str,
-        platform: &str,
-    ) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: register uplink {uplink_name} ({platform}) (DenyAllGate)"
-        ))
-    }
-
-    async fn check_identity(
-        &self,
-        capsule_id: &str,
-        operation: IdentityOperation,
-    ) -> Result<(), String> {
-        Err(format!(
-            "capsule '{capsule_id}' denied: identity {:?} (DenyAllGate)",
-            operation
-        ))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Concrete adapter wrapping SecurityInterceptor (behind `approval` feature)
-// ---------------------------------------------------------------------------
+use super::{CapsuleSecurityGate, IdentityOperation, identity_capability_satisfies};
+use crate::manifest::CapsuleManifest;
 
 /// Security gate that enforces capabilities based on the manifest.
 /// Assumes capabilities declared in the manifest were approved by the user during installation.
 ///
-/// VFS scheme prefixes (`cwd://`, `home://`) in `fs_read` / `fs_write`
-/// capability entries are resolved to their physical root paths at construction
-/// time so that runtime path checks use simple `starts_with` matching.
+/// The `cwd://` scheme prefix is resolved to a physical path at construction
+/// time so that runtime path checks use simple `starts_with` matching. The
+/// `home://` scheme is resolved dynamically at check time so that shared
+/// capsules can route file access to the invoking principal's home directory
+/// (see `principal_home` parameter on `check_file_read` / `check_file_write`).
 #[derive(Debug, Clone)]
 pub(crate) struct ManifestSecurityGate {
     /// The original manifest. `net` and `host_process` fields are queried
     /// at runtime as-is. `fs_read` / `fs_write` are **not** used at runtime —
-    /// their scheme-resolved equivalents (`resolved_fs_read` / `resolved_fs_write`)
-    /// are used instead. If you add a new scheme-aware capability field, add a
-    /// corresponding `resolved_*` field and resolve it in `new()`.
+    /// their scheme-aware split lives in `resolved_static_*` and
+    /// `home_suffixes_*`.
     manifest: CapsuleManifest,
-    /// Resolved filesystem prefixes for read access (scheme prefixes expanded
-    /// to canonical physical paths at construction time).
-    resolved_fs_read: Vec<String>,
-    /// Resolved filesystem prefixes for write access (scheme prefixes expanded
-    /// to canonical physical paths at construction time).
-    resolved_fs_write: Vec<String>,
+    /// Non-`home://` fs_read patterns, fully resolved at construction time.
+    /// Includes `cwd://`-resolved paths, wildcard `"*"`, and literal paths.
+    resolved_static_read: Vec<String>,
+    /// Non-`home://` fs_write patterns, fully resolved at construction time.
+    resolved_static_write: Vec<String>,
+    /// Suffix strings from `home://<suffix>` fs_read entries. Resolved at
+    /// check time against the invocation principal's home root (or the
+    /// construction-time `default_home_root` fallback).
+    home_suffixes_read: Vec<String>,
+    /// Suffix strings from `home://<suffix>` fs_write entries.
+    home_suffixes_write: Vec<String>,
+    /// Canonical construction-time home root, used as fallback when the
+    /// caller does not supply `principal_home`. Typically the capsule's
+    /// default-principal home. `None` means no fallback — home patterns are
+    /// denied unless the caller provides an explicit `principal_home`.
+    default_home_root: Option<std::path::PathBuf>,
     /// Canonical workspace root used to confine wildcard (`"*"`) file access.
     /// Wildcard only matches paths under this root — not the entire filesystem.
     /// Stored as `PathBuf` so that `Path::starts_with` handles component-boundary
@@ -285,7 +50,7 @@ impl ManifestSecurityGate {
         workspace_root: std::path::PathBuf,
         home_root: Option<std::path::PathBuf>,
     ) -> Self {
-        // Canonicalize roots once up front. Both `resolve_schemes` (for prefix
+        // Canonicalize roots once up front. Both `partition_schemes` (for prefix
         // strings) and `workspace_root_path` (for wildcard confinement) use
         // the same canonical values, avoiding redundant syscalls.
         let canonical_ws = workspace_root
@@ -295,59 +60,56 @@ impl ManifestSecurityGate {
             .as_ref()
             .map(|g| g.canonicalize().unwrap_or_else(|_| g.clone()));
 
-        let resolved_fs_read = Self::resolve_schemes(
-            &manifest.capabilities.fs_read,
-            &canonical_ws,
-            &canonical_home,
-        );
-        let resolved_fs_write = Self::resolve_schemes(
-            &manifest.capabilities.fs_write,
-            &canonical_ws,
-            &canonical_home,
-        );
+        let (resolved_static_read, home_suffixes_read) =
+            Self::partition_schemes(&manifest.capabilities.fs_read, &canonical_ws);
+        let (resolved_static_write, home_suffixes_write) =
+            Self::partition_schemes(&manifest.capabilities.fs_write, &canonical_ws);
         Self {
             manifest,
-            resolved_fs_read,
-            resolved_fs_write,
+            resolved_static_read,
+            resolved_static_write,
+            home_suffixes_read,
+            home_suffixes_write,
+            default_home_root: canonical_home,
             workspace_root_path: canonical_ws,
         }
     }
 
-    /// Translate VFS scheme prefixes into physical paths.
+    /// Split VFS scheme prefixes into static (resolved at construction) and
+    /// `home://` suffix entries (resolved at check time against the invocation
+    /// principal's home).
     ///
-    /// - `cwd://` -> `<cwd>/`
-    /// - `home://` -> `<home_root>/` (dropped if no home root is configured)
-    /// - `*` -> kept as-is (wildcard — confined at check time)
-    /// - anything else -> kept as-is (literal path prefix for backwards compat)
+    /// - `cwd://` → `<cwd>/...` (static)
+    /// - `home://suffix` → `"suffix"` added to home suffixes (dynamic)
+    /// - `*` → kept as-is (static; confined to workspace at check time)
+    /// - literal path → kept as-is (static)
     ///
-    /// Expects pre-canonicalized roots (canonicalization is done once in `new()`).
-    fn resolve_schemes(
+    /// Expects a pre-canonicalized workspace root.
+    fn partition_schemes(
         entries: &[String],
         canonical_ws: &std::path::Path,
-        canonical_home: &Option<std::path::PathBuf>,
-    ) -> Vec<String> {
-        let mut resolved = Vec::with_capacity(entries.len());
+    ) -> (Vec<String>, Vec<String>) {
+        let mut statics = Vec::with_capacity(entries.len());
+        let mut home_suffixes = Vec::new();
         for entry in entries {
             if entry == "*" {
-                resolved.push("*".to_string());
+                statics.push("*".to_string());
             } else if let Some(suffix) = entry.strip_prefix("cwd://") {
                 let path = canonical_ws.join(suffix);
-                resolved.push(path.to_string_lossy().to_string());
+                statics.push(path.to_string_lossy().to_string());
             } else if let Some(suffix) = entry.strip_prefix("home://") {
-                if let Some(g_root) = canonical_home {
-                    let path = g_root.join(suffix);
-                    resolved.push(path.to_string_lossy().to_string());
-                }
-                // If no home root is configured, silently drop this entry
-                // so the capsule simply cannot access home paths.
+                // Defer resolution until check time so we can target the
+                // per-invocation principal's home root.
+                home_suffixes.push(suffix.to_string());
             } else {
-                resolved.push(entry.clone());
+                statics.push(entry.clone());
             }
         }
-        resolved
+        (statics, home_suffixes)
     }
 
-    /// Check a filesystem path against a list of resolved allowed patterns.
+    /// Check a filesystem path against a list of resolved static patterns plus
+    /// a list of `home://` suffixes resolved against the given principal_home.
     ///
     /// Rejects paths containing `..` (ParentDir) components to prevent traversal
     /// attacks like `/workspace/../../etc/passwd` which would pass a naive
@@ -357,7 +119,17 @@ impl ManifestSecurityGate {
     /// When a wildcard `"*"` is present, it only matches paths under the
     /// canonical workspace root — preventing escape to global paths
     /// (e.g. `~/.astrid/keys/`).
-    fn check_fs_permission(&self, path: &str, resolved: &[String]) -> bool {
+    ///
+    /// If `principal_home` is `Some`, it supersedes `default_home_root` for
+    /// resolving `home://` suffixes. If both are `None` and the manifest has
+    /// `home://` entries, those entries do not match anything.
+    fn check_fs_permission(
+        &self,
+        path: &str,
+        statics: &[String],
+        home_suffixes: &[String],
+        principal_home: Option<&std::path::Path>,
+    ) -> bool {
         let path_obj = std::path::Path::new(path);
 
         // Reject paths with '..' components — these can bypass starts_with checks
@@ -369,13 +141,27 @@ impl ManifestSecurityGate {
             return false;
         }
 
-        resolved.iter().any(|p| {
+        if statics.iter().any(|p| {
             if p == "*" {
                 path_obj.starts_with(&self.workspace_root_path)
             } else {
                 path_obj.starts_with(p)
             }
-        })
+        }) {
+            return true;
+        }
+
+        let effective_home: Option<std::path::PathBuf> = principal_home
+            .map(std::path::Path::to_path_buf)
+            .or_else(|| self.default_home_root.clone());
+
+        let Some(home) = effective_home else {
+            return false;
+        };
+
+        home_suffixes
+            .iter()
+            .any(|suffix| path_obj.starts_with(home.join(suffix)))
     }
 }
 
@@ -405,8 +191,18 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
         }
     }
 
-    async fn check_file_read(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        if self.check_fs_permission(path, &self.resolved_fs_read) {
+    async fn check_file_read(
+        &self,
+        capsule_id: &str,
+        path: &str,
+        principal_home: Option<&std::path::Path>,
+    ) -> Result<(), String> {
+        if self.check_fs_permission(
+            path,
+            &self.resolved_static_read,
+            &self.home_suffixes_read,
+            principal_home,
+        ) {
             Ok(())
         } else {
             Err(format!(
@@ -415,8 +211,18 @@ impl CapsuleSecurityGate for ManifestSecurityGate {
         }
     }
 
-    async fn check_file_write(&self, capsule_id: &str, path: &str) -> Result<(), String> {
-        if self.check_fs_permission(path, &self.resolved_fs_write) {
+    async fn check_file_write(
+        &self,
+        capsule_id: &str,
+        path: &str,
+        principal_home: Option<&std::path::Path>,
+    ) -> Result<(), String> {
+        if self.check_fs_permission(
+            path,
+            &self.resolved_static_write,
+            &self.home_suffixes_write,
+            principal_home,
+        ) {
             Ok(())
         } else {
             Err(format!(
@@ -588,41 +394,53 @@ mod tests {
 
         // Path matches correctly
         assert!(
-            gate.check_file_read("test", "/workspace/src/main.rs")
+            gate.check_file_read("test", "/workspace/src/main.rs", None)
                 .await
                 .is_ok()
         );
-        assert!(gate.check_file_read("test", "/tmp/exact.txt").await.is_ok());
+        assert!(
+            gate.check_file_read("test", "/tmp/exact.txt", None)
+                .await
+                .is_ok()
+        );
 
         // Path boundary correctly enforced
         assert!(
-            gate.check_file_read("test", "/workspace/src-evil/main.rs")
+            gate.check_file_read("test", "/workspace/src-evil/main.rs", None)
                 .await
                 .is_err()
         );
         assert!(
-            gate.check_file_read("test", "/workspace/src_evil/main.rs")
+            gate.check_file_read("test", "/workspace/src_evil/main.rs", None)
                 .await
                 .is_err()
         );
-        assert!(gate.check_file_read("test", "/workspace/src").await.is_ok()); // Exact match is OK
+        assert!(
+            gate.check_file_read("test", "/workspace/src", None)
+                .await
+                .is_ok()
+        ); // Exact match is OK
 
         // Write wildcard is confined to workspace root — paths outside are denied.
         assert!(
-            gate.check_file_write("test", "/workspace/src/main.rs")
+            gate.check_file_write("test", "/workspace/src/main.rs", None)
                 .await
                 .is_ok()
         );
-        assert!(gate.check_file_write("test", "/etc/passwd").await.is_err());
         assert!(
-            gate.check_file_write("test", "/random/file.txt")
+            gate.check_file_write("test", "/etc/passwd", None)
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_file_write("test", "/random/file.txt", None)
                 .await
                 .is_err()
         );
 
         // Path traversal via .. must be rejected even with explicit prefix match
         assert!(
-            gate.check_file_read("test", "/workspace/src/../../etc/passwd")
+            gate.check_file_read("test", "/workspace/src/../../etc/passwd", None)
                 .await
                 .is_err(),
             "path traversal via .. must be rejected"
@@ -635,38 +453,107 @@ mod tests {
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
 
         assert!(
-            gate.check_file_read("test", "/workspace/src/main.rs")
-                .await
-                .is_ok()
-        );
-        assert!(gate.check_file_read("test", "/other/path").await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_scheme_resolution_global() {
-        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
-        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
-
-        assert!(
-            gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md")
+            gate.check_file_read("test", "/workspace/src/main.rs", None)
                 .await
                 .is_ok()
         );
         assert!(
-            gate.check_file_read("test", "/workspace/src/main.rs")
+            gate.check_file_read("test", "/other/path", None)
                 .await
                 .is_err()
         );
     }
 
     #[tokio::test]
-    async fn test_scheme_resolution_global_without_root() {
-        // When no global root is configured, home:// entries are silently dropped
+    async fn test_scheme_resolution_home_default_root() {
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
+
+        // With no principal_home override, falls back to default_home_root (capsule owner's).
+        assert!(
+            gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md", None)
+                .await
+                .is_ok()
+        );
+        assert!(
+            gate.check_file_read("test", "/workspace/src/main.rs", None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scheme_resolution_home_principal_override() {
+        // With principal_home supplied, home:// resolves against it, not the default.
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
+
+        let alice = std::path::PathBuf::from("/home/user/.astrid/home/alice");
+
+        // Alice's home paths are allowed when principal_home is alice.
+        assert!(
+            gate.check_file_read(
+                "test",
+                "/home/user/.astrid/home/alice/note.txt",
+                Some(&alice),
+            )
+            .await
+            .is_ok()
+        );
+        // The default-principal path is NOT automatically allowed when alice's
+        // home is the active principal home.
+        assert!(
+            gate.check_file_read(
+                "test",
+                "/home/user/.astrid/skills/my-skill/SKILL.md",
+                Some(&alice),
+            )
+            .await
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_home_cross_principal_denied() {
+        // Alice active, path is Bob's home -> denied (path not under alice's root).
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        let alice = std::path::PathBuf::from("/home/user/.astrid/home/alice");
+        let bob_path = "/home/user/.astrid/home/bob/secret.txt";
+        assert!(
+            gate.check_file_read("test", bob_path, Some(&alice))
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_home_traversal_denied() {
+        // Even with principal_home set, traversal components are rejected
+        // before any starts_with match is attempted.
+        let manifest = make_manifest(vec![], vec!["home://"], vec![]);
+        let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
+
+        let alice = std::path::PathBuf::from("/home/user/.astrid/home/alice");
+        let attack = "/home/user/.astrid/home/alice/../bob/secret.txt";
+        assert!(
+            gate.check_file_read("test", attack, Some(&alice))
+                .await
+                .is_err(),
+            "traversal via .. must be rejected even with principal_home"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scheme_resolution_home_without_default_root() {
+        // When no default root is configured AND no principal_home is passed,
+        // home:// entries match nothing.
         let manifest = make_manifest(vec![], vec!["home://"], vec![]);
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), None);
 
         assert!(
-            gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md")
+            gate.check_file_read("test", "/home/user/.astrid/skills/my-skill/SKILL.md", None,)
                 .await
                 .is_err()
         );
@@ -678,16 +565,20 @@ mod tests {
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
-            gate.check_file_read("test", "/workspace/src/main.rs")
+            gate.check_file_read("test", "/workspace/src/main.rs", None)
                 .await
                 .is_ok()
         );
         assert!(
-            gate.check_file_read("test", "/home/user/.astrid/config.toml")
+            gate.check_file_read("test", "/home/user/.astrid/config.toml", None)
                 .await
                 .is_ok()
         );
-        assert!(gate.check_file_read("test", "/etc/passwd").await.is_err());
+        assert!(
+            gate.check_file_read("test", "/etc/passwd", None)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -698,13 +589,13 @@ mod tests {
         let gate = ManifestSecurityGate::new(manifest, workspace_root(), Some(home_root()));
 
         assert!(
-            gate.check_file_read("test", "/home/user/.astrid/skills/foo/SKILL.md")
+            gate.check_file_read("test", "/home/user/.astrid/skills/foo/SKILL.md", None)
                 .await
                 .is_err()
         );
         // Workspace paths should still work
         assert!(
-            gate.check_file_read("test", "/workspace/src/main.rs")
+            gate.check_file_read("test", "/workspace/src/main.rs", None)
                 .await
                 .is_ok()
         );
@@ -725,21 +616,25 @@ mod tests {
         // Paths under the canonical workspace root are allowed
         let read_path = canonical_ws.join("src/main.rs");
         assert!(
-            gate.check_file_read("test", read_path.to_str().unwrap())
+            gate.check_file_read("test", read_path.to_str().unwrap(), None)
                 .await
                 .is_ok()
         );
         let write_path = canonical_ws.join("out/file.txt");
         assert!(
-            gate.check_file_write("test", write_path.to_str().unwrap())
+            gate.check_file_write("test", write_path.to_str().unwrap(), None)
                 .await
                 .is_ok()
         );
 
         // Paths outside the workspace root are denied even with wildcard
-        assert!(gate.check_file_read("test", "/etc/passwd").await.is_err());
         assert!(
-            gate.check_file_write("test", "/home/user/.astrid/keys/user.key")
+            gate.check_file_read("test", "/etc/passwd", None)
+                .await
+                .is_err()
+        );
+        assert!(
+            gate.check_file_write("test", "/home/user/.astrid/keys/user.key", None)
                 .await
                 .is_err()
         );
@@ -747,7 +642,7 @@ mod tests {
         // Prefix-collision attack: /project-evil should NOT match /project
         let evil_path = canonical_ws.parent().unwrap().join("project-evil/file.txt");
         assert!(
-            gate.check_file_write("test", evil_path.to_str().unwrap())
+            gate.check_file_write("test", evil_path.to_str().unwrap(), None)
                 .await
                 .is_err()
         );
@@ -756,11 +651,15 @@ mod tests {
         // even though it starts_with /workspace at component level.
         let traversal = format!("{}/../../etc/passwd", canonical_ws.display());
         assert!(
-            gate.check_file_read("test", &traversal).await.is_err(),
+            gate.check_file_read("test", &traversal, None)
+                .await
+                .is_err(),
             "path traversal via .. must be rejected"
         );
         assert!(
-            gate.check_file_write("test", &traversal).await.is_err(),
+            gate.check_file_write("test", &traversal, None)
+                .await
+                .is_err(),
             "path traversal via .. must be rejected for writes"
         );
     }
@@ -783,42 +682,6 @@ mod tests {
         manifest3.capabilities.net_bind = vec!["".into()];
         let gate3 = ManifestSecurityGate::new(manifest3, workspace_root(), None);
         assert!(gate3.check_net_bind("test").await.is_err());
-    }
-
-    #[tokio::test]
-    async fn allow_all_gate_permits_everything() {
-        let gate = AllowAllGate;
-        assert!(
-            gate.check_http_request("p", "GET", "http://x")
-                .await
-                .is_ok()
-        );
-        assert!(gate.check_file_read("p", "/tmp/f").await.is_ok());
-        assert!(gate.check_file_write("p", "/tmp/f").await.is_ok());
-        assert!(gate.check_net_bind("p").await.is_ok());
-        assert!(
-            gate.check_uplink_register("p", "my-conn", "discord")
-                .await
-                .is_ok()
-        );
-    }
-
-    #[tokio::test]
-    async fn deny_all_gate_rejects_everything() {
-        let gate = DenyAllGate;
-        assert!(
-            gate.check_http_request("p", "GET", "http://x")
-                .await
-                .is_err()
-        );
-        assert!(gate.check_file_read("p", "/tmp/f").await.is_err());
-        assert!(gate.check_file_write("p", "/tmp/f").await.is_err());
-        assert!(gate.check_net_bind("p").await.is_err());
-        assert!(
-            gate.check_uplink_register("p", "my-conn", "discord")
-                .await
-                .is_err()
-        );
     }
 
     #[tokio::test]
