@@ -1,0 +1,335 @@
+//! Per-principal profile: enablement, auth, resource quotas, egress policy.
+//!
+//! A [`PrincipalProfile`] is loaded from
+//! `~/.astrid/home/{principal}/.config/profile.toml` and describes the static
+//! policy for a single principal: whether it is enabled, which authentication
+//! methods it supports, its group memberships, its resource quotas, and its
+//! egress / process-spawn policy.
+//!
+//! This module is **Layer 2** of the multi-tenancy work (see parent issue
+//! #653). It is pure data plumbing — the kernel does not yet consume these
+//! values in `invoke_interceptor`. Layer 3 will wire quota enforcement;
+//! Layer 6 will expose management IPC; the CLI surface lives in #657.
+//!
+//! # Behavior
+//!
+//! - Missing file → [`PrincipalProfile::default`]. Fresh principals without a
+//!   profile on disk get the permissive-ish defaults below (egress and
+//!   process spawn default to empty → fail-closed).
+//! - Malformed TOML, unknown fields, failed validation, or a future
+//!   `profile_version` → hard error. The operator must correct the file.
+//! - Save is atomic on Unix (write to `.tmp` with `0o600`, then `rename`).
+//!
+//! # Defaults
+//!
+//! - `max_memory_bytes`         = 64 `MiB`
+//! - `max_timeout_secs`         = 300  (5 min)
+//! - `max_ipc_throughput_bytes` = 10 `MiB`/s
+//! - `max_background_processes` = 8
+//! - `max_storage_bytes`        = 1 `GiB`
+//! - `network.egress`           = `[]`  (no outbound)
+//! - `process.allow`            = `[]`  (no spawn)
+
+use std::io;
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+mod io_impl;
+mod validation;
+
+/// Current profile schema version. Bumped on breaking field changes.
+///
+/// Profiles on disk with a version greater than this constant are rejected
+/// by [`PrincipalProfile::validate`] — a forward-dated profile would otherwise
+/// be silently truncated to whatever fields this binary understands.
+pub const CURRENT_PROFILE_VERSION: u32 = 1;
+
+/// Default per-principal memory ceiling in bytes (64 `MiB`).
+pub const DEFAULT_MAX_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
+/// Default per-invocation wall-clock timeout in seconds (5 minutes).
+pub const DEFAULT_MAX_TIMEOUT_SECS: u64 = 300;
+/// Default per-principal IPC throughput ceiling in bytes/sec (10 `MiB`/s).
+pub const DEFAULT_MAX_IPC_THROUGHPUT_BYTES: u64 = 10 * 1024 * 1024;
+/// Default max concurrent background processes per principal.
+pub const DEFAULT_MAX_BACKGROUND_PROCESSES: u32 = 8;
+/// Default per-principal storage ceiling in bytes (1 `GiB`).
+pub const DEFAULT_MAX_STORAGE_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Absolute upper bound on [`Quotas::max_timeout_secs`] (24 hours).
+///
+/// A sanity guard against runaway invocations — the enforcement layer may
+/// impose a tighter ceiling.
+pub const TIMEOUT_SECS_UPPER_BOUND: u64 = 86_400;
+/// Absolute upper bound on [`Quotas::max_background_processes`].
+pub const BACKGROUND_PROCESSES_UPPER_BOUND: u32 = 256;
+
+/// Maximum length of a single entry in [`PrincipalProfile::groups`].
+pub const MAX_GROUP_NAME_LEN: usize = 64;
+
+/// Authentication methods accepted in [`AuthConfig::methods`].
+///
+/// Kept as a fixed allowlist so typos in `profile.toml` (`passky`,
+/// `keyparr`) fail loudly at load time rather than silently granting
+/// access via a method the authenticator does not understand.
+pub const ALLOWED_AUTH_METHODS: &[&str] = &["keypair", "passkey", "system"];
+
+/// Result alias for profile operations.
+pub type ProfileResult<T> = Result<T, ProfileError>;
+
+/// Errors raised by [`PrincipalProfile`] load, save, and validation.
+#[derive(Debug, Error)]
+pub enum ProfileError {
+    /// Filesystem IO failed (read, write, rename, `create_dir_all`).
+    #[error("profile io error: {0}")]
+    Io(#[from] io::Error),
+    /// Profile TOML failed to deserialize (syntax or `deny_unknown_fields`).
+    #[error("profile parse error: {0}")]
+    Parse(#[from] toml::de::Error),
+    /// Profile failed to serialize back to TOML.
+    #[error("profile serialize error: {0}")]
+    Serialize(#[from] toml::ser::Error),
+    /// Profile value failed semantic validation.
+    #[error("profile validation error: {0}")]
+    Invalid(String),
+}
+
+/// Per-principal profile: enablement, auth, resource quotas, egress policy.
+///
+/// Loaded from `~/.astrid/home/{principal}/.config/profile.toml`. A missing
+/// file yields [`PrincipalProfile::default`]. A malformed, invalid, or
+/// future-versioned file is a hard error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrincipalProfile {
+    /// Schema version. Bumped on breaking field changes.
+    ///
+    /// Values above [`CURRENT_PROFILE_VERSION`] are rejected at load time.
+    #[serde(default = "current_profile_version")]
+    pub profile_version: u32,
+
+    /// Master enable switch. When `false`, the kernel will refuse every
+    /// invocation for this principal regardless of capabilities.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Group memberships. Layer 5 resolves these to capability sets.
+    #[serde(default)]
+    pub groups: Vec<String>,
+
+    /// Authentication configuration.
+    #[serde(default)]
+    pub auth: AuthConfig,
+
+    /// Network egress policy.
+    #[serde(default)]
+    pub network: NetworkConfig,
+
+    /// Process-spawn policy.
+    #[serde(default)]
+    pub process: ProcessConfig,
+
+    /// Resource quotas.
+    #[serde(default)]
+    pub quotas: Quotas,
+}
+
+/// Authentication configuration for a principal.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthConfig {
+    /// Accepted authentication methods.
+    ///
+    /// Each entry must be a member of [`ALLOWED_AUTH_METHODS`].
+    #[serde(default)]
+    pub methods: Vec<String>,
+
+    /// Public keys bound to this principal (encoding TBD; see Layer 5).
+    #[serde(default)]
+    pub public_keys: Vec<String>,
+}
+
+/// Network egress configuration for a principal.
+///
+/// Empty `egress` means no outbound traffic is permitted (fail-closed).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkConfig {
+    /// Egress allow-list patterns.
+    ///
+    /// Exact pattern grammar is settled by Layer 5 (it will reuse the
+    /// capsule manifest net-pattern parser). This layer validates only
+    /// that entries are non-empty strings.
+    #[serde(default)]
+    pub egress: Vec<String>,
+}
+
+/// Process-spawn configuration for a principal.
+///
+/// Empty `allow` means the principal cannot spawn external processes.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProcessConfig {
+    /// Executables permitted for process spawn.
+    ///
+    /// Entries may be absolute paths or short names drawn from a sandbox
+    /// profile allowlist; the final grammar is pinned by Layer 5. This
+    /// layer validates only that entries are non-empty strings.
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+/// Per-principal resource quotas.
+///
+/// Enforcement happens in Layer 3. This struct only carries the values and
+/// rejects nonsense on load/save.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Quotas {
+    /// Maximum resident memory in bytes. Must be > 0.
+    #[serde(default = "default_max_memory_bytes")]
+    pub max_memory_bytes: u64,
+
+    /// Maximum wall-clock time for a single invocation, in seconds.
+    ///
+    /// Must be in `1..=`[`TIMEOUT_SECS_UPPER_BOUND`].
+    #[serde(default = "default_max_timeout_secs")]
+    pub max_timeout_secs: u64,
+
+    /// Maximum IPC throughput in bytes/sec. Must be > 0.
+    #[serde(default = "default_max_ipc_throughput_bytes")]
+    pub max_ipc_throughput_bytes: u64,
+
+    /// Maximum concurrent background processes. Must be
+    /// `<=` [`BACKGROUND_PROCESSES_UPPER_BOUND`].
+    #[serde(default = "default_max_background_processes")]
+    pub max_background_processes: u32,
+
+    /// Maximum persistent storage in bytes. Must be > 0.
+    #[serde(default = "default_max_storage_bytes")]
+    pub max_storage_bytes: u64,
+}
+
+// ── serde default helpers ────────────────────────────────────────────────
+
+fn current_profile_version() -> u32 {
+    CURRENT_PROFILE_VERSION
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_memory_bytes() -> u64 {
+    DEFAULT_MAX_MEMORY_BYTES
+}
+
+fn default_max_timeout_secs() -> u64 {
+    DEFAULT_MAX_TIMEOUT_SECS
+}
+
+fn default_max_ipc_throughput_bytes() -> u64 {
+    DEFAULT_MAX_IPC_THROUGHPUT_BYTES
+}
+
+fn default_max_background_processes() -> u32 {
+    DEFAULT_MAX_BACKGROUND_PROCESSES
+}
+
+fn default_max_storage_bytes() -> u64 {
+    DEFAULT_MAX_STORAGE_BYTES
+}
+
+// ── Default impls ────────────────────────────────────────────────────────
+
+impl Default for PrincipalProfile {
+    fn default() -> Self {
+        Self {
+            profile_version: CURRENT_PROFILE_VERSION,
+            enabled: true,
+            groups: Vec::new(),
+            auth: AuthConfig::default(),
+            network: NetworkConfig::default(),
+            process: ProcessConfig::default(),
+            quotas: Quotas::default(),
+        }
+    }
+}
+
+impl Default for Quotas {
+    fn default() -> Self {
+        Self {
+            max_memory_bytes: DEFAULT_MAX_MEMORY_BYTES,
+            max_timeout_secs: DEFAULT_MAX_TIMEOUT_SECS,
+            max_ipc_throughput_bytes: DEFAULT_MAX_IPC_THROUGHPUT_BYTES,
+            max_background_processes: DEFAULT_MAX_BACKGROUND_PROCESSES,
+            max_storage_bytes: DEFAULT_MAX_STORAGE_BYTES,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_permissive_but_fail_closed_egress() {
+        let p = PrincipalProfile::default();
+        assert_eq!(p.profile_version, CURRENT_PROFILE_VERSION);
+        assert!(p.enabled);
+        assert!(p.groups.is_empty());
+        assert!(p.auth.methods.is_empty());
+        assert!(p.auth.public_keys.is_empty());
+        assert!(p.network.egress.is_empty(), "egress must fail-closed");
+        assert!(p.process.allow.is_empty(), "process spawn must fail-closed");
+        assert_eq!(p.quotas.max_memory_bytes, DEFAULT_MAX_MEMORY_BYTES);
+        assert_eq!(p.quotas.max_timeout_secs, DEFAULT_MAX_TIMEOUT_SECS);
+        assert_eq!(
+            p.quotas.max_ipc_throughput_bytes,
+            DEFAULT_MAX_IPC_THROUGHPUT_BYTES
+        );
+        assert_eq!(
+            p.quotas.max_background_processes,
+            DEFAULT_MAX_BACKGROUND_PROCESSES
+        );
+        assert_eq!(p.quotas.max_storage_bytes, DEFAULT_MAX_STORAGE_BYTES);
+        p.validate().expect("defaults validate");
+    }
+
+    #[test]
+    fn roundtrip_default() {
+        let p = PrincipalProfile::default();
+        let s = toml::to_string_pretty(&p).unwrap();
+        let back: PrincipalProfile = toml::from_str(&s).unwrap();
+        assert_eq!(p, back);
+    }
+
+    #[test]
+    fn roundtrip_populated() {
+        let p = PrincipalProfile {
+            profile_version: 1,
+            enabled: false,
+            groups: vec!["admins".into(), "ops_team".into()],
+            auth: AuthConfig {
+                methods: vec!["keypair".into(), "passkey".into()],
+                public_keys: vec!["ed25519:AAAA".into()],
+            },
+            network: NetworkConfig {
+                egress: vec!["api.example.com:443".into()],
+            },
+            process: ProcessConfig {
+                allow: vec!["/usr/bin/env".into()],
+            },
+            quotas: Quotas {
+                max_memory_bytes: 128 * 1024 * 1024,
+                max_timeout_secs: 600,
+                max_ipc_throughput_bytes: 5 * 1024 * 1024,
+                max_background_processes: 16,
+                max_storage_bytes: 2 * 1024 * 1024 * 1024,
+            },
+        };
+        let s = toml::to_string_pretty(&p).unwrap();
+        let back: PrincipalProfile = toml::from_str(&s).unwrap();
+        assert_eq!(p, back);
+    }
+}
