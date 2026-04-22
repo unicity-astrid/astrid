@@ -18,6 +18,7 @@ pub mod socket;
 
 use astrid_audit::AuditLog;
 use astrid_capabilities::{CapabilityStore, DirHandle};
+use astrid_capsule::profile_cache::PrincipalProfileCache;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
 use astrid_crypto::KeyPair;
@@ -97,7 +98,7 @@ pub struct Kernel {
     /// Invalidation model: kernel restart. Layer 6 will add explicit
     /// management IPC to clear entries at runtime (issue #666 tracks that
     /// follow-up).
-    profile_cache: Arc<astrid_capsule::profile_cache::PrincipalProfileCache>,
+    profile_cache: Arc<PrincipalProfileCache>,
 }
 
 impl Kernel {
@@ -111,6 +112,10 @@ impl Kernel {
     /// # Errors
     ///
     /// Returns an error if the VFS mount paths cannot be registered.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "boot sequence: sequential setup that does not benefit from splitting"
+    )]
     pub async fn new(
         session_id: SessionId,
         workspace_root: PathBuf,
@@ -189,12 +194,6 @@ impl Kernel {
         let (session_token, token_path) = socket::generate_session_token()?;
 
         let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
-        // Rooted at the same `AstridHome` we just resolved above. Using
-        // `with_home` avoids a second `AstridHome::resolve()` call (and any
-        // divergence if the env changes mid-boot).
-        let profile_cache =
-            Arc::new(astrid_capsule::profile_cache::PrincipalProfileCache::with_home(home.clone()));
-
         // Create system-wide identity store backed by the shared KV.
         let identity_kv = astrid_storage::ScopedKvStore::new(
             Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>,
@@ -237,7 +236,7 @@ impl Kernel {
             token_path,
             allowance_store,
             identity_store,
-            profile_cache,
+            profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));

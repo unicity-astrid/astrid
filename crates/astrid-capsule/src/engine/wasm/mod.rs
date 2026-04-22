@@ -178,6 +178,13 @@ pub struct WasmEngine {
     /// sub-budgets. `None` in tests and single-tenant deployments — the
     /// engine falls back to [`PrincipalProfile::default_ref`].
     profile_cache: Option<Arc<crate::profile_cache::PrincipalProfileCache>>,
+    /// Capsule owner's principal, cached from [`CapsuleContext`] at load time.
+    ///
+    /// Lets `invoke_interceptor` derive the invoking principal (caller or
+    /// owner) without locking the store just to read `HostState.principal` —
+    /// `state.principal` is immutable after load, so caching it here is
+    /// equivalent and hot-path friendly.
+    owner_principal: Option<astrid_core::PrincipalId>,
 }
 
 impl WasmEngine {
@@ -194,6 +201,7 @@ impl WasmEngine {
             cancel_token: None,
             epoch_ticker: None,
             profile_cache: None,
+            owner_principal: None,
         }
     }
 }
@@ -919,6 +927,7 @@ impl ExecutionEngine for WasmEngine {
         }
         self.inbound_rx = rx;
         self.profile_cache = ctx.profile_cache.clone();
+        self.owner_principal = Some(ctx.principal.clone());
 
         Ok(())
     }
@@ -985,20 +994,22 @@ impl ExecutionEngine for WasmEngine {
         // BEFORE touching the store — a failed load denies the invocation
         // without mutating state. Fail-closed: no fallback to the owner's
         // limits. When the kernel didn't supply a cache (tests, single
-        // tenant), we skip resolution and `effective_profile()` returns the
-        // process-global default.
+        // tenant), `invocation_profile` stays `None` and the defensive
+        // apply-block below uses the process-global default.
         let invocation_profile: Option<Arc<astrid_core::profile::PrincipalProfile>> = match self
             .profile_cache
             .as_ref()
         {
             Some(cache) => {
+                // Derive the invoking principal without locking the store —
+                // `owner_principal` captures the immutable `state.principal`
+                // at `load()` time, so the fallback path is allocation- and
+                // lock-free on the hot path.
                 let invoking = caller
                     .and_then(|msg| msg.principal.as_deref())
                     .and_then(|p| astrid_core::PrincipalId::new(p).ok())
-                    .unwrap_or_else(|| {
-                        let s = store.lock().unwrap_or_else(|e| e.into_inner());
-                        s.data().principal.clone()
-                    });
+                    .or_else(|| self.owner_principal.clone())
+                    .unwrap_or_default();
                 Some(cache.resolve(&invoking).map_err(|e| {
                     tracing::error!(principal = %invoking, error = %e,
                             "profile load failed; denying invocation (issue #666)");
@@ -1007,8 +1018,13 @@ impl ExecutionEngine for WasmEngine {
             },
             None => None,
         };
+        // Is the capsule a daemon (uplink / long-lived)? Daemons keep their
+        // load-time `u64::MAX` epoch deadline; only non-daemon capsules
+        // accept a per-invocation timeout from the profile.
+        let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
 
-        // Set per-invocation caller context and KV scope. Recovers from
+        // Set per-invocation caller context, profile, KV, VFS, and
+        // epoch deadline under a single store lock. Recovers from
         // poisoned mutex to prevent stale principal context from persisting.
         {
             let mut s = match store.lock() {
@@ -1021,19 +1037,39 @@ impl ExecutionEngine for WasmEngine {
                     poisoned.into_inner()
                 },
             };
+            // Always apply a profile — when the cache didn't produce one
+            // (tests, no-cache builds), fall back to the process-global
+            // default. Doing this unconditionally keeps limits / deadline
+            // consistent across invocations regardless of cache presence
+            // and prevents a prior invocation's cap from leaking forward
+            // through any future refactor that drops an invocation's
+            // profile mid-flow.
+            let applied_profile: Arc<astrid_core::profile::PrincipalProfile> =
+                invocation_profile.clone().unwrap_or_else(|| {
+                    Arc::new(astrid_core::profile::PrincipalProfile::default_ref().clone())
+                });
+
+            // Per-invocation epoch deadline for non-daemon capsules. The
+            // store's epoch deadline is configured on the `Store`, not
+            // inside `HostState`, so this call goes through the mutable
+            // store guard above rather than `state`.
+            if !is_daemon {
+                let deadline = applied_profile.quotas.max_timeout_secs.saturating_mul(1000)
+                    / EPOCH_TICK_INTERVAL.as_millis() as u64;
+                s.set_epoch_deadline(deadline);
+            }
+
             let state = s.data_mut();
             state.caller_context = caller.cloned();
             // Apply per-principal memory cap by rebuilding `StoreLimits`.
             // The store's `limiter` callback reads this field on each
             // `memory.grow`, so mutating in place takes effect for the
             // upcoming call.
-            if let Some(profile) = invocation_profile.as_deref() {
-                state.store_limits = wasmtime::StoreLimitsBuilder::new()
-                    .memory_size(
-                        usize::try_from(profile.quotas.max_memory_bytes).unwrap_or(usize::MAX),
-                    )
-                    .build();
-            }
+            state.store_limits = wasmtime::StoreLimitsBuilder::new()
+                .memory_size(
+                    usize::try_from(applied_profile.quotas.max_memory_bytes).unwrap_or(usize::MAX),
+                )
+                .build();
             state.invocation_profile = invocation_profile.clone();
 
             // Derive the invocation principal once; reused for KV + VFS scoping.
@@ -1106,18 +1142,6 @@ impl ExecutionEngine for WasmEngine {
                     });
                 });
             }
-        }
-
-        // Layer 3 (#666): per-invocation epoch deadline for non-daemon
-        // capsules. Daemons + run-loop capsules keep their load-time
-        // `u64::MAX` deadline (run-loop capsules never reach
-        // `invoke_interceptor` anyway — `self.store` is `None`).
-        let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
-        if !is_daemon && let Some(profile) = invocation_profile.as_deref() {
-            let deadline = profile.quotas.max_timeout_secs.saturating_mul(1000)
-                / EPOCH_TICK_INTERVAL.as_millis() as u64;
-            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
-            s.set_epoch_deadline(deadline);
         }
 
         // Call the typed Component Model export. The action name and payload
