@@ -170,6 +170,14 @@ pub struct WasmEngine {
     cancel_token: Option<tokio_util::sync::CancellationToken>,
     /// RAII guard that stops the epoch ticker thread on drop.
     epoch_ticker: Option<EpochTickerGuard>,
+    /// Shared per-principal profile cache (Layer 3, issue #666).
+    ///
+    /// Populated at load time from the kernel-wide cache. `invoke_interceptor`
+    /// resolves the invoking principal's profile against this cache and applies
+    /// the result to `StoreLimits`, the epoch deadline, and downstream
+    /// sub-budgets. `None` in tests and single-tenant deployments — the
+    /// engine falls back to [`PrincipalProfile::default_ref`].
+    profile_cache: Option<Arc<crate::profile_cache::PrincipalProfileCache>>,
 }
 
 impl WasmEngine {
@@ -185,6 +193,7 @@ impl WasmEngine {
             ready_rx: None,
             cancel_token: None,
             epoch_ticker: None,
+            profile_cache: None,
         }
     }
 }
@@ -608,6 +617,7 @@ impl ExecutionEngine for WasmEngine {
                     invocation_tmp: None,
                     invocation_secret_store: None,
                     invocation_capsule_log: None,
+                    invocation_profile: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -908,6 +918,7 @@ impl ExecutionEngine for WasmEngine {
             self.instance = Some(instance);
         }
         self.inbound_rx = rx;
+        self.profile_cache = ctx.profile_cache.clone();
 
         Ok(())
     }
@@ -970,6 +981,33 @@ impl ExecutionEngine for WasmEngine {
             .as_ref()
             .ok_or_else(|| CapsuleError::NotSupported("WASM component not instantiated".into()))?;
 
+        // Layer 3 (#666): resolve the invoking principal's quota profile
+        // BEFORE touching the store — a failed load denies the invocation
+        // without mutating state. Fail-closed: no fallback to the owner's
+        // limits. When the kernel didn't supply a cache (tests, single
+        // tenant), we skip resolution and `effective_profile()` returns the
+        // process-global default.
+        let invocation_profile: Option<Arc<astrid_core::profile::PrincipalProfile>> = match self
+            .profile_cache
+            .as_ref()
+        {
+            Some(cache) => {
+                let invoking = caller
+                    .and_then(|msg| msg.principal.as_deref())
+                    .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+                    .unwrap_or_else(|| {
+                        let s = store.lock().unwrap_or_else(|e| e.into_inner());
+                        s.data().principal.clone()
+                    });
+                Some(cache.resolve(&invoking).map_err(|e| {
+                    tracing::error!(principal = %invoking, error = %e,
+                            "profile load failed; denying invocation (issue #666)");
+                    CapsuleError::WasmError(format!("principal '{invoking}' profile invalid: {e}"))
+                })?)
+            },
+            None => None,
+        };
+
         // Set per-invocation caller context and KV scope. Recovers from
         // poisoned mutex to prevent stale principal context from persisting.
         {
@@ -985,6 +1023,18 @@ impl ExecutionEngine for WasmEngine {
             };
             let state = s.data_mut();
             state.caller_context = caller.cloned();
+            // Apply per-principal memory cap by rebuilding `StoreLimits`.
+            // The store's `limiter` callback reads this field on each
+            // `memory.grow`, so mutating in place takes effect for the
+            // upcoming call.
+            if let Some(profile) = invocation_profile.as_deref() {
+                state.store_limits = wasmtime::StoreLimitsBuilder::new()
+                    .memory_size(
+                        usize::try_from(profile.quotas.max_memory_bytes).unwrap_or(usize::MAX),
+                    )
+                    .build();
+            }
+            state.invocation_profile = invocation_profile.clone();
 
             // Derive the invocation principal once; reused for KV + VFS scoping.
             let invocation_principal: Option<astrid_core::PrincipalId> = caller
@@ -1058,6 +1108,18 @@ impl ExecutionEngine for WasmEngine {
             }
         }
 
+        // Layer 3 (#666): per-invocation epoch deadline for non-daemon
+        // capsules. Daemons + run-loop capsules keep their load-time
+        // `u64::MAX` deadline (run-loop capsules never reach
+        // `invoke_interceptor` anyway — `self.store` is `None`).
+        let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
+        if !is_daemon && let Some(profile) = invocation_profile.as_deref() {
+            let deadline = profile.quotas.max_timeout_secs.saturating_mul(1000)
+                / EPOCH_TICK_INTERVAL.as_millis() as u64;
+            let mut s = store.lock().unwrap_or_else(|e| e.into_inner());
+            s.set_epoch_deadline(deadline);
+        }
+
         // Call the typed Component Model export. The action name and payload
         // are passed as separate typed parameters (no JSON envelope needed).
         let result = tokio::task::block_in_place(|| {
@@ -1091,6 +1153,7 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_tmp = None;
             state.invocation_secret_store = None;
             state.invocation_capsule_log = None;
+            state.invocation_profile = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1207,6 +1270,7 @@ pub fn run_lifecycle(
         invocation_tmp: None,
         invocation_secret_store: None,
         invocation_capsule_log: None,
+        invocation_profile: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,

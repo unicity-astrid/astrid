@@ -17,7 +17,7 @@ pub mod prelude;
 mod bus;
 mod event;
 pub mod ipc;
-mod rate_limiter;
+pub mod rate_limiter;
 mod subscriber;
 
 // Re-export shared types from astrid-types for backward compatibility.

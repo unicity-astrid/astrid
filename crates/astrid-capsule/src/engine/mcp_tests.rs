@@ -105,6 +105,7 @@ mod tests {
             allowance_store: None,
             identity_store: None,
             schema_catalog: std::sync::Arc::new(crate::schema_catalog::SchemaCatalog::new()),
+            profile_cache: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -167,6 +168,7 @@ mod tests {
             allowance_store: None,
             identity_store: None,
             schema_catalog: std::sync::Arc::new(crate::schema_catalog::SchemaCatalog::new()),
+            profile_cache: None,
         };
 
         let result = engine.load(&ctx).await;
@@ -226,6 +228,7 @@ mod tests {
             allowance_store: None,
             identity_store: None,
             schema_catalog: std::sync::Arc::new(crate::schema_catalog::SchemaCatalog::new()),
+            profile_cache: None,
         };
 
         let result = engine.load(&ctx).await;

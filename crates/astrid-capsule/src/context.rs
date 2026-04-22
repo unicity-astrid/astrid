@@ -11,6 +11,7 @@ use astrid_storage::ScopedKvStore;
 
 use astrid_core::session_token::SessionToken;
 
+use crate::profile_cache::PrincipalProfileCache;
 use crate::registry::CapsuleRegistry;
 use crate::schema_catalog::SchemaCatalog;
 
@@ -49,6 +50,13 @@ pub struct CapsuleContext {
     /// Updated on capsule load/unload. The A2UI bridge reads this to generate
     /// schema context for the LLM system prompt.
     pub schema_catalog: Arc<SchemaCatalog>,
+    /// Shared per-principal quota profile cache (Layer 3, issue #666).
+    ///
+    /// One instance per kernel boot, backing [`WasmEngine::invoke_interceptor`](
+    /// crate::engine::wasm::WasmEngine::invoke_interceptor)'s per-invocation
+    /// quota resolution. Tests and single-tenant deployments may leave this
+    /// `None` — the engine falls back to the process-global default profile.
+    pub profile_cache: Option<Arc<PrincipalProfileCache>>,
 }
 
 impl CapsuleContext {
@@ -73,6 +81,7 @@ impl CapsuleContext {
             allowance_store: None,
             identity_store: None,
             schema_catalog: Arc::new(SchemaCatalog::new()),
+            profile_cache: None,
         }
     }
 
@@ -101,6 +110,13 @@ impl CapsuleContext {
     #[must_use]
     pub fn with_identity_store(mut self, store: Arc<dyn astrid_storage::IdentityStore>) -> Self {
         self.identity_store = Some(store);
+        self
+    }
+
+    /// Set the shared per-principal profile cache (Layer 3 quota enforcement).
+    #[must_use]
+    pub fn with_profile_cache(mut self, cache: Arc<PrincipalProfileCache>) -> Self {
+        self.profile_cache = Some(cache);
         self
     }
 }

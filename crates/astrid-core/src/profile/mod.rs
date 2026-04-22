@@ -31,6 +31,7 @@
 //! - `process.allow`            = `[]`  (no spawn)
 
 use std::io;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -263,6 +264,21 @@ impl Default for PrincipalProfile {
     }
 }
 
+impl PrincipalProfile {
+    /// Borrow the process-global default profile.
+    ///
+    /// Layer 3's `effective_profile()` accessor returns `&PrincipalProfile`,
+    /// so it needs a stable reference to hand back when no per-invocation
+    /// profile has been set. Allocating a fresh [`Self::default`] per call
+    /// would cost an allocation on every hot-path accessor read; a static
+    /// reference is cheaper and safe because the default is immutable.
+    #[must_use]
+    pub fn default_ref() -> &'static Self {
+        static DEFAULT: OnceLock<PrincipalProfile> = OnceLock::new();
+        DEFAULT.get_or_init(Self::default)
+    }
+}
+
 impl Default for Quotas {
     fn default() -> Self {
         Self {
@@ -301,6 +317,16 @@ mod tests {
         );
         assert_eq!(p.quotas.max_storage_bytes, DEFAULT_MAX_STORAGE_BYTES);
         p.validate().expect("defaults validate");
+    }
+
+    #[test]
+    fn default_ref_matches_default_and_is_stable() {
+        let a = PrincipalProfile::default_ref();
+        let b = PrincipalProfile::default_ref();
+        // Same `OnceLock` value across calls — stable pointer.
+        assert!(std::ptr::eq(a, b));
+        // And it observably equals a freshly-constructed `Default`.
+        assert_eq!(*a, PrincipalProfile::default());
     }
 
     #[test]

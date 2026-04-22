@@ -88,6 +88,16 @@ pub struct Kernel {
     pub allowance_store: Arc<astrid_approval::AllowanceStore>,
     /// System-wide identity store for platform user resolution.
     identity_store: Arc<dyn astrid_storage::IdentityStore>,
+    /// System-wide per-principal profile cache (Layer 3 quota enforcement).
+    ///
+    /// One instance per kernel boot. Every capsule load plumbs this into
+    /// [`CapsuleContext::with_profile_cache`](astrid_capsule::context::CapsuleContext::with_profile_cache),
+    /// where [`WasmEngine`](astrid_capsule::engine::wasm::WasmEngine) consumes
+    /// it to apply per-invocation memory / timeout / IPC / process caps.
+    /// Invalidation model: kernel restart. Layer 6 will add explicit
+    /// management IPC to clear entries at runtime (issue #666 tracks that
+    /// follow-up).
+    profile_cache: Arc<astrid_capsule::profile_cache::PrincipalProfileCache>,
 }
 
 impl Kernel {
@@ -179,6 +189,11 @@ impl Kernel {
         let (session_token, token_path) = socket::generate_session_token()?;
 
         let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
+        // Rooted at the same `AstridHome` we just resolved above. Using
+        // `with_home` avoids a second `AstridHome::resolve()` call (and any
+        // divergence if the env changes mid-boot).
+        let profile_cache =
+            Arc::new(astrid_capsule::profile_cache::PrincipalProfileCache::with_home(home.clone()));
 
         // Create system-wide identity store backed by the shared KV.
         let identity_kv = astrid_storage::ScopedKvStore::new(
@@ -222,6 +237,7 @@ impl Kernel {
             token_path,
             allowance_store,
             identity_store,
+            profile_cache,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -313,7 +329,8 @@ impl Kernel {
         .with_registry(Arc::clone(&self.capsules))
         .with_session_token(Arc::clone(&self.session_token))
         .with_allowance_store(Arc::clone(&self.allowance_store))
-        .with_identity_store(Arc::clone(&self.identity_store));
+        .with_identity_store(Arc::clone(&self.identity_store))
+        .with_profile_cache(Arc::clone(&self.profile_cache));
 
         capsule.load(&ctx).await?;
 
