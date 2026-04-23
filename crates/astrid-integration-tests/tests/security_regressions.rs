@@ -70,6 +70,7 @@ fn make_test_allowance(
     let keypair = KeyPair::generate();
     Allowance {
         id: AllowanceId::new(),
+        principal: astrid_core::principal::PrincipalId::default(),
         action_pattern: pattern,
         created_at: Timestamp::now(),
         expires_at,
@@ -110,7 +111,11 @@ async fn test_allowance_max_uses_atomic() {
         let store = Arc::clone(&store);
         let action = action.clone();
         handles.push(tokio::spawn(async move {
-            store.find_matching_and_consume(&action, None)
+            store.find_matching_and_consume(
+                &astrid_core::principal::PrincipalId::default(),
+                &action,
+                None,
+            )
         }));
     }
 
@@ -180,6 +185,7 @@ async fn test_workspace_budget_not_bypassed_by_capability() {
         astrid_capabilities::AuditEntryId::new(),
         &keypair,
         None,
+        astrid_core::principal::PrincipalId::default(),
     );
     capability_store.add(token).unwrap();
 
@@ -219,7 +225,12 @@ async fn test_workspace_budget_not_bypassed_by_capability() {
         path: "/workspace/temp.txt".to_string(),
     };
     let result = interceptor
-        .intercept(&action, "delete temp file", Some(10.0))
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "delete temp file",
+            Some(10.0),
+        )
         .await;
 
     assert!(
@@ -271,7 +282,14 @@ async fn test_allowance_creation_produces_audit_entry() {
     let action = SensitiveAction::FileRead {
         path: "/workspace/data.txt".to_string(),
     };
-    let result = interceptor.intercept(&action, "reading data", None).await;
+    let result = interceptor
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading data",
+            None,
+        )
+        .await;
     assert!(result.is_ok(), "intercept should succeed");
 
     // Session approval creates exactly one audit entry (the approval decision).
@@ -364,7 +382,11 @@ fn test_expired_allowances_cleaned_on_lookup() {
         server: "filesystem".to_string(),
         tool: "read_file".to_string(),
     };
-    let result = store.find_matching_and_consume(&action, None);
+    let result = store.find_matching_and_consume(
+        &astrid_core::principal::PrincipalId::default(),
+        &action,
+        None,
+    );
     assert!(result.is_none(), "expired allowance should not match");
 
     // The expired allowance should have been cleaned from the store

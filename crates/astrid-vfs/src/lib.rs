@@ -19,6 +19,8 @@ pub mod error;
 pub mod host;
 /// Overlay (copy-on-write) virtual filesystem implementation.
 pub mod overlay;
+/// Per-principal registry of [`OverlayVfs`] instances (Layer 4, issue #668).
+pub mod overlay_registry;
 /// Path resolution and sandboxing utilities.
 pub mod path;
 /// Worktree-specific virtual filesystem implementation.
@@ -28,6 +30,7 @@ pub(crate) mod worktree;
 pub use error::{VfsError, VfsResult};
 pub use host::HostVfs;
 pub use overlay::OverlayVfs;
+pub use overlay_registry::OverlayVfsRegistry;
 
 use astrid_capabilities::{DirHandle, FileHandle};
 use async_trait::async_trait;

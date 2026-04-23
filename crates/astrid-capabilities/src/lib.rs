@@ -21,6 +21,7 @@
 //!     CapabilityToken, CapabilityStore, ResourcePattern, TokenScope, AuditEntryId,
 //! };
 //! use astrid_core::Permission;
+//! use astrid_core::principal::PrincipalId;
 //! use astrid_crypto::KeyPair;
 //!
 //! // Create a capability store
@@ -29,7 +30,8 @@
 //! // Runtime key for signing
 //! let runtime_key = KeyPair::generate();
 //!
-//! // Create a capability token
+//! // Create a capability token for a specific principal (Layer 4, issue #668).
+//! let principal = PrincipalId::default();
 //! let token = CapabilityToken::create(
 //!     ResourcePattern::new("mcp://filesystem:*").unwrap(),
 //!     vec![Permission::Invoke],
@@ -38,13 +40,14 @@
 //!     AuditEntryId::new(),
 //!     &runtime_key,
 //!     None,
+//!     principal.clone(),
 //! );
 //!
 //! // Add to store
 //! store.add(token).unwrap();
 //!
-//! // Check capability
-//! assert!(store.has_capability("mcp://filesystem:read_file", Permission::Invoke));
+//! // Check capability (scoped by principal)
+//! assert!(store.has_capability(&principal, "mcp://filesystem:read_file", Permission::Invoke));
 //! ```
 
 #![deny(unsafe_code)]

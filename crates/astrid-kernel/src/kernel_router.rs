@@ -80,14 +80,24 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHand
             let astrid_events::AstridEvent::Ipc { message, .. } = &*event else {
                 continue;
             };
+            // Derive the connecting principal from the IPC message. Today's
+            // CLI socket always sets this to the default principal
+            // (bootstrapped in `bootstrap_cli_root_user`), but as per-agent
+            // socket auth lands (#658) the same plumbing will carry the
+            // real invoking principal.
+            let principal = message
+                .principal
+                .as_deref()
+                .and_then(|p| astrid_core::principal::PrincipalId::new(p).ok())
+                .unwrap_or_default();
             match &message.payload {
                 IpcPayload::Disconnect { reason } => {
-                    kernel.connection_closed();
-                    debug!(reason = ?reason, "Client disconnected");
+                    kernel.connection_closed(&principal);
+                    debug!(%principal, reason = ?reason, "Client disconnected");
                 },
                 IpcPayload::Connect => {
-                    kernel.connection_opened();
-                    debug!("New client connection accepted");
+                    kernel.connection_opened(&principal);
+                    debug!(%principal, "New client connection accepted");
                 },
                 _ => {},
             }
@@ -202,7 +212,8 @@ async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelR
                 uptime_secs: uptime,
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 ephemeral: false, // The kernel doesn't know; daemon sets this via response override if needed
-                connected_clients: u32::try_from(kernel.connection_count()).unwrap_or(u32::MAX),
+                connected_clients: u32::try_from(kernel.total_connection_count())
+                    .unwrap_or(u32::MAX),
                 loaded_capsules: loaded,
             };
             KernelResponse::Status(status)

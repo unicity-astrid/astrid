@@ -21,10 +21,12 @@ use astrid_capabilities::{CapabilityStore, DirHandle};
 use astrid_capsule::profile_cache::PrincipalProfileCache;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
+use astrid_core::principal::PrincipalId;
 use astrid_crypto::KeyPair;
 use astrid_events::EventBus;
 use astrid_mcp::{McpClient, SecureMcpClient, ServerManager, ServersConfig};
-use astrid_vfs::{HostVfs, OverlayVfs, Vfs};
+use astrid_vfs::{HostVfs, OverlayVfsRegistry, Vfs};
+use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -43,12 +45,20 @@ pub struct Kernel {
     /// The capability store for this session.
     pub capabilities: Arc<CapabilityStore>,
     /// The global Virtual File System mount.
+    ///
+    /// Points at the unmodified workspace (no overlay). Principal-scoped
+    /// overlays live in [`overlay_registry`](Self::overlay_registry) — this
+    /// field is kept for kernel-internal paths that do not know a principal
+    /// (discovery, capsule load scan).
     pub vfs: Arc<dyn Vfs>,
-    /// Concrete reference to the [`OverlayVfs`] for commit/rollback operations.
-    pub overlay_vfs: Arc<OverlayVfs>,
-    /// Ephemeral upper directory for the overlay VFS. Kept alive for the
-    /// kernel session lifetime; dropped on shutdown to discard uncommitted writes.
-    _upper_dir: Arc<tempfile::TempDir>,
+    /// Per-principal overlay registry (Layer 4, issue #668).
+    ///
+    /// Each invoking principal resolves their own
+    /// [`OverlayVfs`](astrid_vfs::OverlayVfs) from this registry on first
+    /// use — lower layer is the shared workspace, upper layer is a
+    /// principal-private tempdir. Agent A's uncommitted writes are never
+    /// visible to Agent B.
+    pub overlay_registry: Arc<OverlayVfsRegistry>,
     /// The global physical root handle (cap-std) for the VFS.
     pub vfs_root_handle: DirHandle,
     /// The physical path the VFS is mounted to.
@@ -67,8 +77,13 @@ pub struct Kernel {
     pub kv: Arc<astrid_storage::SurrealKvStore>,
     /// Chain-linked cryptographic audit log with persistent storage.
     pub audit_log: Arc<AuditLog>,
-    /// Number of active client connections (CLI sessions).
-    pub active_connections: AtomicUsize,
+    /// Per-principal active connection counters (Layer 4, issue #668).
+    ///
+    /// Keyed by [`PrincipalId`]. When a principal's counter hits zero the
+    /// kernel clears that principal's session allowances only — other
+    /// principals' state is untouched. Ephemeral shutdown still waits on
+    /// the global sum via [`total_connection_count`](Self::total_connection_count).
+    active_connections: DashMap<PrincipalId, AtomicUsize>,
     /// Ephemeral mode: shut down immediately when the last client disconnects.
     pub ephemeral: AtomicBool,
     /// Instant when the kernel was booted (for uptime calculation).
@@ -183,8 +198,20 @@ impl Kernel {
         // 4. Establish the physical security boundary (sandbox handle)
         let root_handle = DirHandle::new();
 
-        // 5. Initialize sandboxed overlay VFS (lower=workspace, upper=temp)
-        let (overlay_vfs, upper_temp) = init_overlay_vfs(&root_handle, &workspace_root).await?;
+        // 5. Principal-scoped overlay registry: each invoking principal
+        //    gets a fresh OverlayVfs on first use (Layer 4, issue #668).
+        //    The kernel-internal `vfs` field keeps pointing at a plain
+        //    HostVfs over the workspace for paths that don't yet know a
+        //    principal (discovery, capsule load scan).
+        let kernel_host_vfs = HostVfs::new();
+        kernel_host_vfs
+            .register_dir(root_handle.clone(), workspace_root.clone())
+            .await
+            .map_err(|_| std::io::Error::other("Failed to register kernel workspace vfs"))?;
+        let overlay_registry = Arc::new(OverlayVfsRegistry::new(
+            workspace_root.clone(),
+            root_handle.clone(),
+        ));
 
         // 6. Bind the secure Unix socket and generate session token.
         // The socket is bound here, but not yet listened on. The token is
@@ -219,16 +246,15 @@ impl Kernel {
             capsules,
             mcp,
             capabilities,
-            vfs: Arc::clone(&overlay_vfs) as Arc<dyn Vfs>,
-            overlay_vfs,
-            _upper_dir: Arc::new(upper_temp),
+            vfs: Arc::new(kernel_host_vfs) as Arc<dyn Vfs>,
+            overlay_registry,
             vfs_root_handle: root_handle,
             workspace_root,
             home_root,
             cli_socket_listener: Some(Arc::new(tokio::sync::Mutex::new(listener))),
             kv,
             audit_log,
-            active_connections: AtomicUsize::new(0),
+            active_connections: DashMap::new(),
             ephemeral: AtomicBool::new(false),
             boot_time: std::time::Instant::now(),
             shutdown_tx: tokio::sync::watch::channel(false).0,
@@ -329,7 +355,8 @@ impl Kernel {
         .with_session_token(Arc::clone(&self.session_token))
         .with_allowance_store(Arc::clone(&self.allowance_store))
         .with_identity_store(Arc::clone(&self.identity_store))
-        .with_profile_cache(Arc::clone(&self.profile_cache));
+        .with_profile_cache(Arc::clone(&self.profile_cache))
+        .with_overlay_registry(Arc::clone(&self.overlay_registry));
 
         capsule.load(&ctx).await?;
 
@@ -530,34 +557,64 @@ impl Kernel {
         });
     }
 
-    /// Record that a new client connection has been established.
-    pub fn connection_opened(&self) {
-        self.active_connections.fetch_add(1, Ordering::Relaxed);
+    /// Record that a new client connection for `principal` has been established.
+    pub fn connection_opened(&self, principal: &PrincipalId) {
+        self.active_connections
+            .entry(principal.clone())
+            .or_insert_with(|| AtomicUsize::new(0))
+            .fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record that a client connection has been closed.
+    /// Record that a client connection for `principal` has been closed.
     ///
-    /// Uses `fetch_update` for atomic saturating decrement - avoids the TOCTOU
-    /// window where `fetch_sub` wraps to `usize::MAX` before a corrective store.
+    /// Uses `fetch_update` for atomic saturating decrement - avoids the
+    /// TOCTOU window where `fetch_sub` wraps to `usize::MAX` before a
+    /// corrective store.
     ///
-    /// When the last connection closes (counter reaches 0), clears all
-    /// session-scoped allowances so they don't leak into the next CLI session.
-    pub fn connection_closed(&self) {
-        let result =
-            self.active_connections
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                    if n == 0 {
-                        None
-                    } else {
-                        Some(n.saturating_sub(1))
-                    }
-                });
+    /// When *this* principal's counter reaches zero, clears only that
+    /// principal's session-scoped allowances — other principals' state is
+    /// untouched. The global ephemeral-shutdown path remains gated on the
+    /// sum across every principal (see
+    /// [`total_connection_count`](Self::total_connection_count)).
+    pub fn connection_closed(&self, principal: &PrincipalId) {
+        // Hold the DashMap entry guard across the decrement AND the
+        // session-scoped clears. While we hold the guard any concurrent
+        // `connection_opened(principal)` on the same key blocks on the
+        // shard lock, so its new session allowances cannot be born and
+        // then nuked by the tail-end cleanup here (pre-Layer-4 bug
+        // surfaced more narrowly under per-principal scoping).
+        //
+        // The downstream stores do not re-enter `active_connections`, so
+        // holding this guard while calling into them cannot deadlock.
+        let entry = self
+            .active_connections
+            .entry(principal.clone())
+            .or_insert_with(|| AtomicUsize::new(0));
+        let result = entry.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            if n == 0 {
+                None
+            } else {
+                Some(n.saturating_sub(1))
+            }
+        });
 
-        // Previous value was 1 -> now 0: last client disconnected.
-        // Clear session-scoped allowances so they don't leak into the next session.
         if result == Ok(1) {
-            self.allowance_store.clear_session_allowances();
-            tracing::info!("last client disconnected, session allowances cleared");
+            self.allowance_store.clear_session_allowances(principal);
+            if let Err(e) = self.capabilities.clear_session_for(principal) {
+                tracing::warn!(%principal, error = %e, "failed to clear capability session");
+            }
+            tracing::info!(
+                %principal,
+                "last connection for principal disconnected, session state cleared"
+            );
+        }
+        // Release the shard lock before touching the map again — `remove_if`
+        // re-acquires it.
+        drop(entry);
+
+        if result == Ok(1) {
+            self.active_connections
+                .remove_if(principal, |_, count| count.load(Ordering::Relaxed) == 0);
         }
     }
 
@@ -566,9 +623,15 @@ impl Kernel {
         self.ephemeral.store(val, Ordering::Relaxed);
     }
 
-    /// Number of active client connections.
-    pub fn connection_count(&self) -> usize {
-        self.active_connections.load(Ordering::Relaxed)
+    /// Total number of active client connections across all principals.
+    ///
+    /// Used by the ephemeral-shutdown gate: the kernel shuts down only
+    /// when *every* principal's counter has reached zero.
+    pub fn total_connection_count(&self) -> usize {
+        self.active_connections
+            .iter()
+            .map(|e| e.value().load(Ordering::Relaxed))
+            .sum()
     }
 
     /// Gracefully shut down the kernel.
@@ -587,6 +650,16 @@ impl Kernel {
                 metadata: astrid_events::EventMetadata::new("kernel"),
                 reason: reason.clone(),
             });
+
+        // Clear every principal's session-only state in one sweep. Belt-
+        // and-suspenders for a process that is exiting anyway, but load-
+        // bearing the moment session allowances are ever persisted
+        // (Layer 7) — without this call a persisted-allowance layer would
+        // inherit stale per-session grants from the previous process.
+        self.allowance_store.clear_all_session_allowances();
+        if let Err(e) = self.capabilities.clear_session() {
+            tracing::warn!(error = %e, "failed to clear capability session on shutdown");
+        }
 
         // 2. Drain the registry so the dispatcher cannot hand out new Arc clones,
         // then unload each capsule. MCP engine unload is critical - it calls
@@ -715,35 +788,6 @@ impl Kernel {
             }
         }
     }
-}
-
-/// Open (or create) the persistent audit log and verify historical chain integrity.
-///
-/// Initialize the sandboxed overlay VFS.
-///
-/// Creates a lower (read-only workspace) and upper (session-scoped temp dir)
-/// layer, returning the overlay and the `TempDir` whose lifetime keeps the
-/// upper layer alive.
-async fn init_overlay_vfs(
-    root_handle: &DirHandle,
-    workspace_root: &Path,
-) -> Result<(Arc<OverlayVfs>, tempfile::TempDir), std::io::Error> {
-    let lower_vfs = HostVfs::new();
-    lower_vfs
-        .register_dir(root_handle.clone(), workspace_root.to_path_buf())
-        .await
-        .map_err(|_| std::io::Error::other("Failed to register lower vfs dir"))?;
-
-    let upper_temp = tempfile::TempDir::new()
-        .map_err(|e| std::io::Error::other(format!("Failed to create overlay temp dir: {e}")))?;
-    let upper_vfs = HostVfs::new();
-    upper_vfs
-        .register_dir(root_handle.clone(), upper_temp.path().to_path_buf())
-        .await
-        .map_err(|_| std::io::Error::other("Failed to register upper vfs dir"))?;
-
-    let overlay = Arc::new(OverlayVfs::new(Box::new(lower_vfs), Box::new(upper_vfs)));
-    Ok((overlay, upper_temp))
 }
 
 /// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a
@@ -901,7 +945,7 @@ fn spawn_idle_monitor(kernel: Arc<Kernel>) -> tokio::task::JoinHandle<()> {
         loop {
             tokio::time::sleep(check_interval).await;
 
-            let connections = kernel.connection_count();
+            let connections = kernel.total_connection_count();
 
             // Use the explicit connection counter as the sole signal.
             // The previous bus_subscribers heuristic (subscriber_count minus
@@ -1267,25 +1311,30 @@ mod tests {
         assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 
-    /// Mirrors the `connection_closed()` logic: only `Ok(1)` (previous value 1,
-    /// now 0) triggers `clear_session_allowances`. Update this test if
-    /// `connection_closed()` is refactored.
+    /// Mirrors the `connection_closed(&principal)` logic: only `Ok(1)`
+    /// (previous value 1, now 0) triggers `clear_session_allowances` for
+    /// that principal. Update this test if `connection_closed()` is
+    /// refactored.
     #[test]
-    fn test_last_disconnect_clears_session_allowances() {
+    fn test_last_disconnect_clears_session_allowances_scoped() {
         use astrid_approval::AllowanceStore;
         use astrid_approval::allowance::{Allowance, AllowanceId, AllowancePattern};
+        use astrid_core::principal::PrincipalId;
         use astrid_core::types::Timestamp;
         use astrid_crypto::KeyPair;
 
         let store = AllowanceStore::new();
         let keypair = KeyPair::generate();
+        let alice = PrincipalId::new("alice").unwrap();
+        let bob = PrincipalId::new("bob").unwrap();
 
-        // Session-only allowance (should be cleared on last disconnect).
+        // Alice: session + persistent.
         store
             .add_allowance(Allowance {
                 id: AllowanceId::new(),
+                principal: alice.clone(),
                 action_pattern: AllowancePattern::ServerTools {
-                    server: "session-server".to_string(),
+                    server: "alice-session".to_string(),
                 },
                 created_at: Timestamp::now(),
                 expires_at: None,
@@ -1296,13 +1345,12 @@ mod tests {
                 signature: keypair.sign(b"test"),
             })
             .unwrap();
-
-        // Persistent allowance (should survive).
         store
             .add_allowance(Allowance {
                 id: AllowanceId::new(),
+                principal: alice.clone(),
                 action_pattern: AllowancePattern::ServerTools {
-                    server: "persistent-server".to_string(),
+                    server: "alice-persistent".to_string(),
                 },
                 created_at: Timestamp::now(),
                 expires_at: None,
@@ -1313,12 +1361,28 @@ mod tests {
                 signature: keypair.sign(b"test"),
             })
             .unwrap();
+        // Bob: session (must NOT be cleared by alice disconnecting).
+        store
+            .add_allowance(Allowance {
+                id: AllowanceId::new(),
+                principal: bob.clone(),
+                action_pattern: AllowancePattern::ServerTools {
+                    server: "bob-session".to_string(),
+                },
+                created_at: Timestamp::now(),
+                expires_at: None,
+                max_uses: None,
+                uses_remaining: None,
+                session_only: true,
+                workspace_root: None,
+                signature: keypair.sign(b"test"),
+            })
+            .unwrap();
+        assert_eq!(store.count(), 3);
 
-        assert_eq!(store.count(), 2);
-
-        let counter = AtomicUsize::new(2);
-        let simulate_disconnect = || {
-            let result = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+        let alice_counter = AtomicUsize::new(1);
+        let simulate_alice_disconnect = || {
+            let result = alice_counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
                 if n == 0 {
                     None
                 } else {
@@ -1326,25 +1390,15 @@ mod tests {
                 }
             });
             if result == Ok(1) {
-                store.clear_session_allowances();
+                store.clear_session_allowances(&alice);
             }
         };
 
-        // Two connections active. First disconnect: 2 -> 1 (not last).
-        simulate_disconnect();
-        assert_eq!(
-            store.count(),
-            2,
-            "both allowances should survive non-final disconnect"
-        );
-
-        // Second disconnect: 1 -> 0 (last client gone).
-        simulate_disconnect();
-        assert_eq!(
-            store.count(),
-            1,
-            "session allowance should be cleared on last disconnect"
-        );
+        simulate_alice_disconnect();
+        // Alice's session gone; alice's persistent + bob's session remain.
+        assert_eq!(store.count(), 2);
+        assert_eq!(store.count_for(&alice), 1);
+        assert_eq!(store.count_for(&bob), 1);
     }
 
     #[cfg(unix)]

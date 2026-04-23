@@ -7,6 +7,7 @@
 //! - Scoped (session or persistent)
 //! - Time-bounded (optional expiration)
 
+use astrid_core::principal::PrincipalId;
 use astrid_core::{Permission, Timestamp, TokenId};
 use astrid_crypto::{ContentHash, KeyPair, PublicKey, Signature};
 use chrono::{Duration, Utc};
@@ -17,8 +18,15 @@ use crate::error::{CapabilityError, CapabilityResult};
 use crate::pattern::ResourcePattern;
 
 /// Version of the signing data format.
-/// Increment this when the signing data structure changes.
-const SIGNING_DATA_VERSION: u8 = 0x01;
+///
+/// v1 — original format without principal scoping.
+/// v2 — Layer 4 of multi-tenancy (issue #668) — appends a length-prefixed
+///      principal string to the signed payload. v1 persistent tokens on
+///      disk after upgrade fail signature verification with
+///      [`CapabilityError::InvalidSignature`]; operators must re-mint them
+///      (see [`CapabilityStore::find_capability`](crate::CapabilityStore::find_capability)
+///      for the runtime log).
+const SIGNING_DATA_VERSION: u8 = 0x02;
 
 /// Default clock skew tolerance in seconds.
 const DEFAULT_CLOCK_SKEW_SECS: i64 = 30;
@@ -101,6 +109,14 @@ pub struct CapabilityToken {
     /// Whether this token can only be used once (replay protection).
     #[serde(default)]
     pub single_use: bool,
+    /// Principal this token was minted for.
+    ///
+    /// Signed into the payload (Layer 4 / issue #668): a token minted for
+    /// Alice cannot authorise Bob's invocation even if copied forward, and
+    /// a forger cannot rewrite the principal without the runtime private
+    /// key. The field has no serde default — old v1 tokens without it
+    /// deserialize as `MissingField` and get rejected at load time.
+    pub principal: PrincipalId,
     /// Cryptographic signature of the token.
     pub signature: Signature,
 }
@@ -109,7 +125,10 @@ impl CapabilityToken {
     /// Create a new capability token.
     ///
     /// This is typically called by the runtime after user approval.
+    /// `principal` is bound into the signed payload and is the only
+    /// principal allowed to consume the token on subsequent lookups.
     #[must_use]
+    #[expect(clippy::too_many_arguments)]
     pub fn create(
         resource: ResourcePattern,
         permissions: Vec<Permission>,
@@ -118,6 +137,7 @@ impl CapabilityToken {
         approval_audit_id: AuditEntryId,
         runtime_key: &KeyPair,
         ttl: Option<Duration>,
+        principal: PrincipalId,
     ) -> Self {
         Self::create_with_options(
             resource,
@@ -128,12 +148,14 @@ impl CapabilityToken {
             runtime_key,
             ttl,
             false,
+            principal,
         )
     }
 
     /// Create a new capability token with additional options.
     ///
     /// This is typically called by the runtime after user approval.
+    /// See [`create`](Self::create) for the role of `principal`.
     #[must_use]
     #[expect(clippy::too_many_arguments)]
     pub fn create_with_options(
@@ -145,6 +167,7 @@ impl CapabilityToken {
         runtime_key: &KeyPair,
         ttl: Option<Duration>,
         single_use: bool,
+        principal: PrincipalId,
     ) -> Self {
         let id = TokenId::new();
         let issued_at = Timestamp::now();
@@ -168,6 +191,7 @@ impl CapabilityToken {
             user_id,
             approval_audit_id,
             single_use,
+            principal,
             signature: Signature::from_bytes([0u8; 64]), // Placeholder
         };
 
@@ -180,8 +204,8 @@ impl CapabilityToken {
 
     /// Get the data used for signing (excludes the signature itself).
     ///
-    /// Format (v1):
-    /// - 1 byte: version (0x01)
+    /// Format (v2, issue #668):
+    /// - 1 byte: version (0x02)
     /// - Length-prefixed token ID (UUID bytes)
     /// - Length-prefixed resource pattern string
     /// - 4 bytes: number of permissions
@@ -194,6 +218,11 @@ impl CapabilityToken {
     /// - 8 bytes: `user_id`
     /// - Length-prefixed audit entry ID (UUID bytes)
     /// - 1 byte: `single_use` flag
+    /// - Length-prefixed principal string (v2 addition)
+    ///
+    /// v1 tokens (without the principal suffix) fail signature verification
+    /// against v2 verifiers and must be re-minted. There is no silent upgrade
+    /// path — changing the signing format is a cryptographic break.
     #[must_use]
     #[expect(clippy::cast_possible_truncation)]
     pub fn signing_data(&self) -> Vec<u8> {
@@ -239,6 +268,11 @@ impl CapabilityToken {
 
         // Single use flag
         data.push(u8::from(self.single_use));
+
+        // Principal (v2). Length-prefixed so the format stays self-describing
+        // and extensible. The raw string is always valid UTF-8 (PrincipalId
+        // enforces ASCII alphanumeric + `-_` at construction).
+        write_length_prefixed(&mut data, self.principal.as_str().as_bytes());
 
         data
     }
@@ -430,6 +464,7 @@ impl TokenBuilder {
             runtime_key,
             self.ttl,
             self.single_use,
+            PrincipalId::default(),
         )
     }
 }
@@ -456,6 +491,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            PrincipalId::default(),
         );
 
         assert!(!token.is_expired());
@@ -475,6 +511,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            PrincipalId::default(),
         );
 
         assert!(token.grants("mcp://filesystem:read_file", Permission::Invoke));
@@ -497,6 +534,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             Some(Duration::seconds(-60)), // Expired well beyond skew tolerance
+            PrincipalId::default(),
         );
 
         assert!(token.is_expired());
@@ -520,6 +558,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             Some(Duration::seconds(-10)), // Just expired
+            PrincipalId::default(),
         );
 
         // Without skew tolerance, it's expired
@@ -562,6 +601,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            PrincipalId::default(),
         );
 
         // Valid signature
@@ -590,6 +630,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            PrincipalId::default(),
         );
 
         let hash = token.content_hash();
@@ -604,8 +645,88 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            PrincipalId::default(),
         );
 
         assert_ne!(token.content_hash(), token2.content_hash());
+    }
+
+    #[test]
+    fn test_v2_signing_includes_principal() {
+        let keypair = test_keypair();
+        let pattern = ResourcePattern::exact("mcp://test:tool").unwrap();
+        let audit = AuditEntryId::new();
+
+        let alice = CapabilityToken::create(
+            pattern.clone(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            audit.clone(),
+            &keypair,
+            None,
+            PrincipalId::new("alice").unwrap(),
+        );
+        let bob = CapabilityToken::create(
+            pattern,
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            audit,
+            &keypair,
+            None,
+            PrincipalId::new("bob").unwrap(),
+        );
+
+        // Different principals produce different signing data even with all
+        // other fields identical (issued_at drift aside — this is the v2
+        // contribution).
+        assert_ne!(alice.signing_data(), bob.signing_data());
+        // Both still verify against their own payload.
+        assert!(alice.verify_signature().is_ok());
+        assert!(bob.verify_signature().is_ok());
+    }
+
+    #[test]
+    fn test_v1_signed_token_fails_verification_under_v2() {
+        // Simulate a v1 token still on disk by manually computing its signing
+        // payload using the pre-v2 layout (no trailing principal), then
+        // presenting it to the current verifier. `verify_signature()` must
+        // reject because the current `signing_data()` now includes a
+        // principal suffix that the v1 signature was not computed over.
+        let keypair = test_keypair();
+        let pattern = ResourcePattern::exact("mcp://test:tool").unwrap();
+
+        // Build a token and sign it against a payload that *omits* the
+        // principal — the v1 layout. We intentionally reach across the
+        // private API to reproduce that legacy byte string exactly.
+        let mut token = CapabilityToken::create(
+            pattern,
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            PrincipalId::default(),
+        );
+        // Rebuild the v1 payload by truncating the v2 bytes before the
+        // length-prefixed principal (4-byte LE length + "default"). This is
+        // the legacy format — v1 tokens on disk after an upgrade will have
+        // exactly this shape in their signed region.
+        let v2_payload = token.signing_data();
+        let principal_suffix_len = 4usize + "default".len();
+        let v1_payload = &v2_payload[..v2_payload.len() - principal_suffix_len];
+        token.signature = keypair.sign(v1_payload);
+
+        // Now the current v2 verifier must fail-closed on this v1 signature.
+        assert!(matches!(
+            token.verify_signature(),
+            Err(CapabilityError::InvalidSignature)
+        ));
+        assert!(matches!(
+            token.validate(),
+            Err(CapabilityError::InvalidSignature)
+        ));
     }
 }

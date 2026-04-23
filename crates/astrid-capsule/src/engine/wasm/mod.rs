@@ -185,6 +185,17 @@ pub struct WasmEngine {
     /// `state.principal` is immutable after load, so caching it here is
     /// equivalent and hot-path friendly.
     owner_principal: Option<astrid_core::PrincipalId>,
+    /// Shared per-principal overlay VFS registry (Layer 4, issue #668).
+    ///
+    /// Populated at load time from the kernel-wide registry.
+    /// `invoke_interceptor` resolves the invoking principal's overlay on
+    /// every call for two side effects: fail-closing the invocation if
+    /// tempdir allocation errors, and warming the per-principal cache so
+    /// future layers routing writes through the overlay find it ready.
+    /// The resolved `Arc<OverlayVfs>` is dropped — no host function reads
+    /// through the overlay today. `None` in tests and single-tenant
+    /// deployments.
+    overlay_registry: Option<Arc<astrid_vfs::OverlayVfsRegistry>>,
 }
 
 impl WasmEngine {
@@ -202,6 +213,7 @@ impl WasmEngine {
             epoch_ticker: None,
             profile_cache: None,
             owner_principal: None,
+            overlay_registry: None,
         }
     }
 }
@@ -927,6 +939,7 @@ impl ExecutionEngine for WasmEngine {
         }
         self.inbound_rx = rx;
         self.profile_cache = ctx.profile_cache.clone();
+        self.overlay_registry = ctx.overlay_registry.clone();
         self.owner_principal = Some(ctx.principal.clone());
 
         Ok(())
@@ -1022,6 +1035,44 @@ impl ExecutionEngine for WasmEngine {
         // load-time `u64::MAX` epoch deadline; only non-daemon capsules
         // accept a per-invocation timeout from the profile.
         let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
+
+        // Layer 4 (#668): resolve the per-principal overlay VFS. The
+        // resolved Arc is intentionally dropped — no host function reads
+        // through the overlay today, so storing it on HostState would be
+        // dead state. We still make the call for its side effects:
+        //
+        // 1. Fail-closed on resolve error. If the registry is configured
+        //    and tempdir creation or VFS mount registration fails, deny
+        //    the invocation rather than proceeding against a shared
+        //    workspace. Silent fallback would let Agent B observe Agent
+        //    A's writes — the exact invariant this layer upholds.
+        // 2. Warm the cache so the principal's per-isolation tempdir
+        //    exists and is reused across subsequent invocations, and so
+        //    the LRU-eviction accounting reflects actual usage.
+        //
+        // When a future layer routes production VFS operations through
+        // the overlay, that layer will add the field + accessor and
+        // consume the resolved `Arc<OverlayVfs>` here.
+        if let Some(registry) = self.overlay_registry.as_ref() {
+            let invoking = caller
+                .and_then(|msg| msg.principal.as_deref())
+                .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+                .or_else(|| self.owner_principal.clone())
+                .unwrap_or_default();
+            let resolved = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(registry.resolve(&invoking))
+            });
+            if let Err(e) = resolved {
+                tracing::error!(
+                    principal = %invoking,
+                    error = %e,
+                    "overlay registry resolve failed; denying invocation (issue #668)"
+                );
+                return Err(CapsuleError::WasmError(format!(
+                    "principal '{invoking}' overlay resolve failed: {e}"
+                )));
+            }
+        }
 
         // Set per-invocation caller context, profile, KV, VFS, and
         // epoch deadline under a single store lock. Recovers from

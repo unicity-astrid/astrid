@@ -95,7 +95,14 @@ async fn test_allow_always_creates_capability_and_second_call_uses_it() {
     let action = SensitiveAction::FileWriteOutsideSandbox {
         path: "/home/user/test.txt".to_string(),
     };
-    let result1 = interceptor.intercept(&action, "writing file", None).await;
+    let result1 = interceptor
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "writing file",
+            None,
+        )
+        .await;
     assert!(result1.is_ok(), "first call should succeed");
 
     let proof1 = result1.unwrap();
@@ -109,6 +116,7 @@ async fn test_allow_always_creates_capability_and_second_call_uses_it() {
 
     // Verify the capability is in the store
     let found = capability_store.find_capability(
+        &astrid_core::principal::PrincipalId::default(),
         "file:///home/user/test.txt",
         astrid_core::types::Permission::Write,
     );
@@ -118,7 +126,14 @@ async fn test_allow_always_creates_capability_and_second_call_uses_it() {
     // To prove this works even with a deny handler, we'll switch handlers.
     // But the interceptor already has AlwaysAlwaysHandler... the capability check happens
     // before the approval check, so it won't hit the handler.
-    let result2 = interceptor.intercept(&action, "writing again", None).await;
+    let result2 = interceptor
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "writing again",
+            None,
+        )
+        .await;
     assert!(result2.is_ok(), "second call should succeed via capability");
 
     let proof2 = result2.unwrap();
@@ -169,7 +184,14 @@ async fn test_capability_survives_across_interceptor_instances() {
     };
 
     // First call creates capability
-    let result1 = interceptor1.intercept(&action, "reading data", None).await;
+    let result1 = interceptor1
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading data",
+            None,
+        )
+        .await;
     assert!(result1.is_ok());
 
     // Create a SECOND interceptor sharing the same capability store but with a DENY handler
@@ -197,7 +219,14 @@ async fn test_capability_survives_across_interceptor_instances() {
     );
 
     // Second interceptor should still find the capability from the first
-    let result2 = interceptor2.intercept(&action, "reading again", None).await;
+    let result2 = interceptor2
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading again",
+            None,
+        )
+        .await;
     assert!(
         result2.is_ok(),
         "should succeed via shared capability store despite deny handler"

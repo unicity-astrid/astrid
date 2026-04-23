@@ -20,6 +20,7 @@ astrid-hooks = { workspace = true }
 astrid-mcp = { workspace = true, features = ["test-support"] }
 astrid-storage = { workspace = true }
 astrid-test = { workspace = true }
+astrid-vfs = { workspace = true }
 astrid-workspace = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

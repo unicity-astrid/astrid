@@ -149,7 +149,12 @@ pub enum ApprovalDecision {
     /// signed capability token with an `approval_audit_id` chain-link.
     ApproveAlways,
     /// Create a reusable allowance (session or persistent).
-    ApproveWithAllowance(Allowance),
+    ///
+    /// Boxed to keep [`ApprovalDecision`] compact — [`Allowance`] gained a
+    /// [`PrincipalId`](astrid_core::principal::PrincipalId) field in Layer 4
+    /// (issue #668) which pushed the unboxed variant past clippy's
+    /// `large_enum_variant` threshold.
+    ApproveWithAllowance(Box<Allowance>),
     /// Deny the action.
     Deny {
         /// Reason for denial.
@@ -391,6 +396,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: astrid_core::principal::PrincipalId::default(),
             action_pattern: AllowancePattern::ExactTool {
                 server: "filesystem".to_string(),
                 tool: "read_file".to_string(),
@@ -403,7 +409,7 @@ mod tests {
             workspace_root: None,
             signature: keypair.sign(b"test-allowance"),
         };
-        let decision = ApprovalDecision::ApproveWithAllowance(allowance);
+        let decision = ApprovalDecision::ApproveWithAllowance(Box::new(allowance));
 
         let json = serde_json::to_string(&decision).unwrap();
         let deserialized: ApprovalDecision = serde_json::from_str(&json).unwrap();

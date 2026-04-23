@@ -15,6 +15,7 @@
 //! 6. If approved with allowance, store the allowance
 //! 7. Return the outcome
 
+use astrid_core::principal::PrincipalId;
 use async_trait::async_trait;
 use std::path::Path;
 use std::sync::Arc;
@@ -200,21 +201,24 @@ impl ApprovalManager {
     ///
     /// # Arguments
     ///
+    /// * `principal` - The invoking principal whose allowances we should scan
     /// * `action` - The sensitive action to check
     /// * `context` - Why the agent wants to perform this action
     /// * `workspace_root` - Current workspace root for scoping workspace allowances
     pub async fn check_approval(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         context: impl Into<String>,
         workspace_root: Option<&Path>,
     ) -> ApprovalOutcome {
         let context = context.into();
 
-        // Step 1: Check if an existing allowance covers this action (atomic find + consume)
-        if let Some(allowance) = self
-            .allowance_store
-            .find_matching_and_consume(action, workspace_root)
+        // Step 1: Check if an existing allowance covers this action (atomic find + consume).
+        // Scoped to `principal` — Agent A's approvals never match Agent B.
+        if let Some(allowance) =
+            self.allowance_store
+                .find_matching_and_consume(principal, action, workspace_root)
         {
             return ApprovalOutcome::Allowed {
                 proof: ApprovalProof::Allowance {
@@ -301,7 +305,7 @@ impl ApprovalManager {
             ApprovalDecision::ApproveWithAllowance(allowance) => {
                 let allowance_id = allowance.id.clone();
                 // Store the allowance
-                if let Err(e) = self.allowance_store.add_allowance(allowance) {
+                if let Err(e) = self.allowance_store.add_allowance(*allowance) {
                     // Log error but still approve (one-time)
                     tracing::warn!("failed to store allowance: {e}");
                     return ApprovalOutcome::Allowed {
@@ -495,6 +499,7 @@ mod tests {
         let keypair = KeyPair::generate();
         Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: pattern,
             created_at: Timestamp::now(),
             expires_at: None,
@@ -527,7 +532,7 @@ mod tests {
             tool: "read_file".to_string(),
         };
         let outcome = manager
-            .check_approval(&action, "need to read file", None)
+            .check_approval(&PrincipalId::default(), &action, "need to read file", None)
             .await;
         assert!(outcome.is_allowed());
         assert!(matches!(
@@ -550,7 +555,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/tmp/test.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
         assert!(outcome.is_allowed());
         assert!(matches!(
             outcome,
@@ -568,7 +575,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/important.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
         assert!(outcome.is_denied());
     }
 
@@ -583,7 +592,9 @@ mod tests {
             server: "github".to_string(),
             tool: "create_issue".to_string(),
         };
-        let outcome = manager.check_approval(&action, "filing a bug", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "filing a bug", None)
+            .await;
         assert!(outcome.is_allowed());
         assert!(matches!(
             outcome,
@@ -605,7 +616,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/important.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
         assert!(outcome.is_deferred());
         assert_eq!(manager.deferred_queue.count(), 1);
     }
@@ -618,7 +631,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/test.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
         assert!(outcome.is_deferred());
     }
 
@@ -630,7 +645,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/test.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
         assert!(outcome.is_deferred());
     }
 
@@ -642,7 +659,9 @@ mod tests {
         let action = SensitiveAction::FileDelete {
             path: "/test.txt".to_string(),
         };
-        let outcome = manager.check_approval(&action, "cleanup", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "cleanup", None)
+            .await;
 
         // Get the resolution ID
         let ApprovalOutcome::Deferred { resolution_id, .. } = outcome else {
@@ -701,6 +720,7 @@ mod tests {
                 let keypair = KeyPair::generate();
                 let allowance = Allowance {
                     id: AllowanceId::new(),
+                    principal: PrincipalId::default(),
                     action_pattern: AllowancePattern::ServerTools {
                         server: "filesystem".to_string(),
                     },
@@ -714,7 +734,7 @@ mod tests {
                 };
                 Some(ApprovalResponse::new(
                     request.id,
-                    ApprovalDecision::ApproveWithAllowance(allowance),
+                    ApprovalDecision::ApproveWithAllowance(Box::new(allowance)),
                 ))
             }
         }
@@ -729,7 +749,9 @@ mod tests {
             server: "filesystem".to_string(),
             tool: "read_file".to_string(),
         };
-        let outcome = manager.check_approval(&action, "need to read", None).await;
+        let outcome = manager
+            .check_approval(&PrincipalId::default(), &action, "need to read", None)
+            .await;
         assert!(outcome.is_allowed());
         assert!(matches!(
             outcome,
@@ -747,7 +769,7 @@ mod tests {
             tool: "write_file".to_string(),
         };
         let outcome2 = manager
-            .check_approval(&action2, "need to write", None)
+            .check_approval(&PrincipalId::default(), &action2, "need to write", None)
             .await;
         assert!(outcome2.is_allowed());
         assert!(matches!(

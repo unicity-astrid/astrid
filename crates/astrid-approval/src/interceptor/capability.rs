@@ -1,6 +1,7 @@
 use astrid_capabilities::{
     CapabilityError, CapabilityStore, CapabilityToken, ResourcePattern, TokenScope,
 };
+use astrid_core::principal::PrincipalId;
 use astrid_core::types::Permission;
 use astrid_crypto::KeyPair;
 use std::sync::Arc;
@@ -30,6 +31,12 @@ impl CapabilityValidator {
     /// and consumes single-use tokens atomically. Returns `None` (fall through
     /// to approval) on any validation failure.
     ///
+    /// **Principal scope:** Tokens are only considered when their
+    /// `CapabilityToken::principal` matches the invoking `principal`. A token
+    /// minted for Alice cannot authorise Bob's invocation even if the resource
+    /// pattern and permission match — this is the fail-closed cross-principal
+    /// check required by issue #668.
+    ///
     /// **Design trade-off:** Single-use tokens are consumed *before* the audit
     /// write in `intercept()`. If audit subsequently fails (fail-closed), the
     /// token is gone but the action is denied. This is the correct security
@@ -37,7 +44,11 @@ impl CapabilityValidator {
     /// audit failure is recoverable (the user re-approves), whereas a replayed
     /// single-use token is not.
     #[must_use]
-    pub fn check_capability(&self, action: &SensitiveAction) -> Option<InterceptProof> {
+    pub fn check_capability(
+        &self,
+        principal: &PrincipalId,
+        action: &SensitiveAction,
+    ) -> Option<InterceptProof> {
         let (resource, permission) = action_to_resource_permission(action)?;
 
         // Build a proper validator with issuer trust, matching secure.rs
@@ -45,7 +56,7 @@ impl CapabilityValidator {
         let validator =
             astrid_capabilities::CapabilityValidator::new(&self.store).trust_issuer(trusted_key);
 
-        let result = validator.check(&resource, permission);
+        let result = validator.check(principal, &resource, permission);
         let found_token = result.token()?;
 
         // Consume the token: validates signature + marks single-use as used
@@ -92,11 +103,17 @@ impl CapabilityValidator {
 
     /// Commits an "allow always" ruling by generating a capability token and storing it for future bypasses.
     ///
+    /// The token is minted for `principal` and only that principal will be
+    /// able to consume it on subsequent calls. Tokens carry the principal in
+    /// the signing payload (`SIGNING_DATA_VERSION` v2, issue #668), so cross-
+    /// principal copy-forge attempts fail signature verification.
+    ///
     /// # Errors
     ///
     /// Returns an error if the action cannot be mapped to a resource, or if the resource pattern is invalid.
     pub fn handle_allow_always(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         approval_audit_id: astrid_capabilities::AuditEntryId,
     ) -> ApprovalResult<InterceptProof> {
@@ -120,6 +137,7 @@ impl CapabilityValidator {
             approval_audit_id.clone(),
             &self.runtime_key,
             Some(ALLOW_ALWAYS_DEFAULT_TTL),
+            principal.clone(),
         );
         let token_id = token.id.clone();
 
@@ -195,6 +213,10 @@ mod tests {
         }
     }
 
+    fn default_principal() -> PrincipalId {
+        PrincipalId::default()
+    }
+
     #[test]
     fn test_check_capability_consumes_single_use() {
         let runtime_key = Arc::new(KeyPair::generate());
@@ -209,6 +231,7 @@ mod tests {
             &runtime_key,
             None,
             true, // single_use
+            default_principal(),
         );
         store.add(token).unwrap();
 
@@ -216,9 +239,17 @@ mod tests {
         let action = mcp_action("test", "tool");
 
         // First call should succeed
-        assert!(validator.check_capability(&action).is_some());
+        assert!(
+            validator
+                .check_capability(&default_principal(), &action)
+                .is_some()
+        );
         // Second call should return None (token consumed)
-        assert!(validator.check_capability(&action).is_none());
+        assert!(
+            validator
+                .check_capability(&default_principal(), &action)
+                .is_none()
+        );
     }
 
     #[test]
@@ -236,13 +267,14 @@ mod tests {
             AuditEntryId::new(),
             &other_key,
             None,
+            default_principal(),
         );
         store.add(token).unwrap();
 
         let validator = CapabilityValidator::new(store, runtime_key);
         assert!(
             validator
-                .check_capability(&mcp_action("test", "tool"))
+                .check_capability(&default_principal(), &mcp_action("test", "tool"))
                 .is_none()
         );
     }
@@ -260,12 +292,48 @@ mod tests {
             AuditEntryId::new(),
             &runtime_key,
             None,
+            default_principal(),
         );
         store.add(token).unwrap();
 
         let validator = CapabilityValidator::new(store, runtime_key);
-        let proof = validator.check_capability(&mcp_action("test", "tool"));
+        let proof = validator.check_capability(&default_principal(), &mcp_action("test", "tool"));
         assert!(proof.is_some());
         assert!(matches!(proof.unwrap(), InterceptProof::Capability { .. }));
+    }
+
+    #[test]
+    fn test_check_capability_rejects_cross_principal_token() {
+        let runtime_key = Arc::new(KeyPair::generate());
+        let store = Arc::new(CapabilityStore::in_memory());
+        let alice = PrincipalId::new("alice").unwrap();
+        let bob = PrincipalId::new("bob").unwrap();
+
+        // Bob-minted token.
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            runtime_key.key_id(),
+            AuditEntryId::new(),
+            &runtime_key,
+            None,
+            bob.clone(),
+        );
+        store.add(token).unwrap();
+
+        let validator = CapabilityValidator::new(store, runtime_key);
+        // Alice cannot use Bob's token, even though the resource matches.
+        assert!(
+            validator
+                .check_capability(&alice, &mcp_action("test", "tool"))
+                .is_none()
+        );
+        // Bob still can.
+        assert!(
+            validator
+                .check_capability(&bob, &mcp_action("test", "tool"))
+                .is_some()
+        );
     }
 }
