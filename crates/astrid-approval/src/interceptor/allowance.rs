@@ -1,4 +1,5 @@
 use astrid_audit::AuditEntryId;
+use astrid_core::principal::PrincipalId;
 use astrid_core::types::Permission;
 use astrid_crypto::KeyPair;
 use std::path::PathBuf;
@@ -34,11 +35,14 @@ impl AllowanceValidator {
 
     /// Creates a new allowance token based on a specific action intent.
     ///
-    /// The `approval_audit_id` links this allowance back to the audit entry
-    /// that recorded the user's approval decision, maintaining the chain-link
-    /// proof in the audit trail.
+    /// The allowance is bound to `principal`, so the [`AllowanceStore`]
+    /// lookups from the same principal match later. The `approval_audit_id`
+    /// links this allowance back to the audit entry that recorded the
+    /// user's approval decision, maintaining the chain-link proof in the
+    /// audit trail.
     pub fn create_allowance_for_action(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         session_only: bool,
         approval_audit_id: AuditEntryId,
@@ -53,6 +57,7 @@ impl AllowanceValidator {
 
         let allowance = Allowance {
             id: allowance_id.clone(),
+            principal: principal.clone(),
             action_pattern: pattern,
             created_at: astrid_core::types::Timestamp::now(),
             expires_at: None,

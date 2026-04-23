@@ -1,6 +1,13 @@
-//! In-memory store for active allowances.
+//! In-memory store for active allowances, keyed per-principal.
+//!
+//! Every [`Allowance`] carries the [`PrincipalId`] it was granted to.
+//! The store maintains a two-level map `PrincipalId → AllowanceId → Allowance`,
+//! so lookups filter by the invoking principal up front. Agent A's allowance
+//! can never authorise Agent B's action, even if the patterns would otherwise
+//! match. This is Layer 4 of the production multi-tenancy work (issue #668).
 
 use crate::error::{ApprovalError, ApprovalResult};
+use astrid_core::principal::PrincipalId;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -12,7 +19,8 @@ use crate::action::SensitiveAction;
 /// In-memory store for active allowances.
 ///
 /// Thread-safe via internal [`RwLock`]. Supports pattern-based matching,
-/// use tracking, expiration cleanup, and session clearing.
+/// use tracking, expiration cleanup, and session clearing — all scoped by
+/// the invoking [`PrincipalId`].
 ///
 /// # Example
 ///
@@ -23,7 +31,12 @@ use crate::action::SensitiveAction;
 /// assert_eq!(store.count(), 0);
 /// ```
 pub struct AllowanceStore {
-    allowances: RwLock<HashMap<AllowanceId, Allowance>>,
+    /// Two-level map: `principal → allowance id → allowance`.
+    ///
+    /// Outer key isolates principals; inner map keeps lookups cheap within
+    /// a single principal's set. A principal with no allowances has no
+    /// inner-map entry.
+    allowances: RwLock<HashMap<PrincipalId, HashMap<AllowanceId, Allowance>>>,
 }
 
 impl AllowanceStore {
@@ -37,6 +50,10 @@ impl AllowanceStore {
 
     /// Add an allowance to the store.
     ///
+    /// The allowance is inserted under its own [`Allowance::principal`] —
+    /// the only source of truth for principal assignment. Callers cannot
+    /// override it.
+    ///
     /// # Errors
     ///
     /// Returns a storage error if the internal lock is poisoned.
@@ -45,11 +62,14 @@ impl AllowanceStore {
             .allowances
             .write()
             .map_err(|e| ApprovalError::Storage(e.to_string()))?;
-        store.insert(allowance.id.clone(), allowance);
+        store
+            .entry(allowance.principal.clone())
+            .or_default()
+            .insert(allowance.id.clone(), allowance);
         Ok(())
     }
 
-    /// Find the first valid allowance that matches an action.
+    /// Find the first valid allowance owned by `principal` that matches an action.
     ///
     /// An allowance matches when:
     /// 1. Its pattern covers the action
@@ -58,10 +78,14 @@ impl AllowanceStore {
     /// 4. For workspace-scoped allowances (`workspace_root: Some(..)`),
     ///    the allowance's `workspace_root` must match the current `workspace_root`
     ///
+    /// Only allowances granted to `principal` are considered; other principals'
+    /// allowances are invisible to the scan.
+    ///
     /// Returns a clone of the matching allowance, or `None`.
     #[must_use]
     pub fn find_matching(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         workspace_root: Option<&Path>,
     ) -> Option<Allowance> {
@@ -69,36 +93,27 @@ impl AllowanceStore {
             tracing::warn!("AllowanceStore read lock poisoned, recovering");
             e.into_inner()
         });
-        store
+        let principal_map = store.get(principal)?;
+        principal_map
             .values()
-            .find(|a| {
-                if !a.is_valid() {
-                    return false;
-                }
-                // Workspace-scoped allowances only match when the workspace root matches
-                if let Some(allowance_ws) = &a.workspace_root
-                    && workspace_root != Some(allowance_ws.as_path())
-                {
-                    return false;
-                }
-                a.action_pattern.matches(action, workspace_root)
-            })
+            .find(|a| allowance_matches(a, action, workspace_root))
             .cloned()
     }
 
-    /// Atomically find a matching allowance and consume one use.
+    /// Atomically find a matching allowance for `principal` and consume one use.
     ///
     /// This combines [`find_matching`](Self::find_matching) and
     /// [`consume_use`](Self::consume_use) under a single write lock to prevent
     /// race conditions where two concurrent callers both find the same
     /// single-use allowance.
     ///
-    /// Also cleans up expired allowances while the lock is held.
+    /// Also cleans up `principal`'s expired entries while the lock is held.
     ///
     /// Returns a clone of the matching allowance (before consumption), or `None`.
     #[must_use]
     pub fn find_matching_and_consume(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         workspace_root: Option<&Path>,
     ) -> Option<Allowance> {
@@ -106,29 +121,26 @@ impl AllowanceStore {
             tracing::warn!("AllowanceStore lock poisoned, recovering");
             e.into_inner()
         });
-        // Clean expired while we hold the lock
-        store.retain(|_, a| !a.is_expired());
-        let id = store
+        let principal_map = store.get_mut(principal)?;
+        // Clean expired entries for this principal only.
+        principal_map.retain(|_, a| !a.is_expired());
+        let id = principal_map
             .values()
-            .find(|a| {
-                a.is_valid()
-                    && match &a.workspace_root {
-                        Some(ws) => workspace_root == Some(ws.as_path()),
-                        None => true,
-                    }
-                    && a.action_pattern.matches(action, workspace_root)
-            })?
+            .find(|a| allowance_matches(a, action, workspace_root))?
             .id
             .clone();
-        let allowance = store.get(&id)?.clone();
+        let allowance = principal_map.get(&id)?.clone();
         // Consume use atomically
-        if let Some(remaining) = store.get_mut(&id).and_then(|a| a.uses_remaining.as_mut()) {
+        if let Some(remaining) = principal_map
+            .get_mut(&id)
+            .and_then(|a| a.uses_remaining.as_mut())
+        {
             *remaining = remaining.saturating_sub(1);
         }
         Some(allowance)
     }
 
-    /// Consume one use of an allowance.
+    /// Consume one use of an allowance belonging to `principal`.
     ///
     /// For unlimited allowances (`uses_remaining: None`), this is a no-op.
     /// For limited allowances, decrements `uses_remaining` by 1.
@@ -138,14 +150,25 @@ impl AllowanceStore {
     ///
     /// # Errors
     ///
-    /// Returns an error if the allowance is not found or the lock is poisoned.
-    pub fn consume_use(&self, allowance_id: &AllowanceId) -> ApprovalResult<bool> {
+    /// Returns an error if the allowance is not found under `principal`, or
+    /// the lock is poisoned.
+    pub fn consume_use(
+        &self,
+        principal: &PrincipalId,
+        allowance_id: &AllowanceId,
+    ) -> ApprovalResult<bool> {
         let mut store = self
             .allowances
             .write()
             .map_err(|e| ApprovalError::Storage(e.to_string()))?;
 
-        let allowance = store.get_mut(allowance_id).ok_or_else(|| {
+        let principal_map = store.get_mut(principal).ok_or_else(|| {
+            ApprovalError::Storage(format!(
+                "no allowances for principal '{principal}' (looked up {allowance_id})"
+            ))
+        })?;
+
+        let allowance = principal_map.get_mut(allowance_id).ok_or_else(|| {
             ApprovalError::Storage(format!("allowance not found: {allowance_id}"))
         })?;
 
@@ -158,7 +181,7 @@ impl AllowanceStore {
         }
     }
 
-    /// Remove all expired allowances from the store.
+    /// Remove all expired allowances from the store, across every principal.
     ///
     /// Returns the number of allowances removed.
     pub fn cleanup_expired(&self) -> usize {
@@ -166,75 +189,119 @@ impl AllowanceStore {
             tracing::warn!("AllowanceStore write lock poisoned in cleanup_expired, recovering");
             e.into_inner()
         });
-        let before = store.len();
-        store.retain(|_, a| !a.is_expired());
-        before.saturating_sub(store.len())
+        let mut removed: usize = 0;
+        for principal_map in store.values_mut() {
+            let before = principal_map.len();
+            principal_map.retain(|_, a| !a.is_expired());
+            removed = removed.saturating_add(before.saturating_sub(principal_map.len()));
+        }
+        store.retain(|_, m| !m.is_empty());
+        removed
     }
 
-    /// Remove all session-only allowances from the store.
+    /// Remove `principal`'s session-only allowances.
     ///
-    /// Called when a session ends to clear temporary permissions.
-    pub fn clear_session_allowances(&self) {
+    /// Called when the connection owned by `principal` closes. Other
+    /// principals' allowances are untouched — Alice disconnecting never
+    /// clears Bob's state.
+    pub fn clear_session_allowances(&self, principal: &PrincipalId) {
         let mut store = self.allowances.write().unwrap_or_else(|e| {
             tracing::warn!(
                 "AllowanceStore write lock poisoned in clear_session_allowances, recovering"
             );
             e.into_inner()
         });
-        store.retain(|_, a| !a.session_only);
+        if let Some(principal_map) = store.get_mut(principal) {
+            principal_map.retain(|_, a| !a.session_only);
+            if principal_map.is_empty() {
+                store.remove(principal);
+            }
+        }
     }
 
-    /// Get the number of allowances in the store.
+    /// Remove every principal's session-only allowances.
+    ///
+    /// Reserved for kernel-initiated global clears (shutdown). The normal
+    /// disconnect path uses the principal-scoped
+    /// [`clear_session_allowances`](Self::clear_session_allowances).
+    pub fn clear_all_session_allowances(&self) {
+        let mut store = self.allowances.write().unwrap_or_else(|e| {
+            tracing::warn!(
+                "AllowanceStore write lock poisoned in clear_all_session_allowances, recovering"
+            );
+            e.into_inner()
+        });
+        for principal_map in store.values_mut() {
+            principal_map.retain(|_, a| !a.session_only);
+        }
+        store.retain(|_, m| !m.is_empty());
+    }
+
+    /// Get the total number of allowances in the store, across every principal.
     #[must_use]
     pub fn count(&self) -> usize {
         let store = self.allowances.read().unwrap_or_else(|e| {
             tracing::warn!("AllowanceStore read lock poisoned in count, recovering");
             e.into_inner()
         });
-        store.len()
+        store.values().map(HashMap::len).sum()
     }
 
-    /// Export all session-scoped allowances for persistence.
-    ///
-    /// Returns a list of allowances that have `session_only: true`.
-    /// These are the allowances that would be lost on restart without persistence.
+    /// Number of allowances stored for `principal`.
     #[must_use]
-    pub fn export_session_allowances(&self) -> Vec<Allowance> {
+    pub fn count_for(&self, principal: &PrincipalId) -> usize {
+        let store = self.allowances.read().unwrap_or_else(|e| {
+            tracing::warn!("AllowanceStore read lock poisoned in count_for, recovering");
+            e.into_inner()
+        });
+        store.get(principal).map_or(0, HashMap::len)
+    }
+
+    /// Export `principal`'s session-scoped allowances for persistence.
+    ///
+    /// Returns allowances owned by `principal` that have `session_only: true`.
+    /// Other principals' allowances are not included.
+    #[must_use]
+    pub fn export_session_allowances(&self, principal: &PrincipalId) -> Vec<Allowance> {
         let store = self.allowances.read().unwrap_or_else(|e| {
             tracing::warn!(
                 "AllowanceStore read lock poisoned in export_session_allowances, recovering"
             );
             e.into_inner()
         });
-        store
-            .values()
-            .filter(|a| a.session_only && a.is_valid())
-            .cloned()
-            .collect()
+        store.get(principal).map_or_else(Vec::new, |m| {
+            m.values()
+                .filter(|a| a.session_only && a.is_valid())
+                .cloned()
+                .collect()
+        })
     }
 
-    /// Export all workspace-scoped allowances for persistence.
+    /// Export `principal`'s workspace-scoped allowances for persistence.
     ///
-    /// Returns allowances that have `session_only: false` and a `workspace_root` set.
-    /// These are the allowances that should be persisted in the workspace `state.db`.
+    /// Returns allowances owned by `principal` that have `session_only: false`
+    /// and a `workspace_root` set.
     #[must_use]
-    pub fn export_workspace_allowances(&self) -> Vec<Allowance> {
+    pub fn export_workspace_allowances(&self, principal: &PrincipalId) -> Vec<Allowance> {
         let store = self.allowances.read().unwrap_or_else(|e| {
             tracing::warn!(
                 "AllowanceStore read lock poisoned in export_workspace_allowances, recovering"
             );
             e.into_inner()
         });
-        store
-            .values()
-            .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
-            .cloned()
-            .collect()
+        store.get(principal).map_or_else(Vec::new, |m| {
+            m.values()
+                .filter(|a| !a.session_only && a.workspace_root.is_some() && a.is_valid())
+                .cloned()
+                .collect()
+        })
     }
 
     /// Import allowances into the store, merging with existing ones.
     ///
-    /// Used to restore session allowances from a persisted session.
+    /// Each imported allowance is inserted under its own
+    /// [`Allowance::principal`]. Used to restore session allowances from a
+    /// persisted session.
     pub fn import_allowances(&self, allowances: Vec<Allowance>) {
         let mut store = self.allowances.write().unwrap_or_else(|e| {
             tracing::warn!("AllowanceStore write lock poisoned in import_allowances, recovering");
@@ -242,10 +309,33 @@ impl AllowanceStore {
         });
         for allowance in allowances {
             if allowance.is_valid() {
-                store.insert(allowance.id.clone(), allowance);
+                store
+                    .entry(allowance.principal.clone())
+                    .or_default()
+                    .insert(allowance.id.clone(), allowance);
             }
         }
     }
+}
+
+/// Pattern-match helper shared by [`AllowanceStore::find_matching`] and
+/// [`AllowanceStore::find_matching_and_consume`]. Takes the allowance by
+/// reference so both lock modes can reuse it.
+fn allowance_matches(
+    allowance: &Allowance,
+    action: &SensitiveAction,
+    workspace_root: Option<&Path>,
+) -> bool {
+    if !allowance.is_valid() {
+        return false;
+    }
+    // Workspace-scoped allowances only match when the workspace root matches.
+    if let Some(allowance_ws) = &allowance.workspace_root
+        && workspace_root != Some(allowance_ws.as_path())
+    {
+        return false;
+    }
+    allowance.action_pattern.matches(action, workspace_root)
 }
 
 impl Default for AllowanceStore {
@@ -256,9 +346,16 @@ impl Default for AllowanceStore {
 
 impl fmt::Debug for AllowanceStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let count = self.count();
+        let (principals, total) = {
+            let store = self.allowances.read().unwrap_or_else(|e| {
+                tracing::warn!("AllowanceStore read lock poisoned in Debug, recovering");
+                e.into_inner()
+            });
+            (store.len(), store.values().map(HashMap::len).sum::<usize>())
+        };
         f.debug_struct("AllowanceStore")
-            .field("count", &count)
+            .field("principals", &principals)
+            .field("count", &total)
             .finish()
     }
 }

@@ -13,6 +13,7 @@ mod store;
 pub use pattern::AllowancePattern;
 pub use store::AllowanceStore;
 
+use astrid_core::principal::PrincipalId;
 use astrid_core::types::Timestamp;
 use astrid_crypto::Signature;
 use serde::{Deserialize, Serialize};
@@ -49,10 +50,20 @@ impl fmt::Display for AllowanceId {
 /// Allowances are created during approval flows:
 /// - **Session allowances** (`session_only: true`): Cleared when the session ends.
 /// - **Persistent allowances**: Survive across sessions (backed by capability tokens).
+///
+/// Every allowance is bound to the [`PrincipalId`] that requested approval. The
+/// [`AllowanceStore`] keys on `(principal, id)`, so Agent A's approval can never
+/// match Agent B's action — even if the patterns would otherwise match.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Allowance {
     /// Unique allowance identifier.
     pub id: AllowanceId,
+    /// Principal this allowance was granted to.
+    ///
+    /// Required at construction time: the compiler flags every caller that
+    /// forgets to set it, so we never silently relabel an allowance as
+    /// belonging to the default principal.
+    pub principal: PrincipalId,
     /// Pattern describing what actions this allowance covers.
     pub action_pattern: AllowancePattern,
     /// When the allowance was created.
@@ -109,6 +120,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::ServerTools {
                 server: "test".to_string(),
             },
@@ -130,6 +142,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::ServerTools {
                 server: "test".to_string(),
             },
@@ -152,6 +165,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::ServerTools {
                 server: "test".to_string(),
             },
@@ -172,6 +186,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::ServerTools {
                 server: "test".to_string(),
             },
@@ -190,8 +205,10 @@ mod tests {
     #[test]
     fn test_allowance_serialization_roundtrip() {
         let keypair = KeyPair::generate();
+        let principal = PrincipalId::new("alice").unwrap();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: principal.clone(),
             action_pattern: AllowancePattern::ExactTool {
                 server: "test".to_string(),
                 tool: "test_tool".to_string(),
@@ -208,5 +225,6 @@ mod tests {
         let deserialized: Allowance = serde_json::from_str(&json).unwrap();
         assert_eq!(allowance.id, deserialized.id);
         assert_eq!(allowance.session_only, deserialized.session_only);
+        assert_eq!(deserialized.principal, principal);
     }
 }

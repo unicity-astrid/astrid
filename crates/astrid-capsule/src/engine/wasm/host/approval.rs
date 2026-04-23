@@ -11,6 +11,7 @@ use crate::engine::wasm::host::util;
 use crate::engine::wasm::host_state::HostState;
 use astrid_approval::action::SensitiveAction;
 use astrid_approval::{Allowance, AllowanceId, AllowancePattern, AllowanceStore};
+use astrid_core::principal::PrincipalId;
 use astrid_core::types::Timestamp;
 use astrid_crypto::KeyPair;
 use astrid_events::AstridEvent;
@@ -41,9 +42,11 @@ const MAX_RESOURCE_LEN: usize = 1024;
 /// Builds a `SensitiveAction::ExecuteCommand` from the full resource string
 /// so that `CommandPattern` glob matching works against the complete command.
 /// Uses `find_matching_and_consume` to correctly decrement `uses_remaining`
-/// on limited-use allowances.
+/// on limited-use allowances. Scoped to the invoking `principal` — Agent A's
+/// approval never matches Agent B's action (Layer 4, issue #668).
 fn check_allowance(
     store: &AllowanceStore,
+    principal: &PrincipalId,
     resource: &str,
     workspace_root: Option<&std::path::Path>,
 ) -> bool {
@@ -52,7 +55,7 @@ fn check_allowance(
         args: vec![],
     };
     store
-        .find_matching_and_consume(&action, workspace_root)
+        .find_matching_and_consume(principal, &action, workspace_root)
         .is_some()
 }
 
@@ -130,6 +133,7 @@ fn escape_glob_metacharacters(action: &str) -> String {
 /// Create a session-scoped allowance from an approval decision.
 fn create_allowance_from_decision(
     store: &AllowanceStore,
+    principal: &PrincipalId,
     action: &str,
     decision: &str,
     workspace_root: Option<std::path::PathBuf>,
@@ -155,6 +159,7 @@ fn create_allowance_from_decision(
     let keypair = KeyPair::generate();
     let allowance = Allowance {
         id: AllowanceId::new(),
+        principal: principal.clone(),
         action_pattern: pattern,
         created_at: Timestamp::now(),
         expires_at: None,
@@ -186,6 +191,9 @@ impl approval::Host for HostState {
         let cancel_token = self.cancel_token.clone();
         let host_semaphore = self.host_semaphore.clone();
         let workspace_root = self.workspace_root.clone();
+        // Layer 4 (#668): the invoking principal scopes allowance lookups.
+        // Falls back to the capsule owner for load-time / tests / daemons.
+        let principal = self.effective_principal();
 
         // Validate and sanitize all guest-supplied strings at the entry point.
         let action_char_count = request.action.chars().count();
@@ -206,7 +214,7 @@ impl approval::Host for HostState {
 
         // Fast path: check existing allowances.
         if let Some(ref store) = allowance_store
-            && check_allowance(store, &request.target_resource, ws_path)
+            && check_allowance(store, &principal, &request.target_resource, ws_path)
         {
             tracing::debug!(
                 plugin = %capsule_id,
@@ -282,6 +290,7 @@ impl approval::Host for HostState {
                             if approved && let Some(ref store) = allowance_store {
                                 create_allowance_from_decision(
                                     store,
+                                    &principal,
                                     &request.action,
                                     decision,
                                     Some(workspace_root.clone()),
@@ -328,6 +337,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::CommandPattern {
                 command: "git push *".into(),
             },
@@ -341,52 +351,119 @@ mod tests {
         };
         store.add_allowance(allowance).unwrap();
 
-        assert!(check_allowance(&store, "git push origin main", None));
-        assert!(!check_allowance(&store, "git status", None));
+        assert!(check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git status",
+            None
+        ));
     }
 
     #[test]
     fn check_allowance_returns_false_on_empty_store() {
         let store = AllowanceStore::new();
-        assert!(!check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_approve_session() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(check_allowance(&store, "git push origin main", None));
+        assert!(check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_approve_always() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "docker run", "approve_always", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "docker run",
+            "approve_always",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(check_allowance(&store, "docker run my-image", None));
+        assert!(check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "docker run my-image",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_simple_approve_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "approve",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_deny_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "deny", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "deny",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
     }
 
     #[test]
     fn create_allowance_garbage_decision_does_nothing() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "garbage", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "garbage",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
-        create_allowance_from_decision(&store, "git push", "", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
     }
 
@@ -396,6 +473,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let allowance = Allowance {
             id: AllowanceId::new(),
+            principal: PrincipalId::default(),
             action_pattern: AllowancePattern::CommandPattern {
                 command: "git push *".into(),
             },
@@ -409,9 +487,15 @@ mod tests {
         };
         store.add_allowance(allowance).unwrap();
 
-        assert!(!check_allowance(&store, "git status; rm -rf /", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git status; rm -rf /",
+            None
+        ));
         assert!(check_allowance(
             &store,
+            &PrincipalId::default(),
             "git push --force origin main",
             None
         ));
@@ -438,25 +522,61 @@ mod tests {
     #[test]
     fn create_allowance_with_wildcard_in_action_is_not_overly_broad() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "*", "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "*",
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(!check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_empty_action() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "", "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "",
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
-        assert!(!check_allowance(&store, "git push", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            None
+        ));
     }
 
     #[test]
     fn approve_once_does_not_create_allowance() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git push", "approve", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git push",
+            "approve",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 0);
-        assert!(!check_allowance(&store, "git push origin main", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
     }
 
     // --- sanitize_action_for_pattern tests ---
@@ -547,29 +667,80 @@ mod tests {
     #[test]
     fn create_allowance_whitespace_padded_action() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "  git push  ", "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "  git push  ",
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(check_allowance(&store, "git push origin main", None));
-        assert!(!check_allowance(&store, "git status", None));
+        assert!(check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git status",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_combined_attack() {
         let store = AllowanceStore::new();
         let attack = "git\0 *\x1b[31m";
-        create_allowance_from_decision(&store, attack, "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            attack,
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(!check_allowance(&store, "git push origin main", None));
-        assert!(!check_allowance(&store, "git status", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git status",
+            None
+        ));
     }
 
     #[test]
     fn create_allowance_null_byte_attack() {
         let store = AllowanceStore::new();
-        create_allowance_from_decision(&store, "git\0push", "approve_session", None, "test");
+        create_allowance_from_decision(
+            &store,
+            &PrincipalId::default(),
+            "git\0push",
+            "approve_session",
+            None,
+            "test",
+        );
         assert_eq!(store.count(), 1);
-        assert!(!check_allowance(&store, "git push origin main", None));
-        assert!(check_allowance(&store, "gitpush something", None));
+        assert!(!check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "git push origin main",
+            None
+        ));
+        assert!(check_allowance(
+            &store,
+            &PrincipalId::default(),
+            "gitpush something",
+            None
+        ));
     }
 
     // --- sanitize_guest_field tests ---

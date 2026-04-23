@@ -57,6 +57,13 @@ pub struct CapsuleContext {
     /// quota resolution. Tests and single-tenant deployments may leave this
     /// `None` — the engine falls back to the process-global default profile.
     pub profile_cache: Option<Arc<PrincipalProfileCache>>,
+    /// Shared per-principal overlay VFS registry (Layer 4, issue #668).
+    ///
+    /// One instance per kernel boot. The engine resolves the invoking
+    /// principal's overlay on each invocation so Agent A's workspace writes
+    /// never reach Agent B's view of the same tree. Tests and single-tenant
+    /// deployments may leave this `None`.
+    pub overlay_registry: Option<Arc<astrid_vfs::OverlayVfsRegistry>>,
 }
 
 impl CapsuleContext {
@@ -82,6 +89,7 @@ impl CapsuleContext {
             identity_store: None,
             schema_catalog: Arc::new(SchemaCatalog::new()),
             profile_cache: None,
+            overlay_registry: None,
         }
     }
 
@@ -117,6 +125,13 @@ impl CapsuleContext {
     #[must_use]
     pub fn with_profile_cache(mut self, cache: Arc<PrincipalProfileCache>) -> Self {
         self.profile_cache = Some(cache);
+        self
+    }
+
+    /// Set the shared per-principal overlay VFS registry (Layer 4, issue #668).
+    #[must_use]
+    pub fn with_overlay_registry(mut self, registry: Arc<astrid_vfs::OverlayVfsRegistry>) -> Self {
+        self.overlay_registry = Some(registry);
         self
     }
 }

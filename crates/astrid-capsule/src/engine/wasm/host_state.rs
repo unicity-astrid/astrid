@@ -151,6 +151,15 @@ pub struct HostState {
     /// throughput, background processes, HTTP streams) read this through
     /// [`effective_profile`](Self::effective_profile). Cleared on exit.
     pub invocation_profile: Option<Arc<astrid_core::profile::PrincipalProfile>>,
+    /// Per-invocation workspace overlay VFS for the invoking principal
+    /// (Layer 4, issue #668).
+    ///
+    /// Set by [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor)
+    /// from the kernel-wide [`OverlayVfsRegistry`](astrid_vfs::OverlayVfsRegistry).
+    /// Reads pass through to the shared workspace; writes land on the
+    /// invoking principal's isolated upper layer. Cleared on exit so no
+    /// principal can observe another's uncommitted state.
+    pub invocation_overlay_vfs: Option<Arc<astrid_vfs::OverlayVfs>>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -473,6 +482,20 @@ impl HostState {
             Some(p) => p,
             None => astrid_core::profile::PrincipalProfile::default_ref(),
         }
+    }
+
+    /// Return the effective workspace overlay VFS for the current invocation.
+    ///
+    /// Prefers `invocation_overlay_vfs` (set by
+    /// [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor)
+    /// from the kernel-wide [`OverlayVfsRegistry`](astrid_vfs::OverlayVfsRegistry))
+    /// and falls back to the load-time `overlay_vfs`. Returns `None` when
+    /// neither is installed (plain-`HostVfs` test fixtures).
+    #[must_use]
+    pub fn effective_overlay_vfs(&self) -> Option<&Arc<astrid_vfs::OverlayVfs>> {
+        self.invocation_overlay_vfs
+            .as_ref()
+            .or(self.overlay_vfs.as_ref())
     }
 }
 

@@ -185,6 +185,13 @@ pub struct WasmEngine {
     /// `state.principal` is immutable after load, so caching it here is
     /// equivalent and hot-path friendly.
     owner_principal: Option<astrid_core::PrincipalId>,
+    /// Shared per-principal overlay VFS registry (Layer 4, issue #668).
+    ///
+    /// Populated at load time from the kernel-wide registry.
+    /// `invoke_interceptor` resolves the invoking principal's overlay and
+    /// installs it on [`HostState.invocation_overlay_vfs`] for the call,
+    /// clearing on exit. `None` in tests and single-tenant deployments.
+    overlay_registry: Option<Arc<astrid_vfs::OverlayVfsRegistry>>,
 }
 
 impl WasmEngine {
@@ -202,6 +209,7 @@ impl WasmEngine {
             epoch_ticker: None,
             profile_cache: None,
             owner_principal: None,
+            overlay_registry: None,
         }
     }
 }
@@ -626,6 +634,7 @@ impl ExecutionEngine for WasmEngine {
                     invocation_secret_store: None,
                     invocation_capsule_log: None,
                     invocation_profile: None,
+                    invocation_overlay_vfs: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -927,6 +936,7 @@ impl ExecutionEngine for WasmEngine {
         }
         self.inbound_rx = rx;
         self.profile_cache = ctx.profile_cache.clone();
+        self.overlay_registry = ctx.overlay_registry.clone();
         self.owner_principal = Some(ctx.principal.clone());
 
         Ok(())
@@ -1023,6 +1033,25 @@ impl ExecutionEngine for WasmEngine {
         // accept a per-invocation timeout from the profile.
         let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
 
+        // Layer 4 (#668): resolve the per-principal overlay VFS. Installed
+        // on `HostState.invocation_overlay_vfs` under the store lock below
+        // and cleared on exit. Registry absent (tests/single-tenant) → None.
+        let invocation_overlay_vfs: Option<Arc<astrid_vfs::OverlayVfs>> =
+            if let Some(registry) = self.overlay_registry.as_ref() {
+                let invoking = caller
+                    .and_then(|msg| msg.principal.as_deref())
+                    .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+                    .or_else(|| self.owner_principal.clone())
+                    .unwrap_or_default();
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current()
+                        .block_on(registry.resolve(&invoking))
+                        .ok()
+                })
+            } else {
+                None
+            };
+
         // Set per-invocation caller context, profile, KV, VFS, and
         // epoch deadline under a single store lock. Recovers from
         // poisoned mutex to prevent stale principal context from persisting.
@@ -1071,6 +1100,7 @@ impl ExecutionEngine for WasmEngine {
                 )
                 .build();
             state.invocation_profile = invocation_profile.clone();
+            state.invocation_overlay_vfs = invocation_overlay_vfs.clone();
 
             // Derive the invocation principal once; reused for KV + VFS scoping.
             let invocation_principal: Option<astrid_core::PrincipalId> = caller
@@ -1178,6 +1208,7 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_secret_store = None;
             state.invocation_capsule_log = None;
             state.invocation_profile = None;
+            state.invocation_overlay_vfs = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1295,6 +1326,7 @@ pub fn run_lifecycle(
         invocation_secret_store: None,
         invocation_capsule_log: None,
         invocation_profile: None,
+        invocation_overlay_vfs: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,

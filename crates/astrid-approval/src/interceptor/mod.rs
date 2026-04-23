@@ -35,6 +35,7 @@ pub use types::*;
 use crate::error::{ApprovalError, ApprovalResult};
 use astrid_audit::{AuditEntryId, AuditLog, AuditOutcome, AuthorizationProof as AuditAuthProof};
 use astrid_capabilities::CapabilityStore;
+use astrid_core::principal::PrincipalId;
 use astrid_core::types::SessionId;
 use astrid_crypto::KeyPair;
 use std::path::PathBuf;
@@ -100,6 +101,10 @@ impl SecurityInterceptor {
     /// This is the main entry point. Applies intersection semantics:
     /// policy, capability, budget, and approval checks in sequence.
     ///
+    /// `principal` identifies the invoking agent — allowance and capability
+    /// lookups are scoped to it (Layer 4, issue #668). Single-tenant callers
+    /// pass `PrincipalId::default()`.
+    ///
     /// # Errors
     ///
     /// Returns `ApprovalError` if the action is denied by policy, budget,
@@ -107,6 +112,7 @@ impl SecurityInterceptor {
     #[expect(clippy::too_many_lines)]
     pub async fn intercept(
         &self,
+        principal: &PrincipalId,
         action: &SensitiveAction,
         context: &str,
         estimated_cost: Option<f64>,
@@ -121,8 +127,11 @@ impl SecurityInterceptor {
             });
         }
 
-        // Step 2: Capability check
-        if let Some(proof) = self.capability_validator.check_capability(action) {
+        // Step 2: Capability check (scoped to the invoking principal)
+        if let Some(proof) = self
+            .capability_validator
+            .check_capability(principal, action)
+        {
             let mut cap_budget_warning = None;
             let mut reservation = None;
             if let Some(cost) = estimated_cost {
@@ -182,6 +191,7 @@ impl SecurityInterceptor {
         let outcome = self
             .approval_manager
             .check_approval(
+                principal,
                 action,
                 context,
                 self.allowance_validator.workspace_root.as_deref(),
@@ -235,6 +245,7 @@ impl SecurityInterceptor {
                             )
                             .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
                         let proof = self.allowance_validator.create_allowance_for_action(
+                            principal,
                             action,
                             true,
                             approval_audit_id.clone(),
@@ -260,6 +271,7 @@ impl SecurityInterceptor {
                             )
                             .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
                         let proof = self.allowance_validator.create_allowance_for_action(
+                            principal,
                             action,
                             false,
                             approval_audit_id.clone(),
@@ -285,9 +297,11 @@ impl SecurityInterceptor {
                             )
                             .map_err(|e| ApprovalError::AuditFailed(e.to_string()))?;
 
-                        let result = self
-                            .capability_validator
-                            .handle_allow_always(action, approval_audit_id.clone());
+                        let result = self.capability_validator.handle_allow_always(
+                            principal,
+                            action,
+                            approval_audit_id.clone(),
+                        );
                         if let Ok(r) = result {
                             return Ok(InterceptResult {
                                 proof: r,
@@ -567,7 +581,9 @@ mod tests {
             command: "sudo".to_string(),
             args: vec![],
         };
-        let result = interceptor.intercept(&action, "test", None).await;
+        let result = interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         let err = result.expect_err("should be blocked by policy");
         assert!(
             matches!(err, ApprovalError::PolicyBlocked { .. }),
@@ -591,7 +607,9 @@ mod tests {
             server: "safe".to_string(),
             tool: "read".to_string(),
         };
-        let result = interceptor.intercept(&action, "test", None).await;
+        let result = interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result.is_ok());
         assert!(matches!(
             result.unwrap().proof,
@@ -612,7 +630,10 @@ mod tests {
             path: "/home/user/file.txt".to_string(),
         };
 
-        let result = t.interceptor.intercept(&action, "test", None).await;
+        let result = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result.is_ok());
 
         let ok = result.unwrap();
@@ -648,7 +669,9 @@ mod tests {
             path: "/home/user/file.txt".to_string(),
         };
 
-        let result = interceptor.intercept(&action, "test", None).await;
+        let result = interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result.is_err());
     }
 
@@ -668,7 +691,9 @@ mod tests {
         }
 
         // Pass a cost of 5.0. It should be reserved, but then refunded when denied.
-        let result = interceptor.intercept(&action, "test", Some(5.0)).await;
+        let result = interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(5.0))
+            .await;
         assert!(result.is_err());
 
         // Assert budget spent is back to 0
@@ -709,7 +734,8 @@ mod tests {
         }
 
         // Start intercept task
-        let fut = interceptor.intercept(&action, "test", Some(5.0));
+        let principal = PrincipalId::default();
+        let fut = interceptor.intercept(&principal, &action, "test", Some(5.0));
 
         // Let it run for a moment so it hits the pending await point and reserves budget
         let _ = tokio::time::timeout(std::time::Duration::from_millis(50), fut).await;
@@ -737,7 +763,9 @@ mod tests {
         };
 
         // max_per_action is 10.0, session_max is 100.0 (from `make_interceptor`)
-        let result = interceptor.intercept(&action, "test", Some(15.0)).await;
+        let result = interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(15.0))
+            .await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -754,7 +782,10 @@ mod tests {
             tool: "transfer".to_string(),
         };
 
-        let result = t.interceptor.intercept(&action, "test", Some(15.0)).await;
+        let result = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(15.0))
+            .await;
 
         assert!(result.is_err());
 
@@ -788,7 +819,10 @@ mod tests {
         };
 
         // Call intercept with a cost. SessionApproveHandler will approve it.
-        let result = t.interceptor.intercept(&action, "test", Some(5.0)).await;
+        let result = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(5.0))
+            .await;
         assert!(result.is_ok(), "Expected action to be approved");
 
         // Verify the budget was actually committed, not refunded
@@ -814,11 +848,17 @@ mod tests {
 
         // First call — establishes the capability (allowance) for the session.
         // The cost is 5.0, which is well within the 10.0 per-action limit.
-        let result1 = t.interceptor.intercept(&action, "test", Some(5.0)).await;
+        let result1 = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(5.0))
+            .await;
         assert!(result1.is_ok());
 
         // Second call — the capability exists, but now the cost exceeds the per-action limit (15.0 > 10.0).
-        let result2 = t.interceptor.intercept(&action, "test", Some(15.0)).await;
+        let result2 = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", Some(15.0))
+            .await;
         assert!(result2.is_err());
 
         // There should be 2 audit entries:
@@ -882,7 +922,10 @@ mod tests {
             path: "/home/user/file.txt".to_string(),
         };
 
-        let result = t.interceptor.intercept(&action, "test", None).await;
+        let result = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result.is_ok());
 
         let ok = result.unwrap();
@@ -916,7 +959,10 @@ mod tests {
             path: "/home/user/file.txt".to_string(),
         };
 
-        let result = t.interceptor.intercept(&action, "test", None).await;
+        let result = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result.is_ok());
 
         let ok = result.unwrap();
@@ -952,7 +998,10 @@ mod tests {
         };
 
         // First call — should create one audit entry
-        let result1 = t.interceptor.intercept(&action, "test", None).await;
+        let result1 = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result1.is_ok());
 
         let count_after_first = t.audit_log.count_session(&t.session_id).unwrap();
@@ -963,7 +1012,10 @@ mod tests {
 
         // Second call for same action — allowance should match, creating
         // another audit entry for the allowance-based authorization
-        let result2 = t.interceptor.intercept(&action, "test", None).await;
+        let result2 = t
+            .interceptor
+            .intercept(&PrincipalId::default(), &action, "test", None)
+            .await;
         assert!(result2.is_ok());
 
         let count_after_second = t.audit_log.count_session(&t.session_id).unwrap();

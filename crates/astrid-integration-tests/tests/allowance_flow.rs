@@ -97,7 +97,14 @@ async fn test_session_approval_flow() {
     };
 
     // First call: should be approved via "ApproveSession"
-    let result1 = interceptor.intercept(&action, "reading data", None).await;
+    let result1 = interceptor
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading data",
+            None,
+        )
+        .await;
     assert!(result1.is_ok(), "first call should succeed");
     assert!(
         matches!(
@@ -115,7 +122,14 @@ async fn test_session_approval_flow() {
     );
 
     // Second call: should be auto-approved by the stored allowance (handler not called)
-    let result2 = interceptor.intercept(&action, "reading again", None).await;
+    let result2 = interceptor
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading again",
+            None,
+        )
+        .await;
     assert!(
         result2.is_ok(),
         "second call should be auto-approved by session allowance"
@@ -144,6 +158,7 @@ async fn test_preexisting_allowance_auto_approves() {
     let keypair = KeyPair::generate();
     let allowance = astrid_approval::Allowance {
         id: astrid_approval::AllowanceId::new(),
+        principal: astrid_core::principal::PrincipalId::default(),
         action_pattern: astrid_approval::AllowancePattern::ExactTool {
             server: "filesystem".to_string(),
             tool: "read_file".to_string(),
@@ -165,7 +180,12 @@ async fn test_preexisting_allowance_auto_approves() {
 
     // Should be auto-approved by the existing allowance (no handler needed)
     let outcome = approval_manager
-        .check_approval(&action, "reading file", None)
+        .check_approval(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "reading file",
+            None,
+        )
         .await;
     assert!(
         outcome.is_allowed(),
@@ -251,7 +271,12 @@ async fn test_workspace_approval_survives_session_clear() {
 
     // First call: approved via "ApproveWorkspace"
     let result1 = interceptor
-        .intercept(&action, "cleaning up temp files", None)
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "cleaning up temp files",
+            None,
+        )
         .await;
     assert!(result1.is_ok(), "first call should succeed");
 
@@ -263,7 +288,7 @@ async fn test_workspace_approval_survives_session_clear() {
     );
 
     // Clear session allowances — workspace allowance should survive
-    allowance_store.clear_session_allowances();
+    allowance_store.clear_session_allowances(&astrid_core::principal::PrincipalId::default());
     assert_eq!(
         allowance_store.count(),
         1,
@@ -272,7 +297,12 @@ async fn test_workspace_approval_survives_session_clear() {
 
     // Second call: should still be auto-approved by the workspace allowance
     let result2 = interceptor
-        .intercept(&action, "cleaning up again", None)
+        .intercept(
+            &astrid_core::principal::PrincipalId::default(),
+            &action,
+            "cleaning up again",
+            None,
+        )
         .await;
     assert!(
         result2.is_ok(),
@@ -290,6 +320,7 @@ async fn test_workspace_allowance_does_not_match_different_workspace() {
     let keypair = KeyPair::generate();
     let allowance = astrid_approval::Allowance {
         id: astrid_approval::AllowanceId::new(),
+        principal: astrid_core::principal::PrincipalId::default(),
         action_pattern: astrid_approval::AllowancePattern::FilePattern {
             pattern: "/project-a/src/**".to_string(),
             permission: astrid_core::types::Permission::Read,
@@ -309,18 +340,30 @@ async fn test_workspace_allowance_does_not_match_different_workspace() {
     };
 
     // Should match when workspace_root is /project-a
-    let found = allowance_store.find_matching(&action, Some(std::path::Path::new("/project-a")));
+    let found = allowance_store.find_matching(
+        &astrid_core::principal::PrincipalId::default(),
+        &action,
+        Some(std::path::Path::new("/project-a")),
+    );
     assert!(found.is_some(), "should match in same workspace");
 
     // Should NOT match when workspace_root is /project-b
-    let found = allowance_store.find_matching(&action, Some(std::path::Path::new("/project-b")));
+    let found = allowance_store.find_matching(
+        &astrid_core::principal::PrincipalId::default(),
+        &action,
+        Some(std::path::Path::new("/project-b")),
+    );
     assert!(
         found.is_none(),
         "workspace allowance from /project-a must not match in /project-b"
     );
 
     // Should NOT match when workspace_root is None
-    let found = allowance_store.find_matching(&action, None);
+    let found = allowance_store.find_matching(
+        &astrid_core::principal::PrincipalId::default(),
+        &action,
+        None,
+    );
     assert!(
         found.is_none(),
         "workspace-scoped allowance must not match when workspace_root is None"

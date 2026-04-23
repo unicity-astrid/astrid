@@ -3,6 +3,7 @@
 //! Validates tokens and checks authorization for operations.
 
 use astrid_core::Permission;
+use astrid_core::principal::PrincipalId;
 use astrid_crypto::PublicKey;
 
 use crate::error::{CapabilityError, CapabilityResult};
@@ -66,10 +67,20 @@ impl<'a> CapabilityValidator<'a> {
         self
     }
 
-    /// Check authorization for a resource and permission.
+    /// Check authorization for `principal` on `(resource, permission)`.
+    ///
+    /// Tokens are filtered by their `CapabilityToken::principal` before
+    /// expiry/signature checks — a token minted for another principal will
+    /// never be considered, even if the resource pattern matches. See
+    /// [`CapabilityStore::find_capability`] for the fail-closed semantics.
     #[must_use]
-    pub fn check(&self, resource: &str, permission: Permission) -> AuthorizationResult {
-        if let Some(token) = self.store.find_capability(resource, permission) {
+    pub fn check(
+        &self,
+        principal: &PrincipalId,
+        resource: &str,
+        permission: Permission,
+    ) -> AuthorizationResult {
+        if let Some(token) = self.store.find_capability(principal, resource, permission) {
             // Validate the token
             if self.validate_token(&token).is_ok() {
                 return AuthorizationResult::Authorized {
@@ -109,18 +120,41 @@ impl<'a> CapabilityValidator<'a> {
         Ok(())
     }
 
-    /// Validate a token by ID.
+    /// Validate a token by ID, rejecting cross-principal use.
+    ///
+    /// `validate_token` itself is intentionally principal-agnostic (it
+    /// checks expiry + signature + issuer trust). `validate_by_id` layers
+    /// the principal filter on top: the looked-up token's
+    /// `CapabilityToken::principal` must equal `principal` or the call
+    /// fails closed with [`CapabilityError::InvalidSignature`] (same error
+    /// class as a cryptographic mismatch — cross-principal reuse must
+    /// surface as an authorization failure, not a routing miss).
     ///
     /// # Errors
     ///
-    /// Returns an error if the token is not found, revoked, or invalid.
-    pub fn validate_by_id(&self, token_id: &astrid_core::TokenId) -> CapabilityResult<()> {
+    /// Returns an error if the token is not found, revoked, owned by a
+    /// different principal, or fails validation.
+    pub fn validate_by_id(
+        &self,
+        principal: &PrincipalId,
+        token_id: &astrid_core::TokenId,
+    ) -> CapabilityResult<()> {
         let token = self
             .store
             .get(token_id)?
             .ok_or_else(|| CapabilityError::TokenNotFound {
                 token_id: token_id.to_string(),
             })?;
+
+        if token.principal != *principal {
+            tracing::warn!(
+                token_id = %token_id,
+                token_principal = %token.principal,
+                caller_principal = %principal,
+                "cross-principal validate_by_id rejected"
+            );
+            return Err(CapabilityError::InvalidSignature);
+        }
 
         self.validate_token(&token)
     }
@@ -147,39 +181,49 @@ impl MultiPermissionCheck {
         self
     }
 
-    /// Run all checks against a validator.
+    /// Run all checks against a validator for `principal`.
     #[must_use]
     pub(crate) fn check_all(
         &self,
+        principal: &PrincipalId,
         validator: &CapabilityValidator<'_>,
     ) -> Vec<(String, Permission, AuthorizationResult)> {
         self.checks
             .iter()
             .map(|(resource, permission)| {
-                let result = validator.check(resource, *permission);
+                let result = validator.check(principal, resource, *permission);
                 (resource.clone(), *permission, result)
             })
             .collect()
     }
 
-    /// Check if all permissions are authorized.
+    /// Check if all permissions are authorized for `principal`.
     #[must_use]
-    pub(crate) fn all_authorized(&self, validator: &CapabilityValidator<'_>) -> bool {
-        self.checks
-            .iter()
-            .all(|(resource, permission)| validator.check(resource, *permission).is_authorized())
+    pub(crate) fn all_authorized(
+        &self,
+        principal: &PrincipalId,
+        validator: &CapabilityValidator<'_>,
+    ) -> bool {
+        self.checks.iter().all(|(resource, permission)| {
+            validator
+                .check(principal, resource, *permission)
+                .is_authorized()
+        })
     }
 
-    /// Get permissions that require approval.
+    /// Get permissions that require approval for `principal`.
     #[must_use]
     pub(crate) fn needs_approval(
         &self,
+        principal: &PrincipalId,
         validator: &CapabilityValidator<'_>,
     ) -> Vec<(String, Permission)> {
         self.checks
             .iter()
             .filter(|(resource, permission)| {
-                !validator.check(resource, *permission).is_authorized()
+                !validator
+                    .check(principal, resource, *permission)
+                    .is_authorized()
             })
             .cloned()
             .collect()
@@ -204,6 +248,10 @@ mod tests {
         KeyPair::generate()
     }
 
+    fn default_principal() -> PrincipalId {
+        PrincipalId::default()
+    }
+
     #[test]
     fn test_authorization_check() {
         let store = CapabilityStore::in_memory();
@@ -217,17 +265,78 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            default_principal(),
         );
 
         store.add(token).unwrap();
 
         let validator = CapabilityValidator::new(&store);
 
-        let result = validator.check("mcp://test:tool", Permission::Invoke);
+        let result = validator.check(&default_principal(), "mcp://test:tool", Permission::Invoke);
         assert!(result.is_authorized());
 
-        let result = validator.check("mcp://test:other", Permission::Invoke);
+        let result = validator.check(&default_principal(), "mcp://test:other", Permission::Invoke);
         assert!(!result.is_authorized());
+    }
+
+    #[test]
+    fn test_check_rejects_cross_principal_token() {
+        let store = CapabilityStore::in_memory();
+        let keypair = test_keypair();
+        let alice = PrincipalId::new("alice").unwrap();
+        let bob = PrincipalId::new("bob").unwrap();
+
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            bob.clone(),
+        );
+        store.add(token).unwrap();
+
+        let validator = CapabilityValidator::new(&store);
+        // Bob can use his own token.
+        assert!(
+            validator
+                .check(&bob, "mcp://test:tool", Permission::Invoke)
+                .is_authorized()
+        );
+        // Alice cannot — even though the resource pattern matches.
+        assert!(
+            !validator
+                .check(&alice, "mcp://test:tool", Permission::Invoke)
+                .is_authorized()
+        );
+    }
+
+    #[test]
+    fn test_validate_by_id_rejects_cross_principal() {
+        let store = CapabilityStore::in_memory();
+        let keypair = test_keypair();
+        let alice = PrincipalId::new("alice").unwrap();
+        let bob = PrincipalId::new("bob").unwrap();
+
+        let token = CapabilityToken::create(
+            ResourcePattern::exact("mcp://test:tool").unwrap(),
+            vec![Permission::Invoke],
+            TokenScope::Session,
+            keypair.key_id(),
+            AuditEntryId::new(),
+            &keypair,
+            None,
+            bob.clone(),
+        );
+        let token_id = token.id.clone();
+        store.add(token).unwrap();
+
+        let validator = CapabilityValidator::new(&store);
+        assert!(validator.validate_by_id(&bob, &token_id).is_ok());
+        let result = validator.validate_by_id(&alice, &token_id);
+        assert!(matches!(result, Err(CapabilityError::InvalidSignature)));
     }
 
     #[test]
@@ -244,6 +353,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            default_principal(),
         );
 
         store.add(token.clone()).unwrap();
@@ -274,6 +384,7 @@ mod tests {
             AuditEntryId::new(),
             &keypair,
             None,
+            default_principal(),
         );
 
         store.add(token).unwrap();
@@ -284,9 +395,9 @@ mod tests {
             .add("mcp://test:read", Permission::Invoke)
             .add("mcp://test:write", Permission::Invoke);
 
-        assert!(!check.all_authorized(&validator));
+        assert!(!check.all_authorized(&default_principal(), &validator));
 
-        let needs = check.needs_approval(&validator);
+        let needs = check.needs_approval(&default_principal(), &validator);
         assert_eq!(needs.len(), 1);
         assert_eq!(needs[0].0, "mcp://test:write");
     }

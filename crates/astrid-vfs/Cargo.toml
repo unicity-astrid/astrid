@@ -10,17 +10,18 @@ description = "Virtual File System and Capability sandbox for Astrid agent runti
 
 [dependencies]
 astrid-capabilities = { workspace = true }
+astrid-core = { workspace = true }
 async-trait = { workspace = true }
 cap-std = "3.4.1"
 dashmap = { workspace = true }
 ignore = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs", "io-util", "sync", "rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
