@@ -98,6 +98,51 @@ async fn cap_of_one_evicts_oldest_on_admission() {
 }
 
 #[tokio::test]
+async fn evicted_overlay_remains_usable_if_still_held() {
+    // Cap = 1, idle_eviction = 0 so every new admission evicts.
+    // Thread A holds Alice's overlay Arc. Thread B resolves Bob, which
+    // triggers eviction of Alice's registry entry. Thread A must still
+    // be able to read/write through its Arc — the upper-layer tempdir
+    // is now owned by the Arc<OverlayVfs>, not the evicted registry
+    // entry, so it lives until the last Arc drops.
+    let ws = tempfile::tempdir().expect("ws");
+    let reg = OverlayVfsRegistry::with_limits(
+        ws.path().to_path_buf(),
+        DirHandle::new(),
+        1,
+        Duration::from_millis(0),
+    );
+    let alice = p("alice");
+    let bob = p("bob");
+    let root = reg.root_handle().clone();
+
+    let alice_vfs = reg.resolve(&alice).await.expect("alice");
+
+    // Alice writes something to her overlay.
+    let f = alice_vfs
+        .open(&root, "survivor.txt", true, true)
+        .await
+        .expect("open");
+    alice_vfs.write(&f, b"still-alive").await.expect("write");
+    alice_vfs.close(&f).await.expect("close");
+
+    // Admit Bob → evicts Alice's cache slot (cap=1).
+    let _bob_vfs = reg.resolve(&bob).await.expect("bob");
+    assert_eq!(reg.len(), 1, "bob occupies the single slot");
+
+    // Alice's Arc is still held; reading must still succeed because the
+    // tempdir is kept alive by the overlay's Arc guard, not the registry
+    // entry.
+    let f2 = alice_vfs
+        .open(&root, "survivor.txt", false, false)
+        .await
+        .expect("reopen after eviction");
+    let contents = alice_vfs.read(&f2).await.expect("read after eviction");
+    alice_vfs.close(&f2).await.ok();
+    assert_eq!(contents, b"still-alive");
+}
+
+#[tokio::test]
 async fn invalidate_drops_entry() {
     let (_ws, reg) = fixture();
     let alice = p("alice");

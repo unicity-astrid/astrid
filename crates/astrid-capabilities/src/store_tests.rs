@@ -361,6 +361,18 @@ async fn inject_tampered_persistent_token(kv: &Arc<dyn KvStore>, keypair: &KeyPa
     kv.set(NS_TOKENS, &token_key(&principal, &token_id), tampered_bytes)
         .await
         .unwrap();
+    // Mirror what `CapabilityStore::add` does: populate the `token_id →
+    // principal` index so `get()` can still route to the tampered bytes.
+    // Without this the injection path would only be reachable via the
+    // legacy v1 probe, which is a different code path than this test is
+    // trying to exercise.
+    kv.set(
+        NS_TOKEN_INDEX,
+        &token_id.0.to_string(),
+        principal.as_str().as_bytes().to_vec(),
+    )
+    .await
+    .unwrap();
     token_id
 }
 

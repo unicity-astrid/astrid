@@ -9,8 +9,19 @@
 
 use std::sync::Arc;
 
-use astrid_approval::{Allowance, AllowanceId, AllowancePattern, AllowanceStore, SensitiveAction};
+use astrid_approval::deferred::DeferredResolutionStore;
+use astrid_approval::manager::{ApprovalHandler, ApprovalManager};
+use astrid_approval::request::{
+    ApprovalDecision as InternalDecision, ApprovalRequest as InternalRequest,
+    ApprovalResponse as InternalResponse,
+};
+use astrid_approval::{
+    Allowance, AllowanceId, AllowancePattern, AllowanceStore, BudgetConfig, BudgetTracker,
+    InterceptProof, SecurityInterceptor, SecurityPolicy, SensitiveAction,
+};
+use astrid_audit::AuditLog;
 use astrid_capabilities::{CapabilityStore, CapabilityToken, ResourcePattern, TokenScope};
+use astrid_core::SessionId;
 use astrid_core::principal::PrincipalId;
 use astrid_core::types::{Permission, Timestamp};
 use astrid_crypto::KeyPair;
@@ -154,6 +165,133 @@ fn revocation_is_global_across_principals() {
     ));
 }
 
+/// Session-approve handler that matches what the CLI UI would send when
+/// the user chooses "Allow for this session".
+struct SessionApproveHandler;
+
+#[async_trait::async_trait]
+impl ApprovalHandler for SessionApproveHandler {
+    async fn request_approval(&self, request: InternalRequest) -> Option<InternalResponse> {
+        Some(InternalResponse::new(
+            request.id,
+            InternalDecision::ApproveSession,
+        ))
+    }
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
+/// Build an interceptor plus the shared handles its callers observe.
+/// Shares the capability + allowance stores across principals so this is
+/// the *same* multi-tenant object graph a real kernel would have.
+async fn build_shared_interceptor() -> (
+    SecurityInterceptor,
+    Arc<AllowanceStore>,
+    Arc<CapabilityStore>,
+) {
+    let capability_store = Arc::new(CapabilityStore::in_memory());
+    let allowance_store = Arc::new(AllowanceStore::new());
+    let deferred_queue = Arc::new(DeferredResolutionStore::new());
+    let approval_manager = Arc::new(ApprovalManager::new(
+        Arc::clone(&allowance_store),
+        deferred_queue,
+    ));
+    let budget_tracker = Arc::new(BudgetTracker::new(BudgetConfig::new(1000.0, 100.0)));
+    let audit_log = Arc::new(AuditLog::in_memory(KeyPair::generate()));
+    let runtime_key = Arc::new(KeyPair::generate());
+    let session_id = SessionId::new();
+
+    approval_manager
+        .register_handler(Arc::new(SessionApproveHandler) as Arc<dyn ApprovalHandler>)
+        .await;
+
+    let interceptor = SecurityInterceptor::new(
+        Arc::clone(&capability_store),
+        approval_manager,
+        SecurityPolicy::default(),
+        budget_tracker,
+        audit_log,
+        runtime_key,
+        session_id,
+        Arc::clone(&allowance_store),
+        None,
+        None,
+    );
+
+    (interceptor, allowance_store, capability_store)
+}
+
+/// End-to-end cross-principal isolation test through `SecurityInterceptor::intercept`.
+///
+/// Alice and Bob both try the same action against the same shared
+/// interceptor. Alice's first call is approved via the handler and
+/// creates a session allowance bound to Alice. Bob's subsequent
+/// identical call must NOT match Alice's allowance — it must go back to
+/// the handler, create its own allowance bound to Bob, and the two
+/// allowances must be independent (consuming one does not consume the
+/// other).
+#[tokio::test]
+async fn alice_and_bob_share_interceptor_but_not_allowances() {
+    let (interceptor, allowance_store, _caps) = build_shared_interceptor().await;
+
+    // FileDelete always routes through the approval handler under the
+    // default policy — it's never auto-allowed. Using it lets us assert
+    // that principal scoping is the only thing distinguishing Alice's
+    // first call (handler → session approval) from her second call
+    // (allowance match), and that Bob never hitches on Alice's allowance.
+    let action = SensitiveAction::FileDelete {
+        path: "/workspace/tmp.txt".to_string(),
+    };
+
+    // Alice: first call → approved by handler, creates Alice-bound allowance.
+    let r1 = interceptor
+        .intercept(&alice(), &action, "alice reading", None)
+        .await
+        .expect("alice first call approved");
+    assert!(
+        matches!(r1.proof, InterceptProof::SessionApproval { .. }),
+        "first call goes through handler"
+    );
+    assert_eq!(allowance_store.count_for(&alice()), 1);
+    assert_eq!(allowance_store.count_for(&bob()), 0);
+
+    // Alice: second call → matches her own allowance.
+    let r2 = interceptor
+        .intercept(&alice(), &action, "alice reading again", None)
+        .await
+        .expect("alice second call approved");
+    assert!(
+        matches!(r2.proof, InterceptProof::Allowance { .. }),
+        "second call matches alice's allowance: {:?}",
+        r2.proof
+    );
+
+    // Bob: first call → must NOT match alice's allowance. Handler is
+    // invoked again and creates a new Bob-bound allowance.
+    let r3 = interceptor
+        .intercept(&bob(), &action, "bob reading", None)
+        .await
+        .expect("bob first call approved");
+    assert!(
+        matches!(r3.proof, InterceptProof::SessionApproval { .. }),
+        "bob first call goes through handler, not alice's allowance: {:?}",
+        r3.proof
+    );
+    assert_eq!(allowance_store.count_for(&alice()), 1);
+    assert_eq!(allowance_store.count_for(&bob()), 1);
+
+    // Bob: second call → matches his own allowance.
+    let r4 = interceptor
+        .intercept(&bob(), &action, "bob reading again", None)
+        .await
+        .expect("bob second call approved");
+    assert!(matches!(r4.proof, InterceptProof::Allowance { .. }));
+}
+
+/// Workspace/overlay: two principals writing the same relative path see
+/// their own bytes only — exercised through the registry, which is the
+/// code path the capsule engine invokes via `invoke_interceptor`.
 #[tokio::test]
 async fn overlay_registry_isolates_principal_writes() {
     use astrid_capabilities::DirHandle;

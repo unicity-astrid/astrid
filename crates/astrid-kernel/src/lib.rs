@@ -577,35 +577,44 @@ impl Kernel {
     /// sum across every principal (see
     /// [`total_connection_count`](Self::total_connection_count)).
     pub fn connection_closed(&self, principal: &PrincipalId) {
-        // Decrement under a short-lived DashMap ref, then drop the ref
-        // before we touch the map again (so the `remove_if` below does not
-        // self-deadlock).
-        let result = {
-            let entry = self
-                .active_connections
-                .entry(principal.clone())
-                .or_insert_with(|| AtomicUsize::new(0));
-            entry.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                if n == 0 {
-                    None
-                } else {
-                    Some(n.saturating_sub(1))
-                }
-            })
-        };
+        // Hold the DashMap entry guard across the decrement AND the
+        // session-scoped clears. While we hold the guard any concurrent
+        // `connection_opened(principal)` on the same key blocks on the
+        // shard lock, so its new session allowances cannot be born and
+        // then nuked by the tail-end cleanup here (pre-Layer-4 bug
+        // surfaced more narrowly under per-principal scoping).
+        //
+        // The downstream stores do not re-enter `active_connections`, so
+        // holding this guard while calling into them cannot deadlock.
+        let entry = self
+            .active_connections
+            .entry(principal.clone())
+            .or_insert_with(|| AtomicUsize::new(0));
+        let result = entry.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            if n == 0 {
+                None
+            } else {
+                Some(n.saturating_sub(1))
+            }
+        });
 
-        // Previous value was 1 -> now 0: last connection *for this principal*
-        // is gone. Clear only this principal's session allowances and drop
-        // the map entry so unique-principal churn does not leak memory or
-        // inflate `total_connection_count`'s scan.
         if result == Ok(1) {
             self.allowance_store.clear_session_allowances(principal);
-            self.active_connections
-                .remove_if(principal, |_, count| count.load(Ordering::Relaxed) == 0);
+            if let Err(e) = self.capabilities.clear_session_for(principal) {
+                tracing::warn!(%principal, error = %e, "failed to clear capability session");
+            }
             tracing::info!(
                 %principal,
-                "last connection for principal disconnected, session allowances cleared"
+                "last connection for principal disconnected, session state cleared"
             );
+        }
+        // Release the shard lock before touching the map again — `remove_if`
+        // re-acquires it.
+        drop(entry);
+
+        if result == Ok(1) {
+            self.active_connections
+                .remove_if(principal, |_, count| count.load(Ordering::Relaxed) == 0);
         }
     }
 

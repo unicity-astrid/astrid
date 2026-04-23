@@ -46,10 +46,25 @@ pub struct OverlayVfs {
     /// Used by [`commit()`](Self::commit) and [`rollback()`](Self::rollback)
     /// to know which entries need syncing or discarding.
     dirty_entries: DashMap<String, DirtyKind>,
+    /// Optional guard keeping the physical upper-layer tempdir alive for as
+    /// long as **any** holder has an `Arc<OverlayVfs>`. The
+    /// [`OverlayVfsRegistry`](crate::OverlayVfsRegistry) hands this out with
+    /// a populated guard so evicting the registry entry does not yank the
+    /// tempdir out from under a task still using the overlay. Tests and
+    /// constructors that manage the tempdir lifetime externally leave it
+    /// `None`.
+    _upper_tempdir: Option<Arc<tempfile::TempDir>>,
 }
 
 impl OverlayVfs {
     /// Create a new Overlay VFS.
+    ///
+    /// The caller manages the upper-layer backing directory's lifetime —
+    /// usually by holding a [`tempfile::TempDir`] alongside the returned
+    /// value. See [`new_with_upper_guard`](Self::new_with_upper_guard) for
+    /// the overlay-registry path that hands the tempdir to the overlay so
+    /// `Arc<OverlayVfs>` reference counting keeps it alive through the
+    /// overlay's full lifetime.
     #[must_use]
     pub fn new(lower: Box<dyn Vfs>, upper: Box<dyn Vfs>) -> Self {
         Self {
@@ -57,6 +72,29 @@ impl OverlayVfs {
             upper,
             copy_locks: DashMap::new(),
             dirty_entries: DashMap::new(),
+            _upper_tempdir: None,
+        }
+    }
+
+    /// Create a new Overlay VFS whose upper-layer tempdir is owned by the
+    /// overlay itself.
+    ///
+    /// Used by [`OverlayVfsRegistry`](crate::OverlayVfsRegistry) so that
+    /// evicting a registry entry cannot delete the tempdir underneath an
+    /// in-flight capsule invocation — the tempdir is dropped only when the
+    /// last `Arc<OverlayVfs>` clone is released.
+    #[must_use]
+    pub fn new_with_upper_guard(
+        lower: Box<dyn Vfs>,
+        upper: Box<dyn Vfs>,
+        upper_tempdir: Arc<tempfile::TempDir>,
+    ) -> Self {
+        Self {
+            lower,
+            upper,
+            copy_locks: DashMap::new(),
+            dirty_entries: DashMap::new(),
+            _upper_tempdir: Some(upper_tempdir),
         }
     }
 

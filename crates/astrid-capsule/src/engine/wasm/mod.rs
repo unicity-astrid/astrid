@@ -1036,6 +1036,12 @@ impl ExecutionEngine for WasmEngine {
         // Layer 4 (#668): resolve the per-principal overlay VFS. Installed
         // on `HostState.invocation_overlay_vfs` under the store lock below
         // and cleared on exit. Registry absent (tests/single-tenant) → None.
+        //
+        // Fail-closed: if the registry is configured and resolve fails
+        // (tempdir creation, VFS mount registration), deny the invocation
+        // rather than silently fall back to a shared overlay. Falling back
+        // would let Agent B observe Agent A's workspace writes — the exact
+        // invariant this layer exists to uphold.
         let invocation_overlay_vfs: Option<Arc<astrid_vfs::OverlayVfs>> =
             if let Some(registry) = self.overlay_registry.as_ref() {
                 let invoking = caller
@@ -1043,11 +1049,22 @@ impl ExecutionEngine for WasmEngine {
                     .and_then(|p| astrid_core::PrincipalId::new(p).ok())
                     .or_else(|| self.owner_principal.clone())
                     .unwrap_or_default();
-                tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current()
-                        .block_on(registry.resolve(&invoking))
-                        .ok()
-                })
+                let resolved = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(registry.resolve(&invoking))
+                });
+                match resolved {
+                    Ok(overlay) => Some(overlay),
+                    Err(e) => {
+                        tracing::error!(
+                            principal = %invoking,
+                            error = %e,
+                            "overlay registry resolve failed; denying invocation (issue #668)"
+                        );
+                        return Err(CapsuleError::WasmError(format!(
+                            "principal '{invoking}' overlay resolve failed: {e}"
+                        )));
+                    },
+                }
             } else {
                 None
             };

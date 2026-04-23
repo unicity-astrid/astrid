@@ -54,11 +54,15 @@ fn resolve_max_principals() -> usize {
 }
 
 /// A cached overlay bundle for a single principal.
+///
+/// The upper-layer `TempDir` lives **inside** the `OverlayVfs` (via
+/// [`OverlayVfs::new_with_upper_guard`]), not in this struct. Evicting the
+/// entry therefore removes the cache slot without deleting the physical
+/// tempdir — any concurrent task that still holds an `Arc<OverlayVfs>`
+/// clone keeps the tempdir alive, and the directory is only unlinked when
+/// the last clone is dropped.
 struct Entry {
     overlay: Arc<OverlayVfs>,
-    /// Kept for its `Drop` side effect — the upper-layer tempdir is removed
-    /// only when this value is dropped.
-    _upper: tempfile::TempDir,
     /// Milliseconds since [`OverlayVfsRegistry::anchor`] at the last cache hit.
     ///
     /// Stored atomically so cache-hit updates can happen under a read lock —
@@ -174,7 +178,7 @@ impl OverlayVfsRegistry {
         // first-access for different principals; building outside lets them
         // parallelise at the cost of a rare duplicate-build on the same
         // principal (handled in the insertion step).
-        let (overlay, upper) = self.build_for(principal).await?;
+        let overlay = self.build_for(principal).await?;
 
         let mut guard = self
             .overlays
@@ -195,7 +199,6 @@ impl OverlayVfsRegistry {
 
         let entry = Entry {
             overlay: Arc::clone(&overlay),
-            _upper: upper,
             last_used_ms: AtomicU64::new(self.now_ms()),
         };
         guard.insert(principal.clone(), entry);
@@ -213,11 +216,12 @@ impl OverlayVfsRegistry {
     }
 
     /// Build a fresh overlay for `principal`. Lower layer = workspace,
-    /// upper layer = a new tempdir owned by the returned bundle.
-    async fn build_for(
-        &self,
-        principal: &PrincipalId,
-    ) -> std::io::Result<(Arc<OverlayVfs>, tempfile::TempDir)> {
+    /// upper layer = a new tempdir whose lifetime is bound to the returned
+    /// `Arc<OverlayVfs>` — the tempdir is deleted only when the last Arc
+    /// clone is dropped, so an in-flight capsule invocation cannot have its
+    /// upper layer yanked out from under it by a concurrent registry
+    /// eviction.
+    async fn build_for(&self, principal: &PrincipalId) -> std::io::Result<Arc<OverlayVfs>> {
         let lower = HostVfs::new();
         lower
             .register_dir(self.root_handle.clone(), self.workspace_root.clone())
@@ -247,8 +251,11 @@ impl OverlayVfsRegistry {
                 ))
             })?;
 
-        let overlay = Arc::new(OverlayVfs::new(Box::new(lower), Box::new(upper)));
-        Ok((overlay, upper_dir))
+        Ok(Arc::new(OverlayVfs::new_with_upper_guard(
+            Box::new(lower),
+            Box::new(upper),
+            Arc::new(upper_dir),
+        )))
     }
 
     /// Evict the single oldest entry whose `last_used_ms` is beyond the

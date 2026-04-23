@@ -19,6 +19,11 @@ use crate::token::CapabilityToken;
 /// are `{principal}/{token_id}` — the per-principal prefix keeps
 /// `list_keys_with_prefix` scans cheap per principal (Layer 4, issue #668).
 const NS_TOKENS: &str = "caps:tokens";
+/// Secondary index: `{token_id}` → `{principal}`. Lets [`CapabilityStore::get`]
+/// and [`CapabilityStore::revoke`] locate a token by id in `O(1)` even
+/// though the primary layout is principal-prefixed. Kept in sync with
+/// [`NS_TOKENS`] by `add`/`revoke`/`cleanup_expired`.
+const NS_TOKEN_INDEX: &str = "caps:token_index";
 const NS_REVOKED: &str = "caps:revoked";
 const NS_USED: &str = "caps:used";
 
@@ -64,9 +69,14 @@ where
 /// Capability store with both session and persistent storage.
 ///
 /// As of Layer 4 (issue #668), session tokens are keyed per-principal; the
-/// persistent layout is `caps:tokens:{principal}` so `list_keys` scans are
-/// cheap per principal. Revocation and single-use consumption remain global
-/// (they are about the token's identity, not the caller): revoking a token
+/// persistent layout stores keys as `{principal}/{token_id}` under the
+/// single [`NS_TOKENS`] namespace, so
+/// [`list_keys_with_prefix`](KvStore::list_keys_with_prefix) scans for a
+/// given principal are cheap. A secondary [`NS_TOKEN_INDEX`] maps
+/// `{token_id}` → `{principal}` so [`get`](Self::get) and
+/// [`revoke`](Self::revoke) stay `O(1)` even though they accept only a
+/// `TokenId`. Revocation and single-use consumption remain global (they
+/// are about the token's identity, not the caller): revoking a token
 /// revokes it for every principal that happened to hold it.
 pub struct CapabilityStore {
     /// Session tokens (in-memory, cleared on session end), keyed per-principal.
@@ -213,6 +223,14 @@ impl CapabilityStore {
                     let key = token_key(&principal, &token.id);
                     block_on(store.set(NS_TOKENS, &key, serialized))
                         .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
+                    // Maintain the `token_id → principal` index so `get`
+                    // and `revoke` stay O(1).
+                    block_on(store.set(
+                        NS_TOKEN_INDEX,
+                        &token.id.0.to_string(),
+                        principal.as_str().as_bytes().to_vec(),
+                    ))
+                    .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
                 } else {
                     // Fall back to session storage if no persistence
                     let mut tokens = self
@@ -286,49 +304,61 @@ impl CapabilityStore {
 
     /// Persistent read for the given token id across every principal.
     ///
-    /// Keys under `NS_TOKENS` have the shape `{principal}/{token_id}`, so we
-    /// enumerate all keys, find one whose token-id suffix matches, and load
-    /// that entry. A legacy v1 layout — flat key equal to the token id —
-    /// is detected and surfaces as `InvalidSignature` so operators see the
-    /// re-mint prompt in logs rather than a silent 404.
+    /// Uses the [`NS_TOKEN_INDEX`] secondary index (`token_id` →
+    /// `principal`) to locate the primary entry in `O(1)`. Falls back to
+    /// the legacy flat key `caps:tokens/{token_id}` so v1 tokens on disk
+    /// after upgrade still surface as `InvalidSignature` with a re-mint
+    /// hint, rather than silently disappearing.
     fn read_persistent_token_any_principal(
         store: &Arc<dyn KvStore>,
         token_id: &TokenId,
     ) -> CapabilityResult<Option<CapabilityToken>> {
         let token_id_str = token_id.0.to_string();
-        let suffix = format!("/{token_id_str}");
 
-        let all_keys = block_on(store.list_keys(NS_TOKENS))
-            .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
-
-        for key in all_keys {
-            if key.ends_with(&suffix) {
-                if let Some(bytes) = block_on(store.get(NS_TOKENS, &key))
-                    .map_err(|e| CapabilityError::StorageError(e.to_string()))?
-                {
-                    let token: CapabilityToken = serde_json::from_slice(&bytes)
-                        .map_err(|e| CapabilityError::SerializationError(e.to_string()))?;
-                    token.validate()?;
-                    return Ok(Some(token));
-                }
-            } else if key == token_id_str {
-                // Legacy v1 flat key (no principal prefix). Surface the
-                // re-mint hint and let `validate()` reject it as
-                // InvalidSignature (v1 payload vs v2 verifier).
-                tracing::error!(
-                    %token_id,
-                    "v1 capability token on disk at caps:tokens/{token_id_str}; \
-                     v2 signing rejects it — operator must re-mint"
-                );
-                if let Some(bytes) = block_on(store.get(NS_TOKENS, &key))
-                    .map_err(|e| CapabilityError::StorageError(e.to_string()))?
-                {
-                    let token: CapabilityToken = serde_json::from_slice(&bytes)
-                        .map_err(|e| CapabilityError::SerializationError(e.to_string()))?;
-                    token.validate()?;
-                    return Ok(Some(token));
-                }
+        // Primary path: secondary index → principal → primary key.
+        if let Some(principal_bytes) = block_on(store.get(NS_TOKEN_INDEX, &token_id_str))
+            .map_err(|e| CapabilityError::StorageError(e.to_string()))?
+        {
+            let principal_str = std::str::from_utf8(&principal_bytes).map_err(|e| {
+                CapabilityError::StorageError(format!(
+                    "corrupt token index entry for {token_id_str}: {e}"
+                ))
+            })?;
+            let principal = PrincipalId::new(principal_str).map_err(|e| {
+                CapabilityError::StorageError(format!(
+                    "invalid principal '{principal_str}' in token index for {token_id_str}: {e}"
+                ))
+            })?;
+            let key = token_key(&principal, token_id);
+            if let Some(bytes) = block_on(store.get(NS_TOKENS, &key))
+                .map_err(|e| CapabilityError::StorageError(e.to_string()))?
+            {
+                let token: CapabilityToken = serde_json::from_slice(&bytes)
+                    .map_err(|e| CapabilityError::SerializationError(e.to_string()))?;
+                token.validate()?;
+                return Ok(Some(token));
             }
+            // Index pointed at a missing primary entry — stale index row.
+            // Delete the orphan and fall through (may still hit the v1
+            // legacy probe below).
+            let _ = block_on(store.delete(NS_TOKEN_INDEX, &token_id_str));
+        }
+
+        // Legacy v1 flat key (no principal prefix). Surface the re-mint
+        // hint and let `validate()` reject it as InvalidSignature (v1
+        // payload vs v2 verifier).
+        if let Some(bytes) = block_on(store.get(NS_TOKENS, &token_id_str))
+            .map_err(|e| CapabilityError::StorageError(e.to_string()))?
+        {
+            tracing::error!(
+                %token_id,
+                "v1 capability token on disk at caps:tokens/{token_id_str}; \
+                 v2 signing rejects it — operator must re-mint"
+            );
+            let token: CapabilityToken = serde_json::from_slice(&bytes)
+                .map_err(|e| CapabilityError::SerializationError(e.to_string()))?;
+            token.validate()?;
+            return Ok(Some(token));
         }
 
         Ok(None)
@@ -468,18 +498,22 @@ impl CapabilityStore {
             block_on(store.set(NS_REVOKED, &token_id_str, PRESENCE_MARKER.to_vec()))
                 .map_err(|e| CapabilityError::StorageError(e.to_string()))?;
 
-            // Delete every persistent key whose suffix matches this token
-            // id — the same token id can only exist under one principal's
-            // prefix, but we sweep any duplicates/legacy bytes for safety.
-            let suffix = format!("/{token_id_str}");
-            let all_keys = block_on(store.list_keys(NS_TOKENS)).unwrap_or_default();
-            for key in all_keys {
-                if (key == token_id_str || key.ends_with(&suffix))
-                    && let Err(e) = block_on(store.delete(NS_TOKENS, &key))
-                {
-                    tracing::debug!(%token_id_str, "revoke: delete miss for {key}: {e}");
+            // Look up the principal via the secondary index (O(1)) and
+            // delete the single primary entry.
+            if let Ok(Some(principal_bytes)) = block_on(store.get(NS_TOKEN_INDEX, &token_id_str))
+                && let Ok(principal_str) = std::str::from_utf8(&principal_bytes)
+                && let Ok(principal) = PrincipalId::new(principal_str)
+            {
+                let key = token_key(&principal, token_id);
+                if let Err(e) = block_on(store.delete(NS_TOKENS, &key)) {
+                    tracing::debug!(%token_id_str, "revoke: delete miss under {key}: {e}");
                 }
             }
+            // Drop the index row regardless.
+            let _ = block_on(store.delete(NS_TOKEN_INDEX, &token_id_str));
+            // Legacy sweep: a v1 token still at the flat `caps:tokens/{id}`
+            // key from before the Layer 4 migration.
+            let _ = block_on(store.delete(NS_TOKENS, &token_id_str));
         }
 
         // Update in-memory state (rebuilt from KV on restart regardless).
@@ -673,6 +707,9 @@ impl CapabilityStore {
                     && token.is_expired()
                 {
                     let _ = block_on(store.delete(NS_TOKENS, &key));
+                    // Keep the secondary index in lock-step with the
+                    // primary data so stale index rows don't accumulate.
+                    let _ = block_on(store.delete(NS_TOKEN_INDEX, &token.id.0.to_string()));
                     removed = removed.saturating_add(1);
                 }
             }
