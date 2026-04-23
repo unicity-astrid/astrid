@@ -1,7 +1,7 @@
-//! Shared grammar and validation for static capability strings.
+//! Shared grammar and validation for static capability strings (issue #670).
 //!
-//! Layer 5 of the multi-tenancy work (see issue #670) uses a colon-delimited
-//! identifier namespace for policy capabilities:
+//! The management-API policy model uses a colon-delimited identifier
+//! namespace for capabilities:
 //!
 //! ```text
 //! capability  := segment (':' segment)*
@@ -63,7 +63,7 @@ pub enum CapabilityGrammarError {
     },
 }
 
-/// Validate a capability string against the Layer 5 grammar.
+/// Validate a capability string against the colon-delimited grammar.
 ///
 /// Accepts both exact identifiers (`system:shutdown`) and patterns
 /// (`self:*`, `a:*:b`, `*`). Rejects empty segments, double-globs,
@@ -128,9 +128,9 @@ pub fn capability_matches(pattern: &str, cap: &str) -> bool {
     }
 
     // Walk both strings segment-by-segment with iterators — no Vec
-    // allocation on the hot path. The Layer 5 preamble evaluates this
-    // on every admin-API request and per-group-capability, so saving
-    // the two `Vec<&str>` collections is worthwhile.
+    // allocation on the hot path. The enforcement preamble evaluates
+    // this on every admin-API request and per-group-capability, so
+    // saving the two `Vec<&str>` collections is worthwhile.
     let mut pat_iter = pattern.split(':').peekable();
     let mut cap_iter = cap.split(':');
 

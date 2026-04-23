@@ -1,4 +1,4 @@
-//! Layer 5 management-API authorization integration tests (issue #670).
+//! Management-API authorization integration tests (issue #670).
 //!
 //! Exercises the enforcement preamble by composing the pieces the kernel
 //! assembles at boot —
@@ -10,10 +10,10 @@
 //!
 //! Booting a real [`astrid_kernel::Kernel`] requires `$ASTRID_HOME`,
 //! socket binding, and a persistent KV store — too heavy for a unit
-//! test. Rebuilding the Layer 5 decision path from its public pieces
-//! gives the same coverage as an end-to-end kernel with none of the
-//! filesystem/process side effects. If the kernel ever changes the
-//! enforcement contract, this test will break compile-wise and flag it.
+//! test. Rebuilding the decision path from its public pieces gives the
+//! same coverage as an end-to-end kernel with none of the filesystem /
+//! process side effects. If the kernel ever changes the enforcement
+//! contract, this test will break compile-wise and flag it.
 
 #![allow(clippy::arithmetic_side_effects)]
 

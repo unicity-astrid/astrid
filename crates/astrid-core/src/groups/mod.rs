@@ -1,11 +1,11 @@
-//! Static group-to-capability configuration (Layer 5, issue #670).
+//! Static group-to-capability configuration (issue #670).
 //!
 //! A [`GroupConfig`] names a small set of built-in groups
 //! ([`BUILTIN_ADMIN`], [`BUILTIN_AGENT`], [`BUILTIN_RESTRICTED`]) and
 //! optionally merges operator-defined custom groups from
 //! `$ASTRID_HOME/etc/groups.toml`. Each group confers a set of capability
-//! patterns, evaluated left-to-right against the colon-delimited Layer 5
-//! grammar in [`crate::capability_grammar`].
+//! patterns, evaluated left-to-right against the colon-delimited grammar
+//! in [`crate::capability_grammar`].
 //!
 //! # Design contract
 //!
@@ -19,8 +19,8 @@
 //! - Malformed TOML, unknown fields, or duplicate group names are hard
 //!   errors — this fails the kernel boot, which is intentional.
 //! - `GroupConfig::get` returning `None` for a name referenced by a
-//!   principal profile is **not** an error here; the caller (Layer 5
-//!   [`CapabilityCheck`](../../../astrid-capabilities/src/policy.rs))
+//!   principal profile is **not** an error here; the caller
+//!   ([`CapabilityCheck`](../../../astrid-capabilities/src/policy.rs))
 //!   treats it as fail-closed and logs a `warn!`.
 
 use std::collections::{HashMap, HashSet};
@@ -68,8 +68,8 @@ pub enum GroupConfigError {
         /// Duplicated group name.
         name: String,
     },
-    /// A group entry contains a capability that fails the Layer 5
-    /// grammar validator.
+    /// A group entry contains a capability that fails the grammar
+    /// validator.
     #[error("groups config: group {group:?} capability {cap:?} rejected: {reason}")]
     InvalidCapability {
         /// Name of the offending group.
@@ -403,10 +403,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_group_field() {
-        let toml_doc = r#"
+        let toml_doc = "
             [groups.ops]
             priviledges = []
-        "#;
+        ";
         assert!(matches!(
             GroupConfig::from_toml_str(toml_doc),
             Err(GroupConfigError::Parse(_))

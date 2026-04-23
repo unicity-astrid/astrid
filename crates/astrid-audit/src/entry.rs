@@ -406,7 +406,7 @@ pub enum AuditAction {
     ConfigReloaded,
 
     /// Kernel management-API request (admin surface) — allowed or denied
-    /// by the Layer 5 [`CapabilityCheck`](astrid_capabilities::CapabilityCheck)
+    /// by the [`CapabilityCheck`](astrid_capabilities::CapabilityCheck)
     /// enforcement preamble. Pair this action with
     /// [`AuthorizationProof::Denied`] + [`AuditOutcome::failure`] for the
     /// deny path, or any of the positive authorization variants +

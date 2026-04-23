@@ -115,14 +115,13 @@ pub struct Kernel {
     /// management IPC to clear entries at runtime (issue #666 tracks that
     /// follow-up).
     pub(crate) profile_cache: Arc<PrincipalProfileCache>,
-    /// Layer 5 static group-to-capability configuration (issue #670).
+    /// Static group-to-capability configuration (issue #670).
     ///
     /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml` and then
     /// treated as immutable. The [`kernel_router::handle_request`]
     /// enforcement preamble reads `groups` + the resolved
     /// [`PrincipalProfile`](astrid_core::PrincipalProfile) through
-    /// [`CapabilityCheck`](astrid_capabilities::CapabilityCheck). Hot
-    /// reload is deferred to Layer 6 management IPC.
+    /// [`CapabilityCheck`](astrid_capabilities::CapabilityCheck).
     pub(crate) groups: Arc<GroupConfig>,
 }
 
@@ -240,9 +239,9 @@ impl Kernel {
         let identity_store: Arc<dyn astrid_storage::IdentityStore> =
             Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
 
-        // Load Layer 5 group config (issue #670). Boot-loaded once,
-        // treated as immutable. Missing file → built-ins only; malformed
-        // TOML is a hard boot failure (fail-closed).
+        // Load group config (issue #670). Boot-loaded once, treated as
+        // immutable. Missing file → built-ins only; malformed TOML is a
+        // hard boot failure (fail-closed).
         let groups =
             Arc::new(GroupConfig::load(&home).map_err(|e| {
                 std::io::Error::other(format!("Failed to load groups config: {e}"))
@@ -1509,7 +1508,7 @@ mod tests {
         assert!(!tracker.should_restart());
     }
 
-    // ── Layer 5 bootstrap admin-group seeding (issue #670) ───────────
+    // ── Bootstrap admin-group seeding (issue #670) ───────────────────
 
     fn scratch_home() -> (tempfile::TempDir, astrid_core::dirs::AstridHome) {
         let dir = tempfile::tempdir().unwrap();
@@ -1700,9 +1699,9 @@ fn validate_imports_exports(
 /// on subsequent boots. Auto-links with `platform="cli"`,
 /// `platform_user_id="local"`, `method="system"`.
 ///
-/// Layer 5 (issue #670): also seeds the default principal's profile on
-/// disk with `groups = ["admin"]` so single-tenant deployments reach the
-/// management API with full capabilities. The profile write is
+/// Also seeds the default principal's profile on disk with
+/// `groups = ["admin"]` (issue #670) so single-tenant deployments reach
+/// the management API with full capabilities. The profile write is
 /// **idempotent** — if the default principal already has a profile with
 /// an `admin` group, any explicit `grants` / `revokes`, or non-empty
 /// `groups`, we leave it untouched.
@@ -1738,15 +1737,14 @@ async fn bootstrap_cli_root_user(
 
 /// Idempotently ensure the default principal's profile on disk has the
 /// built-in `admin` group, so the single-tenant CLI path carries full
-/// Layer 5 capabilities (issue #670).
+/// management-API capabilities (issue #670).
 ///
 /// - Missing profile → writes a fresh default with `groups = ["admin"]`.
 /// - Existing profile with any non-empty `groups` OR any `grants` OR
 ///   any `revokes` → treated as operator-configured, left untouched.
 /// - Existing profile with `groups = []`, `grants = []`, `revokes = []`
 ///   → adds `admin` to `groups`. This covers the fresh-default case
-///   where a prior boot wrote a `PrincipalProfile::default()` before
-///   Layer 5 shipped.
+///   where a prior boot wrote a `PrincipalProfile::default()`.
 fn seed_default_principal_admin_profile(
     home: &astrid_core::dirs::AstridHome,
 ) -> Result<(), astrid_core::ProfileError> {

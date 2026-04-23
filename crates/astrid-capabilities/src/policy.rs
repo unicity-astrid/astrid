@@ -1,4 +1,4 @@
-//! Layer 5 capability-check primitive (see issue #670).
+//! Static capability-check primitive (issue #670).
 //!
 //! [`CapabilityCheck`] evaluates whether a resolved
 //! [`PrincipalProfile`](astrid_core::PrincipalProfile) holds a given
@@ -11,13 +11,12 @@
 //!
 //! - Runtime tokens (`ed25519`-signed, URI-patterned, single-use/expiring)
 //!   gate capsule-level sensitive actions like MCP tool invocation.
-//! - Layer 5 capabilities (static, colon-delimited identifiers) gate the
-//!   kernel's management-API surface: shutdown, capsule reload/install,
-//!   status queries, approval responses.
+//! - Static capabilities (colon-delimited identifiers) gate the kernel's
+//!   management-API surface: shutdown, capsule reload/install, status
+//!   queries, approval responses.
 //!
 //! The two systems coexist and are mutually exclusive in what they
-//! authorize. The two crates share only the ad-hoc dependency on
-//! [`astrid_core`] (for the grammar and the resolved profile).
+//! authorize.
 //!
 //! # Precedence
 //!
@@ -39,9 +38,8 @@
 //!
 //! [`CapabilityCheck::has`] and [`CapabilityCheck::require`] are pure
 //! functions over the two input references — no I/O, no locking, no
-//! caching. The caller is expected to have resolved the profile (via
-//! the Layer 3 profile cache) and the group config (via the kernel's
-//! one-shot boot load) beforehand.
+//! caching. The caller is expected to have resolved the profile and
+//! the group config beforehand.
 
 use astrid_core::{GroupConfig, PrincipalId, PrincipalProfile, capability_matches};
 use thiserror::Error;
@@ -55,10 +53,8 @@ pub enum PermissionError {
     /// satisfy the required capability.
     #[error("permission denied for principal {principal}: missing capability {required}")]
     MissingCapability {
-        /// The resolved principal identifier. `None` when the caller
-        /// could not resolve a principal (falls back to the default
-        /// principal in pre-#658 socket traffic).
-        principal: PrincipalDisplay,
+        /// The resolved principal identifier.
+        principal: PrincipalId,
         /// The capability pattern that was required.
         required: String,
     },
@@ -69,67 +65,12 @@ pub enum PermissionError {
     )]
     RevokedCapability {
         /// The resolved principal identifier.
-        principal: PrincipalDisplay,
+        principal: PrincipalId,
         /// The capability pattern that was required.
         required: String,
         /// The revoke pattern that matched.
         revoke_pattern: String,
     },
-}
-
-impl PermissionError {
-    /// Return the required capability string that triggered the error,
-    /// for audit-log / error-message rendering.
-    #[must_use]
-    pub fn required(&self) -> &str {
-        match self {
-            Self::MissingCapability { required, .. } | Self::RevokedCapability { required, .. } => {
-                required
-            },
-        }
-    }
-
-    /// Return the resolved principal associated with the failure.
-    #[must_use]
-    pub fn principal(&self) -> &PrincipalDisplay {
-        match self {
-            Self::MissingCapability { principal, .. }
-            | Self::RevokedCapability { principal, .. } => principal,
-        }
-    }
-}
-
-/// Lightweight principal wrapper for error messages. Carries either a
-/// resolved [`PrincipalId`] or a sentinel for pre-#658 socket traffic
-/// where the IPC message had no principal field set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrincipalDisplay {
-    /// A resolved principal.
-    Known(PrincipalId),
-    /// The caller could not resolve a principal (missing or malformed
-    /// `IpcMessage.principal`). Displayed as `<unknown>`.
-    Unknown,
-}
-
-impl std::fmt::Display for PrincipalDisplay {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Known(id) => write!(f, "{id}"),
-            Self::Unknown => f.write_str("<unknown>"),
-        }
-    }
-}
-
-impl From<PrincipalId> for PrincipalDisplay {
-    fn from(id: PrincipalId) -> Self {
-        Self::Known(id)
-    }
-}
-
-impl From<Option<PrincipalId>> for PrincipalDisplay {
-    fn from(id: Option<PrincipalId>) -> Self {
-        id.map_or(Self::Unknown, Self::Known)
-    }
 }
 
 /// Borrowed evaluator over a resolved profile and the shared group
@@ -142,7 +83,7 @@ impl From<Option<PrincipalId>> for PrincipalDisplay {
 pub struct CapabilityCheck<'a> {
     profile: &'a PrincipalProfile,
     groups: &'a GroupConfig,
-    principal: PrincipalDisplay,
+    principal: PrincipalId,
 }
 
 impl<'a> CapabilityCheck<'a> {
@@ -152,19 +93,13 @@ impl<'a> CapabilityCheck<'a> {
     pub fn new(
         profile: &'a PrincipalProfile,
         groups: &'a GroupConfig,
-        principal: impl Into<PrincipalDisplay>,
+        principal: PrincipalId,
     ) -> Self {
         Self {
             profile,
             groups,
-            principal: principal.into(),
+            principal,
         }
-    }
-
-    /// Return the principal this check is associated with.
-    #[must_use]
-    pub fn principal(&self) -> &PrincipalDisplay {
-        &self.principal
     }
 
     /// Return `true` if the principal holds capability `cap`.
@@ -407,10 +342,10 @@ mod tests {
     #[test]
     fn custom_group_capabilities_apply() {
         let cfg = GroupConfig::from_toml_str(
-            r#"
+            "
             [groups.ops]
-            capabilities = ["capsule:install", "capsule:remove"]
-        "#,
+            capabilities = [\"capsule:install\", \"capsule:remove\"]
+        ",
         )
         .unwrap();
         let p = profile_in(&["ops"]);

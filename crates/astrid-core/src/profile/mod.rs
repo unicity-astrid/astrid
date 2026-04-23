@@ -107,7 +107,7 @@ pub struct PrincipalProfile {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Group memberships. Layer 5 resolves these to capability sets via
+    /// Group memberships. Resolved to capability sets via
     /// [`GroupConfig`](crate::GroupConfig).
     #[serde(default)]
     pub groups: Vec<String>,
@@ -115,7 +115,7 @@ pub struct PrincipalProfile {
     /// Capability patterns granted directly to this principal, beyond the
     /// capabilities inherited from the groups listed in
     /// [`PrincipalProfile::groups`]. Each entry is validated against the
-    /// Layer 5 capability grammar (see
+    /// capability grammar (see
     /// [`crate::capability_grammar::validate_capability`]) at load time.
     #[serde(default)]
     pub grants: Vec<String>,

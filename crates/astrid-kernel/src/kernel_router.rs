@@ -122,7 +122,7 @@ async fn handle_request(
         topic.clone()
     };
 
-    // Layer 5 enforcement preamble (issue #670). Resolve the caller's
+    // Capability enforcement preamble (issue #670). Resolve the caller's
     // profile, compute the required capability for this request, and
     // reject with an audited `Denied` entry on failure. No match arm
     // below is reached without `authorize_request` returning Ok.
@@ -137,7 +137,7 @@ async fn handle_request(
                 method,
                 required_cap,
                 AuthorizationProof::System {
-                    reason: format!("Layer 5 policy allow: {caller} holds {required_cap}"),
+                    reason: format!("policy allow: {caller} holds {required_cap}"),
                 },
                 AuditOutcome::success(),
             );
@@ -148,7 +148,7 @@ async fn handle_request(
                 method = method,
                 principal = %caller,
                 required = required_cap,
-                "Layer 5 permission check denied admin request"
+                "Permission check denied admin request"
             );
             record_admin_audit(
                 kernel,
@@ -374,23 +374,18 @@ fn rate_limit_max(req: &KernelRequest) -> Option<u32> {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 5 capability enforcement (issue #670)
+// Management API capability enforcement (issue #670)
 // ---------------------------------------------------------------------------
 
 /// The authority surface a given [`KernelRequest`] operates over.
 ///
 /// Today's `KernelRequest` variants carry no target-principal field, so
 /// [`resolve_scope`] always returns [`AuthorityScope::Self_`] — the
-/// request operates on the caller's own home. Layer 6 (management IPC
-/// for agent lifecycle) will introduce variants with an explicit
-/// `target_principal`, at which point this enum starts distinguishing
-/// `Self_` / `Other(target)` / `Global`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// request operates on the caller's own home.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthorityScope {
     /// Request operates on the caller's own principal.
     Self_,
-    /// Request operates on a specific other principal.
-    Other(PrincipalId),
     /// Request operates on global/system-wide state (e.g. shutdown).
     Global,
 }
@@ -398,18 +393,16 @@ pub enum AuthorityScope {
 /// Return the authority scope the caller is exercising for `req`.
 ///
 /// Currently always returns [`AuthorityScope::Self_`] because no
-/// `KernelRequest` variant carries a `target_principal` field yet. Layer
-/// 6 will inspect those new fields and return `Other` / `Global` where
-/// applicable.
+/// `KernelRequest` variant carries a `target_principal` field yet.
 #[must_use]
 pub fn resolve_scope(_req: &KernelRequest, _caller: &PrincipalId) -> AuthorityScope {
     AuthorityScope::Self_
 }
 
-/// Return the static Layer 5 capability string required to satisfy `req`
-/// under `scope`.
+/// Return the static capability string required to satisfy `req` under
+/// `scope`.
 ///
-/// This is a pure function so capability mappings can be unit-tested in
+/// Pure function so the capability mapping can be unit-tested in
 /// isolation. Every `KernelRequest` variant is covered; there is no
 /// default-allow branch.
 #[must_use]
@@ -467,8 +460,8 @@ fn resolve_caller(message: &IpcMessage) -> PrincipalId {
         .unwrap_or_default()
 }
 
-/// Evaluate the Layer 5 capability check for `caller` against the
-/// kernel's resolved group config and the caller's profile.
+/// Evaluate the capability check for `caller` against the kernel's
+/// resolved group config and the caller's profile.
 ///
 /// Returns `Ok(())` on success, or the policy reason on denial. Profile
 /// resolution failures (malformed TOML, IO error) are themselves treated
@@ -489,7 +482,7 @@ fn authorize_request(
                 "Profile resolution failed — fail-closed deny"
             );
             return Err(PermissionError::MissingCapability {
-                principal: caller.clone().into(),
+                principal: caller.clone(),
                 required: required_cap.to_string(),
             });
         },
@@ -526,7 +519,7 @@ fn record_admin_audit(
             principal = %caller,
             method = method,
             error = %e,
-            "Failed to persist Layer 5 audit entry — continuing"
+            "Failed to persist admin-request audit entry — continuing"
         );
     }
 }
@@ -614,7 +607,7 @@ mod tests {
         assert_eq!(limit, None);
     }
 
-    // ── Layer 5 capability mapping (issue #670) ──────────────────────
+    // ── Capability mapping (issue #670) ──────────────────────────────
 
     fn all_request_variants() -> Vec<KernelRequest> {
         vec![
