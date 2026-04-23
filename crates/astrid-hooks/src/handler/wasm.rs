@@ -311,7 +311,6 @@ impl WasmHandler {
             invocation_secret_store: None,
             invocation_capsule_log: None,
             invocation_profile: None,
-            invocation_overlay_vfs: None,
             overlay_vfs: None,
             upper_dir: None,
             kv,

@@ -188,9 +188,13 @@ pub struct WasmEngine {
     /// Shared per-principal overlay VFS registry (Layer 4, issue #668).
     ///
     /// Populated at load time from the kernel-wide registry.
-    /// `invoke_interceptor` resolves the invoking principal's overlay and
-    /// installs it on [`HostState.invocation_overlay_vfs`] for the call,
-    /// clearing on exit. `None` in tests and single-tenant deployments.
+    /// `invoke_interceptor` resolves the invoking principal's overlay on
+    /// every call for two side effects: fail-closing the invocation if
+    /// tempdir allocation errors, and warming the per-principal cache so
+    /// future layers routing writes through the overlay find it ready.
+    /// The resolved `Arc<OverlayVfs>` is dropped — no host function reads
+    /// through the overlay today. `None` in tests and single-tenant
+    /// deployments.
     overlay_registry: Option<Arc<astrid_vfs::OverlayVfsRegistry>>,
 }
 
@@ -634,7 +638,6 @@ impl ExecutionEngine for WasmEngine {
                     invocation_secret_store: None,
                     invocation_capsule_log: None,
                     invocation_profile: None,
-                    invocation_overlay_vfs: None,
                     overlay_vfs: Some(overlay_vfs),
                     upper_dir: Some(Arc::new(upper_temp)),
                     kv,
@@ -1033,41 +1036,43 @@ impl ExecutionEngine for WasmEngine {
         // accept a per-invocation timeout from the profile.
         let is_daemon = !self.manifest.uplinks.is_empty() || self.manifest.capabilities.uplink;
 
-        // Layer 4 (#668): resolve the per-principal overlay VFS. Installed
-        // on `HostState.invocation_overlay_vfs` under the store lock below
-        // and cleared on exit. Registry absent (tests/single-tenant) → None.
+        // Layer 4 (#668): resolve the per-principal overlay VFS. The
+        // resolved Arc is intentionally dropped — no host function reads
+        // through the overlay today, so storing it on HostState would be
+        // dead state. We still make the call for its side effects:
         //
-        // Fail-closed: if the registry is configured and resolve fails
-        // (tempdir creation, VFS mount registration), deny the invocation
-        // rather than silently fall back to a shared overlay. Falling back
-        // would let Agent B observe Agent A's workspace writes — the exact
-        // invariant this layer exists to uphold.
-        let invocation_overlay_vfs: Option<Arc<astrid_vfs::OverlayVfs>> =
-            if let Some(registry) = self.overlay_registry.as_ref() {
-                let invoking = caller
-                    .and_then(|msg| msg.principal.as_deref())
-                    .and_then(|p| astrid_core::PrincipalId::new(p).ok())
-                    .or_else(|| self.owner_principal.clone())
-                    .unwrap_or_default();
-                let resolved = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(registry.resolve(&invoking))
-                });
-                match resolved {
-                    Ok(overlay) => Some(overlay),
-                    Err(e) => {
-                        tracing::error!(
-                            principal = %invoking,
-                            error = %e,
-                            "overlay registry resolve failed; denying invocation (issue #668)"
-                        );
-                        return Err(CapsuleError::WasmError(format!(
-                            "principal '{invoking}' overlay resolve failed: {e}"
-                        )));
-                    },
-                }
-            } else {
-                None
-            };
+        // 1. Fail-closed on resolve error. If the registry is configured
+        //    and tempdir creation or VFS mount registration fails, deny
+        //    the invocation rather than proceeding against a shared
+        //    workspace. Silent fallback would let Agent B observe Agent
+        //    A's writes — the exact invariant this layer upholds.
+        // 2. Warm the cache so the principal's per-isolation tempdir
+        //    exists and is reused across subsequent invocations, and so
+        //    the LRU-eviction accounting reflects actual usage.
+        //
+        // When a future layer routes production VFS operations through
+        // the overlay, that layer will add the field + accessor and
+        // consume the resolved `Arc<OverlayVfs>` here.
+        if let Some(registry) = self.overlay_registry.as_ref() {
+            let invoking = caller
+                .and_then(|msg| msg.principal.as_deref())
+                .and_then(|p| astrid_core::PrincipalId::new(p).ok())
+                .or_else(|| self.owner_principal.clone())
+                .unwrap_or_default();
+            let resolved = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(registry.resolve(&invoking))
+            });
+            if let Err(e) = resolved {
+                tracing::error!(
+                    principal = %invoking,
+                    error = %e,
+                    "overlay registry resolve failed; denying invocation (issue #668)"
+                );
+                return Err(CapsuleError::WasmError(format!(
+                    "principal '{invoking}' overlay resolve failed: {e}"
+                )));
+            }
+        }
 
         // Set per-invocation caller context, profile, KV, VFS, and
         // epoch deadline under a single store lock. Recovers from
@@ -1117,7 +1122,6 @@ impl ExecutionEngine for WasmEngine {
                 )
                 .build();
             state.invocation_profile = invocation_profile.clone();
-            state.invocation_overlay_vfs = invocation_overlay_vfs.clone();
 
             // Derive the invocation principal once; reused for KV + VFS scoping.
             let invocation_principal: Option<astrid_core::PrincipalId> = caller
@@ -1225,7 +1229,6 @@ impl ExecutionEngine for WasmEngine {
             state.invocation_secret_store = None;
             state.invocation_capsule_log = None;
             state.invocation_profile = None;
-            state.invocation_overlay_vfs = None;
         }
 
         // Map the typed CapsuleResult to InterceptResult.
@@ -1343,7 +1346,6 @@ pub fn run_lifecycle(
         invocation_secret_store: None,
         invocation_capsule_log: None,
         invocation_profile: None,
-        invocation_overlay_vfs: None,
         overlay_vfs: None,
         upper_dir: None,
         kv: cfg.kv,
