@@ -577,9 +577,9 @@ impl Kernel {
     /// sum across every principal (see
     /// [`total_connection_count`](Self::total_connection_count)).
     pub fn connection_closed(&self, principal: &PrincipalId) {
-        // Separate scope: release the DashMap ref before calling downstream
-        // code that may touch the map (defensive — the allowance store path
-        // doesn't today, but it keeps the lock window minimal).
+        // Decrement under a short-lived DashMap ref, then drop the ref
+        // before we touch the map again (so the `remove_if` below does not
+        // self-deadlock).
         let result = {
             let entry = self
                 .active_connections
@@ -595,9 +595,13 @@ impl Kernel {
         };
 
         // Previous value was 1 -> now 0: last connection *for this principal*
-        // gone. Clear only this principal's session allowances.
+        // is gone. Clear only this principal's session allowances and drop
+        // the map entry so unique-principal churn does not leak memory or
+        // inflate `total_connection_count`'s scan.
         if result == Ok(1) {
             self.allowance_store.clear_session_allowances(principal);
+            self.active_connections
+                .remove_if(principal, |_, count| count.load(Ordering::Relaxed) == 0);
             tracing::info!(
                 %principal,
                 "last connection for principal disconnected, session allowances cleared"

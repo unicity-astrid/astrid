@@ -22,6 +22,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -58,7 +59,15 @@ struct Entry {
     /// Kept for its `Drop` side effect — the upper-layer tempdir is removed
     /// only when this value is dropped.
     _upper: tempfile::TempDir,
-    last_used: Instant,
+    /// Milliseconds since [`OverlayVfsRegistry::anchor`] at the last cache hit.
+    ///
+    /// Stored atomically so cache-hit updates can happen under a read lock —
+    /// the resolve hot path is every WASM invocation and must not serialise
+    /// unrelated principals on a write lock. Eviction (write-lock path)
+    /// reads each entry's value with [`Ordering::Relaxed`] — stale reads are
+    /// fine because the only consequence is picking a slightly different
+    /// LRU victim.
+    last_used_ms: AtomicU64,
 }
 
 /// Lazy, bounded, process-lifetime cache of per-principal [`OverlayVfs`]
@@ -68,6 +77,10 @@ pub struct OverlayVfsRegistry {
     root_handle: DirHandle,
     max_principals: usize,
     idle_eviction: Duration,
+    /// Reference point for every entry's [`Entry::last_used_ms`]. Fixed at
+    /// construction so timestamps remain monotonic across the registry's
+    /// lifetime.
+    anchor: Instant,
     overlays: RwLock<HashMap<PrincipalId, Entry>>,
 }
 
@@ -84,6 +97,7 @@ impl OverlayVfsRegistry {
             root_handle,
             max_principals: resolve_max_principals(),
             idle_eviction: DEFAULT_IDLE_EVICTION,
+            anchor: Instant::now(),
             overlays: RwLock::new(HashMap::new()),
         }
     }
@@ -102,8 +116,15 @@ impl OverlayVfsRegistry {
             root_handle,
             max_principals: max_principals.max(1),
             idle_eviction,
+            anchor: Instant::now(),
             overlays: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Milliseconds elapsed since the registry's [`anchor`](Self::anchor),
+    /// clamped to `u64::MAX`. Monotonic for the registry's lifetime.
+    fn now_ms(&self) -> u64 {
+        u64::try_from(self.anchor.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
 
     /// Number of principals currently cached. Test-only introspection.
@@ -124,8 +145,9 @@ impl OverlayVfsRegistry {
     /// Resolve the overlay for `principal`, populating on first use.
     ///
     /// Subsequent calls return the cached `Arc<OverlayVfs>` clone and
-    /// update the entry's `last_used` timestamp so the LRU eviction picks
-    /// the truly oldest idle entry.
+    /// update the entry's `last_used_ms` timestamp atomically under a read
+    /// lock, so concurrent resolves for *different* principals do not
+    /// serialise on a shared write lock (the WASM invocation hot path).
     ///
     /// # Errors
     ///
@@ -133,14 +155,16 @@ impl OverlayVfsRegistry {
     /// mounts cannot be registered. Callers should deny the invocation
     /// (fail-closed) rather than fall back to a shared overlay.
     pub async fn resolve(&self, principal: &PrincipalId) -> std::io::Result<Arc<OverlayVfs>> {
-        // Fast path: cache hit.
+        // Fast path: cache hit under a read lock. The timestamp bump uses
+        // atomic store so the read-lock path is enough — no writer contention
+        // for unrelated principals.
         {
-            let mut guard = self
+            let guard = self
                 .overlays
-                .write()
+                .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(entry) = guard.get_mut(principal) {
-                entry.last_used = Instant::now();
+            if let Some(entry) = guard.get(principal) {
+                entry.last_used_ms.store(self.now_ms(), Ordering::Relaxed);
                 return Ok(Arc::clone(&entry.overlay));
             }
         }
@@ -158,8 +182,10 @@ impl OverlayVfsRegistry {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Race: another task may have inserted an entry for `principal`
         // while we were building. First writer wins; we throw away ours.
-        if let Some(existing) = guard.get_mut(principal) {
-            existing.last_used = Instant::now();
+        if let Some(existing) = guard.get(principal) {
+            existing
+                .last_used_ms
+                .store(self.now_ms(), Ordering::Relaxed);
             return Ok(Arc::clone(&existing.overlay));
         }
 
@@ -170,7 +196,7 @@ impl OverlayVfsRegistry {
         let entry = Entry {
             overlay: Arc::clone(&overlay),
             _upper: upper,
-            last_used: Instant::now(),
+            last_used_ms: AtomicU64::new(self.now_ms()),
         };
         guard.insert(principal.clone(), entry);
         Ok(overlay)
@@ -225,23 +251,27 @@ impl OverlayVfsRegistry {
         Ok((overlay, upper_dir))
     }
 
-    /// Evict the single oldest entry whose `last_used` is beyond the
+    /// Evict the single oldest entry whose `last_used_ms` is beyond the
     /// idle-eviction window. If no entry is idle, evict the globally
     /// oldest — the cap is a hard bound on tempdir allocations, not a
     /// soft heuristic.
     fn evict_idle_locked(&self, guard: &mut HashMap<PrincipalId, Entry>) {
-        let cutoff = Instant::now().checked_sub(self.idle_eviction);
-        let idle = cutoff.and_then(|c| {
-            guard
-                .iter()
-                .filter(|(_, e)| e.last_used <= c)
-                .min_by_key(|(_, e)| e.last_used)
-                .map(|(p, _)| p.clone())
-        });
+        let now_ms = self.now_ms();
+        let idle_cutoff_ms = u64::try_from(self.idle_eviction.as_millis()).unwrap_or(u64::MAX);
+        let cutoff_ms = now_ms.saturating_sub(idle_cutoff_ms);
+        let snapshot: Vec<(PrincipalId, u64)> = guard
+            .iter()
+            .map(|(p, e)| (p.clone(), e.last_used_ms.load(Ordering::Relaxed)))
+            .collect();
+        let idle = snapshot
+            .iter()
+            .filter(|(_, ts)| *ts <= cutoff_ms)
+            .min_by_key(|(_, ts)| *ts)
+            .map(|(p, _)| p.clone());
         let victim = idle.or_else(|| {
-            guard
+            snapshot
                 .iter()
-                .min_by_key(|(_, e)| e.last_used)
+                .min_by_key(|(_, ts)| *ts)
                 .map(|(p, _)| p.clone())
         });
         if let Some(p) = victim {
