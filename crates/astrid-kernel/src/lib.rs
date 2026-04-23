@@ -16,6 +16,7 @@ pub mod kernel_router;
 /// The Unix Domain Socket manager.
 pub mod socket;
 
+use arc_swap::ArcSwap;
 use astrid_audit::AuditLog;
 use astrid_capabilities::{CapabilityStore, DirHandle};
 use astrid_capsule::profile_cache::PrincipalProfileCache;
@@ -31,7 +32,7 @@ use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// The core Operating System Kernel.
 pub struct Kernel {
@@ -115,14 +116,31 @@ pub struct Kernel {
     /// management IPC to clear entries at runtime (issue #666 tracks that
     /// follow-up).
     pub(crate) profile_cache: Arc<PrincipalProfileCache>,
-    /// Static group-to-capability configuration (issue #670).
+    /// Static group-to-capability configuration (issue #670), made
+    /// hot-reloadable in Layer 6 (issue #672).
     ///
-    /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml` and then
-    /// treated as immutable. The [`kernel_router::handle_request`]
-    /// enforcement preamble reads `groups` + the resolved
-    /// [`PrincipalProfile`](astrid_core::PrincipalProfile) through
-    /// [`CapabilityCheck`](astrid_capabilities::CapabilityCheck).
-    pub(crate) groups: Arc<GroupConfig>,
+    /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml`. The
+    /// enforcement preamble in [`kernel_router::handle_request`] /
+    /// `handle_admin_request` calls `groups.load_full()` on each request
+    /// — a lock-free `Arc` clone. Group admin topics
+    /// (`astrid.v1.admin.group.*`) rewrite `groups.toml` and then
+    /// `groups.store(Arc::new(new_config))` atomically; in-flight checks
+    /// holding the old `Arc` finish under the old config, the next check
+    /// sees the new one.
+    pub(crate) groups: Arc<ArcSwap<GroupConfig>>,
+    /// Home directory captured at boot — retained for the admin write
+    /// path (`groups.toml`, per-principal `profile.toml`) so handlers
+    /// don't re-resolve `$ASTRID_HOME` and risk a mid-life drift.
+    pub(crate) astrid_home: astrid_core::dirs::AstridHome,
+    /// Serializes mutating admin topics on `profile.toml` / `groups.toml`.
+    ///
+    /// Read-only admin topics (`agent.list`, `group.list`, `quota.get`)
+    /// and the hot authz path do NOT take this lock — the `ArcSwap` on
+    /// [`Kernel::groups`] and the `RwLock` on
+    /// [`PrincipalProfileCache`](astrid_capsule::profile_cache::PrincipalProfileCache)
+    /// cover reads. Tokio's `Mutex` is not poisonable — no
+    /// `PoisonError::into_inner` dance required.
+    pub(crate) admin_write_lock: Mutex<()>,
 }
 
 impl Kernel {
@@ -239,13 +257,13 @@ impl Kernel {
         let identity_store: Arc<dyn astrid_storage::IdentityStore> =
             Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
 
-        // Load group config (issue #670). Boot-loaded once, treated as
-        // immutable. Missing file → built-ins only; malformed TOML is a
-        // hard boot failure (fail-closed).
-        let groups =
-            Arc::new(GroupConfig::load(&home).map_err(|e| {
-                std::io::Error::other(format!("Failed to load groups config: {e}"))
-            })?);
+        // Load group config (issue #670). Boot-loaded once, then swapped
+        // atomically by Layer 6 admin topics (issue #672). Missing file
+        // → built-ins only; malformed TOML is a hard boot failure
+        // (fail-closed).
+        let groups_loaded = GroupConfig::load(&home)
+            .map_err(|e| std::io::Error::other(format!("Failed to load groups config: {e}")))?;
+        let groups = Arc::new(ArcSwap::from_pointee(groups_loaded));
 
         // Bootstrap the CLI root user (idempotent). Also seeds the
         // default principal's profile with `groups = ["admin"]` so
@@ -283,6 +301,8 @@ impl Kernel {
             identity_store,
             profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
             groups,
+            astrid_home: home,
+            admin_write_lock: Mutex::new(()),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -810,6 +830,115 @@ impl Kernel {
     }
 }
 
+/// Test-only lightweight constructor (issue #672) that builds a
+/// [`Kernel`] with just the fields the admin handlers touch:
+/// `event_bus`, `session_id`, `audit_log`, `profile_cache`,
+/// `identity_store`, `groups`, `astrid_home`, `admin_write_lock`, plus
+/// the shared allowance / capability / kv store handles. Skips the
+/// heavy boot bits (socket bind, MCP init, token generation, capsule
+/// discovery) that aren't load-bearing for admin-topic tests.
+///
+/// The `home` argument is used verbatim — tests pass a tempdir-rooted
+/// [`astrid_core::dirs::AstridHome`] so every call is fully isolated
+/// from the process-global `$ASTRID_HOME`.
+#[cfg(test)]
+pub(crate) async fn test_kernel_with_home(home: astrid_core::dirs::AstridHome) -> Arc<Kernel> {
+    use astrid_capsule::profile_cache::PrincipalProfileCache;
+
+    home.ensure()
+        .expect("test kernel: ensure astrid home dir tree");
+
+    let session_id = SessionId::SYSTEM;
+    let event_bus = Arc::new(EventBus::new());
+    let capsules = Arc::new(RwLock::new(CapsuleRegistry::new()));
+
+    // Persistent KV backing capabilities + identity store.
+    let kv = Arc::new(
+        astrid_storage::SurrealKvStore::open(&home.state_db_path()).expect("test kernel: open kv"),
+    );
+    let capabilities = Arc::new(
+        CapabilityStore::with_kv_store(Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>)
+            .expect("test kernel: capability store"),
+    );
+
+    // Audit log at the tempdir — chain verification is trivially Ok on a
+    // fresh log, no historical entries.
+    let runtime_key =
+        load_or_generate_runtime_key(&home.keys_dir()).expect("test kernel: runtime key");
+    let default_principal = astrid_core::PrincipalId::default();
+    let principal_home = home.principal_home(&default_principal);
+    principal_home
+        .ensure()
+        .expect("test kernel: ensure principal home");
+    let audit_log = Arc::new(
+        AuditLog::open(principal_home.audit_dir(), runtime_key)
+            .expect("test kernel: open audit log"),
+    );
+
+    // MCP: use a no-op secure client wrapped around an empty manager.
+    // Admin handlers do not touch MCP.
+    let mcp_manager = ServerManager::new(ServersConfig::default());
+    let mcp_client = McpClient::new(mcp_manager);
+    let mcp = SecureMcpClient::new(
+        mcp_client,
+        Arc::clone(&capabilities),
+        Arc::clone(&audit_log),
+        session_id.clone(),
+    );
+
+    let root_handle = DirHandle::new();
+    let kernel_host_vfs = HostVfs::new();
+    kernel_host_vfs
+        .register_dir(root_handle.clone(), home.root().to_path_buf())
+        .await
+        .expect("test kernel: register workspace vfs");
+    let overlay_registry = Arc::new(OverlayVfsRegistry::new(
+        home.root().to_path_buf(),
+        root_handle.clone(),
+    ));
+
+    let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
+    let identity_kv = astrid_storage::ScopedKvStore::new(
+        Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>,
+        "system:identity",
+    )
+    .expect("test kernel: identity kv scope");
+    let identity_store: Arc<dyn astrid_storage::IdentityStore> =
+        Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
+
+    let groups = Arc::new(ArcSwap::from_pointee(
+        GroupConfig::load(&home).expect("test kernel: load groups"),
+    ));
+
+    Arc::new(Kernel {
+        session_id,
+        event_bus,
+        capsules,
+        mcp,
+        capabilities,
+        vfs: Arc::new(kernel_host_vfs) as Arc<dyn Vfs>,
+        overlay_registry,
+        vfs_root_handle: root_handle,
+        workspace_root: home.root().to_path_buf(),
+        home_root: Some(principal_home.root().to_path_buf()),
+        cli_socket_listener: None,
+        kv,
+        audit_log,
+        active_connections: DashMap::new(),
+        ephemeral: AtomicBool::new(false),
+        boot_time: std::time::Instant::now(),
+        shutdown_tx: tokio::sync::watch::channel(false).0,
+        session_token: Arc::new(astrid_core::session_token::SessionToken::generate()),
+        token_path: home.token_path(),
+        allowance_store,
+        identity_store,
+        profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
+        groups,
+        astrid_home: home,
+        admin_write_lock: Mutex::new(()),
+    })
+}
+
 /// Loads the runtime signing key from `~/.astrid/keys/runtime.key`, generating a
 /// new one if it doesn't exist. Opens the `SurrealKV`-backed audit database at
 /// `~/.astrid/audit.db` and runs `verify_all()` to detect any tampering of
@@ -916,9 +1045,10 @@ fn load_or_generate_runtime_key(keys_dir: &Path) -> std::io::Result<KeyPair> {
 ///
 /// Configurable via `ASTRID_IDLE_TIMEOUT_SECS` (default 300 = 5 minutes).
 /// Number of permanent internal event bus subscribers that are not client
-/// connections: `KernelRouter` (`kernel.request.*`), `ConnectionTracker` (`client.*`),
-/// and `EventDispatcher` (all events).
-const INTERNAL_SUBSCRIBER_COUNT: usize = 3;
+/// connections: `KernelRouter` (`kernel.request.*`), `AdminRouter`
+/// (`kernel.admin.*`), `ConnectionTracker` (`client.*`), and
+/// `EventDispatcher` (all events).
+const INTERNAL_SUBSCRIBER_COUNT: usize = 4;
 
 /// Initial grace period before idle checking begins.
 const IDLE_INITIAL_GRACE: std::time::Duration = std::time::Duration::from_secs(5);

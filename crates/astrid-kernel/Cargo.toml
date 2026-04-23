@@ -10,6 +10,7 @@ description = "Astrid micro-kernel, the core of the Astrid OS"
 
 [dependencies]
 anyhow = { workspace = true }
+arc-swap = { workspace = true }
 astrid-approval = { workspace = true }
 astrid-audit = { workspace = true }
 astrid-capabilities = { workspace = true }
@@ -23,6 +24,7 @@ astrid-storage = { workspace = true, features = ["kv"] }
 astrid-vfs = { workspace = true }
 dashmap = { workspace = true }
 semver = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "signal"] }
