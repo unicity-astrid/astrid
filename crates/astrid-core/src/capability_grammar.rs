@@ -127,42 +127,32 @@ pub fn capability_matches(pattern: &str, cap: &str) -> bool {
         return true;
     }
 
-    let pat_segs: Vec<&str> = pattern.split(':').collect();
-    let cap_segs: Vec<&str> = cap.split(':').collect();
+    // Walk both strings segment-by-segment with iterators — no Vec
+    // allocation on the hot path. The Layer 5 preamble evaluates this
+    // on every admin-API request and per-group-capability, so saving
+    // the two `Vec<&str>` collections is worthwhile.
+    let mut pat_iter = pattern.split(':').peekable();
+    let mut cap_iter = cap.split(':');
 
-    let trailing_star = pat_segs.last().copied() == Some("*");
-
-    if trailing_star {
-        // Trailing `*` absorbs every remaining resource segment, but the
-        // pattern prefix must still be satisfied segment-for-segment. The
-        // resource must have at least as many segments as the pattern.
-        if cap_segs.len() < pat_segs.len() {
-            return false;
-        }
-        let prefix_len = pat_segs.len().saturating_sub(1);
-        for (i, seg) in pat_segs.iter().take(prefix_len).enumerate() {
-            if *seg == "*" {
-                continue;
-            }
-            if cap_segs[i] != *seg {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    if pat_segs.len() != cap_segs.len() {
-        return false;
-    }
-    for (p, c) in pat_segs.iter().zip(cap_segs.iter()) {
-        if *p == "*" {
-            continue;
-        }
-        if *p != *c {
-            return false;
+    loop {
+        match (pat_iter.next(), cap_iter.next()) {
+            (Some("*"), Some(_)) => {
+                // Trailing `*` absorbs every remaining resource segment.
+                // A middle `*` matches exactly one and we continue the loop.
+                if pat_iter.peek().is_none() {
+                    return true;
+                }
+            },
+            (Some(p), Some(c)) => {
+                if p != c {
+                    return false;
+                }
+            },
+            (None, None) => return true,
+            // Pattern and resource had different segment counts.
+            (Some(_), None) | (None, Some(_)) => return false,
         }
     }
-    true
 }
 
 #[cfg(test)]
