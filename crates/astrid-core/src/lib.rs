@@ -16,9 +16,11 @@
 
 pub mod prelude;
 
+pub mod capability_grammar;
 pub mod dirs;
 pub mod elicitation;
 pub mod env_policy;
+pub mod groups;
 pub mod identity;
 pub mod principal;
 pub mod profile;
@@ -28,9 +30,16 @@ pub mod types;
 pub mod uplink;
 pub(crate) mod utils;
 
+pub use capability_grammar::{
+    CapabilityGrammarError, MAX_CAPABILITY_LEN, capability_matches, validate_capability,
+};
 pub use elicitation::{
     ElicitationAction, ElicitationRequest, ElicitationResponse, ElicitationSchema, SelectOption,
     UrlElicitationRequest, UrlElicitationResponse, UrlElicitationType,
+};
+pub use groups::{
+    BUILTIN_ADMIN, BUILTIN_AGENT, BUILTIN_RESTRICTED, Group, GroupConfig, GroupConfigError,
+    GroupConfigResult,
 };
 pub use principal::{PrincipalId, PrincipalIdError};
 pub use profile::{

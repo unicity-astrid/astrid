@@ -4,6 +4,8 @@
 //! never silently accepted, and a malformed in-memory profile is never
 //! persisted.
 
+use crate::capability_grammar::validate_capability;
+
 use super::{
     AuthConfig, BACKGROUND_PROCESSES_UPPER_BOUND, CURRENT_PROFILE_VERSION, MAX_GROUP_NAME_LEN,
     NetworkConfig, PrincipalProfile, ProcessConfig, ProfileError, ProfileResult, Quotas,
@@ -28,6 +30,16 @@ impl PrincipalProfile {
         self.auth.validate()?;
         for group in &self.groups {
             validate_group_name(group)?;
+        }
+        for cap in &self.grants {
+            validate_capability(cap).map_err(|e| {
+                ProfileError::Invalid(format!("grants entry {cap:?} rejected: {e}"))
+            })?;
+        }
+        for cap in &self.revokes {
+            validate_capability(cap).map_err(|e| {
+                ProfileError::Invalid(format!("revokes entry {cap:?} rejected: {e}"))
+            })?;
         }
         self.network.validate()?;
         self.process.validate()?;
@@ -266,6 +278,48 @@ mod tests {
     fn rejects_group_too_long() {
         let mut p = PrincipalProfile::default();
         p.groups = vec!["a".repeat(MAX_GROUP_NAME_LEN + 1)];
+        assert!(matches!(p.validate(), Err(ProfileError::Invalid(_))));
+    }
+
+    // ── Grants / revokes (capability grammar) ─────────────────────────
+
+    #[test]
+    fn accepts_valid_grants_and_revokes() {
+        let mut p = PrincipalProfile::default();
+        p.grants = vec!["system:shutdown".into(), "self:*".into(), "*".into()];
+        p.revokes = vec!["audit:read:alice".into(), "a:*:b".into()];
+        p.validate().unwrap();
+    }
+
+    #[test]
+    fn rejects_grant_with_shell_metachar() {
+        let mut p = PrincipalProfile::default();
+        p.grants = vec!["system:shutdown;rm".into()];
+        let err = p.validate().unwrap_err();
+        match err {
+            ProfileError::Invalid(msg) => assert!(msg.contains("grants entry"), "msg: {msg}"),
+            other => panic!("expected Invalid, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_grant_with_double_glob() {
+        let mut p = PrincipalProfile::default();
+        p.grants = vec!["capsule:**".into()];
+        assert!(matches!(p.validate(), Err(ProfileError::Invalid(_))));
+    }
+
+    #[test]
+    fn rejects_empty_grant_entry() {
+        let mut p = PrincipalProfile::default();
+        p.grants = vec![String::new()];
+        assert!(matches!(p.validate(), Err(ProfileError::Invalid(_))));
+    }
+
+    #[test]
+    fn rejects_revoke_with_trailing_colon() {
+        let mut p = PrincipalProfile::default();
+        p.revokes = vec!["system:".into()];
         assert!(matches!(p.validate(), Err(ProfileError::Invalid(_))));
     }
 
