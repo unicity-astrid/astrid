@@ -165,8 +165,25 @@ fn check_http_security(
     Ok(())
 }
 
-/// Maximum concurrent HTTP streaming responses per capsule.
-const MAX_ACTIVE_HTTP_STREAMS: usize = 4;
+/// Per-capsule hard ceiling on concurrent HTTP streaming responses.
+///
+/// Defense-in-depth cap applied on top of the per-principal profile value:
+/// the effective per-principal cap is `min(profile, MAX_ACTIVE_HTTP_STREAMS)`.
+pub(crate) const MAX_ACTIVE_HTTP_STREAMS: usize = 4;
+
+/// A live HTTP streaming response pinned to the principal that opened it.
+///
+/// The principal is recorded so `http_stream_start` can charge its
+/// per-principal sub-budget — a principal holding its cap must not block
+/// another principal on the same capsule from opening new streams.
+#[derive(Debug, Clone)]
+pub struct ActiveHttpStream {
+    /// Shared handle on the streaming body. `Arc<Mutex<>>` because readers
+    /// may be interleaved across host-fn calls and must serialize.
+    pub response: Arc<tokio::sync::Mutex<reqwest::Response>>,
+    /// Principal that started this stream.
+    pub creator: astrid_core::principal::PrincipalId,
+}
 /// Connect timeout for streaming HTTP requests (time to first byte).
 const HTTP_STREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Per-chunk read timeout for streaming HTTP responses.
@@ -248,12 +265,27 @@ impl http::Host for HostState {
         &mut self,
         request: HttpRequestData,
     ) -> Result<HttpStreamStartResponse, String> {
-        // Check stream cap before doing any network I/O.
-        if self.active_http_streams.len() >= MAX_ACTIVE_HTTP_STREAMS {
+        // Per-principal sub-budget against the per-capsule hard ceiling.
+        // Layer 2's `Quotas` has no dedicated `max_http_streams` dial, so
+        // each principal gets up to `MAX_ACTIVE_HTTP_STREAMS` streams — the
+        // per-capsule hard ceiling still fires first if total load across
+        // principals saturates it, but principal-keyed counting means a
+        // future Layer-2 `max_http_streams` field drops in as a
+        // single-expression change here.
+        let principal = self.effective_principal();
+        let per_principal_count = self
+            .active_http_streams
+            .values()
+            .filter(|s| s.creator == principal)
+            .count();
+        if per_principal_count >= MAX_ACTIVE_HTTP_STREAMS
+            || self.active_http_streams.len() >= MAX_ACTIVE_HTTP_STREAMS
+        {
             return Err(format!(
-                "HTTP stream cap reached ({}/{})",
-                self.active_http_streams.len(),
-                MAX_ACTIVE_HTTP_STREAMS
+                "HTTP stream cap reached for principal '{principal}' \
+                 ({per_principal_count}/{MAX_ACTIVE_HTTP_STREAMS}, \
+                 per-capsule total {}/{MAX_ACTIVE_HTTP_STREAMS})",
+                self.active_http_streams.len()
             ));
         }
 
@@ -314,8 +346,13 @@ impl http::Host for HostState {
             !self.active_http_streams.contains_key(&handle_id),
             "HTTP stream handle ID collision"
         );
-        self.active_http_streams
-            .insert(handle_id, Arc::new(tokio::sync::Mutex::new(response)));
+        self.active_http_streams.insert(
+            handle_id,
+            ActiveHttpStream {
+                response: Arc::new(tokio::sync::Mutex::new(response)),
+                creator: principal,
+            },
+        );
 
         Ok(HttpStreamStartResponse {
             handle: handle_id,
@@ -329,6 +366,7 @@ impl http::Host for HostState {
             .active_http_streams
             .get(&stream_handle)
             .ok_or_else(|| "HTTP stream handle not found".to_string())?
+            .response
             .clone();
 
         let rt_handle = self.runtime_handle.clone();

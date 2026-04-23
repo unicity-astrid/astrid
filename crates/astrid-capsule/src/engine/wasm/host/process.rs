@@ -150,7 +150,13 @@ impl ProcessTracker {
 // Background process management
 // ---------------------------------------------------------------------------
 
-/// Maximum number of concurrent background processes per capsule.
+/// Per-capsule hard ceiling on concurrent background processes.
+///
+/// This is a defense-in-depth cap that survives any per-principal profile:
+/// even if a misconfigured profile raises `max_background_processes` to some
+/// huge number, the effective ceiling is still
+/// `min(profile, MAX_BACKGROUND_PROCESSES)` so a single capsule instance
+/// cannot fork-bomb the host.
 pub(crate) const MAX_BACKGROUND_PROCESSES: usize = 8;
 
 /// Maximum bytes buffered per stream (stdout or stderr) before oldest data is
@@ -170,6 +176,10 @@ pub struct ManagedProcess {
     stdout_buf: Arc<Mutex<VecDeque<u8>>>,
     stderr_buf: Arc<Mutex<VecDeque<u8>>>,
     command: String,
+    /// Principal that requested the spawn. Used by the per-principal
+    /// sub-budget check in `spawn_background` so one principal holding its
+    /// cap does not block another principal's spawns on the same capsule.
+    creator: astrid_core::principal::PrincipalId,
 }
 
 /// Kill and reap a child process, including its entire process group on Unix.
@@ -345,10 +355,22 @@ impl process::Host for HostState {
     }
 
     fn spawn_background(&mut self, request: SpawnRequest) -> Result<SpawnBackgroundResult, String> {
-        // Check process limit before doing any expensive work.
-        if self.background_processes.len() >= MAX_BACKGROUND_PROCESSES {
+        // Effective cap = min(profile, per-capsule hard ceiling). The hard
+        // ceiling stays in force even if a misconfigured profile raises its
+        // value — defense-in-depth against a fork-bomb via profile edit.
+        let principal = self.effective_principal();
+        let profile_cap = usize::try_from(self.effective_profile().quotas.max_background_processes)
+            .unwrap_or(MAX_BACKGROUND_PROCESSES);
+        let effective_cap = profile_cap.min(MAX_BACKGROUND_PROCESSES);
+        let per_principal_count = self
+            .background_processes
+            .values()
+            .filter(|p| p.creator == principal)
+            .count();
+        if per_principal_count >= effective_cap {
             return Err(format!(
-                "background process limit reached (max {MAX_BACKGROUND_PROCESSES})"
+                "background process limit reached for principal '{principal}' \
+                 (cap {effective_cap}, per-capsule hard ceiling {MAX_BACKGROUND_PROCESSES})"
             ));
         }
 
@@ -400,9 +422,12 @@ impl process::Host for HostState {
             stdout_buf: Arc::clone(&stdout_buf),
             stderr_buf: Arc::clone(&stderr_buf),
             command: command_str,
+            creator: principal.clone(),
         };
 
-        // Defensive re-check: limit could theoretically have been reached.
+        // Defensive re-check against the per-capsule hard ceiling: the
+        // fork+exec above was async with respect to other host-fn calls on
+        // this store, so the bucket could have grown while we were spawning.
         if self.background_processes.len() >= MAX_BACKGROUND_PROCESSES {
             return Err(format!(
                 "background process limit reached (max {MAX_BACKGROUND_PROCESSES})"
@@ -580,6 +605,7 @@ mod tests {
             stdout_buf: Arc::new(Mutex::new(VecDeque::new())),
             stderr_buf: Arc::new(Mutex::new(VecDeque::new())),
             command: "sleep 60".to_string(),
+            creator: astrid_core::principal::PrincipalId::default(),
         };
 
         drop(managed);
@@ -614,6 +640,7 @@ mod tests {
                     stdout_buf: Arc::new(Mutex::new(VecDeque::new())),
                     stderr_buf: Arc::new(Mutex::new(VecDeque::new())),
                     command: "sleep 60".to_string(),
+                    creator: astrid_core::principal::PrincipalId::default(),
                 },
             );
         }
@@ -628,6 +655,52 @@ mod tests {
             processes.len() < MAX_BACKGROUND_PROCESSES,
             "below limit: should allow new spawns"
         );
+    }
+
+    #[test]
+    fn per_principal_count_isolates_creators() {
+        // Layer 3 (#666): two principals share one capsule's
+        // `background_processes` map but are charged against independent
+        // per-principal sub-budgets. This is a data-shape test: it
+        // exercises only the creator-keyed counting used by
+        // `spawn_background`, without actually forking — the real host fn
+        // is covered end-to-end by integration tests.
+        use std::collections::HashMap;
+
+        let alice = astrid_core::principal::PrincipalId::new("alice").unwrap();
+        let bob = astrid_core::principal::PrincipalId::new("bob").unwrap();
+
+        // Stand up three "alice" processes and two "bob" processes. We
+        // spawn /bin/true since it exits immediately — avoids keeping
+        // long-lived sleep children around for a data-shape test.
+        let mut processes: HashMap<u64, ManagedProcess> = HashMap::new();
+        let mk = |creator: &astrid_core::principal::PrincipalId| ManagedProcess {
+            child: None,
+            stdout_buf: Arc::new(Mutex::new(VecDeque::new())),
+            stderr_buf: Arc::new(Mutex::new(VecDeque::new())),
+            command: "true".to_string(),
+            creator: creator.clone(),
+        };
+        processes.insert(1, mk(&alice));
+        processes.insert(2, mk(&alice));
+        processes.insert(3, mk(&alice));
+        processes.insert(4, mk(&bob));
+        processes.insert(5, mk(&bob));
+
+        let alice_count = processes.values().filter(|p| p.creator == alice).count();
+        let bob_count = processes.values().filter(|p| p.creator == bob).count();
+        assert_eq!(alice_count, 3, "alice's per-principal count");
+        assert_eq!(bob_count, 2, "bob's per-principal count");
+        assert_eq!(
+            processes.len(),
+            5,
+            "per-capsule total honors neither principal alone"
+        );
+
+        // Drop alice's entries → bob's count is unchanged (isolation).
+        processes.retain(|_, p| p.creator != alice);
+        let bob_after = processes.values().filter(|p| p.creator == bob).count();
+        assert_eq!(bob_after, 2, "bob unaffected by alice draining");
     }
 
     #[test]

@@ -142,6 +142,15 @@ pub struct HostState {
     /// `~/.astrid/home/{principal}/.local/log/{capsule}/{date}.log` instead
     /// of the capsule owner's.
     pub invocation_capsule_log: Option<Arc<std::sync::Mutex<std::fs::File>>>,
+    /// Per-invocation quota profile for the invoking principal.
+    ///
+    /// Set by [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor)
+    /// after resolving the invoking principal's `PrincipalProfile` through
+    /// the shared [`PrincipalProfileCache`](crate::profile_cache::PrincipalProfileCache).
+    /// Host functions that gate on per-principal sub-budgets (IPC
+    /// throughput, background processes, HTTP streams) read this through
+    /// [`effective_profile`](Self::effective_profile). Cleared on exit.
+    pub invocation_profile: Option<Arc<astrid_core::profile::PrincipalProfile>>,
     /// System Event Bus for IPC publish/subscribe.
     pub event_bus: astrid_events::EventBus,
     /// Rate limiter for IPC message publishing.
@@ -238,9 +247,12 @@ pub struct HostState {
     /// Active HTTP streaming responses, keyed by handle ID.
     ///
     /// Each entry holds a `reqwest::Response` whose body is being consumed
-    /// incrementally by `astrid_http_stream_read`. Cleaned up by
-    /// `astrid_http_stream_close` or when the capsule unloads.
-    pub active_http_streams: HashMap<u64, Arc<tokio::sync::Mutex<reqwest::Response>>>,
+    /// incrementally by `astrid_http_stream_read` plus the principal that
+    /// started the stream, so per-principal HTTP-stream caps can be
+    /// enforced by creator without blocking other principals on the same
+    /// capsule. Cleaned up by `astrid_http_stream_close` or when the
+    /// capsule unloads.
+    pub active_http_streams: HashMap<u64, crate::engine::wasm::host::http::ActiveHttpStream>,
     /// Monotonic counter for HTTP stream handle IDs.
     /// Starts at 1 (0 reserved as sentinel).
     pub next_http_stream_id: u64,
@@ -422,6 +434,45 @@ impl HostState {
         self.invocation_capsule_log
             .as_ref()
             .or(self.capsule_log.as_ref())
+    }
+
+    /// Return the principal whose budget should be charged for host-fn
+    /// side-effects in the current invocation.
+    ///
+    /// Prefers the invoking principal from [`caller_context`](Self::caller_context)
+    /// (set per-invocation by [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor))
+    /// and falls back to the capsule owner's [`principal`](Self::principal) when
+    /// no caller is in scope — load-time host calls, tests, and daemons'
+    /// self-triggered paths run on the owner's budget, matching the VFS/KV
+    /// `effective_*` accessors.
+    #[must_use]
+    pub fn effective_principal(&self) -> astrid_core::principal::PrincipalId {
+        self.caller_context
+            .as_ref()
+            .and_then(|m| m.principal.as_deref())
+            .and_then(|p| astrid_core::principal::PrincipalId::new(p).ok())
+            .unwrap_or_else(|| self.principal.clone())
+    }
+
+    /// Return the effective quota profile for the current invocation.
+    ///
+    /// Prefers `invocation_profile` (set by
+    /// [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor)
+    /// for the calling principal) and falls back to the process-global
+    /// [`PrincipalProfile::default_ref`](astrid_core::profile::PrincipalProfile::default_ref)
+    /// when no invocation profile is in scope — load-time host calls, tests,
+    /// and single-tenant deployments all legitimately run without one.
+    ///
+    /// The fallback path intentionally does **not** substitute the capsule
+    /// owner's profile: that would leak the owner's quotas to every
+    /// unauthenticated call path. Using `Default` preserves single-tenant
+    /// parity while keeping the security invariant honest.
+    #[must_use]
+    pub fn effective_profile(&self) -> &astrid_core::profile::PrincipalProfile {
+        match self.invocation_profile.as_deref() {
+            Some(p) => p,
+            None => astrid_core::profile::PrincipalProfile::default_ref(),
+        }
     }
 }
 

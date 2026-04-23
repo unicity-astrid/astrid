@@ -1,0 +1,334 @@
+//! Process-lifetime cache of [`PrincipalProfile`] values, keyed by
+//! [`PrincipalId`].
+//!
+//! `invoke_interceptor` runs on every interceptor dispatch and tool call; a
+//! bare [`PrincipalProfile::load`] per call would re-read TOML from disk each
+//! time. The cache is lazy (load-on-first-use) and flat — there is no TTL or
+//! file watcher. The intended invalidation model is **kernel restart**, which
+//! matches how capsule manifests, identity entries, and allowance rules are
+//! reloaded today.
+//!
+//! Layer 6 (management IPC) will add explicit invalidation entry points
+//! (`astrid.v1.admin.quota.set`); this cache deliberately exposes an
+//! [`invalidate`](PrincipalProfileCache::invalidate) hook for that future
+//! work but does not otherwise touch the entries once populated.
+//!
+//! # Fail-closed
+//!
+//! [`PrincipalProfile::load`] treats a missing file as [`PrincipalProfile::default`]
+//! (single-tenant parity), but malformed TOML, unknown fields, invalid values,
+//! or a future `profile_version` are hard errors. Those errors propagate out
+//! of [`PrincipalProfileCache::resolve`] so callers can deny the invocation
+//! with a clear audit trail, rather than silently falling back to permissive
+//! defaults or the capsule owner's limits.
+
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+use astrid_core::dirs::AstridHome;
+use astrid_core::principal::PrincipalId;
+use astrid_core::profile::{PrincipalProfile, ProfileError, ProfileResult};
+
+/// Lazy, process-lifetime cache of resolved [`PrincipalProfile`] values.
+///
+/// One instance is created per kernel boot and shared (via `Arc`) through
+/// the capsule load context into every [`WasmEngine`](crate::engine::wasm::WasmEngine).
+/// Reads vastly outnumber writes (entries are populated on first use and
+/// never mutated afterward), so the inner map sits behind a `RwLock`.
+#[derive(Debug)]
+pub struct PrincipalProfileCache {
+    /// Root against which principal profile paths are resolved.
+    ///
+    /// Set at construction so tests can point at a tempdir without mutating
+    /// the process-global `$ASTRID_HOME`. Production callers use
+    /// [`PrincipalProfileCache::new`], which captures
+    /// [`AstridHome::resolve`] once — matching the rest of the kernel's
+    /// one-shot home resolution at boot.
+    astrid_home: AstridHome,
+    cache: RwLock<HashMap<PrincipalId, Arc<PrincipalProfile>>>,
+}
+
+impl PrincipalProfileCache {
+    /// Create a cache rooted at [`AstridHome::resolve`]'s current result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an IO error if neither `$ASTRID_HOME` nor `$HOME` is set.
+    /// The kernel already requires a resolvable Astrid home at boot, so this
+    /// failing would be a programmer error — callers may `.expect()` the
+    /// result during kernel startup.
+    pub fn new() -> ProfileResult<Self> {
+        let astrid_home = AstridHome::resolve().map_err(|e| {
+            ProfileError::Io(std::io::Error::other(format!(
+                "failed to resolve AstridHome: {e}"
+            )))
+        })?;
+        Ok(Self::with_home(astrid_home))
+    }
+
+    /// Create a cache rooted at the supplied [`AstridHome`].
+    ///
+    /// Primary use cases: tests that want a tempdir-rooted cache, and
+    /// integration tests that explicitly inject a pre-resolved home rather
+    /// than read the process environment.
+    #[must_use]
+    pub fn with_home(astrid_home: AstridHome) -> Self {
+        Self {
+            astrid_home,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Resolve the profile for `principal`, populating the cache on first use.
+    ///
+    /// The first call for a given principal reads
+    /// `{AstridHome}/home/{principal}/.config/profile.toml` from disk.
+    /// Subsequent calls return the cached `Arc` clone with no filesystem
+    /// access.
+    ///
+    /// # Errors
+    ///
+    /// - [`ProfileError::Io`] if reading the profile file fails with an IO
+    ///   error other than `NotFound`.
+    /// - [`ProfileError::Parse`] if the profile TOML is malformed, contains
+    ///   unknown fields, or has an unknown enum variant.
+    /// - [`ProfileError::Invalid`] if the profile fails semantic validation,
+    ///   including a `profile_version` above `CURRENT_PROFILE_VERSION`.
+    ///
+    /// The caller is expected to deny the invocation on any of these errors
+    /// (see Layer 3 design doc, issue #666).
+    pub fn resolve(&self, principal: &PrincipalId) -> ProfileResult<Arc<PrincipalProfile>> {
+        // Fast path: a concurrent reader should never take the write lock.
+        // RwLock poisoning can happen only if a writer panicked mid-insert;
+        // recover and continue — the map is a simple key → Arc mapping
+        // with no partial-write window.
+        if let Some(profile) = self
+            .cache
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(principal)
+        {
+            return Ok(Arc::clone(profile));
+        }
+
+        let home = self.astrid_home.principal_home(principal);
+        let profile = Arc::new(PrincipalProfile::load(&home)?);
+
+        let mut w = self
+            .cache
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Two threads may race to resolve the same principal; the first
+        // writer wins and the second returns the already-inserted value.
+        let entry = w.entry(principal.clone()).or_insert(profile);
+        Ok(Arc::clone(entry))
+    }
+
+    /// Drop the cached entry for `principal`, forcing a reload on the next
+    /// [`resolve`](Self::resolve) call.
+    ///
+    /// Reserved for Layer 6 management IPC (`astrid.v1.admin.quota.set`).
+    /// Unused today — the invalidation model is kernel restart.
+    pub fn invalidate(&self, principal: &PrincipalId) {
+        self.cache
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(principal);
+    }
+
+    /// Number of principals currently cached. Test-only introspection.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn len(&self) -> usize {
+        self.cache
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::fs;
+    use std::sync::Arc;
+
+    use astrid_core::principal::PrincipalId;
+    use astrid_core::profile::{
+        CURRENT_PROFILE_VERSION, DEFAULT_MAX_BACKGROUND_PROCESSES,
+        DEFAULT_MAX_IPC_THROUGHPUT_BYTES, DEFAULT_MAX_MEMORY_BYTES, DEFAULT_MAX_TIMEOUT_SECS,
+        PrincipalProfile,
+    };
+
+    /// Fixture: tempdir-rooted cache. No process env mutation — avoids the
+    /// `unsafe { std::env::set_var(..) }` dance that conflicts with this
+    /// crate's `#![deny(unsafe_code)]`.
+    fn fixture() -> (tempfile::TempDir, PrincipalProfileCache) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = AstridHome::from_path(dir.path());
+        let cache = PrincipalProfileCache::with_home(home);
+        (dir, cache)
+    }
+
+    fn principal(name: &str) -> PrincipalId {
+        PrincipalId::new(name).expect("valid principal")
+    }
+
+    fn write_profile(dir: &tempfile::TempDir, p: &PrincipalId, contents: &str) {
+        let home = AstridHome::from_path(dir.path());
+        let ph = home.principal_home(p);
+        let cfg = ph.config_dir();
+        fs::create_dir_all(&cfg).expect("mkdir .config");
+        fs::write(cfg.join("profile.toml"), contents).expect("write profile");
+    }
+
+    #[test]
+    fn missing_file_returns_default_and_caches_it() {
+        let (_dir, cache) = fixture();
+        let p = principal("alice");
+
+        let profile = cache.resolve(&p).expect("resolve missing");
+        assert_eq!(*profile, PrincipalProfile::default());
+        assert_eq!(cache.len(), 1, "missing-file path must still cache");
+
+        // Second call: same Arc, no second disk read.
+        let profile2 = cache.resolve(&p).expect("resolve cached");
+        assert!(Arc::ptr_eq(&profile, &profile2));
+    }
+
+    #[test]
+    fn populated_profile_loaded_once() {
+        let (dir, cache) = fixture();
+        let p = principal("bob");
+        write_profile(
+            &dir,
+            &p,
+            &format!(
+                "profile_version = {CURRENT_PROFILE_VERSION}\n\
+                 [quotas]\n\
+                 max_memory_bytes = 16777216\n\
+                 max_timeout_secs = 42\n\
+                 max_ipc_throughput_bytes = 524288\n\
+                 max_background_processes = 2\n\
+                 max_storage_bytes = 1048576\n"
+            ),
+        );
+
+        let profile = cache.resolve(&p).expect("resolve populated");
+        assert_eq!(profile.quotas.max_memory_bytes, 16_777_216);
+        assert_eq!(profile.quotas.max_timeout_secs, 42);
+        assert_eq!(profile.quotas.max_ipc_throughput_bytes, 524_288);
+        assert_eq!(profile.quotas.max_background_processes, 2);
+        assert_eq!(profile.quotas.max_storage_bytes, 1_048_576);
+    }
+
+    #[test]
+    fn malformed_profile_is_hard_error_no_fallback() {
+        let (dir, cache) = fixture();
+        let p = principal("mallory");
+        write_profile(&dir, &p, "this is = = not [ valid toml");
+
+        let err = cache
+            .resolve(&p)
+            .expect_err("malformed TOML must not silently fall back");
+        assert!(matches!(err, ProfileError::Parse(_)), "got: {err:?}");
+        // And crucially, it must NOT be cached as Default — the next call
+        // still fails (fail-closed, no operator surprise).
+        assert_eq!(cache.len(), 0);
+        let err2 = cache.resolve(&p).expect_err("still fails on retry");
+        assert!(matches!(err2, ProfileError::Parse(_)));
+    }
+
+    #[test]
+    fn invalid_profile_version_is_hard_error() {
+        let (dir, cache) = fixture();
+        let p = principal("future");
+        write_profile(
+            &dir,
+            &p,
+            &format!("profile_version = {}\n", CURRENT_PROFILE_VERSION + 1),
+        );
+
+        let err = cache.resolve(&p).expect_err("future version rejected");
+        assert!(matches!(err, ProfileError::Invalid(_)), "got: {err:?}");
+    }
+
+    #[test]
+    fn two_principals_have_independent_entries() {
+        let (dir, cache) = fixture();
+        let a = principal("alice2");
+        let b = principal("bob2");
+        write_profile(
+            &dir,
+            &a,
+            &format!(
+                "profile_version = {CURRENT_PROFILE_VERSION}\n\
+                 [quotas]\n\
+                 max_memory_bytes = 16777216\n"
+            ),
+        );
+        // Bob has no file on disk → Default.
+
+        let pa = cache.resolve(&a).expect("alice");
+        let pb = cache.resolve(&b).expect("bob");
+        assert_eq!(pa.quotas.max_memory_bytes, 16_777_216);
+        assert_eq!(pb.quotas.max_memory_bytes, DEFAULT_MAX_MEMORY_BYTES);
+        assert_eq!(pb.quotas.max_timeout_secs, DEFAULT_MAX_TIMEOUT_SECS);
+        assert_eq!(
+            pb.quotas.max_ipc_throughput_bytes,
+            DEFAULT_MAX_IPC_THROUGHPUT_BYTES
+        );
+        assert_eq!(
+            pb.quotas.max_background_processes,
+            DEFAULT_MAX_BACKGROUND_PROCESSES
+        );
+    }
+
+    #[test]
+    fn invalidate_forces_reload() {
+        let (dir, cache) = fixture();
+        let p = principal("reloader");
+
+        // First load: no file → Default.
+        let first = cache.resolve(&p).expect("first resolve");
+        assert_eq!(first.quotas.max_memory_bytes, DEFAULT_MAX_MEMORY_BYTES);
+
+        // Write a populated profile, invalidate, resolve again.
+        write_profile(
+            &dir,
+            &p,
+            &format!(
+                "profile_version = {CURRENT_PROFILE_VERSION}\n\
+                 [quotas]\n\
+                 max_memory_bytes = 8388608\n"
+            ),
+        );
+        cache.invalidate(&p);
+        let second = cache.resolve(&p).expect("second resolve");
+        assert_eq!(second.quotas.max_memory_bytes, 8_388_608);
+    }
+
+    #[test]
+    fn concurrent_readers_do_not_race() {
+        // Lightweight contention check — not a loom model, just a sanity
+        // check that multiple threads can `resolve()` the same principal
+        // without deadlocks or panics.
+        let (_dir, cache) = fixture();
+        let cache = Arc::new(cache);
+        let p = principal("racer");
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let c = Arc::clone(&cache);
+            let pid = p.clone();
+            handles.push(std::thread::spawn(move || {
+                let _ = c.resolve(&pid).expect("resolve");
+            }));
+        }
+        for h in handles {
+            h.join().expect("join");
+        }
+        assert_eq!(cache.len(), 1, "only one entry expected");
+    }
+}

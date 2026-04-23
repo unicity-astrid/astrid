@@ -149,9 +149,16 @@ impl ipc::Host for HostState {
 
         let payload_len = payload.len();
 
-        // Check rate limit and quotas using the length *before* allocating the memory
+        // Check rate limit and quotas using the length *before* allocating the memory.
+        // Buckets are keyed by (capsule, principal) and bounded by the invoking
+        // principal's `max_ipc_throughput_bytes`, so two principals sharing the
+        // same capsule instance cannot starve each other's budget.
+        let principal = self.effective_principal();
+        let throughput_cap =
+            usize::try_from(self.effective_profile().quotas.max_ipc_throughput_bytes)
+                .unwrap_or(usize::MAX);
         self.ipc_limiter
-            .check_quota(self.capsule_uuid, payload_len)
+            .check_quota(self.capsule_uuid, &principal, payload_len, throughput_cap)
             .map_err(|e| e.to_string())?;
 
         // Reject malformed topic structure before any matching or routing.

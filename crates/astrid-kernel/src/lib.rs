@@ -18,6 +18,7 @@ pub mod socket;
 
 use astrid_audit::AuditLog;
 use astrid_capabilities::{CapabilityStore, DirHandle};
+use astrid_capsule::profile_cache::PrincipalProfileCache;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
 use astrid_crypto::KeyPair;
@@ -88,6 +89,16 @@ pub struct Kernel {
     pub allowance_store: Arc<astrid_approval::AllowanceStore>,
     /// System-wide identity store for platform user resolution.
     identity_store: Arc<dyn astrid_storage::IdentityStore>,
+    /// System-wide per-principal profile cache (Layer 3 quota enforcement).
+    ///
+    /// One instance per kernel boot. Every capsule load plumbs this into
+    /// [`CapsuleContext::with_profile_cache`](astrid_capsule::context::CapsuleContext::with_profile_cache),
+    /// where [`WasmEngine`](astrid_capsule::engine::wasm::WasmEngine) consumes
+    /// it to apply per-invocation memory / timeout / IPC / process caps.
+    /// Invalidation model: kernel restart. Layer 6 will add explicit
+    /// management IPC to clear entries at runtime (issue #666 tracks that
+    /// follow-up).
+    profile_cache: Arc<PrincipalProfileCache>,
 }
 
 impl Kernel {
@@ -101,6 +112,10 @@ impl Kernel {
     /// # Errors
     ///
     /// Returns an error if the VFS mount paths cannot be registered.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "boot sequence: sequential setup that does not benefit from splitting"
+    )]
     pub async fn new(
         session_id: SessionId,
         workspace_root: PathBuf,
@@ -179,7 +194,6 @@ impl Kernel {
         let (session_token, token_path) = socket::generate_session_token()?;
 
         let allowance_store = Arc::new(astrid_approval::AllowanceStore::new());
-
         // Create system-wide identity store backed by the shared KV.
         let identity_kv = astrid_storage::ScopedKvStore::new(
             Arc::clone(&kv) as Arc<dyn astrid_storage::KvStore>,
@@ -222,6 +236,7 @@ impl Kernel {
             token_path,
             allowance_store,
             identity_store,
+            profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -313,7 +328,8 @@ impl Kernel {
         .with_registry(Arc::clone(&self.capsules))
         .with_session_token(Arc::clone(&self.session_token))
         .with_allowance_store(Arc::clone(&self.allowance_store))
-        .with_identity_store(Arc::clone(&self.identity_store));
+        .with_identity_store(Arc::clone(&self.identity_store))
+        .with_profile_cache(Arc::clone(&self.profile_cache));
 
         capsule.load(&ctx).await?;
 

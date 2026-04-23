@@ -228,3 +228,77 @@ fn effective_capsule_log_prefers_invocation_over_load_time() {
         "falls back to load-time after invocation clear"
     );
 }
+
+// ── Layer 3 quota plumbing (#666) ────────────────────────────────────────
+
+#[test]
+fn effective_profile_falls_back_to_default_when_unset() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let state = minimal_host_state(rt.handle().clone());
+
+    // No invocation_profile set → process-global `default_ref()` returned.
+    let p = state.effective_profile();
+    assert!(std::ptr::eq(
+        p,
+        astrid_core::profile::PrincipalProfile::default_ref()
+    ));
+    assert_eq!(
+        p.quotas.max_memory_bytes,
+        astrid_core::profile::DEFAULT_MAX_MEMORY_BYTES
+    );
+}
+
+#[test]
+fn effective_profile_prefers_invocation_over_default() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut state = minimal_host_state(rt.handle().clone());
+
+    let mut custom = astrid_core::profile::PrincipalProfile::default();
+    custom.quotas.max_memory_bytes = 16 * 1024 * 1024;
+    custom.quotas.max_timeout_secs = 7;
+    let custom_arc = Arc::new(custom);
+    state.invocation_profile = Some(Arc::clone(&custom_arc));
+
+    let p = state.effective_profile();
+    assert_eq!(p.quotas.max_memory_bytes, 16 * 1024 * 1024);
+    assert_eq!(p.quotas.max_timeout_secs, 7);
+    // And crucially, it is NOT the default-ref.
+    assert!(!std::ptr::eq(
+        p,
+        astrid_core::profile::PrincipalProfile::default_ref()
+    ));
+}
+
+#[test]
+fn effective_principal_prefers_caller_over_owner() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let mut state = minimal_host_state(rt.handle().clone());
+    let owner = astrid_core::PrincipalId::new("owner").expect("valid owner");
+    state.principal = owner.clone();
+
+    // No caller → falls back to owner.
+    assert_eq!(state.effective_principal(), owner);
+
+    // Caller with a different principal → wins.
+    let alice = astrid_core::PrincipalId::new("alice").expect("valid alice");
+    let msg = astrid_events::ipc::IpcMessage::new(
+        "test",
+        astrid_events::ipc::IpcPayload::RawJson(serde_json::json!({})),
+        uuid::Uuid::new_v4(),
+    )
+    .with_principal(alice.to_string());
+    state.caller_context = Some(msg);
+    assert_eq!(state.effective_principal(), alice);
+
+    // Unparseable caller principal → falls back to owner (defensive).
+    if let Some(m) = state.caller_context.as_mut() {
+        m.principal = Some(String::new());
+    }
+    assert_eq!(state.effective_principal(), owner);
+}
