@@ -266,21 +266,17 @@ impl OverlayVfsRegistry {
         let now_ms = self.now_ms();
         let idle_cutoff_ms = u64::try_from(self.idle_eviction.as_millis()).unwrap_or(u64::MAX);
         let cutoff_ms = now_ms.saturating_sub(idle_cutoff_ms);
-        let snapshot: Vec<(PrincipalId, u64)> = guard
+
+        // Single pass. Tuple-sort `(non_idle_flag, ts)` so idle entries
+        // (`ts <= cutoff_ms` → `false`) sort before non-idle ones, and
+        // within each group the smallest `ts` wins — i.e. the oldest idle
+        // entry is preferred, and if none are idle the globally oldest is
+        // picked. Avoids the per-eviction snapshot `Vec` allocation.
+        let victim = guard
             .iter()
-            .map(|(p, e)| (p.clone(), e.last_used_ms.load(Ordering::Relaxed)))
-            .collect();
-        let idle = snapshot
-            .iter()
-            .filter(|(_, ts)| *ts <= cutoff_ms)
-            .min_by_key(|(_, ts)| *ts)
+            .map(|(p, e)| (p, e.last_used_ms.load(Ordering::Relaxed)))
+            .min_by_key(|&(_, ts)| (ts > cutoff_ms, ts))
             .map(|(p, _)| p.clone());
-        let victim = idle.or_else(|| {
-            snapshot
-                .iter()
-                .min_by_key(|(_, ts)| *ts)
-                .map(|(p, _)| p.clone())
-        });
         if let Some(p) = victim {
             tracing::info!(principal = %p, "overlay registry at cap, evicting idle entry");
             guard.remove(&p);
