@@ -21,6 +21,7 @@ use astrid_capabilities::{CapabilityStore, DirHandle};
 use astrid_capsule::profile_cache::PrincipalProfileCache;
 use astrid_capsule::registry::CapsuleRegistry;
 use astrid_core::SessionId;
+use astrid_core::groups::GroupConfig;
 use astrid_core::principal::PrincipalId;
 use astrid_crypto::KeyPair;
 use astrid_events::EventBus;
@@ -113,7 +114,15 @@ pub struct Kernel {
     /// Invalidation model: kernel restart. Layer 6 will add explicit
     /// management IPC to clear entries at runtime (issue #666 tracks that
     /// follow-up).
-    profile_cache: Arc<PrincipalProfileCache>,
+    pub(crate) profile_cache: Arc<PrincipalProfileCache>,
+    /// Static group-to-capability configuration (issue #670).
+    ///
+    /// Loaded once at boot from `$ASTRID_HOME/etc/groups.toml` and then
+    /// treated as immutable. The [`kernel_router::handle_request`]
+    /// enforcement preamble reads `groups` + the resolved
+    /// [`PrincipalProfile`](astrid_core::PrincipalProfile) through
+    /// [`CapabilityCheck`](astrid_capabilities::CapabilityCheck).
+    pub(crate) groups: Arc<GroupConfig>,
 }
 
 impl Kernel {
@@ -230,8 +239,18 @@ impl Kernel {
         let identity_store: Arc<dyn astrid_storage::IdentityStore> =
             Arc::new(astrid_storage::KvIdentityStore::new(identity_kv));
 
-        // Bootstrap the CLI root user (idempotent).
-        bootstrap_cli_root_user(&identity_store)
+        // Load group config (issue #670). Boot-loaded once, treated as
+        // immutable. Missing file → built-ins only; malformed TOML is a
+        // hard boot failure (fail-closed).
+        let groups =
+            Arc::new(GroupConfig::load(&home).map_err(|e| {
+                std::io::Error::other(format!("Failed to load groups config: {e}"))
+            })?);
+
+        // Bootstrap the CLI root user (idempotent). Also seeds the
+        // default principal's profile with `groups = ["admin"]` so
+        // single-tenant deployments get full management-API access.
+        bootstrap_cli_root_user(&identity_store, &home)
             .await
             .map_err(|e| {
                 std::io::Error::other(format!("Failed to bootstrap CLI root user: {e}"))
@@ -263,6 +282,7 @@ impl Kernel {
             allowance_store,
             identity_store,
             profile_cache: Arc::new(PrincipalProfileCache::with_home(home.clone())),
+            groups,
         });
 
         drop(kernel_router::spawn_kernel_router(Arc::clone(&kernel)));
@@ -1487,6 +1507,106 @@ mod tests {
         tracker.last_attempt = std::time::Instant::now() - RestartTracker::MAX_BACKOFF;
         assert!(!tracker.should_restart());
     }
+
+    // ── Bootstrap admin-group seeding (issue #670) ───────────────────
+
+    fn scratch_home() -> (tempfile::TempDir, astrid_core::dirs::AstridHome) {
+        let dir = tempfile::tempdir().unwrap();
+        let home = astrid_core::dirs::AstridHome::from_path(dir.path());
+        (dir, home)
+    }
+
+    #[test]
+    fn seed_admin_writes_fresh_profile_when_missing() {
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&default);
+        ph.ensure().unwrap();
+        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        assert!(!path.exists());
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
+        assert_eq!(profile.groups, vec!["admin".to_string()]);
+        assert!(profile.grants.is_empty());
+        assert!(profile.revokes.is_empty());
+    }
+
+    #[test]
+    fn seed_admin_is_idempotent_across_reboots() {
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&default);
+        ph.ensure().unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+        seed_default_principal_admin_profile(&home).unwrap();
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
+        // Still exactly one `admin` entry — no duplication.
+        assert_eq!(profile.groups, vec!["admin".to_string()]);
+    }
+
+    #[test]
+    fn seed_admin_leaves_operator_configured_groups_intact() {
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&default);
+        ph.ensure().unwrap();
+
+        // Operator wrote their own config pre-bootstrap.
+        let mut existing = astrid_core::PrincipalProfile::default();
+        existing.groups = vec!["agent".to_string()];
+        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        existing.save_to_path(&path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
+        assert_eq!(profile.groups, vec!["agent".to_string()]);
+    }
+
+    #[test]
+    fn seed_admin_leaves_operator_configured_grants_intact() {
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&default);
+        ph.ensure().unwrap();
+
+        let mut existing = astrid_core::PrincipalProfile::default();
+        existing.grants = vec!["system:status".to_string()];
+        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        existing.save_to_path(&path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
+        // admin not auto-added because grants are non-empty.
+        assert!(profile.groups.is_empty());
+        assert_eq!(profile.grants, vec!["system:status".to_string()]);
+    }
+
+    #[test]
+    fn seed_admin_leaves_operator_configured_revokes_intact() {
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let ph = home.principal_home(&default);
+        ph.ensure().unwrap();
+
+        let mut existing = astrid_core::PrincipalProfile::default();
+        existing.revokes = vec!["system:shutdown".to_string()];
+        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        existing.save_to_path(&path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
+        assert!(profile.groups.is_empty());
+        assert_eq!(profile.revokes, vec!["system:shutdown".to_string()]);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,10 +1699,25 @@ fn validate_imports_exports(
 /// on subsequent boots. Auto-links with `platform="cli"`,
 /// `platform_user_id="local"`, `method="system"`.
 ///
+/// Also seeds the default principal's profile on disk with
+/// `groups = ["admin"]` (issue #670) so single-tenant deployments reach
+/// the management API with full capabilities. The profile write is
+/// **idempotent** — if the default principal already has a profile with
+/// an `admin` group, any explicit `grants` / `revokes`, or non-empty
+/// `groups`, we leave it untouched.
+///
 /// Idempotent: skips creation if the root user already exists.
 async fn bootstrap_cli_root_user(
     store: &Arc<dyn astrid_storage::IdentityStore>,
+    home: &astrid_core::dirs::AstridHome,
 ) -> Result<(), astrid_storage::IdentityError> {
+    // Seed the default principal profile with the admin group. Runs
+    // before the identity-link short-circuit below so a deleted profile
+    // between boots is restored even when the identity record persists.
+    if let Err(e) = seed_default_principal_admin_profile(home) {
+        tracing::warn!(error = %e, "Failed to seed default admin profile — continuing boot");
+    }
+
     // Check if root user already exists by trying to resolve the CLI link.
     if let Some(_user) = store.resolve("cli", "local").await? {
         tracing::debug!("CLI root user already linked");
@@ -1597,6 +1732,47 @@ async fn bootstrap_cli_root_user(
     store.link("cli", "local", user.id, "system").await?;
     tracing::info!(user_id = %user.id, "Linked CLI root user (cli/local)");
 
+    Ok(())
+}
+
+/// Idempotently ensure the default principal's profile on disk has the
+/// built-in `admin` group, so the single-tenant CLI path carries full
+/// management-API capabilities (issue #670).
+///
+/// - Missing profile → writes a fresh default with `groups = ["admin"]`.
+/// - Existing profile with any non-empty `groups` OR any `grants` OR
+///   any `revokes` → treated as operator-configured, left untouched.
+/// - Existing profile with `groups = []`, `grants = []`, `revokes = []`
+///   → adds `admin` to `groups`. This covers the fresh-default case
+///   where a prior boot wrote a `PrincipalProfile::default()`.
+fn seed_default_principal_admin_profile(
+    home: &astrid_core::dirs::AstridHome,
+) -> Result<(), astrid_core::ProfileError> {
+    use astrid_core::PrincipalProfile;
+
+    let default_principal = astrid_core::PrincipalId::default();
+    let principal_home = home.principal_home(&default_principal);
+
+    let path = PrincipalProfile::path_for(&principal_home);
+    let profile = PrincipalProfile::load_from_path(&path)?;
+
+    if !profile.groups.is_empty() || !profile.grants.is_empty() || !profile.revokes.is_empty() {
+        tracing::debug!(
+            principal = %default_principal,
+            "Default principal profile already has group/grant/revoke entries — leaving intact"
+        );
+        return Ok(());
+    }
+
+    let mut updated = profile;
+    updated
+        .groups
+        .push(astrid_core::groups::BUILTIN_ADMIN.to_string());
+    updated.save_to_path(&path)?;
+    tracing::info!(
+        principal = %default_principal,
+        "Seeded default principal with built-in `admin` group"
+    );
     Ok(())
 }
 

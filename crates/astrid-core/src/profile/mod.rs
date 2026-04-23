@@ -107,9 +107,26 @@ pub struct PrincipalProfile {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Group memberships. Layer 5 resolves these to capability sets.
+    /// Group memberships. Resolved to capability sets via
+    /// [`GroupConfig`](crate::GroupConfig).
     #[serde(default)]
     pub groups: Vec<String>,
+
+    /// Capability patterns granted directly to this principal, beyond the
+    /// capabilities inherited from the groups listed in
+    /// [`PrincipalProfile::groups`]. Each entry is validated against the
+    /// capability grammar (see
+    /// [`crate::capability_grammar::validate_capability`]) at load time.
+    #[serde(default)]
+    pub grants: Vec<String>,
+
+    /// Capability patterns explicitly denied to this principal. Revokes
+    /// have the highest precedence — a matching revoke overrides any
+    /// grant or group-inherited capability, including an `admin` group
+    /// membership. Entries are validated against the same grammar as
+    /// [`PrincipalProfile::grants`].
+    #[serde(default)]
+    pub revokes: Vec<String>,
 
     /// Authentication configuration.
     #[serde(default)]
@@ -256,6 +273,8 @@ impl Default for PrincipalProfile {
             profile_version: CURRENT_PROFILE_VERSION,
             enabled: true,
             groups: Vec::new(),
+            grants: Vec::new(),
+            revokes: Vec::new(),
             auth: AuthConfig::default(),
             network: NetworkConfig::default(),
             process: ProcessConfig::default(),
@@ -301,6 +320,8 @@ mod tests {
         assert_eq!(p.profile_version, CURRENT_PROFILE_VERSION);
         assert!(p.enabled);
         assert!(p.groups.is_empty());
+        assert!(p.grants.is_empty());
+        assert!(p.revokes.is_empty());
         assert!(p.auth.methods.is_empty());
         assert!(p.auth.public_keys.is_empty());
         assert!(p.network.egress.is_empty(), "egress must fail-closed");
@@ -343,6 +364,8 @@ mod tests {
             profile_version: 1,
             enabled: false,
             groups: vec!["admins".into(), "ops_team".into()],
+            grants: vec!["capsule:install".into()],
+            revokes: vec!["system:shutdown".into()],
             auth: AuthConfig {
                 methods: vec![AuthMethod::Keypair, AuthMethod::Passkey],
                 public_keys: vec!["ed25519:AAAA".into()],

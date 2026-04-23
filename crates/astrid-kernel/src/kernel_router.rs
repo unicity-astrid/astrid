@@ -2,6 +2,9 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 
+use astrid_audit::{AuditAction, AuditOutcome, AuthorizationProof};
+use astrid_capabilities::{CapabilityCheck, PermissionError};
+use astrid_core::principal::PrincipalId;
 use astrid_events::ipc::{IpcMessage, IpcPayload};
 use astrid_events::kernel_api::{KernelRequest, KernelResponse};
 use tracing::{debug, info, warn};
@@ -57,7 +60,8 @@ pub(crate) fn spawn_kernel_router(kernel: Arc<crate::Kernel>) -> tokio::task::Jo
                         );
                         continue;
                     }
-                    handle_request(&kernel, message.topic.clone(), req).await;
+                    let caller = resolve_caller(message);
+                    handle_request(&kernel, message.topic.clone(), caller, req).await;
                 },
                 Err(e) => {
                     warn!(error = %e, topic = %message.topic, "Failed to parse KernelRequest from IPC");
@@ -106,12 +110,66 @@ fn spawn_connection_tracker(kernel: Arc<crate::Kernel>) -> tokio::task::JoinHand
 }
 
 #[expect(clippy::too_many_lines)]
-async fn handle_request(kernel: &Arc<crate::Kernel>, topic: String, req: KernelRequest) {
+async fn handle_request(
+    kernel: &Arc<crate::Kernel>,
+    topic: String,
+    caller: PrincipalId,
+    req: KernelRequest,
+) {
     let response_topic = if let Some(suffix) = topic.strip_prefix("astrid.v1.request.") {
         format!("astrid.v1.response.{suffix}")
     } else {
         topic.clone()
     };
+
+    // Capability enforcement preamble (issue #670). Resolve the caller's
+    // profile, compute the required capability for this request, and
+    // reject with an audited `Denied` entry on failure. No match arm
+    // below is reached without `authorize_request` returning Ok.
+    let method = kernel_request_method(&req);
+    let scope = resolve_scope(&req, &caller);
+    let required_cap = required_capability(&req, scope);
+    match authorize_request(kernel, &caller, required_cap) {
+        Ok(()) => {
+            record_admin_audit(
+                kernel,
+                &caller,
+                method,
+                required_cap,
+                AuthorizationProof::System {
+                    reason: format!("policy allow: {caller} holds {required_cap}"),
+                },
+                AuditOutcome::success(),
+            );
+        },
+        Err(e) => {
+            warn!(
+                security_event = true,
+                method = method,
+                principal = %caller,
+                required = required_cap,
+                "Permission check denied admin request"
+            );
+            record_admin_audit(
+                kernel,
+                &caller,
+                method,
+                required_cap,
+                AuthorizationProof::Denied {
+                    reason: e.to_string(),
+                },
+                AuditOutcome::failure(e.to_string()),
+            );
+            publish_response(
+                kernel,
+                response_topic,
+                KernelResponse::Error(format!(
+                    "permission denied: missing capability {required_cap}"
+                )),
+            );
+            return;
+        },
+    }
 
     let res = match req {
         KernelRequest::InstallCapsule { source, workspace } => {
@@ -299,16 +357,170 @@ impl ManagementRateLimiter {
 /// Return the rate limit label and max-per-minute for a request type.
 /// Returns `None` for the limit if the request type is not rate-limited.
 fn rate_limit_for_request(req: &KernelRequest) -> (&'static str, Option<u32>) {
+    (kernel_request_method(req), rate_limit_max(req))
+}
+
+/// Return the max-per-minute rate limit for a request type, if any.
+fn rate_limit_max(req: &KernelRequest) -> Option<u32> {
     match req {
-        KernelRequest::ReloadCapsules => ("ReloadCapsules", Some(5)),
-        KernelRequest::InstallCapsule { .. } => ("InstallCapsule", Some(10)),
-        KernelRequest::ApproveCapability { .. } => ("ApproveCapability", Some(10)),
-        // Read-only operations are cheap - no rate limit.
-        KernelRequest::ListCapsules => ("ListCapsules", None),
-        KernelRequest::GetCommands => ("GetCommands", None),
-        KernelRequest::GetCapsuleMetadata => ("GetCapsuleMetadata", None),
-        KernelRequest::Shutdown { .. } => ("Shutdown", Some(1)),
-        KernelRequest::GetStatus => ("GetStatus", None),
+        KernelRequest::ReloadCapsules => Some(5),
+        KernelRequest::InstallCapsule { .. } | KernelRequest::ApproveCapability { .. } => Some(10),
+        KernelRequest::Shutdown { .. } => Some(1),
+        KernelRequest::ListCapsules
+        | KernelRequest::GetCommands
+        | KernelRequest::GetCapsuleMetadata
+        | KernelRequest::GetStatus => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Management API capability enforcement (issue #670)
+// ---------------------------------------------------------------------------
+
+/// The authority surface a given [`KernelRequest`] operates over.
+///
+/// Today's `KernelRequest` variants carry no target-principal field, so
+/// [`resolve_scope`] always returns [`AuthorityScope::Self_`] — the
+/// request operates on the caller's own home.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorityScope {
+    /// Request operates on the caller's own principal.
+    Self_,
+    /// Request operates on global/system-wide state (e.g. shutdown).
+    Global,
+}
+
+/// Return the authority scope the caller is exercising for `req`.
+///
+/// Currently always returns [`AuthorityScope::Self_`] because no
+/// `KernelRequest` variant carries a `target_principal` field yet.
+#[must_use]
+pub fn resolve_scope(_req: &KernelRequest, _caller: &PrincipalId) -> AuthorityScope {
+    AuthorityScope::Self_
+}
+
+/// Return the static capability string required to satisfy `req` under
+/// `scope`.
+///
+/// Pure function so the capability mapping can be unit-tested in
+/// isolation. Every `KernelRequest` variant is covered; there is no
+/// default-allow branch.
+#[must_use]
+pub fn required_capability(req: &KernelRequest, scope: AuthorityScope) -> &'static str {
+    match (req, scope) {
+        (KernelRequest::Shutdown { .. }, _) => "system:shutdown",
+        (KernelRequest::GetStatus, _) => "system:status",
+        (KernelRequest::ReloadCapsules, AuthorityScope::Self_) => "self:capsule:reload",
+        (KernelRequest::ReloadCapsules, _) => "capsule:reload",
+        (KernelRequest::InstallCapsule { .. }, AuthorityScope::Self_) => "self:capsule:install",
+        (KernelRequest::InstallCapsule { .. }, _) => "capsule:install",
+        (
+            KernelRequest::ListCapsules
+            | KernelRequest::GetCommands
+            | KernelRequest::GetCapsuleMetadata,
+            AuthorityScope::Self_,
+        ) => "self:capsule:list",
+        (
+            KernelRequest::ListCapsules
+            | KernelRequest::GetCommands
+            | KernelRequest::GetCapsuleMetadata,
+            _,
+        ) => "capsule:list",
+        (KernelRequest::ApproveCapability { .. }, _) => "self:approval:respond",
+    }
+}
+
+/// Short identifier for a [`KernelRequest`] variant, used for rate-limit
+/// labels and audit method names.
+#[must_use]
+pub fn kernel_request_method(req: &KernelRequest) -> &'static str {
+    match req {
+        KernelRequest::ReloadCapsules => "ReloadCapsules",
+        KernelRequest::InstallCapsule { .. } => "InstallCapsule",
+        KernelRequest::ApproveCapability { .. } => "ApproveCapability",
+        KernelRequest::ListCapsules => "ListCapsules",
+        KernelRequest::GetCommands => "GetCommands",
+        KernelRequest::GetCapsuleMetadata => "GetCapsuleMetadata",
+        KernelRequest::Shutdown { .. } => "Shutdown",
+        KernelRequest::GetStatus => "GetStatus",
+    }
+}
+
+/// Resolve the caller [`PrincipalId`] from an incoming [`IpcMessage`].
+///
+/// Pre-#658 single-token socket traffic arrives without a principal
+/// field set; we fall back to [`PrincipalId::default`] — the default
+/// principal is bootstrapped with the built-in `admin` group, matching
+/// today's single-tenant behaviour.
+fn resolve_caller(message: &IpcMessage) -> PrincipalId {
+    message
+        .principal
+        .as_deref()
+        .and_then(|p| PrincipalId::new(p).ok())
+        .unwrap_or_default()
+}
+
+/// Evaluate the capability check for `caller` against the kernel's
+/// resolved group config and the caller's profile.
+///
+/// Returns `Ok(())` on success, or the policy reason on denial. Profile
+/// resolution failures (malformed TOML, IO error) are themselves treated
+/// as deny — fail-closed — with a synthesized `MissingCapability` so the
+/// deny path has a single shape in the audit log.
+fn authorize_request(
+    kernel: &crate::Kernel,
+    caller: &PrincipalId,
+    required_cap: &str,
+) -> Result<(), PermissionError> {
+    let profile = match kernel.profile_cache.resolve(caller) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(
+                security_event = true,
+                principal = %caller,
+                error = %e,
+                "Profile resolution failed — fail-closed deny"
+            );
+            return Err(PermissionError::MissingCapability {
+                principal: caller.clone(),
+                required: required_cap.to_string(),
+            });
+        },
+    };
+    let check = CapabilityCheck::new(profile.as_ref(), &kernel.groups, caller.clone());
+    check.require(required_cap)
+}
+
+/// Append an `AdminRequest` audit entry for the given outcome. Failures
+/// to persist are logged but do not abort the request — the audit log
+/// degrades to "continue + alert" by design.
+fn record_admin_audit(
+    kernel: &crate::Kernel,
+    caller: &PrincipalId,
+    method: &str,
+    required_cap: &str,
+    authorization: AuthorizationProof,
+    outcome: AuditOutcome,
+) {
+    let action = AuditAction::AdminRequest {
+        method: method.to_string(),
+        required_capability: required_cap.to_string(),
+        target_principal: None,
+    };
+    if let Err(e) = kernel.audit_log.append_with_principal(
+        kernel.session_id.clone(),
+        caller.clone(),
+        action,
+        authorization,
+        outcome,
+    ) {
+        warn!(
+            security_event = true,
+            principal = %caller,
+            method = method,
+            error = %e,
+            "Failed to persist admin-request audit entry — continuing"
+        );
     }
 }
 
@@ -393,5 +605,170 @@ mod tests {
         let (name, limit) = rate_limit_for_request(&KernelRequest::ListCapsules);
         assert_eq!(name, "ListCapsules");
         assert_eq!(limit, None);
+    }
+
+    // ── Capability mapping (issue #670) ──────────────────────────────
+
+    fn all_request_variants() -> Vec<KernelRequest> {
+        vec![
+            KernelRequest::Shutdown { reason: None },
+            KernelRequest::GetStatus,
+            KernelRequest::ReloadCapsules,
+            KernelRequest::InstallCapsule {
+                source: "x".to_string(),
+                workspace: false,
+            },
+            KernelRequest::ListCapsules,
+            KernelRequest::GetCommands,
+            KernelRequest::GetCapsuleMetadata,
+            KernelRequest::ApproveCapability {
+                request_id: "r".to_string(),
+                signature: "s".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn required_capability_every_variant_has_non_empty_mapping() {
+        for req in all_request_variants() {
+            let cap = required_capability(&req, AuthorityScope::Self_);
+            assert!(
+                !cap.is_empty(),
+                "required_capability returned empty for {req:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn required_capability_mapping_per_variant_self_scope() {
+        assert_eq!(
+            required_capability(
+                &KernelRequest::Shutdown { reason: None },
+                AuthorityScope::Self_
+            ),
+            "system:shutdown"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::GetStatus, AuthorityScope::Self_),
+            "system:status"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::ReloadCapsules, AuthorityScope::Self_),
+            "self:capsule:reload"
+        );
+        assert_eq!(
+            required_capability(
+                &KernelRequest::InstallCapsule {
+                    source: String::new(),
+                    workspace: false
+                },
+                AuthorityScope::Self_
+            ),
+            "self:capsule:install"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::ListCapsules, AuthorityScope::Self_),
+            "self:capsule:list"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::GetCommands, AuthorityScope::Self_),
+            "self:capsule:list"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::GetCapsuleMetadata, AuthorityScope::Self_),
+            "self:capsule:list"
+        );
+        assert_eq!(
+            required_capability(
+                &KernelRequest::ApproveCapability {
+                    request_id: String::new(),
+                    signature: String::new(),
+                },
+                AuthorityScope::Self_
+            ),
+            "self:approval:respond"
+        );
+    }
+
+    #[test]
+    fn required_capability_mapping_global_scope() {
+        // Global scope strips the `self:` prefix from capsule operations
+        // (Layer 6 will start using this when cross-agent variants land).
+        assert_eq!(
+            required_capability(&KernelRequest::ReloadCapsules, AuthorityScope::Global),
+            "capsule:reload"
+        );
+        assert_eq!(
+            required_capability(
+                &KernelRequest::InstallCapsule {
+                    source: String::new(),
+                    workspace: false
+                },
+                AuthorityScope::Global
+            ),
+            "capsule:install"
+        );
+        assert_eq!(
+            required_capability(&KernelRequest::ListCapsules, AuthorityScope::Global),
+            "capsule:list"
+        );
+        // system:* variants are scope-invariant.
+        assert_eq!(
+            required_capability(
+                &KernelRequest::Shutdown { reason: None },
+                AuthorityScope::Global
+            ),
+            "system:shutdown"
+        );
+    }
+
+    #[test]
+    fn resolve_scope_defaults_to_self() {
+        let caller = PrincipalId::new("alice").unwrap();
+        for req in all_request_variants() {
+            assert_eq!(
+                resolve_scope(&req, &caller),
+                AuthorityScope::Self_,
+                "scope should default to Self_ for today's variants"
+            );
+        }
+    }
+
+    // ── Caller resolution ────────────────────────────────────────────
+
+    #[test]
+    fn resolve_caller_uses_ipc_principal_when_present() {
+        let mut msg = IpcMessage::new(
+            "astrid.v1.request.system",
+            IpcPayload::RawJson(serde_json::json!({})),
+            uuid::Uuid::nil(),
+        );
+        msg.principal = Some("alice".to_string());
+        let caller = resolve_caller(&msg);
+        assert_eq!(caller.as_str(), "alice");
+    }
+
+    #[test]
+    fn resolve_caller_falls_back_to_default_when_missing() {
+        let msg = IpcMessage::new(
+            "astrid.v1.request.system",
+            IpcPayload::RawJson(serde_json::json!({})),
+            uuid::Uuid::nil(),
+        );
+        let caller = resolve_caller(&msg);
+        assert_eq!(caller, PrincipalId::default());
+    }
+
+    #[test]
+    fn resolve_caller_falls_back_to_default_on_invalid_principal() {
+        let mut msg = IpcMessage::new(
+            "astrid.v1.request.system",
+            IpcPayload::RawJson(serde_json::json!({})),
+            uuid::Uuid::nil(),
+        );
+        // Invalid principal chars → PrincipalId::new fails → fall back.
+        msg.principal = Some("alice@evil.example".to_string());
+        let caller = resolve_caller(&msg);
+        assert_eq!(caller, PrincipalId::default());
     }
 }

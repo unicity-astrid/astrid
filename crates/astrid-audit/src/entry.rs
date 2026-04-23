@@ -404,6 +404,24 @@ pub enum AuditAction {
 
     /// Configuration was reloaded.
     ConfigReloaded,
+
+    /// Kernel management-API request (admin surface) — allowed or denied
+    /// by the [`CapabilityCheck`](astrid_capabilities::CapabilityCheck)
+    /// enforcement preamble. Pair this action with
+    /// [`AuthorizationProof::Denied`] + [`AuditOutcome::failure`] for the
+    /// deny path, or any of the positive authorization variants +
+    /// [`AuditOutcome::success`] for the allow path.
+    AdminRequest {
+        /// Request variant name (e.g. `"Shutdown"`, `"ReloadCapsules"`).
+        method: String,
+        /// Capability string that was evaluated for this request.
+        required_capability: String,
+        /// Principal the request operates on, when distinct from the
+        /// caller. `None` for operations that are scoped to the caller
+        /// themselves (today's variants have no target-principal field).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_principal: Option<astrid_core::PrincipalId>,
+    },
 }
 
 impl AuditAction {
@@ -495,6 +513,16 @@ impl AuditAction {
                 format!("Spawned sub-agent: {description}")
             },
             Self::ConfigReloaded => "Configuration reloaded".to_string(),
+            Self::AdminRequest {
+                method,
+                required_capability,
+                target_principal,
+            } => match target_principal {
+                Some(target) => {
+                    format!("Admin {method} on {target} (capability {required_capability})")
+                },
+                None => format!("Admin {method} (capability {required_capability})"),
+            },
         }
     }
 }
