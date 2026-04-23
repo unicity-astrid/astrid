@@ -623,13 +623,6 @@ impl Kernel {
         self.ephemeral.store(val, Ordering::Relaxed);
     }
 
-    /// Number of active client connections for `principal`.
-    pub fn connection_count(&self, principal: &PrincipalId) -> usize {
-        self.active_connections
-            .get(principal)
-            .map_or(0, |e| e.load(Ordering::Relaxed))
-    }
-
     /// Total number of active client connections across all principals.
     ///
     /// Used by the ephemeral-shutdown gate: the kernel shuts down only
@@ -657,6 +650,16 @@ impl Kernel {
                 metadata: astrid_events::EventMetadata::new("kernel"),
                 reason: reason.clone(),
             });
+
+        // Clear every principal's session-only state in one sweep. Belt-
+        // and-suspenders for a process that is exiting anyway, but load-
+        // bearing the moment session allowances are ever persisted
+        // (Layer 7) — without this call a persisted-allowance layer would
+        // inherit stale per-session grants from the previous process.
+        self.allowance_store.clear_all_session_allowances();
+        if let Err(e) = self.capabilities.clear_session() {
+            tracing::warn!(error = %e, "failed to clear capability session on shutdown");
+        }
 
         // 2. Drain the registry so the dispatcher cannot hand out new Arc clones,
         // then unload each capsule. MCP engine unload is critical - it calls

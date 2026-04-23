@@ -483,20 +483,6 @@ impl HostState {
             None => astrid_core::profile::PrincipalProfile::default_ref(),
         }
     }
-
-    /// Return the effective workspace overlay VFS for the current invocation.
-    ///
-    /// Prefers `invocation_overlay_vfs` (set by
-    /// [`WasmEngine::invoke_interceptor`](super::WasmEngine::invoke_interceptor)
-    /// from the kernel-wide [`OverlayVfsRegistry`](astrid_vfs::OverlayVfsRegistry))
-    /// and falls back to the load-time `overlay_vfs`. Returns `None` when
-    /// neither is installed (plain-`HostVfs` test fixtures).
-    #[must_use]
-    pub fn effective_overlay_vfs(&self) -> Option<&Arc<astrid_vfs::OverlayVfs>> {
-        self.invocation_overlay_vfs
-            .as_ref()
-            .or(self.overlay_vfs.as_ref())
-    }
 }
 
 impl std::fmt::Debug for HostState {

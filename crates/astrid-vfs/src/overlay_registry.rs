@@ -21,7 +21,7 @@
 //! invariant #7 from issue #653.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -140,7 +140,8 @@ impl OverlayVfsRegistry {
             .len()
     }
 
-    /// Whether the registry has any cached overlays.
+    /// Whether the registry has any cached overlays. Present to satisfy
+    /// clippy's `len_without_is_empty` lint — not a hot path.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -281,14 +282,6 @@ impl OverlayVfsRegistry {
             tracing::info!(principal = %p, "overlay registry at cap, evicting idle entry");
             guard.remove(&p);
         }
-    }
-
-    /// Workspace root this registry is rooted at. Exposed for kernel
-    /// integrations that need to construct a principal-agnostic read view
-    /// of the same bytes.
-    #[must_use]
-    pub fn workspace_root(&self) -> &Path {
-        &self.workspace_root
     }
 
     /// Root capability handle used to mount every per-principal overlay.
