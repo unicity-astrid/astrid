@@ -99,31 +99,44 @@ impl SocketClient {
         })
     }
 
-    /// Read the next event from the Kernel.
-    ///
     /// Read the next IPC message from the daemon.
     ///
-    /// The CLI proxy capsule sends individual `IpcMessage` objects over the
-    /// socket as length-prefixed JSON.
+    /// The CLI proxy capsule sends individual `IpcMessage` objects over
+    /// the socket as length-prefixed JSON. Frames whose payload does
+    /// not deserialize into [`IpcMessage`] (notably the kernel's
+    /// `astrid.v1.capsules_loaded` broadcast, whose `IpcPayload::RawJson`
+    /// inner value is emitted without the `type` discriminator) are
+    /// logged at `debug` and skipped — the caller reads the next valid
+    /// frame instead. Without this tolerance, every interactive client
+    /// would die on the first broadcast.
     ///
     /// # Errors
-    /// Returns an error if the message cannot be read or parsed.
+    /// Returns an error if the connection is in an unrecoverable state
+    /// (over-large frame, IO failure mid-read).
     pub async fn read_message(&mut self) -> Result<Option<IpcMessage>> {
-        let mut len_buf = [0u8; 4];
-        if self.read_half.read_exact(&mut len_buf).await.is_err() {
-            return Ok(None); // Connection closed
+        loop {
+            let mut len_buf = [0u8; 4];
+            if self.read_half.read_exact(&mut len_buf).await.is_err() {
+                return Ok(None); // Connection closed
+            }
+            let len = u32::from_be_bytes(len_buf) as usize;
+
+            if len > 50 * 1024 * 1024 {
+                anyhow::bail!("Message too large from kernel: {len} bytes");
+            }
+
+            let mut payload = vec![0u8; len];
+            self.read_half.read_exact(&mut payload).await?;
+
+            if let Ok(message) = serde_json::from_slice::<IpcMessage>(&payload) {
+                return Ok(Some(message));
+            }
+            let preview = String::from_utf8_lossy(&payload[..payload.len().min(120)]);
+            tracing::debug!(
+                preview = %preview,
+                "skipping unparseable frame from daemon"
+            );
         }
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        if len > 50 * 1024 * 1024 {
-            anyhow::bail!("Message too large from kernel: {len} bytes");
-        }
-
-        let mut payload = vec![0u8; len];
-        self.read_half.read_exact(&mut payload).await?;
-
-        let message = serde_json::from_slice::<IpcMessage>(&payload)?;
-        Ok(Some(message))
     }
 
     /// Send a user input message to the Kernel.
