@@ -73,8 +73,8 @@ async fn agent_create_writes_profile_and_links_identity() {
     assert_success(&res);
 
     // Profile written to disk with default group = "agent".
-    let ph = kernel.astrid_home.principal_home(&pid("alice"));
-    let profile = PrincipalProfile::load_from_path(&PrincipalProfile::path_for(&ph)).unwrap();
+    let path = PrincipalProfile::path_for(&kernel.astrid_home, &pid("alice"));
+    let profile = PrincipalProfile::load_from_path(&path).unwrap();
     assert_eq!(profile.groups, vec![BUILTIN_AGENT.to_string()]);
     assert!(profile.enabled);
 
@@ -169,7 +169,7 @@ async fn agent_delete_removes_identity_profile_and_invalidates_cache() {
         },
     )
     .await;
-    let path = PrincipalProfile::path_for(&kernel.astrid_home.principal_home(&pid("bob")));
+    let path = PrincipalProfile::path_for(&kernel.astrid_home, &pid("bob"));
     assert!(path.exists(), "profile.toml should be present pre-delete");
     let _warm = kernel.profile_cache.resolve(&pid("bob")).unwrap();
 
@@ -220,8 +220,7 @@ async fn caps_grant_on_nonexistent_principal_is_rejected() {
     assert_error_contains(&res, "does not exist");
 
     // No phantom profile.toml left on disk.
-    let phantom_path =
-        PrincipalProfile::path_for(&kernel.astrid_home.principal_home(&pid("typo_principal")));
+    let phantom_path = PrincipalProfile::path_for(&kernel.astrid_home, &pid("typo_principal"));
     assert!(!phantom_path.exists());
 }
 

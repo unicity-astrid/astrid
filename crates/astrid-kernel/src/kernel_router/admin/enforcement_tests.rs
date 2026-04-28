@@ -37,7 +37,7 @@ fn pid(name: &str) -> PrincipalId {
 
 /// Seed a principal profile on disk under `kernel.astrid_home`.
 fn seed_profile(kernel: &Arc<Kernel>, principal: &PrincipalId, profile: &PrincipalProfile) {
-    let path = PrincipalProfile::path_for(&kernel.astrid_home.principal_home(principal));
+    let path = PrincipalProfile::path_for(&kernel.astrid_home, principal);
     profile.save_to_path(&path).expect("seed profile");
     kernel.profile_cache.invalidate(principal);
 }

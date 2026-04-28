@@ -82,7 +82,7 @@ impl PrincipalProfileCache {
     /// Resolve the profile for `principal`, populating the cache on first use.
     ///
     /// The first call for a given principal reads
-    /// `{AstridHome}/home/{principal}/.config/profile.toml` from disk.
+    /// `{AstridHome}/etc/profiles/{principal}.toml` from disk.
     /// Subsequent calls return the cached `Arc` clone with no filesystem
     /// access.
     ///
@@ -111,8 +111,7 @@ impl PrincipalProfileCache {
             return Ok(Arc::clone(profile));
         }
 
-        let home = self.astrid_home.principal_home(principal);
-        let profile = Arc::new(PrincipalProfile::load(&home)?);
+        let profile = Arc::new(PrincipalProfile::load(&self.astrid_home, principal)?);
 
         let mut w = self
             .cache
@@ -177,10 +176,9 @@ mod tests {
 
     fn write_profile(dir: &tempfile::TempDir, p: &PrincipalId, contents: &str) {
         let home = AstridHome::from_path(dir.path());
-        let ph = home.principal_home(p);
-        let cfg = ph.config_dir();
-        fs::create_dir_all(&cfg).expect("mkdir .config");
-        fs::write(cfg.join("profile.toml"), contents).expect("write profile");
+        let profiles_dir = home.profiles_dir();
+        fs::create_dir_all(&profiles_dir).expect("mkdir etc/profiles");
+        fs::write(home.profile_path(p), contents).expect("write profile");
     }
 
     #[test]

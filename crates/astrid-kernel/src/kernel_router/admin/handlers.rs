@@ -282,34 +282,38 @@ async fn agent_set_enabled(
 }
 
 fn agent_list(kernel: &Arc<crate::Kernel>) -> AdminResponseBody {
-    let home_dir = kernel.astrid_home.home_dir();
-    let entries = match std::fs::read_dir(&home_dir) {
+    // Source of truth: `etc/profiles/{principal}.toml`. Iterating the
+    // home directory was the pre-#672 approach but stopped working
+    // when profiles moved out — and was always wrong in spirit since
+    // a principal's home dir can outlive its policy file (e.g. after
+    // `agent.delete`, where home stays as an ops concern but the
+    // profile is removed).
+    let profiles_dir = kernel.astrid_home.profiles_dir();
+    let entries = match std::fs::read_dir(&profiles_dir) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return AdminResponseBody::AgentList(Vec::new());
         },
         Err(e) => {
-            return err_internal(format!("failed to read {}: {e}", home_dir.display()));
+            return err_internal(format!("failed to read {}: {e}", profiles_dir.display()));
         },
     };
 
     let mut summaries = Vec::new();
     for entry in entries.flatten() {
-        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+        if !entry.file_type().is_ok_and(|t| t.is_file()) {
             continue;
         }
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
             continue;
         };
-        let Ok(principal) = PrincipalId::new(name) else {
+        let Some(stem) = name.strip_suffix(".toml") else {
             continue;
         };
-        // Skip principals that have a home dir but no profile.toml —
-        // these are either stale (post-`agent.delete`) or never fully
-        // created. Listing them with `Default` data would be misleading.
-        if !principal_profile_path(kernel, &principal).exists() {
+        let Ok(principal) = PrincipalId::new(stem) else {
             continue;
-        }
+        };
         let profile = match kernel.profile_cache.resolve(&principal) {
             Ok(p) => p,
             Err(e) => {
@@ -531,8 +535,7 @@ async fn mutate_caps(
 // ── Helpers ────────────────────────────────────────────────────────────
 
 fn principal_profile_path(kernel: &Arc<crate::Kernel>, principal: &PrincipalId) -> PathBuf {
-    let ph = kernel.astrid_home.principal_home(principal);
-    PrincipalProfile::path_for(&ph)
+    PrincipalProfile::path_for(&kernel.astrid_home, principal)
 }
 
 /// Reject mutating-handler calls that target a principal with no

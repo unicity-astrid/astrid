@@ -1658,9 +1658,7 @@ mod tests {
     fn seed_admin_writes_fresh_profile_when_missing() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
         assert!(!path.exists());
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1675,14 +1673,12 @@ mod tests {
     fn seed_admin_is_idempotent_across_reboots() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
         seed_default_principal_admin_profile(&home).unwrap();
         seed_default_principal_admin_profile(&home).unwrap();
 
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
         let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
         // Still exactly one `admin` entry — no duplication.
         assert_eq!(profile.groups, vec!["admin".to_string()]);
@@ -1692,13 +1688,12 @@ mod tests {
     fn seed_admin_leaves_operator_configured_groups_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         // Operator wrote their own config pre-bootstrap.
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.groups = vec!["agent".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1711,12 +1706,11 @@ mod tests {
     fn seed_admin_leaves_operator_configured_grants_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.grants = vec!["system:status".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1731,12 +1725,11 @@ mod tests {
     fn seed_admin_leaves_operator_configured_revokes_intact() {
         let (_d, home) = scratch_home();
         let default = astrid_core::PrincipalId::default();
-        let ph = home.principal_home(&default);
-        ph.ensure().unwrap();
 
         let mut existing = astrid_core::PrincipalProfile::default();
         existing.revokes = vec!["system:shutdown".to_string()];
-        let path = astrid_core::PrincipalProfile::path_for(&ph);
+        let path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(home.profiles_dir()).unwrap();
         existing.save_to_path(&path).unwrap();
 
         seed_default_principal_admin_profile(&home).unwrap();
@@ -1744,6 +1737,67 @@ mod tests {
         let profile = astrid_core::PrincipalProfile::load_from_path(&path).unwrap();
         assert!(profile.groups.is_empty());
         assert_eq!(profile.revokes, vec!["system:shutdown".to_string()]);
+    }
+
+    // ── Legacy profile path migration (issue #672) ──────────────────
+
+    #[test]
+    fn migrate_legacy_profile_relocates_to_etc() {
+        // Pre-#672 deployments wrote profile.toml under
+        // home/{principal}/.config/. The migration moves it to
+        // etc/profiles/{principal}.toml on first boot.
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+        let legacy_path = home
+            .principal_home(&default)
+            .config_dir()
+            .join("profile.toml");
+        std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        let mut existing = astrid_core::PrincipalProfile::default();
+        existing.groups = vec!["operator-configured".to_string()];
+        existing.save_to_path(&legacy_path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        // Legacy path gone, new path holds the migrated content.
+        assert!(!legacy_path.exists());
+        let new_path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        let migrated = astrid_core::PrincipalProfile::load_from_path(&new_path).unwrap();
+        assert_eq!(migrated.groups, vec!["operator-configured".to_string()]);
+    }
+
+    #[test]
+    fn migrate_legacy_profile_drops_stale_legacy_when_new_already_exists() {
+        // Operator already migrated by hand (or a prior boot did) —
+        // the new path holds the canonical config. Don't clobber it
+        // with the legacy file; just remove the legacy so capsules
+        // can't reach it through home://.
+        let (_d, home) = scratch_home();
+        let default = astrid_core::PrincipalId::default();
+
+        // Stale legacy with operator-stale content.
+        let legacy_path = home
+            .principal_home(&default)
+            .config_dir()
+            .join("profile.toml");
+        std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        let mut stale = astrid_core::PrincipalProfile::default();
+        stale.groups = vec!["stale".to_string()];
+        stale.save_to_path(&legacy_path).unwrap();
+
+        // Fresh new-path content (migrated already).
+        let new_path = astrid_core::PrincipalProfile::path_for(&home, &default);
+        std::fs::create_dir_all(new_path.parent().unwrap()).unwrap();
+        let mut canonical = astrid_core::PrincipalProfile::default();
+        canonical.groups = vec!["canonical".to_string()];
+        canonical.save_to_path(&new_path).unwrap();
+
+        seed_default_principal_admin_profile(&home).unwrap();
+
+        // Legacy removed, canonical preserved.
+        assert!(!legacy_path.exists());
+        let result = astrid_core::PrincipalProfile::load_from_path(&new_path).unwrap();
+        assert_eq!(result.groups, vec!["canonical".to_string()]);
     }
 }
 
@@ -1873,6 +1927,50 @@ async fn bootstrap_cli_root_user(
     Ok(())
 }
 
+/// Migrate a legacy per-principal `profile.toml` from the pre-#672
+/// location (`home/{principal}/.config/profile.toml`) to the
+/// system-managed `etc/profiles/{principal}.toml`. Idempotent across
+/// boots: if the new path exists, the old one is removed (assumed
+/// already migrated); if neither exists, no-op.
+///
+/// Profile contents are 100% system policy (enabled, groups, grants,
+/// revokes, quotas, auth public keys) and a capsule running with
+/// `fs_read = ["home://"]` could read its own policy from the legacy
+/// location. Moving it under `etc/` puts it outside the `home://` VFS
+/// scheme entirely.
+fn migrate_legacy_profile_path(
+    home: &astrid_core::dirs::AstridHome,
+    principal: &astrid_core::PrincipalId,
+) -> Result<(), std::io::Error> {
+    let legacy_path = home
+        .principal_home(principal)
+        .config_dir()
+        .join("profile.toml");
+    let new_path = home.profile_path(principal);
+    if !legacy_path.exists() {
+        return Ok(());
+    }
+    if new_path.exists() {
+        // Operator already migrated, or a prior boot did the rename.
+        // Drop the stale legacy file so capsules can no longer reach
+        // it via `home://.config/profile.toml`.
+        let _ = std::fs::remove_file(&legacy_path);
+        return Ok(());
+    }
+    if let Some(parent) = new_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&legacy_path, &new_path)?;
+    tracing::warn!(
+        %principal,
+        legacy = %legacy_path.display(),
+        new = %new_path.display(),
+        "Migrated profile.toml out of principal home directory \
+         (security: capsules with home:// fs_read could read the legacy file)"
+    );
+    Ok(())
+}
+
 /// Idempotently ensure the default principal's profile on disk has the
 /// built-in `admin` group, so the single-tenant CLI path carries full
 /// management-API capabilities (issue #670).
@@ -1883,15 +1981,26 @@ async fn bootstrap_cli_root_user(
 /// - Existing profile with `groups = []`, `grants = []`, `revokes = []`
 ///   → adds `admin` to `groups`. This covers the fresh-default case
 ///   where a prior boot wrote a `PrincipalProfile::default()`.
+///
+/// Also migrates the legacy `profile.toml` location
+/// (`home/{principal}/.config/`) to the new system-managed location
+/// (`etc/profiles/`) on first boot post-#672, see
+/// [`migrate_legacy_profile_path`].
 fn seed_default_principal_admin_profile(
     home: &astrid_core::dirs::AstridHome,
 ) -> Result<(), astrid_core::ProfileError> {
     use astrid_core::PrincipalProfile;
 
     let default_principal = astrid_core::PrincipalId::default();
-    let principal_home = home.principal_home(&default_principal);
 
-    let path = PrincipalProfile::path_for(&principal_home);
+    // Move any legacy file in front of load — load_from_path on the new
+    // path would otherwise return Default and clobber the operator's
+    // existing groups/grants/revokes.
+    if let Err(e) = migrate_legacy_profile_path(home, &default_principal) {
+        tracing::warn!(error = %e, "Failed to migrate legacy profile path — continuing");
+    }
+
+    let path = PrincipalProfile::path_for(home, &default_principal);
     let profile = PrincipalProfile::load_from_path(&path)?;
 
     if !profile.groups.is_empty() || !profile.grants.is_empty() || !profile.revokes.is_empty() {
