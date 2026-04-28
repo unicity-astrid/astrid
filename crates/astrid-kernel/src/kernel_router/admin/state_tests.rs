@@ -584,6 +584,73 @@ async fn caps_revoke_of_unheld_capability_appends_preemptive() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn caps_grant_is_idempotent_no_disk_growth_on_repeat() {
+    // Re-applying the same grant must not duplicate entries in
+    // profile.toml — operator scripts that re-run their setup should
+    // not see grants/revokes vectors grow unboundedly.
+    let (_dir, kernel) = fixture().await;
+    handlers::dispatch(
+        &kernel,
+        AdminKernelRequest::AgentCreate {
+            name: "indy".into(),
+            groups: vec!["restricted".into()],
+            grants: Vec::new(),
+        },
+    )
+    .await;
+    for _ in 0..5 {
+        handlers::dispatch(
+            &kernel,
+            AdminKernelRequest::CapsGrant {
+                principal: pid("indy"),
+                capabilities: vec!["capsule:install".into(), "capsule:remove".into()],
+            },
+        )
+        .await;
+    }
+    let profile = kernel.profile_cache.resolve(&pid("indy")).unwrap();
+    let install_count = profile
+        .grants
+        .iter()
+        .filter(|c| *c == "capsule:install")
+        .count();
+    let remove_count = profile
+        .grants
+        .iter()
+        .filter(|c| *c == "capsule:remove")
+        .count();
+    assert_eq!(install_count, 1, "duplicate grant: {:?}", profile.grants);
+    assert_eq!(remove_count, 1, "duplicate grant: {:?}", profile.grants);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn caps_revoke_is_idempotent_no_disk_growth_on_repeat() {
+    let (_dir, kernel) = fixture().await;
+    handlers::dispatch(
+        &kernel,
+        AdminKernelRequest::AgentCreate {
+            name: "isaac".into(),
+            groups: vec!["admin".into()],
+            grants: Vec::new(),
+        },
+    )
+    .await;
+    for _ in 0..3 {
+        handlers::dispatch(
+            &kernel,
+            AdminKernelRequest::CapsRevoke {
+                principal: pid("isaac"),
+                capabilities: vec!["self:*".into()],
+            },
+        )
+        .await;
+    }
+    let profile = kernel.profile_cache.resolve(&pid("isaac")).unwrap();
+    let count = profile.revokes.iter().filter(|c| *c == "self:*").count();
+    assert_eq!(count, 1, "duplicate revoke: {:?}", profile.revokes);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn caps_grant_rejects_invalid_capability_grammar() {
     let (_dir, kernel) = fixture().await;
     handlers::dispatch(

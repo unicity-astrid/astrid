@@ -421,9 +421,20 @@ async fn mutate_caps(
     // Grant-after-revoke must NOT clear the matching revoke — Layer 5
     // precedence is revoke > grant, so we just append. Revoke-after-grant
     // leaves the grant in place; the revoke wins at check time.
-    match which {
-        CapsMutation::Grant => profile.grants.extend(capabilities.iter().cloned()),
-        CapsMutation::Revoke => profile.revokes.extend(capabilities.iter().cloned()),
+    //
+    // Dedup against the target vec: repeated `caps.grant`/`caps.revoke`
+    // of the same string is idempotent. Without this, scripts that
+    // re-apply the same grant on each run would unboundedly grow
+    // `profile.toml` and slow `CapabilityCheck::has` on the linear
+    // grant/revoke scan.
+    let target = match which {
+        CapsMutation::Grant => &mut profile.grants,
+        CapsMutation::Revoke => &mut profile.revokes,
+    };
+    for cap in &capabilities {
+        if !target.iter().any(|existing| existing == cap) {
+            target.push(cap.clone());
+        }
     }
 
     if let Err(e) = profile.save_to_path(&path) {
