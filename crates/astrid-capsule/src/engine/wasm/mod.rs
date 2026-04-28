@@ -386,6 +386,36 @@ fn build_principal_vfs_bundle_at(ph: &astrid_core::dirs::PrincipalHome) -> Princ
     PrincipalVfsBundle { home, tmp }
 }
 
+/// Refuse the invocation if the invoking principal's profile has
+/// `enabled = false` (issue #672, Layer 3 enabled gate). Mirrors the
+/// Layer 5 `authorize_request` preamble in `kernel_router/mod.rs` so
+/// `agent.disable` denies *every* surface a principal can drive, not
+/// just the management IPC.
+///
+/// In-flight invocations finish under the old value — `invoke_interceptor`
+/// only checks at entry. New invocations after the cache is invalidated
+/// (post-`agent.disable`) are refused with a `security_event = true` log.
+fn check_principal_enabled(
+    profile: &astrid_core::profile::PrincipalProfile,
+    invoking: &astrid_core::PrincipalId,
+    capsule_name: &str,
+    action: &str,
+) -> Result<(), CapsuleError> {
+    if profile.enabled {
+        return Ok(());
+    }
+    tracing::warn!(
+        security_event = true,
+        principal = %invoking,
+        capsule = %capsule_name,
+        action = action,
+        "Disabled principal denied at Layer 3 — fail-closed (issue #672)"
+    );
+    Err(CapsuleError::WasmError(format!(
+        "principal '{invoking}' is disabled"
+    )))
+}
+
 /// RAII guard that stops the epoch ticker thread when dropped.
 ///
 /// Ensures the ticker is cleaned up even on early error returns.
@@ -1009,6 +1039,14 @@ impl ExecutionEngine for WasmEngine {
         // limits. When the kernel didn't supply a cache (tests, single
         // tenant), `invocation_profile` stays `None` and the defensive
         // apply-block below uses the process-global default.
+        //
+        // Layer 6 (#672): if `profile.enabled = false`, refuse the
+        // invocation. The Layer 5 `authorize_request` preamble already
+        // gates the management API on this flag; this gate covers
+        // capsule invocations so `agent.disable` denies *every* surface
+        // a principal can drive, not just the admin IPC. In-flight
+        // invocations finish under the old value (we only check at
+        // entry); new invocations are refused.
         let invocation_profile: Option<Arc<astrid_core::profile::PrincipalProfile>> = match self
             .profile_cache
             .as_ref()
@@ -1023,11 +1061,18 @@ impl ExecutionEngine for WasmEngine {
                     .and_then(|p| astrid_core::PrincipalId::new(p).ok())
                     .or_else(|| self.owner_principal.clone())
                     .unwrap_or_default();
-                Some(cache.resolve(&invoking).map_err(|e| {
+                let profile = cache.resolve(&invoking).map_err(|e| {
                     tracing::error!(principal = %invoking, error = %e,
                             "profile load failed; denying invocation (issue #666)");
                     CapsuleError::WasmError(format!("principal '{invoking}' profile invalid: {e}"))
-                })?)
+                })?;
+                check_principal_enabled(
+                    &profile,
+                    &invoking,
+                    self.manifest.package.name.as_str(),
+                    action,
+                )?;
+                Some(profile)
             },
             None => None,
         };
@@ -1512,6 +1557,44 @@ mod tests {
             panic!("intentional panic to poison mutex");
         })
         .join();
+    }
+
+    // ── Layer 3 enabled-gate tests (issue #672) ──────────────────────
+
+    fn pid(name: &str) -> astrid_core::PrincipalId {
+        astrid_core::PrincipalId::new(name).unwrap()
+    }
+
+    #[test]
+    fn check_principal_enabled_allows_enabled_profile() {
+        let profile = astrid_core::profile::PrincipalProfile::default();
+        assert!(profile.enabled, "default profile must be enabled");
+        check_principal_enabled(&profile, &pid("alice"), "test-capsule", "do-thing")
+            .expect("enabled profile must pass the gate");
+    }
+
+    #[test]
+    fn check_principal_enabled_rejects_disabled_profile() {
+        let mut profile = astrid_core::profile::PrincipalProfile::default();
+        profile.enabled = false;
+        let err = check_principal_enabled(&profile, &pid("bob"), "test-capsule", "do-thing")
+            .expect_err("disabled profile must be denied");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("disabled") && msg.contains("bob"),
+            "expected error to name principal and reason: {msg}"
+        );
+    }
+
+    #[test]
+    fn check_principal_enabled_denies_even_for_admin_group() {
+        // The Layer 5 preamble denies disabled admins on management
+        // requests; Layer 3 must do the same on capsule invocations,
+        // regardless of group membership. enabled=false beats admin.
+        let mut profile = astrid_core::profile::PrincipalProfile::default();
+        profile.groups = vec!["admin".to_string()];
+        profile.enabled = false;
+        assert!(check_principal_enabled(&profile, &pid("admin_user"), "x", "y").is_err());
     }
 
     /// Verifies that a poisoned mutex in the run-loop pattern completes
